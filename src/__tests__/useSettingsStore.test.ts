@@ -233,6 +233,7 @@ describe('resetToDefaults', () => {
     useSettingsStore.getState().setAutoRemoveExpiredTasks(7);
     useSettingsStore.getState().setAutoArchiveProjectsOnComplete(true);
     useSettingsStore.getState().setHideCategories(true);
+    useSettingsStore.getState().setTimerLiveActivity(false);
 
     useSettingsStore.getState().resetToDefaults();
 
@@ -250,6 +251,7 @@ describe('resetToDefaults', () => {
     expect(state.autoRemoveExpiredTasks).toBe(7);
     expect(state.autoArchiveProjectsOnComplete).toBe(false);
     expect(state.hideCategories).toBe(false);
+    expect(state.timerLiveActivity).toBe(true);
   });
 
   it('persists each default to the database', () => {
@@ -707,6 +709,29 @@ describe('shakeToUndoEnabled', () => {
     useSettingsStore.getState().setShakeToUndoEnabled(false);
     expect(dbSetSetting).toHaveBeenCalledWith('shakeToUndoEnabled', 'false');
     expect(useSettingsStore.getState().shakeToUndoEnabled).toBe(false);
+  });
+});
+
+describe('timerLiveActivity', () => {
+  // Same reasoning as hapticsEnabled/shakeToUndoEnabled: defaults on so an
+  // install predating the setting keeps the Live Activity it already had.
+  it('defaults to on, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().timerLiveActivity).toBe(true);
+  });
+
+  it('only turns off for an explicit "false"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'timerLiveActivity' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().timerLiveActivity).toBe(false);
+  });
+
+  it('round-trips through setTimerLiveActivity', () => {
+    useSettingsStore.getState().setTimerLiveActivity(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('timerLiveActivity', 'false');
+    expect(useSettingsStore.getState().timerLiveActivity).toBe(false);
   });
 });
 

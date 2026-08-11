@@ -188,6 +188,12 @@ interface SettingsStore {
   // time, and "30 minutes before the day reset" is not a useful reminder.
   defaultReminderLeadMinutes: number | null;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
+  // Live Activity (Lock Screen / Dynamic Island) for a running task timer or
+  // recipe cook/prep timer — see src/utils/liveActivity.ts. iOS 17+ only, a
+  // no-op everywhere else. Defaults on, like hapticsEnabled/shakeToUndoEnabled
+  // above, so an install that predates the setting keeps the behavior it
+  // already had once this ships.
+  timerLiveActivity: boolean;
   mealsOnToday: MealsOnToday;
   // Whether planning a meal also puts a "Cook X" task on the day it's planned
   // for. On by default, but deliberately with no backfill — only meals planned
@@ -314,6 +320,7 @@ interface SettingsStore {
   setCompletedRetentionDays: (days: RetentionDays) => void;
   setDefaultReminderLeadMinutes: (minutes: number | null) => void;
   setHideCategories: (on: boolean) => void;
+  setTimerLiveActivity: (on: boolean) => void;
   setRemindersImportEnabled: (on: boolean) => void;
   setRemindersImportListId: (id: string | null) => void;
   setRemindersImportConfirmedListId: (id: string | null) => void;
@@ -353,6 +360,7 @@ const DEFAULT_SETTINGS = {
   dailyAgendaTime: '08:00',
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
+  timerLiveActivity: true,
   mealsOnToday: 'strip' as MealsOnToday,
   mealCookTasks: true,
   mealCookTaskCategory: null,
@@ -511,6 +519,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   completedRetentionDays: null,
   defaultReminderLeadMinutes: null,
   hideCategories: false,
+  timerLiveActivity: true,
   mealsOnToday: 'strip',
   mealCookTasks: true,
   mealCookTaskCategory: null,
@@ -572,6 +581,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
+    // `!== 'false'`, not `=== 'true'` — defaults on, same reasoning as
+    // hapticsEnabled/shakeToUndoEnabled above.
+    const timerLiveActivity = dbGetSetting('timerLiveActivity') !== 'false';
     const storedMealsOnToday = dbGetSetting('mealsOnToday') as MealsOnToday | null;
     const mealsOnToday: MealsOnToday =
       storedMealsOnToday && MEALS_ON_TODAY.includes(storedMealsOnToday) ? storedMealsOnToday : 'strip';
@@ -648,7 +660,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, mealsOnToday, mealCookTasks, mealCookTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, timerLiveActivity, mealsOnToday, mealCookTasks, mealCookTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -851,6 +863,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setHideCategories(on: boolean) {
     dbSetSetting('hideCategories', on ? 'true' : 'false');
     set({ hideCategories: on });
+  },
+
+  setTimerLiveActivity(on: boolean) {
+    dbSetSetting('timerLiveActivity', on ? 'true' : 'false');
+    set({ timerLiveActivity: on });
   },
 
   setMealsOnToday(mode: MealsOnToday) {

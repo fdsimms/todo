@@ -17,6 +17,7 @@ import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { useWidgetSync } from './src/utils/widgetSync';
+import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { runStartupSequence } from './src/utils/startup';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
@@ -161,6 +162,9 @@ function AppRoot() {
 
   // Keeps the iOS Today widget's shared snapshot in sync with the task store.
   useWidgetSync();
+
+  // Keeps a running task/recipe timer's Lock Screen Live Activity in sync.
+  useTimerLiveActivitySync();
 
   // Keeps the pending daily agenda's count matching the tasks it describes.
   useDailyAgendaSync();
