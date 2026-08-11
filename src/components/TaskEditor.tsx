@@ -1200,11 +1200,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     const index = pendingSubtaskIndex;
     if (task) {
       const created = addSubtask(task.id, trimmed);
+      // Advance before the append early-return, not after it — otherwise the
+      // first burst-typed item (which always hits the append case, since
+      // addSubtask already puts it at the true end) leaves the index stale,
+      // and the second item's insert-if-mid-list check compares it against a
+      // list that grew since, splicing the new item in above the first
+      // instead of appending it below.
+      if (index !== null) setPendingSubtaskIndex(index + 1);
       if (index === null || index >= subtasks.length) return draftSubtasks;
       const ids = subtasks.map(s => s.id);
       ids.splice(Math.max(0, index), 0, created.id);
       reorderSubtasks(task.id, ids);
-      setPendingSubtaskIndex(index + 1);
       return draftSubtasks;
     }
     // No parent row yet — held locally and flushed to real addSubtask() calls
