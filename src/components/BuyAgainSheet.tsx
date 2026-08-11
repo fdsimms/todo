@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import {
@@ -62,6 +63,14 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
   const [shopFilter, setShopFilter] = useState<string | null>(null);
+
+  // Drives the edge fades on the store filter row: a hard clip at the
+  // viewport edge with no cue reads as a cut-off pill, not a scrollable row.
+  const [filterRowWidth, setFilterRowWidth] = useState(0);
+  const [filterContentWidth, setFilterContentWidth] = useState(0);
+  const [filterScrollX, setFilterScrollX] = useState(0);
+  const canScrollFilterLeft = filterScrollX > 1;
+  const canScrollFilterRight = filterScrollX < filterContentWidth - filterRowWidth - 1;
 
   // Nothing carries over between openings — a stale selection from last week
   // is a way to add things you didn't mean to.
@@ -245,54 +254,84 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
             here rather than on the shopping list: this is the catalog browser,
             and it's open exactly when you're deciding what to buy where. */}
         {filterShops.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}
-            keyboardShouldPersistTaps="handled"
-          >
-            <TouchableOpacity
-              style={[styles.chip, shopFilter === null && styles.chipActive]}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => {
-                haptics.tap();
-                setShopFilter(null);
-              }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: shopFilter === null }}
-              accessibilityLabel="All stores"
+          <View style={styles.filterWrap} onLayout={e => setFilterRowWidth(e.nativeEvent.layout.width)}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterRow}
+              keyboardShouldPersistTaps="handled"
+              scrollEventThrottle={16}
+              onContentSizeChange={w => setFilterContentWidth(w)}
+              onScroll={e => setFilterScrollX(e.nativeEvent.contentOffset.x)}
             >
-              <Text style={[styles.chipText, shopFilter === null && styles.chipTextActive]}>
-                All
-              </Text>
-            </TouchableOpacity>
-            {filterShops.map(shop => {
-              const active = shop.id === shopFilter;
-              const count = shopCounts.get(shop.id) ?? 0;
-              return (
-                <TouchableOpacity
-                  key={shop.id}
-                  style={[styles.chip, active && styles.chipActive]}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => {
-                    haptics.tap();
-                    setShopFilter(active ? null : shop.id);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={`${shop.name}, ${count} ${count === 1 ? 'item' : 'items'}`}
-                >
-                  <Text
-                    style={[styles.chipText, active && styles.chipTextActive]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
+              <TouchableOpacity
+                style={[styles.chip, shopFilter === null && styles.chipActive]}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => {
+                  haptics.tap();
+                  setShopFilter(null);
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: shopFilter === null }}
+                accessibilityLabel="All stores"
+              >
+                <Text style={[styles.chipText, shopFilter === null && styles.chipTextActive]}>
+                  All
+                </Text>
+              </TouchableOpacity>
+              {filterShops.map(shop => {
+                const active = shop.id === shopFilter;
+                const count = shopCounts.get(shop.id) ?? 0;
+                return (
+                  <TouchableOpacity
+                    key={shop.id}
+                    style={[styles.chip, active && styles.chipActive]}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => {
+                      haptics.tap();
+                      setShopFilter(active ? null : shop.id);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`${shop.name}, ${count} ${count === 1 ? 'item' : 'items'}`}
                   >
-                    {shop.name} {count}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+                    <Text
+                      style={[styles.chipText, active && styles.chipTextActive]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      {shop.name} {count}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            {/* A pill hard-clipped at the viewport edge with no cue reads as
+                cut off, not as "scroll for more" — these fade it out instead
+                of chopping it, and only show on the side there's more to see. */}
+            {canScrollFilterLeft && (
+              <Svg style={[styles.filterFade, styles.filterFadeLeft]} pointerEvents="none">
+                <Defs>
+                  <SvgLinearGradient id="fadeLeft" x1="0" y1="0" x2="1" y2="0">
+                    <Stop offset="0" stopColor={colors.bg} stopOpacity={1} />
+                    <Stop offset="1" stopColor={colors.bg} stopOpacity={0} />
+                  </SvgLinearGradient>
+                </Defs>
+                <Rect x="0" y="0" width="100%" height="100%" fill="url(#fadeLeft)" />
+              </Svg>
+            )}
+            {canScrollFilterRight && (
+              <Svg style={[styles.filterFade, styles.filterFadeRight]} pointerEvents="none">
+                <Defs>
+                  <SvgLinearGradient id="fadeRight" x1="0" y1="0" x2="1" y2="0">
+                    <Stop offset="0" stopColor={colors.bg} stopOpacity={0} />
+                    <Stop offset="1" stopColor={colors.bg} stopOpacity={1} />
+                  </SvgLinearGradient>
+                </Defs>
+                <Rect x="0" y="0" width="100%" height="100%" fill="url(#fadeRight)" />
+              </Svg>
+            )}
+          </View>
         )}
 
         {/* Directly under the search rather than in the footer: a catalog is
@@ -390,12 +429,21 @@ function makeStyles(colors: Colors) {
       height: 40,
       padding: 0,
     },
+    filterWrap: { position: 'relative' },
     filterRow: {
       gap: spacing.sm,
       paddingHorizontal: spacing.md,
       paddingTop: spacing.md,
       alignItems: 'center',
     },
+    filterFade: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      width: 24,
+    },
+    filterFadeLeft: { left: 0 },
+    filterFadeRight: { right: 0 },
     chip: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.full,
