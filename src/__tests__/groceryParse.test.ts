@@ -233,6 +233,30 @@ describe('splitPrep', () => {
   it('leaves a name with no comma untouched', () => {
     expect(splitPrep('garlic')).toEqual({ name: 'garlic', prep: null });
   });
+
+  it('splits a whitelisted leading prep word', () => {
+    expect(splitPrep('Minced garlic')).toEqual({ name: 'garlic', prep: 'minced' });
+    expect(splitPrep('chopped onion')).toEqual({ name: 'onion', prep: 'chopped' });
+    expect(splitPrep('diced tomatoes')).toEqual({ name: 'tomatoes', prep: 'diced' });
+    expect(splitPrep('crushed red pepper')).toEqual({ name: 'red pepper', prep: 'crushed' });
+    expect(splitPrep('grated cheddar')).toEqual({ name: 'cheddar', prep: 'grated' });
+  });
+
+  it('does not split "sliced" — excluded because it has a standalone-product reading', () => {
+    expect(splitPrep('Sliced almonds')).toEqual({ name: 'Sliced almonds', prep: null });
+  });
+
+  it('does not split "ground" — excluded because it has a standalone-product reading', () => {
+    expect(splitPrep('ground beef')).toEqual({ name: 'ground beef', prep: null });
+  });
+
+  it('leaves a leading word not on the whitelist untouched', () => {
+    expect(splitPrep('fresh basil')).toEqual({ name: 'fresh basil', prep: null });
+  });
+
+  it('does not split a whitelisted word with nothing following it', () => {
+    expect(splitPrep('Minced')).toEqual({ name: 'Minced', prep: null });
+  });
 });
 
 // ─── suggestShorterCatalogName ────────────────────────────────────────────────
