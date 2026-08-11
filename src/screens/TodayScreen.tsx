@@ -36,6 +36,7 @@ import {
   visibleLaterSections as computeVisibleLaterSections,
   laterTodaySections as computeLaterTodaySections,
   applyCategoryCollapse as applyCategoryCollapseTo,
+  applyCategoryFocus as applyCategoryFocusTo,
   sectionTaskIds as computeSectionTaskIds,
   findTaskJumpTarget,
   type LaterListItem,
@@ -108,6 +109,7 @@ import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeade
 import { EmptyState } from '../components/EmptyState';
 import { CompletionCollapse } from '../components/CompletionCollapse';
 import { NewTasksBanner } from '../components/NewTasksBanner';
+import { CategoryFocusBanner } from '../components/CategoryFocusBanner';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { type FabDragHandlers } from '../components/Fab';
@@ -184,6 +186,8 @@ function SectionHeader({
   colors,
   collapsed,
   onToggle,
+  onLongPress,
+  focused,
   count,
 }: {
   label: string;
@@ -191,6 +195,8 @@ function SectionHeader({
   colors: Colors;
   collapsed?: boolean;
   onToggle?: () => void;
+  onLongPress?: () => void;
+  focused?: boolean;
   count?: number;
 }) {
   const scrim = <SpotlightScrim />;
@@ -207,11 +213,14 @@ function SectionHeader({
     <TouchableOpacity
       style={styles.categorySectionHeader}
       onPress={onToggle}
+      onLongPress={onLongPress}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
+      accessibilityHint={onLongPress ? `Double tap and hold to ${focused ? 'stop focusing on' : 'focus on'} ${label}` : undefined}
     >
       <View style={styles.categorySectionHeaderLeft}>
+        {focused && <Ionicons name="locate" size={13} color={colors.accent} />}
         <Text style={styles.sectionHeaderText}>
           {label}
           {collapsed && count !== undefined ? ` (${count})` : ''}
@@ -513,6 +522,11 @@ export function TodayScreen() {
   const [showHidden, setShowHidden] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  // Session-only, like collapsedCategories: "show only this category's tasks,
+  // hide the rest of Today" — a stronger filter than collapse, toggled from a
+  // category header's long-press. Resets on unmount/view-mode switch, never
+  // persisted; see toggleCategoryFocus and applyCategoryFocusTo.
+  const [focusedCategory, setFocusedCategory] = useState<string | null>(null);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
   // Set while editingGroup is a stack freshly created from the add menu —
@@ -850,6 +864,30 @@ export function TodayScreen() {
     });
   };
 
+  /**
+   * Long-press a category header to show only that category's tasks on
+   * Today; long-press the focused one again (or the clear banner) to go back
+   * to normal. A category that's collapsed loses its collapse when focused —
+   * otherwise focusing it would show its header over an empty section.
+   */
+  const toggleCategoryFocus = (label: string) => {
+    if (expandedTaskId !== null) {
+      setExpandedTaskId(null);
+      return;
+    }
+    haptics.tap();
+    animateLayout();
+    const next = focusedCategory === label ? null : label;
+    setFocusedCategory(next);
+    if (next && collapsedCategories.has(label)) {
+      setCollapsedCategories(prev => {
+        const nextCollapsed = new Set(prev);
+        nextCollapsed.delete(label);
+        return nextCollapsed;
+      });
+    }
+  };
+
   // Sort & filter state. Persisted, like hideCategories below — the three are
   // set from the same sheet, and only one of them used to survive a launch.
   const sort = useSettingsStore(s => s.sortOption);
@@ -1178,10 +1216,18 @@ export function TodayScreen() {
 
   const data: ListItem[] = useMemo(() => {
     const restAt = listItems.findIndex(item => item.type === 'rest-header');
-    const shown = !restExpanded && restAt >= 0 ? listItems.slice(0, restAt + 1) : listItems;
-    return stripCategoryHeaders(applyCategoryCollapse(shown));
+    // Focused, "Everything else" isn't a fold to respect — the focus filter
+    // below is about to narrow the whole list down to one category anyway, so
+    // showing the pre-collapse "Everything else" run first is what lets a
+    // focused category outside the pinned section show up at all.
+    const shown = !restExpanded && !focusedCategory && restAt >= 0
+      ? listItems.slice(0, restAt + 1)
+      : listItems;
+    return stripCategoryHeaders(
+      applyCategoryFocusTo(applyCategoryCollapse(shown), focusedCategory) as unknown as ListItem[],
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listItems, restExpanded, collapsedCategories, hideCategories]);
+  }, [listItems, restExpanded, collapsedCategories, hideCategories, focusedCategory]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'pinned-header' ? '__pinned-header__'
@@ -1675,6 +1721,8 @@ export function TodayScreen() {
             colors={colors}
             collapsed={isCategory ? collapsedCategories.has(item.label) : undefined}
             onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
+            onLongPress={isCategory ? () => toggleCategoryFocus(item.label) : undefined}
+            focused={isCategory ? focusedCategory === item.label : undefined}
             count={isCategory ? sectionIds.length : undefined}
           />
         </CompletionCollapse>
@@ -1983,6 +2031,9 @@ export function TodayScreen() {
     haptics.tap();
     const expandCategory = target.category !== null && collapsedCategories.has(target.category);
     const expandRest = target.inRest && !restExpanded;
+    // A jump target outside the focused category has no row to land on until
+    // focus is cleared — same reasoning as expanding a collapsed section.
+    if (focusedCategory && target.category !== focusedCategory) setFocusedCategory(null);
     if (expandCategory || expandRest) animateLayout();
     if (expandCategory) {
       setCollapsedCategories(prev => {
@@ -2179,6 +2230,10 @@ export function TodayScreen() {
                   haptics.tap();
                   setViewMode(mode);
                   setExpandedTaskId(null);
+                  // Focus only has meaning inside Today's own category
+                  // sections; leaving it set while on Later/Unscheduled/Inbox
+                  // would silently narrow Today again on the way back.
+                  if (mode !== 'today') setFocusedCategory(null);
                   if (selectionMode) exitSelection();
                 }}
                 activeOpacity={interaction.activeOpacity}
@@ -2200,6 +2255,17 @@ export function TodayScreen() {
             );
           })}
         </ScrollView>
+
+        {viewMode === 'today' && focusedCategory && (
+          <CategoryFocusBanner
+            categoryLabel={categoryLabel(focusedCategory, categories)}
+            onClear={() => {
+              haptics.tap();
+              animateLayout();
+              setFocusedCategory(null);
+            }}
+          />
+        )}
 
         {viewMode === 'today' && newTasks.length > 0 && (
           <NewTasksBanner tasks={newTasks} onJumpToTask={jumpToTask} onDismiss={dismissNewTasksBanner} />
