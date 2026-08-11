@@ -684,11 +684,21 @@ export interface Recipe {
   nameKey: string;
   notes: string;
   sourceUrl: string | null;
-  // Who it's from — "NYT Cooking", "Bon Appétit", a cookbook title. Separate
-  // from sourceUrl on purpose: a clipped recipe usually has a link, a recipe
-  // typed in from a magazine or a friend usually doesn't, and neither one
-  // implies the other. null means no attribution was given, not "unknown".
+  // Legacy single attribution field, superseded by author/source below
+  // (#1266). Old recipes may still carry a value here; nothing writes it any
+  // more. Kept read-only rather than backfilled: an old value like "Alison
+  // Roman, Nothing Fancy" can't be reliably split into a person vs. a
+  // publication, so guessing would just move the ambiguity into two fields.
+  // describeRecipe() falls back to it only when neither new field is set.
   sourceName: string | null;
+  // The person it's from — "Alison Roman". Independent of `source`, same as
+  // sourceUrl was independent of sourceName: plenty of recipes name one but
+  // not the other, and neither implies the other. null means no attribution
+  // was given, not "unknown".
+  author: string | null;
+  // The publication/cookbook/site it's from — "Nothing Fancy", "NYT Cooking".
+  // Independent of `author` for the same reason.
+  source: string | null;
   servings: number | null;
   ingredients: RecipeIngredient[];
   // "Defrost the chicken", "start the sauce at 5" — real Tasks once "Add prep
