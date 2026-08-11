@@ -14,8 +14,12 @@ const PREVIEW_LIMIT = 3;
 
 interface Props {
   stalls: ProjectStall[];
-  /** Opens the pull sheet. */
-  onReview: () => void;
+  /**
+   * Opens the pull sheet, scoped to the project the tap was about — the
+   * banner's overall Review button scopes to every quiet project it's
+   * currently showing, a single row's tap scopes to just that one.
+   */
+  onReview: (projectIds: string[]) => void;
   onDismiss: () => void;
 }
 
@@ -99,7 +103,11 @@ export function ProjectNudgeBanner({ stalls, onReview, onDismiss }: Props) {
             color={colors.textSecondary}
           />
         </TouchableOpacity>
-        <PressableScale style={styles.button} onPress={onReview} accessibilityLabel="Pull a task from a quiet project">
+        <PressableScale
+          style={styles.button}
+          onPress={() => onReview(stalls.map(s => s.project.id))}
+          accessibilityLabel="Pull a task from a quiet project"
+        >
           <Text style={styles.buttonText}>Review</Text>
         </PressableScale>
         <PressableScale
@@ -117,7 +125,7 @@ export function ProjectNudgeBanner({ stalls, onReview, onDismiss }: Props) {
             <TouchableOpacity
               key={stall.project.id}
               style={styles.projectRow}
-              onPress={onReview}
+              onPress={() => onReview([stall.project.id])}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
               accessibilityLabel={`${stall.project.title}, nothing scheduled for ${stall.quietDays} days`}

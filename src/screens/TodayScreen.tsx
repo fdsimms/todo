@@ -475,6 +475,9 @@ export function TodayScreen() {
   const [deloadVisible, setDeloadVisible] = useState(false);
   const [suggestedPinsVisible, setSuggestedPinsVisible] = useState(false);
   const [pullVisible, setPullVisible] = useState(false);
+  // undefined = unscoped (opened from the "…" menu's "Pull from projects");
+  // set = opened from the quiet-project nudge, restricted to those projects.
+  const [pullScopeProjectIds, setPullScopeProjectIds] = useState<string[] | undefined>(undefined);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const {
@@ -2148,7 +2151,10 @@ export function TodayScreen() {
         {viewMode === 'today' && projectStalls.length > 0 && !nudgeDismissed && (
           <ProjectNudgeBanner
             stalls={projectStalls}
-            onReview={() => setPullVisible(true)}
+            onReview={projectIds => {
+              setPullScopeProjectIds(projectIds);
+              setPullVisible(true);
+            }}
             onDismiss={dismissProjectNudge}
           />
         )}
@@ -2686,6 +2692,7 @@ export function TodayScreen() {
           plannedLabel={plannedLabel}
           onPullFromProjects={() => {
             setOptionsMenuVisible(false);
+            setPullScopeProjectIds(undefined);
             setPullVisible(true);
           }}
           quietProjectCount={projectStalls.length}
@@ -2718,7 +2725,11 @@ export function TodayScreen() {
         <ProjectPullSheet
           visible={pullVisible}
           todaysTasks={visibleTasks}
-          onClose={() => setPullVisible(false)}
+          scopeProjectIds={pullScopeProjectIds}
+          onClose={() => {
+            setPullVisible(false);
+            setPullScopeProjectIds(undefined);
+          }}
         />
 
         <TaskGroupEditor
