@@ -904,6 +904,58 @@ describe('markCooked', () => {
     expect(() => useRecipeStore.getState().markCooked('gone')).not.toThrow();
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
   });
+
+  it('hands back what the two fields were, so an undo can restore them', () => {
+    const r = makeRecipe('Ragu', { cookCount: 2, lastCookedAt: '2026-01-01T00:00:00.000Z' });
+    seed([r]);
+
+    expect(useRecipeStore.getState().markCooked(r.id))
+      .toEqual({ cookCount: 2, lastCookedAt: '2026-01-01T00:00:00.000Z' });
+  });
+
+  it('hands back null for a recipe that does not resolve', () => {
+    seed([]);
+    expect(useRecipeStore.getState().markCooked('gone')).toBeNull();
+  });
+});
+
+describe('restoreCookStats', () => {
+  // Undo's half of the pair. Deliberately not reachable from "mark not
+  // cooked": cookCount only rises everywhere else in this app, and un-ticking
+  // a meal is a statement about that meal going forward, not a claim that the
+  // cooking never happened.
+  it('puts a snapshot back', () => {
+    const r = makeRecipe('Ragu', { cookCount: 2, lastCookedAt: '2026-01-01T00:00:00.000Z' });
+    seed([r]);
+
+    const before = useRecipeStore.getState().markCooked(r.id)!;
+    useRecipeStore.getState().restoreCookStats(r.id, before);
+
+    const updated = useRecipeStore.getState().recipeById(r.id)!;
+    expect(updated.cookCount).toBe(2);
+    expect(updated.lastCookedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  // A never-cooked recipe's snapshot is a null lastCookedAt, and restoring it
+  // has to put the null back rather than leave today's stamp on a dish that
+  // has still never been made.
+  it('restores a null lastCookedAt rather than leaving the stamp', () => {
+    const r = makeRecipe('Ragu', { cookCount: 0, lastCookedAt: null });
+    seed([r]);
+
+    const before = useRecipeStore.getState().markCooked(r.id)!;
+    useRecipeStore.getState().restoreCookStats(r.id, before);
+
+    const updated = useRecipeStore.getState().recipeById(r.id)!;
+    expect(updated.cookCount).toBe(0);
+    expect(updated.lastCookedAt).toBeNull();
+  });
+
+  it('shrugs at an unknown recipe id', () => {
+    seed([]);
+    expect(() => useRecipeStore.getState().restoreCookStats('gone', { cookCount: 1, lastCookedAt: null }))
+      .not.toThrow();
+  });
 });
 
 describe('setEstimatedMinutes', () => {

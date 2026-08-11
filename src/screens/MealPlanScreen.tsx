@@ -202,7 +202,8 @@ export function MealPlanScreen() {
   const moveEntry = useMealPlanStore(s => s.moveEntry);
   const removeEntry = useMealPlanStore(s => s.removeEntry);
   const renameEntry = useMealPlanStore(s => s.renameEntry);
-  const markEntryCooked = useMealPlanStore(s => s.markCooked);
+  const setEntryCooked = useMealPlanStore(s => s.setCooked);
+  const setLastAction = useMealPlanStore(s => s.setLastAction);
   const setRecipeChoices = useMealPlanStore(s => s.setRecipeChoices);
   const setRecipeScale = useMealPlanStore(s => s.setRecipeScale);
   const addedToListAt = useMealPlanStore(useShallow(s => s.addedToListAt));
@@ -214,6 +215,7 @@ export function MealPlanScreen() {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
   const markRecipeCooked = useRecipeStore(s => s.markCooked);
+  const restoreCookStats = useRecipeStore(s => s.restoreCookStats);
 
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
   const logLeftover = useLeftoverStore(s => s.logLeftover);
@@ -431,11 +433,37 @@ export function MealPlanScreen() {
   // Shared by the sheet's "Mark cooked" action and the row's own badge tap —
   // same mutation, same "add ingredients back to the list" follow-up either
   // way, so marking cooked from the row isn't a lesser version of the sheet's.
-  const markCooked = (entry: MealPlanEntry) => {
-    markEntryCooked(entry.id);
+  /**
+   * Ticking a meal off, and un-ticking it.
+   *
+   * Two writes — the entry's own `cookedAt` and the recipe's counters — and
+   * one action, which is why the undo is registered here rather than in either
+   * store: only this knows they belong together.
+   *
+   * **Undo hands the recipe's counters back; "not cooked" does not.** They are
+   * different claims. Un-ticking says "this meal isn't cooked *now*", a state
+   * going forward, and cookCount is a counter that only rises everywhere else
+   * in this app. Undo says the tap never happened, so it puts back exactly
+   * what was there — including `lastCookedAt`, which matters more than the
+   * count: a stray tap otherwise tells the suggestion ranking this dish was
+   * cooked today and quietly drops it from "cook again" for weeks.
+   */
+  const setCooked = (entry: MealPlanEntry, cooked: boolean) => {
+    setEntryCooked(entry.id, cooked);
     const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
-    if (recipe) markRecipeCooked(recipe.id);
-    haptics.success();
+    // Only a cooking bumps the recipe. Un-ticking leaves it alone — see above.
+    const before = cooked && recipe ? markRecipeCooked(recipe.id) : null;
+    cooked ? haptics.success() : haptics.tap();
+
+    setLastAction({
+      label: cooked ? `Cooked "${entry.title}"` : `Un-cooked "${entry.title}"`,
+      undo: () => {
+        setEntryCooked(entry.id, !cooked);
+        if (recipe && before) restoreCookStats(recipe.id, before);
+      },
+    });
+
+    if (!cooked) return;
 
     // The "was that the last of it?" ask belongs here, not at plan time —
     // the meal has actually been eaten now. Only asked once: a leftover
@@ -459,8 +487,6 @@ export function MealPlanScreen() {
     // counted the same way: a dish whose ingredients all live on its
     // components still has a shop.
     if (!recipe || flattenRecipeIngredients(recipe, recipesById, { chosen: entry.recipeChoices }).length === 0) return;
-    // Carries the batch as well as the picks: you cooked a double, so the
-    // re-shop offers double.
     setCookedRecipeForList({ recipe, choices: entry.recipeChoices, scale: entry.recipeScale });
   };
 
@@ -489,7 +515,10 @@ export function MealPlanScreen() {
       const recipeIds = new Set(
         newlyCooked.map(e => e.recipeId).filter((id): id is string => !!id)
       );
-      recipeIds.forEach(markRecipeCooked);
+      // The snapshot markRecipeCooked returns is for the single-row undo; a
+      // bulk mark registers its own undo through the store and never restores
+      // recipe counters (see bulkSetCooked), so it's discarded here.
+      recipeIds.forEach(id => markRecipeCooked(id));
     }
     bulkSetCooked(selectedIdList, cooked);
     haptics.success();
@@ -638,8 +667,8 @@ export function MealPlanScreen() {
                           if (selectionMode) toggleSelection(entry.id);
                           else { haptics.tap(); setSelectedId(entry.id); }
                         }}
-                        onMarkCooked={
-                          selectionMode || entry.cookedAt ? undefined : () => markCooked(entry)
+                        onToggleCooked={
+                          selectionMode ? undefined : () => setCooked(entry, !entry.cookedAt)
                         }
                         selectionMode={selectionMode}
                         selected={selectedIds.has(entry.id)}
@@ -654,7 +683,7 @@ export function MealPlanScreen() {
       </FabDropZone>
     );
     // `leftovers` is not referenced in the JSX above and still belongs here:
-    // the row's mark-cooked badge calls markCooked, which reads the fridge to
+    // the row's cooked toggle calls setCooked, which reads the fridge to
     // decide whether to ask "was that the last of it?". Left out, a container
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
@@ -989,7 +1018,7 @@ export function MealPlanScreen() {
         }
         baseServings={selectedRecipe?.servings}
         baseServingsMax={selectedRecipe?.servingsMax}
-        onMarkCooked={selected && !selected.cookedAt ? () => markCooked(selected) : undefined}
+        onSetCooked={selected ? cooked => setCooked(selected, cooked) : undefined}
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)
             ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })

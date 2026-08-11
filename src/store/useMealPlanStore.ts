@@ -125,13 +125,22 @@ interface MealPlanStore {
   setRecipeScale: (id: string, scale: number) => void;
 
   /**
-   * Stamps cookedAt with now. Idempotent — a second tap on an already-cooked
-   * entry is a no-op, since the recipe's cookCount (bumped separately by the
-   * caller via useRecipeStore.markCooked) must only ever go up once per
-   * entry. One-way by design: there's no unmark, matching the streaks/
-   * completed-task precedent of not undoing a counted event.
+   * Stamps or clears cookedAt. Idempotent per entry — an entry already in the
+   * target state isn't written again, which is what keeps the recipe's
+   * cookCount (bumped separately by the caller via useRecipeStore.markCooked)
+   * to one bump per cooking.
+   *
+   * **Reversible, as the bulk form always was.** It used to be one-way here
+   * and two-way in the bulk bar, so the only way back from a mis-tap on a row
+   * was to enter selection mode, select that one meal, and use "Uncook"
+   * (#1361). Registering no undo made it worse: a shake after the mis-tap
+   * offered some unrelated earlier action instead.
+   *
+   * Registers no `lastAction` of its own — the caller does, because marking a
+   * meal cooked is two writes (this and the recipe's counters) and only the
+   * caller knows they were one action. See MealPlanScreen's setCooked.
    */
-  markCooked: (id: string) => void;
+  setCooked: (id: string, cooked: boolean) => void;
 
   /**
    * The bulk-selection actions (#1110) — mirrors of planMeal/moveEntry/
@@ -390,12 +399,12 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     set(s => ({ entries: s.entries.map(e => e.id === id ? scaled : e) }));
   },
 
-  markCooked(id) {
+  setCooked(id, cooked) {
     const entry = get().entries.find(e => e.id === id);
-    if (!entry || entry.cookedAt) return;
-    const cooked: MealPlanEntry = { ...entry, cookedAt: new Date().toISOString() };
-    dbUpdateMealPlanEntry(cooked);
-    set(s => ({ entries: s.entries.map(e => e.id === id ? cooked : e) }));
+    if (!entry || !!entry.cookedAt === cooked) return;
+    const next: MealPlanEntry = { ...entry, cookedAt: cooked ? new Date().toISOString() : null };
+    dbUpdateMealPlanEntry(next);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
   },
 
   bulkDeleteEntries(ids) {

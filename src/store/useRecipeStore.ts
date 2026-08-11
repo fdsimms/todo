@@ -39,6 +39,12 @@ import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recip
  *
  * Thin on purpose — the logic lives in recipeUtils where jest can reach it.
  */
+/** What a cooking bumped, kept so an undo can hand it straight back. */
+export interface CookStats {
+  cookCount: number;
+  lastCookedAt: string | null;
+}
+
 interface RecipeStore {
   recipes: Recipe[];
   initialized: boolean;
@@ -107,8 +113,25 @@ interface RecipeStore {
    * a planned meal entry — see useMealPlanStore.markCooked, which stamps the
    * entry itself. The two are separate writes because the counter lives on
    * the recipe and is never recomputed from entries (see Recipe.cookCount).
+   *
+   * Returns what the two fields were beforehand, so the caller can hand them
+   * back if the whole action is undone (null when the recipe doesn't resolve).
+   * The caller has to carry that snapshot because only it knows the cooking and
+   * the bump were one action — see restoreCookStats.
    */
-  markCooked: (id: string) => void;
+  markCooked: (id: string) => CookStats | null;
+
+  /**
+   * Puts cookCount and lastCookedAt back to a snapshot markCooked returned.
+   *
+   * **This is for undo, and only for undo.** It is not a decrement, and
+   * "mark not cooked" must not call it: cookCount is a counter that only goes
+   * up everywhere else in this app, and un-ticking a meal is a statement about
+   * *that meal* going forward, not a claim that the cooking never happened.
+   * Undo is the one action that does claim exactly that, which is why it alone
+   * gets to reach in here.
+   */
+  restoreCookStats: (id: string, stats: CookStats) => void;
 
   /** null clears it. Rounded and floored at 1 minute, same clamp as a task's estimate. */
   setEstimatedMinutes: (id: string, minutes: number | null) => void;
@@ -428,8 +451,16 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
 
   markCooked(id) {
     const recipe = get().recipes.find(r => r.id === id);
-    if (!recipe) return;
+    if (!recipe) return null;
+    const before: CookStats = { cookCount: recipe.cookCount, lastCookedAt: recipe.lastCookedAt };
     save(set, { ...recipe, cookCount: recipe.cookCount + 1, lastCookedAt: new Date().toISOString() });
+    return before;
+  },
+
+  restoreCookStats(id, stats) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, ...stats });
   },
 
   setEstimatedMinutes(id, minutes) {
