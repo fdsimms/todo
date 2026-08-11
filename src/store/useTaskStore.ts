@@ -34,6 +34,7 @@ import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import { useGroceryStore } from './useGroceryStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
+import { useLeftoverStore } from './useLeftoverStore';
 import { dripCandidate, projectPullUpdates } from '../utils/projectPull';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
@@ -697,6 +698,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // And the plan, which points at those recipes by id. Range-scoped, so this
     // reloads whatever week is on screen rather than the whole table.
     useMealPlanStore.getState().initialize();
+    // What's in the fridge — pointed at by the plan the same way recipes are,
+    // and on the same swap-the-database hazard.
+    useLeftoverStore.getState().initialize();
     const tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
 

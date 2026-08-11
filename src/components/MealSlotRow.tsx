@@ -34,16 +34,18 @@ interface Props {
 /**
  * One planned meal.
  *
- * A free-text meal and a recipe-backed one get the same row, the same weight
- * and the same actions — only the leading icon differs, and it's telling the
- * user something true (this one came from your recipe box, and tapping through
- * will open it). Thursday is allowed to just say "leftovers"; every planner
- * that treats that as an unfinished row is abandoned on a Wednesday.
+ * A free-text meal, a recipe-backed one and one eating a tracked leftover all
+ * get the same row, the same weight and the same actions — only the leading
+ * icon differs, and it's telling the user something true (this one came from
+ * your recipe box and tapping through will open it; this one is already cooked
+ * and in the fridge). Thursday is allowed to just say "leftovers"; every
+ * planner that treats that as an unfinished row is abandoned on a Wednesday.
  */
 export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress, onMarkCooked }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const cooked = !!entry.cookedAt;
+  const fromFridge = !!entry.leftoverId;
 
   return (
     <TouchableOpacity
@@ -61,7 +63,7 @@ export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress, onMark
         ]}
       >
         <Ionicons
-          name={hasRecipe ? 'restaurant-outline' : 'create-outline'}
+          name={fromFridge ? 'snow-outline' : hasRecipe ? 'restaurant-outline' : 'create-outline'}
           size={16}
           color={hasRecipe ? colors.accent : colors.textSecondary}
         />

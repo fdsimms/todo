@@ -63,9 +63,14 @@ import {
   dbUpdateMealPlanEntry,
   dbDeleteMealPlanEntry,
   dbPurgeOldMealPlanEntries,
+  dbGetAllLeftovers,
+  dbInsertLeftover,
+  dbUpdateLeftover,
+  dbDeleteLeftover,
+  dbPurgeOldLeftovers,
 } from '../db/database';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
-import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, MealPlanEntry, MealSlot } from '../types';
+import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, Leftover, MealPlanEntry, MealSlot } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -1739,6 +1744,7 @@ describe('meal plan entries', () => {
       sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z',
       cookedAt: null,
+      leftoverId: null,
       ...overrides,
     };
   };
@@ -1860,6 +1866,154 @@ describe('meal plan entries', () => {
 
       dbReplaceAllData(backup);
       expect(dbGetMealPlanEntries('2026-08-01', '2026-08-31')).toEqual([planned]);
+    });
+  });
+
+  it('round-trips a leftover-backed entry', () => {
+    const planned = makeEntry('2026-08-05', 'dinner', {
+      leftoverId: 'lo-1', title: 'Chilli (2 days old)',
+    });
+    dbInsertMealPlanEntry(planned);
+
+    expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')).toEqual([planned]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Leftovers
+// ---------------------------------------------------------------------------
+
+describe('leftovers', () => {
+  let leftoverSeq = 0;
+  const makeLeftover = (overrides: Partial<Leftover> = {}): Leftover => {
+    leftoverSeq += 1;
+    return {
+      id: `lo-${leftoverSeq}`,
+      title: `Leftover ${leftoverSeq}`,
+      recipeId: null,
+      sourceEntryId: null,
+      storedAt: '2026-08-10T09:00:00.000Z',
+      keepUntil: '2026-08-13',
+      finishedAt: null,
+      outcome: null,
+      createdAt: '2026-08-10T09:00:00.000Z',
+      ...overrides,
+    };
+  };
+
+  beforeEach(() => {
+    mockRawDb.exec('DELETE FROM leftovers');
+    leftoverSeq = 0;
+  });
+
+  it('round-trips a live leftover', () => {
+    const chilli = makeLeftover({ title: 'Chilli', recipeId: 'r1', sourceEntryId: 'meal-1' });
+    dbInsertLeftover(chilli);
+
+    expect(dbGetAllLeftovers()).toEqual([chilli]);
+  });
+
+  it('round-trips a closed-out one', () => {
+    const eaten = makeLeftover({ finishedAt: '2026-08-12T18:00:00.000Z', outcome: 'eaten' });
+    dbInsertLeftover(eaten);
+
+    expect(dbGetAllLeftovers()).toEqual([eaten]);
+  });
+
+  it('reads most urgent first', () => {
+    dbInsertLeftover(makeLeftover({ id: 'later', keepUntil: '2026-08-20' }));
+    dbInsertLeftover(makeLeftover({ id: 'sooner', keepUntil: '2026-08-12' }));
+
+    expect(dbGetAllLeftovers().map(l => l.id)).toEqual(['sooner', 'later']);
+  });
+
+  it('updates in place without touching the id or createdAt', () => {
+    const chilli = makeLeftover({ id: 'lo-a' });
+    dbInsertLeftover(chilli);
+
+    dbUpdateLeftover({ ...chilli, title: 'Beef chilli', keepUntil: '2026-08-15' });
+
+    const stored = dbGetAllLeftovers()[0];
+    expect(stored.title).toBe('Beef chilli');
+    expect(stored.keepUntil).toBe('2026-08-15');
+    expect(stored.createdAt).toBe(chilli.createdAt);
+  });
+
+  it('deletes without cascading onto the entries that ate it', () => {
+    const chilli = makeLeftover({ id: 'lo-a' });
+    dbInsertLeftover(chilli);
+    dbInsertMealPlanEntry({
+      id: 'meal-x', date: '2026-08-11', slot: 'dinner', recipeId: null,
+      title: 'Chilli (1 day old)', sortOrder: 1, createdAt: '2026-08-11T00:00:00.000Z',
+      cookedAt: null, leftoverId: 'lo-a',
+    });
+
+    dbDeleteLeftover('lo-a');
+
+    expect(dbGetAllLeftovers()).toEqual([]);
+    // Last Tuesday still reads right — the captured title is the point.
+    const entries = dbGetMealPlanEntries('2026-08-11', '2026-08-11');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].title).toBe('Chilli (1 day old)');
+    expect(entries[0].leftoverId).toBe('lo-a');
+  });
+
+  it('reads a row with an outcome but no stamp as still in the fridge', () => {
+    // Only reachable from a hand-edited or mangled restore, but the two columns
+    // are one fact and the mapper is where that is enforced.
+    mockRawDb.exec(
+      "INSERT INTO leftovers (id, title, stored_at, keep_until, outcome, created_at)" +
+      " VALUES ('lo-x', 'Odd', '2026-08-10T09:00:00.000Z', '2026-08-13', 'tossed', '2026-08-10T09:00:00.000Z')"
+    );
+
+    const stored = dbGetAllLeftovers()[0];
+    expect(stored.finishedAt).toBeNull();
+    expect(stored.outcome).toBeNull();
+  });
+
+  it('reads a stamp with no outcome as eaten rather than as waste', () => {
+    mockRawDb.exec(
+      "INSERT INTO leftovers (id, title, stored_at, keep_until, finished_at, created_at)" +
+      " VALUES ('lo-y', 'Odd', '2026-08-10T09:00:00.000Z', '2026-08-13', '2026-08-12T18:00:00.000Z', '2026-08-10T09:00:00.000Z')"
+    );
+
+    expect(dbGetAllLeftovers()[0].outcome).toBe('eaten');
+  });
+
+  describe('purge', () => {
+    it('takes closed-out rows past the cutoff and reports how many', () => {
+      dbInsertLeftover(makeLeftover({ id: 'old', finishedAt: '2026-05-01T00:00:00.000Z', outcome: 'eaten' }));
+      dbInsertLeftover(makeLeftover({ id: 'recent', finishedAt: '2026-08-12T00:00:00.000Z', outcome: 'eaten' }));
+
+      expect(dbPurgeOldLeftovers('2026-06-01T00:00:00.000Z')).toBe(1);
+      expect(dbGetAllLeftovers().map(l => l.id)).toEqual(['recent']);
+    });
+
+    it('never takes a live row, however long it has been in there', () => {
+      dbInsertLeftover(makeLeftover({ id: 'forgotten', storedAt: '2020-01-01T00:00:00.000Z' }));
+
+      expect(dbPurgeOldLeftovers('2026-06-01T00:00:00.000Z')).toBe(0);
+      expect(dbGetAllLeftovers().map(l => l.id)).toEqual(['forgotten']);
+    });
+  });
+
+  describe('backup', () => {
+    it('is in BACKUP_TABLES, ahead of the entries that point at it', () => {
+      expect(BACKUP_TABLES).toContain('leftovers');
+      expect(BACKUP_TABLES.indexOf('leftovers'))
+        .toBeLessThan(BACKUP_TABLES.indexOf('meal_plan_entries'));
+    });
+
+    it('survives an export/restore round trip', () => {
+      const chilli = makeLeftover({ title: 'Chilli', recipeId: 'r1' });
+      dbInsertLeftover(chilli);
+
+      const backup = dbExportTables();
+      mockRawDb.exec('DELETE FROM leftovers');
+      expect(dbGetAllLeftovers()).toEqual([]);
+
+      dbReplaceAllData(backup);
+      expect(dbGetAllLeftovers()).toEqual([chilli]);
     });
   });
 });
