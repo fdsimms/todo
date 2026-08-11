@@ -15,6 +15,7 @@ import {
   isKeyInRange,
   mealPlanPurgeCutoffKey,
   nextSortOrder,
+  resolveBulkMoveTargets,
   sortMealEntries,
 } from '../utils/mealPlan';
 
@@ -102,6 +103,58 @@ interface MealPlanStore {
    * completed-task precedent of not undoing a counted event.
    */
   markCooked: (id: string) => void;
+
+  /**
+   * The bulk-selection actions (#1110) — mirrors of planMeal/moveEntry/
+   * removeEntry/markCooked for a whole selection at once, kept thin the same
+   * way those are: the resolution logic that can be tested without a
+   * database lives in utils/mealPlan (resolveBulkMoveTargets), this just
+   * writes it through.
+   *
+   * None of the four set `lastAction`/wire into shake-to-undo — useMealPlanStore
+   * isn't one of the two stores useShakeToUndo polls (useTaskStore,
+   * useGroceryStore), and bolting a third queue on for this alone is a bigger
+   * change than one feature's bulk bar earns. Same call already made for
+   * useRecipeStore.bulkDeleteRecipes/bulkSetFavorite, whose confirm dialog
+   * says so outright ("This can't be undone") — bulkDeleteEntries' does too.
+   */
+
+  /** Deletes every named entry. Confirmation and copy live in the screen, same as removeEntry's single-row delete. */
+  bulkDeleteEntries: (ids: string[]) => void;
+
+  /**
+   * Moves every named entry to another day and/or slot in one go — the bulk
+   * form of moveEntry. Entries destined for the same (date, slot) (two
+   * selected dinners both sent to Thursday) are ordered against each other as
+   * well as against what's already there, so a batch move never collides the
+   * way N sequential single moves could.
+   */
+  bulkMoveEntries: (ids: string[], to: { date?: string; slot?: MealSlot }) => void;
+
+  /**
+   * Swaps the recipe/title on every named entry — e.g. bulk-replacing a
+   * recipe that's been renamed or retired across every planned occurrence of
+   * it. `recipeChoices` is always reset to `[]` (a different recipe's choice
+   * groups don't carry over — same as a fresh planMeal) and `leftoverId` is
+   * always cleared (the entry is now backed by a recipe or a plain title, not
+   * a tracked container — the same mutually-exclusive-backing rule planMeal
+   * keeps). `cookedAt` is left untouched: relabelling what a past night was
+   * doesn't un-cook it.
+   */
+  bulkReplaceItem: (ids: string[], replacement: { recipeId: string | null; title: string }) => void;
+
+  /**
+   * Bulk-toggles cookedAt across the selection — unlike the single-row
+   * markCooked, this direction is reversible on purpose (the issue this
+   * shipped for asks for "mark cooked / uncooked" explicitly), but it still
+   * only ever writes the entry's own cookedAt. It never touches a recipe's
+   * cookCount either way: bumping it for entries newly marked cooked is the
+   * screen's job (mirroring the single-row markCooked flow, which calls
+   * useRecipeStore.markCooked itself), and marking uncooked never decrements
+   * it — cookCount is a counter that only goes up, same as everywhere else it
+   * appears in this app.
+   */
+  bulkSetCooked: (ids: string[], cooked: boolean) => void;
 
   /**
    * When "Add week to list" was last used for a given week, keyed by the
@@ -235,6 +288,73 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const cooked: MealPlanEntry = { ...entry, cookedAt: new Date().toISOString() };
     dbUpdateMealPlanEntry(cooked);
     set(s => ({ entries: s.entries.map(e => e.id === id ? cooked : e) }));
+  },
+
+  bulkDeleteEntries(ids) {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    ids.forEach(id => dbDeleteMealPlanEntry(id));
+    set(s => ({ entries: s.entries.filter(e => !idSet.has(e.id)) }));
+  },
+
+  bulkMoveEntries(ids, to) {
+    const targets = resolveBulkMoveTargets(get().entries, ids, to);
+    if (targets.length === 0) return;
+    const byId = new Map(get().entries.map(e => [e.id, e]));
+
+    // Entries landing in the same (date, slot) this batch are numbered against
+    // each other, not just against what's already on the table — read once per
+    // destination and incremented locally, the same "land at the end" rule
+    // nextSortOrder gives a single move.
+    const destBase = new Map<string, number>();
+    const moved: MealPlanEntry[] = targets.map(({ id, date, slot }) => {
+      const entry = byId.get(id)!;
+      const key = `${date}|${slot}`;
+      const sortOrder = destBase.has(key)
+        ? destBase.get(key)!
+        : nextSortOrder(dbGetMealPlanEntries(date, date), date, slot);
+      destBase.set(key, sortOrder + 1);
+      return { ...entry, date, slot, sortOrder };
+    });
+
+    moved.forEach(dbUpdateMealPlanEntry);
+    const movedIds = new Set(moved.map(e => e.id));
+    set(s => ({ entries: sortMealEntries(s.entries.filter(e => !movedIds.has(e.id))) }));
+    moved.forEach(entry => patchInRange(set, get, entry));
+  },
+
+  bulkReplaceItem(ids, replacement) {
+    const title = cleanMealTitle(replacement.title);
+    if (!title || ids.length === 0) return;
+    const idSet = new Set(ids);
+    const toUpdate = get().entries.filter(e => idSet.has(e.id));
+    if (toUpdate.length === 0) return;
+
+    const updated = toUpdate.map((e): MealPlanEntry => ({
+      ...e,
+      recipeId: replacement.recipeId,
+      title,
+      recipeChoices: [],
+      leftoverId: null,
+    }));
+    updated.forEach(dbUpdateMealPlanEntry);
+    const byId = new Map(updated.map(e => [e.id, e]));
+    set(s => ({ entries: s.entries.map(e => byId.get(e.id) ?? e) }));
+  },
+
+  bulkSetCooked(ids, cooked) {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    const cookedAt = cooked ? new Date().toISOString() : null;
+    // Idempotent per entry, same as markCooked: an entry already at the
+    // target state isn't written again.
+    const toUpdate = get().entries.filter(e => idSet.has(e.id) && !!e.cookedAt !== cooked);
+    if (toUpdate.length === 0) return;
+
+    const updated = toUpdate.map((e): MealPlanEntry => ({ ...e, cookedAt }));
+    updated.forEach(dbUpdateMealPlanEntry);
+    const byId = new Map(updated.map(e => [e.id, e]));
+    set(s => ({ entries: s.entries.map(e => byId.get(e.id) ?? e) }));
   },
 
   stampAddedToList(weekStartKey) {

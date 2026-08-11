@@ -12,6 +12,7 @@ import {
   mealPlanPurgeCutoffKey,
   nextSortOrder,
   recipeIndex,
+  resolveBulkMoveTargets,
   slotLabel,
   slotRank,
   sortMealEntries,
@@ -186,6 +187,58 @@ describe('nextSortOrder', () => {
   it('is scoped to the day, not to the whole plan', () => {
     const entries = [entry('2026-08-04', 'dinner', { sortOrder: 9 })];
     expect(nextSortOrder(entries, '2026-08-05', 'dinner')).toBe(1);
+  });
+});
+
+describe('resolveBulkMoveTargets', () => {
+  it('moves every named entry to the new day, keeping each one\'s own slot', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const b = entry('2026-08-05', 'breakfast');
+    const targets = resolveBulkMoveTargets([a, b], [a.id, b.id], { date: '2026-08-07' });
+
+    expect(targets).toEqual([
+      { id: a.id, date: '2026-08-07', slot: 'dinner' },
+      { id: b.id, date: '2026-08-07', slot: 'breakfast' },
+    ]);
+  });
+
+  it('changes only the slot, keeping each entry\'s own day, when no date is given', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const b = entry('2026-08-06', 'dinner');
+    const targets = resolveBulkMoveTargets([a, b], [a.id, b.id], { slot: 'lunch' });
+
+    expect(targets).toEqual([
+      { id: a.id, date: '2026-08-05', slot: 'lunch' },
+      { id: b.id, date: '2026-08-06', slot: 'lunch' },
+    ]);
+  });
+
+  it('sets both when both are given', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const targets = resolveBulkMoveTargets([a], [a.id], { date: '2026-08-07', slot: 'lunch' });
+    expect(targets).toEqual([{ id: a.id, date: '2026-08-07', slot: 'lunch' }]);
+  });
+
+  it('only touches the named ids', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const untouched = entry('2026-08-05', 'lunch');
+    const targets = resolveBulkMoveTargets([a, untouched], [a.id], { date: '2026-08-07' });
+    expect(targets).toEqual([{ id: a.id, date: '2026-08-07', slot: 'dinner' }]);
+  });
+
+  it('drops an entry that would land exactly where it already is', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const targets = resolveBulkMoveTargets([a], [a.id], { date: '2026-08-05', slot: 'dinner' });
+    expect(targets).toEqual([]);
+  });
+
+  it('is a no-op when neither date nor slot is given', () => {
+    const a = entry('2026-08-05', 'dinner');
+    expect(resolveBulkMoveTargets([a], [a.id], {})).toEqual([]);
+  });
+
+  it('returns nothing for an id it does not hold', () => {
+    expect(resolveBulkMoveTargets([], ['gone'], { date: '2026-08-07' })).toEqual([]);
   });
 });
 

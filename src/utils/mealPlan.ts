@@ -99,6 +99,46 @@ export function nextSortOrder(
     .reduce((max, e) => Math.max(max, e.sortOrder), 0) + 1;
 }
 
+/** Where one entry lands in a bulk move — see resolveBulkMoveTargets. */
+export interface BulkMoveTarget {
+  id: string;
+  date: string;
+  slot: MealSlot;
+}
+
+/**
+ * Resolves the destination of every entry in a bulk move, for
+ * useMealPlanStore.bulkMoveEntries.
+ *
+ * Same per-entry fallback as moveEntry — an omitted `date` or `slot` keeps
+ * that entry's own value, so "move to Thursday" run against a mixed-slot
+ * selection changes only the day. An entry landing exactly where it already
+ * is drops out of the result, the same no-op moveEntry itself already
+ * refuses, rather than round-tripping a write that changes nothing.
+ *
+ * Stops short of assigning sortOrder: two selected entries can resolve to
+ * the same (date, slot) destination (two dinners both moved to Thursday), and
+ * ordering them against each other and against what the destination already
+ * holds needs the live table, which is store, not util, territory.
+ */
+export function resolveBulkMoveTargets(
+  entries: readonly MealPlanEntry[],
+  ids: readonly string[],
+  to: { date?: string; slot?: MealSlot }
+): BulkMoveTarget[] {
+  if (to.date === undefined && to.slot === undefined) return [];
+  const idSet = new Set(ids);
+  const targets: BulkMoveTarget[] = [];
+  for (const entry of entries) {
+    if (!idSet.has(entry.id)) continue;
+    const date = to.date ?? entry.date;
+    const slot = to.slot ?? entry.slot;
+    if (date === entry.date && slot === entry.slot) continue;
+    targets.push({ id: entry.id, date, slot });
+  }
+  return targets;
+}
+
 /**
  * Trims a typed meal name for storage. Empty means "not a name" and the caller
  * refuses it.

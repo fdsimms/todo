@@ -480,3 +480,182 @@ describe('stampAddedToList', () => {
     expect(Object.keys(stamps).sort()).toEqual(['2026-08-02', '2026-08-09']);
   });
 });
+
+// Bulk selection (#1110).
+
+describe('bulkDeleteEntries', () => {
+  it('deletes every named row and drops it from the week', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const b = entry('2026-08-06', 'lunch');
+    const untouched = entry('2026-08-07', 'dinner');
+    loadWeek([a, b, untouched]);
+
+    useMealPlanStore.getState().bulkDeleteEntries([a.id, b.id]);
+
+    expect(dbDeleteMealPlanEntry).toHaveBeenCalledWith(a.id);
+    expect(dbDeleteMealPlanEntry).toHaveBeenCalledWith(b.id);
+    expect(dbDeleteMealPlanEntry).toHaveBeenCalledTimes(2);
+    expect(getEntries().map(e => e.id)).toEqual([untouched.id]);
+  });
+
+  it('does nothing for an empty selection', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    useMealPlanStore.getState().bulkDeleteEntries([]);
+    expect(dbDeleteMealPlanEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('bulkMoveEntries', () => {
+  it('moves every named entry to the new day', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const b = entry('2026-08-05', 'lunch');
+    loadWeek([a, b]);
+
+    useMealPlanStore.getState().bulkMoveEntries([a.id, b.id], { date: '2026-08-07' });
+
+    expect(getEntries().map(e => [e.date, e.slot]).sort()).toEqual([
+      ['2026-08-07', 'dinner'],
+      ['2026-08-07', 'lunch'],
+    ]);
+  });
+
+  it('orders two moved entries landing on the same slot against each other, not just against the table', () => {
+    const a = entry('2026-08-05', 'dinner', { sortOrder: 1 });
+    const b = entry('2026-08-06', 'lunch', { sortOrder: 1 });
+    loadWeek([a, b]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-07', 'dinner', { sortOrder: 5 }),
+    ]);
+
+    useMealPlanStore.getState().bulkMoveEntries([a.id, b.id], { date: '2026-08-07', slot: 'dinner' });
+
+    const sortOrders = getEntries().map(e => e.sortOrder).sort((x, y) => x - y);
+    expect(sortOrders).toEqual([6, 7]);
+  });
+
+  it('drops an entry moved out of the loaded window from memory', () => {
+    const a = entry('2026-08-05', 'dinner');
+    loadWeek([a]);
+
+    useMealPlanStore.getState().bulkMoveEntries([a.id], { date: '2026-10-01' });
+
+    expect(getEntries()).toEqual([]);
+  });
+
+  it('skips an entry that would land exactly where it already is', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const b = entry('2026-08-05', 'lunch');
+    loadWeek([a, b]);
+
+    useMealPlanStore.getState().bulkMoveEntries([a.id, b.id], { date: '2026-08-05', slot: 'dinner' });
+
+    // Only b (lunch → dinner) actually moves; a is already there.
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledTimes(1);
+    expect(getEntries().find(e => e.id === b.id)!.slot).toBe('dinner');
+  });
+
+  it('does nothing for an empty selection or an unchanged target', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    useMealPlanStore.getState().bulkMoveEntries([], { date: '2026-08-07' });
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('bulkReplaceItem', () => {
+  it('swaps the recipe and title on every named entry', () => {
+    const a = entry('2026-08-05', 'dinner', { recipeId: 'old-recipe', title: 'Old ragù' });
+    const b = entry('2026-08-06', 'dinner', { recipeId: 'old-recipe', title: 'Old ragù' });
+    loadWeek([a, b]);
+
+    useMealPlanStore.getState().bulkReplaceItem([a.id, b.id], { recipeId: 'new-recipe', title: 'New ragù' });
+
+    for (const e of getEntries()) {
+      expect(e.recipeId).toBe('new-recipe');
+      expect(e.title).toBe('New ragù');
+    }
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts a free-text replacement with no recipe', () => {
+    const a = entry('2026-08-05', 'dinner', { recipeId: 'r1', title: 'Sausage ragù' });
+    loadWeek([a]);
+
+    useMealPlanStore.getState().bulkReplaceItem([a.id], { recipeId: null, title: 'Takeout' });
+
+    const updated = getEntries().find(e => e.id === a.id)!;
+    expect(updated.recipeId).toBeNull();
+    expect(updated.title).toBe('Takeout');
+  });
+
+  it('clears recipeChoices and leftoverId — a different item carries neither over', () => {
+    const a = entry('2026-08-05', 'dinner', {
+      recipeId: 'r1', recipeChoices: ['c-roast'], leftoverId: 'lo-1',
+    });
+    loadWeek([a]);
+
+    useMealPlanStore.getState().bulkReplaceItem([a.id], { recipeId: 'r2', title: 'New dish' });
+
+    const updated = getEntries().find(e => e.id === a.id)!;
+    expect(updated.recipeChoices).toEqual([]);
+    expect(updated.leftoverId).toBeNull();
+  });
+
+  it('leaves cookedAt untouched — relabelling a past night does not un-cook it', () => {
+    const a = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    loadWeek([a]);
+
+    useMealPlanStore.getState().bulkReplaceItem([a.id], { recipeId: null, title: 'New name' });
+
+    expect(getEntries().find(e => e.id === a.id)!.cookedAt).toBe('2026-08-05T18:00:00.000Z');
+  });
+
+  it('refuses a blank title', () => {
+    const a = entry('2026-08-05', 'dinner', { title: 'Original' });
+    loadWeek([a]);
+
+    useMealPlanStore.getState().bulkReplaceItem([a.id], { recipeId: null, title: '   ' });
+
+    expect(getEntries()[0].title).toBe('Original');
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('bulkSetCooked', () => {
+  it('stamps cookedAt on every named entry not already cooked', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const b = entry('2026-08-06', 'lunch');
+    loadWeek([a, b]);
+
+    useMealPlanStore.getState().bulkSetCooked([a.id, b.id], true);
+
+    for (const e of getEntries()) expect(e.cookedAt).not.toBeNull();
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears cookedAt on every named entry that has one', () => {
+    const a = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    loadWeek([a]);
+
+    useMealPlanStore.getState().bulkSetCooked([a.id], false);
+
+    expect(getEntries()[0].cookedAt).toBeNull();
+  });
+
+  it('is idempotent — an entry already at the target state is not rewritten', () => {
+    const alreadyCooked = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const alreadyRaw = entry('2026-08-06', 'lunch');
+    loadWeek([alreadyCooked, alreadyRaw]);
+
+    useMealPlanStore.getState().bulkSetCooked([alreadyCooked.id], true);
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+
+    useMealPlanStore.getState().bulkSetCooked([alreadyRaw.id], false);
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('does nothing for an empty selection', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    useMealPlanStore.getState().bulkSetCooked([], true);
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+});
