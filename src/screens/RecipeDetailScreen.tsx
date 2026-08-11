@@ -131,43 +131,67 @@ export function RecipeDetailScreen() {
     haptics.tap();
   };
 
+  // Which ingredients open a new section heading — the first row (in stored
+  // order) whose section differs from the row right before it. A label on a
+  // flat list rather than a nested groups type, so this is display-only: the
+  // underlying array (and every non-UI reader of it) stays exactly what it
+  // was. Keyed off recipe.ingredients rather than SortableList's mid-drag
+  // order, so a header doesn't flicker as a row is dragged past it — it only
+  // moves once the drop actually commits.
+  const ingredientSectionHeaders = useMemo(() => {
+    const headers = new Map<string, string>();
+    let prevSection: string | null = null;
+    for (const ing of recipe.ingredients) {
+      if (ing.section && ing.section !== prevSection) headers.set(ing.id, ing.section);
+      prevSection = ing.section;
+    }
+    return headers;
+  }, [recipe.ingredients]);
+
   const renderIngredient = (
     ingredient: RecipeIngredient,
     _index: number,
     drag: () => void,
     isDragging: boolean,
-  ) => (
-    <TouchableOpacity
-      style={[styles.ingredient, isDragging && styles.ingredientDragging]}
-      activeOpacity={interaction.activeOpacity}
-      onPress={() => { haptics.tap(); setEditingIngredient(ingredient); }}
-      onLongPress={drag}
-      delayLongPress={interaction.delayLongPress}
-      accessibilityRole="button"
-      accessibilityLabel={
-        [ingredient.name, ingredient.quantity, ingredient.prep].filter(Boolean).join(', ')
-      }
-      accessibilityHint="Double tap to edit. Long press to reorder."
-    >
-      <View style={styles.ingredientText}>
-        <Text style={styles.ingredientName}>{ingredient.name}</Text>
-        {!!ingredient.prep && <Text style={styles.ingredientPrep}>{ingredient.prep}</Text>}
+  ) => {
+    const sectionHeader = ingredientSectionHeaders.get(ingredient.id);
+    return (
+      <View>
+        {!!sectionHeader && <Text style={styles.ingredientSectionHeader}>{sectionHeader}</Text>}
+        <TouchableOpacity
+          style={[styles.ingredient, isDragging && styles.ingredientDragging]}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); setEditingIngredient(ingredient); }}
+          onLongPress={drag}
+          delayLongPress={interaction.delayLongPress}
+          accessibilityRole="button"
+          accessibilityLabel={
+            [ingredient.section, ingredient.name, ingredient.quantity, ingredient.prep]
+              .filter(Boolean).join(', ')
+          }
+          accessibilityHint="Double tap to edit. Long press to reorder."
+        >
+          <View style={styles.ingredientText}>
+            <Text style={styles.ingredientName}>{ingredient.name}</Text>
+            {!!ingredient.prep && <Text style={styles.ingredientPrep}>{ingredient.prep}</Text>}
+          </View>
+          {!!ingredient.quantity && (
+            <View style={styles.qtyPill}>
+              <Text style={styles.qtyText} numberOfLines={1}>{ingredient.quantity}</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            onPress={() => confirmRemove(ingredient)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${ingredient.name}`}
+          >
+            <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+          </TouchableOpacity>
+        </TouchableOpacity>
       </View>
-      {!!ingredient.quantity && (
-        <View style={styles.qtyPill}>
-          <Text style={styles.qtyText} numberOfLines={1}>{ingredient.quantity}</Text>
-        </View>
-      )}
-      <TouchableOpacity
-        onPress={() => confirmRemove(ingredient)}
-        hitSlop={10}
-        accessibilityRole="button"
-        accessibilityLabel={`Remove ${ingredient.name}`}
-      >
-        <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-      </TouchableOpacity>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   // No drag-to-reorder here — unlike ingredients, prep tasks don't read as a
   // list with a meaningful order (each just names its own day).
@@ -420,6 +444,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     overflow: 'hidden',
+  },
+  // A component heading ("For the cake") inside the ingredients card — same
+  // uppercase treatment as sectionLabel, just scoped to sit above a run of
+  // rows rather than the whole list.
+  ingredientSectionHeader: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   ingredient: {
     flexDirection: 'row',
