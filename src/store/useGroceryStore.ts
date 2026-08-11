@@ -151,7 +151,13 @@ interface GroceryStore {
    */
   addByName: (
     raw: string,
-    override?: { name: string; quantity: string | null; note?: string | null },
+    override?: {
+      name: string;
+      quantity: string | null;
+      note?: string | null;
+      /** Files this row as one option of an either/or — see GroceryItem.choiceGroup. */
+      choiceGroup?: string | null;
+    },
     source?: { recipeId: string; recipeTitle: string },
     /** `registerUndo: false` suppresses the per-call shake-to-undo entry — batch
      * callers (addManyFromText, addFromPlan) use this and register one
@@ -186,6 +192,24 @@ interface GroceryStore {
    * null to clear back to grocerySuggest.probablyHaveReason's own guess).
    */
   setOnHandUntil: (id: string, until: string | null) => void;
+
+  /**
+   * Picks this row at the shelf: it stays (no longer an either/or) and every
+   * other option in its group comes off the list. Registers one undo that puts
+   * them all back exactly as they were, group included.
+   *
+   * Called by toggleChecked, so ticking a row *is* the choice — that's the
+   * whole interaction, and the alternative is a loser sitting on the list
+   * looking outstanding for ever, since finishShopping only clears what's
+   * checked.
+   */
+  resolveChoice: (id: string) => void;
+  /**
+   * "These aren't alternatives after all" — unlinks the whole group, from the
+   * item sheet. Takes the label off every member rather than just this row: one
+   * remaining option is not a choice, so a partial unlink can't be a state.
+   */
+  clearChoice: (id: string) => void;
 
   removeFromList: (id: string) => void;
   /** removeFromList over a whole selection at once. */
@@ -387,6 +411,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   addByName(raw, override, source, opts) {
     const { name, quantity } = override ?? parseGroceryInput(raw);
     const note = override?.note?.trim() || null;
+    const choiceGroup = override?.choiceGroup?.trim() || null;
     // A name with no letters or digits ("???") normalises to an empty key.
     // Falling back to the raw text keeps the key unique, which matters: two
     // such rows would collide on the UNIQUE index and the *second* insert
@@ -411,6 +436,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // re-adding a known item without saying why must not wipe the note
         // that's been on it since last time.
         note: note ?? existing.note,
+        // Same rule again: adding "apples or pears" when apples is already on
+        // the list makes that row one option of the new pair, but a plain
+        // re-add of apples must not dissolve a pair it's already in.
+        choiceGroup: choiceGroup ?? existing.choiceGroup,
         lastAddedAt: now,
       };
       dbUpdateGroceryItem(updated);
@@ -456,6 +485,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // Only a genuinely new row gets attributed — see the field's doc comment
       // on GroceryItem. A row reused via the `existing` branch above never
       // reaches here, so a recipe re-adding a known item can't relabel it.
+      choiceGroup,
       sourceRecipeId: source?.recipeId ?? null,
       sourceRecipeTitle: source?.recipeTitle ?? null,
     };
@@ -598,6 +628,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         : s.cartHoldIds.filter(x => x !== id),
     }));
     if (updated.checked) armCartHold();
+    // Ticking one option of an either/or is how the choice gets made — see
+    // resolveChoice. Deliberately not mirrored in setCheckedMany: a bulk tick
+    // is a sweep over rows the user selected by hand, and silently deleting
+    // rows they didn't select out from under it is not what that gesture says.
+    if (updated.checked && updated.choiceGroup) get().resolveChoice(id);
   },
 
   setCheckedMany(ids, checked) {
@@ -739,6 +774,67 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    * definition: never bought, never starred, no purchase count to lose. The
    * sheet says which of the two will happen before you tap.
    */
+  resolveChoice(id) {
+    const item = get().items.find(i => i.id === id);
+    if (!item?.choiceGroup) return;
+    const group = item.choiceGroup;
+    // Only what's still on the list is a live option. An off-list catalog row
+    // that once shared the group is history, not a thing to take away.
+    const losers = get().items.filter(i => i.id !== id && i.choiceGroup === group && i.onList);
+    if (losers.length === 0) {
+      get().clearChoice(id);
+      return;
+    }
+
+    const winner = { ...item, choiceGroup: null };
+    // Snapshots taken before anything is written, so undo restores the rows
+    // themselves rather than reconstructing what they probably were. The
+    // winner goes back *unticked*: the tick is what made the choice (this only
+    // ever runs from toggleChecked), so undoing the choice has to undo the tick
+    // too, or the group comes back with one option already in the trolley.
+    const before = [{ ...item, checked: false }, ...losers];
+    // Same split removeFromList makes: a provisional row has nothing to keep.
+    const toDelete = losers.filter(i => !i.inCatalog).map(i => i.id);
+    const toUnlist = losers
+      .filter(i => i.inCatalog)
+      .map(i => ({ ...i, onList: false, checked: false, choiceGroup: null }));
+
+    dbUpdateGroceryItem(winner);
+    for (const u of toUnlist) dbUpdateGroceryItem(u);
+    const patched = new Map<string, GroceryItem>([[winner.id, winner], ...toUnlist.map(
+      u => [u.id, u] as [string, GroceryItem]
+    )]);
+    set(s => ({ items: s.items.map(i => patched.get(i.id) ?? i) }));
+    if (toDelete.length > 0) get().deleteItems(toDelete);
+
+    get().setLastAction({
+      label: `Chose ${item.name}`,
+      undo: () => {
+        const live = new Set(get().items.map(i => i.id));
+        const restored = before.filter(i => !live.has(i.id));
+        for (const row of restored) dbInsertGroceryItem(row);
+        for (const row of before.filter(i => live.has(i.id))) dbUpdateGroceryItem(row);
+        const byId = new Map(before.map(i => [i.id, i]));
+        set(s => ({
+          items: [...s.items.map(i => byId.get(i.id) ?? i), ...restored],
+          cartHoldIds: s.cartHoldIds.filter(x => x !== id),
+        }));
+      },
+    });
+  },
+
+  clearChoice(id) {
+    const item = get().items.find(i => i.id === id);
+    if (!item?.choiceGroup) return;
+    const group = item.choiceGroup;
+    const updates = get().items
+      .filter(i => i.choiceGroup === group)
+      .map(i => ({ ...i, choiceGroup: null }));
+    for (const u of updates) dbUpdateGroceryItem(u);
+    const byId = new Map(updates.map(u => [u.id, u]));
+    set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+  },
+
   removeFromList(id) {
     const item = get().items.find(i => i.id === id);
     if (!item || !item.onList) return;

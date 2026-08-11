@@ -83,6 +83,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     onHandUntil: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
+    choiceGroup: null,
     ...overrides,
   };
 }
@@ -1650,5 +1651,89 @@ describe('setOnHandUntil', () => {
     seed([]);
     useGroceryStore.getState().setOnHandUntil('gone', '2026-08-21T00:00:00.000Z');
     expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('either/or items (choiceGroup)', () => {
+  const pair = () => {
+    const apples = useGroceryStore.getState().addByName('apples', {
+      name: 'apples', quantity: null, choiceGroup: 'g1',
+    });
+    const pears = useGroceryStore.getState().addByName('pears', {
+      name: 'pears', quantity: null, choiceGroup: 'g1',
+    });
+    return { apples, pears };
+  };
+
+  it('files both rows under the group', () => {
+    const { apples, pears } = pair();
+    expect(apples.choiceGroup).toBe('g1');
+    expect(pears.choiceGroup).toBe('g1');
+  });
+
+  it('ticking one takes the other off the list and ends the choice', () => {
+    const { apples, pears } = pair();
+    useGroceryStore.getState().toggleChecked(apples.id);
+
+    const items = useGroceryStore.getState().items;
+    const survivor = items.find(i => i.id === apples.id)!;
+    expect(survivor.checked).toBe(true);
+    // The choice is over, so the row is an ordinary one again.
+    expect(survivor.choiceGroup).toBeNull();
+    // Provisional rows are deleted outright, same split removeFromList makes.
+    expect(items.find(i => i.id === pears.id)).toBeUndefined();
+  });
+
+  it('unlists rather than deletes a loser that is in the catalog', () => {
+    const { apples, pears } = pair();
+    useGroceryStore.getState().toggleFavorite(pears.id); // promotes to catalog
+    useGroceryStore.getState().toggleChecked(apples.id);
+
+    const loser = useGroceryStore.getState().items.find(i => i.id === pears.id)!;
+    expect(loser.onList).toBe(false);
+    expect(loser.choiceGroup).toBeNull();
+  });
+
+  it('undoes the whole choice — the loser comes back and the tick is taken off', () => {
+    const { apples, pears } = pair();
+    useGroceryStore.getState().toggleChecked(apples.id);
+    useGroceryStore.getState().undoLastAction();
+
+    const items = useGroceryStore.getState().items;
+    const back = items.find(i => i.id === pears.id);
+    expect(back?.onList).toBe(true);
+    expect(back?.choiceGroup).toBe('g1');
+    const winner = items.find(i => i.id === apples.id)!;
+    expect(winner.checked).toBe(false);
+    expect(winner.choiceGroup).toBe('g1');
+  });
+
+  it('ticking a row whose group has no live siblings left just ends the group', () => {
+    const { apples, pears } = pair();
+    useGroceryStore.getState().removeFromList(pears.id);
+    useGroceryStore.getState().toggleChecked(apples.id);
+
+    const winner = useGroceryStore.getState().items.find(i => i.id === apples.id)!;
+    expect(winner.checked).toBe(true);
+    expect(winner.choiceGroup).toBeNull();
+  });
+
+  it('clearChoice unlinks every member, not just the one asked about', () => {
+    const { apples, pears } = pair();
+    useGroceryStore.getState().clearChoice(apples.id);
+
+    const items = useGroceryStore.getState().items;
+    expect(items.find(i => i.id === apples.id)!.choiceGroup).toBeNull();
+    expect(items.find(i => i.id === pears.id)!.choiceGroup).toBeNull();
+    // Both stay on the list — unlinking is a correction, not a choice.
+    expect(items.find(i => i.id === pears.id)!.onList).toBe(true);
+  });
+
+  it('leaves an ordinary row alone when it is ticked', () => {
+    const milk = useGroceryStore.getState().addByName('milk');
+    useGroceryStore.getState().toggleChecked(milk.id);
+    expect(useGroceryStore.getState().items.find(i => i.id === milk.id)!.checked).toBe(true);
+    // The add's own undo is still the last thing registered — no choice was made.
+    expect(useGroceryStore.getState().lastAction?.label).toBe('Added "milk"');
   });
 });

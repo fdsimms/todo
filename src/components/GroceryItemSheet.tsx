@@ -56,6 +56,16 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const item = useGroceryStore(s => (itemId ? s.items.find(i => i.id === itemId) ?? null : null));
+  const clearChoice = useGroceryStore(s => s.clearChoice);
+  // Named siblings, live ones only — the same read GroceryScreen does for the
+  // row caption, phrased as a sentence here because the sheet has the room.
+  const alternativeNames = useGroceryStore(s => {
+    if (!item?.choiceGroup) return null;
+    const names = s.items
+      .filter(i => i.id !== item.id && i.choiceGroup === item.choiceGroup && i.onList)
+      .map(i => i.name);
+    return names.length > 0 ? names.join(' or ') : null;
+  });
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const renameItem = useGroceryStore(s => s.renameItem);
   const setQuantity = useGroceryStore(s => s.setQuantity);
@@ -278,6 +288,28 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
             ) : (
               <Text style={styles.hint}>recipe: {item.sourceRecipeTitle}</Text>
             )
+          )}
+          {/* The either/or this row is one option of, and the way out of it.
+              Unlinking is offered here rather than on the row because it's a
+              correction, not a shopping decision — at the shelf you resolve the
+              choice by ticking one (see resolveChoice), and that needs no
+              second control. */}
+          {!!alternativeNames && (
+            <View style={styles.choiceBlock}>
+              <Text style={styles.hint}>
+                Either/or with {alternativeNames}. Tick one at the shop and the
+                rest come off the list.
+              </Text>
+              <InlineAction
+                label="Not an either/or"
+                icon="unlink-outline"
+                variant="neutral"
+                onPress={() => {
+                  haptics.tap();
+                  clearChoice(item.id);
+                }}
+              />
+            </View>
           )}
 
           <Text style={styles.label}>QUANTITY</Text>
@@ -594,6 +626,7 @@ function makeStyles(colors: Colors) {
     inputError: { borderColor: colors.red },
     error: { fontSize: font.sm, color: colors.red, marginTop: spacing.xs },
     hint: { fontSize: font.sm, color: colors.textTertiary, marginBottom: spacing.sm },
+    choiceBlock: { alignItems: 'flex-start', marginBottom: spacing.sm },
     // A row rather than bare accent text: this leaves the sheet for another
     // screen, and the chevron is what says so (same shape EditorRow uses).
     recipeLink: {

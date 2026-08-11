@@ -1088,6 +1088,7 @@ function item(name: string, overrides: Partial<GroceryItem> & { nameKey?: string
     onHandUntil: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
+    choiceGroup: null,
     ...overrides,
   } as GroceryItem;
 }

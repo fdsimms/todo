@@ -111,6 +111,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     onHandUntil: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
+    choiceGroup: null,
     ...overrides,
   };
 }

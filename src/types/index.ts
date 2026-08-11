@@ -600,6 +600,24 @@ export interface GroceryItem {
   // cross-row pointer here — a later recipe rename or delete doesn't touch it.
   sourceRecipeId: string | null;
   sourceRecipeTitle: string | null;
+  // "apples or pears" — two rows you'll pick between at the shelf, sharing this
+  // label. Same idea as RecipeIngredient.choiceGroup and resolved by the same
+  // rule (exactly one of a group is bought), with two differences that follow
+  // from where it lives:
+  //
+  // It is an **opaque id, not a name**. A recipe's group label is a heading on
+  // the ingredient list, so it has to mean something; a grocery list renders no
+  // heading for it — each row just names its siblings — so a label would be a
+  // second thing to keep in step with nothing to show for it, and two lines
+  // typed alike would silently merge into one group.
+  //
+  // And it is **resolved destructively**: picking one at the shelf takes the
+  // others off the list (see resolveChoice). A recipe's pick is a fact about a
+  // cooking that lives on MealPlanEntry and leaves the recipe alone, but a
+  // shopping list has nowhere to put "I chose apples" — an unresolved loser
+  // just sits there looking outstanding, and finishShopping would leave it on
+  // the list for ever.
+  choiceGroup: string | null;
 }
 
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task

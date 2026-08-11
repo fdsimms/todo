@@ -48,6 +48,7 @@ import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { alternativeCaptions } from '../utils/recipeComponents';
 import { buildGrocerySections } from '../utils/grocerySuggest';
 import { resolveGroceryDrop, groceryDragRange, placeNewGroceryItems } from '../utils/groceryReorder';
 import { useColors } from '../theme/ThemeContext';
@@ -129,6 +130,16 @@ export function GroceryScreen() {
   // outlive the recipe that put it there. The set is what decides whether the
   // row gets a button at all — see GroceryRow.onOpenRecipe.
   const recipeIds = useMemo(() => new Set(recipes.map(r => r.id)), [recipes]);
+  // "or pears", per row. Only what's still on the list counts as a live option
+  // — an off-list catalog row that once shared the group is history — and
+  // alternativeCaptions drops a group that's down to one, so a resolved pair
+  // stops captioning itself with no extra bookkeeping. Shared with the recipe
+  // screen's either/or ingredients: it's the same rule, and writing it twice is
+  // how the two would drift.
+  const alternativeCaptionById = useMemo(
+    () => alternativeCaptions(items.filter(i => i.onList && i.choiceGroup)),
+    [items]
+  );
   const openRecipe = useCallback(
     (recipeId: string) => {
       haptics.tap();
@@ -569,10 +580,11 @@ export function GroceryScreen() {
               ? openRecipe
               : undefined
           }
+          alternatives={alternativeCaptionById.get(row.item.id)}
         />
       );
     },
-    [styles, colors, cartOpen, handleToggle, handleEdit, zoneByKey, selectionMode, selectedIds, toggleSelection, recipeIds, openRecipe]
+    [styles, colors, cartOpen, handleToggle, handleEdit, zoneByKey, selectionMode, selectedIds, toggleSelection, recipeIds, openRecipe, alternativeCaptionById]
   );
 
   return (

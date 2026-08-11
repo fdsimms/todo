@@ -42,6 +42,13 @@ interface Props {
    * recipe in its caption as before.
    */
   onOpenRecipe?: (recipeId: string) => void;
+  /**
+   * "or pears" — this row's live either/or siblings, computed by the screen
+   * (only it has the whole list) and absent for an ordinary row. Its own line
+   * rather than folded into the note: at the shelf it's the difference between
+   * buying one of these and buying all of them.
+   */
+  alternatives?: string;
 }
 
 /**
@@ -73,6 +80,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   selected = false,
   onSelect,
   onOpenRecipe,
+  alternatives,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -198,6 +206,9 @@ export const GroceryRow = React.memo(function GroceryRow({
             <Text style={styles.note} numberOfLines={1}>
               recipe: {item.sourceRecipeTitle}
             </Text>
+          )}
+          {!!alternatives && (
+            <Text style={styles.alternatives} numberOfLines={1}>{alternatives}</Text>
           )}
         </View>
 
@@ -330,6 +341,15 @@ function makeStyles(colors: Colors) {
       // Matches the Text row's box so swapping in the input doesn't nudge
       // the row's height — see the "never lineHeight on TextInput" rule.
       height: font.lg + 6,
+    },
+    // Upright and a step brighter than the note above it, same treatment the
+    // recipe screen gives an either/or ingredient — this is a fact about what
+    // to buy, not a remark about the row.
+    alternatives: {
+      fontSize: font.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.textSecondary,
+      marginTop: 1,
     },
     note: {
       fontSize: font.sm,
