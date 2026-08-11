@@ -81,6 +81,8 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     lastPurchasedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null,
+    sourceRecipeId: null,
+    sourceRecipeTitle: null,
     ...overrides,
   };
 }
@@ -99,8 +101,8 @@ describe('collectPlannedIngredients', () => {
     const result = collectPlannedIngredients(entries, recipesById, RANGE);
 
     expect(result).toEqual([
-      { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Tue Ragù' },
-      { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Tue Ragù' },
+      { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Tue Ragù', recipeId: ragu.id, recipeTitle: 'Ragù' },
+      { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Tue Ragù', recipeId: ragu.id, recipeTitle: 'Ragù' },
     ]);
   });
 
@@ -133,8 +135,8 @@ describe('plannedIngredientsForRecipe', () => {
   it('maps each ingredient, tagged with the recipe as its own source', () => {
     const ragu = recipe('Ragù', [ing('Onions', { quantity: '2' }), ing('Garlic', { quantity: '3 cloves' })]);
     expect(plannedIngredientsForRecipe(ragu)).toEqual([
-      { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Ragù' },
-      { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Ragù' },
+      { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù' },
+      { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù' },
     ]);
   });
 
@@ -225,7 +227,7 @@ describe('classifyPlanned', () => {
     const planned = [{ name: 'Saffron', nameKey: 'saffron', quantity: '1 pinch', aisle: null, source: 'Tue Paella' }];
     const rows = classifyPlanned(planned, [], now);
     expect(rows).toEqual([
-      { nameKey: 'saffron', name: 'Saffron', aisle: null, quantity: '1 pinch', sources: ['Tue Paella'], category: 'needToBuy', reason: null },
+      { nameKey: 'saffron', name: 'Saffron', aisle: null, quantity: '1 pinch', sources: ['Tue Paella'], category: 'needToBuy', reason: null, sourceRecipeId: null, sourceRecipeTitle: null },
     ]);
   });
 
@@ -269,6 +271,25 @@ describe('classifyPlanned', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].quantity).toBe('2 · 1 bunch · 3');
     expect(rows[0].sources).toEqual(['Tue Ragù', 'Thu Curry', 'Sat Soup']);
+  });
+
+  it('credits a single-recipe row with its recipe', () => {
+    const planned = [
+      { name: 'Saffron', nameKey: 'saffron', quantity: '1 pinch', aisle: null, source: 'Tue Paella', recipeId: 'r1', recipeTitle: 'Paella' },
+    ];
+    const row = classifyPlanned(planned, [], now)[0];
+    expect(row.sourceRecipeId).toBe('r1');
+    expect(row.sourceRecipeTitle).toBe('Paella');
+  });
+
+  it('leaves a row uncredited once it merges ingredients from more than one recipe', () => {
+    const planned = [
+      { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Tue Ragù', recipeId: 'r1', recipeTitle: 'Ragù' },
+      { name: 'Onions', nameKey: 'onions', quantity: '1', aisle: null, source: 'Thu Curry', recipeId: 'r2', recipeTitle: 'Curry' },
+    ];
+    const row = classifyPlanned(planned, [], now)[0];
+    expect(row.sourceRecipeId).toBeNull();
+    expect(row.sourceRecipeTitle).toBeNull();
   });
 
   it('prefers the live catalog row\'s own name over any source spelling', () => {

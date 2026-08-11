@@ -157,6 +157,8 @@ export function MealPlanScreen() {
               name: i.name,
               quantity: [i.quantity, i.prep].filter(Boolean).join(', ') || null,
               aisle: i.aisle,
+              sourceRecipeId: recipe.id,
+              sourceRecipeTitle: recipe.name,
             })));
             haptics.success();
           },

@@ -35,6 +35,8 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     lastPurchasedAt: null,
     createdAt: daysAgo(365),
     onHandUntil: null,
+    sourceRecipeId: null,
+    sourceRecipeTitle: null,
     ...overrides,
   };
 }

@@ -248,6 +248,12 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
             accessibilityLabel="Item name"
           />
           {!!nameError && <Text style={styles.error}>{nameError}</Text>}
+          {/* A snapshot, not editable here — see GroceryItem.sourceRecipeTitle.
+              Renaming the item doesn't touch it, and there's nothing to
+              reassign; it just says why this row exists. */}
+          {!!item.sourceRecipeTitle && (
+            <Text style={styles.hint}>From: {item.sourceRecipeTitle}</Text>
+          )}
 
           <Text style={styles.label}>QUANTITY</Text>
           <TextInput
