@@ -58,6 +58,7 @@ const baseTask: Task = {
   tags: [],
   sortOrder: 0,
   pinned: false,
+  pinnedOrder: 0,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,

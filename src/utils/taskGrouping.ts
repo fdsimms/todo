@@ -7,16 +7,14 @@ export type CategoryListItem =
   | { type: 'task'; task: Task }
   | { type: 'group'; group: TaskGroup; children: Task[] };
 
-// TodayScreen's own list also carries a couple of row kinds (pinned
-// section, "everything else" divider) that don't belong to a category at
-// all — the category-shaping helpers below only ever look at the 'header' /
-// 'task' / 'group' arms, so they accept this wider union rather than
-// CategoryListItem.
-export type TodayListItem =
-  | { type: 'pinned-header' }
-  | { type: 'pinned-task'; task: Task }
-  | { type: 'rest-header' }
-  | CategoryListItem;
+// Today's list used to carry two extra row kinds — a 'pinned-header' with the
+// pinned tasks lifted up under it, and a 'rest-header' ("Everything else")
+// dividing off what was left. Both are gone: a pinned task now keeps its row
+// in its own category section and is *also* rendered in a pinned block above
+// the list (TodayScreen's ListHeaderComponent), which is outside this data
+// entirely. So Today's rows are just category rows, and the alias stays only
+// because the screen and its tests name it.
+export type TodayListItem = CategoryListItem;
 
 const UNCATEGORIZED = '';
 
@@ -440,11 +438,11 @@ export function applyCategoryCollapse(
 /**
  * Narrow the list down to one category's rows — the opposite of
  * applyCategoryCollapse: that hides a section's content and keeps its header,
- * this hides every OTHER section entirely, header included. "Later Today" and
- * "Pinned Tasks" are sections, not categories, so they're kept only when one
- * of the rows under them belongs to the focused category — a single forward
- * pass, since a header's fate depends on whether anything after it (before
- * the next header) matches, and a header can't know that until it sees it.
+ * this hides every OTHER section entirely, header included. "Later Today" is a
+ * section, not a category, so it's kept only when one of the rows under it
+ * belongs to the focused category — a single forward pass, since a header's
+ * fate depends on whether anything after it (before the next header) matches,
+ * and a header can't know that until it sees it.
  */
 export function applyCategoryFocus(
   items: TodayListItem[],
@@ -452,7 +450,7 @@ export function applyCategoryFocus(
 ): TodayListItem[] {
   if (!focusedCategory) return items;
   const matches = (item: TodayListItem): boolean => {
-    if (item.type === 'task' || item.type === 'pinned-task') {
+    if (item.type === 'task') {
       return (item.task.category ?? UNCATEGORIZED) === focusedCategory;
     }
     if (item.type === 'group') return (item.group.category ?? UNCATEGORIZED) === focusedCategory;
@@ -463,7 +461,7 @@ export function applyCategoryFocus(
   let pendingHeader: TodayListItem | null = null;
   let headerEmitted = false;
   for (const item of items) {
-    if (item.type === 'header' || item.type === 'pinned-header' || item.type === 'rest-header') {
+    if (item.type === 'header') {
       pendingHeader = item;
       headerEmitted = false;
       continue;
@@ -504,11 +502,6 @@ export function sectionTaskIds(items: TodayListItem[]): Map<string, string[]> {
       sections.set(label, []);
       continue;
     }
-    // Neither divider heads a category section, and both close the one above.
-    if (item.type === 'pinned-header' || item.type === 'rest-header') {
-      label = null;
-      continue;
-    }
     if (label === null) continue;
     if (item.type === 'task') {
       sections.get(label)!.push(item.task.id);
@@ -544,8 +537,6 @@ export interface TaskJumpTarget {
   category: string | null;
   /** The stack the task belongs to, if it's a member of one. */
   groupId: string | null;
-  /** Whether the row sits under the "Everything else" divider (pinned layout). */
-  inRest: boolean;
 }
 
 /**
@@ -562,28 +553,19 @@ export function findTaskJumpTarget(
   listItemKey: (item: TodayListItem) => string,
 ): TaskJumpTarget | null {
   const spans = categorySpan(items);
-  let inRest = false;
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    if (item.type === 'rest-header') {
-      inRest = true;
-      continue;
-    }
     const isMatch =
-      item.type === 'task' || item.type === 'pinned-task'
+      item.type === 'task'
         ? item.task.id === taskId
         : item.type === 'group'
           ? item.children.some(child => child.id === taskId)
           : false;
     if (!isMatch) continue;
-    // A pinned row sits above the category sections entirely, so it's never
-    // collapsed away and never inside "Everything else".
-    const pinned = item.type === 'pinned-task';
     return {
       key: listItemKey(item),
-      category: pinned ? null : spans[i],
+      category: spans[i],
       groupId: item.type === 'group' ? item.group.id : null,
-      inRest: pinned ? false : inRest,
     };
   }
   return null;

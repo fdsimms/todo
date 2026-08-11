@@ -110,6 +110,23 @@ interface Props<T> {
   contentContainerStyle?: StyleProp<ViewStyle>;
   refreshControl?: React.ReactElement<RefreshControlProps>;
   ListEmptyComponent?: React.ReactNode;
+  /**
+   * Rendered above the rows and scrolling with them — Today's pinned block.
+   *
+   * It is a child of the ScrollView rather than of the container View, and it
+   * has to stay that way. Rows report their tops via onLayout, i.e. in scroll
+   * *content* coordinates, while calibrateOverlayBase measures against
+   * `containerRef` and writes the result into that same map — sound only
+   * because the ScrollView sits at y=0 in the container. A header hung in the
+   * container instead would add its height to one of those two numbers and not
+   * the other, silently offsetting the drag card and every drop gap by exactly
+   * that much. Inside the ScrollView it just shifts every row alike, which the
+   * math (all measured, never assumed) absorbs.
+   *
+   * Unmeasured and unkeyed: it never enters the drag maps, so it can't be
+   * dragged, dropped onto, or displaced.
+   */
+  ListHeaderComponent?: React.ReactNode;
   ListFooterComponent?: React.ReactNode;
   onScrollBeginDrag?: () => void;
   /**
@@ -184,6 +201,7 @@ export function ReorderableList<T>({
   contentContainerStyle,
   refreshControl,
   ListEmptyComponent,
+  ListHeaderComponent,
   ListFooterComponent,
   onScrollBeginDrag,
   onScrollSettle,
@@ -924,6 +942,7 @@ export function ReorderableList<T>({
           onScrollSettle?.();
         }}
       >
+        {ListHeaderComponent}
         {renderData.length === 0 && ListEmptyComponent}
         {renderData.map(item => {
           const key = keyExtractor(item);

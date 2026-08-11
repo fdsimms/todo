@@ -16,6 +16,7 @@ import {
   dbBulkSetTimeSegments,
   dbBulkSetCategory,
   dbBulkSetPinned,
+  dbBatchUpdatePinnedOrders,
   dbBulkAddTags,
   dbGetTagRegistry,
   dbAddToTagRegistry,
@@ -162,6 +163,7 @@ function newTaskFromDraft(
     category: draft.category ?? defaults.category,
     sortOrder,
     pinned: draft.pinned ?? false,
+    pinnedOrder: 0,
     priority: draft.priority ?? defaults.priority ?? 0,
     effort: draft.effort ?? defaults.effort ?? 0,
     estimatedMinutes: draft.estimatedMinutes ?? null,
@@ -432,6 +434,57 @@ function patchTasksById(tasks: Task[], updates: Map<string, Partial<Task>>): Tas
   });
 }
 
+/**
+ * The rank a newly pinned task should take: one past the highest currently in
+ * use, so a pin lands at the *bottom* of the Pinned section.
+ *
+ * Appending rather than slotting in by sortOrder is the whole point — the
+ * section is hand-orderable now (see Task.pinnedOrder), and dropping a new pin
+ * into the middle of an order the user arranged would look like the list moved
+ * on its own. Every path that turns `pinned` on goes through this: updateTask
+ * covers the editor, the suggested-pins sheet and togglePin, and the two bulk
+ * writers stamp a run of consecutive ranks themselves.
+ *
+ * Counts unpinned rows out but not their stale ranks — an unpin leaves the old
+ * number on the row, which is harmless because nothing reads it while
+ * `pinned` is false and re-pinning overwrites it here.
+ */
+function nextPinnedOrder(tasks: Task[]): number {
+  let max = 0;
+  for (const t of tasks) {
+    if (t.pinned && t.pinnedOrder > max) max = t.pinnedOrder;
+  }
+  return max + 1;
+}
+
+/**
+ * Consecutive fresh ranks for the ids a bulk pin is about to turn on.
+ *
+ * Only the ones that weren't already pinned get a rank, for the same reason
+ * updateTask guards on the transition: "Pin" over a selection that is half
+ * pinned already must not reshuffle the half that was there. Call it *before*
+ * the write, while the store can still tell which were which.
+ */
+function freshPinRanks(tasks: Task[], ids: string[]): { id: string; pinnedOrder: number }[] {
+  const byId = new Map(tasks.map(t => [t.id, t]));
+  let next = nextPinnedOrder(tasks);
+  const out: { id: string; pinnedOrder: number }[] = [];
+  for (const id of ids) {
+    const t = byId.get(id);
+    if (!t || t.pinned) continue;
+    out.push({ id, pinnedOrder: next++ });
+  }
+  return out;
+}
+
+function rankFor(
+  ranks: { id: string; pinnedOrder: number }[] | null,
+  id: string,
+): { pinnedOrder?: number } {
+  const hit = ranks?.find(r => r.id === id);
+  return hit ? { pinnedOrder: hit.pinnedOrder } : {};
+}
+
 interface TaskStore {
   tasks: Task[];
   tagRegistry: string[];
@@ -578,6 +631,8 @@ interface TaskStore {
   // streakCount/streakDate to 0/null) since the gap is real, but leaves past
   // completions untouched so Stats/Logbook history "picks up where it left off."
   unarchiveTask: (id: string) => void;
+  /** Hand-order the Pinned section; see Task.pinnedOrder. */
+  reorderPinnedTasks: (orderedIds: string[]) => void;
   clearAllPins: () => void;
   pinCategory: (category: string) => void;
   setCategoryTimeSegments: (category: string, segments: TimeOfDay[]) => number;
@@ -1050,6 +1105,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   updateTask(id, updates, options) {
     const scope = options?.scope ?? 'series';
+    // Computed once, outside the map: it scans every task, and the map is
+    // already a full pass. Only consumed on the 0→1 transition below.
+    const freshPinnedOrder = updates.pinned === true ? nextPinnedOrder(get().tasks) : 0;
     const tasks = get().tasks.map(t => {
       if (t.id !== id) return t;
 
@@ -1094,6 +1152,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...updates,
         seriesDefaults,
         ...(takenOver ? { autoScheduledAt: null } : {}),
+        // Only on the transition, never on a re-save of an already-pinned
+        // task: the editor writes `pinned: true` on every save of a pinned
+        // task, and restamping there would shuffle it to the bottom of the
+        // section each time it was opened.
+        ...(updates.pinned === true && !t.pinned ? { pinnedOrder: freshPinnedOrder } : {}),
         // Normalized on the way in, like addTask does, so a unit typed as
         // "  glasses " is stored the way every reader formats it.
         ...('targetUnit' in updates ? { targetUnit: normalizeTargetUnit(updates.targetUnit) } : {}),
@@ -2142,6 +2205,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
+  /**
+   * Hand-order the Pinned section. `orderedIds` is the section exactly as the
+   * user just dragged it, which is the whole of it — unlike a stack's
+   * children, a pinned row is never hidden from the section it's being
+   * reordered in, so there's no reorderSubset fold to do here.
+   *
+   * Renumbers from 1 so no row is left on the 0 that means "never ranked".
+   */
+  reorderPinnedTasks(orderedIds) {
+    if (orderedIds.length === 0) return;
+    const updates = orderedIds.map((id, index) => ({ id, pinnedOrder: index + 1 }));
+    dbBatchUpdatePinnedOrders(updates);
+    const byId = new Map(updates.map(u => [u.id, { pinnedOrder: u.pinnedOrder }]));
+    set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
+  },
+
   clearAllPins() {
     dbClearAllPins();
     set(s => ({
@@ -2154,8 +2233,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (ids.length === 0) return;
     const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
     const nextPinned = !allPinned;
+    const ranks = nextPinned ? freshPinRanks(get().tasks, ids) : null;
     dbBulkSetPinned(ids, nextPinned);
-    set(s => ({ tasks: patchTasks(s.tasks, ids, { pinned: nextPinned }) }));
+    if (ranks) dbBatchUpdatePinnedOrders(ranks);
+    set(s => ({
+      tasks: patchTasks(s.tasks, ids, t => ({
+        pinned: nextPinned,
+        ...rankFor(ranks, t.id),
+      })),
+    }));
   },
 
   // Moves every live task in a category to a time-of-day in one act, and
@@ -2320,6 +2406,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       category: null,
       sortOrder: maxOrder + 1,
       pinned: false,
+      pinnedOrder: 0,
       priority: 0,
       effort: 0,
       estimatedMinutes: null,
@@ -2451,6 +2538,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       category: group?.category ?? null,
       sortOrder: maxOrder + 1,
       pinned: false,
+      pinnedOrder: 0,
       priority: 0,
       effort: 0,
       estimatedMinutes: null,
@@ -3000,8 +3088,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (ids.length === 0) return;
     const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
     const nextPinned = !allPinned;
+    const ranks = nextPinned ? freshPinRanks(get().tasks, ids) : null;
     dbBulkSetPinned(ids, nextPinned);
-    set(s => ({ tasks: patchTasks(s.tasks, ids, { pinned: nextPinned }) }));
+    if (ranks) dbBatchUpdatePinnedOrders(ranks);
+    set(s => ({
+      tasks: patchTasks(s.tasks, ids, t => ({
+        pinned: nextPinned,
+        ...rankFor(ranks, t.id),
+      })),
+    }));
   },
 
   bulkDefer(ids, until) {
@@ -3117,7 +3212,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
       .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived && !(vacationMode && t.vacationPause))
-      .sort((a, b) => a.sortOrder - b.sortOrder);
+      // sortOrder breaks ties rather than being the sort: every row starts at
+      // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
+      // into the column) reads exactly as it did before. See Task.pinnedOrder.
+      .sort((a, b) => a.pinnedOrder - b.pinnedOrder || a.sortOrder - b.sortOrder);
   },
 
   completedTasks() {
