@@ -29,13 +29,45 @@ jest.mock('expo-image-manipulator', () => ({
 }));
 
 const mockDelete = jest.fn();
-jest.mock('expo-file-system', () => ({
-  File: function MockFile(this: { delete: () => void }, target: string) {
-    this.delete = () => mockDelete(target);
-  },
-}));
+const mockMove = jest.fn();
+const mockDirCreate = jest.fn();
+// Tracks every File/Directory constructed so a test can assert what got
+// moved/deleted without the mock itself doing any real path arithmetic.
+let mockFileExists = true;
+let mockDirExists = false;
 
-import { photoTargetSize, pickRecipePhoto, MAX_PHOTO_EDGE } from '../utils/recipePhoto';
+jest.mock('expo-file-system', () => {
+  const joinUri = (uris: unknown[]): string =>
+    uris.map(u => (typeof u === 'string' ? u : (u as { uri: string }).uri)).join('/');
+
+  return {
+    File: function MockFile(this: { uri: string; exists: boolean; delete: () => void; move: (dest: unknown) => void }, ...uris: unknown[]) {
+      this.uri = joinUri(uris);
+      this.exists = mockFileExists;
+      this.delete = () => mockDelete(this.uri);
+      this.move = (dest: unknown) => {
+        const destUri = (dest as { uri: string }).uri;
+        mockMove(this.uri, destUri);
+        this.uri = destUri;
+      };
+    },
+    Directory: function MockDirectory(this: { uri: string; exists: boolean; create: () => void }, ...uris: unknown[]) {
+      this.uri = joinUri(uris);
+      this.exists = mockDirExists;
+      this.create = () => mockDirCreate(this.uri);
+    },
+    Paths: { document: { uri: 'file:///documents' } },
+  };
+});
+
+import {
+  photoTargetSize,
+  pickRecipePhoto,
+  pickRecipeImage,
+  deleteRecipeImage,
+  MAX_PHOTO_EDGE,
+  MAX_IMAGE_EDGE,
+} from '../utils/recipePhoto';
 
 const GRANTED = { granted: true, canAskAgain: true };
 
@@ -56,6 +88,8 @@ function stubPipeline(saved: { base64?: string | null; uri?: string; width?: num
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockFileExists = true;
+  mockDirExists = false;
 });
 
 describe('photoTargetSize', () => {
@@ -206,5 +240,146 @@ describe('pickRecipePhoto', () => {
     stubPipeline({ base64: null });
 
     await expect(pickRecipePhoto('library')).resolves.toMatchObject({ status: 'failed' });
+  });
+});
+
+describe('pickRecipeImage', () => {
+  it('reports a denied permission without launching the picker', async () => {
+    mockRequestLibrary.mockResolvedValue({ granted: false, canAskAgain: true });
+
+    await expect(pickRecipeImage('library')).resolves.toEqual({
+      status: 'denied', source: 'library', canAskAgain: true,
+    });
+    expect(mockLaunchLibrary).not.toHaveBeenCalled();
+  });
+
+  it('reports a cancel without touching the manipulator', async () => {
+    mockRequestLibrary.mockResolvedValue(GRANTED);
+    mockLaunchLibrary.mockResolvedValue({ canceled: true });
+
+    await expect(pickRecipeImage('library')).resolves.toEqual({ status: 'canceled' });
+    expect(mockManipulate).not.toHaveBeenCalled();
+  });
+
+  it('never asks the picker for base64, and resizes on the display-size cap', async () => {
+    mockRequestCamera.mockResolvedValue(GRANTED);
+    mockLaunchCamera.mockResolvedValue({
+      canceled: false, assets: [{ uri: 'file:///photo.heic', width: 4032, height: 3024 }],
+    });
+    stubPipeline();
+
+    await pickRecipeImage('camera');
+
+    expect(mockLaunchCamera.mock.calls[0][0].base64).toBeUndefined();
+    expect(mockResize).toHaveBeenCalledWith({ width: MAX_IMAGE_EDGE });
+  });
+
+  it('never asks saveAsync for base64 either — the file is what gets kept', async () => {
+    mockRequestLibrary.mockResolvedValue(GRANTED);
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false, assets: [{ uri: 'file:///photo.jpg', width: 1200, height: 900 }],
+    });
+    stubPipeline();
+
+    await pickRecipeImage('library');
+
+    expect(mockSaveAsync).toHaveBeenCalledWith(expect.not.objectContaining({ base64: true }));
+  });
+
+  it('creates the recipe-images directory when it does not exist yet', async () => {
+    mockRequestLibrary.mockResolvedValue(GRANTED);
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false, assets: [{ uri: 'file:///photo.jpg', width: 1200, height: 900 }],
+    });
+    stubPipeline();
+    mockDirExists = false;
+
+    await pickRecipeImage('library');
+
+    expect(mockDirCreate).toHaveBeenCalled();
+  });
+
+  it('skips creating the directory when it already exists', async () => {
+    mockRequestLibrary.mockResolvedValue(GRANTED);
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false, assets: [{ uri: 'file:///photo.jpg', width: 1200, height: 900 }],
+    });
+    stubPipeline();
+    mockDirExists = true;
+
+    await pickRecipeImage('library');
+
+    expect(mockDirCreate).not.toHaveBeenCalled();
+  });
+
+  it('moves the saved copy into the document directory rather than the cache one it was written to', async () => {
+    mockRequestLibrary.mockResolvedValue(GRANTED);
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false, assets: [{ uri: 'file:///photo.jpg', width: 1200, height: 900 }],
+    });
+    stubPipeline({ uri: 'file:///cache/out.jpg', width: 1200, height: 900 });
+
+    const result = await pickRecipeImage('library');
+
+    expect(mockMove).toHaveBeenCalledTimes(1);
+    const [fromUri, toUri] = mockMove.mock.calls[0];
+    expect(fromUri).toBe('file:///cache/out.jpg');
+    expect(toUri).toContain('file:///documents/recipe-images/');
+    expect(result).toMatchObject({ status: 'ok', image: { uri: toUri, width: 1200, height: 900 } });
+  });
+
+  it('reports a failure rather than rejecting when the manipulator throws', async () => {
+    mockRequestLibrary.mockResolvedValue(GRANTED);
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false, assets: [{ uri: 'file:///photo.jpg', width: 1200, height: 900 }],
+    });
+    mockManipulate.mockImplementation(() => { throw new Error('corrupt image'); });
+
+    await expect(pickRecipeImage('library')).resolves.toEqual({
+      status: 'failed', message: 'corrupt image',
+    });
+  });
+
+  it('reports a failure when the save came back with no uri', async () => {
+    mockRequestLibrary.mockResolvedValue(GRANTED);
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false, assets: [{ uri: 'file:///photo.jpg', width: 1200, height: 900 }],
+    });
+    stubPipeline({ uri: undefined });
+
+    await expect(pickRecipeImage('library')).resolves.toMatchObject({ status: 'failed' });
+    expect(mockMove).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleteRecipeImage', () => {
+  it('is a no-op for null or undefined', () => {
+    deleteRecipeImage(null);
+    deleteRecipeImage(undefined);
+
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it('deletes an existing file', () => {
+    mockFileExists = true;
+
+    deleteRecipeImage('file:///documents/recipe-images/abc.jpg');
+
+    expect(mockDelete).toHaveBeenCalledWith('file:///documents/recipe-images/abc.jpg');
+  });
+
+  it('does not attempt to delete a file that no longer exists', () => {
+    mockFileExists = false;
+
+    deleteRecipeImage('file:///documents/recipe-images/gone.jpg');
+
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it('swallows a delete failure', () => {
+    mockFileExists = true;
+    mockDelete.mockImplementation(() => { throw new Error('locked'); });
+
+    expect(() => deleteRecipeImage('file:///documents/recipe-images/abc.jpg')).not.toThrow();
   });
 });

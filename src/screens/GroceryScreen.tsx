@@ -39,10 +39,13 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet';
+import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
+import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useRecipeStore } from '../store/useRecipeStore';
 import { buildGrocerySections } from '../utils/grocerySuggest';
 import { resolveGroceryDrop, groceryDragRange, placeNewGroceryItems } from '../utils/groceryReorder';
 import { useColors } from '../theme/ThemeContext';
@@ -50,7 +53,7 @@ import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors }
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
-import type { GroceryItem, Shop } from '../types';
+import type { GroceryItem, Recipe, Shop } from '../types';
 
 // The same scheme a recurring "Grocery run" task already carries in its
 // linkUrl — looked up by name rather than duplicated as a literal, so the two
@@ -113,7 +116,11 @@ export function GroceryScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiMode, setAiMode] = useState<GroceryAIMode | null>(null);
+  const [recipeSourceOpen, setRecipeSourceOpen] = useState(false);
+  const [recipeToAdd, setRecipeToAdd] = useState<Recipe | null>(null);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
+
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
 
   const {
     selectionMode,
@@ -465,23 +472,30 @@ export function GroceryScreen() {
   }, [checkedCount, listCount, selectionMode, enterSelectionMode, exitSelection, handleCreateGroceryTask]);
 
   // Bottom-up: "Add an item" ends up closest to the button. The recipe entry
-  // is gated on a key like every other AI affordance here, so a user without
-  // one just gets a two-item menu.
+  // no longer needs a key by itself — a saved recipe imports nothing over the
+  // network — so it's gated on having *either* a saved recipe or a key to
+  // import a new one with; a user with neither gets a two-item menu.
   const addMenuItems = useMemo<FabMenuItem[]>(() => {
     const list: FabMenuItem[] = [];
-    if (anthropicApiKey) {
-      list.push({ key: 'recipe', label: 'From a recipe', icon: 'sparkles-outline' });
+    if (recipes.length > 0 || anthropicApiKey) {
+      list.push({ key: 'recipe', label: 'From a recipe', icon: 'restaurant-outline' });
     }
     list.push({ key: 'buyAgain', label: 'Buy again', icon: 'basket-outline' });
     list.push({ key: 'item', label: 'Add an item', icon: 'add-circle-outline' });
     return list;
-  }, [anthropicApiKey]);
+  }, [recipes.length, anthropicApiKey]);
 
   const handleAddMenuSelect = useCallback((key: string) => {
-    if (key === 'recipe') setAiMode('recipe');
+    if (key === 'recipe') {
+      // Only one way in skips the chooser and goes straight there — there'd
+      // be nothing left to choose between.
+      if (recipes.length === 0 && anthropicApiKey) setAiMode('recipe');
+      else if (recipes.length === 1 && !anthropicApiKey) setRecipeToAdd(recipes[0]);
+      else setRecipeSourceOpen(true);
+    }
     else if (key === 'buyAgain') setBuyAgainOpen(true);
     else setAddOpen(true);
-  }, []);
+  }, [recipes, anthropicApiKey]);
 
   const renderRow = useCallback(
     ({ item: row, drag, isActive }: { item: ListRow; drag?: () => void; isActive?: boolean }) => {
@@ -694,6 +708,24 @@ export function GroceryScreen() {
         visible={aiMode !== null}
         mode={aiMode ?? 'tidy'}
         onClose={() => setAiMode(null)}
+      />
+      <RecipeSourceSheet
+        visible={recipeSourceOpen}
+        allowAIImport={!!anthropicApiKey}
+        onPickSaved={recipe => {
+          setRecipeSourceOpen(false);
+          setRecipeToAdd(recipe);
+        }}
+        onImportWithAI={() => {
+          setRecipeSourceOpen(false);
+          setAiMode('recipe');
+        }}
+        onClose={() => setRecipeSourceOpen(false)}
+      />
+      <RecipeToListSheet
+        visible={recipeToAdd !== null}
+        recipe={recipeToAdd}
+        onClose={() => setRecipeToAdd(null)}
       />
     </View>
   );

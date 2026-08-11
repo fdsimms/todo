@@ -34,6 +34,7 @@ import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import { useGroceryStore } from './useGroceryStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
+import { useLeftoverStore } from './useLeftoverStore';
 import { dripCandidate, projectPullUpdates } from '../utils/projectPull';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
@@ -42,7 +43,7 @@ import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
@@ -697,6 +698,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // And the plan, which points at those recipes by id. Range-scoped, so this
     // reloads whatever week is on screen rather than the whole table.
     useMealPlanStore.getState().initialize();
+    // What's in the fridge — pointed at by the plan the same way recipes are,
+    // and on the same swap-the-database hazard.
+    useLeftoverStore.getState().initialize();
     const tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
 
@@ -708,8 +712,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // vacationMode and dayResetTime are the user's real values rather than
   // defaults — see App.tsx call order.
   sweepExpiredTasks() {
-    if (!useSettingsStore.getState().autoRemoveExpiredTasks) return;
-    const expired = get().tasks.filter(t => !t.parentId && isTaskExpired(t));
+    const grace = useSettingsStore.getState().autoRemoveExpiredTasks;
+    if (grace === null) return;
+    const expired = get().tasks.filter(t => !t.parentId && isTaskSweepable(t, grace));
     if (expired.length === 0) return;
 
     // A recurring task's row *is* its schedule — the next occurrence only

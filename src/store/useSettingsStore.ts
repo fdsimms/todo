@@ -4,6 +4,7 @@ import type { ThemeMode } from '../theme';
 import { DEFAULT_APP_FONT, isAppFont, type AppFont } from '../theme/fonts';
 import type { SortOption, Priority, Effort } from '../types';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
+import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
 import { loadAnthropicApiKey, saveAnthropicApiKey } from '../utils/secureApiKey';
 import {
@@ -104,7 +105,13 @@ interface SettingsStore {
   vacationMode: boolean;
   vacationStart: string | null;
   vacationEnd: string | null; // optional ISO date — vacation mode auto-turns-off once this passes
-  autoRemoveExpiredTasks: boolean;
+  // How long a task with a closed time window sits in the Expired section
+  // before sweepExpiredTasks deletes it. null = Never (keep forever, the old
+  // `false`), 0 = Immediately (delete on window close, the old `true`), or a
+  // positive day count as a grace period. See src/utils/expiredTaskGrace.ts —
+  // still persisted under the 'autoRemoveExpiredTasks' settings key, so the
+  // legacy 'true'/'false' values migrate on read rather than needing a new one.
+  autoRemoveExpiredTasks: ExpiredTaskGraceDays;
   autoArchiveProjectsOnComplete: boolean;
   // How long completed tasks are kept before a startup purge deletes them.
   // null = forever, and forever is the default: nothing about an existing
@@ -195,7 +202,7 @@ interface SettingsStore {
   setAppLockGraceSeconds: (seconds: number) => void;
   setVacationMode: (on: boolean, endDate?: string | null) => void;
   setVacationEnd: (endDate: string | null) => void;
-  setAutoRemoveExpiredTasks: (on: boolean) => void;
+  setAutoRemoveExpiredTasks: (days: ExpiredTaskGraceDays) => void;
   setAutoArchiveProjectsOnComplete: (on: boolean) => void;
   setCompletedRetentionDays: (days: RetentionDays) => void;
   setDefaultReminderLeadMinutes: (minutes: number | null) => void;
@@ -232,7 +239,6 @@ const DEFAULT_SETTINGS = {
   shakeToUndoEnabled: true,
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
-  autoRemoveExpiredTasks: false,
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
   remindersImportEnabled: false,
@@ -264,6 +270,13 @@ const DEFAULT_SETTINGS = {
 //   because there the danger runs the other way: turning the import off while
 //   leaving the confirmed-list id in place would let a later re-enable skip the
 //   confirmation that is the whole safeguard.
+// - autoRemoveExpiredTasks stays out too, for the same reason as
+//   completedRetentionDays: it's a setting that deletes tasks unattended, so
+//   "reset appearance and formatting" must not quietly change how aggressively
+//   it does that. It used to round-trip through DEFAULT_SETTINGS as a boolean;
+//   pulling it out here is a behavior change from before this setting became a
+//   duration, but the safer one — a stray reset can no longer flip Never into
+//   Immediately or back.
 
 const SORT_OPTIONS: SortOption[] = ['default', 'priority', 'effort-asc', 'effort-desc', 'due-date', 'streak'];
 
@@ -335,7 +348,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   vacationMode: false,
   vacationStart: null,
   vacationEnd: null,
-  autoRemoveExpiredTasks: false,
+  autoRemoveExpiredTasks: null,
   autoArchiveProjectsOnComplete: false,
   completedRetentionDays: null,
   defaultReminderLeadMinutes: null,
@@ -388,7 +401,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
-    const autoRemoveExpiredTasks = dbGetSetting('autoRemoveExpiredTasks') === 'true';
+    const autoRemoveExpiredTasks = parseExpiredTaskGrace(dbGetSetting('autoRemoveExpiredTasks'));
     const autoArchiveProjectsOnComplete = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
@@ -623,9 +636,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ projectNudgeDismissedAt: at });
   },
 
-  setAutoRemoveExpiredTasks(on: boolean) {
-    dbSetSetting('autoRemoveExpiredTasks', on ? 'true' : 'false');
-    set({ autoRemoveExpiredTasks: on });
+  setAutoRemoveExpiredTasks(days: ExpiredTaskGraceDays) {
+    dbSetSetting('autoRemoveExpiredTasks', serializeExpiredTaskGrace(days));
+    set({ autoRemoveExpiredTasks: days });
   },
 
   setAutoArchiveProjectsOnComplete(on: boolean) {

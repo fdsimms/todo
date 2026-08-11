@@ -28,7 +28,7 @@ import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { extractRecipe, describeAIError, type ExtractedRecipe } from '../services/aiSuggestions';
-import { normalizeIngredient, cleanRecipeName } from '../utils/recipeUtils';
+import { normalizeIngredient, cleanRecipeName, formatServingsRange } from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
@@ -146,7 +146,9 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
       .map(item => normalizeIngredient(item))
       .filter((i): i is NonNullable<typeof i> => i !== null);
     if (chosen.length > 0) addStructuredIngredients(recipe.id, chosen);
-    if (applyServings && extracted.servings !== null) setServings(recipe.id, extracted.servings);
+    if (applyServings && extracted.servings !== null) {
+      setServings(recipe.id, extracted.servings, extracted.servingsMax);
+    }
     haptics.success();
     // Close first, then navigate: a navigate fired from under a live pageSheet
     // renders the destination behind the sheet.
@@ -268,13 +270,13 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
             onPress={() => { haptics.tap(); setApplyServings(v => !v); }}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: applyServings }}
-            accessibilityLabel={`Serves ${extracted.servings}`}
+            accessibilityLabel={`Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`}
           >
             <View style={[styles.checkbox, applyServings && styles.checkboxOn]}>
               {applyServings && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
             </View>
             <View style={styles.body}>
-              <Text style={styles.name}>Serves {extracted.servings}</Text>
+              <Text style={styles.name}>Serves {formatServingsRange(extracted.servings, extracted.servingsMax)}</Text>
               {extracted.prepMinutes !== null && (
                 <Text style={styles.meta}>About {extracted.prepMinutes} min</Text>
               )}
@@ -284,29 +286,36 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
 
         {extracted.ingredients.map((row, i) => {
           const on = accepted.has(i);
+          // A new heading whenever this row's section differs from the one
+          // right before it — same display-only grouping RecipeDetailScreen
+          // does over the saved list, run here over the preview instead.
+          const prevSection = i > 0 ? extracted.ingredients[i - 1].section : null;
+          const sectionHeader = row.section && row.section !== prevSection ? row.section : null;
           return (
-            <TouchableOpacity
-              key={`${row.name}-${i}`}
-              style={styles.row}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => toggle(i)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: on }}
-              accessibilityLabel={`${row.name}, ${row.aisle}`}
-            >
-              <View style={[styles.checkbox, on && styles.checkboxOn]}>
-                {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-              </View>
-              <View style={styles.body}>
-                <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
-                <Text style={styles.meta} numberOfLines={1}>{row.aisle}</Text>
-              </View>
-              {!!row.quantity && (
-                <View style={styles.qtyPill}>
-                  <Text style={styles.qtyText} numberOfLines={1}>{row.quantity}</Text>
+            <React.Fragment key={`${row.name}-${i}`}>
+              {!!sectionHeader && <Text style={styles.sectionHeader}>{sectionHeader}</Text>}
+              <TouchableOpacity
+                style={styles.row}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => toggle(i)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: on }}
+                accessibilityLabel={`${row.name}, ${row.aisle}`}
+              >
+                <View style={[styles.checkbox, on && styles.checkboxOn]}>
+                  {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
                 </View>
-              )}
-            </TouchableOpacity>
+                <View style={styles.body}>
+                  <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
+                  <Text style={styles.meta} numberOfLines={1}>{row.aisle}</Text>
+                </View>
+                {!!row.quantity && (
+                  <View style={styles.qtyPill}>
+                    <Text style={styles.qtyText} numberOfLines={1}>{row.quantity}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </React.Fragment>
           );
         })}
       </ScrollView>
@@ -358,6 +367,16 @@ function makeStyles(colors: Colors) {
       paddingBottom: spacing.sm,
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
+    sectionHeader: {
+      color: colors.textTertiary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.xs,
+    },
     pasteWrap: { padding: spacing.md, gap: spacing.md },
     photoError: { color: colors.red, fontSize: font.sm, textAlign: 'center' },
     nameCard: {
