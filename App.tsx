@@ -9,6 +9,7 @@ import { AppLockGate } from './src/components/AppLockGate';
 import { useTaskStore } from './src/store/useTaskStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { useMealPlanStore } from './src/store/useMealPlanStore';
+import { useLeftoverStore } from './src/store/useLeftoverStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
 import { useNotificationTapSync } from './src/utils/notificationTapSync';
@@ -72,6 +73,7 @@ function AppRoot() {
   const dripStalledProjects = useTaskStore(s => s.dripStalledProjects);
   const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
   const purgeOldMealPlanEntries = useMealPlanStore(s => s.purgeOldEntries);
+  const purgeOldLeftovers = useLeftoverStore(s => s.purgeOldLeftovers);
 
   useEffect(() => {
     // Every step is isolated (see src/utils/startup.ts): these are independent
@@ -117,6 +119,10 @@ function AppRoot() {
       // completedRetentionDays — that setting is a promise about the Logbook,
       // and "keep completions forever" must not also mean four years of dinners.
       ['purge old meal plan entries', purgeOldMealPlanEntries],
+      // And the fridge's, which only ever takes rows the user already closed
+      // out — a container nobody said they finished survives this however old
+      // it is, because that is exactly the one the nudge exists to surface.
+      ['purge old leftovers', purgeOldLeftovers],
       // Request notification permissions
       ['request notification permissions', requestNotificationPermissions],
       // AlarmKit has its own authorization, separate from UNUserNotificationCenter
@@ -125,7 +131,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initTasks, initSettings, initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, dripStalledProjects, purgeOldCompletedTasks, purgeOldMealPlanEntries]);
+  }, [initTasks, initSettings, initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, dripStalledProjects, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any

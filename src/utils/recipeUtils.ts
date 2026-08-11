@@ -1,7 +1,10 @@
-import type { GroceryItem, Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+import type { GroceryItem, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
 import {
+  RECIPE_MEAL_TYPES,
+  RECIPE_MEAL_TYPE_LABELS,
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
+  RECIPE_SECTION_MAX_LENGTH,
   PREP_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
@@ -13,6 +16,7 @@ import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
 import { formatDuration } from './effort';
+import { describeComponents, flattenRecipeIngredients, recipeMap } from './recipeComponents';
 
 // splitPrep lives in groceryParse.ts now — the plain grocery quick-add field
 // runs the same split for its live preview, not just recipe ingredient lines
@@ -65,6 +69,9 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
     prep: typeof r.prep === 'string' && r.prep.trim()
       ? r.prep.trim().slice(0, PREP_MAX_LENGTH)
       : null,
+    section: typeof r.section === 'string' && r.section.trim()
+      ? r.section.trim().slice(0, RECIPE_SECTION_MAX_LENGTH)
+      : null,
   };
 }
 
@@ -89,6 +96,7 @@ export function makeIngredient(line: string): RecipeIngredient | null {
     quantity: quantity ?? '',
     aisle: null,
     prep,
+    section: null,
   };
 }
 
@@ -216,14 +224,26 @@ export function resolvePrepTaskDraft(
 }
 
 /**
- * "8 ingredients · 6 likely in pantry · serves 4 · NYT Cooking" — the recipe
- * row's subtitle. `likelyInPantry` is optional and omitted (both the param
- * and, given a falsy count, the phrase) rather than ever rendering "0 likely
- * in pantry" — see `countLikelyInPantry`.
+ * "Breakfast · 8 ingredients · 1 component · 6 likely in pantry · serves 4 ·
+ * NYT Cooking" — the recipe row's subtitle. `likelyInPantry` is optional and
+ * omitted (both the param and, given a falsy count, the phrase) rather than
+ * ever rendering "0 likely in pantry" — see `countLikelyInPantry`. The meal
+ * type leads, ahead of the ingredient count, since it's the fact someone
+ * scanning the list is most likely browsing by (see RecipeMealType).
+ *
+ * The ingredient count is the recipe's *own* lines, never the flattened total,
+ * because it has to agree with the list the detail screen puts on screen right
+ * under it. What the component clause is for is saying there's more: "3
+ * ingredients" alone would read as the whole shop for a dish that's mostly its
+ * parts.
  */
 export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): string {
   const count = recipe.ingredients.length;
-  const parts = [count === 1 ? '1 ingredient' : `${count} ingredients`];
+  const parts: string[] = [];
+  if (recipe.mealType) parts.push(RECIPE_MEAL_TYPE_LABELS[recipe.mealType]);
+  parts.push(count === 1 ? '1 ingredient' : `${count} ingredients`);
+  const components = describeComponents(recipe);
+  if (components) parts.push(components);
   if (likelyInPantry) {
     parts.push(likelyInPantry === 1 ? '1 likely in pantry' : `${likelyInPantry} likely in pantry`);
   }
@@ -241,14 +261,20 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): 
  * section, reused here rather than re-deriving it, and reduced to a count for
  * the recipe list row. Null (never 0) when there's nothing worth showing: no
  * ingredients, or nothing in the catalog reads as still on hand.
+ *
+ * `recipesById` counts a composed recipe's components in, so the number means
+ * the same thing the "Add ingredients to list" sheet will show. Optional for
+ * the same reason plannedIngredientsForRecipe's is.
  */
 export function countLikelyInPantry(
   recipe: Recipe,
   items: readonly GroceryItem[],
   now: Date,
+  recipesById?: ReadonlyMap<string, Recipe>,
 ): number | null {
-  if (recipe.ingredients.length === 0) return null;
-  const classified = classifyPlanned(plannedIngredientsForRecipe(recipe), items, now);
+  const planned = plannedIngredientsForRecipe(recipe, recipesById);
+  if (planned.length === 0) return null;
+  const classified = classifyPlanned(planned, items, now);
   const count = classified.filter(row => row.category === 'probablyHave').length;
   return count > 0 ? count : null;
 }
@@ -280,10 +306,16 @@ export function cleanRecipeSource(raw: string): string {
  * rankGrocerySuggestions' 3/2/1 prefix / word-start / substring weighting so
  * searching here behaves the way searching the catalog already does. Favorites
  * break ties; nothing else does, because Phase 1 has no cook history to rank on.
+ *
+ * The ingredient match runs over the *flattened* list, built from the same
+ * `recipes` array rather than a second parameter — searching "potato" has to
+ * find the dinner whose mash is where the potatoes are written down, or a
+ * component is a place ingredients go to hide from search.
  */
 export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[] {
   const q = groceryNameKey(query);
   if (!q) return [...recipes];
+  const byId = recipeMap(recipes);
   const scored: Array<{ recipe: Recipe; weight: number }> = [];
   for (const recipe of recipes) {
     const key = recipe.nameKey;
@@ -293,7 +325,7 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
     else if (key.includes(q)) weight = 1;
     // An ingredient match is a real hit — "what can I make with fennel" is the
     // question a recipe box is for — but it must never outrank a name match.
-    else if (recipe.ingredients.some(i => i.nameKey.includes(q))) weight = 0.5;
+    else if (flattenRecipeIngredients(recipe, byId).some(f => f.ingredient.nameKey.includes(q))) weight = 0.5;
     if (weight > 0) scored.push({ recipe, weight });
   }
   return scored
@@ -365,6 +397,62 @@ export function describeCookTime(recipe: Recipe): string {
   return parts.join(' · ');
 }
 
+/**
+ * Favorites-first ordering for the unfiltered recipe box — the same sort
+ * RecipesScreen has always applied to its flat list, pulled out so
+ * groupRecipesByMealType can give each of its sections the identical order
+ * instead of inventing a second one. A search ranking (rankRecipes) is a
+ * different question — "what matches this text" — so it's never routed
+ * through here.
+ */
+export function sortRecipesForDisplay(recipes: readonly Recipe[]): Recipe[] {
+  return [...recipes].sort((a, b) =>
+    Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder
+  );
+}
+
+export interface RecipeMealTypeSection {
+  /** null is the trailing "Untagged" section — RecipeMealType has no null member of its own. */
+  mealType: RecipeMealType | null;
+  title: string;
+  data: Recipe[];
+}
+
+/**
+ * Groups recipes into sections by RecipeMealType, in RECIPE_MEAL_TYPES' fixed
+ * display order — mirroring how makeCategoryGroups orders Today's category
+ * sections by a fixed list rather than alphabetically or by section size.
+ * Untagged recipes (mealType: null) trail in their own section rather than
+ * leading like Today's header-less loose group, because here there's no drag
+ * to strand a recipe "above": a section list is read top to bottom, and most
+ * existing recipes predate this field, so leading with a wall of "Untagged"
+ * would bury the very grouping the user just asked for.
+ *
+ * A meal type with no recipes is omitted entirely rather than rendered empty,
+ * same as makeCategoryGroups omitting empty categories.
+ */
+export function groupRecipesByMealType(recipes: readonly Recipe[]): RecipeMealTypeSection[] {
+  const byType = new Map<string, Recipe[]>();
+  recipes.forEach(recipe => {
+    const key = recipe.mealType ?? '';
+    if (!byType.has(key)) byType.set(key, []);
+    byType.get(key)!.push(recipe);
+  });
+
+  const sections: RecipeMealTypeSection[] = [];
+  RECIPE_MEAL_TYPES.forEach(mealType => {
+    const list = byType.get(mealType);
+    if (list && list.length > 0) {
+      sections.push({ mealType, title: RECIPE_MEAL_TYPE_LABELS[mealType], data: sortRecipesForDisplay(list) });
+    }
+  });
+  const untagged = byType.get('');
+  if (untagged && untagged.length > 0) {
+    sections.push({ mealType: null, title: 'Untagged', data: sortRecipesForDisplay(untagged) });
+  }
+  return sections;
+}
+
 /** "Cooked once" / "Cooked 4× · last on 12 Jul" — empty when never cooked. */
 export function describeCookHistory(recipe: Recipe): string {
   if (recipe.cookCount === 0) return '';
@@ -428,19 +516,25 @@ export function scoreRecipeAgainstCatalog(
   recipe: Recipe,
   items: readonly GroceryItem[],
   now: Date,
+  recipesById?: ReadonlyMap<string, Recipe>,
 ): number {
-  if (recipe.ingredients.length === 0) return 0;
+  // Coverage has to be measured over everything the dish actually needs — a
+  // parent with two ingredients of its own would otherwise score as a night's
+  // cooking away from ready while its components' shopping list is untouched.
+  const ingredients = flattenRecipeIngredients(recipe, recipesById ?? new Map([[recipe.id, recipe]]))
+    .map(f => f.ingredient);
+  if (ingredients.length === 0) return 0;
   const byKey = new Map(items.map(i => [i.nameKey, i]));
   let matched = 0;
   let recencySum = 0;
-  for (const ingredient of recipe.ingredients) {
+  for (const ingredient of ingredients) {
     const item = byKey.get(ingredient.nameKey);
     if (!item) continue;
     matched += 1;
     recencySum += purchaseRecency(item, now);
   }
   if (matched === 0) return 0;
-  const coverage = matched / recipe.ingredients.length;
+  const coverage = matched / ingredients.length;
   const avgRecency = recencySum / matched;
   return coverage * (0.5 + 0.5 * avgRecency);
 }
@@ -459,8 +553,9 @@ export function suggestRecipesForEmptyNight(
   now: Date,
   limit = 3,
 ): Recipe[] {
+  const byId = recipeMap(recipes);
   return recipes
-    .map(recipe => ({ recipe, score: scoreRecipeAgainstCatalog(recipe, items, now) }))
+    .map(recipe => ({ recipe, score: scoreRecipeAgainstCatalog(recipe, items, now, byId) }))
     .filter(x => x.score > 0)
     .sort((a, b) => b.score - a.score || a.recipe.name.localeCompare(b.recipe.name))
     .slice(0, limit)

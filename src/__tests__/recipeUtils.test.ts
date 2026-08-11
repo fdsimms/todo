@@ -16,12 +16,14 @@ import {
   applyMeasuredCookTime,
   avgCookMinutes,
   describeCookTime,
+  sortRecipesForDisplay,
+  groupRecipesByMealType,
   rankRecipeSuggestions,
   scoreRecipeAgainstCatalog,
   suggestRecipesForEmptyNight,
   countLikelyInPantry,
 } from '../utils/recipeUtils';
-import type { GroceryItem, Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+import type { GroceryItem, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 
 // recipeUtils now reaches mealPlanGroceries.ts (for countLikelyInPantry) and,
 // through it, mealPlan.ts → dateUtils.ts → the settings store — which
@@ -39,8 +41,13 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
     quantity: '',
     aisle: null,
     prep: null,
+    section: null,
     ...overrides,
   };
+}
+
+function component(recipeId: string, name: string): RecipeComponent {
+  return { id: `c-${++seq}`, recipeId, name };
 }
 
 function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
@@ -54,7 +61,9 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     author: null,
     source: null,
     servings: null,
+    mealType: null,
     ingredients: [],
+    components: [],
     prepTasks: [],
     favorite: false,
     sortOrder: seq,
@@ -77,14 +86,23 @@ describe('parseRecipeIngredients', () => {
       { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled' },
     ]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled' },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled', section: null },
     ]);
   });
 
-  it('defaults prep to null for a blob written before the field existed', () => {
+  it('defaults prep and section to null for a blob written before the fields existed', () => {
     const stored = JSON.stringify([{ id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce' }]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null, section: null },
+    ]);
+  });
+
+  it('reads a stored section label', () => {
+    const stored = JSON.stringify([
+      { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, section: 'For the cake' },
+    ]);
+    expect(parseRecipeIngredients(stored)).toEqual([
+      { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, section: 'For the cake' },
     ]);
   });
 
@@ -112,6 +130,7 @@ describe('normalizeIngredient', () => {
     expect(result.quantity).toBe('');
     expect(result.aisle).toBeNull();
     expect(result.prep).toBeNull();
+    expect(result.section).toBeNull();
   });
 
   it('treats an empty aisle string as no opinion', () => {
@@ -125,6 +144,20 @@ describe('normalizeIngredient', () => {
 
   it('keeps a stored prep clause', () => {
     expect(normalizeIngredient({ name: 'Garlic', prep: 'minced' })!.prep).toBe('minced');
+  });
+
+  it('treats an empty or blank section string as ungrouped', () => {
+    expect(normalizeIngredient({ name: 'Salt', section: '' })!.section).toBeNull();
+    expect(normalizeIngredient({ name: 'Salt', section: '   ' })!.section).toBeNull();
+  });
+
+  it('keeps a stored section label', () => {
+    expect(normalizeIngredient({ name: 'Flour', section: 'For the cake' })!.section).toBe('For the cake');
+  });
+
+  it('trims a section label to RECIPE_SECTION_MAX_LENGTH', () => {
+    const long = 'x'.repeat(100);
+    expect(normalizeIngredient({ name: 'Flour', section: long })!.section).toHaveLength(40);
   });
 });
 
@@ -182,6 +215,10 @@ describe('makeIngredient', () => {
     // The lexicon knows bananas are Produce, but asserting it here would
     // outrank the user's own filing for ever after.
     expect(makeIngredient('bananas')!.aisle).toBeNull();
+  });
+
+  it('leaves a one-line add ungrouped', () => {
+    expect(makeIngredient('bananas')!.section).toBeNull();
   });
 
   it('splits prep out of the name after the quantity is peeled off', () => {
@@ -416,6 +453,80 @@ describe('describeRecipe', () => {
       sourceName: 'NYT Cooking',
     }))).toBe('1 ingredient · serves 4 · 1.5h · NYT Cooking');
   });
+
+  it('leads with the meal type when set, ahead of the ingredient count', () => {
+    expect(describeRecipe(recipe('I', { ingredients: [ing('Salt')], mealType: 'breakfast' })))
+      .toBe('Breakfast · 1 ingredient');
+    expect(describeRecipe(recipe('J', {
+      ingredients: [ing('Salt')],
+      mealType: 'dessert',
+      servings: 4,
+    }))).toBe('Dessert · 1 ingredient · serves 4');
+  });
+
+  it('omits the meal type phrase when unset', () => {
+    expect(describeRecipe(recipe('K', { ingredients: [ing('Salt')], mealType: null })))
+      .toBe('1 ingredient');
+  });
+
+  it('says a composed recipe has parts, right after its own ingredient count', () => {
+    const composed = recipe('I', {
+      ingredients: [ing('Steak')],
+      components: [component('r-mash', 'Mash')],
+      servings: 2,
+    });
+    expect(describeRecipe(composed)).toBe('1 ingredient · 1 component · serves 2');
+    expect(describeRecipe(recipe('J', {
+      components: [component('r-mash', 'Mash'), component('r-gravy', 'Gravy')],
+    }))).toBe('0 ingredients · 2 components');
+  });
+});
+
+describe('sortRecipesForDisplay', () => {
+  it('puts favorites first, then sortOrder', () => {
+    const a = recipe('A', { sortOrder: 2, favorite: false });
+    const b = recipe('B', { sortOrder: 1, favorite: true });
+    const c = recipe('C', { sortOrder: 0, favorite: false });
+    expect(sortRecipesForDisplay([a, b, c]).map(r => r.name)).toEqual(['B', 'C', 'A']);
+  });
+
+  it('does not mutate the input array', () => {
+    const list = [recipe('A', { sortOrder: 1 }), recipe('B', { sortOrder: 0 })];
+    const original = [...list];
+    sortRecipesForDisplay(list);
+    expect(list).toEqual(original);
+  });
+});
+
+describe('groupRecipesByMealType', () => {
+  it('groups into RECIPE_MEAL_TYPES order, dropping meal types with nothing in them', () => {
+    const breakfast = recipe('Oatmeal', { mealType: 'breakfast', sortOrder: 0 });
+    const dessert = recipe('Cake', { mealType: 'dessert', sortOrder: 0 });
+    const dinner = recipe('Stew', { mealType: 'dinner', sortOrder: 0 });
+    const sections = groupRecipesByMealType([dessert, breakfast, dinner]);
+    expect(sections.map(s => s.title)).toEqual(['Breakfast', 'Dinner', 'Dessert']);
+    expect(sections.map(s => s.data.map(r => r.name))).toEqual([['Oatmeal'], ['Stew'], ['Cake']]);
+  });
+
+  it('trails untagged recipes in their own section, after every tagged one', () => {
+    const untagged = recipe('Mystery', { mealType: null, sortOrder: 0 });
+    const lunch = recipe('Salad', { mealType: 'lunch', sortOrder: 0 });
+    const sections = groupRecipesByMealType([untagged, lunch]);
+    expect(sections.map(s => s.title)).toEqual(['Lunch', 'Untagged']);
+    expect(sections[1].mealType).toBeNull();
+    expect(sections[1].data.map(r => r.name)).toEqual(['Mystery']);
+  });
+
+  it('sorts each section favorites-first by sortOrder, same as the flat list', () => {
+    const a = recipe('A', { mealType: 'snack', sortOrder: 2, favorite: false });
+    const b = recipe('B', { mealType: 'snack', sortOrder: 1, favorite: true });
+    const sections = groupRecipesByMealType([a, b]);
+    expect(sections[0].data.map(r => r.name)).toEqual(['B', 'A']);
+  });
+
+  it('returns no sections for an empty recipe list', () => {
+    expect(groupRecipesByMealType([])).toEqual([]);
+  });
 });
 
 describe('cleanRecipeName', () => {
@@ -463,6 +574,17 @@ describe('rankRecipes', () => {
 
   it('drops what does not match at all', () => {
     expect(rankRecipes('lasagne', all)).toEqual([]);
+  });
+
+  it('finds a dish by an ingredient that lives on one of its components', () => {
+    const mash = recipe('Mash', { nameKey: 'mash', ingredients: [ing('Potatoes', { nameKey: 'potatoes' })] });
+    const steak = recipe('Steak dinner', {
+      nameKey: 'steak dinner',
+      ingredients: [ing('Steak', { nameKey: 'steak' })],
+      components: [component(mash.id, 'Mash')],
+    });
+
+    expect(rankRecipes('potatoes', [steak, mash]).map(r => r.name)).toEqual(['Mash', 'Steak dinner']);
   });
 });
 
@@ -640,6 +762,21 @@ describe('scoreRecipeAgainstCatalog', () => {
     const stale = [item('Onions', { nameKey: 'onions', lastPurchasedAt: new Date(2026, 0, 1).toISOString() })];
     expect(scoreRecipeAgainstCatalog(r, fresh, now)).toBeGreaterThan(scoreRecipeAgainstCatalog(r, stale, now));
   });
+
+  it('measures coverage over the components too, not just the parent\'s own lines', () => {
+    const mash = recipe('Mash', { ingredients: [ing('Saffron', { nameKey: 'saffron' })] });
+    const steak = recipe('Steak dinner', {
+      ingredients: [ing('Onions', { nameKey: 'onions' })],
+      components: [component(mash.id, 'Mash')],
+    });
+    const items = [item('Onions', { nameKey: 'onions' })];
+    const byId = new Map([[steak.id, steak], [mash.id, mash]]);
+
+    // Half its shopping is unaccounted for once the component counts, so it
+    // has to score below the same recipe read on its own.
+    expect(scoreRecipeAgainstCatalog(steak, items, now, byId))
+      .toBeLessThan(scoreRecipeAgainstCatalog(steak, items, now));
+  });
 });
 
 describe('countLikelyInPantry', () => {
@@ -674,6 +811,20 @@ describe('countLikelyInPantry', () => {
       ],
     });
     expect(countLikelyInPantry(r, [milk, onions], now)).toBe(1);
+  });
+
+  it('counts a component\'s ingredients when given the library', () => {
+    const milk = item('Milk', {
+      nameKey: 'milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+    });
+    const mash = recipe('Mash', { ingredients: [ing('Milk', { nameKey: 'milk' })] });
+    const steak = recipe('Steak dinner', {
+      ingredients: [ing('Steak', { nameKey: 'steak' })],
+      components: [component(mash.id, 'Mash')],
+    });
+
+    expect(countLikelyInPantry(steak, [milk], now)).toBeNull();
+    expect(countLikelyInPantry(steak, [milk], now, new Map([[steak.id, steak], [mash.id, mash]]))).toBe(1);
   });
 });
 

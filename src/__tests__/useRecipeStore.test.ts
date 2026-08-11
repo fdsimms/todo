@@ -26,7 +26,9 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     author: null,
     source: null,
     servings: null,
+    mealType: null,
     ingredients: [],
+    components: [],
     prepTasks: [],
     favorite: false,
     sortOrder: seq,
@@ -167,6 +169,17 @@ describe('field setters', () => {
     expect(useRecipeStore.getState().recipeById(r.id)!.servings).toBeNull();
   });
 
+  it('sets and clears the meal type', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setMealType(r.id, 'dinner');
+    expect(useRecipeStore.getState().recipeById(r.id)!.mealType).toBe('dinner');
+
+    useRecipeStore.getState().setMealType(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.mealType).toBeNull();
+  });
+
   it('toggles favourite', () => {
     const r = makeRecipe('Ragu');
     seed([r]);
@@ -240,7 +253,7 @@ describe('ingredients', () => {
 
 describe('addStructuredIngredients', () => {
   const struct = (name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIngredient => ({
-    id: `s-${name}`, name, nameKey: name.toLowerCase(), quantity: '', aisle: null, prep: null, ...overrides,
+    id: `s-${name}`, name, nameKey: name.toLowerCase(), quantity: '', aisle: null, prep: null, section: null, ...overrides,
   });
 
   it('merges already-parsed ingredients, reporting how many were new', () => {
@@ -261,7 +274,7 @@ describe('addStructuredIngredients', () => {
 
   it('keeps the existing row on a key collision rather than overwriting it', () => {
     const r = makeRecipe('Ragu', {
-      ingredients: [{ id: 'i1', name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, prep: null }],
+      ingredients: [{ id: 'i1', name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, prep: null, section: null }],
     });
     seed([r]);
 
@@ -386,12 +399,12 @@ describe('remapIngredientKey', () => {
   it('rewrites every recipe that referenced the old key, and only those', () => {
     const ragu = makeRecipe('Ragu', {
       ingredients: [
-        { id: 'i1', name: 'Tomatos', nameKey: 'tomatos', quantity: '', aisle: null, prep: null },
+        { id: 'i1', name: 'Tomatos', nameKey: 'tomatos', quantity: '', aisle: null, prep: null, section: null },
       ],
     });
     const soup = makeRecipe('Soup', {
       ingredients: [
-        { id: 'i2', name: 'Carrots', nameKey: 'carrots', quantity: '', aisle: null, prep: null },
+        { id: 'i2', name: 'Carrots', nameKey: 'carrots', quantity: '', aisle: null, prep: null, section: null },
       ],
     });
     seed([ragu, soup]);
@@ -410,6 +423,73 @@ describe('remapIngredientKey', () => {
   });
 });
 
+describe('addComponent / removeComponent', () => {
+  it('links a recipe as a part of another, capturing its name', () => {
+    const steak = makeRecipe('Steak');
+    const mash = makeRecipe('Mash');
+    seed([steak, mash]);
+
+    expect(useRecipeStore.getState().addComponent(steak.id, mash.id)).toBe(true);
+
+    const components = useRecipeStore.getState().recipeById(steak.id)!.components;
+    expect(components).toHaveLength(1);
+    expect(components[0]).toMatchObject({ recipeId: mash.id, name: 'Mash' });
+    expect(dbUpdateRecipe).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets one component be shared by several recipes', () => {
+    const steak = makeRecipe('Steak');
+    const salmon = makeRecipe('Salmon');
+    const mash = makeRecipe('Mash');
+    seed([steak, salmon, mash]);
+
+    useRecipeStore.getState().addComponent(steak.id, mash.id);
+    useRecipeStore.getState().addComponent(salmon.id, mash.id);
+
+    expect(useRecipeStore.getState().recipeById(steak.id)!.components[0].recipeId).toBe(mash.id);
+    expect(useRecipeStore.getState().recipeById(salmon.id)!.components[0].recipeId).toBe(mash.id);
+  });
+
+  it('refuses a duplicate link, itself, an unknown id, and a loop', () => {
+    const steak = makeRecipe('Steak');
+    const mash = makeRecipe('Mash');
+    seed([steak, mash]);
+    useRecipeStore.getState().addComponent(steak.id, mash.id);
+    (dbUpdateRecipe as jest.Mock).mockClear();
+
+    expect(useRecipeStore.getState().addComponent(steak.id, mash.id)).toBe(false);
+    expect(useRecipeStore.getState().addComponent(steak.id, steak.id)).toBe(false);
+    expect(useRecipeStore.getState().addComponent(steak.id, 'gone')).toBe(false);
+    expect(useRecipeStore.getState().addComponent('gone', mash.id)).toBe(false);
+    // Mash already reaches Steak, so this would close the loop.
+    expect(useRecipeStore.getState().addComponent(mash.id, steak.id)).toBe(false);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('unlinks by the component’s own id, including one whose recipe is gone', () => {
+    const mash = makeRecipe('Mash');
+    const steak = makeRecipe('Steak');
+    seed([steak, mash]);
+    useRecipeStore.getState().addComponent(steak.id, mash.id);
+    const componentId = useRecipeStore.getState().recipeById(steak.id)!.components[0].id;
+    useRecipeStore.getState().deleteRecipe(mash.id);
+
+    useRecipeStore.getState().removeComponent(steak.id, componentId);
+
+    expect(useRecipeStore.getState().recipeById(steak.id)!.components).toEqual([]);
+  });
+
+  it('shrugs at an unknown recipe or component id', () => {
+    const steak = makeRecipe('Steak');
+    seed([steak]);
+
+    useRecipeStore.getState().removeComponent(steak.id, 'gone');
+    useRecipeStore.getState().removeComponent('gone', 'gone');
+
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
 describe('deleteRecipe', () => {
   it('drops the row', () => {
     const r = makeRecipe('Ragu');
@@ -419,6 +499,19 @@ describe('deleteRecipe', () => {
 
     expect(dbDeleteRecipe).toHaveBeenCalledWith(r.id);
     expect(useRecipeStore.getState().recipes).toEqual([]);
+  });
+
+  it('leaves a parent’s link dangling rather than editing a recipe the user didn’t touch', () => {
+    const steak = makeRecipe('Steak');
+    const mash = makeRecipe('Mash');
+    seed([steak, mash]);
+    useRecipeStore.getState().addComponent(steak.id, mash.id);
+
+    useRecipeStore.getState().deleteRecipe(mash.id);
+
+    expect(useRecipeStore.getState().recipeById(steak.id)!.components).toEqual([
+      expect.objectContaining({ recipeId: mash.id, name: 'Mash' }),
+    ]);
   });
 });
 

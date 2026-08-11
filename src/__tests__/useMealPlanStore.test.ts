@@ -40,6 +40,7 @@ function entry(
     sortOrder: 1,
     createdAt: '2026-01-01T00:00:00.000Z',
     cookedAt: null,
+    leftoverId: null,
     ...overrides,
   };
 }
@@ -135,6 +136,25 @@ describe('planMeal', () => {
     expect(planned.recipeId).toBe('r1');
     expect(dbInsertMealPlanEntry).toHaveBeenCalledWith(planned);
     expect(getEntries()).toEqual([planned]);
+  });
+
+  it('carries a tracked leftover, and touches nothing about the leftover itself', () => {
+    loadWeek();
+    const planned = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', leftoverId: 'lo-1', title: 'Chilli (2 days old)',
+    })!;
+
+    expect(planned.leftoverId).toBe('lo-1');
+    expect(planned.recipeId).toBeNull();
+  });
+
+  it('leaves leftoverId null for an ordinary plan', () => {
+    loadWeek();
+    const planned = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragù',
+    })!;
+
+    expect(planned.leftoverId).toBeNull();
   });
 
   // "Leftovers" is a plan, not a skipped step.
@@ -299,6 +319,16 @@ describe('renameEntry', () => {
     useMealPlanStore.getState().renameEntry(dinner.id, 'Something else');
 
     expect(getEntries()[0].title).toBe('Sausage ragù');
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op on a leftover-backed entry — the title carries its age', () => {
+    const dinner = entry('2026-08-05', 'dinner', { title: 'Chilli (2 days old)', leftoverId: 'lo-1' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().renameEntry(dinner.id, 'Something else');
+
+    expect(getEntries()[0].title).toBe('Chilli (2 days old)');
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
 
