@@ -28,6 +28,15 @@ interface Props {
   /** Already ranked by suggestRecipesForEmptyNight — this sheet doesn't re-sort. */
   recipes: Recipe[];
   /**
+   * Recipes made often and made recently (rankRecipeSuggestions) — the
+   * comfort-food counterpart to `recipes` above, rendered in its own "Cook
+   * again" group rather than merged into the pantry ranking, since the two
+   * rank by opposite signals (this one rewards a recent cook, `recipes`
+   * discounts one). The caller dedupes against `recipes` before handing it
+   * over, so a recipe qualifying for both isn't shown twice.
+   */
+  cookAgainRecipes?: Recipe[];
+  /**
    * The visible half of #1103's pantry signal — a recipe missing from this
    * map (rather than present with `total: 0`) just renders with no badge, so
    * a caller that hasn't computed it yet degrades to the pre-#1103 row.
@@ -96,7 +105,7 @@ interface Props {
  * one-off free-text entry that has to be invented again next month.
  */
 export function SuggestMealsSheet({
-  visible, recipes, pantryByRecipeId, openDays,
+  visible, recipes, cookAgainRecipes = [], pantryByRecipeId, openDays,
   aiIdeasEnabled = false, plannedTitles, recentTitles, slotsToFill,
   onPlan, onClose,
 }: Props) {
@@ -425,7 +434,8 @@ export function SuggestMealsSheet({
     );
   };
 
-  const nothingAtAll = recipes.length === 0 && ideas.length === 0 && !aiIdeasEnabled;
+  const nothingAtAll = recipes.length === 0 && cookAgainRecipes.length === 0
+    && ideas.length === 0 && !aiIdeasEnabled;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -451,6 +461,17 @@ export function SuggestMealsSheet({
             keyboardShouldPersistTaps="handled"
             {...keyboardScroll.props}
           >
+            {/* Recipes made often and made recently — kept separate from the
+                pantry ranking below rather than merged into it, since the two
+                rank by opposite signals (see cookAgainRecipes' own doc). */}
+            {cookAgainRecipes.length > 0 && (
+              <View style={styles.cookAgainSection}>
+                <Text style={[styles.sectionHeader, styles.cookAgainHeader]}>COOK AGAIN</Text>
+                {cookAgainRecipes.map(recipe => (
+                  <React.Fragment key={`again:${recipe.id}`}>{renderRecipeRow(recipe)}</React.Fragment>
+                ))}
+              </View>
+            )}
             {nightsFull ? (
               // Says why the rows have gone quiet. Reachable two ways: the
               // sheet filled the last free night itself, or it was opened on a
@@ -551,6 +572,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   ideaError: { fontSize: font.xs, color: colors.red, marginTop: spacing.xs },
 
   ideaSection: { marginTop: spacing.lg, paddingHorizontal: spacing.md, gap: spacing.sm },
+  cookAgainSection: { paddingTop: spacing.md, gap: 2 },
+  cookAgainHeader: { paddingHorizontal: spacing.md, marginBottom: spacing.xs },
   sectionHeader: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,

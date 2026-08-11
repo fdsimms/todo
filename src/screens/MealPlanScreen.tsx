@@ -58,6 +58,7 @@ import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import {
   resolvePrepTaskDraft,
   suggestRecipesForEmptyNight,
+  rankRecipeSuggestions,
   pantryCoverageForRecipe,
   type PantryCoverage,
 } from '../utils/recipeUtils';
@@ -264,7 +265,7 @@ export function MealPlanScreen() {
   // sheet whose contents are recomputed from the week rewrites itself under
   // the finger that just tapped it. Null closes it.
   const [suggesting, setSuggesting] =
-    useState<{ recipes: Recipe[]; days: Date[] } | null>(null);
+    useState<{ recipes: Recipe[]; cookAgainRecipes: Recipe[]; days: Date[] } | null>(null);
   // Per-day collapse, local-only — every day starts expanded, and folding one
   // away is just less to scroll past, not a decision worth persisting.
   const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
@@ -871,6 +872,18 @@ export function MealPlanScreen() {
     [recipes, groceryItems]
   );
 
+  // Recipes made often and made recently — the comfort-food half of the
+  // sheet, opposite in intent to the pantry ranking above (that one rewards
+  // catalog coverage nudged *down* for a recent cook, this one rewards the
+  // cook itself). Used to be its own "Cook again" shelf on the Recipes
+  // screen; folded in here instead of duplicated, since planning a night is
+  // exactly what this sheet is already for. Deduped against `mealSuggestions`
+  // so a recipe that qualifies for both doesn't show up as two rows.
+  const cookAgainSuggestions = useMemo(() => {
+    const alreadyRanked = new Set(mealSuggestions.map(r => r.id));
+    return rankRecipeSuggestions(recipes, new Date()).filter(r => !alreadyRanked.has(r.id));
+  }, [recipes, mealSuggestions]);
+
   // The visible half of #1103's pantry signal — computed only for the
   // recipes actually on the suggestions shelf, same "just the visible list"
   // scoping RecipesScreen's pantryCounts uses, not the whole library.
@@ -892,7 +905,7 @@ export function MealPlanScreen() {
   // with every dinner spoken for still offers nothing, since there is nowhere
   // for an acceptance to land.
   const canSuggestMeals = openDinnerDays.length > 0
-    && (mealSuggestions.length > 0 || !!anthropicApiKey);
+    && (mealSuggestions.length > 0 || cookAgainSuggestions.length > 0 || !!anthropicApiKey);
 
   // Context for the AI half of that sheet (#1063), so an invented idea isn't
   // something already on the week or something cooked last Tuesday. Both are
@@ -1064,9 +1077,13 @@ export function MealPlanScreen() {
                         variant="neutral"
                         onPress={() => {
                           haptics.tap();
-                          setSuggesting({ recipes: mealSuggestions, days: openDinnerDays });
+                          setSuggesting({
+                            recipes: mealSuggestions,
+                            cookAgainRecipes: cookAgainSuggestions,
+                            days: openDinnerDays,
+                          });
                         }}
-                        accessibilityLabel="Suggest meals made from what's in your grocery catalog"
+                        accessibilityLabel="Suggest meals from your recipe box and grocery catalog"
                       />
                     )}
                   </View>
@@ -1287,6 +1304,7 @@ export function MealPlanScreen() {
       <SuggestMealsSheet
         visible={suggesting !== null}
         recipes={suggesting?.recipes ?? []}
+        cookAgainRecipes={suggesting?.cookAgainRecipes ?? []}
         pantryByRecipeId={suggestionPantryCoverage}
         openDays={suggesting?.days ?? []}
         aiIdeasEnabled={!!anthropicApiKey}
