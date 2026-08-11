@@ -137,11 +137,27 @@ function FabButton({
   // `onPanResponderGrant`-equivalent for touch-down alone, since grant only
   // fires once something has already claimed the responder.
   const touchStartRef = useRef(0);
+  // Where the finger already was, in dx/dy, the moment the capture handler
+  // decided to claim the gesture. RN's PanResponder zeroes `gestureState.dx/dy`
+  // at grant (`onResponderGrant` re-centres `x0`/`y0` on the grant point), so
+  // without this the button starts tracking from its own position rather than
+  // the finger's: the delay-plus-threshold gate below means the finger is
+  // already off the button by the time grant fires on a fast drag, and the
+  // button trails behind it for the rest of the gesture instead of catching
+  // up. Stashed here — the last place the pre-grant accumulated distance is
+  // still visible — and added back on top of every post-grant dx/dy so the
+  // button starts exactly under the finger.
+  const grantOffsetRef = useRef({ x: 0, y: 0 });
 
   const panResponder = useMemo(() => {
-    /** Where the gesture stands relative to home, latching `leftHomeRef` on the way. */
-    const readHome = (g: { dx: number; dy: number }): FabHomeState => {
-      const state = fabHomeState(g.dx, g.dy, leftHomeRef.current);
+    /**
+     * Where the gesture stands relative to home, latching `leftHomeRef` on the
+     * way. Takes the already offset-adjusted dx/dy (see `grantOffsetRef`) so
+     * this agrees with where the button is actually drawn, not just the
+     * post-grant delta.
+     */
+    const readHome = (dx: number, dy: number): FabHomeState => {
+      const state = fabHomeState(dx, dy, leftHomeRef.current);
       if (state === 'outside') leftHomeRef.current = true;
       setCancelArmed(state === 'returned');
       return state;
@@ -172,14 +188,23 @@ function FabButton({
       // token drag handles use elsewhere — so a fast flick-tap that happens to
       // wobble past the distance threshold still doesn't start a drag; only a
       // press held past the delay and then moved does.
-      onMoveShouldSetPanResponderCapture: (_e, g) =>
-        !!dragRef.current &&
-        Math.hypot(g.dx, g.dy) > interaction.tapMoveThreshold &&
-        Date.now() - touchStartRef.current >= interaction.delayLongPress,
+      onMoveShouldSetPanResponderCapture: (_e, g) => {
+        const claim =
+          !!dragRef.current &&
+          Math.hypot(g.dx, g.dy) > interaction.tapMoveThreshold &&
+          Date.now() - touchStartRef.current >= interaction.delayLongPress;
+        // Last chance to read the pre-grant dx/dy before RN zeroes it.
+        if (claim) grantOffsetRef.current = { x: g.dx, y: g.dy };
+        return claim;
+      },
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         leftHomeRef.current = false;
         setCancelArmed(false);
+        // Jump the button under the finger immediately, rather than at 0 and
+        // catching up over the next move events.
+        dragX.setValue(grantOffsetRef.current.x);
+        dragY.setValue(grantOffsetRef.current.y);
         Animated.timing(wellOpacity, {
           toValue: 1, duration: animation.duration.fast, useNativeDriver: true,
         }).start();
@@ -187,12 +212,16 @@ function FabButton({
         dragRef.current?.onStart();
       },
       onPanResponderMove: (e, g) => {
-        dragX.setValue(g.dx);
-        dragY.setValue(g.dy);
-        dragRef.current?.onMove(e.nativeEvent.pageY, readHome(g));
+        const x = grantOffsetRef.current.x + g.dx;
+        const y = grantOffsetRef.current.y + g.dy;
+        dragX.setValue(x);
+        dragY.setValue(y);
+        dragRef.current?.onMove(e.nativeEvent.pageY, readHome(x, y));
       },
       onPanResponderRelease: (e, g) => {
-        dragRef.current?.onEnd(e.nativeEvent.pageY, readHome(g));
+        const x = grantOffsetRef.current.x + g.dx;
+        const y = grantOffsetRef.current.y + g.dy;
+        dragRef.current?.onEnd(e.nativeEvent.pageY, readHome(x, y));
         settle();
       },
       onPanResponderTerminate: () => {
