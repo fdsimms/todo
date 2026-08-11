@@ -215,7 +215,26 @@ export function resolvePrepTaskDraft(
 }
 
 /**
- * "8 ingredients · 6 likely in pantry · serves 4 · NYT Cooking" — the recipe
+ * "4" or "4-6" — just the number(s), for callers that want to build their own
+ * sentence around it (the editor's collapsed value, the extract preview).
+ * Null when there's no servings count at all. A `max` that doesn't exceed
+ * `servings` is ignored rather than trusted — `setServings` and
+ * `extractRecipe` are the only writers and already refuse to store one, but a
+ * restored backup could still carry a stale pair.
+ */
+export function formatServingsRange(servings: number | null, max: number | null): string | null {
+  if (!servings) return null;
+  if (max && max > servings) return `${servings}-${max}`;
+  return String(servings);
+}
+
+/** Same as `formatServingsRange`, reading straight off a `Recipe`. */
+export function formatServings(recipe: Recipe): string | null {
+  return formatServingsRange(recipe.servings, recipe.servingsMax);
+}
+
+/**
+ * "8 ingredients · 6 likely in pantry · serves 4-6 · NYT Cooking" — the recipe
  * row's subtitle. `likelyInPantry` is optional and omitted (both the param
  * and, given a falsy count, the phrase) rather than ever rendering "0 likely
  * in pantry" — see `countLikelyInPantry`.
@@ -226,7 +245,8 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): 
   if (likelyInPantry) {
     parts.push(likelyInPantry === 1 ? '1 likely in pantry' : `${likelyInPantry} likely in pantry`);
   }
-  if (recipe.servings) parts.push(`serves ${recipe.servings}`);
+  const servings = formatServings(recipe);
+  if (servings) parts.push(`serves ${servings}`);
   const attribution = describeAttribution(recipe);
   if (attribution) parts.push(attribution);
   return parts.join(' · ');

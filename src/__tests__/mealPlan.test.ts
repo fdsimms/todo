@@ -55,6 +55,7 @@ function recipe(id: string, name: string): Recipe {
     author: null,
     source: null,
     servings: null,
+    servingsMax: null,
     ingredients: [],
     prepTasks: [],
     favorite: false,

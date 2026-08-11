@@ -27,7 +27,7 @@ import {
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { extractRecipe, describeAIError, type ExtractedRecipe } from '../services/aiSuggestions';
-import { normalizeIngredient } from '../utils/recipeUtils';
+import { normalizeIngredient, formatServingsRange } from '../utils/recipeUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
@@ -117,7 +117,9 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       .map(item => normalizeIngredient(item))
       .filter((i): i is NonNullable<typeof i> => i !== null);
     if (chosen.length > 0) addStructuredIngredients(recipe.id, chosen);
-    if (applyServings && extracted.servings !== null) setServings(recipe.id, extracted.servings);
+    if (applyServings && extracted.servings !== null) {
+      setServings(recipe.id, extracted.servings, extracted.servingsMax);
+    }
     haptics.success();
     onClose();
   };
@@ -203,13 +205,13 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
             onPress={() => { haptics.tap(); setApplyServings(v => !v); }}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: applyServings }}
-            accessibilityLabel={`Serves ${extracted.servings}`}
+            accessibilityLabel={`Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`}
           >
             <View style={[styles.checkbox, applyServings && styles.checkboxOn]}>
               {applyServings && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
             </View>
             <View style={styles.body}>
-              <Text style={styles.name}>Serves {extracted.servings}</Text>
+              <Text style={styles.name}>Serves {formatServingsRange(extracted.servings, extracted.servingsMax)}</Text>
               {extracted.prepMinutes !== null && (
                 <Text style={styles.meta}>About {extracted.prepMinutes} min</Text>
               )}

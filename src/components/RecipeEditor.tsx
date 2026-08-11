@@ -17,6 +17,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { CountStepper } from './CountStepper';
+import { formatServingsRange } from '../utils/recipeUtils';
 import { EditorRow } from './EditorRow';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
@@ -53,6 +54,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [author, setAuthorDraft] = useState('');
   const [source, setSourceDraft] = useState('');
   const [servings, setServingsDraft] = useState<number | null>(null);
+  const [servingsMax, setServingsMaxDraft] = useState<number | null>(null);
   const [servingsOpen, setServingsOpen] = useState(false);
   const [authorOpen, setAuthorOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
@@ -90,6 +92,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setAuthorDraft(recipe.author ?? '');
     setSourceDraft(recipe.source ?? recipe.sourceName ?? '');
     setServingsDraft(recipe.servings);
+    setServingsMaxDraft(recipe.servingsMax);
     setServingsOpen(false);
     setAuthorOpen(false);
     setSourceOpen(false);
@@ -109,7 +112,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setSourceUrl(recipe.id, url);
     setAuthor(recipe.id, author);
     setSource(recipe.id, source);
-    setServings(recipe.id, servings);
+    setServings(recipe.id, servings, servingsMax);
     onClose();
   };
 
@@ -174,27 +177,53 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         <EditorRow
           icon="people-outline"
           label="Serves"
-          value={servings !== null ? String(servings) : undefined}
-          hint="How many the quantities below are written for."
+          value={formatServingsRange(servings, servingsMax) ?? undefined}
+          hint="How many the quantities below are written for. Set an upper number too for a range, like a recipe that says “serves 4-6”."
           expanded={servingsOpen}
           onPress={() => { animateLayout(); setServingsOpen(v => !v); }}
-          onClear={servings !== null ? () => { setServingsDraft(null); setServingsOpen(false); } : undefined}
+          onClear={servings !== null
+            ? () => { setServingsDraft(null); setServingsMaxDraft(null); setServingsOpen(false); }
+            : undefined}
         />
         {servingsOpen && (
-          <View style={styles.stepperRow}>
-            <CountStepper
-              value={servings}
-              onChange={setServingsDraft}
-              min={1}
-              max={99}
-              // The floor clears it, so the row's × isn't the only way back to
-              // "no serving size".
-              allowNull
-              emptyLabel="—"
-              label="Servings"
-              describeValue={n => (n === null ? 'not set' : `serves ${n}`)}
-            />
-          </View>
+          <>
+            <View style={styles.stepperRow}>
+              <CountStepper
+                value={servings}
+                onChange={next => {
+                  setServingsDraft(next);
+                  // A max that no longer beats the new low end isn't a range —
+                  // same rule useRecipeStore.setServings enforces on save.
+                  if (next !== null && servingsMax !== null && servingsMax <= next) {
+                    setServingsMaxDraft(null);
+                  }
+                }}
+                min={1}
+                max={99}
+                // The floor clears it, so the row's × isn't the only way back to
+                // "no serving size".
+                allowNull
+                emptyLabel="—"
+                label="Servings"
+                describeValue={n => (n === null ? 'not set' : `serves ${n}`)}
+              />
+            </View>
+            {servings !== null && (
+              <View style={styles.stepperRow}>
+                <Text style={styles.stepperLabel}>up to</Text>
+                <CountStepper
+                  value={servingsMax}
+                  onChange={setServingsMaxDraft}
+                  min={servings + 1}
+                  max={99}
+                  allowNull
+                  emptyLabel="—"
+                  label="Up to"
+                  describeValue={n => (n === null ? 'not a range' : `up to ${n}`)}
+                />
+              </View>
+            )}
+          </>
         )}
         <EditorRow
           icon="person-outline"
@@ -349,8 +378,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   stepperRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'flex-end',
+    gap: spacing.sm,
     paddingVertical: spacing.sm,
+  },
+  stepperLabel: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
   },
   urlInput: {
     color: colors.text,

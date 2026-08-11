@@ -28,7 +28,7 @@ import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { extractRecipe, describeAIError, type ExtractedRecipe } from '../services/aiSuggestions';
-import { normalizeIngredient, cleanRecipeName } from '../utils/recipeUtils';
+import { normalizeIngredient, cleanRecipeName, formatServingsRange } from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
@@ -146,7 +146,9 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
       .map(item => normalizeIngredient(item))
       .filter((i): i is NonNullable<typeof i> => i !== null);
     if (chosen.length > 0) addStructuredIngredients(recipe.id, chosen);
-    if (applyServings && extracted.servings !== null) setServings(recipe.id, extracted.servings);
+    if (applyServings && extracted.servings !== null) {
+      setServings(recipe.id, extracted.servings, extracted.servingsMax);
+    }
     haptics.success();
     // Close first, then navigate: a navigate fired from under a live pageSheet
     // renders the destination behind the sheet.
@@ -268,13 +270,13 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
             onPress={() => { haptics.tap(); setApplyServings(v => !v); }}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: applyServings }}
-            accessibilityLabel={`Serves ${extracted.servings}`}
+            accessibilityLabel={`Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`}
           >
             <View style={[styles.checkbox, applyServings && styles.checkboxOn]}>
               {applyServings && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
             </View>
             <View style={styles.body}>
-              <Text style={styles.name}>Serves {extracted.servings}</Text>
+              <Text style={styles.name}>Serves {formatServingsRange(extracted.servings, extracted.servingsMax)}</Text>
               {extracted.prepMinutes !== null && (
                 <Text style={styles.meta}>About {extracted.prepMinutes} min</Text>
               )}

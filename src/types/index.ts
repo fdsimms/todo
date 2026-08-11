@@ -699,7 +699,13 @@ export interface Recipe {
   // The publication/cookbook/site it's from — "Nothing Fancy", "NYT Cooking".
   // Independent of `author` for the same reason.
   source: string | null;
+  // The low end of the servings count, or the whole count when the recipe
+  // doesn't give a range ("serves 4"). null means no serving count at all.
   servings: number | null;
+  // The high end of a servings range ("serves 4-6" -> servings: 4,
+  // servingsMax: 6). null means the recipe isn't a range — just `servings`.
+  // Never set without `servings` also set.
+  servingsMax: number | null;
   ingredients: RecipeIngredient[];
   // "Defrost the chicken", "start the sauce at 5" — real Tasks once "Add prep
   // tasks" on a planned meal walks this list, not a meal-specific reminder
