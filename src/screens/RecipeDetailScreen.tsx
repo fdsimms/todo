@@ -19,11 +19,14 @@ import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient, RecipePrepTask } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useRowSelection } from '../hooks/useRowSelection';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { SortableList } from '../components/SortableList';
+import { ListBulkBar } from '../components/ListBulkBar';
 import { RecipeEditor } from '../components/RecipeEditor';
 import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
 import { PrepTaskSheet } from '../components/PrepTaskSheet';
@@ -73,6 +76,8 @@ export function RecipeDetailScreen() {
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
   const removeIngredient = useRecipeStore(s => s.removeIngredient);
   const reorderIngredients = useRecipeStore(s => s.reorderIngredients);
+  const bulkRemoveIngredients = useRecipeStore(s => s.bulkRemoveIngredients);
+  const bulkSetIngredientAisle = useRecipeStore(s => s.bulkSetIngredientAisle);
   const toggleFavorite = useRecipeStore(s => s.toggleFavorite);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
@@ -84,6 +89,8 @@ export function RecipeDetailScreen() {
   const addComponent = useRecipeStore(s => s.addComponent);
   const removeComponent = useRecipeStore(s => s.removeComponent);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  const addAisle = useGroceryStore(s => s.addAisle);
 
   const recipesById = useMemo(() => recipeMap(recipes), [recipes]);
   const components = useMemo(
@@ -106,11 +113,27 @@ export function RecipeDetailScreen() {
   const [editingPrepTask, setEditingPrepTask] = useState<RecipePrepTask | null>(null);
   const [addToListVisible, setAddToListVisible] = useState(false);
   const [extractVisible, setExtractVisible] = useState(false);
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [componentPickerVisible, setComponentPickerVisible] = useState(false);
   // Turns the list's own scroll off while a row is being dragged. Without it
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+
+  // Bulk-selecting ingredients — same plain useRowSelection every non-task list
+  // in the app reuses (Templates, Grocery), plus the ingredient-specific "Move
+  // to Aisle" / delete actions below. Entered from a header button rather than
+  // a swipe or long press: both of a row's own gestures are already spoken for
+  // (tap opens the edit sheet, long press starts a reorder drag).
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+  } = useRowSelection();
 
   // Tick once a second only while the cook timer runs, mirroring TaskItem's
   // own timer clock — everything else is recomputed from the stored fields
@@ -208,6 +231,22 @@ export function RecipeDetailScreen() {
     haptics.tap();
   };
 
+  // No confirm alert, matching confirmRemove above — an ingredient is a typed
+  // line, trivially re-added, not a delete that needs a safety net.
+  const handleBulkRemoveIngredients = () => {
+    animateLayout();
+    bulkRemoveIngredients(recipe.id, Array.from(selectedIds));
+    haptics.tap();
+    exitSelection();
+  };
+
+  const handleBulkSetAisle = (aisle: string | null) => {
+    if (!aisle) return;
+    animateLayout();
+    bulkSetIngredientAisle(recipe.id, Array.from(selectedIds), aisle);
+    exitSelection();
+  };
+
   const submitPrepDraft = () => {
     if (!prepDraft.trim()) return;
     animateLayout();
@@ -292,24 +331,43 @@ export function RecipeDetailScreen() {
     drag: () => void,
     isDragging: boolean,
   ) => {
+    const selected = selectedIds.has(ingredient.id);
     const sectionHeader = ingredientSectionHeaders.get(ingredient.id);
     return (
       <View>
         {!!sectionHeader && <Text style={styles.ingredientSectionHeader}>{sectionHeader}</Text>}
         <TouchableOpacity
-          style={[styles.ingredient, isDragging && styles.ingredientDragging]}
+          style={[
+            styles.ingredient,
+            isDragging && styles.ingredientDragging,
+            selectionMode && selected && styles.ingredientSelected,
+          ]}
           activeOpacity={interaction.activeOpacity}
-          onPress={() => { haptics.tap(); setEditingIngredient(ingredient); }}
-          onLongPress={drag}
+          onPress={() => {
+            if (selectionMode) { toggleSelection(ingredient.id); return; }
+            haptics.tap();
+            setEditingIngredient(ingredient);
+          }}
+          onLongPress={selectionMode ? undefined : drag}
           delayLongPress={interaction.delayLongPress}
-          accessibilityRole="button"
+          accessibilityRole={selectionMode ? 'checkbox' : 'button'}
+          accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={
             [ingredient.section, ingredient.name, ingredient.quantity, ingredient.prep,
              ingredient.purpose && `for ${ingredient.purpose}`]
               .filter(Boolean).join(', ')
           }
-          accessibilityHint="Double tap to edit. Long press to reorder."
+          accessibilityHint={selectionMode ? 'Double tap to select' : 'Double tap to edit. Long press to reorder.'}
         >
+          {selectionMode && (
+            <View style={styles.ingredientSelect}>
+              <Ionicons
+                name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                size={22}
+                color={selected ? colors.accent : colors.textTertiary}
+              />
+            </View>
+          )}
           <View style={styles.ingredientText}>
             <Text style={styles.ingredientName}>{ingredient.name}</Text>
             {(!!ingredient.prep || !!ingredient.purpose) && (
@@ -323,14 +381,16 @@ export function RecipeDetailScreen() {
               <Text style={styles.qtyText} numberOfLines={1}>{ingredient.quantity}</Text>
             </View>
           )}
-          <TouchableOpacity
-            onPress={() => confirmRemove(ingredient)}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel={`Remove ${ingredient.name}`}
-          >
-            <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-          </TouchableOpacity>
+          {!selectionMode && (
+            <TouchableOpacity
+              onPress={() => confirmRemove(ingredient)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${ingredient.name}`}
+            >
+              <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+            </TouchableOpacity>
+          )}
         </TouchableOpacity>
       </View>
     );
@@ -417,7 +477,21 @@ export function RecipeDetailScreen() {
         onBack={() => navigation.goBack()}
         actions={
           <View style={styles.headerActions}>
-            {!!anthropicApiKey && (
+            {recipe.ingredients.length > 0 && (
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); selectionMode ? exitSelection() : enterSelectionMode(); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={selectionMode ? 'Done selecting' : 'Select ingredients'}
+              >
+                <Ionicons
+                  name={selectionMode ? 'checkmark-circle' : 'checkmark-circle-outline'}
+                  size={iconSize.md}
+                  color={selectionMode ? colors.accent : colors.textSecondary}
+                />
+              </TouchableOpacity>
+            )}
+            {!selectionMode && !!anthropicApiKey && (
               <TouchableOpacity
                 onPress={() => { haptics.tap(); setExtractVisible(true); }}
                 hitSlop={8}
@@ -427,26 +501,30 @@ export function RecipeDetailScreen() {
                 <Ionicons name="sparkles" size={iconSize.md} color={colors.purple} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              onPress={() => { haptics.tap(); toggleFavorite(recipe.id); }}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={recipe.favorite ? 'Unstar this recipe' : 'Star this recipe'}
-            >
-              <Ionicons
-                name={recipe.favorite ? 'star' : 'star-outline'}
-                size={iconSize.md}
-                color={recipe.favorite ? colors.orange : colors.textSecondary}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => { haptics.tap(); setEditorVisible(true); }}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Recipe settings"
-            >
-              <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
-            </TouchableOpacity>
+            {!selectionMode && (
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); toggleFavorite(recipe.id); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={recipe.favorite ? 'Unstar this recipe' : 'Star this recipe'}
+              >
+                <Ionicons
+                  name={recipe.favorite ? 'star' : 'star-outline'}
+                  size={iconSize.md}
+                  color={recipe.favorite ? colors.orange : colors.textSecondary}
+                />
+              </TouchableOpacity>
+            )}
+            {!selectionMode && (
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); setEditorVisible(true); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Recipe settings"
+              >
+                <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
           </View>
         }
       />
@@ -652,21 +730,53 @@ export function RecipeDetailScreen() {
             disabled={!prepDraft.trim()}
           />
         </View>
+
+        {/* Clears the floating bulk bar, which takes the footer's place while
+            selecting — see below. */}
+        {selectionMode && (
+          <View style={{ height: insets.bottom + spacing.sm + bulkBarHeight + spacing.sm }} />
+        )}
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
-        <TouchableOpacity
-          style={[styles.primary, shoppableCount === 0 && styles.primaryOff]}
-          activeOpacity={interaction.activeOpacity}
-          onPress={addToList}
-          disabled={shoppableCount === 0}
-          accessibilityRole="button"
-          accessibilityLabel="Add ingredients to the grocery list"
-        >
-          <Ionicons name="cart-outline" size={iconSize.sm} color={colors.onAccent} />
-          <Text style={styles.primaryText}>Add ingredients to list</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Hidden while selecting: the bulk bar floats where it does, and adding
+          to the list isn't something you're doing mid-selection anyway. */}
+      {!selectionMode && (
+        <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
+          <TouchableOpacity
+            style={[styles.primary, shoppableCount === 0 && styles.primaryOff]}
+            activeOpacity={interaction.activeOpacity}
+            onPress={addToList}
+            disabled={shoppableCount === 0}
+            accessibilityRole="button"
+            accessibilityLabel="Add ingredients to the grocery list"
+          >
+            <Ionicons name="cart-outline" size={iconSize.sm} color={colors.onAccent} />
+            <Text style={styles.primaryText}>Add ingredients to list</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {selectionMode && (
+        <ListBulkBar
+          selectedCount={selectedIds.size}
+          totalCount={recipe.ingredients.length}
+          category={{
+            title: 'Move to Aisle',
+            options: aisleOrder,
+            onSet: handleBulkSetAisle,
+            onCreate: name => addAisle(name),
+            allowNone: false,
+          }}
+          actions={[
+            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkRemoveIngredients },
+          ]}
+          onSelectAll={() => selectAll(recipe.ingredients.map(i => i.id))}
+          onDeselectAll={deselectAll}
+          onCancel={exitSelection}
+          bottomInset={insets.bottom}
+          onHeightChange={setBulkBarHeight}
+        />
+      )}
 
       <RecipeEditor
         visible={editorVisible}
@@ -856,6 +966,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   ingredientDragging: {
     backgroundColor: colors.bgTertiary,
+  },
+  ingredientSelected: {
+    backgroundColor: colors.accent + '1A',
+  },
+  // Sits at the row's top edge rather than centered, matching the row's own
+  // flex-start alignment — see the note on `ingredient` above.
+  ingredientSelect: {
+    width: 22,
+    height: 22,
   },
   ingredientText: {
     flex: 1,

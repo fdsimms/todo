@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   FlatList,
@@ -18,16 +19,19 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useRowSelection } from '../hooks/useRowSelection';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
 import { Fab, FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
+import { ListBulkBar } from '../components/ListBulkBar';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { cleanRecipeName, countLikelyInPantry, describeCookHistory, describeRecipe, groupRecipesByMealType, rankRecipeSuggestions, rankRecipes, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { recipeMap } from '../utils/recipeComponents';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -59,13 +63,30 @@ export function RecipesScreen() {
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
+  const bulkDeleteRecipes = useRecipeStore(s => s.bulkDeleteRecipes);
+  const bulkSetFavorite = useRecipeStore(s => s.bulkSetFavorite);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
 
   const [query, setQuery] = useState('');
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [groupByMealType, setGroupByMealType] = useState(false);
+
+  // Recipes are deliberately flat (no categories — see the note at the top of
+  // this file), so there's nothing to reuse useTaskSelection's recurrence-aware
+  // delete flow for. Plain useRowSelection plus a confirm-only delete, same
+  // shape TemplatesScreen uses for its own non-task rows.
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+  } = useRowSelection();
 
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
   // still the one under your thumb.
@@ -160,6 +181,48 @@ export function RecipesScreen() {
     return map;
   }, [visible, recipes, groceryItems]);
 
+  // "Favorite"/"Unfavorite" flips direction based on the selection itself, the
+  // same way the grocery bulk bar's Check/Uncheck does — a selection that's
+  // already all starred has nothing left to star.
+  const allSelectedFavorited = useMemo(() => {
+    if (selectedIds.size === 0) return false;
+    return Array.from(selectedIds).every(id => recipes.find(r => r.id === id)?.favorite);
+  }, [selectedIds, recipes]);
+
+  // Extra bottom padding so the last rows aren't hidden behind the floating bar.
+  const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
+
+  const handleBulkFavorite = () => {
+    const next = !allSelectedFavorited;
+    animateLayout();
+    bulkSetFavorite(Array.from(selectedIds), next);
+    haptics[next ? 'success' : 'tap']();
+    exitSelection();
+  };
+
+  const handleBulkDelete = () => {
+    const ids = Array.from(selectedIds);
+    const count = ids.length;
+    const plural = count === 1 ? 'recipe' : 'recipes';
+    haptics.warning();
+    Alert.alert(
+      `Delete ${count} ${plural}?`,
+      `You're about to delete ${count} ${plural}. Anything already on your grocery list stays there. This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            animateLayout();
+            bulkDeleteRecipes(ids);
+            exitSelection();
+          },
+        },
+      ],
+    );
+  };
+
   const openRecipe = (recipe: Recipe) => {
     haptics.tap();
     navigation.navigate('RecipeDetail', { recipeId: recipe.id });
@@ -181,34 +244,50 @@ export function RecipesScreen() {
     if (existing) openRecipe(existing);
   };
 
-  const renderRecipe = ({ item: recipe }: { item: Recipe }) => (
-    <TouchableOpacity
-      style={styles.row}
-      onPress={() => openRecipe(recipe)}
-      activeOpacity={interaction.activeOpacity}
-      accessibilityRole="button"
-      accessibilityLabel={`${recipe.name}. ${describeRecipe(recipe, pantryCounts.get(recipe.id))}`}
-      accessibilityHint="Double tap to open this recipe."
-    >
-      {recipe.imagePath ? (
-        <Image source={{ uri: recipe.imagePath }} style={styles.thumb} />
-      ) : (
-        <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
-          <Ionicons name="restaurant-outline" size={18} color={colors.accent} />
+  const renderRecipe = ({ item: recipe }: { item: Recipe }) => {
+    const selected = selectedIds.has(recipe.id);
+    return (
+      <TouchableOpacity
+        style={[styles.row, selectionMode && selected && styles.rowSelected]}
+        onPress={() => (selectionMode ? toggleSelection(recipe.id) : openRecipe(recipe))}
+        activeOpacity={interaction.activeOpacity}
+        accessibilityRole={selectionMode ? 'checkbox' : 'button'}
+        accessibilityState={selectionMode ? { checked: selected } : undefined}
+        accessibilityLabel={`${recipe.name}. ${describeRecipe(recipe, pantryCounts.get(recipe.id))}`}
+        accessibilityHint={selectionMode ? 'Double tap to select recipe' : 'Double tap to open this recipe.'}
+      >
+        {selectionMode ? (
+          // Takes the icon tile's place rather than sitting beside it, so every
+          // row shifts by the same amount and the names stay in one column.
+          <View style={styles.select}>
+            <Ionicons
+              name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+              size={24}
+              color={selected ? colors.accent : colors.textTertiary}
+            />
+          </View>
+        ) : recipe.imagePath ? (
+          <Image source={{ uri: recipe.imagePath }} style={styles.thumb} />
+        ) : (
+          <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
+            <Ionicons name="restaurant-outline" size={18} color={colors.accent} />
+          </View>
+        )}
+        <View style={styles.info}>
+          <Text style={styles.name} numberOfLines={2}>{recipe.name}</Text>
+          <Text style={styles.meta} numberOfLines={1}>
+            {[describeRecipe(recipe, pantryCounts.get(recipe.id)), describeCookHistory(recipe)].filter(Boolean).join(' · ')}
+          </Text>
         </View>
-      )}
-      <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={2}>{recipe.name}</Text>
-        <Text style={styles.meta} numberOfLines={1}>
-          {[describeRecipe(recipe, pantryCounts.get(recipe.id)), describeCookHistory(recipe)].filter(Boolean).join(' · ')}
-        </Text>
-      </View>
-      {recipe.favorite && (
-        <Ionicons name="star" size={iconSize.sm} color={colors.orange} />
-      )}
-      <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-    </TouchableOpacity>
-  );
+        {recipe.favorite && (
+          <Ionicons name="star" size={iconSize.sm} color={colors.orange} />
+        )}
+        {!selectionMode && (
+          <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   const cookAgainShelf = cookAgain.length === 0 ? null : (
     <View style={styles.shelf}>
@@ -242,12 +321,20 @@ export function RecipesScreen() {
         subtitle={recipes.length > 0
           ? `${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}`
           : undefined}
-        actions={recipes.length > 0 ? [{
-          icon: 'grid-outline',
-          onPress: () => { haptics.tap(); setGroupByMealType(g => !g); },
-          active: groupByMealType,
-          accessibilityLabel: groupByMealType ? 'Ungroup recipes' : 'Group recipes by meal type',
-        }] : undefined}
+        actions={recipes.length > 0 ? [
+          {
+            icon: 'grid-outline',
+            onPress: () => { haptics.tap(); setGroupByMealType(g => !g); },
+            active: groupByMealType,
+            accessibilityLabel: groupByMealType ? 'Ungroup recipes' : 'Group recipes by meal type',
+          },
+          {
+            icon: 'checkmark-circle-outline',
+            onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
+            active: selectionMode,
+            accessibilityLabel: selectionMode ? 'Done selecting' : 'Select recipes',
+          },
+        ] : undefined}
       />
       <GroceriesHubPills active="Recipes" />
 
@@ -309,16 +396,20 @@ export function RecipesScreen() {
               renderItem={renderRecipe}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.list}
-              ListHeaderComponent={cookAgainShelf}
-              ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
+              // Hidden while selecting: it's a shortcut into a recipe, and
+              // opening one out from under an in-progress selection would lose it.
+              ListHeaderComponent={selectionMode ? null : cookAgainShelf}
+              ListFooterComponent={
+                <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
+              }
             />
           )}
         </>
       )}
 
-      {/* Without a key there is only one way to add a recipe, and a one-item
-          menu is worse than the plain button it replaced. */}
-      {anthropicApiKey ? (
+      {/* The bulk bar sits where the button does, and adding a recipe isn't
+          something you're doing mid-selection anyway. */}
+      {!selectionMode && (anthropicApiKey ? (
         <FabMenu
           items={addMenuItems}
           onSelect={handleAddMenuSelect}
@@ -336,6 +427,27 @@ export function RecipesScreen() {
           drag={fabDrag}
           dragHint="Drag off the button to add a recipe, or back to it to cancel"
           dragLabel={fabDragLabel}
+        />
+      ))}
+
+      {selectionMode && (
+        <ListBulkBar
+          selectedCount={selectedIds.size}
+          totalCount={visible.length}
+          actions={[
+            {
+              key: 'favorite',
+              icon: allSelectedFavorited ? 'star-outline' : 'star',
+              label: allSelectedFavorited ? 'Unfavorite' : 'Favorite',
+              onPress: handleBulkFavorite,
+            },
+            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
+          ]}
+          onSelectAll={() => selectAll(visible.map(r => r.id))}
+          onDeselectAll={deselectAll}
+          onCancel={exitSelection}
+          bottomInset={tabBarHeight}
+          onHeightChange={setBulkBarHeight}
         />
       )}
 
@@ -449,10 +561,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 12,
     gap: spacing.md,
   },
+  rowSelected: {
+    backgroundColor: colors.accent + '1A',
+  },
   icon: {
     width: 36,
     height: 36,
     borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Same footprint as the icon tile it replaces, so entering selection mode
+  // doesn't move the row's text.
+  select: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
