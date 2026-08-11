@@ -240,6 +240,13 @@ interface GroceryStore {
   setShopExcludedFromSuggestions: (id: string, excluded: boolean) => void;
   /** Assert "this item is available here" without a purchase behind it. */
   linkItemShop: (itemId: string, shopId: string) => void;
+  /**
+   * The same assertion over a set — the shopping-trip sheet's "actually, it
+   * has more" correction, where the user is answering for a whole list at
+   * once. One state update rather than N, and the single-item call routes
+   * through it so the promotion rule can't drift between the two.
+   */
+  linkItemShopMany: (itemIds: string[], shopId: string) => void;
   unlinkItemShop: (itemId: string, shopId: string) => void;
   setLastShopId: (id: string | null) => void;
 
@@ -1079,27 +1086,43 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   },
 
   linkItemShop(itemId, shopId) {
+    get().linkItemShopMany([itemId], shopId);
+  },
+
+  linkItemShopMany(itemIds, shopId) {
     const { items, shops, itemShops } = get();
-    if (!items.some(i => i.id === itemId) || !shops.some(s => s.id === shopId)) return;
-    if (itemShops.some(l => l.itemId === itemId && l.shopId === shopId)) return;
+    if (!shops.some(s => s.id === shopId)) return;
 
-    // purchaseCount 0 is the assertion: the user says it's here, no trip has
-    // confirmed it. Ranking reads that and declines to call it "usually".
-    const link: ItemShopLink = { itemId, shopId, purchaseCount: 0, lastPurchasedAt: null };
-    dbSetItemShopLink(link);
+    const links: ItemShopLink[] = [];
+    const promoted = new Map<string, GroceryItem>();
+    for (const itemId of itemIds) {
+      const item = items.find(i => i.id === itemId);
+      if (!item) continue;
+      if (itemShops.some(l => l.itemId === itemId && l.shopId === shopId)) continue;
+      if (links.some(l => l.itemId === itemId)) continue;
 
-    // ...and it promotes a provisional row, for the same reason starring does.
-    // Saying where you get something is a statement about the item, not about
-    // this week's list — but a provisional row is *deleted* when it comes off
-    // the list, so without this the assertion is thrown away by the next
-    // "Remove from list" and the store chip the user just tapped is gone.
-    const item = items.find(i => i.id === itemId)!;
-    const promoted = item.inCatalog ? null : { ...item, inCatalog: true };
-    if (promoted) dbUpdateGroceryItem(promoted);
+      // purchaseCount 0 is the assertion: the user says it's here, no trip has
+      // confirmed it. Ranking reads that and declines to call it "usually".
+      const link: ItemShopLink = { itemId, shopId, purchaseCount: 0, lastPurchasedAt: null };
+      dbSetItemShopLink(link);
+      links.push(link);
+
+      // ...and it promotes a provisional row, for the same reason starring
+      // does. Saying where you get something is a statement about the item,
+      // not about this week's list — but a provisional row is *deleted* when
+      // it comes off the list, so without this the assertion is thrown away by
+      // the next "Remove from list" and the store the user just named is gone.
+      if (!item.inCatalog) {
+        const next = { ...item, inCatalog: true };
+        dbUpdateGroceryItem(next);
+        promoted.set(item.id, next);
+      }
+    }
+    if (links.length === 0) return;
 
     set(s => ({
-      itemShops: [...s.itemShops, link],
-      items: promoted ? s.items.map(i => (i.id === itemId ? promoted : i)) : s.items,
+      itemShops: [...s.itemShops, ...links],
+      items: promoted.size > 0 ? s.items.map(i => promoted.get(i.id) ?? i) : s.items,
     }));
   },
 

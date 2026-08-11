@@ -1078,6 +1078,76 @@ describe('shops', () => {
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
   });
 
+  // The shopping-trip sheet's "actually, it has more" correction: the user
+  // answers for a whole list at once, so every rule the single-item call
+  // obeys has to hold across the set.
+  it('linkItemShopMany asserts the whole set at once', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    const bread = makeItem({ name: 'Bread' });
+    seed([milk, bread], { shops: [costco] });
+
+    useGroceryStore.getState().linkItemShopMany([milk.id, bread.id], costco.id);
+
+    expect(useGroceryStore.getState().itemShops).toEqual([
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null },
+      { itemId: bread.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null },
+    ]);
+  });
+
+  it('linkItemShopMany leaves an existing link and its purchases alone', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    const bread = makeItem({ name: 'Bread' });
+    seed([milk, bread], { shops: [costco], itemShops: [
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null },
+    ] });
+
+    useGroceryStore.getState().linkItemShopMany([milk.id, bread.id], costco.id);
+
+    const links = useGroceryStore.getState().itemShops;
+    expect(links).toHaveLength(2);
+    expect(links.find(l => l.itemId === milk.id)!.purchaseCount).toBe(5);
+    expect(dbSetItemShopLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('linkItemShopMany promotes every provisional row it touches', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: false });
+    const bread = makeItem({ name: 'Bread', onList: true, inCatalog: false });
+    seed([milk, bread], { shops: [costco] });
+
+    useGroceryStore.getState().linkItemShopMany([milk.id, bread.id], costco.id);
+
+    expect(useGroceryStore.getState().items.every(i => i.inCatalog)).toBe(true);
+  });
+
+  it('linkItemShopMany skips unknown items and does nothing for an unknown store', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    seed([milk], { shops: [costco] });
+
+    useGroceryStore.getState().linkItemShopMany([milk.id, 'nope'], costco.id);
+    expect(useGroceryStore.getState().itemShops).toHaveLength(1);
+
+    useGroceryStore.getState().linkItemShopMany([milk.id], 'also-nope');
+    expect(useGroceryStore.getState().itemShops).toHaveLength(1);
+  });
+
+  it('linkItemShopMany writes nothing when every id is already linked', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    seed([milk], { shops: [costco], itemShops: [
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null },
+    ] });
+    const before = useGroceryStore.getState().itemShops;
+
+    useGroceryStore.getState().linkItemShopMany([milk.id, milk.id], costco.id);
+
+    expect(useGroceryStore.getState().itemShops).toBe(before);
+    expect(dbSetItemShopLink).not.toHaveBeenCalled();
+  });
+
   it('unlinkItemShop removes just that pair', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
