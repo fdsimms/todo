@@ -348,10 +348,6 @@ export function MealPlanScreen() {
                       entry={entry}
                       title={titleForEntry(entry, recipesById)}
                       hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
-                      // The rows are already sorted by slot, so "the slot changed"
-                      // is the run header — captioning both halves of a two-dish
-                      // dinner "DINNER" says it twice.
-                      showSlot={idx === 0 || dayEntries[idx - 1].slot !== entry.slot}
                       onPress={() => { haptics.tap(); setSelectedId(entry.id); }}
                       onMarkCooked={entry.cookedAt ? undefined : () => markCooked(entry)}
                     />

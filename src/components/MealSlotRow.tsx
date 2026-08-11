@@ -13,13 +13,6 @@ interface Props {
   title: string;
   /** Whether `entry.recipeId` still points at a recipe that exists. */
   hasRecipe: boolean;
-  /**
-   * False for a row that continues the slot above it. Two things on one dinner
-   * is normal here, and captioning both "DINNER" reads as noise rather than as
-   * information — the run header says it once and the second row is visibly
-   * part of it. The spoken label always names the slot regardless.
-   */
-  showSlot: boolean;
   onPress: () => void;
   /**
    * Marks the entry cooked directly from the row, without opening
@@ -40,8 +33,17 @@ interface Props {
  * your recipe box and tapping through will open it; this one is already cooked
  * and in the fridge). Thursday is allowed to just say "leftovers"; every
  * planner that treats that as an unfinished row is abandoned on a Wednesday.
+ *
+ * The slot caption renders on every row, including a second dish sharing the
+ * slot above it. It used to be suppressed on a run — "two things on one
+ * dinner is normal here, captioning both DINNER reads as noise" — but the
+ * adjacency alone (two stacked rows, no divider change) didn't read as
+ * "these are grouped" to an actual user; the caption was the only thing
+ * saying so, and losing it read as wrong rather than as decluttering (#1221).
+ * Grouping has to be communicated by something present on the row, not by an
+ * absence a reader is expected to infer.
  */
-export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress, onMarkCooked }: Props) {
+export function MealSlotRow({ entry, title, hasRecipe, onPress, onMarkCooked }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const cooked = !!entry.cookedAt;
@@ -94,7 +96,7 @@ export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress, onMark
       </View>
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={2}>{title}</Text>
-        {showSlot && <Text style={styles.slot}>{slotLabel(entry.slot)}</Text>}
+        <Text style={styles.slot}>{slotLabel(entry.slot)}</Text>
       </View>
       <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
     </TouchableOpacity>
