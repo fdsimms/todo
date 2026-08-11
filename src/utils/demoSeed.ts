@@ -381,6 +381,15 @@ function seedRecipes(): DemoRecipes {
   setServings(salad.id, 4);
   setEstimatedMinutes(salad.id, 10);
 
+  const salsaVerde = newRecipe('Salsa verde');
+  addIngredientsFromText(
+    salsaVerde.id,
+    ['6 tomatillos, husked', '1 jalapeno', '1/2 white onion', '1 bunch cilantro', '1 clove garlic'].join('\n')
+  );
+  setMealType(salsaVerde.id, 'condiment');
+  setRecipeYield(salsaVerde.id, '2 cups');
+  setEstimatedMinutes(salsaVerde.id, 15);
+
   // --- Breakfast, lunch, snack, dessert, beverage --------------------------
   const oats = newRecipe('Overnight oats');
   addIngredientsFromText(

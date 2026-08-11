@@ -838,17 +838,19 @@ export interface RecipeComponent {
 // A closed set for the same reason MealSlot is one: a user-defined string
 // list can't be grouped/sorted without a second ordering table (see #1086,
 // which builds that grouping on top of this field).
-export type RecipeMealType = 'breakfast' | 'lunch' | 'dinner' | 'side' | 'snack' | 'dessert' | 'beverage';
+export type RecipeMealType =
+  'breakfast' | 'lunch' | 'dinner' | 'side' | 'condiment' | 'snack' | 'dessert' | 'beverage';
 
 // Display order — also the sort key #1086 groups by.
 export const RECIPE_MEAL_TYPES: readonly RecipeMealType[] =
-  ['breakfast', 'lunch', 'dinner', 'side', 'snack', 'dessert', 'beverage'];
+  ['breakfast', 'lunch', 'dinner', 'side', 'condiment', 'snack', 'dessert', 'beverage'];
 
 export const RECIPE_MEAL_TYPE_LABELS: Record<RecipeMealType, string> = {
   breakfast: 'Breakfast',
   lunch: 'Lunch',
   dinner: 'Dinner',
   side: 'Side',
+  condiment: 'Condiment',
   snack: 'Snack',
   dessert: 'Dessert',
   beverage: 'Beverage',
