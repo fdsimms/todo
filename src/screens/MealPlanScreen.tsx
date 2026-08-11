@@ -410,12 +410,6 @@ export function MealPlanScreen() {
 
   const headerActions = useMemo<ScreenHeaderAction[]>(() => {
     const actions: ScreenHeaderAction[] = [
-      {
-        icon: 'cart-outline',
-        onPress: () => { haptics.tap(); setAddingToList(true); },
-        disabled: !hasPlannableEntries,
-        accessibilityLabel: 'Add this week to the grocery list',
-      },
       { icon: 'chevron-back', onPress: () => page(-1), accessibilityLabel: 'Previous week' },
       { icon: 'chevron-forward', onPress: () => page(1), accessibilityLabel: 'Next week' },
     ];
@@ -429,7 +423,7 @@ export function MealPlanScreen() {
       });
     }
     return actions;
-  }, [onThisWeek, hasPlannableEntries]);
+  }, [onThisWeek]);
 
   const addedStamp = range ? addedToListAt[range.startKey] : undefined;
   const subtitle = [
@@ -444,6 +438,15 @@ export function MealPlanScreen() {
         overline={describeWeekRange(days)}
         subtitle={subtitle}
         actions={headerActions}
+        right={
+          <InlineAction
+            label="Add"
+            icon="cart-outline"
+            onPress={() => { haptics.tap(); setAddingToList(true); }}
+            disabled={!hasPlannableEntries}
+            accessibilityLabel="Add this week to the grocery list"
+          />
+        }
       />
       <GroceriesHubPills active="MealPlan" />
 
