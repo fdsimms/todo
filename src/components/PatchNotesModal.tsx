@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useState } from 'react';
+import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Modal,
   View,
@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   Animated,
   PanResponder,
-  ScrollView,
+  FlatList,
   StyleSheet,
   Dimensions,
 } from 'react-native';
@@ -59,6 +59,50 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
     () => (hideReviewed ? patchNotes.filter(note => !patchNotesQaStatus[note.id]) : patchNotes),
     [hideReviewed, patchNotesQaStatus]
   );
+
+  const renderNote = useCallback(({ item: note }: { item: (typeof patchNotes)[number] }) => {
+    const qaStatus = patchNotesQaStatus[note.id];
+    return (
+      <View style={styles.noteRow}>
+        <View style={styles.noteTextCol}>
+          <Text style={styles.noteMessage}>{note.message}</Text>
+          {!!note.date && <Text style={styles.noteDate}>{formatDate(note.date)}</Text>}
+        </View>
+        <View style={styles.qaButtons}>
+          <TouchableOpacity
+            style={styles.qaButton}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => toggleQaStatus(note.id, 'pass')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="checkbox"
+            accessibilityLabel={`Mark "${note.message}" as passed`}
+            accessibilityState={{ checked: qaStatus === 'pass' }}
+          >
+            <Ionicons
+              name={qaStatus === 'pass' ? 'checkmark-circle' : 'checkmark-circle-outline'}
+              size={22}
+              color={qaStatus === 'pass' ? colors.green : colors.textTertiary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.qaButton}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => toggleQaStatus(note.id, 'fail')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="checkbox"
+            accessibilityLabel={`Mark "${note.message}" as failed`}
+            accessibilityState={{ checked: qaStatus === 'fail' }}
+          >
+            <Ionicons
+              name={qaStatus === 'fail' ? 'close-circle' : 'close-circle-outline'}
+              size={22}
+              color={qaStatus === 'fail' ? colors.red : colors.textTertiary}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }, [patchNotesQaStatus, colors, styles]);
 
   const translateY = useRef(new Animated.Value(600)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -166,61 +210,20 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView
+            <FlatList
               style={styles.notesScroll}
+              data={visibleNotes}
+              keyExtractor={note => note.id}
+              renderItem={renderNote}
+              ItemSeparatorComponent={() => <View style={styles.sep} />}
               showsVerticalScrollIndicator={false}
               bounces={false}
-            >
-              {visibleNotes.length === 0 && (
-                <Text style={styles.emptyText}>All caught up — nothing left to review.</Text>
-              )}
-              {visibleNotes.map((note, idx) => {
-                const qaStatus = patchNotesQaStatus[note.id];
-                return (
-                  <React.Fragment key={note.id}>
-                    {idx > 0 && <View style={styles.sep} />}
-                    <View style={styles.noteRow}>
-                      <View style={styles.noteTextCol}>
-                        <Text style={styles.noteMessage}>{note.message}</Text>
-                        {!!note.date && <Text style={styles.noteDate}>{formatDate(note.date)}</Text>}
-                      </View>
-                      <View style={styles.qaButtons}>
-                        <TouchableOpacity
-                          style={styles.qaButton}
-                          activeOpacity={interaction.activeOpacity}
-                          onPress={() => toggleQaStatus(note.id, 'pass')}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          accessibilityRole="checkbox"
-                          accessibilityLabel={`Mark "${note.message}" as passed`}
-                          accessibilityState={{ checked: qaStatus === 'pass' }}
-                        >
-                          <Ionicons
-                            name={qaStatus === 'pass' ? 'checkmark-circle' : 'checkmark-circle-outline'}
-                            size={22}
-                            color={qaStatus === 'pass' ? colors.green : colors.textTertiary}
-                          />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.qaButton}
-                          activeOpacity={interaction.activeOpacity}
-                          onPress={() => toggleQaStatus(note.id, 'fail')}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          accessibilityRole="checkbox"
-                          accessibilityLabel={`Mark "${note.message}" as failed`}
-                          accessibilityState={{ checked: qaStatus === 'fail' }}
-                        >
-                          <Ionicons
-                            name={qaStatus === 'fail' ? 'close-circle' : 'close-circle-outline'}
-                            size={22}
-                            color={qaStatus === 'fail' ? colors.red : colors.textTertiary}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </React.Fragment>
-                );
-              })}
-            </ScrollView>
+              windowSize={7}
+              maxToRenderPerBatch={16}
+              initialNumToRender={16}
+              removeClippedSubviews
+              ListEmptyComponent={<Text style={styles.emptyText}>All caught up — nothing left to review.</Text>}
+            />
           </View>
 
           <TouchableOpacity style={styles.doneCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
