@@ -49,6 +49,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     recipeYield: null,
     imagePath: null,
     mealType: null,
+    tags: [],
     ingredients,
     components: [],
     prepTasks: [],

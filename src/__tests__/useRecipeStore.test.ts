@@ -30,6 +30,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     recipeYield: null,
     imagePath: null,
     mealType: null,
+    tags: [],
     ingredients: [],
     components: [],
     prepTasks: [],
@@ -227,6 +228,38 @@ describe('field setters', () => {
 
     useRecipeStore.getState().setMealType(r.id, null);
     expect(useRecipeStore.getState().recipeById(r.id)!.mealType).toBeNull();
+  });
+
+  it('cleans and de-duplicates tags on the way in', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setTags(r.id, [' Weeknight ', 'weeknight', 'Make   Ahead', '  ']);
+    expect(useRecipeStore.getState().recipeById(r.id)!.tags).toEqual(['weeknight', 'make ahead']);
+  });
+
+  it('clears tags', () => {
+    const r = makeRecipe('Ragu', { tags: ['weeknight'] });
+    seed([r]);
+
+    useRecipeStore.getState().setTags(r.id, []);
+    expect(useRecipeStore.getState().recipeById(r.id)!.tags).toEqual([]);
+  });
+
+  it("doesn't write when the tags come back the same", () => {
+    const r = makeRecipe('Ragu', { tags: ['weeknight', 'thai'] });
+    seed([r]);
+
+    useRecipeStore.getState().setTags(r.id, ['Weeknight', 'thai']);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('treats a reorder as a change', () => {
+    const r = makeRecipe('Ragu', { tags: ['weeknight', 'thai'] });
+    seed([r]);
+
+    useRecipeStore.getState().setTags(r.id, ['thai', 'weeknight']);
+    expect(useRecipeStore.getState().recipeById(r.id)!.tags).toEqual(['thai', 'weeknight']);
   });
 
   it('toggles favourite', () => {

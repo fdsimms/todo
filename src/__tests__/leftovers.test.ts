@@ -70,6 +70,7 @@ function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): 
     servingsMax: null,
     recipeYield: null,
     mealType: null,
+    tags: [],
     ingredients: [],
     components: [],
     prepTasks: [],

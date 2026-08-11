@@ -21,6 +21,7 @@ import {
   remapIngredientKeyIn,
 } from '../utils/recipeUtils';
 import { cookTimerElapsed } from '../utils/recipeTimer';
+import { normalizeRecipeTags } from '../utils/recipeTags';
 import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 
 /**
@@ -69,6 +70,14 @@ interface RecipeStore {
    */
   setImage: (id: string, uri: string | null) => void;
   setMealType: (id: string, mealType: RecipeMealType | null) => void;
+  /**
+   * Replaces a recipe's whole tag list — the editor holds a draft and commits
+   * on Done, same as it does for meal type, so there's no per-tag add/remove
+   * action to keep in step with it. Cleaned and de-duplicated here rather than
+   * trusted (see normalizeRecipeTags): this is the only door into the column,
+   * and a tag's spelling is its identity.
+   */
+  setTags: (id: string, tags: readonly string[]) => void;
   toggleFavorite: (id: string) => void;
   /**
    * Deliberately doesn't rewrite the recipes that used this one as a component
@@ -227,6 +236,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       recipeYield: null,
       imagePath: null,
       mealType: null,
+      tags: [],
       ingredients: [],
       components: [],
       prepTasks: [],
@@ -326,6 +336,16 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     save(set, { ...recipe, mealType });
+  },
+
+  setTags(id, tags) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const next = normalizeRecipeTags(tags);
+    // A no-op edit is the common case here — the editor commits every field on
+    // Done, tags included, whether or not they were touched.
+    if (next.length === recipe.tags.length && next.every((t, i) => t === recipe.tags[i])) return;
+    save(set, { ...recipe, tags: next });
   },
 
   toggleFavorite(id) {

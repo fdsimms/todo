@@ -71,6 +71,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     recipeYield: null,
     imagePath: null,
     mealType: null,
+    tags: [],
     ingredients: [],
     components: [],
     prepTasks: [],
@@ -705,6 +706,23 @@ describe('rankRecipes', () => {
 
     const result = rankRecipes('fennel', [fennelRagu, fennelSoup]);
     expect(result.map(r => r.name)).toEqual(['Fennel soup', 'Ragu']);
+  });
+
+  it('finds a recipe by a tag, under a name match and over an ingredient one', () => {
+    const tagged = recipe('Larb', { nameKey: 'larb', tags: ['thai'] });
+    const named = recipe('Thai curry', { nameKey: 'thai curry' });
+    const usesIt = recipe('Noodles', {
+      nameKey: 'noodles',
+      ingredients: [ing('Thai basil', { nameKey: 'thai basil' })],
+    });
+
+    const result = rankRecipes('thai', [usesIt, tagged, named]);
+    expect(result.map(r => r.name)).toEqual(['Thai curry', 'Larb', 'Noodles']);
+  });
+
+  it('matches a hyphenated tag typed with its hyphen', () => {
+    const gf = recipe('Brownies', { nameKey: 'brownies', tags: ['gluten-free'] });
+    expect(rankRecipes('gluten-free', [gf]).map(r => r.name)).toEqual(['Brownies']);
   });
 
   it('breaks a tie on favourite', () => {

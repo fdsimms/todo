@@ -479,6 +479,14 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
     if (key.startsWith(q)) weight = 3;
     else if (key.split(' ').some(word => word.startsWith(q))) weight = 2;
     else if (key.includes(q)) weight = 1;
+    // A tag is a label the cook chose for this recipe, so typing one is a
+    // deliberate hit — ranked under every name match and above an ingredient,
+    // which is a match on something the recipe merely contains. The chip row is
+    // still the way to *filter* by a tag (filterRecipesByTags); this is only so
+    // typing "thai" into the search field doesn't come back empty.
+    // Matched through the same key the query went through, so a hyphenated
+    // "gluten-free" is still found by typing it with the hyphen.
+    else if (recipe.tags.some(tag => groceryNameKey(tag).includes(q))) weight = 0.75;
     // An ingredient match is a real hit — "what can I make with fennel" is the
     // question a recipe box is for — but it must never outrank a name match.
     // `allOptions` here and nowhere else that shops: an alternative the user
