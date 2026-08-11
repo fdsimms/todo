@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, GroceryItem, ItemShopLink, Leftover, MealPlanEntry, MealSlot, Recipe, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
-import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS } from '../types';
+import type { Task, Category, GroceryItem, ItemShopLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
 import { parseRecipeIngredients, parsePrepTasks } from '../utils/recipeUtils';
@@ -449,6 +449,29 @@ export function initDatabase(): void {
     // edited. See Recipe.author/Recipe.source.
     'ALTER TABLE recipes ADD COLUMN author TEXT',
     'ALTER TABLE recipes ADD COLUMN source TEXT',
+    // Null for every existing recipe — an old `servings` number stays exactly
+    // what it was (the low end / whole count), and none of them were ever a
+    // range. See Recipe.servingsMax.
+    'ALTER TABLE recipes ADD COLUMN servings_max INTEGER',
+    // Null for every existing recipe — no recipe written before this shipped
+    // had a photo attached. See Recipe.imagePath / src/utils/recipePhoto.ts.
+    'ALTER TABLE recipes ADD COLUMN image_path TEXT',
+    // Cook timer + actual-time logging (#1091). Null/zero for every existing
+    // recipe — nothing predating this shipped has a duration or a timed
+    // session. estimated_minutes doubles as the cook timer's countdown
+    // target; timer_started_at/timer_elapsed_seconds are the banked-segment
+    // pair Task.timerStartedAt/timerElapsedSeconds already use. The logged
+    // actual time is an aggregate, not a per-session table — see
+    // Recipe.lastCookMinutes/cookTimeCount/totalCookMinutes for why.
+    'ALTER TABLE recipes ADD COLUMN estimated_minutes INTEGER',
+    'ALTER TABLE recipes ADD COLUMN timer_started_at TEXT',
+    'ALTER TABLE recipes ADD COLUMN timer_elapsed_seconds INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE recipes ADD COLUMN last_cook_minutes INTEGER',
+    'ALTER TABLE recipes ADD COLUMN cook_time_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE recipes ADD COLUMN total_cook_minutes INTEGER NOT NULL DEFAULT 0',
+    // Null for every existing recipe — nothing predating this shipped had a
+    // meal type to carry. See Recipe.mealType / RecipeMealType (#1104).
+    'ALTER TABLE recipes ADD COLUMN meal_type TEXT',
     // Empty array for every existing recipe — nothing predating this was
     // composed of another recipe. A JSON blob for the reason `ingredients` is
     // one, and a link table would buy nothing here: the only question anyone
@@ -471,6 +494,9 @@ export function initDatabase(): void {
     // rather than a range the way the meal plan does — small, but it's also the
     // index the retention purge sweeps on.
     'CREATE INDEX IF NOT EXISTS idx_leftovers_finished ON leftovers(finished_at)',
+    // Null for every existing recipe, same as servings_max — nothing predating
+    // this had a yield beyond a serving count. See Recipe.recipeYield.
+    'ALTER TABLE recipes ADD COLUMN recipe_yield TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1534,6 +1560,15 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     author: (row.author as string) ?? null,
     source: (row.source as string) ?? null,
     servings: (row.servings as number) ?? null,
+    servingsMax: (row.servings_max as number) ?? null,
+    recipeYield: (row.recipe_yield as string) ?? null,
+    imagePath: (row.image_path as string) ?? null,
+    // Unrecognised reads as null (untagged), not a guessed value — unlike
+    // MealSlot's dinner fallback below, an unset meal type is itself a valid,
+    // common answer, so there's no "safest" one to substitute.
+    mealType: RECIPE_MEAL_TYPES.includes(row.meal_type as RecipeMealType)
+      ? (row.meal_type as RecipeMealType)
+      : null,
     ingredients: parseRecipeIngredients(row.ingredients),
     components: parseRecipeComponents(row.components),
     prepTasks: parsePrepTasks(row.prep_tasks),
@@ -1542,6 +1577,12 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     createdAt: row.created_at as string,
     cookCount: (row.cook_count as number) ?? 0,
     lastCookedAt: (row.last_cooked_at as string) ?? null,
+    estimatedMinutes: (row.estimated_minutes as number) ?? null,
+    timerStartedAt: (row.timer_started_at as string) ?? null,
+    timerElapsedSeconds: (row.timer_elapsed_seconds as number) ?? 0,
+    lastCookMinutes: (row.last_cook_minutes as number) ?? null,
+    cookTimeCount: (row.cook_time_count as number) ?? 0,
+    totalCookMinutes: (row.total_cook_minutes as number) ?? 0,
   };
 }
 
@@ -1555,15 +1596,20 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, servings, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      (id, name, name_key, notes, source_url, source_name, author, source, servings, servings_max, recipe_yield, image_path, meal_type, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at,
+       estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
-      recipe.servings ?? null, JSON.stringify(recipe.ingredients),
+      recipe.servings ?? null, recipe.servingsMax ?? null, recipe.recipeYield ?? null,
+      recipe.imagePath ?? null, recipe.mealType ?? null,
+      JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
       recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
       recipe.cookCount, recipe.lastCookedAt ?? null,
+      recipe.estimatedMinutes ?? null, recipe.timerStartedAt ?? null, recipe.timerElapsedSeconds,
+      recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
     ]
   );
 }
@@ -1571,16 +1617,22 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, ingredients=?, components=?, prep_tasks=?,
-       favorite=?, sort_order=?, cook_count=?, last_cooked_at=?
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, servings_max=?, recipe_yield=?, image_path=?, meal_type=?, ingredients=?, components=?, prep_tasks=?,
+       favorite=?, sort_order=?, cook_count=?, last_cooked_at=?,
+       estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
-      recipe.servings ?? null, JSON.stringify(recipe.ingredients),
+      recipe.servings ?? null, recipe.servingsMax ?? null, recipe.recipeYield ?? null,
+      recipe.imagePath ?? null, recipe.mealType ?? null,
+      JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
       recipe.favorite ? 1 : 0, recipe.sortOrder,
-      recipe.cookCount, recipe.lastCookedAt ?? null, recipe.id,
+      recipe.cookCount, recipe.lastCookedAt ?? null,
+      recipe.estimatedMinutes ?? null, recipe.timerStartedAt ?? null, recipe.timerElapsedSeconds,
+      recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
+      recipe.id,
     ]
   );
 }

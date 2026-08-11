@@ -13,10 +13,16 @@ import {
   normalizePrepTask,
   resolvePrepTaskDraft,
   describeCookHistory,
+  applyMeasuredCookTime,
+  avgCookMinutes,
+  describeCookTime,
+  sortRecipesForDisplay,
+  groupRecipesByMealType,
   rankRecipeSuggestions,
   scoreRecipeAgainstCatalog,
   suggestRecipesForEmptyNight,
   countLikelyInPantry,
+  formatServingsRange,
 } from '../utils/recipeUtils';
 import type { GroceryItem, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 
@@ -36,6 +42,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
     quantity: '',
     aisle: null,
     prep: null,
+    purpose: null,
     section: null,
     ...overrides,
   };
@@ -56,6 +63,10 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     author: null,
     source: null,
     servings: null,
+    servingsMax: null,
+    recipeYield: null,
+    imagePath: null,
+    mealType: null,
     ingredients: [],
     components: [],
     prepTasks: [],
@@ -64,6 +75,12 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     cookCount: 0,
     lastCookedAt: null,
+    estimatedMinutes: null,
+    timerStartedAt: null,
+    timerElapsedSeconds: 0,
+    lastCookMinutes: null,
+    cookTimeCount: 0,
+    totalCookMinutes: 0,
     ...overrides,
   };
 }
@@ -74,14 +91,23 @@ describe('parseRecipeIngredients', () => {
       { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled' },
     ]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled', section: null },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled', purpose: null, section: null },
     ]);
   });
 
-  it('defaults prep and section to null for a blob written before the fields existed', () => {
+  it('defaults prep, purpose and section to null for a blob written before the fields existed', () => {
     const stored = JSON.stringify([{ id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce' }]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null, section: null },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null, purpose: null, section: null },
+    ]);
+  });
+
+  it('reads a stored purpose clause', () => {
+    const stored = JSON.stringify([
+      { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas' },
+    ]);
+    expect(parseRecipeIngredients(stored)).toEqual([
+      { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas', section: null },
     ]);
   });
 
@@ -90,7 +116,7 @@ describe('parseRecipeIngredients', () => {
       { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, section: 'For the cake' },
     ]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, section: 'For the cake' },
+      { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, purpose: null, section: 'For the cake' },
     ]);
   });
 
@@ -132,6 +158,15 @@ describe('normalizeIngredient', () => {
 
   it('keeps a stored prep clause', () => {
     expect(normalizeIngredient({ name: 'Garlic', prep: 'minced' })!.prep).toBe('minced');
+  });
+
+  it('treats an empty or blank purpose string as no opinion', () => {
+    expect(normalizeIngredient({ name: 'Salt', purpose: '' })!.purpose).toBeNull();
+    expect(normalizeIngredient({ name: 'Salt', purpose: '   ' })!.purpose).toBeNull();
+  });
+
+  it('keeps a stored purpose clause', () => {
+    expect(normalizeIngredient({ name: 'Limes', purpose: 'margaritas' })!.purpose).toBe('margaritas');
   });
 
   it('treats an empty or blank section string as ungrouped', () => {
@@ -227,6 +262,31 @@ describe('makeIngredient', () => {
 
   it('leaves prep null when there is no comma clause', () => {
     expect(makeIngredient('2 lb chicken thighs')!.prep).toBeNull();
+  });
+
+  it('splits a trailing "for" purpose clause out of the name', () => {
+    const result = makeIngredient('Limes for margaritas')!;
+    expect(result.name).toBe('Limes');
+    expect(result.purpose).toBe('margaritas');
+    expect(result.nameKey).toBe('limes');
+  });
+
+  it('splits purpose after the quantity is peeled off', () => {
+    const result = makeIngredient('2 cups flour for dusting')!;
+    expect(result.name).toBe('flour');
+    expect(result.quantity).toBe('2 cups');
+    expect(result.purpose).toBe('dusting');
+  });
+
+  it('does not split a purpose clause out of a comma-based prep clause', () => {
+    const result = makeIngredient('cheese, plus more for topping')!;
+    expect(result.name).toBe('cheese');
+    expect(result.prep).toBe('plus more for topping');
+    expect(result.purpose).toBeNull();
+  });
+
+  it('leaves purpose null when there is no "for" clause', () => {
+    expect(makeIngredient('2 lb chicken thighs')!.purpose).toBeNull();
   });
 
   it('returns null for a line that parses to nothing', () => {
@@ -408,6 +468,28 @@ describe('describeRecipe', () => {
       .toBe('1 ingredient · serves 4');
   });
 
+  it('renders a servings range when servingsMax exceeds servings', () => {
+    expect(describeRecipe(recipe('D2', { ingredients: [ing('Salt')], servings: 4, servingsMax: 6 })))
+      .toBe('1 ingredient · serves 4-6');
+  });
+
+  it('falls back to a plain count when servingsMax does not exceed servings', () => {
+    expect(describeRecipe(recipe('D3', { ingredients: [ing('Salt')], servings: 4, servingsMax: 4 })))
+      .toBe('1 ingredient · serves 4');
+    expect(describeRecipe(recipe('D4', { ingredients: [ing('Salt')], servings: 4, servingsMax: 2 })))
+      .toBe('1 ingredient · serves 4');
+  });
+
+  it('adds yield only when set, after servings', () => {
+    expect(describeRecipe(recipe('D5', { ingredients: [ing('Flour')], recipeYield: '3 cups' })))
+      .toBe('1 ingredient · makes 3 cups');
+    expect(describeRecipe(recipe('D6', {
+      ingredients: [ing('Flour')],
+      servings: 8,
+      recipeYield: '2 loaves',
+    }))).toBe('1 ingredient · serves 8 · makes 2 loaves');
+  });
+
   it('adds the source name only when set, after servings', () => {
     expect(describeRecipe(recipe('E', { ingredients: [ing('Salt')], sourceName: 'NYT Cooking' })))
       .toBe('1 ingredient · NYT Cooking');
@@ -431,6 +513,32 @@ describe('describeRecipe', () => {
     expect(describeRecipe(r, 0)).toBe('1 ingredient');
   });
 
+  it('adds the duration only when set, after servings and before attribution', () => {
+    expect(describeRecipe(recipe('I', { ingredients: [ing('Salt')], estimatedMinutes: 25 })))
+      .toBe('1 ingredient · 25m');
+    expect(describeRecipe(recipe('J', {
+      ingredients: [ing('Salt')],
+      servings: 4,
+      estimatedMinutes: 90,
+      sourceName: 'NYT Cooking',
+    }))).toBe('1 ingredient · serves 4 · 1.5h · NYT Cooking');
+  });
+
+  it('leads with the meal type when set, ahead of the ingredient count', () => {
+    expect(describeRecipe(recipe('I', { ingredients: [ing('Salt')], mealType: 'breakfast' })))
+      .toBe('Breakfast · 1 ingredient');
+    expect(describeRecipe(recipe('J', {
+      ingredients: [ing('Salt')],
+      mealType: 'dessert',
+      servings: 4,
+    }))).toBe('Dessert · 1 ingredient · serves 4');
+  });
+
+  it('omits the meal type phrase when unset', () => {
+    expect(describeRecipe(recipe('K', { ingredients: [ing('Salt')], mealType: null })))
+      .toBe('1 ingredient');
+  });
+
   it('says a composed recipe has parts, right after its own ingredient count', () => {
     const composed = recipe('I', {
       ingredients: [ing('Steak')],
@@ -441,6 +549,53 @@ describe('describeRecipe', () => {
     expect(describeRecipe(recipe('J', {
       components: [component('r-mash', 'Mash'), component('r-gravy', 'Gravy')],
     }))).toBe('0 ingredients · 2 components');
+  });
+});
+
+describe('sortRecipesForDisplay', () => {
+  it('puts favorites first, then sortOrder', () => {
+    const a = recipe('A', { sortOrder: 2, favorite: false });
+    const b = recipe('B', { sortOrder: 1, favorite: true });
+    const c = recipe('C', { sortOrder: 0, favorite: false });
+    expect(sortRecipesForDisplay([a, b, c]).map(r => r.name)).toEqual(['B', 'C', 'A']);
+  });
+
+  it('does not mutate the input array', () => {
+    const list = [recipe('A', { sortOrder: 1 }), recipe('B', { sortOrder: 0 })];
+    const original = [...list];
+    sortRecipesForDisplay(list);
+    expect(list).toEqual(original);
+  });
+});
+
+describe('groupRecipesByMealType', () => {
+  it('groups into RECIPE_MEAL_TYPES order, dropping meal types with nothing in them', () => {
+    const breakfast = recipe('Oatmeal', { mealType: 'breakfast', sortOrder: 0 });
+    const dessert = recipe('Cake', { mealType: 'dessert', sortOrder: 0 });
+    const dinner = recipe('Stew', { mealType: 'dinner', sortOrder: 0 });
+    const sections = groupRecipesByMealType([dessert, breakfast, dinner]);
+    expect(sections.map(s => s.title)).toEqual(['Breakfast', 'Dinner', 'Dessert']);
+    expect(sections.map(s => s.data.map(r => r.name))).toEqual([['Oatmeal'], ['Stew'], ['Cake']]);
+  });
+
+  it('trails untagged recipes in their own section, after every tagged one', () => {
+    const untagged = recipe('Mystery', { mealType: null, sortOrder: 0 });
+    const lunch = recipe('Salad', { mealType: 'lunch', sortOrder: 0 });
+    const sections = groupRecipesByMealType([untagged, lunch]);
+    expect(sections.map(s => s.title)).toEqual(['Lunch', 'Untagged']);
+    expect(sections[1].mealType).toBeNull();
+    expect(sections[1].data.map(r => r.name)).toEqual(['Mystery']);
+  });
+
+  it('sorts each section favorites-first by sortOrder, same as the flat list', () => {
+    const a = recipe('A', { mealType: 'snack', sortOrder: 2, favorite: false });
+    const b = recipe('B', { mealType: 'snack', sortOrder: 1, favorite: true });
+    const sections = groupRecipesByMealType([a, b]);
+    expect(sections[0].data.map(r => r.name)).toEqual(['B', 'A']);
+  });
+
+  it('returns no sections for an empty recipe list', () => {
+    expect(groupRecipesByMealType([])).toEqual([]);
   });
 });
 
@@ -521,6 +676,73 @@ describe('describeCookHistory', () => {
   it('drops the date clause when there is a count but no stamp', () => {
     const r = recipe('Ragù', { cookCount: 2, lastCookedAt: null });
     expect(describeCookHistory(r)).toBe('Cooked 2×');
+  });
+});
+
+describe('applyMeasuredCookTime', () => {
+  it('rounds and floors at 1 minute, and advances the counters', () => {
+    const r = recipe('Ragù', { estimatedMinutes: 25, cookTimeCount: 2, totalCookMinutes: 50 });
+    expect(applyMeasuredCookTime(32.4, r)).toEqual({
+      lastCookMinutes: 32,
+      cookTimeCount: 3,
+      totalCookMinutes: 82,
+    });
+    expect(applyMeasuredCookTime(0.2, r).lastCookMinutes).toBe(1);
+  });
+
+  it('backfills estimatedMinutes only the first time — a typed estimate is never overwritten', () => {
+    const untimed = recipe('Ragù', { estimatedMinutes: null, cookTimeCount: 0, totalCookMinutes: 0 });
+    expect(applyMeasuredCookTime(18, untimed)).toEqual({
+      lastCookMinutes: 18,
+      cookTimeCount: 1,
+      totalCookMinutes: 18,
+      estimatedMinutes: 18,
+    });
+
+    const timed = recipe('Ragù', { estimatedMinutes: 25, cookTimeCount: 0, totalCookMinutes: 0 });
+    const patch = applyMeasuredCookTime(40, timed);
+    expect(patch).not.toHaveProperty('estimatedMinutes');
+    expect(patch.lastCookMinutes).toBe(40);
+  });
+});
+
+describe('avgCookMinutes', () => {
+  it('is null before anything has been logged', () => {
+    expect(avgCookMinutes(recipe('Ragù', { cookTimeCount: 0, totalCookMinutes: 0 }))).toBeNull();
+  });
+
+  it('rounds the mean of the logged sessions', () => {
+    expect(avgCookMinutes(recipe('Ragù', { cookTimeCount: 3, totalCookMinutes: 100 }))).toBe(33);
+  });
+});
+
+describe('describeCookTime', () => {
+  it('is empty for a recipe with no estimate and no history', () => {
+    expect(describeCookTime(recipe('Ragù'))).toBe('');
+  });
+
+  it('shows only the estimate before anything has been logged', () => {
+    expect(describeCookTime(recipe('Ragù', { estimatedMinutes: 25 }))).toBe('Est. 25m');
+  });
+
+  it('adds the single logged time without an average for one session', () => {
+    const r = recipe('Ragù', {
+      estimatedMinutes: 25,
+      lastCookMinutes: 32,
+      cookTimeCount: 1,
+      totalCookMinutes: 32,
+    });
+    expect(describeCookTime(r)).toBe('Est. 25m · took 32m');
+  });
+
+  it('adds "last time" and an average once more than one session has been logged', () => {
+    const r = recipe('Ragù', {
+      estimatedMinutes: 25,
+      lastCookMinutes: 30,
+      cookTimeCount: 4,
+      totalCookMinutes: 132,
+    });
+    expect(describeCookTime(r)).toBe('Est. 25m · took 30m last time · avg 33m over 4 cooks');
   });
 });
 
@@ -699,5 +921,22 @@ describe('suggestRecipesForEmptyNight', () => {
       recipe(name, { ingredients: [ing('Onions', { nameKey: 'onions' })] })
     );
     expect(suggestRecipesForEmptyNight(recipes, items, now, 2)).toHaveLength(2);
+  });
+});
+
+describe('formatServingsRange', () => {
+  it('is null with no servings', () => {
+    expect(formatServingsRange(null, null)).toBeNull();
+    expect(formatServingsRange(null, 6)).toBeNull();
+  });
+
+  it('renders a plain count with no max, or a max that does not exceed it', () => {
+    expect(formatServingsRange(4, null)).toBe('4');
+    expect(formatServingsRange(4, 4)).toBe('4');
+    expect(formatServingsRange(4, 2)).toBe('4');
+  });
+
+  it('renders a range when the max exceeds the low end', () => {
+    expect(formatServingsRange(4, 6)).toBe('4-6');
   });
 });

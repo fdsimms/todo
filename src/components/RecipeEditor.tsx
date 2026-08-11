@@ -10,15 +10,18 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { Recipe } from '../types';
-import { RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
+import type { Recipe, RecipeMealType } from '../types';
+import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS, RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { recipesUsing } from '../utils/recipeComponents';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { formatDuration } from '../utils/effort';
+import { CollapsibleField } from './CollapsibleField';
 import { CountStepper } from './CountStepper';
+import { formatServingsRange } from '../utils/recipeUtils';
 import { EditorRow } from './EditorRow';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
@@ -30,6 +33,13 @@ interface Props {
   /** Fired after a confirmed delete, so the detail screen can pop itself. */
   onDeleted: () => void;
 }
+
+// CountStepper steps by 1, so cook time is stepped in 5-minute units rather
+// than one minute at a time — a recipe's duration doesn't need minute
+// precision, and 1-minute steps would make a 45-minute braise a lot of
+// holding. Capped at 6 hours, well past anything this app times.
+const COOK_TIME_STEP_MINUTES = 5;
+const COOK_TIME_MAX_MINUTES = 360;
 
 /**
  * Everything about a recipe that isn't its ingredient list: the name, what it
@@ -47,6 +57,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const setAuthor = useRecipeStore(s => s.setAuthor);
   const setSource = useRecipeStore(s => s.setSource);
   const setServings = useRecipeStore(s => s.setServings);
+  const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
+  const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
+  const setMealType = useRecipeStore(s => s.setMealType);
   const deleteRecipe = useRecipeStore(s => s.deleteRecipe);
 
   const [name, setName] = useState('');
@@ -55,7 +68,14 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [author, setAuthorDraft] = useState('');
   const [source, setSourceDraft] = useState('');
   const [servings, setServingsDraft] = useState<number | null>(null);
+  const [servingsMax, setServingsMaxDraft] = useState<number | null>(null);
+  const [recipeYield, setRecipeYieldDraft] = useState('');
+  const [mealType, setMealTypeDraft] = useState<RecipeMealType | null>(null);
   const [servingsOpen, setServingsOpen] = useState(false);
+  const [yieldOpen, setYieldOpen] = useState(false);
+  const [estimatedMinutes, setEstimatedMinutesDraft] = useState<number | null>(null);
+  const [durationOpen, setDurationOpen] = useState(false);
+  const [mealTypeOpen, setMealTypeOpen] = useState(false);
   const [authorOpen, setAuthorOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
 
@@ -92,7 +112,14 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setAuthorDraft(recipe.author ?? '');
     setSourceDraft(recipe.source ?? recipe.sourceName ?? '');
     setServingsDraft(recipe.servings);
+    setServingsMaxDraft(recipe.servingsMax);
+    setRecipeYieldDraft(recipe.recipeYield ?? '');
+    setMealTypeDraft(recipe.mealType);
     setServingsOpen(false);
+    setYieldOpen(false);
+    setEstimatedMinutesDraft(recipe.estimatedMinutes);
+    setDurationOpen(false);
+    setMealTypeOpen(false);
     setAuthorOpen(false);
     setSourceOpen(false);
     setLinkOpen(false);
@@ -111,7 +138,10 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setSourceUrl(recipe.id, url);
     setAuthor(recipe.id, author);
     setSource(recipe.id, source);
-    setServings(recipe.id, servings);
+    setServings(recipe.id, servings, servingsMax);
+    setRecipeYield(recipe.id, recipeYield);
+    setEstimatedMinutes(recipe.id, estimatedMinutes);
+    setMealType(recipe.id, mealType);
     onClose();
   };
 
@@ -186,25 +216,126 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         <EditorRow
           icon="people-outline"
           label="Serves"
-          value={servings !== null ? String(servings) : undefined}
-          hint="How many the quantities below are written for."
+          value={formatServingsRange(servings, servingsMax) ?? undefined}
+          hint="How many the quantities below are written for. Set an upper number too for a range, like a recipe that says “serves 4-6”."
           expanded={servingsOpen}
           onPress={() => { animateLayout(); setServingsOpen(v => !v); }}
-          onClear={servings !== null ? () => { setServingsDraft(null); setServingsOpen(false); } : undefined}
+          onClear={servings !== null
+            ? () => { setServingsDraft(null); setServingsMaxDraft(null); setServingsOpen(false); }
+            : undefined}
         />
         {servingsOpen && (
+          <>
+            <View style={styles.stepperRow}>
+              <CountStepper
+                value={servings}
+                onChange={next => {
+                  setServingsDraft(next);
+                  // A max that no longer beats the new low end isn't a range —
+                  // same rule useRecipeStore.setServings enforces on save.
+                  if (next !== null && servingsMax !== null && servingsMax <= next) {
+                    setServingsMaxDraft(null);
+                  }
+                }}
+                min={1}
+                max={99}
+                // The floor clears it, so the row's × isn't the only way back to
+                // "no serving size".
+                allowNull
+                emptyLabel="—"
+                label="Servings"
+                describeValue={n => (n === null ? 'not set' : `serves ${n}`)}
+              />
+            </View>
+            {servings !== null && (
+              <View style={styles.stepperRow}>
+                <Text style={styles.stepperLabel}>up to</Text>
+                <CountStepper
+                  value={servingsMax}
+                  onChange={setServingsMaxDraft}
+                  min={servings + 1}
+                  max={99}
+                  allowNull
+                  emptyLabel="—"
+                  label="Up to"
+                  describeValue={n => (n === null ? 'not a range' : `up to ${n}`)}
+                />
+              </View>
+            )}
+          </>
+        )}
+        <EditorRow
+          icon="restaurant-outline"
+          label="Yield"
+          value={recipeYield.trim() || undefined}
+          hint="What it makes, when a serving count isn't the right unit — “3 cups”, “2 dozen cookies”, “1 loaf”."
+          expanded={yieldOpen}
+          onPress={() => { animateLayout(); setYieldOpen(v => !v); }}
+          onClear={recipeYield.trim() ? () => { setRecipeYieldDraft(''); setYieldOpen(false); } : undefined}
+        />
+        {yieldOpen && (
+          <TextInput
+            style={styles.urlInput}
+            value={recipeYield}
+            onChangeText={setRecipeYieldDraft}
+            onSubmitEditing={() => Keyboard.dismiss()}
+            placeholder="3 cups, 2 dozen cookies…"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={RECIPE_SOURCE_MAX_LENGTH}
+            returnKeyType="done"
+            accessibilityLabel="Recipe yield"
+          />
+        )}
+        <CollapsibleField
+          label="Meal type"
+          summary={mealType ? RECIPE_MEAL_TYPE_LABELS[mealType] : undefined}
+          hint="What kind of meal this is, so recipes can be browsed by it."
+          expanded={mealTypeOpen}
+          onToggle={() => setMealTypeOpen(v => !v)}
+        >
+          <View style={styles.pillRow}>
+            {RECIPE_MEAL_TYPES.map(type => (
+              <TouchableOpacity
+                key={type}
+                style={[styles.pill, mealType === type && styles.pillActiveNeutral]}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => {
+                  haptics.tap();
+                  setMealTypeDraft(mealType === type ? null : type);
+                  setMealTypeOpen(false);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={RECIPE_MEAL_TYPE_LABELS[type]}
+                accessibilityState={{ selected: mealType === type }}
+              >
+                <Text style={[styles.pillText, mealType === type && styles.pillTextActive]}>
+                  {RECIPE_MEAL_TYPE_LABELS[type]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </CollapsibleField>
+        <EditorRow
+          icon="time-outline"
+          label="Cook time"
+          value={estimatedMinutes !== null ? formatDuration(estimatedMinutes) : undefined}
+          hint="How long this takes, start to finish — doubles as the cook timer's countdown on the recipe page."
+          expanded={durationOpen}
+          onPress={() => { animateLayout(); setDurationOpen(v => !v); }}
+          onClear={estimatedMinutes !== null ? () => { setEstimatedMinutesDraft(null); setDurationOpen(false); } : undefined}
+        />
+        {durationOpen && (
           <View style={styles.stepperRow}>
             <CountStepper
-              value={servings}
-              onChange={setServingsDraft}
+              value={estimatedMinutes !== null ? Math.round(estimatedMinutes / COOK_TIME_STEP_MINUTES) : null}
+              onChange={units => setEstimatedMinutesDraft(units === null ? null : units * COOK_TIME_STEP_MINUTES)}
               min={1}
-              max={99}
-              // The floor clears it, so the row's × isn't the only way back to
-              // "no serving size".
+              max={COOK_TIME_MAX_MINUTES / COOK_TIME_STEP_MINUTES}
               allowNull
               emptyLabel="—"
-              label="Servings"
-              describeValue={n => (n === null ? 'not set' : `serves ${n}`)}
+              label="Cook time"
+              format={units => formatDuration(units * COOK_TIME_STEP_MINUTES)}
+              describeValue={units => (units === null ? 'not set' : formatDuration(units * COOK_TIME_STEP_MINUTES))}
             />
           </View>
         )}
@@ -361,9 +492,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   stepperRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'flex-end',
+    gap: spacing.sm,
     paddingVertical: spacing.sm,
   },
+  stepperLabel: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, paddingBottom: spacing.sm },
+  pill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+  },
+  pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
+  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  pillTextActive: { color: colors.text, fontWeight: '600' },
   urlInput: {
     color: colors.text,
     fontSize: font.md,

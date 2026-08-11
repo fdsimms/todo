@@ -26,6 +26,10 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     author: null,
     source: null,
     servings: null,
+    servingsMax: null,
+    recipeYield: null,
+    imagePath: null,
+    mealType: null,
     ingredients: [],
     components: [],
     prepTasks: [],
@@ -34,6 +38,12 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     cookCount: 0,
     lastCookedAt: null,
+    estimatedMinutes: null,
+    timerStartedAt: null,
+    timerElapsedSeconds: 0,
+    lastCookMinutes: null,
+    cookTimeCount: 0,
+    totalCookMinutes: 0,
     ...overrides,
   };
 }
@@ -162,6 +172,63 @@ describe('field setters', () => {
     expect(useRecipeStore.getState().recipeById(r.id)!.servings).toBeNull();
   });
 
+  it('stores a servingsMax range and clamps it too', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setServings(r.id, 4, 600);
+    const stored = useRecipeStore.getState().recipeById(r.id)!;
+    expect(stored.servings).toBe(4);
+    expect(stored.servingsMax).toBe(99);
+  });
+
+  it('drops a servingsMax that does not exceed servings', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setServings(r.id, 4, 4);
+    expect(useRecipeStore.getState().recipeById(r.id)!.servingsMax).toBeNull();
+
+    useRecipeStore.getState().setServings(r.id, 4, 2);
+    expect(useRecipeStore.getState().recipeById(r.id)!.servingsMax).toBeNull();
+  });
+
+  it('drops servingsMax when servings is cleared', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setServings(r.id, 4, 6);
+    expect(useRecipeStore.getState().recipeById(r.id)!.servingsMax).toBe(6);
+
+    useRecipeStore.getState().setServings(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.servingsMax).toBeNull();
+  });
+
+  it('sets and clears the yield', () => {
+    const r = makeRecipe('Bread');
+    seed([r]);
+
+    useRecipeStore.getState().setRecipeYield(r.id, '  2 loaves  ');
+    expect(useRecipeStore.getState().recipeById(r.id)!.recipeYield).toBe('2 loaves');
+
+    useRecipeStore.getState().setRecipeYield(r.id, '');
+    expect(useRecipeStore.getState().recipeById(r.id)!.recipeYield).toBeNull();
+
+    useRecipeStore.getState().setRecipeYield(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.recipeYield).toBeNull();
+  });
+
+  it('sets and clears the meal type', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setMealType(r.id, 'dinner');
+    expect(useRecipeStore.getState().recipeById(r.id)!.mealType).toBe('dinner');
+
+    useRecipeStore.getState().setMealType(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.mealType).toBeNull();
+  });
+
   it('toggles favourite', () => {
     const r = makeRecipe('Ragu');
     seed([r]);
@@ -235,7 +302,7 @@ describe('ingredients', () => {
 
 describe('addStructuredIngredients', () => {
   const struct = (name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIngredient => ({
-    id: `s-${name}`, name, nameKey: name.toLowerCase(), quantity: '', aisle: null, prep: null, section: null, ...overrides,
+    id: `s-${name}`, name, nameKey: name.toLowerCase(), quantity: '', aisle: null, prep: null, purpose: null, section: null, ...overrides,
   });
 
   it('merges already-parsed ingredients, reporting how many were new', () => {
@@ -256,7 +323,7 @@ describe('addStructuredIngredients', () => {
 
   it('keeps the existing row on a key collision rather than overwriting it', () => {
     const r = makeRecipe('Ragu', {
-      ingredients: [{ id: 'i1', name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, prep: null, section: null }],
+      ingredients: [{ id: 'i1', name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, prep: null, purpose: null, section: null }],
     });
     seed([r]);
 
@@ -381,12 +448,12 @@ describe('remapIngredientKey', () => {
   it('rewrites every recipe that referenced the old key, and only those', () => {
     const ragu = makeRecipe('Ragu', {
       ingredients: [
-        { id: 'i1', name: 'Tomatos', nameKey: 'tomatos', quantity: '', aisle: null, prep: null, section: null },
+        { id: 'i1', name: 'Tomatos', nameKey: 'tomatos', quantity: '', aisle: null, prep: null, purpose: null, section: null },
       ],
     });
     const soup = makeRecipe('Soup', {
       ingredients: [
-        { id: 'i2', name: 'Carrots', nameKey: 'carrots', quantity: '', aisle: null, prep: null, section: null },
+        { id: 'i2', name: 'Carrots', nameKey: 'carrots', quantity: '', aisle: null, prep: null, purpose: null, section: null },
       ],
     });
     seed([ragu, soup]);
@@ -571,6 +638,127 @@ describe('deleteRecipe', () => {
   });
 });
 
+describe('bulkDeleteRecipes', () => {
+  it('drops every named row, in one db call each, and leaves the rest', () => {
+    const a = makeRecipe('Ragu');
+    const b = makeRecipe('Soup');
+    const c = makeRecipe('Stew');
+    seed([a, b, c]);
+
+    useRecipeStore.getState().bulkDeleteRecipes([a.id, c.id]);
+
+    expect(dbDeleteRecipe).toHaveBeenCalledTimes(2);
+    expect(dbDeleteRecipe).toHaveBeenCalledWith(a.id);
+    expect(dbDeleteRecipe).toHaveBeenCalledWith(c.id);
+    expect(useRecipeStore.getState().recipes.map(r => r.id)).toEqual([b.id]);
+  });
+
+  it('writes nothing for an empty selection', () => {
+    seed([makeRecipe('Ragu')]);
+    useRecipeStore.getState().bulkDeleteRecipes([]);
+    expect(dbDeleteRecipe).not.toHaveBeenCalled();
+    expect(useRecipeStore.getState().recipes).toHaveLength(1);
+  });
+});
+
+describe('bulkSetFavorite', () => {
+  it('favorites every named recipe and leaves the rest alone', () => {
+    const a = makeRecipe('Ragu');
+    const b = makeRecipe('Soup', { favorite: true });
+    const c = makeRecipe('Stew');
+    seed([a, b, c]);
+
+    useRecipeStore.getState().bulkSetFavorite([a.id, c.id], true);
+
+    expect(useRecipeStore.getState().recipeById(a.id)!.favorite).toBe(true);
+    expect(useRecipeStore.getState().recipeById(b.id)!.favorite).toBe(true);
+    expect(useRecipeStore.getState().recipeById(c.id)!.favorite).toBe(true);
+    expect(dbUpdateRecipe).toHaveBeenCalledTimes(2);
+  });
+
+  it('unfavorites every named recipe', () => {
+    const a = makeRecipe('Ragu', { favorite: true });
+    const b = makeRecipe('Soup', { favorite: true });
+    seed([a, b]);
+
+    useRecipeStore.getState().bulkSetFavorite([a.id, b.id], false);
+
+    expect(useRecipeStore.getState().recipeById(a.id)!.favorite).toBe(false);
+    expect(useRecipeStore.getState().recipeById(b.id)!.favorite).toBe(false);
+  });
+
+  it('writes nothing when every named recipe already matches', () => {
+    const r = makeRecipe('Ragu', { favorite: true });
+    seed([r]);
+
+    useRecipeStore.getState().bulkSetFavorite([r.id], true);
+
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('bulkRemoveIngredients', () => {
+  it('removes every named ingredient and keeps the rest, in original order', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addIngredient(r.id, 'Garlic')!;
+    const b = useRecipeStore.getState().addIngredient(r.id, 'Onions')!;
+    const c = useRecipeStore.getState().addIngredient(r.id, 'Parsley')!;
+
+    useRecipeStore.getState().bulkRemoveIngredients(r.id, [a.id, c.id]);
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.ingredients.map(i => i.id)).toEqual([b.id]);
+  });
+
+  it('writes nothing when none of the named ingredients are on the recipe', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addIngredient(r.id, 'Garlic');
+    jest.clearAllMocks();
+
+    useRecipeStore.getState().bulkRemoveIngredients(r.id, ['gone']);
+
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('shrugs at an unknown recipe id', () => {
+    seed([]);
+    expect(() => useRecipeStore.getState().bulkRemoveIngredients('gone', ['x'])).not.toThrow();
+  });
+});
+
+describe('bulkSetIngredientAisle', () => {
+  it('files every named ingredient into the aisle and leaves the rest', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addIngredient(r.id, 'Garlic')!;
+    const b = useRecipeStore.getState().addIngredient(r.id, 'Milk')!;
+    useRecipeStore.getState().updateIngredient(r.id, b.id, { aisle: 'Dairy' });
+
+    useRecipeStore.getState().bulkSetIngredientAisle(r.id, [a.id], 'Produce');
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.find(i => i.id === a.id)!.aisle).toBe('Produce');
+    expect(ingredients.find(i => i.id === b.id)!.aisle).toBe('Dairy');
+  });
+
+  it('can clear the aisle back to null', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addIngredient(r.id, 'Garlic')!;
+    useRecipeStore.getState().updateIngredient(r.id, a.id, { aisle: 'Produce' });
+
+    useRecipeStore.getState().bulkSetIngredientAisle(r.id, [a.id], null);
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.ingredients[0].aisle).toBeNull();
+  });
+
+  it('shrugs at an unknown recipe id', () => {
+    seed([]);
+    expect(() => useRecipeStore.getState().bulkSetIngredientAisle('gone', ['x'], 'Produce')).not.toThrow();
+  });
+});
+
 describe('markCooked', () => {
   it('bumps cookCount and stamps lastCookedAt', () => {
     const r = makeRecipe('Ragu', { cookCount: 2, lastCookedAt: '2026-01-01T00:00:00.000Z' });
@@ -587,6 +775,110 @@ describe('markCooked', () => {
   it('shrugs at an unknown recipe id', () => {
     seed([]);
     expect(() => useRecipeStore.getState().markCooked('gone')).not.toThrow();
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('setEstimatedMinutes', () => {
+  it('sets, rounds and floors at 1 minute', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setEstimatedMinutes(r.id, 24.6);
+    expect(useRecipeStore.getState().recipeById(r.id)!.estimatedMinutes).toBe(25);
+
+    useRecipeStore.getState().setEstimatedMinutes(r.id, 0.2);
+    expect(useRecipeStore.getState().recipeById(r.id)!.estimatedMinutes).toBe(1);
+  });
+
+  it('clears it with null', () => {
+    const r = makeRecipe('Ragu', { estimatedMinutes: 25 });
+    seed([r]);
+    useRecipeStore.getState().setEstimatedMinutes(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.estimatedMinutes).toBeNull();
+  });
+});
+
+describe('cook timer', () => {
+  it('starts only when nothing is already running', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().startCookTimer(r.id);
+    const started = useRecipeStore.getState().recipeById(r.id)!;
+    expect(started.timerStartedAt).not.toBeNull();
+
+    (dbUpdateRecipe as jest.Mock).mockClear();
+    useRecipeStore.getState().startCookTimer(r.id);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('pause banks the elapsed segment without touching the logged history', () => {
+    const startedAt = new Date(Date.now() - 90_000).toISOString();
+    const r = makeRecipe('Ragu', { timerStartedAt: startedAt });
+    seed([r]);
+
+    useRecipeStore.getState().pauseCookTimer(r.id);
+
+    const paused = useRecipeStore.getState().recipeById(r.id)!;
+    expect(paused.timerStartedAt).toBeNull();
+    expect(paused.timerElapsedSeconds).toBeGreaterThanOrEqual(90);
+    expect(paused.lastCookMinutes).toBeNull();
+    expect(paused.cookTimeCount).toBe(0);
+  });
+
+  it('pause is a no-op when nothing is running', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().pauseCookTimer(r.id);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('reset abandons the current segment unlogged', () => {
+    const r = makeRecipe('Ragu', { timerStartedAt: new Date().toISOString(), timerElapsedSeconds: 60 });
+    seed([r]);
+
+    useRecipeStore.getState().resetCookTimer(r.id);
+
+    const reset = useRecipeStore.getState().recipeById(r.id)!;
+    expect(reset.timerStartedAt).toBeNull();
+    expect(reset.timerElapsedSeconds).toBe(0);
+    expect(reset.cookTimeCount).toBe(0);
+  });
+
+  it('stop banks and logs the session, and backfills a never-set estimate', () => {
+    const startedAt = new Date(Date.now() - 18 * 60_000).toISOString();
+    const r = makeRecipe('Ragu', { estimatedMinutes: null, timerStartedAt: startedAt });
+    seed([r]);
+
+    useRecipeStore.getState().stopCookTimer(r.id);
+
+    const stopped = useRecipeStore.getState().recipeById(r.id)!;
+    expect(stopped.timerStartedAt).toBeNull();
+    expect(stopped.timerElapsedSeconds).toBe(0);
+    expect(stopped.lastCookMinutes).toBe(18);
+    expect(stopped.cookTimeCount).toBe(1);
+    expect(stopped.totalCookMinutes).toBe(18);
+    expect(stopped.estimatedMinutes).toBe(18);
+  });
+
+  it('stop never overwrites a typed estimate, and logs banked time from an earlier pause', () => {
+    const r = makeRecipe('Ragu', { estimatedMinutes: 25, timerElapsedSeconds: 20 * 60, cookTimeCount: 1, totalCookMinutes: 22 });
+    seed([r]);
+
+    useRecipeStore.getState().stopCookTimer(r.id);
+
+    const stopped = useRecipeStore.getState().recipeById(r.id)!;
+    expect(stopped.estimatedMinutes).toBe(25);
+    expect(stopped.lastCookMinutes).toBe(20);
+    expect(stopped.cookTimeCount).toBe(2);
+    expect(stopped.totalCookMinutes).toBe(42);
+  });
+
+  it('stop is a no-op with nothing running and nothing banked', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().stopCookTimer(r.id);
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
   });
 });

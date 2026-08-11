@@ -670,6 +670,13 @@ export interface RecipeIngredient {
   // a separate catalog row from plain "garlic" every time the wording of the
   // prep clause changed. null means the line didn't have one, same as aisle.
   prep: string | null;
+  // Why it's on the list, not what to do to it — "margaritas" from "Limes for
+  // margaritas", "dusting" from "flour for dusting". Split out by
+  // splitPurpose() for the same reason prep is: nameKey is the catalog
+  // bridge, so a purpose clause staying in `name` would mint a separate
+  // catalog row every time the dish it's for changed. null means the line
+  // didn't have one, same as prep/aisle.
+  purpose: string | null;
   // Which component of the recipe this belongs to — "For the cake", "For the
   // frosting". null means the recipe wasn't authored with sections (the
   // common case), and every existing reader that doesn't know about this
@@ -734,6 +741,28 @@ export interface RecipeComponent {
   choiceGroup: string | null;
 }
 
+// Which meal of the day a recipe is *for* — a browsing/filtering tag, not a
+// schedule. Deliberately not MealSlot (above, used by MealPlanEntry.slot):
+// that type is a calendar slot for one planned day and has no 'dessert',
+// where this is an intrinsic property of the dish itself — a recipe is
+// breakfast food regardless of which day, if any, it ever gets planned onto.
+// A closed set for the same reason MealSlot is one: a user-defined string
+// list can't be grouped/sorted without a second ordering table (see #1086,
+// which builds that grouping on top of this field).
+export type RecipeMealType = 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'dessert';
+
+// Display order — also the sort key #1086 groups by.
+export const RECIPE_MEAL_TYPES: readonly RecipeMealType[] =
+  ['breakfast', 'lunch', 'dinner', 'snack', 'dessert'];
+
+export const RECIPE_MEAL_TYPE_LABELS: Record<RecipeMealType, string> = {
+  breakfast: 'Breakfast',
+  lunch: 'Lunch',
+  dinner: 'Dinner',
+  snack: 'Snack',
+  dessert: 'Dessert',
+};
+
 // A dish you cook, with what it takes to shop for it.
 //
 // Its own table rather than a TaskTemplate variant: applyTemplate materialises
@@ -765,7 +794,27 @@ export interface Recipe {
   // The publication/cookbook/site it's from — "Nothing Fancy", "NYT Cooking".
   // Independent of `author` for the same reason.
   source: string | null;
+  // The low end of the servings count, or the whole count when the recipe
+  // doesn't give a range ("serves 4"). null means no serving count at all.
   servings: number | null;
+  // The high end of a servings range ("serves 4-6" -> servings: 4,
+  // servingsMax: 6). null means the recipe isn't a range — just `servings`.
+  // Never set without `servings` also set.
+  servingsMax: number | null;
+  // What the recipe makes when a person-count doesn't fit — "3 cups", "2
+  // dozen cookies", "1 loaf". Free text, independent of servings/servingsMax
+  // (a dough can have both: "serves 8" and "makes 2 loaves"). null means
+  // nothing was given.
+  recipeYield: string | null;
+  // The user-attached photo — a file:// URI under the document directory
+  // (src/utils/recipePhoto.ts `pickRecipeImage`), null until one's attached.
+  // Deliberately not base64-in-the-row: a recipe photo is a picture the card
+  // and detail screen render, not a payload the Messages API reads, so there
+  // is no reason to pay SQLite (or every future row read) for the bytes.
+  imagePath: string | null;
+  // Null means untagged, not "none of these" — most existing recipes predate
+  // this field and nothing should guess for them. See RecipeMealType above.
+  mealType: RecipeMealType | null;
   ingredients: RecipeIngredient[];
   // The recipes this one is partly made of — see RecipeComponent. Empty for
   // every recipe that isn't composed, which is most of them; the ingredient
@@ -790,6 +839,45 @@ export interface Recipe {
   cookCount: number;
   /** When this recipe was last marked cooked; null if never. */
   lastCookedAt: string | null;
+
+  // Duration + cook timer + actual-time logging (#1091).
+
+  /**
+   * How long this recipe is expected to take, in minutes. Shown next to
+   * ingredient count/servings (see describeRecipe) and doubles as the cook
+   * timer's countdown target below — a recipe's duration and "how long to
+   * time it for" are the same number, unlike a Task where estimatedMinutes
+   * (workload) and timedMinutes (an explicit countdown target) are allowed to
+   * differ.
+   */
+  estimatedMinutes: number | null;
+  // The cook timer itself — the same banked-segment design as
+  // Task.timerStartedAt/timerElapsedSeconds (see src/utils/timer.ts and its
+  // recipe counterpart src/utils/recipeTimer.ts): only these two raw fields
+  // are ever stored, and how much time has elapsed or remains is always
+  // derived against the current clock, so a phone that was backgrounded or
+  // killed mid-cook comes back with the right answer for free.
+  timerStartedAt: string | null; // ISO timestamp while a live cook timer runs; null when stopped
+  timerElapsedSeconds: number;   // banked from finished run segments; 0 when never run or reset
+
+  /**
+   * Actual cook time, logged when a timer session finishes — an aggregate,
+   * deliberately not a row-per-session log. A row per cook would grow
+   * without bound, which is the exact disease grocery_item_shops was
+   * designed around (see the note on ItemShopLink): the fix there was
+   * counters bounded by (items × stores), not a trip log, and cookCount/
+   * lastCookedAt above already made the same call for "was this cooked" one
+   * level up. So a logged session only ever touches three counters:
+   * lastCookMinutes (the most recent one, for "took 32m last time"),
+   * cookTimeCount and totalCookMinutes (paired, so an average — "usually
+   * about 30m across 4 cooks" — is `totalCookMinutes / cookTimeCount` at
+   * read time, never re-derived by scanning anything). This is what lets the
+   * recorded time diverge from `estimatedMinutes` and be compared against it
+   * over repeated cooks, without a table that grows with every meal made.
+   */
+  lastCookMinutes: number | null;
+  cookTimeCount: number;
+  totalCookMinutes: number;
 }
 
 // One prep step on a recipe — TemplateItem's anchor-relative offset model

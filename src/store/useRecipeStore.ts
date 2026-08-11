@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
@@ -9,7 +9,9 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { groceryNameKey } from '../utils/groceryParse';
+import { deleteRecipeImage } from '../utils/recipePhoto';
 import {
+  applyMeasuredCookTime,
   cleanChoiceGroup,
   cleanRecipeName,
   cleanRecipeSource,
@@ -18,6 +20,7 @@ import {
   mergeIngredients,
   remapIngredientKeyIn,
 } from '../utils/recipeUtils';
+import { cookTimerElapsed } from '../utils/recipeTimer';
 import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 
 /**
@@ -50,7 +53,22 @@ interface RecipeStore {
   setSourceName: (id: string, source: string | null) => void;
   setAuthor: (id: string, author: string | null) => void;
   setSource: (id: string, source: string | null) => void;
-  setServings: (id: string, servings: number | null) => void;
+  /**
+   * `servingsMax` is the top of a range ("serves 4-6") and is optional — omit
+   * it (or pass null) for a plain count. A max at or below `servings` isn't a
+   * range, so it's dropped rather than stored as one.
+   */
+  setServings: (id: string, servings: number | null, servingsMax?: number | null) => void;
+  /** What the recipe makes when a person-count doesn't fit — "3 cups", "2 dozen cookies". */
+  setRecipeYield: (id: string, recipeYield: string | null) => void;
+  /**
+   * Sets or clears a recipe's attached photo — `uri` is a file already saved
+   * by `pickRecipeImage` (src/utils/recipePhoto.ts); this call just records
+   * it. Deletes the previous file, if any, once the new value is committed —
+   * an orphaned image is bytes nothing else will ever point at again.
+   */
+  setImage: (id: string, uri: string | null) => void;
+  setMealType: (id: string, mealType: RecipeMealType | null) => void;
   toggleFavorite: (id: string) => void;
   /**
    * Deliberately doesn't rewrite the recipes that used this one as a component
@@ -61,6 +79,10 @@ interface RecipeStore {
    * parents first (see RecipeEditor.handleDelete).
    */
   deleteRecipe: (id: string) => void;
+  /** Deletes every named recipe. No undo — same as deleteRecipe's own confirm-only flow. */
+  bulkDeleteRecipes: (ids: string[]) => void;
+  /** Sets favorite on every named recipe at once — the bulk form of toggleFavorite. */
+  bulkSetFavorite: (ids: string[], favorite: boolean) => void;
 
   /**
    * Bumps cookCount and stamps lastCookedAt. Called once per "Mark cooked" on
@@ -69,6 +91,24 @@ interface RecipeStore {
    * the recipe and is never recomputed from entries (see Recipe.cookCount).
    */
   markCooked: (id: string) => void;
+
+  /** null clears it. Rounded and floored at 1 minute, same clamp as a task's estimate. */
+  setEstimatedMinutes: (id: string, minutes: number | null) => void;
+
+  /**
+   * The cook timer, mirroring useTaskStore's startTimer/pauseTimer/resetTimer/
+   * stopTimer for the plain stopwatch case (see src/utils/recipeTimer.ts).
+   * start/pause bank and resume a run segment without touching anything
+   * logged; reset abandons the current segment unlogged; stop banks the
+   * final segment and logs it via applyMeasuredCookTime, which is the one
+   * action that writes lastCookMinutes/cookTimeCount/totalCookMinutes (and
+   * backfills estimatedMinutes the first time, same as a task's stopTimer
+   * backfills estimatedMinutes/effort).
+   */
+  startCookTimer: (id: string) => void;
+  pauseCookTimer: (id: string) => void;
+  resetCookTimer: (id: string) => void;
+  stopCookTimer: (id: string) => void;
 
   /** Appends one typed line. Null when it parses to nothing or is already there. */
   addIngredient: (recipeId: string, line: string) => RecipeIngredient | null;
@@ -83,6 +123,10 @@ interface RecipeStore {
   updateIngredient: (recipeId: string, ingredientId: string, patch: Partial<RecipeIngredient>) => void;
   removeIngredient: (recipeId: string, ingredientId: string) => void;
   reorderIngredients: (recipeId: string, ids: string[]) => void;
+  /** Removes several ingredients from one recipe at once — the bulk form of removeIngredient. */
+  bulkRemoveIngredients: (recipeId: string, ingredientIds: string[]) => void;
+  /** Files several ingredients from one recipe into the same aisle at once. */
+  bulkSetIngredientAisle: (recipeId: string, ingredientIds: string[], aisle: string | null) => void;
 
   /**
    * References `componentRecipeId` as a part of `recipeId` — the shared
@@ -158,6 +202,10 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       author: null,
       source: null,
       servings: null,
+      servingsMax: null,
+      recipeYield: null,
+      imagePath: null,
+      mealType: null,
       ingredients: [],
       components: [],
       prepTasks: [],
@@ -166,6 +214,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       cookCount: 0,
       lastCookedAt: null,
+      estimatedMinutes: null,
+      timerStartedAt: null,
+      timerElapsedSeconds: 0,
+      lastCookMinutes: null,
+      cookTimeCount: 0,
+      totalCookMinutes: 0,
     };
     dbInsertRecipe(recipe);
     set(s => ({ recipes: [...s.recipes, recipe] }));
@@ -219,13 +273,38 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, source: clean || null });
   },
 
-  setServings(id, servings) {
+  setServings(id, servings, servingsMax) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     // Clamped rather than validated at the call site: the stepper can't
     // overshoot, but a restored backup can carry anything.
     const next = servings === null ? null : Math.max(1, Math.min(99, Math.round(servings)));
-    save(set, { ...recipe, servings: next });
+    const clampedMax = servingsMax == null ? null : Math.max(1, Math.min(99, Math.round(servingsMax)));
+    // A max only means anything alongside a min it actually exceeds — no
+    // `servings` or a max that doesn't beat it collapses back to a plain count.
+    const nextMax = next !== null && clampedMax !== null && clampedMax > next ? clampedMax : null;
+    save(set, { ...recipe, servings: next, servingsMax: nextMax });
+  },
+
+  setRecipeYield(id, recipeYield) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const clean = cleanRecipeSource(recipeYield ?? '');
+    save(set, { ...recipe, recipeYield: clean || null });
+  },
+
+  setImage(id, uri) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const previous = recipe.imagePath;
+    save(set, { ...recipe, imagePath: uri });
+    if (previous && previous !== uri) deleteRecipeImage(previous);
+  },
+
+  setMealType(id, mealType) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, mealType });
   },
 
   toggleFavorite(id) {
@@ -235,14 +314,72 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   },
 
   deleteRecipe(id) {
+    const recipe = get().recipes.find(r => r.id === id);
     dbDeleteRecipe(id);
     set(s => ({ recipes: s.recipes.filter(r => r.id !== id) }));
+    if (recipe) deleteRecipeImage(recipe.imagePath);
+  },
+
+  bulkDeleteRecipes(ids) {
+    const idSet = new Set(ids);
+    const toDelete = get().recipes.filter(r => idSet.has(r.id));
+    if (toDelete.length === 0) return;
+    toDelete.forEach(r => dbDeleteRecipe(r.id));
+    set(s => ({ recipes: s.recipes.filter(r => !idSet.has(r.id)) }));
+  },
+
+  bulkSetFavorite(ids, favorite) {
+    const idSet = new Set(ids);
+    const toUpdate = get().recipes.filter(r => idSet.has(r.id) && r.favorite !== favorite);
+    if (toUpdate.length === 0) return;
+    const updated = toUpdate.map(r => ({ ...r, favorite }));
+    updated.forEach(dbUpdateRecipe);
+    const byId = new Map(updated.map(r => [r.id, r]));
+    set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
   },
 
   markCooked(id) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     save(set, { ...recipe, cookCount: recipe.cookCount + 1, lastCookedAt: new Date().toISOString() });
+  },
+
+  setEstimatedMinutes(id, minutes) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const next = minutes === null ? null : Math.max(1, Math.round(minutes));
+    save(set, { ...recipe, estimatedMinutes: next });
+  },
+
+  startCookTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe || recipe.timerStartedAt !== null) return;
+    save(set, { ...recipe, timerStartedAt: new Date().toISOString() });
+  },
+
+  pauseCookTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe || recipe.timerStartedAt === null) return;
+    save(set, { ...recipe, timerStartedAt: null, timerElapsedSeconds: cookTimerElapsed(recipe) });
+  },
+
+  resetCookTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, timerStartedAt: null, timerElapsedSeconds: 0 });
+  },
+
+  stopCookTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    // Nothing to log — no run in flight and nothing banked from an earlier pause.
+    if (!recipe || (recipe.timerStartedAt === null && recipe.timerElapsedSeconds <= 0)) return;
+    const minutes = cookTimerElapsed(recipe) / 60;
+    save(set, {
+      ...recipe,
+      timerStartedAt: null,
+      timerElapsedSeconds: 0,
+      ...applyMeasuredCookTime(minutes, recipe),
+    });
   },
 
   addIngredient(recipeId, line) {
@@ -297,6 +434,29 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return;
     const ingredients = recipe.ingredients.filter(i => i.id !== ingredientId);
     if (ingredients.length === recipe.ingredients.length) return;
+    save(set, { ...recipe, ingredients });
+  },
+
+  bulkRemoveIngredients(recipeId, ingredientIds) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const idSet = new Set(ingredientIds);
+    const ingredients = recipe.ingredients.filter(i => !idSet.has(i.id));
+    if (ingredients.length === recipe.ingredients.length) return;
+    save(set, { ...recipe, ingredients });
+  },
+
+  bulkSetIngredientAisle(recipeId, ingredientIds, aisle) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const idSet = new Set(ingredientIds);
+    let touched = false;
+    const ingredients = recipe.ingredients.map(i => {
+      if (!idSet.has(i.id)) return i;
+      touched = true;
+      return { ...i, aisle };
+    });
+    if (!touched) return;
     save(set, { ...recipe, ingredients });
   },
 

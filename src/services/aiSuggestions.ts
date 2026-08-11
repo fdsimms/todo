@@ -448,8 +448,10 @@ export type RecipeSource = string | RecipeImage;
 export interface ExtractedRecipe {
   /** Empty when the text didn't give one. */
   name: string;
-  /** Clamped 1–99; null when not stated. */
+  /** Clamped 1–99; null when not stated. The low end of a range, if given. */
   servings: number | null;
+  /** Clamped 1–99; null when the recipe doesn't give a range. Always > servings. */
+  servingsMax: number | null;
   /** Null when not stated. */
   prepMinutes: number | null;
   ingredients: RecipeGroceryItem[];
@@ -493,7 +495,9 @@ export async function extractRecipe(
 ): Promise<ExtractedRecipe> {
   const { apiKey, model } = requireFeature('recipeExtraction');
 
-  const empty: ExtractedRecipe = { name: '', servings: null, prepMinutes: null, ingredients: [] };
+  const empty: ExtractedRecipe = {
+    name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+  };
   const image = typeof source === 'string' ? null : source;
   const text = typeof source === 'string' ? source.trim().slice(0, MAX_RECIPE_CHARS) : '';
   // Same "nothing in, no network call" guard for both sources.
@@ -536,7 +540,11 @@ export async function extractRecipe(
           },
           servings: {
             type: 'integer',
-            description: 'How many people this serves, if stated. 0 if not stated.',
+            description: 'How many people this serves, if stated. The low end when a range is given ("serves 4-6" -> 4). 0 if not stated.',
+          },
+          servingsMax: {
+            type: 'integer',
+            description: 'The high end of a servings range, if the recipe gives one ("serves 4-6" -> 6). 0 if the recipe states a single number or nothing at all.',
           },
           prepMinutes: {
             type: 'integer',
@@ -578,7 +586,7 @@ export async function extractRecipe(
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
-    name?: unknown; servings?: unknown; prepMinutes?: unknown; items?: unknown;
+    name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown; items?: unknown;
   } | undefined;
   if (!input) throw new Error('No suggestions returned');
 
@@ -586,11 +594,20 @@ export async function extractRecipe(
   const servings = typeof input.servings === 'number' && input.servings > 0
     ? Math.max(1, Math.min(99, Math.round(input.servings)))
     : null;
+  const rawMax = typeof input.servingsMax === 'number' && input.servingsMax > 0
+    ? Math.max(1, Math.min(99, Math.round(input.servingsMax)))
+    : null;
+  // Only a real range, and only alongside a low end it actually exceeds —
+  // same rule useRecipeStore.setServings enforces on manual entry.
+  const servingsMax = servings !== null && rawMax !== null && rawMax > servings ? rawMax : null;
   const prepMinutes = typeof input.prepMinutes === 'number' && input.prepMinutes > 0
     ? Math.round(input.prepMinutes)
     : null;
 
-  return { name, servings, prepMinutes, ingredients: parseExtractedItems(input.items, availableAisles) };
+  return {
+    name, servings, servingsMax, prepMinutes,
+    ingredients: parseExtractedItems(input.items, availableAisles),
+  };
 }
 
 /**

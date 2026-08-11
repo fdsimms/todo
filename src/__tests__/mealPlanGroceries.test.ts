@@ -27,6 +27,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
     quantity: '',
     aisle: null,
     prep: null,
+    purpose: null,
     section: null,
     ...overrides,
   };
@@ -43,6 +44,10 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     author: null,
     source: null,
     servings: null,
+    servingsMax: null,
+    recipeYield: null,
+    imagePath: null,
+    mealType: null,
     ingredients,
     components: [],
     prepTasks: [],
@@ -51,6 +56,12 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     cookCount: 0,
     lastCookedAt: null,
+    estimatedMinutes: null,
+    timerStartedAt: null,
+    timerElapsedSeconds: 0,
+    lastCookMinutes: null,
+    cookTimeCount: 0,
+    totalCookMinutes: 0,
   };
 }
 
@@ -188,6 +199,16 @@ describe('plannedIngredientsForRecipe', () => {
   it('folds prep into the quantity, same as RecipeDetailScreen\'s own add', () => {
     const ragu = recipe('Ragù', [ing('Ginger', { quantity: '1 tsp', prep: 'minced' })]);
     expect(plannedIngredientsForRecipe(ragu)[0].quantity).toBe('1 tsp, minced');
+  });
+
+  it('folds purpose into the quantity as a "for" clause', () => {
+    const ragu = recipe('Margarita night', [ing('Limes', { quantity: '6', purpose: 'margaritas' })]);
+    expect(plannedIngredientsForRecipe(ragu)[0].quantity).toBe('6, for margaritas');
+  });
+
+  it('folds both prep and purpose into the quantity, prep first', () => {
+    const ragu = recipe('Ragù', [ing('Flour', { quantity: '2 cups', prep: 'sifted', purpose: 'dusting' })]);
+    expect(plannedIngredientsForRecipe(ragu)[0].quantity).toBe('2 cups, sifted, for dusting');
   });
 
   it('carries the aisle hint through', () => {

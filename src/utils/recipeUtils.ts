@@ -1,6 +1,8 @@
-import type { GroceryItem, Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+import type { GroceryItem, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
 import {
   RECIPE_CHOICE_GROUP_MAX_LENGTH,
+  RECIPE_MEAL_TYPES,
+  RECIPE_MEAL_TYPE_LABELS,
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
@@ -10,10 +12,11 @@ import {
   TITLE_MAX_LENGTH,
 } from '../types';
 import { format } from 'date-fns/format';
-import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep } from './groceryParse';
+import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep, splitPurpose } from './groceryParse';
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
+import { formatDuration } from './effort';
 import { describeComponents, flattenRecipeIngredients, recipeMap } from './recipeComponents';
 
 // splitPrep lives in groceryParse.ts now — the plain grocery quick-add field
@@ -67,6 +70,9 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
     prep: typeof r.prep === 'string' && r.prep.trim()
       ? r.prep.trim().slice(0, PREP_MAX_LENGTH)
       : null,
+    purpose: typeof r.purpose === 'string' && r.purpose.trim()
+      ? r.purpose.trim().slice(0, PREP_MAX_LENGTH)
+      : null,
     section: typeof r.section === 'string' && r.section.trim()
       ? r.section.trim().slice(0, RECIPE_SECTION_MAX_LENGTH)
       : null,
@@ -85,7 +91,16 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
 export function makeIngredient(line: string): RecipeIngredient | null {
   const { name: rawName, quantity } = parseGroceryInput(line);
   if (!rawName.trim()) return null;
-  const { name, prep } = splitPrep(rawName);
+  const { name: afterPrep, prep } = splitPrep(rawName);
+  if (!afterPrep.trim()) return null;
+  // splitPurpose only runs when splitPrep didn't already take a comma clause
+  // — a comma-based prep clause can legitimately contain "for" on its own
+  // ("cheese, plus more for topping" is one prep note), so a raw line with a
+  // comma has already had its trailing text claimed. `rawName` (not
+  // `afterPrep`) is what's checked, since the comma sits before the prep
+  // split either way.
+  const purposeSplit = rawName.includes(',') ? null : splitPurpose(afterPrep);
+  const name = purposeSplit ? purposeSplit.name : afterPrep;
   if (!name.trim()) return null;
   return {
     id: generateId(),
@@ -94,6 +109,7 @@ export function makeIngredient(line: string): RecipeIngredient | null {
     quantity: quantity ?? '',
     aisle: null,
     prep,
+    purpose: purposeSplit?.purpose ?? null,
     section: null,
   };
 }
@@ -222,10 +238,31 @@ export function resolvePrepTaskDraft(
 }
 
 /**
- * "8 ingredients · 1 component · 6 likely in pantry · serves 4 · NYT Cooking" —
- * the recipe row's subtitle. `likelyInPantry` is optional and omitted (both the
- * param and, given a falsy count, the phrase) rather than ever rendering "0
- * likely in pantry" — see `countLikelyInPantry`.
+ * "4" or "4-6" — just the number(s), for callers that want to build their own
+ * sentence around it (the editor's collapsed value, the extract preview).
+ * Null when there's no servings count at all. A `max` that doesn't exceed
+ * `servings` is ignored rather than trusted — `setServings` and
+ * `extractRecipe` are the only writers and already refuse to store one, but a
+ * restored backup could still carry a stale pair.
+ */
+export function formatServingsRange(servings: number | null, max: number | null): string | null {
+  if (!servings) return null;
+  if (max && max > servings) return `${servings}-${max}`;
+  return String(servings);
+}
+
+/** Same as `formatServingsRange`, reading straight off a `Recipe`. */
+export function formatServings(recipe: Recipe): string | null {
+  return formatServingsRange(recipe.servings, recipe.servingsMax);
+}
+
+/**
+ * "Breakfast · 8 ingredients · 1 component · 6 likely in pantry · serves 4-6 ·
+ * NYT Cooking" — the recipe row's subtitle. `likelyInPantry` is optional and
+ * omitted (both the param and, given a falsy count, the phrase) rather than
+ * ever rendering "0 likely in pantry" — see `countLikelyInPantry`. The meal
+ * type leads, ahead of the ingredient count, since it's the fact someone
+ * scanning the list is most likely browsing by (see RecipeMealType).
  *
  * The ingredient count is the recipe's *own* lines, never the flattened total,
  * because it has to agree with the list the detail screen puts on screen right
@@ -235,13 +272,18 @@ export function resolvePrepTaskDraft(
  */
 export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): string {
   const count = recipe.ingredients.length;
-  const parts = [count === 1 ? '1 ingredient' : `${count} ingredients`];
+  const parts: string[] = [];
+  if (recipe.mealType) parts.push(RECIPE_MEAL_TYPE_LABELS[recipe.mealType]);
+  parts.push(count === 1 ? '1 ingredient' : `${count} ingredients`);
   const components = describeComponents(recipe);
   if (components) parts.push(components);
   if (likelyInPantry) {
     parts.push(likelyInPantry === 1 ? '1 likely in pantry' : `${likelyInPantry} likely in pantry`);
   }
-  if (recipe.servings) parts.push(`serves ${recipe.servings}`);
+  const servings = formatServings(recipe);
+  if (servings) parts.push(`serves ${servings}`);
+  if (recipe.recipeYield) parts.push(`makes ${recipe.recipeYield}`);
+  if (recipe.estimatedMinutes) parts.push(formatDuration(recipe.estimatedMinutes));
   const attribution = describeAttribution(recipe);
   if (attribution) parts.push(attribution);
   return parts.join(' · ');
@@ -345,6 +387,122 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
       a.recipe.name.localeCompare(b.recipe.name)
     )
     .map(s => s.recipe);
+}
+
+/**
+ * Field updates to apply when a cook timer session finishes — the recipe
+ * counterpart of effort.ts's applyMeasuredTime. `lastCookMinutes` is always
+ * set and `cookTimeCount`/`totalCookMinutes` always advance; `estimatedMinutes`
+ * is only backfilled when the recipe has never had a duration of its own, so a
+ * typed estimate is never silently overwritten by a single measurement —
+ * exactly the rule applyMeasuredTime uses for a task's estimate/effort.
+ */
+export function applyMeasuredCookTime(
+  minutes: number,
+  recipe: Pick<Recipe, 'estimatedMinutes' | 'cookTimeCount' | 'totalCookMinutes'>
+): {
+  lastCookMinutes: number;
+  cookTimeCount: number;
+  totalCookMinutes: number;
+  estimatedMinutes?: number;
+} {
+  const rounded = Math.max(1, Math.round(minutes));
+  const patch = {
+    lastCookMinutes: rounded,
+    cookTimeCount: recipe.cookTimeCount + 1,
+    totalCookMinutes: recipe.totalCookMinutes + rounded,
+  };
+  if (recipe.estimatedMinutes != null) return patch;
+  return { ...patch, estimatedMinutes: rounded };
+}
+
+/**
+ * The running average of logged cook sessions — `totalCookMinutes /
+ * cookTimeCount`, derived at read time rather than stored, same as
+ * describeShops derives a grocery item's per-store share from its links
+ * rather than ever summing them into a stored total. Null until at least one
+ * session has been logged.
+ */
+export function avgCookMinutes(recipe: Pick<Recipe, 'cookTimeCount' | 'totalCookMinutes'>): number | null {
+  if (recipe.cookTimeCount <= 0) return null;
+  return Math.round(recipe.totalCookMinutes / recipe.cookTimeCount);
+}
+
+/**
+ * "Est. 25m · took 32m last time" / "Est. 25m · avg 30m over 4 cooks" — the
+ * line that puts a recipe's static estimate next to what cooking it has
+ * actually taken, so the two can be compared rather than the estimate just
+ * being trusted forever. Empty when there's nothing to say yet.
+ */
+export function describeCookTime(recipe: Recipe): string {
+  const parts: string[] = [];
+  if (recipe.estimatedMinutes) parts.push(`Est. ${formatDuration(recipe.estimatedMinutes)}`);
+  if (recipe.lastCookMinutes != null) {
+    parts.push(recipe.cookTimeCount > 1
+      ? `took ${formatDuration(recipe.lastCookMinutes)} last time`
+      : `took ${formatDuration(recipe.lastCookMinutes)}`);
+  }
+  const avg = avgCookMinutes(recipe);
+  if (avg != null && recipe.cookTimeCount > 1) {
+    parts.push(`avg ${formatDuration(avg)} over ${recipe.cookTimeCount} cooks`);
+  }
+  return parts.join(' · ');
+}
+
+/**
+ * Favorites-first ordering for the unfiltered recipe box — the same sort
+ * RecipesScreen has always applied to its flat list, pulled out so
+ * groupRecipesByMealType can give each of its sections the identical order
+ * instead of inventing a second one. A search ranking (rankRecipes) is a
+ * different question — "what matches this text" — so it's never routed
+ * through here.
+ */
+export function sortRecipesForDisplay(recipes: readonly Recipe[]): Recipe[] {
+  return [...recipes].sort((a, b) =>
+    Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder
+  );
+}
+
+export interface RecipeMealTypeSection {
+  /** null is the trailing "Untagged" section — RecipeMealType has no null member of its own. */
+  mealType: RecipeMealType | null;
+  title: string;
+  data: Recipe[];
+}
+
+/**
+ * Groups recipes into sections by RecipeMealType, in RECIPE_MEAL_TYPES' fixed
+ * display order — mirroring how makeCategoryGroups orders Today's category
+ * sections by a fixed list rather than alphabetically or by section size.
+ * Untagged recipes (mealType: null) trail in their own section rather than
+ * leading like Today's header-less loose group, because here there's no drag
+ * to strand a recipe "above": a section list is read top to bottom, and most
+ * existing recipes predate this field, so leading with a wall of "Untagged"
+ * would bury the very grouping the user just asked for.
+ *
+ * A meal type with no recipes is omitted entirely rather than rendered empty,
+ * same as makeCategoryGroups omitting empty categories.
+ */
+export function groupRecipesByMealType(recipes: readonly Recipe[]): RecipeMealTypeSection[] {
+  const byType = new Map<string, Recipe[]>();
+  recipes.forEach(recipe => {
+    const key = recipe.mealType ?? '';
+    if (!byType.has(key)) byType.set(key, []);
+    byType.get(key)!.push(recipe);
+  });
+
+  const sections: RecipeMealTypeSection[] = [];
+  RECIPE_MEAL_TYPES.forEach(mealType => {
+    const list = byType.get(mealType);
+    if (list && list.length > 0) {
+      sections.push({ mealType, title: RECIPE_MEAL_TYPE_LABELS[mealType], data: sortRecipesForDisplay(list) });
+    }
+  });
+  const untagged = byType.get('');
+  if (untagged && untagged.length > 0) {
+    sections.push({ mealType: null, title: 'Untagged', data: sortRecipesForDisplay(untagged) });
+  }
+  return sections;
 }
 
 /** "Cooked once" / "Cooked 4× · last on 12 Jul" — empty when never cooked. */
