@@ -689,6 +689,18 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   it *is* a native module, so it needs a fresh build, not just a JS reload). The app's *other*
   `pin-outline` — the "Count days from" anchor row in `TemplateItemEditor` — is a map pin on
   purpose and stays Ionicons.
+- `PillGroup` (`src/components/PillGroup.tsx`) — a wrapping grid of pills for picking from an
+  open-ended set (aisles, stores). Past `DEFAULT_PILL_LIMIT` (8) it caps itself behind one
+  "N more" and grows a field that both filters the set and adds to it, the way `ListBulkBar`'s
+  category field does. Selected and `pinned` pills are exempt from the cap — the current value
+  and the option meaning *no choice* ("No store", "Usually Produce") are never buried — and
+  **order is never re-ranked**, since `aisleOrder` is the user's own walk round the shop.
+  Creation is one control in two states: below the cap a "+ New {noun}" opening an inline input,
+  above it the `Create "…"` the filter's own text implies. The rule and its tests are in
+  `src/utils/pillOverflow.ts`; the component owns only layout. Reach for it instead of mapping a
+  list straight into `<TouchableOpacity>` pills whenever the set has no ceiling — that's what
+  had the grocery item sheet rendering ~30 pills across two grids, pushing the name/quantity
+  fields it exists to edit off the first screen.
 - `CollapsibleField` (`src/components/CollapsibleField.tsx`) — a picker section inside an editor card. Collapsed it is `LABEL … value ⌄`; expanded it shows a one-line `hint` explaining the field, then the pills. **Every editor picker (category, project, tags, priority, effort, …) uses this** — see the progressive disclosure note below.
 - `EditorRow` (`src/components/EditorRow.tsx`) — the `icon — label — value ›` row every editor sheet is built from (Date, Deadline, Remind me, Link, …). Pass `expanded` for rows whose controls unfold in place rather than opening a picker, and the chevron becomes up/down.
 - **Filtering by an open-ended set of options (tags, categories) is a bottom sheet with wrapping chips, never a horizontal scrolling chip row.** `LogbookFilterSheet` and `RecipeTagFilterSheet` are the two instances — both replaced a scroll row that had shipped first. A scroll row hides every option past what fits on screen behind a swipe nobody is prompted to make, and a vocabulary the user builds themselves (tags especially) has no ceiling a phone-width row can assume; wrapping puts the whole set on screen at once. The screen itself keeps only a small trigger row: a "Filter"/"Tags" button that opens the sheet, plus whatever's *currently selected* as removable pills (`ActiveFilterPill` in `LogbookScreen`, the `activePill` styles in `RecipesScreen`) — that set stays small by construction, so a scrolling row is still the right shape for it. Don't reach for a horizontal `ScrollView` of chips as the *filter control itself* again; that's the mistake both of these fixed.
