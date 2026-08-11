@@ -529,7 +529,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
       pinned, priority, effort, estimatedMinutes, actualMinutes, timedMinutes,
-      chainEnabled: chainEnabled && chainItems.length > 0,
+      // A chain needs at least 2 steps — activeChainStep() (src/utils/chain.ts)
+      // already treats a single-item chain as equivalent to a plain task, so
+      // saving with fewer than 2 items quietly turns Chain back off rather
+      // than persisting a meaningless one-step "chain".
+      chainEnabled: chainEnabled && chainItems.length >= 2,
       chainItems,
       chainIndex,
       // Cleared whenever the control isn't on screen to set, same reasoning as
@@ -537,7 +541,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // so a stale `true` left on a task whose chain or repeat was turned off
       // would quietly turn it into a rotation if either came back.
       chainStepOnSchedule:
-        chainEnabled && chainItems.length > 0 && recurrenceType !== 'none' && chainStepOnSchedule,
+        chainEnabled && chainItems.length >= 2 && recurrenceType !== 'none' && chainStepOnSchedule,
       vacationPause,
       // Only a recurring task has a streak to show, and the toggle is only
       // offered there — don't strand a stale `true` on a task that stopped
@@ -1959,6 +1963,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       onPress={() => setAddingChainItem(true)}
                       style={styles.addBtnSpacing}
                     />
+                  )}
+                  {chainItems.length === 1 && (
+                    <Text style={styles.chainCurrentHint}>
+                      Add a second step — a chain needs at least 2 steps to save.
+                    </Text>
                   )}
                   {chainItems.length > 0 && (
                     <Text style={styles.chainCurrentHint}>
