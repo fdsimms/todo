@@ -11,6 +11,7 @@ import { format } from 'date-fns/format';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep } from './groceryParse';
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
+import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
 
 // splitPrep lives in groceryParse.ts now — the plain grocery quick-add field
 // runs the same split for its live preview, not just recipe ingredient lines
@@ -213,13 +214,40 @@ export function resolvePrepTaskDraft(
   return { dueDate, reminderTime };
 }
 
-/** "8 ingredients · serves 4 · NYT Cooking" — the recipe row's subtitle. */
-export function describeRecipe(recipe: Recipe): string {
+/**
+ * "8 ingredients · 6 likely in pantry · serves 4 · NYT Cooking" — the recipe
+ * row's subtitle. `likelyInPantry` is optional and omitted (both the param
+ * and, given a falsy count, the phrase) rather than ever rendering "0 likely
+ * in pantry" — see `countLikelyInPantry`.
+ */
+export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): string {
   const count = recipe.ingredients.length;
   const parts = [count === 1 ? '1 ingredient' : `${count} ingredients`];
+  if (likelyInPantry) {
+    parts.push(likelyInPantry === 1 ? '1 likely in pantry' : `${likelyInPantry} likely in pantry`);
+  }
   if (recipe.servings) parts.push(`serves ${recipe.servings}`);
   if (recipe.sourceName) parts.push(recipe.sourceName);
   return parts.join(' · ');
+}
+
+/**
+ * How many of a recipe's ingredients grocerySuggest's pantry guess would call
+ * "probably have" — the same `classifyPlanned` signal RecipeToListSheet and
+ * AddWeekToListSheet already use to pre-collapse their "Probably have"
+ * section, reused here rather than re-deriving it, and reduced to a count for
+ * the recipe list row. Null (never 0) when there's nothing worth showing: no
+ * ingredients, or nothing in the catalog reads as still on hand.
+ */
+export function countLikelyInPantry(
+  recipe: Recipe,
+  items: readonly GroceryItem[],
+  now: Date,
+): number | null {
+  if (recipe.ingredients.length === 0) return null;
+  const classified = classifyPlanned(plannedIngredientsForRecipe(recipe), items, now);
+  const count = classified.filter(row => row.category === 'probablyHave').length;
+  return count > 0 ? count : null;
 }
 
 /** Trims and caps a name for storage. Empty means "not a name" — callers refuse it. */
