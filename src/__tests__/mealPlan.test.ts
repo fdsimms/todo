@@ -47,6 +47,7 @@ function entry(
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
+    recipeScale: 1,
     ...overrides,
   };
 }
@@ -524,16 +525,16 @@ describe('describeAddedToList', () => {
 
   it('says today and yesterday', () => {
     expect(describeAddedToList(new Date(2026, 7, 12, 9).toISOString(), now))
-      .toBe('Added to list today');
+      .toBe('Added today');
     expect(describeAddedToList(new Date(2026, 7, 11, 9).toISOString(), now))
-      .toBe('Added to list yesterday');
+      .toBe('Added yesterday');
   });
 
   it('names the weekday for anything else in the same week, including its first day', () => {
     expect(describeAddedToList(new Date(2026, 7, 10).toISOString(), now, 0))
-      .toBe('Added to list on Monday');
+      .toBe('Added Monday');
     expect(describeAddedToList(new Date(2026, 7, 9).toISOString(), now, 0))
-      .toBe('Added to list on Sunday');
+      .toBe('Added Sunday');
   });
 
   it('respects weekStartsOn', () => {
@@ -542,14 +543,14 @@ describe('describeAddedToList', () => {
     // Mon-Sun week when they start Monday — so the same instant reads as a
     // weekday name under one flag and a calendar date under the other.
     const sun = new Date(2026, 7, 9);
-    expect(describeAddedToList(sun.toISOString(), now, 0)).toBe('Added to list on Sunday');
-    expect(describeAddedToList(sun.toISOString(), now, 1)).toBe('Added to list on Aug 9');
+    expect(describeAddedToList(sun.toISOString(), now, 0)).toBe('Added Sunday');
+    expect(describeAddedToList(sun.toISOString(), now, 1)).toBe('Added Aug 9');
   });
 
   it('falls back to a calendar date once it is out of the week, with a year suffix across one', () => {
     expect(describeAddedToList(new Date(2026, 7, 8).toISOString(), now, 0))
-      .toBe('Added to list on Aug 8');
+      .toBe('Added Aug 8');
     expect(describeAddedToList(new Date(2025, 11, 20).toISOString(), new Date(2026, 0, 5)))
-      .toBe('Added to list on Dec 20, 2025');
+      .toBe('Added Dec 20, 2025');
   });
 });

@@ -87,6 +87,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
+    recipeScale: 1,
     ...overrides,
   };
 }
@@ -130,6 +131,24 @@ describe('collectPlannedIngredients', () => {
     expect(result).toEqual([
       { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Tue Ragù', recipeId: ragu.id, recipeTitle: 'Ragù' },
       { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Tue Ragù', recipeId: ragu.id, recipeTitle: 'Ragù' },
+    ]);
+  });
+
+  it('scales each entry by its own factor, leaving the others alone', () => {
+    const ragu = recipe('Ragù', [ing('Onions', { quantity: '2' }), ing('Salt', { quantity: 'a pinch' })]);
+    const recipesById = new Map([[ragu.id, ragu]]);
+    const entries = [
+      entry('2026-08-11', ragu.id, { recipeScale: 2 }),   // Tuesday, doubled
+      entry('2026-08-13', ragu.id),                        // Thursday, as written
+    ];
+
+    const result = collectPlannedIngredients(entries, recipesById, RANGE);
+
+    expect(result.map(r => [r.source, r.quantity])).toEqual([
+      ['Tue Ragù', '4'],
+      ['Tue Ragù', 'a pinch'], // rule 3: what can't be scaled passes through
+      ['Thu Ragù', '2'],
+      ['Thu Ragù', 'a pinch'],
     ]);
   });
 
@@ -211,6 +230,36 @@ describe('plannedIngredientsForRecipe', () => {
       { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù' },
       { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù' },
     ]);
+  });
+
+  it('scales every quantity by the factor it is given', () => {
+    const ragu = recipe('Ragù', [ing('Onions', { quantity: '2' }), ing('Garlic', { quantity: '3 cloves' })]);
+    expect(plannedIngredientsForRecipe(ragu, undefined, undefined, 2).map(p => p.quantity))
+      .toEqual(['4', '6 cloves']);
+    expect(plannedIngredientsForRecipe(ragu, undefined, undefined, 0.5).map(p => p.quantity))
+      .toEqual(['1', '1 1/2 cloves']);
+  });
+
+  it('scales the quantity but not the prep clause riding with it', () => {
+    const ragu = recipe('Ragù', [ing('Ginger', { quantity: '1 tsp', prep: 'minced' })]);
+    expect(plannedIngredientsForRecipe(ragu, undefined, undefined, 2)[0].quantity)
+      .toBe('2 tsp, minced');
+  });
+
+  it('scales a component\'s lines with the parent\'s factor', () => {
+    const mash = recipe('Mash', [ing('Potatoes', { quantity: '1 kg' })]);
+    const steak = recipe('Steak with mash', [ing('Steak', { quantity: '2' })]);
+    steak.components = [{ id: 'c1', recipeId: mash.id, name: 'Mash', choiceGroup: null }];
+    const recipesById = new Map([[steak.id, steak], [mash.id, mash]]);
+    expect(plannedIngredientsForRecipe(steak, recipesById, undefined, 2).map(p => p.quantity))
+      .toEqual(['4', '2 kg']);
+  });
+
+  it('is unchanged at a factor of 1, and treats a junk factor as 1', () => {
+    const ragu = recipe('Ragù', [ing('Onions', { quantity: '2' })]);
+    for (const factor of [1, 0, -1, NaN]) {
+      expect(plannedIngredientsForRecipe(ragu, undefined, undefined, factor)[0].quantity).toBe('2');
+    }
   });
 
   it('folds prep into the quantity, same as RecipeDetailScreen\'s own add', () => {
@@ -300,9 +349,22 @@ describe('parseQuantityAmount', () => {
     expect(parseQuantityAmount('3')).toEqual({ amount: 3, unit: '' });
   });
 
-  it('refuses a fraction or mixed number rather than guess at summing it', () => {
-    expect(parseQuantityAmount('1/2')).toBeNull();
-    expect(parseQuantityAmount('1 1/2 cups')).toBeNull();
+  // These used to be refused, on the grounds that summing fractions with
+  // unlike denominators was arithmetic this module shouldn't be doing. Recipe
+  // scaling settled that by making the arithmetic exact (recipeScale's
+  // rationals) — and made refusing untenable, since a halved recipe *produces*
+  // fractions and every merged row would otherwise degrade to rule 5's list.
+  it('parses a fraction and a mixed number, summing them exactly', () => {
+    expect(parseQuantityAmount('1/2')).toEqual({ amount: 0.5, unit: '' });
+    expect(parseQuantityAmount('1 1/2 cups')).toEqual({ amount: 1.5, unit: 'cups' });
+    expect(mergeQuantities(['1/2 cup', '1/4 cup'])).toBe('3/4 cup');
+    expect(mergeQuantities(['1 1/2 cups', '1/2 cup'])).toBe('2 cups');
+    expect(mergeQuantities(['1/3 cup', '1/3 cup', '1/3 cup'])).toBe('1 cup');
+  });
+
+  it('still refuses anything that is not a whole amount-plus-unit string', () => {
+    expect(parseQuantityAmount('2 14 oz cans')).toBeNull();
+    expect(parseQuantityAmount('1 cup, packed')).toBeNull();
   });
 
   it('refuses empty input and anything that is not a leading number', () => {
@@ -323,8 +385,22 @@ describe('mergeQuantities', () => {
   });
 
   it('sums same-unit quantities rather than concatenating them', () => {
-    expect(mergeQuantities(['1 lb', '2 lb'])).toBe('3 lb');
+    // "3 lbs", not "3 lb": the unit agrees with the total it sits next to, now
+    // that merging and scaling share one pluralization table (recipeScale).
+    expect(mergeQuantities(['1 lb', '2 lb'])).toBe('3 lbs');
     expect(mergeQuantities(['2', '3', '1'])).toBe('6'); // empty unit counts as "the same"
+  });
+
+  it('sums across singular and plural spellings of one unit', () => {
+    // The form scaling itself produces — a halved "1 cup" is "1/2 cup" while
+    // the recipe next door still says "2 cups". Same unit, so it sums.
+    expect(mergeQuantities(['1/2 cup', '2 cups'])).toBe('2 1/2 cups');
+    expect(mergeQuantities(['1 clove', '3 cloves'])).toBe('4 cloves');
+  });
+
+  it('still never collapses two units that merely measure alike', () => {
+    // Doing so would be a unit conversion, which nothing here claims to do.
+    expect(mergeQuantities(['500 g', '1 grams'])).toBe('500 g · 1 grams');
   });
 
   it('never crosses units — it lists instead', () => {
@@ -337,13 +413,13 @@ describe('mergeQuantities', () => {
   });
 
   it('keeps a fractional sum to two places without float noise', () => {
-    expect(mergeQuantities(['1.1 lb', '2.2 lb'])).toBe('3.3 lb');
+    expect(mergeQuantities(['1.1 lb', '2.2 lb'])).toBe('3.3 lbs');
   });
 });
 
 describe('describeQuantities', () => {
   it('is mergeQuantities\' answer when there is one', () => {
-    expect(describeQuantities(['1 lb', '2 lb'])).toBe('3 lb');
+    expect(describeQuantities(['1 lb', '2 lb'])).toBe('3 lbs');
   });
 
   it('falls back to a source count when every quantity is blank', () => {

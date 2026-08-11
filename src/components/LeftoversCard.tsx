@@ -1,18 +1,26 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Leftover, LeftoverFreshness } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { InlineAction } from './InlineAction';
 import { describeFridge, describeLeftover, freshnessOf, liveLeftovers } from '../utils/leftovers';
+
+/** How many rows the card shows before folding the rest behind "+N more". */
+const COLLAPSED_ROWS = 3;
 
 interface Props {
   /** Every leftover the store holds; the card takes the live ones itself. */
   leftovers: readonly Leftover[];
   onPress: (leftover: Leftover) => void;
+  /** Puts this container on a night — see the note on the row's two actions. */
+  onPlan: (leftover: Leftover) => void;
   onAdd: () => void;
+  /** Opens FridgeHistorySheet. Offered only once something has been closed out. */
+  onHistory: () => void;
 }
 
 /**
@@ -25,17 +33,51 @@ interface Props {
  * moment they're deciding what to eat — which is the moment the nudge is
  * actionable rather than merely noisy.
  *
- * It renders nothing at all when the fridge is empty. An empty state here would
- * be a permanent block of chrome on the meal plan for everyone who never uses
- * the feature, and unlike a screen with nothing on it, this one has a whole
- * week underneath it that wants the space.
+ * It renders nothing at all when the fridge is empty *and* nothing has been
+ * closed out. An empty state here would be a permanent block of chrome on the
+ * meal plan for everyone who never uses the feature, and unlike a screen with
+ * nothing on it, this one has a whole week underneath it that wants the space.
+ *
+ * **Each row has two actions, and the card's whole point is the second one.**
+ * Tapping the row opens the editor — rename, put-away day, keep-for, delete —
+ * which is what it always did and is not what this card is shouting about. The
+ * card exists to say "eat this", so the row carries a calendar button that puts
+ * the container on a night (#1370). Without it the only route from "the chilli
+ * needs eating" to a plan was the add button, the picker, and the "In the
+ * fridge" section of it: three steps away from the row already naming the thing.
+ *
+ * **It never takes more than three rows of the week.** A full fridge is five
+ * or six containers, each a two-line row, which is most of a screen standing
+ * between the header and Monday — and this card is the thing you read *before*
+ * the plan, not instead of it (#1375). The rest fold behind a "+N more" that
+ * expands in place, so nothing is hidden, only deferred. Three is what fits
+ * above the fold alongside a day or two of the week itself.
+ *
+ * **History is the one thing that keeps it on screen with an empty fridge**,
+ * and only for someone who has actually used the feature inside the last
+ * `LEFTOVER_RETENTION_DAYS`. That's a deliberate narrowing of the rule above
+ * rather than an exception to it: the objection was to chrome for people who
+ * never use this, and a closed-out row is proof they do. It self-clears when
+ * the purge takes the last one, so it can't become permanent for someone who
+ * has moved on — and the moment the fridge empties is exactly when "did we eat
+ * it or bin it" gets asked, which is precisely when the old rule hid the
+ * answer. With nothing live it shrinks to its caption and its two actions,
+ * not to a full empty state.
  */
-export function LeftoversCard({ leftovers, onPress, onAdd }: Props) {
+export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const [expanded, setExpanded] = useState(false);
+
   const live = useMemo(() => liveLeftovers(leftovers), [leftovers]);
-  if (live.length === 0) return null;
+  const hasHistory = useMemo(() => leftovers.some(l => !!l.finishedAt), [leftovers]);
+  if (live.length === 0 && !hasHistory) return null;
+
+  // Sorted by urgency (see sortLeftovers), so the ones that fold away are
+  // always the ones with the most time left — never the one about to go off.
+  const shown = expanded ? live : live.slice(0, COLLAPSED_ROWS);
+  const hidden = live.length - shown.length;
 
   return (
     <View style={styles.wrap}>
@@ -44,8 +86,9 @@ export function LeftoversCard({ leftovers, onPress, onAdd }: Props) {
         <Text style={styles.headerText}>{describeFridge(leftovers)}</Text>
       </View>
 
+      {live.length > 0 && (
       <View style={styles.card}>
-        {live.map((leftover, i) => {
+        {shown.map((leftover, i) => {
           const freshness = freshnessOf(leftover);
           const tint = freshnessColor(freshness, colors);
           return (
@@ -68,13 +111,51 @@ export function LeftoversCard({ leftovers, onPress, onAdd }: Props) {
                   {describeLeftover(leftover)}
                 </Text>
               </View>
+              {/* A bare glyph, not a tinted tile — the row's other controls
+                  (the dot, the chevron) are bare too, and a filled tile here
+                  would read as a second kind of row rather than an action on
+                  this one. Same call the recipe rows make. */}
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); onPlan(leftover); }}
+                activeOpacity={interaction.activeOpacity}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Plan ${leftover.title} onto a day`}
+              >
+                <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
+              </TouchableOpacity>
               <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>
           );
         })}
+        {hidden > 0 && (
+          <TouchableOpacity
+            style={[styles.row, styles.moreRow]}
+            onPress={() => { haptics.tap(); animateLayout(); setExpanded(true); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`Show ${hidden} more in the fridge`}
+          >
+            <Text style={styles.moreText}>{`+${hidden} more`}</Text>
+          </TouchableOpacity>
+        )}
       </View>
+      )}
 
-      <InlineAction label="Log a leftover" icon="add" onPress={onAdd} variant="neutral" />
+      {/* A row rather than the single stretched pill this used to be — two
+          actions side by side, each sized to its label. */}
+      <View style={styles.actions}>
+        <InlineAction label="Log a leftover" icon="add" onPress={onAdd} variant="neutral" />
+        {hasHistory && (
+          <InlineAction
+            label="History"
+            icon="time-outline"
+            onPress={onHistory}
+            variant="neutral"
+            accessibilityLabel="What happened to past leftovers"
+          />
+        )}
+      </View>
     </View>
   );
 }
@@ -121,8 +202,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   card: {
     backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
+    // radius.md, matching a day's card rather than the larger corner this had:
+    // two card treatments stacked on one screen read as two levels of
+    // importance, and the fridge is not the more important of the two (#1375).
+    borderRadius: radius.md,
     overflow: 'hidden',
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   row: {
     flexDirection: 'row',
@@ -134,6 +223,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowDivided: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.separator,
+  },
+  moreRow: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
+    paddingVertical: 8,
+  },
+  moreText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
   },
   dot: {
     width: 8,

@@ -101,6 +101,23 @@ export function nextSortOrder(
 }
 
 /**
+ * `count` days starting today — the nights a "plan this" picker offers when it
+ * is reached from somewhere that has no week on screen (a recipe).
+ *
+ * Deliberately a rolling window rather than `buildWeekDays`. The meal plan's
+ * own chip rows show the calendar week because that is what the screen behind
+ * them is showing, and moving a meal is a fact about that week. A recipe has no
+ * such context, and a calendar week reached on a Friday is five days of past
+ * with two of future — the useful answer from a recipe is "the next week of
+ * dinners", which is what this returns.
+ */
+export function upcomingDays(from: Date = new Date(), count = 7): Date[] {
+  const start = new Date(from);
+  start.setHours(12, 0, 0, 0);
+  return Array.from({ length: Math.max(0, count) }, (_, i) => addDays(start, i));
+}
+
+/**
  * The days out of `days` with nothing planned in `slot` yet.
  *
  * Two jobs, and they have to be the same answer or the second one goes wrong:
@@ -122,23 +139,6 @@ export function daysWithoutMeal(
 ): Date[] {
   const taken = new Set(entries.filter(e => e.slot === slot).map(e => e.date));
   return days.filter(d => !taken.has(dayKeyOf(d)));
-}
-
-/**
- * `count` days starting today — the nights a "plan this" picker offers when it
- * is reached from somewhere that has no week on screen (a recipe).
- *
- * Deliberately a rolling window rather than `buildWeekDays`. The meal plan's
- * own chip rows show the calendar week because that is what the screen behind
- * them is showing, and moving a meal is a fact about that week. A recipe has no
- * such context, and a calendar week reached on a Friday is five days of past
- * with two of future — the useful answer from a recipe is "the next week of
- * dinners", which is what this returns.
- */
-export function upcomingDays(from: Date = new Date(), count = 7): Date[] {
-  const start = new Date(from);
-  start.setHours(12, 0, 0, 0);
-  return Array.from({ length: Math.max(0, count) }, (_, i) => addDays(start, i));
 }
 
 /** Where one entry lands in a bulk move — see resolveBulkMoveTargets. */
@@ -311,8 +311,16 @@ export function mealPlanPurgeCutoffKey(
 }
 
 /**
- * "Added to list today", "Added to list yesterday", "Added to list on
- * Sunday", "Added to list on Aug 3" — the week header's stamp line.
+ * "Added today", "Added yesterday", "Added Sunday", "Added Aug 3" — the week
+ * header's stamp line.
+ *
+ * **"Added", not "Added to list".** It shares a one-line subtitle with the
+ * week's own count ("6 meals planned · Added yesterday"), and the longer
+ * wording is what pushed that line to two — on the one screen in the app whose
+ * header is already carrying the most controls. What was added, and to what,
+ * is not in doubt standing on the meal plan next to a button that says "Add
+ * week to list"; the day it happened is the only part that isn't already on
+ * screen.
  *
  * Deliberately its own ladder rather than a reuse of dateUtils'
  * formatScheduledDate/formatDeadlineDate family: those are written for a date
@@ -333,8 +341,8 @@ export function describeAddedToList(
   weekStartsOn: WeekStart = 0
 ): string {
   const d = new Date(addedAt);
-  if (isSameDay(d, now)) return 'Added to list today';
-  if (isSameDay(d, subDays(now, 1))) return 'Added to list yesterday';
-  if (isSameWeek(d, now, { weekStartsOn })) return `Added to list on ${format(d, 'EEEE')}`;
-  return `Added to list on ${format(d, d.getFullYear() === now.getFullYear() ? 'MMM d' : 'MMM d, yyyy')}`;
+  if (isSameDay(d, now)) return 'Added today';
+  if (isSameDay(d, subDays(now, 1))) return 'Added yesterday';
+  if (isSameWeek(d, now, { weekStartsOn })) return `Added ${format(d, 'EEEE')}`;
+  return `Added ${format(d, d.getFullYear() === now.getFullYear() ? 'MMM d' : 'MMM d, yyyy')}`;
 }

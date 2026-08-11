@@ -6,6 +6,7 @@ import { parseChainItems } from '../utils/chain';
 import { parseRecipeIngredients, parsePrepTasks } from '../utils/recipeUtils';
 import { parseRecipeTags } from '../utils/recipeTags';
 import { parseRecipeChoices, parseRecipeComponents } from '../utils/recipeComponents';
+import { normalizeScale } from '../utils/recipeScale';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
 
@@ -522,6 +523,10 @@ export function initDatabase(): void {
     // source. See Recipe.sourceType/sourcePage.
     'ALTER TABLE recipes ADD COLUMN source_type TEXT',
     'ALTER TABLE recipes ADD COLUMN source_page TEXT',
+    // 1 — as written — for every meal planned before a recipe could be halved
+    // or doubled. REAL rather than INTEGER because half is the point of the
+    // feature. See MealPlanEntry.recipeScale.
+    'ALTER TABLE meal_plan_entries ADD COLUMN recipe_scale REAL NOT NULL DEFAULT 1',
     // 0 for every existing row, and that needs no backfill to be correct: the
     // Pinned section sorted by sort_order until now, and pinnedTasks() still
     // falls back to it for ties. So an install upgrading into this sees its
@@ -1727,6 +1732,10 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     cookedAt: (row.cooked_at as string) ?? null,
     leftoverId: (row.leftover_id as string) ?? null,
     recipeChoices: parseRecipeChoices(row.recipe_choices),
+    // Clamped rather than trusted: the column defaults to 1, but a restored
+    // backup or a hand-edited row carrying 0 would otherwise render a meal with
+    // no quantities at all.
+    recipeScale: normalizeScale(row.recipe_scale as number | null),
   };
 }
 
@@ -1750,23 +1759,24 @@ export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlan
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
       entry.leftoverId ?? null, JSON.stringify(entry.recipeChoices ?? []),
+      normalizeScale(entry.recipeScale),
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
-      JSON.stringify(entry.recipeChoices ?? []), entry.id,
+      JSON.stringify(entry.recipeChoices ?? []), normalizeScale(entry.recipeScale), entry.id,
     ]
   );
 }

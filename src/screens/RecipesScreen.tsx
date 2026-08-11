@@ -29,7 +29,7 @@ import { Fab, FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '
 import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { PlanRecipeSheet } from '../components/PlanRecipeSheet';
+import { PlanMealSheet } from '../components/PlanMealSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
@@ -653,10 +653,11 @@ export function RecipesScreen() {
         onChange={next => { animateLayout(); setSelectedTags(next); }}
       />
 
-      <PlanRecipeSheet
+      <PlanMealSheet
         visible={planningRecipe !== null}
-        recipe={planningRecipe}
-        onPlan={planRecipe}
+        title={planningRecipe?.name ?? null}
+        onPlan={(dateKey, slot) =>
+          planningRecipe ? planRecipe(planningRecipe, dateKey, slot) : null}
         // After the dismissal, never before — see PlanRecipeSheet.onPlanned.
         onPlanned={offerPrepTasks}
         onClose={() => setPlanningRecipe(null)}

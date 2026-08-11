@@ -421,9 +421,28 @@ export function getDeadlineCountdown(deadline: string, dayResetTime?: string): n
   return differenceInCalendarDays(target, today);
 }
 
-/** Deadline expressed as N days before a due date, e.g. the Wednesday before a Thursday recurrence. */
+/**
+ * Deadline expressed as a day count either side of a due date, e.g. the
+ * Wednesday before a Thursday recurrence. Positive counts back from the due
+ * date, negative counts forward from it — a deadline *after* the due date is
+ * an ordinary case ("filed on the 1st, has to clear by the 10th"), not an
+ * inverted one, since a deadline is only a target and never gates visibility.
+ */
 export function getDeadlineFromOffset(dueDate: Date, offsetDays: number): Date {
   return subDays(dueDate, offsetDays);
+}
+
+/**
+ * The user-facing wording for a relative deadline offset, owned here so the
+ * editor's row summary and its stepper label can't drift on the direction —
+ * the sign is the whole meaning of the field and reads backwards if either
+ * one hardcodes "before".
+ */
+export function describeDeadlineOffset(offsetDays: number): string {
+  if (offsetDays === 0) return 'on the due date';
+  const magnitude = Math.abs(offsetDays);
+  const unit = magnitude === 1 ? 'day' : 'days';
+  return `${magnitude} ${unit} ${offsetDays > 0 ? 'before' : 'after'} due`;
 }
 
 /**

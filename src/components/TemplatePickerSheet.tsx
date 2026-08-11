@@ -77,8 +77,7 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
     Animated.parallel([
       Animated.spring(translateY, {
         toValue: 700,
-        damping: 28,
-        stiffness: 320,
+        ...animation.spring.sheetDismiss,
         useNativeDriver: true,
       }),
       Animated.timing(backdropOpacity, {
@@ -106,8 +105,7 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
         } else {
           Animated.spring(translateY, {
             toValue: 0,
-            damping: 22,
-            stiffness: 300,
+            ...animation.spring.snappy,
             useNativeDriver: true,
           }).start();
         }

@@ -830,6 +830,29 @@ describe('completeTask', () => {
     expect(new Date(next!.deadline!).toISOString()).toBe(new Date(2025, 5, 18, 0, 0, 0).toISOString()); // next Wednesday
   });
 
+  it('recomputes a deadline set *after* the due date against the next occurrence', () => {
+    // Filed on the 1st of the month, has to clear by the 10th — the deadline
+    // trails the due date rather than leading it, which a negative offset is.
+    jest.setSystemTime(new Date(2026, 0, 1, 10, 0, 0)); // Jan 1, 2026 — due today
+    const task = makeTask({
+      id: 'recurring',
+      recurrenceType: 'monthly',
+      recurrenceInterval: 1,
+      recurrenceMonthDay: 1,
+      dueDate: new Date(2026, 0, 1, 0, 0, 0).toISOString(),
+      deadline: new Date(2026, 0, 11, 0, 0, 0).toISOString(),
+      deadlineOffsetDays: -10,
+      deadlineMonthDay: null,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('recurring');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
+    expect(next?.deadlineOffsetDays).toBe(-10);
+    expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2026, 1, 1, 0, 0, 0).toISOString()); // Feb 1
+    expect(new Date(next!.deadline!).toISOString()).toBe(new Date(2026, 1, 11, 0, 0, 0).toISOString()); // Feb 11
+  });
+
   it('recomputes a "last day of the month" deadline against the next occurrence\'s dueDate', () => {
     // Due the 20th of every month, deadline the last day of that same month —
     // a fixed day offset can't express this since month lengths vary.

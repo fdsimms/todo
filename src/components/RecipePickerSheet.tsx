@@ -16,8 +16,8 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { SafeBlurView } from './SafeBlurView';
-import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
+import { EmptyState } from './EmptyState';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -62,6 +62,21 @@ interface Props {
 
 /** Enough to scan without virtualizing; the search field reaches the rest. */
 const MAX_ROWS = 30;
+
+/**
+ * The slot the last pick used, remembered for as long as the app is running.
+ *
+ * Dinner is the right *default* — it's what a week plan is mostly about, and
+ * it's what `defaultSlot` says. It was also the only thing this sheet ever
+ * remembered, so someone who plans lunches re-tapped the same chip on every
+ * single open, forever (#1368). Now the default seeds the first open of a
+ * session and each pick moves it on.
+ *
+ * Deliberately module state rather than a setting: it's a guess about what
+ * you're doing right now, not a preference about how the app should behave,
+ * and it should not survive a relaunch into next week's planning session.
+ */
+let lastPickedSlot: MealSlot | null = null;
 
 /** Kept clear above the lifted sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
@@ -154,22 +169,22 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
   useEffect(() => {
     if (!visible) return;
     setQuery('');
-    setSlot(defaultSlot);
+    setSlot(lastPickedSlot ?? defaultSlot);
     translateY.setValue(600);
     backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
     setKeyboardHeight(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
     ]).start();
   }, [visible, defaultSlot]);
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, damping: 28, stiffness: 320, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
       translateY.setValue(600);
       onClose();
@@ -186,7 +201,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, damping: 22, stiffness: 300, useNativeDriver: true }).start();
+        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
       },
     })
   ).current;
@@ -208,6 +223,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
   // `onClose` has fired by then.
   const pick = (recipeId: string | null, title: string) => {
     haptics.success();
+    lastPickedSlot = slot;
     dismiss(() => onPick({ date: dayKey, slot, recipeId, leftoverId: null, title }));
   };
 
@@ -228,6 +244,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
    */
   const pickLeftover = (leftover: Leftover) => {
     haptics.success();
+    lastPickedSlot = slot;
     // Dismiss-then-pick, same as `pick` above and for the same reason.
     dismiss(() => onPick({
       date: dayKey,
@@ -258,15 +275,13 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
         </View>
 
         <View style={styles.card}>
+          {/* No "Done" beside the title any more. A pick closes the sheet by
+              itself, so that button and the Cancel card below it were two
+              labels for one identical dismissal — and "Done" was the misleading
+              half, since it reads as "commit what I typed" next to a text field
+              that it does nothing with (#1378). */}
           <View style={styles.sheetHeaderRow}>
             <Text style={styles.sheetTitle}>Plan {dayLabel}</Text>
-            <SheetHeaderButton
-              label="Done"
-              onPress={() => dismiss()}
-              role="confirm"
-              accessibilityLabel={`Done planning ${dayLabel}`}
-              style={styles.doneButton}
-            />
           </View>
           <Text style={styles.sheetHint}>
             Pick a recipe, or type whatever it is — “leftovers” is a plan too.
@@ -377,15 +392,13 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
 
             {matches.length === 0 && !showFreeText && fridge.length === 0 ? (
               <View style={styles.emptyWrap}>
-                <Ionicons name="restaurant-outline" size={28} color={colors.textTertiary} />
-                <Text style={styles.emptyTitle}>
-                  {query.trim() ? 'No matches' : 'No recipes yet'}
-                </Text>
-                <Text style={styles.emptySub}>
-                  {query.trim()
+                <EmptyState
+                  icon="restaurant-outline"
+                  title={query.trim() ? 'No matches' : 'No recipes yet'}
+                  subtitle={query.trim()
                     ? 'Nothing in your recipe box is called that.'
                     : 'Type what you’re having — you don’t need a recipe to plan a night.'}
-                </Text>
+                />
               </View>
             ) : (
               matches.map((recipe, idx) => (
@@ -463,9 +476,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.lg,
     fontWeight: fontWeight.semibold,
-  },
-  doneButton: {
-    fontSize: font.md,
   },
   sheetHint: {
     color: colors.textTertiary,
@@ -557,22 +567,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
   },
+  // EmptyState brings its own centring, icon circle and type — this only has
+  // to keep it off the sheet's edges.
   emptyWrap: {
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-  },
-  emptySub: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    textAlign: 'center',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
   },
   cancelCard: {
     backgroundColor: colors.bgSecondary,

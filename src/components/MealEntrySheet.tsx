@@ -22,6 +22,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
 import type { ChoiceGroup } from '../utils/recipeComponents';
+import { RecipeScaleChips } from './RecipeScaleChips';
 
 interface Props {
   visible: boolean;
@@ -46,6 +47,17 @@ interface Props {
   choiceGroups?: ChoiceGroup[];
   /** Records a pick. Absent alongside an empty `choiceGroups`. */
   onChoose?: (group: ChoiceGroup, componentId: string) => void;
+  /**
+   * Records how much of the recipe this meal makes — see
+   * MealPlanEntry.recipeScale. Absent for a meal with no recipe behind it,
+   * which is what hides the control entirely.
+   */
+  onScale?: (factor: number) => void;
+  /** The recipe's own serving count — enables the servings stepper under the
+      batch chips. See RecipeScaleChips.baseServings. */
+  baseServings?: number | null;
+  /** The high end of a range, for the "recipe says serves 4-6" caption. */
+  baseServingsMax?: number | null;
   /** Present only while the entry hasn't already been marked cooked. */
   onMarkCooked?: () => void;
   /** Present only while the entry's recipe still resolves. */
@@ -92,7 +104,8 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onRemove, onRename, choiceGroups = [], onChoose,
-  onMarkCooked, onOpenRecipe, onAddPrepTasks, onLogLeftovers, onFinishLeftover, onClose,
+  onScale, baseServings, baseServingsMax, onMarkCooked, onOpenRecipe, onAddPrepTasks, onLogLeftovers,
+  onFinishLeftover, onClose,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -111,7 +124,7 @@ export function MealEntrySheet({
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
     ]).start();
     // A fresh open (or a switch to a different entry) always starts read-only,
     // regardless of whether the previous entry was left mid-edit.
@@ -128,8 +141,8 @@ export function MealEntrySheet({
 
   const dismiss = (after?: () => void) => {
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, damping: 28, stiffness: 320, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
       translateY.setValue(600);
       onClose();
@@ -146,7 +159,7 @@ export function MealEntrySheet({
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, damping: 22, stiffness: 300, useNativeDriver: true }).start();
+        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
       },
     })
   ).current;
@@ -212,9 +225,23 @@ export function MealEntrySheet({
             <Text style={styles.sheetTitle} numberOfLines={2}>{title}</Text>
           )}
 
-          {/* Above "Move to" because it's the only thing here that changes what
-              gets cooked and bought, rather than where the meal sits. A recipe
-              with no either/or components renders nothing at all. */}
+          {/* Alongside the choice chips, above "Move to", for the same reason
+              they are: both change what gets cooked and bought rather than where
+              the meal sits. Only for a meal backed by a recipe — a night that
+              just says "leftovers" has no quantities to multiply. */}
+          {!!onScale && (
+            <View>
+              <Text style={styles.label}>Batch</Text>
+              <RecipeScaleChips
+                value={entry?.recipeScale ?? 1}
+                onChange={onScale}
+                baseServings={baseServings}
+                baseServingsMax={baseServingsMax}
+                surface="card"
+              />
+            </View>
+          )}
+
           {choiceGroups.map(group => (
             <View key={`${group.recipe.id}:${group.label}`}>
               <Text style={styles.label}>{group.label}</Text>

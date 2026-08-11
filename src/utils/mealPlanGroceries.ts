@@ -4,6 +4,14 @@ import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
 import { probablyHaveReason } from './grocerySuggest';
 import { flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
+import {
+  formatQuantityAmount,
+  inflectUnit,
+  normalizeScale,
+  quantityAmount,
+  scaleQuantity,
+  unitKey,
+} from './recipeScale';
 
 /**
  * Everything decidable about turning a week plan into a grocery add, kept
@@ -16,6 +24,12 @@ import { flattenRecipeIngredients, type ChoiceResolution } from './recipeCompone
  * narrow, provably-safe case mergeQuantities describes. It cannot convert
  * between units, understand "a bunch" or "a knob", or know that 3 cloves is a
  * fraction of one bulb.
+ *
+ * The one thing that *does* multiply a quantity is recipeScale, reached from
+ * here only through a factor the user picked explicitly (a halved recipe, a
+ * doubled Sunday). It is bound by the same rules — no unit conversion, and a
+ * line it can't parse passes through untouched and flagged rather than guessed
+ * at — so nothing above is weakened by it.
  */
 
 /** One recipe's ingredient, as it landed on one planned meal. */
@@ -74,6 +88,10 @@ export function collectPlannedIngredients(
     const recipe = recipesById.get(entry.recipeId);
     if (!recipe) continue;
     const weekday = format(dayKeyToDate(entry.date), 'EEE');
+    // The entry's own scale, so a Sunday cooked double shops for double — and
+    // one factor covers the whole tree, components included, because it's
+    // applied to every flattened line rather than to the root's own.
+    const scale = normalizeScale(entry.recipeScale);
     // The entry's own picks, so a week holding steak-with-mash on Tuesday and
     // steak-with-roast on Friday shops for one side each night rather than both
     // twice. An entry that never answered resolves to the defaults.
@@ -81,7 +99,7 @@ export function collectPlannedIngredients(
       out.push({
         name: flat.ingredient.name,
         nameKey: flat.ingredient.nameKey,
-        quantity: flat.ingredient.quantity,
+        quantity: scaleQuantity(flat.ingredient.quantity, scale).text,
         aisle: flat.ingredient.aisle,
         source: `${weekday} ${flat.recipe.name}`,
         recipeId: flat.recipe.id,
@@ -112,12 +130,16 @@ export function plannedIngredientsForRecipe(
   recipe: Recipe,
   recipesById: ReadonlyMap<string, Recipe> = new Map([[recipe.id, recipe]]),
   resolution?: ChoiceResolution,
+  scale = 1,
 ): PlannedIngredient[] {
+  const factor = normalizeScale(scale);
   return flattenRecipeIngredients(recipe, recipesById, resolution).map(flat => ({
     name: flat.ingredient.name,
     nameKey: flat.ingredient.nameKey,
     quantity: [
-      flat.ingredient.quantity,
+      // Scaled before the join, never after: prep and purpose are prose and
+      // there is no amount in them to multiply.
+      scaleQuantity(flat.ingredient.quantity, factor).text,
       flat.ingredient.prep,
       flat.ingredient.purpose ? `for ${flat.ingredient.purpose}` : null,
     ].filter(Boolean).join(', '),
@@ -130,19 +152,37 @@ export function plannedIngredientsForRecipe(
   }));
 }
 
-/** "2 lb" → `{ amount: 2, unit: 'lb' }`. Null for anything that isn't a bare number and unit word. */
+// A whole string that is nothing but an amount and an optional unit word. The
+// *shape* is as strict as it ever was — anchored at both ends, so "2 14 oz
+// cans" and "1 cup, packed" still don't parse and still get listed rather than
+// summed. Only the notations for the amount itself widened.
+const WHOLE_QUANTITY = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*([a-z%]*)$/i;
+
+/**
+ * "2 lb" → `{ amount: 2, unit: 'lb' }`. Null for anything that isn't a bare
+ * amount and unit word.
+ *
+ * **Fractions and mixed numbers parse here now**, where they used to be
+ * refused. The original reasoning was that summing them means adding fractions
+ * with possibly different denominators, and that this module had no business
+ * doing that kind of quiet-but-fragile arithmetic. Recipe scaling changed the
+ * arithmetic, not the caution: exact rational addition is in recipeScale (see
+ * `quantityAmount`/`formatQuantityAmount`), and it's what makes "1/2 cup" +
+ * "1/4 cup" come out as "3/4 cup" rather than "0.75 cup" or a float artefact.
+ *
+ * Refusing them stopped being tenable anyway the moment a scaled recipe could
+ * *produce* one: halving a shopping list would have turned every merged row
+ * into mergeQuantities' rule-5 list ("1 1/2 cups · 2 cups"), so the feature
+ * would have quietly degraded the thing it was meant to help with.
+ */
 export function parseQuantityAmount(q: string): { amount: number; unit: string } | null {
   const trimmed = q.trim();
   if (!trimmed) return null;
-  // Deliberately does not accept a fraction or mixed number ("1/2", "1 1/2")
-  // — parseGroceryInput produces those for a single ingredient line, but
-  // summing them means adding fractions with possibly different
-  // denominators, which is exactly the kind of quiet-but-fragile arithmetic
-  // this module exists to avoid. A quantity written that way just doesn't
-  // parse here, and mergeQuantities' rule 5 lists it instead of guessing.
-  const match = /^(\d+(?:\.\d+)?)\s*([a-z%]*)$/i.exec(trimmed);
+  const match = WHOLE_QUANTITY.exec(trimmed);
   if (!match) return null;
-  return { amount: Number(match[1]), unit: match[2].toLowerCase() };
+  const amount = quantityAmount(match[1]);
+  if (!amount) return null;
+  return { amount: amount.value, unit: match[2].toLowerCase() };
 }
 
 /**
@@ -173,15 +213,27 @@ export function mergeQuantities(quantities: readonly string[]): string {
   const allParsed = parsed.every((p): p is { amount: number; unit: string } => p !== null);
   if (allParsed) {
     const unit = parsed[0]!.unit;
-    const sameUnit = parsed.every(p => p!.unit === unit);
+    // Compared as unit *identities*, so "cup" and "cups" are the same unit and
+    // still sum. Scaling generates both forms itself — a halved line says
+    // "1/2 cup" where the recipe said "2 cups" — so a raw string comparison
+    // would list two measurements of the same thing side by side. Still never
+    // across genuinely different units: "g" and "grams" collapse, "g" and "kg"
+    // do not (see recipeScale.unitKey).
+    const key = unitKey(unit);
+    const sameUnit = parsed.every(p => unitKey(p!.unit) === key);
     if (sameUnit) {
       const total = parsed.reduce((sum, p) => sum + p!.amount, 0);
-      // Integral totals render without a decimal; a fractional one keeps at
-      // most two places rather than trailing float noise like "3.30".
-      const amountText = Number.isInteger(total)
-        ? String(total)
-        : String(Math.round(total * 100) / 100);
-      return unit ? `${amountText} ${unit}` : amountText;
+      // Rendered the same way a scaled quantity is, so a list built from
+      // fractions reads in fractions ("3/4 cup") — except when a source was
+      // written in decimals, which is a notation the person chose and gets kept
+      // ("1.1 lb" + "2.2 lb" → "3.3 lb", not "3 3/10 lb").
+      const anyDecimal = present.some(q => /\d\.\d/.test(q));
+      const amountText = formatQuantityAmount(total, anyDecimal);
+      // Agreed with the total rather than copied off the first source, which
+      // is the other half of comparing by identity: having decided "1/2 cup"
+      // and "2 cups" are addable, the answer has to pick a form, and the one
+      // that matches the number it's next to is the only defensible pick.
+      return unit ? `${amountText} ${inflectUnit(unit, total)}` : amountText;
     }
   }
   return present.join(' · ');
