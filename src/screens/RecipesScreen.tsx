@@ -101,7 +101,7 @@ export function RecipesScreen() {
         <Ionicons name="restaurant-outline" size={18} color={colors.accent} />
       </View>
       <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={1}>{recipe.name}</Text>
+        <Text style={styles.name} numberOfLines={2}>{recipe.name}</Text>
         <Text style={styles.meta} numberOfLines={1}>
           {[describeRecipe(recipe), describeCookHistory(recipe)].filter(Boolean).join(' · ')}
         </Text>
@@ -130,7 +130,7 @@ export function RecipesScreen() {
             accessibilityRole="button"
             accessibilityLabel={`${recipe.name}. ${describeCookHistory(recipe)}`}
           >
-            <Text style={styles.shelfName} numberOfLines={1}>{recipe.name}</Text>
+            <Text style={styles.shelfName} numberOfLines={2}>{recipe.name}</Text>
             <Text style={styles.shelfMeta} numberOfLines={1}>{describeCookHistory(recipe)}</Text>
           </TouchableOpacity>
         ))}
