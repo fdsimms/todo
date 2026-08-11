@@ -327,25 +327,28 @@ export function RecipeDetailScreen() {
     return headers;
   }, [recipe.ingredients]);
 
-  // The same display-only treatment for choice groups: the *first* component of
-  // each group opens a heading, and is also the group's default (see
+  // The same display-only treatment for choice groups: the *first* row of each
+  // group opens a heading, and is also the group's default (see
   // RecipeComponent.choiceGroup), so one pass over stored order answers both.
   // Unlike the ingredient sections above, a group's options need not be
   // adjacent — the heading opens at the first one and the rest keep their
   // places, because the list order is what the recipe reads like and reordering
   // it here would be editing the recipe to draw it.
-  const componentGroups = useMemo(() => {
+  const choiceHeadersOf = (rows: readonly { id: string; choiceGroup: string | null }[]) => {
     const headers = new Map<string, string>();
     const defaults = new Set<string>();
     const seen = new Set<string>();
-    for (const c of recipe.components) {
-      if (!c.choiceGroup || seen.has(c.choiceGroup)) continue;
-      seen.add(c.choiceGroup);
-      headers.set(c.id, c.choiceGroup);
-      defaults.add(c.id);
+    for (const row of rows) {
+      if (!row.choiceGroup || seen.has(row.choiceGroup)) continue;
+      seen.add(row.choiceGroup);
+      headers.set(row.id, row.choiceGroup);
+      defaults.add(row.id);
     }
     return { headers, defaults };
-  }, [recipe.components]);
+  };
+
+  const componentGroups = useMemo(() => choiceHeadersOf(recipe.components), [recipe.components]);
+  const ingredientGroups = useMemo(() => choiceHeadersOf(recipe.ingredients), [recipe.ingredients]);
 
   const renderIngredient = (
     ingredient: RecipeIngredient,
@@ -355,9 +358,17 @@ export function RecipeDetailScreen() {
   ) => {
     const selected = selectedIds.has(ingredient.id);
     const sectionHeader = ingredientSectionHeaders.get(ingredient.id);
+    // A line can open both: the section it belongs to, then the either/or slot
+    // it fills within that section.
+    const choiceHeader = ingredientGroups.headers.get(ingredient.id);
+    const choiceGroup = ingredient.choiceGroup;
+    const isChoiceDefault = ingredientGroups.defaults.has(ingredient.id);
     return (
       <View>
         {!!sectionHeader && <Text style={styles.ingredientSectionHeader}>{sectionHeader}</Text>}
+        {!!choiceHeader && (
+          <Text style={styles.ingredientSectionHeader}>{choiceHeader} · choose one</Text>
+        )}
         <TouchableOpacity
           style={[
             styles.ingredient,
@@ -376,7 +387,8 @@ export function RecipeDetailScreen() {
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={
             [ingredient.section, ingredient.name, ingredient.quantity, ingredient.prep,
-             ingredient.purpose && `for ${ingredient.purpose}`]
+             ingredient.purpose && `for ${ingredient.purpose}`,
+             choiceGroup && (isChoiceDefault ? `usual choice for ${choiceGroup}` : `alternative for ${choiceGroup}`)]
               .filter(Boolean).join(', ')
           }
           accessibilityHint={selectionMode ? 'Double tap to select' : 'Double tap to edit. Long press to reorder.'}
@@ -470,11 +482,6 @@ export function RecipeDetailScreen() {
               {target ? describeRecipe(target) : 'No longer in your recipes'}
             </Text>
           </View>
-          {isDefault && (
-            <View style={styles.usuallyPill}>
-              <Text style={styles.usuallyText}>Usually</Text>
-            </View>
-          )}
           {!!target && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
           <TouchableOpacity
             onPress={() => confirmRemoveComponent(resolved)}
@@ -1059,20 +1066,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.sm,
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
-  },
-  // qtyPill's twin, tinted rather than grey: it marks the option a meal gets
-  // when nobody chooses, which is a statement about this row rather than a
-  // value read off it.
-  usuallyPill: {
-    backgroundColor: colors.accentSubtle,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-  },
-  usuallyText: {
-    color: colors.accent,
-    fontSize: font.xs,
-    fontWeight: fontWeight.medium,
   },
   qtyText: {
     color: colors.textSecondary,

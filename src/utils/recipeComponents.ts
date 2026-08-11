@@ -26,8 +26,8 @@ import { generateId } from './id';
  * **Alternatives (choice groups) are resolved here, at read time, and are
  * never written back onto the recipe.** A group is a set of components sharing
  * a `choiceGroup` label, of which exactly one is cooked; which one is a fact
- * about a *meal*, so the pick is stored on MealPlanEntry.componentChoices and
- * arrives here as a `ComponentResolution`. Passing none resolves every group to
+ * about a *meal*, so the pick is stored on MealPlanEntry.recipeChoices and
+ * arrives here as a `ChoiceResolution`. Passing none resolves every group to
  * its default, which is what every caller that predates this does implicitly —
  * so an unresolved read is always a complete, cookable dish rather than a
  * partial one.
@@ -83,13 +83,13 @@ export function normalizeComponent(raw: unknown): RecipeComponent | null {
 }
 
 /**
- * The chosen link ids stored on a meal plan entry. Tolerates a null column or a
+ * The chosen ids stored on a meal plan entry. Tolerates a null column or a
  * corrupt blob exactly as parseRecipeComponents does, and drops anything that
- * isn't a non-empty string — an id that names no link is harmless (its group
+ * isn't a non-empty string — an id that names nothing is harmless (its group
  * falls back to the default), but a number or an object in the list would only
  * ever be a miss with a confusing shape.
  */
-export function parseComponentChoices(raw: unknown): string[] {
+export function parseRecipeChoices(raw: unknown): string[] {
   if (!raw) return [];
   let parsed: unknown;
   try { parsed = JSON.parse(raw as string); } catch { return []; }
@@ -114,8 +114,12 @@ export function makeComponent(target: Recipe, choiceGroup: string | null = null)
  * scorer, an old test) gets one complete dish rather than having to know this
  * exists.
  */
-export interface ComponentResolution {
-  /** Chosen component *link* ids — MealPlanEntry.componentChoices, verbatim. */
+export interface ChoiceResolution {
+  /**
+   * Chosen ids — MealPlanEntry.recipeChoices, verbatim. Names component links
+   * and ingredient lines alike; each is looked up only against the list it
+   * could have come from, so the two can't collide.
+   */
   chosen?: readonly string[];
   /**
    * Every alternative contributes, as though nothing were a choice.
@@ -129,9 +133,15 @@ export interface ComponentResolution {
   allOptions?: boolean;
 }
 
+/** Anything that can be an either/or option: it has an id and a group label. */
+interface Groupable {
+  id: string;
+  choiceGroup: string | null;
+}
+
 /**
- * The components of one recipe that actually contribute under `resolution`:
- * every ungrouped component, plus one option per choice group.
+ * The rows of `list` that actually contribute under `resolution`: every
+ * ungrouped row, plus one option per choice group.
  *
  * List order is preserved, so a resolved list reads exactly as the recipe is
  * written. The winner of a group is the first of its options named in `chosen`,
@@ -139,30 +149,59 @@ export interface ComponentResolution {
  * default is the first one" true (see RecipeComponent.choiceGroup) and keeps
  * the result deterministic even if a stored list somehow names two options of
  * one group.
+ *
+ * Generic over components and ingredients because the rule is genuinely the
+ * same one, and having written it twice is how they'd drift apart. It stays a
+ * shared *function* rather than a shared type — see RecipeIngredient.choiceGroup
+ * for why a dish and a shopping line don't belong in one list.
  */
-export function activeComponents(
-  recipe: Recipe,
-  resolution?: ComponentResolution,
-): RecipeComponent[] {
-  if (resolution?.allOptions) return [...recipe.components];
-  const groups = groupOptions(recipe);
-  if (groups.size === 0) return [...recipe.components];
+function activeIn<T extends Groupable>(
+  list: readonly T[],
+  resolution?: ChoiceResolution,
+): T[] {
+  if (resolution?.allOptions) return [...list];
+  const groups = groupOptions(list);
+  if (groups.size === 0) return [...list];
   const chosen = new Set(resolution?.chosen ?? []);
   const winners = new Set<string>();
   for (const options of groups.values()) {
     winners.add((options.find(o => chosen.has(o.id)) ?? options[0]).id);
   }
-  return recipe.components.filter(c => !c.choiceGroup || winners.has(c.id));
+  return list.filter(row => !row.choiceGroup || winners.has(row.id));
 }
 
-/** label → its components, in list order. Empty for a recipe with no alternatives. */
-function groupOptions(recipe: Recipe): Map<string, RecipeComponent[]> {
-  const groups = new Map<string, RecipeComponent[]>();
-  for (const component of recipe.components) {
-    if (!component.choiceGroup) continue;
-    const options = groups.get(component.choiceGroup);
-    if (options) options.push(component);
-    else groups.set(component.choiceGroup, [component]);
+/** The components a meal of `recipe` actually cooks under `resolution`. */
+export function activeComponents(
+  recipe: Recipe,
+  resolution?: ChoiceResolution,
+): RecipeComponent[] {
+  return activeIn(recipe.components, resolution);
+}
+
+/**
+ * The ingredient lines a meal of `recipe` actually buys under `resolution` —
+ * "serrano" or "jalapeño", never both, and never the string "serrano or
+ * jalapeño".
+ *
+ * Every shopping read reaches this through flattenRecipeIngredients rather than
+ * calling it directly; it's exported for the authoring surfaces that need to
+ * know what one *meal* of a recipe looks like without flattening the tree.
+ */
+export function activeIngredients(
+  recipe: Recipe,
+  resolution?: ChoiceResolution,
+): RecipeIngredient[] {
+  return activeIn(recipe.ingredients, resolution);
+}
+
+/** label → its rows, in list order. Empty for a list with no alternatives. */
+function groupOptions<T extends Groupable>(list: readonly T[]): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const row of list) {
+    if (!row.choiceGroup) continue;
+    const options = groups.get(row.choiceGroup);
+    if (options) options.push(row);
+    else groups.set(row.choiceGroup, [row]);
   }
   return groups;
 }
@@ -236,11 +275,14 @@ export interface FlatIngredient {
 export function flattenRecipeIngredients(
   recipe: Recipe,
   recipesById: ReadonlyMap<string, Recipe>,
-  resolution?: ComponentResolution,
+  resolution?: ChoiceResolution,
 ): FlatIngredient[] {
   const out: FlatIngredient[] = [];
   walk(recipe, recipesById, new Set([recipe.id]), 0, resolution, node => {
-    for (const ingredient of node.recipe.ingredients) {
+    // Resolved, not raw: an either/or line contributes whichever pepper this
+    // meal picked. Ungrouped lines are every line, so a recipe with no
+    // alternatives flattens exactly as it always did.
+    for (const ingredient of activeIngredients(node.recipe, resolution)) {
       out.push({ ingredient, recipe: node.recipe, depth: node.depth });
     }
   });
@@ -267,7 +309,7 @@ export interface FlatPrepTask {
 export function flattenRecipePrepTasks(
   recipe: Recipe,
   recipesById: ReadonlyMap<string, Recipe>,
-  resolution?: ComponentResolution,
+  resolution?: ChoiceResolution,
 ): FlatPrepTask[] {
   const out: FlatPrepTask[] = [];
   walk(recipe, recipesById, new Set([recipe.id]), 0, resolution, node => {
@@ -292,7 +334,7 @@ function walk(
   recipesById: ReadonlyMap<string, Recipe>,
   visited: Set<string>,
   depth: number,
-  resolution: ComponentResolution | undefined,
+  resolution: ChoiceResolution | undefined,
   visit: (node: { recipe: Recipe; depth: number }) => void,
 ): void {
   visit({ recipe, depth });
@@ -305,24 +347,40 @@ function walk(
   }
 }
 
+/** One option of a choice group, flattened to what a picker needs to draw it. */
+export interface ChoiceOption {
+  /** The component link id or the ingredient id — what goes in the chosen list. */
+  id: string;
+  /** What to call it: a live component's current name, or the ingredient's. */
+  name: string;
+  /** True for a component whose recipe is gone. Still pickable, contributes nothing. */
+  broken: boolean;
+}
+
 /** One either/or slot: the label, its options, and which one is in force. */
-export interface ComponentChoiceGroup {
+export interface ChoiceGroup {
   /** The recipe carrying the group — the root itself, or a component at any depth. */
   recipe: Recipe;
-  /** The `choiceGroup` label the options share — "Side", "Starch". */
+  /** The `choiceGroup` label the options share — "Side", "Pepper". */
   label: string;
+  /**
+   * Which list the options came from. Pickers render both identically; this is
+   * for a caller that needs to say "side" rather than "ingredient" in a label.
+   */
+  kind: 'component' | 'ingredient';
   /** The alternatives, in list order. The first is the group's default. */
-  options: ResolvedComponent[];
+  options: ChoiceOption[];
   /** Whichever option the resolution selects: the chosen one, else the default. */
-  active: ResolvedComponent;
+  active: ChoiceOption;
 }
 
 /**
- * Every choice a meal of `recipe` actually poses, including groups carried by
- * its components at any depth.
+ * Every choice a meal of `recipe` actually poses — its own either/or
+ * ingredients and components, plus those of every component it's cooking, at
+ * any depth.
  *
  * This is what the pickers render, and it's a *tree* read rather than a read of
- * `recipe.components` for the reason MealPlanEntry.componentChoices gives: the
+ * one recipe's own lists for the reason MealPlanEntry.recipeChoices gives: the
  * question "mash or roast?" can be posed by a component two levels down, and
  * the entry pointing at the root still has to be able to answer it.
  *
@@ -330,26 +388,43 @@ export interface ComponentChoiceGroup {
  * while the branch holding it is actually being cooked — answering a question
  * about the mash on a roast-potatoes night would be storing a pick that changes
  * nothing.
+ *
+ * Components come before ingredients within one recipe, since "which side" is
+ * the bigger decision than "which pepper" and reads better first.
  */
-export function componentChoiceGroups(
+export function recipeChoiceGroups(
   recipe: Recipe,
   recipesById: ReadonlyMap<string, Recipe>,
-  resolution?: ComponentResolution,
-): ComponentChoiceGroup[] {
+  resolution?: ChoiceResolution,
+): ChoiceGroup[] {
   const chosen = new Set(resolution?.chosen ?? []);
-  const out: ComponentChoiceGroup[] = [];
+  const out: ChoiceGroup[] = [];
+  const push = (node: Recipe, label: string, kind: ChoiceGroup['kind'], options: ChoiceOption[]) => {
+    out.push({
+      recipe: node,
+      label,
+      kind,
+      options,
+      active: options.find(o => chosen.has(o.id)) ?? options[0],
+    });
+  };
   walk(recipe, recipesById, new Set([recipe.id]), 0, resolution, node => {
-    for (const [label, components] of groupOptions(node.recipe)) {
-      const options = components.map(component => resolveComponent(component, recipesById));
-      const active = options.find(o => chosen.has(o.component.id)) ?? options[0];
-      out.push({ recipe: node.recipe, label, options, active });
+    for (const [label, components] of groupOptions(node.recipe.components)) {
+      push(node.recipe, label, 'component', components.map(component => {
+        const resolved = resolveComponent(component, recipesById);
+        return { id: component.id, name: resolved.name, broken: !resolved.recipe };
+      }));
+    }
+    for (const [label, ingredients] of groupOptions(node.recipe.ingredients)) {
+      push(node.recipe, label, 'ingredient',
+        ingredients.map(ingredient => ({ id: ingredient.id, name: ingredient.name, broken: false })));
     }
   });
   return out;
 }
 
 /**
- * `choices` with `componentId` picked for its group — the one write path for a
+ * `choices` with `optionId` picked for its group — the one write path for a
  * pick, so no caller has to remember that a group holds exactly one answer.
  *
  * Every other option of the same group is dropped, and picking the group's
@@ -358,15 +433,15 @@ export function componentChoiceGroups(
  * list is the one that keeps following the recipe if its default is later
  * reordered.
  */
-export function applyComponentChoice(
+export function applyChoice(
   choices: readonly string[],
-  group: ComponentChoiceGroup,
-  componentId: string,
+  group: ChoiceGroup,
+  optionId: string,
 ): string[] {
-  const optionIds = new Set(group.options.map(o => o.component.id));
+  const optionIds = new Set(group.options.map(o => o.id));
   const rest = choices.filter(id => !optionIds.has(id));
-  const isDefault = group.options[0]?.component.id === componentId;
-  return isDefault || !optionIds.has(componentId) ? rest : [...rest, componentId];
+  const isDefault = group.options[0]?.id === optionId;
+  return isDefault || !optionIds.has(optionId) ? rest : [...rest, optionId];
 }
 
 /**
@@ -425,12 +500,27 @@ export function recipesUsing(recipes: readonly Recipe[], targetId: string): Reci
  * exists at all, which is to stop a count reading as more of a shop than it is.
  */
 export function describeComponents(recipe: Recipe): string {
-  const groups = new Set<string>();
-  let count = 0;
-  for (const component of recipe.components) {
-    if (!component.choiceGroup) count += 1;
-    else if (!groups.has(component.choiceGroup)) { groups.add(component.choiceGroup); count += 1; }
-  }
+  const count = countChoiceAware(recipe.components);
   if (count === 0) return '';
   return count === 1 ? '1 component' : `${count} components`;
+}
+
+/**
+ * How many things a list actually amounts to for one meal: every ungrouped row,
+ * plus one per choice group however many options it holds.
+ *
+ * Shared by describeComponents and describeRecipe's ingredient count, because
+ * both are answering the same question — "how much is this dish" — and
+ * "serrano or jalapeño" is one pepper, not two. Counting raw rows there would
+ * inflate exactly the number the user reads to decide whether they have time to
+ * cook it.
+ */
+export function countChoiceAware(rows: readonly Groupable[]): number {
+  const groups = new Set<string>();
+  let count = 0;
+  for (const row of rows) {
+    if (!row.choiceGroup) count += 1;
+    else if (!groups.has(row.choiceGroup)) { groups.add(row.choiceGroup); count += 1; }
+  }
+  return count;
 }

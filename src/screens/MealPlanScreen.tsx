@@ -36,8 +36,8 @@ import { buildWeekDays } from '../utils/calendarGrid';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import { resolvePrepTaskDraft, suggestRecipesForEmptyNight } from '../utils/recipeUtils';
 import {
-  applyComponentChoice,
-  componentChoiceGroups,
+  applyChoice,
+  recipeChoiceGroups,
   flattenRecipeIngredients,
   flattenRecipePrepTasks,
 } from '../utils/recipeComponents';
@@ -91,7 +91,7 @@ export function MealPlanScreen() {
   const removeEntry = useMealPlanStore(s => s.removeEntry);
   const renameEntry = useMealPlanStore(s => s.renameEntry);
   const markEntryCooked = useMealPlanStore(s => s.markCooked);
-  const setComponentChoices = useMealPlanStore(s => s.setComponentChoices);
+  const setRecipeChoices = useMealPlanStore(s => s.setRecipeChoices);
   const addedToListAt = useMealPlanStore(useShallow(s => s.addedToListAt));
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
@@ -183,7 +183,7 @@ export function MealPlanScreen() {
     // Under this meal's own picks: "boil the potatoes the night before" is a
     // step of the mash, and a night having the roast potatoes instead shouldn't
     // land it on the task list.
-    const prepTasks = flattenRecipePrepTasks(recipe, recipesById, { chosen: selected.componentChoices });
+    const prepTasks = flattenRecipePrepTasks(recipe, recipesById, { chosen: selected.recipeChoices });
     if (prepTasks.length === 0) return;
     const mealDate = dayKeyToDate(selected.date);
     prepTasks.forEach(({ prepTask }) => {
@@ -207,8 +207,8 @@ export function MealPlanScreen() {
     // RecipeDetailScreen's own "Add ingredients to list" already keeps, and
     // counted the same way: a dish whose ingredients all live on its
     // components still has a shop.
-    if (!recipe || flattenRecipeIngredients(recipe, recipesById, { chosen: entry.componentChoices }).length === 0) return;
-    setCookedRecipeForList({ recipe, choices: entry.componentChoices });
+    if (!recipe || flattenRecipeIngredients(recipe, recipesById, { chosen: entry.recipeChoices }).length === 0) return;
+    setCookedRecipeForList({ recipe, choices: entry.recipeChoices });
   };
 
   /**
@@ -323,7 +323,7 @@ export function MealPlanScreen() {
   // Counted over the whole component tree, so a dish whose only prep steps
   // live on one of its parts still offers the action.
   const selectedRecipe = selected?.recipeId ? recipesById.get(selected.recipeId) : undefined;
-  const selectedResolution = { chosen: selected?.componentChoices ?? [] };
+  const selectedResolution = { chosen: selected?.recipeChoices ?? [] };
   const selectedPrepTaskCount = selectedRecipe
     ? flattenRecipePrepTasks(selectedRecipe, recipesById, selectedResolution).length
     : 0;
@@ -332,7 +332,7 @@ export function MealPlanScreen() {
   // answers — so a choice nested inside the chosen option appears and one
   // inside the option it replaced doesn't.
   const selectedChoiceGroups = selectedRecipe
-    ? componentChoiceGroups(selectedRecipe, recipesById, selectedResolution)
+    ? recipeChoiceGroups(selectedRecipe, recipesById, selectedResolution)
     : [];
 
   // Offline "what can I make from what I've got" — only worth computing once
@@ -448,9 +448,9 @@ export function MealPlanScreen() {
         choiceGroups={selectedChoiceGroups}
         onChoose={(group, componentId) => {
           if (!selected) return;
-          setComponentChoices(
+          setRecipeChoices(
             selected.id,
-            applyComponentChoice(selected.componentChoices, group, componentId)
+            applyChoice(selected.recipeChoices, group, componentId)
           );
         }}
         onMarkCooked={selected && !selected.cookedAt ? () => markCooked(selected) : undefined}

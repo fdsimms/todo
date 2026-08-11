@@ -84,15 +84,15 @@ interface MealPlanStore {
 
   /**
    * Records which alternative this meal is having, as the whole list of chosen
-   * component link ids — see MealPlanEntry.componentChoices. Replaces rather
+   * component link ids — see MealPlanEntry.recipeChoices. Replaces rather
    * than merges, because the caller builds the new list with
-   * applyComponentChoice, which is where the one-answer-per-group rule lives.
+   * applyChoice, which is where the one-answer-per-group rule lives.
    *
    * Allowed on an already-cooked entry: the pick is a note about the meal, and
    * correcting Tuesday to say it was actually roast potatoes is a fair edit —
    * unlike markCooked, nothing downstream counts it.
    */
-  setComponentChoices: (id: string, componentChoices: string[]) => void;
+  setRecipeChoices: (id: string, recipeChoices: string[]) => void;
 
   /**
    * Stamps cookedAt with now. Idempotent — a second tap on an already-cooked
@@ -177,7 +177,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       // Nothing picked yet, which resolves to every choice group's default —
       // planning a meal must never be gated on answering "mash or roast?", the
       // same call MealPlanEntry.recipeId makes about naming a recipe at all.
-      componentChoices: [],
+      recipeChoices: [],
     };
 
     dbInsertMealPlanEntry(entry);
@@ -221,10 +221,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     set(s => ({ entries: s.entries.map(e => e.id === id ? renamed : e) }));
   },
 
-  setComponentChoices(id, componentChoices) {
+  setRecipeChoices(id, recipeChoices) {
     const entry = get().entries.find(e => e.id === id);
     if (!entry) return;
-    const chosen: MealPlanEntry = { ...entry, componentChoices };
+    const chosen: MealPlanEntry = { ...entry, recipeChoices };
     dbUpdateMealPlanEntry(chosen);
     set(s => ({ entries: s.entries.map(e => e.id === id ? chosen : e) }));
   },

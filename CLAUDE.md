@@ -335,13 +335,22 @@ meal that uses it. The graph walk — flatten, cycle check, reverse lookup — l
   nothing does arithmetic on it (see the note at the top of `mealPlanGroceries.ts`); a component
   contributes the quantities it's written with, whatever the parent's `servings` says.
 
-**Alternatives ("mash *or* roast potatoes") are a label on that same flat list**, not a fourth
-entity. Components sharing a `choiceGroup` are options of one slot; exactly one is cooked. This was
-resolved against two rejected alternatives (#1252): a `Meal` container above recipes is what a
-composed recipe already *is* (and `MealPlanEntry` already allows two things on one dinner, so
-ad-hoc pairing needs nothing), and extending #1117's either/or *ingredients* to whole dishes would
-put a dish reference in a list whose every reader assumes `nameKey` names something you can put in
-a trolley.
+**Alternatives are a label on a flat list**, not a fourth entity — and they exist at *both* levels:
+components sharing a `choiceGroup` ("mash *or* roast potatoes", #1252) and ingredients sharing one
+("serrano *or* jalapeño", #1117). Exactly one option of a group is cooked and bought. A `Meal`
+container above recipes was rejected: a composed recipe already *is* one, and `MealPlanEntry`
+already allows two things on one dinner, so ad-hoc pairing needs nothing.
+
+- **The two stay two lists sharing one convention**, never one list. An ingredient names something
+  you can put in a trolley (`nameKey` is the catalog bridge); a component names a dish. They share
+  `activeIn()` — one generic resolver over anything with an id and a `choiceGroup` — because the
+  *rule* is genuinely the same and writing it twice is how the two would drift.
+- **Two ingredient rows, never one line reading "serrano or jalapeño".** That spelling mints a
+  catalog item literally called "serrano or jalapeño": a row that can never match a real purchase,
+  never ranks in Buy again, and gets hand-corrected on the list every single time. Separate rows
+  each carry a clean `nameKey`, and choosing between them at add time is what puts exactly one in
+  the trolley. This is the entire point of the ingredient half — don't "simplify" it back to a
+  parsed `or`.
 
 - **The choice is resolved at read time and never written onto the recipe.** `activeComponents`
   picks one option per group, `walk` descends only into that one, and every flatten takes an
@@ -350,11 +359,14 @@ a trolley.
 - **The default is the group's first component in list order**, not a `defaultComponentId`: an id
   is a second thing to keep in step with the list and to repair when that component is removed.
   `makeComponentDefault` moves the link to the front of its group — the promotion *is* a reorder.
-- **The pick lives on `MealPlanEntry.componentChoices`**, because which side you make is a fact
-  about a cooking, not about the dish — one recipe, mash on Tuesday and roast on Friday. It's a
-  flat list of component *link* ids rather than a `{group: id}` map because a group can sit on a
-  component several levels down, so a group name alone wouldn't say whose group it is; link ids are
-  unique across the library. Dangling ids resolve-or-shrug back to the default.
+- **The pick lives on `MealPlanEntry.recipeChoices`**, because which side you make is a fact about
+  a cooking, not about the dish — one recipe, mash on Tuesday and roast on Friday. **One list holds
+  both kinds of id** (component links and ingredient lines): every reader asks it the same question,
+  and an id says which kind it is by which list holds it. Flat rather than a `{group: id}` map
+  because a group can sit on a component several levels down, so a group name alone wouldn't say
+  whose group it is. Dangling ids resolve-or-shrug back to the default.
+- **`countChoiceAware` is what any "how many" reads**, so `describeRecipe`'s ingredient count and
+  `describeComponents` both say one per group rather than one per option.
 - **`allOptions` is search-only.** `rankRecipes`' ingredient match passes it so a recipe stays
   findable by an ingredient on the road not taken; nothing that shops or spawns tasks may, and the
   reason is concrete — two sides that share an ingredient each contribute a line, which
@@ -364,8 +376,10 @@ a trolley.
 - **The cycle check deliberately ignores choices** (`reachableRecipeIds` walks every option): a loop
   down an unchosen branch is still a loop, and becomes live the moment someone picks that option.
 - **An ad-hoc "Add ingredients to list" holds its picks in sheet state and writes nothing** —
-  there's no meal for them to be a fact about. `RecipeToListSheet.initialChoices` seeds them from
-  the entry when the shop is a follow-up to cooking one.
+  there's no meal for them to be a fact about, and picking the pepper for tonight's shop shouldn't
+  edit the recipe. `RecipeToListSheet.initialChoices` seeds them from the entry when the shop is a
+  follow-up to cooking one. The week-level `AddWeekToListSheet` deliberately has no chips of its
+  own: it aggregates many recipes, and each entry already carries its own answers.
 
 ### Chains
 

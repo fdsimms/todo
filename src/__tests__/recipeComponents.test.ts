@@ -11,15 +11,17 @@ import {
   recipesUsing,
   describeComponents,
   activeComponents,
-  componentChoiceGroups,
-  applyComponentChoice,
-  parseComponentChoices,
+  activeIngredients,
+  countChoiceAware,
+  recipeChoiceGroups,
+  applyChoice,
+  parseRecipeChoices,
 } from '../utils/recipeComponents';
 import type { Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 
 let seq = 0;
 
-function ing(name: string): RecipeIngredient {
+function ing(name: string, choiceGroup: string | null = null): RecipeIngredient {
   return {
     id: `ing-${++seq}`,
     name,
@@ -29,6 +31,7 @@ function ing(name: string): RecipeIngredient {
     prep: null,
     purpose: null,
     section: null,
+    choiceGroup,
   };
 }
 
@@ -373,13 +376,13 @@ describe('choice groups', () => {
     });
   });
 
-  describe('componentChoiceGroups', () => {
+  describe('recipeChoiceGroups', () => {
     it('names the group, its options in order, and which one is live', () => {
       const { steak, byId } = library();
 
-      const [group] = componentChoiceGroups(steak, byId);
+      const [group] = recipeChoiceGroups(steak, byId);
 
-      expect(componentChoiceGroups(steak, byId)).toHaveLength(1);
+      expect(recipeChoiceGroups(steak, byId)).toHaveLength(1);
       expect(group.label).toBe('Side');
       expect(group.recipe).toBe(steak);
       expect(group.options.map(o => o.name)).toEqual(['Mash', 'Roast potatoes']);
@@ -390,7 +393,7 @@ describe('choice groups', () => {
       const { steak, byId } = library();
       const roastId = steak.components[2].id;
 
-      expect(componentChoiceGroups(steak, byId, { chosen: [roastId] })[0].active.name)
+      expect(recipeChoiceGroups(steak, byId, { chosen: [roastId] })[0].active.name)
         .toBe('Roast potatoes');
     });
 
@@ -407,46 +410,46 @@ describe('choice groups', () => {
       const byId = recipeMap([steak, mash, roast, cream, plain]);
 
       // Mash is the default, so its own question is live and attributed to it.
-      const onMash = componentChoiceGroups(steak, byId);
+      const onMash = recipeChoiceGroups(steak, byId);
       expect(onMash.map(g => g.label)).toEqual(['Side', 'Style']);
       expect(onMash[1].recipe).toBe(mash);
 
       // Pick the roast and the mash's question goes away with it.
-      const onRoast = componentChoiceGroups(steak, byId, { chosen: [steak.components[1].id] });
+      const onRoast = recipeChoiceGroups(steak, byId, { chosen: [steak.components[1].id] });
       expect(onRoast.map(g => g.label)).toEqual(['Side']);
     });
   });
 
-  describe('applyComponentChoice', () => {
+  describe('applyChoice', () => {
     it('replaces the group’s answer rather than adding a second one', () => {
       const { steak, byId } = library();
-      const [group] = componentChoiceGroups(steak, byId);
+      const [group] = recipeChoiceGroups(steak, byId);
       const roastId = steak.components[2].id;
       const mashId = steak.components[1].id;
 
-      const chosen = applyComponentChoice([], group, roastId);
+      const chosen = applyChoice([], group, roastId);
       expect(chosen).toEqual([roastId]);
       // Back to the default: stored as no answer at all, which resolves the same
       // way and keeps following the default if it's later reordered.
-      expect(applyComponentChoice(chosen, group, mashId)).toEqual([]);
+      expect(applyChoice(chosen, group, mashId)).toEqual([]);
     });
 
     it('leaves other groups’ answers alone', () => {
       const { steak, byId } = library();
-      const [group] = componentChoiceGroups(steak, byId);
-      expect(applyComponentChoice(['other-group-pick'], group, steak.components[2].id))
+      const [group] = recipeChoiceGroups(steak, byId);
+      expect(applyChoice(['other-group-pick'], group, steak.components[2].id))
         .toEqual(['other-group-pick', steak.components[2].id]);
     });
   });
 
-  describe('parseComponentChoices', () => {
+  describe('parseRecipeChoices', () => {
     it('reads a list, and shrugs off everything else', () => {
-      expect(parseComponentChoices(JSON.stringify(['c1', 'c2']))).toEqual(['c1', 'c2']);
-      expect(parseComponentChoices(JSON.stringify(['c1', 'c1']))).toEqual(['c1']);
-      expect(parseComponentChoices(JSON.stringify(['c1', 3, null, '']))).toEqual(['c1']);
-      expect(parseComponentChoices(null)).toEqual([]);
-      expect(parseComponentChoices('not json')).toEqual([]);
-      expect(parseComponentChoices('{"a":1}')).toEqual([]);
+      expect(parseRecipeChoices(JSON.stringify(['c1', 'c2']))).toEqual(['c1', 'c2']);
+      expect(parseRecipeChoices(JSON.stringify(['c1', 'c1']))).toEqual(['c1']);
+      expect(parseRecipeChoices(JSON.stringify(['c1', 3, null, '']))).toEqual(['c1']);
+      expect(parseRecipeChoices(null)).toEqual([]);
+      expect(parseRecipeChoices('not json')).toEqual([]);
+      expect(parseRecipeChoices('{"a":1}')).toEqual([]);
     });
   });
 
@@ -476,5 +479,80 @@ describe('choice groups', () => {
       // The loop the cycle check has to catch lives down the *second* option.
       expect(wouldCreateRecipeCycle(byId, 'r-roast', 'r-steak')).toBe(true);
     });
+  });
+});
+
+describe('either/or ingredients', () => {
+  // "Serrano or jalapeño" — two rows under one label, never one line saying
+  // "or", which is the whole reason this is a group rather than a spelling.
+  const salsa = () => recipe('r-salsa', 'Salsa', {
+    ingredients: [
+      ing('Tomatoes'),
+      ing('Serrano', 'Pepper'),
+      ing('Jalapeño', 'Pepper'),
+    ],
+  });
+
+  it('buys one pepper, not both', () => {
+    const r = salsa();
+    expect(activeIngredients(r).map(i => i.name)).toEqual(['Tomatoes', 'Serrano']);
+    expect(activeIngredients(r, { chosen: [r.ingredients[2].id] }).map(i => i.name))
+      .toEqual(['Tomatoes', 'Jalapeño']);
+  });
+
+  it('keeps each alternative a clean catalog name — never the "or" string', () => {
+    const r = salsa();
+    // The point of the whole feature: what reaches the grocery list is a real
+    // item key, so it can match a purchase and rank in Buy again.
+    expect(activeIngredients(r).map(i => i.nameKey)).toEqual(['tomatoes', 'serrano']);
+    expect(r.ingredients.some(i => i.name.toLowerCase().includes(' or '))).toBe(false);
+  });
+
+  it('flattens the pick through a composed recipe', () => {
+    const r = salsa();
+    const tacos = recipe('r-tacos', 'Tacos', {
+      ingredients: [ing('Tortillas')],
+      components: [link('r-salsa', 'Salsa')],
+    });
+    const byId = recipeMap([tacos, r]);
+
+    expect(flattenRecipeIngredients(tacos, byId).map(f => f.ingredient.name))
+      .toEqual(['Tortillas', 'Tomatoes', 'Serrano']);
+    expect(flattenRecipeIngredients(tacos, byId, { chosen: [r.ingredients[2].id] })
+      .map(f => f.ingredient.name)).toEqual(['Tortillas', 'Tomatoes', 'Jalapeño']);
+  });
+
+  it('sees both peppers under allOptions, so search finds either', () => {
+    const r = salsa();
+    expect(flattenRecipeIngredients(r, recipeMap([r]), { allOptions: true }).map(f => f.ingredient.name))
+      .toEqual(['Tomatoes', 'Serrano', 'Jalapeño']);
+  });
+
+  it('poses the question through recipeChoiceGroups, components first', () => {
+    const r = salsa();
+    const mash = recipe('r-mash', 'Mash');
+    const roast = recipe('r-roast', 'Roast');
+    const dinner = recipe('r-dinner', 'Dinner', {
+      ingredients: [ing('Steak'), ing('Butter', 'Fat'), ing('Oil', 'Fat')],
+      components: [link('r-mash', 'Mash', 'Side'), link('r-roast', 'Roast', 'Side')],
+    });
+    const byId = recipeMap([dinner, mash, roast, r]);
+
+    const groups = recipeChoiceGroups(dinner, byId);
+
+    expect(groups.map(g => [g.label, g.kind])).toEqual([['Side', 'component'], ['Fat', 'ingredient']]);
+    expect(groups[1].options.map(o => o.name)).toEqual(['Butter', 'Oil']);
+    expect(groups[1].active.name).toBe('Butter');
+    // One list answers both kinds — an ingredient pick and a component pick
+    // travel together and neither disturbs the other.
+    const withOil = applyChoice([], groups[1], dinner.ingredients[2].id);
+    const withRoast = applyChoice(withOil, groups[0], dinner.components[1].id);
+    expect(withRoast).toHaveLength(2);
+    const resolved = recipeChoiceGroups(dinner, byId, { chosen: withRoast });
+    expect(resolved.map(g => g.active.name)).toEqual(['Roast', 'Oil']);
+  });
+
+  it('counts a group once, so a meal reads as the one pepper it buys', () => {
+    expect(countChoiceAware(salsa().ingredients)).toBe(2);
   });
 });

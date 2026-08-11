@@ -19,7 +19,7 @@ import { haptics } from '../utils/haptics';
 import { SafeBlurView } from './SafeBlurView';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
-import type { ComponentChoiceGroup } from '../utils/recipeComponents';
+import type { ChoiceGroup } from '../utils/recipeComponents';
 
 interface Props {
   visible: boolean;
@@ -41,9 +41,9 @@ interface Props {
    * every meal whose recipe offers no choice, which is most of them, and the
    * section then renders nothing.
    */
-  choiceGroups?: ComponentChoiceGroup[];
+  choiceGroups?: ChoiceGroup[];
   /** Records a pick. Absent alongside an empty `choiceGroups`. */
-  onChoose?: (group: ComponentChoiceGroup, componentId: string) => void;
+  onChoose?: (group: ChoiceGroup, componentId: string) => void;
   /** Present only while the entry hasn't already been marked cooked. */
   onMarkCooked?: () => void;
   /** Present only while the entry's recipe still resolves. */
@@ -188,13 +188,13 @@ export function MealEntrySheet({
               <Text style={styles.label}>{group.label}</Text>
               <View style={styles.chips}>
                 {group.options.map(option => {
-                  const on = option.component.id === group.active.component.id;
+                  const on = option.id === group.active.id;
                   const name = option.name || 'Deleted recipe';
                   return (
                     <TouchableOpacity
-                      key={option.component.id}
+                      key={option.id}
                       style={[styles.chip, on && styles.chipOn]}
-                      onPress={() => { haptics.tap(); onChoose?.(group, option.component.id); }}
+                      onPress={() => { haptics.tap(); onChoose?.(group, option.id); }}
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
                       accessibilityState={{ selected: on }}

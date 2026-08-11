@@ -17,7 +17,7 @@ import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
 import { formatDuration } from './effort';
-import { describeComponents, flattenRecipeIngredients, recipeMap } from './recipeComponents';
+import { countChoiceAware, describeComponents, flattenRecipeIngredients, recipeMap } from './recipeComponents';
 
 // splitPrep lives in groceryParse.ts now — the plain grocery quick-add field
 // runs the same split for its live preview, not just recipe ingredient lines
@@ -76,6 +76,7 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
     section: typeof r.section === 'string' && r.section.trim()
       ? r.section.trim().slice(0, RECIPE_SECTION_MAX_LENGTH)
       : null,
+    choiceGroup: cleanChoiceGroup(typeof r.choiceGroup === 'string' ? r.choiceGroup : null),
   };
 }
 
@@ -111,6 +112,7 @@ export function makeIngredient(line: string): RecipeIngredient | null {
     prep,
     purpose: purposeSplit?.purpose ?? null,
     section: null,
+    choiceGroup: null,
   };
 }
 
@@ -271,7 +273,9 @@ export function formatServings(recipe: Recipe): string | null {
  * parts.
  */
 export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): string {
-  const count = recipe.ingredients.length;
+  // Choice-aware, so "serrano or jalapeño" reads as the one pepper a meal of
+  // this actually buys — see countChoiceAware.
+  const count = countChoiceAware(recipe.ingredients);
   const parts: string[] = [];
   if (recipe.mealType) parts.push(RECIPE_MEAL_TYPE_LABELS[recipe.mealType]);
   parts.push(count === 1 ? '1 ingredient' : `${count} ingredients`);

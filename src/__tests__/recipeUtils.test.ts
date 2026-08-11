@@ -44,6 +44,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
     prep: null,
     purpose: null,
     section: null,
+    choiceGroup: null,
     ...overrides,
   };
 }
@@ -91,14 +92,14 @@ describe('parseRecipeIngredients', () => {
       { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled' },
     ]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled', purpose: null, section: null },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled', purpose: null, section: null, choiceGroup: null },
     ]);
   });
 
-  it('defaults prep, purpose and section to null for a blob written before the fields existed', () => {
+  it('defaults the later fields to null for a blob written before they existed', () => {
     const stored = JSON.stringify([{ id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce' }]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null, purpose: null, section: null },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null, purpose: null, section: null, choiceGroup: null },
     ]);
   });
 
@@ -107,7 +108,7 @@ describe('parseRecipeIngredients', () => {
       { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas' },
     ]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas', section: null },
+      { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas', section: null, choiceGroup: null },
     ]);
   });
 
@@ -116,7 +117,7 @@ describe('parseRecipeIngredients', () => {
       { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, section: 'For the cake' },
     ]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, purpose: null, section: 'For the cake' },
+      { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, purpose: null, section: 'For the cake', choiceGroup: null },
     ]);
   });
 

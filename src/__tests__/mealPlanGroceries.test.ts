@@ -29,6 +29,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
     prep: null,
     purpose: null,
     section: null,
+    choiceGroup: null,
     ...overrides,
   };
 }
@@ -76,7 +77,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     createdAt: '2026-01-01T00:00:00.000Z',
     cookedAt: null,
     leftoverId: null,
-    componentChoices: [],
+    recipeChoices: [],
     ...overrides,
   };
 }
@@ -158,7 +159,7 @@ describe('collectPlannedIngredients', () => {
     const recipesById = new Map([[steak.id, steak], [mash.id, mash], [roast.id, roast]]);
     const entries = [
       entry('2026-08-11', steak.id), // Tuesday, no pick — the default
-      entry('2026-08-14', steak.id, { componentChoices: ['c-roast'] }), // Friday, roast
+      entry('2026-08-14', steak.id, { recipeChoices: ['c-roast'] }), // Friday, roast
     ];
 
     const result = collectPlannedIngredients(entries, recipesById, RANGE);

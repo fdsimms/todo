@@ -3,7 +3,7 @@ import type { GroceryItem, MealPlanEntry, Recipe } from '../types';
 import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
 import { probablyHaveReason } from './grocerySuggest';
-import { flattenRecipeIngredients, type ComponentResolution } from './recipeComponents';
+import { flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
 
 /**
  * Everything decidable about turning a week plan into a grocery add, kept
@@ -71,7 +71,7 @@ export function collectPlannedIngredients(
     // The entry's own picks, so a week holding steak-with-mash on Tuesday and
     // steak-with-roast on Friday shops for one side each night rather than both
     // twice. An entry that never answered resolves to the defaults.
-    for (const flat of flattenRecipeIngredients(recipe, recipesById, { chosen: entry.componentChoices })) {
+    for (const flat of flattenRecipeIngredients(recipe, recipesById, { chosen: entry.recipeChoices })) {
       out.push({
         name: flat.ingredient.name,
         nameKey: flat.ingredient.nameKey,
@@ -105,7 +105,7 @@ export function collectPlannedIngredients(
 export function plannedIngredientsForRecipe(
   recipe: Recipe,
   recipesById: ReadonlyMap<string, Recipe> = new Map([[recipe.id, recipe]]),
-  resolution?: ComponentResolution,
+  resolution?: ChoiceResolution,
 ): PlannedIngredient[] {
   return flattenRecipeIngredients(recipe, recipesById, resolution).map(flat => ({
     name: flat.ingredient.name,

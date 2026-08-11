@@ -23,7 +23,7 @@ import {
   type ClassifiedIngredient,
   type PlanCategory,
 } from '../utils/mealPlanGroceries';
-import { applyComponentChoice, componentChoiceGroups } from '../utils/recipeComponents';
+import { applyChoice, recipeChoiceGroups } from '../utils/recipeComponents';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { haptics } from '../utils/haptics';
@@ -85,13 +85,13 @@ export function RecipeToListSheet({ visible, recipe, recipesById, initialChoices
   // Which alternative this *shop* is for, held only as long as the sheet is
   // open. Deliberately not written anywhere: an add-to-list off the recipe
   // screen isn't attached to a meal, so there is nothing for a pick to be a
-  // fact about — MealPlanEntry.componentChoices is where a lasting one lives.
+  // fact about — MealPlanEntry.recipeChoices is where a lasting one lives.
   // It starts empty, which is every group on its default.
   const [choices, setChoices] = useState<string[]>([]);
   const choiceKey = choices.join('|');
 
   const choiceGroups = useMemo(
-    () => (recipe && recipesById ? componentChoiceGroups(recipe, recipesById, { chosen: choices }) : []),
+    () => (recipe && recipesById ? recipeChoiceGroups(recipe, recipesById, { chosen: choices }) : []),
     [recipe, recipesById, choiceKey]
   );
 
@@ -220,16 +220,16 @@ export function RecipeToListSheet({ visible, recipe, recipesById, initialChoices
                 <Text style={styles.sectionLabel}>{group.label}</Text>
                 <View style={styles.choiceChips}>
                   {group.options.map(option => {
-                    const on = option.component.id === group.active.component.id;
+                    const on = option.id === group.active.id;
                     const name = option.name || 'Deleted recipe';
                     return (
                       <TouchableOpacity
-                        key={option.component.id}
+                        key={option.id}
                         style={[styles.choiceChip, on && styles.choiceChipOn]}
                         activeOpacity={interaction.activeOpacity}
                         onPress={() => {
                           haptics.tap();
-                          setChoices(prev => applyComponentChoice(prev, group, option.component.id));
+                          setChoices(prev => applyChoice(prev, group, option.id));
                         }}
                         accessibilityRole="button"
                         accessibilityState={{ selected: on }}

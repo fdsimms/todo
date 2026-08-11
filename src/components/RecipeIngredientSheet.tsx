@@ -12,6 +12,7 @@ import {
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
   PREP_MAX_LENGTH,
+  RECIPE_CHOICE_GROUP_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
 } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -22,6 +23,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { aisleForName } from '../utils/groceryAisles';
 import { suggestShorterCatalogName } from '../utils/groceryParse';
+import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 
@@ -46,6 +48,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
+  const recipeIngredients = useRecipeStore(
+    useShallow(s => s.recipes.find(r => r.id === recipeId)?.ingredients ?? [])
+  );
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
@@ -54,11 +59,25 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     [groceryItems]
   );
 
+  // The recipe's other either/or labels, so joining an existing group is a tap
+  // and can't be misspelled into a lookalike group of one — the label *is* the
+  // grouping key, same as an aisle name.
+  const otherChoiceGroups = useMemo(() => {
+    const labels: string[] = [];
+    for (const other of recipeIngredients) {
+      if (other.choiceGroup && other.id !== ingredient?.id && !labels.includes(other.choiceGroup)) {
+        labels.push(other.choiceGroup);
+      }
+    }
+    return labels;
+  }, [recipeIngredients, ingredient?.id]);
+
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
   const [prep, setPrep] = useState('');
   const [purpose, setPurpose] = useState('');
   const [section, setSection] = useState('');
+  const [choiceGroup, setChoiceGroup] = useState('');
   const [aisle, setAisle] = useState<string | null>(null);
 
   useEffect(() => {
@@ -68,6 +87,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setPrep(ingredient.prep ?? '');
     setPurpose(ingredient.purpose ?? '');
     setSection(ingredient.section ?? '');
+    setChoiceGroup(ingredient.choiceGroup ?? '');
     setAisle(ingredient.aisle);
   }, [ingredient]);
 
@@ -82,6 +102,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       prep: prep.trim() || null,
       purpose: purpose.trim() || null,
       section: section.trim() || null,
+      choiceGroup: cleanChoiceGroup(choiceGroup),
       aisle,
     });
     onClose();
@@ -193,6 +214,53 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
         <Text style={styles.hint}>
           Groups this with other ingredients under the same heading, for recipes with more
           than one component. Leave it blank to keep the ingredient ungrouped.
+        </Text>
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.groupLabel}>Alternative for</Text>
+        <TextInput
+          style={styles.input}
+          value={choiceGroup}
+          onChangeText={setChoiceGroup}
+          placeholder="Pepper, Cheese…"
+          placeholderTextColor={colors.textTertiary}
+          maxLength={RECIPE_CHOICE_GROUP_MAX_LENGTH}
+          accessibilityLabel="Alternative for"
+        />
+        <View style={styles.pillRow}>
+          <TouchableOpacity
+            style={[styles.pill, !cleanChoiceGroup(choiceGroup) && styles.pillActive]}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); setChoiceGroup(''); }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: !cleanChoiceGroup(choiceGroup) }}
+            accessibilityLabel="Always needed"
+          >
+            <Text style={[styles.pillText, !cleanChoiceGroup(choiceGroup) && styles.pillTextActive]}>
+              Always needed
+            </Text>
+          </TouchableOpacity>
+          {otherChoiceGroups.map(existing => (
+            <TouchableOpacity
+              key={existing}
+              style={[styles.pill, cleanChoiceGroup(choiceGroup) === existing && styles.pillActive]}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setChoiceGroup(existing); }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: cleanChoiceGroup(choiceGroup) === existing }}
+              accessibilityLabel={existing}
+            >
+              <Text style={[styles.pillText, cleanChoiceGroup(choiceGroup) === existing && styles.pillTextActive]}>
+                {existing}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={styles.hint}>
+          Ingredients sharing a label are alternatives — “Serrano” and “Jalapeño” both filed
+          under “Pepper”, and you pick which one when you add the recipe to your list. Only the
+          one you pick gets bought, and each keeps its own name in your catalog.
         </Text>
       </View>
 
