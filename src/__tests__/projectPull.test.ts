@@ -58,6 +58,7 @@ const BASE: Task = {
   recurrenceFromCompletion: false,
   targetCount: null,
   targetUnit: null,
+  allowOvershoot: false,
   progressCount: 0,
   tags: [],
   sortOrder: 0,

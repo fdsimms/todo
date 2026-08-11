@@ -100,6 +100,7 @@ export interface TaskDraft {
   emailAddress?: string | null;
   targetCount?: number | null;
   targetUnit?: string | null;
+  allowOvershoot?: boolean;
 }
 
 interface Props {
@@ -198,6 +199,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [targetCount, setTargetCount] = useState<number | null>(null);
   const [targetUnit, setTargetUnit] = useState('');
+  const [allowOvershoot, setAllowOvershoot] = useState(false);
   const [showTargetCount, setShowTargetCount] = useState(false);
   const [windowStart, setWindowStart] = useState<string | null>(null);
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
@@ -329,6 +331,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setWindowEnd(task.windowEnd ?? null);
       setTargetCount(task.targetCount ?? null);
       setTargetUnit(task.targetUnit ?? '');
+      setAllowOvershoot(task.allowOvershoot ?? false);
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setReminderKind(task.reminderKind ?? 'notification');
@@ -355,7 +358,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -412,6 +415,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       windowEnd: task?.windowEnd ?? null,
       targetCount: task ? (task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
       targetUnit: normalizeTargetUnit(task ? task.targetUnit : initialDraft?.targetUnit),
+      allowOvershoot: task ? (task.allowOvershoot ?? false) : (initialDraft?.allowOvershoot ?? false),
       deferUntil: task?.deferUntil ?? null,
       reminderTime: task?.reminderTime ?? null,
       reminderKind: task?.reminderKind ?? 'notification',
@@ -562,6 +566,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // no longer a target has nothing to sit beside, and would come back the
       // moment a target did.
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnit) : null,
+      // Same reasoning as targetUnit: meaningless once there's no target to
+      // overshoot, and would otherwise silently survive a target being cleared
+      // and re-added.
+      allowOvershoot: targetCount !== null ? allowOvershoot : false,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
@@ -933,6 +941,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       windowStart, windowEnd,
       targetCount,
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnit) : null,
+      allowOvershoot: targetCount !== null ? allowOvershoot : false,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
@@ -1831,6 +1840,25 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     ? 'Not a daily target'
                     : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a day`}
                 </Text>
+                {targetCount !== null && (
+                  <TouchableOpacity
+                    style={styles.optionRow}
+                    onPress={() => { haptics.tap(); setAllowOvershoot(v => !v); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="switch"
+                    accessibilityLabel="Allow going past target"
+                    accessibilityState={{ checked: allowOvershoot }}
+                  >
+                    <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
+                    <View style={styles.optionContent}>
+                      <Text style={styles.optionLabel}>Allow going past target</Text>
+                      <Text style={styles.optionHint}>Keep logging past {targetCount}× — it stays on Today and completes at day's end with whatever count you reached</Text>
+                    </View>
+                    <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
+                      <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
+                    </View>
+                  </TouchableOpacity>
+                )}
               </>
             )}
               </>

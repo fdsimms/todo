@@ -656,8 +656,11 @@ export function TodayScreen() {
         if (state === 'active') {
           useTaskStore.getState().checkVacationExpiry();
           useTaskStore.getState().rolloverQuotas();
-          // After rolloverQuotas: a rollover can complete and spawn members,
-          // which changes what a project counts as scheduled.
+          // Opt-in counterpart to rolloverQuotas, for allowOvershoot tasks —
+          // see its doc comment in useTaskStore.ts.
+          useTaskStore.getState().sweepOvershootQuotas();
+          // After rolloverQuotas/sweepOvershootQuotas: either can complete and
+          // spawn members, which changes what a project counts as scheduled.
           useTaskStore.getState().dripStalledProjects();
           forceRefresh(n => n + 1);
           // The rows are memoized, so re-rendering this screen no longer

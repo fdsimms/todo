@@ -117,6 +117,7 @@ const baseTask: Task = {
   recurrenceFromCompletion: false,
   targetCount: null,
   targetUnit: null,
+  allowOvershoot: false,
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
@@ -1261,6 +1262,22 @@ describe('quota tasks', () => {
         dueDate: new Date(2025, 5, 11, 12, 0, 0).toISOString(),
       };
       expect(isTaskVisible(tomorrow)).toBe(false);
+    });
+
+    it('allowOvershoot: stays visible/loggable past target, unlike a plain quota', () => {
+      const atTarget = { ...quotaTask, allowOvershoot: true, progressCount: 8 };
+      expect(isQuotaOnPace(atTarget)).toBe(false);
+      expect(isTaskVisible(atTarget)).toBe(true);
+
+      const overTarget = { ...atTarget, progressCount: 13 };
+      expect(isQuotaOnPace(overTarget)).toBe(false);
+      expect(isTaskVisible(overTarget)).toBe(true);
+    });
+
+    it('allowOvershoot: on-pace hiding below target is unchanged', () => {
+      const onPace = { ...quotaTask, allowOvershoot: true, progressCount: 2 };
+      expect(isQuotaOnPace(onPace)).toBe(true);
+      expect(isTaskVisible(onPace)).toBe(false);
     });
   });
 

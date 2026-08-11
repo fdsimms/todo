@@ -490,6 +490,10 @@ export function initDatabase(): void {
     // Null for every existing recipe, same as servings_max — nothing predating
     // this had a yield beyond a serving count. See Recipe.recipeYield.
     'ALTER TABLE recipes ADD COLUMN recipe_yield TEXT',
+    // 0/false for every existing quota task, which is exactly today's
+    // behaviour: reaching target_count still completes it immediately. See
+    // Task.allowOvershoot (#1257).
+    'ALTER TABLE tasks ADD COLUMN allow_overshoot INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -753,6 +757,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
     targetUnit: (row.target_unit as string | null) ?? null,
+    allowOvershoot: Boolean(row.allow_overshoot),
     tags: JSON.parse((row.tags as string) ?? '[]') as string[],
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
@@ -815,8 +820,8 @@ export function dbInsertTask(task: Task): void {
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
-      target_unit, phone_number, email_address
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      target_unit, phone_number, email_address, allow_overshoot
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -849,6 +854,7 @@ export function dbInsertTask(task: Task): void {
       task.targetUnit ?? null,
       task.phoneNumber ?? null,
       task.emailAddress ?? null,
+      task.allowOvershoot ? 1 : 0,
     ]
   );
 }
@@ -866,7 +872,7 @@ export function dbUpdateTask(task: Task): void {
       archived=?, archived_at=?, project_id=?, link_url=?,
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
-      target_unit=?, phone_number=?, email_address=?
+      target_unit=?, phone_number=?, email_address=?, allow_overshoot=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -900,6 +906,7 @@ export function dbUpdateTask(task: Task): void {
       task.targetUnit ?? null,
       task.phoneNumber ?? null,
       task.emailAddress ?? null,
+      task.allowOvershoot ? 1 : 0,
       task.id,
     ]
   );
