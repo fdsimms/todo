@@ -771,6 +771,12 @@ export interface Recipe {
   // Independent of `author` for the same reason.
   source: string | null;
   servings: number | null;
+  // The user-attached photo — a file:// URI under the document directory
+  // (src/utils/recipePhoto.ts `pickRecipeImage`), null until one's attached.
+  // Deliberately not base64-in-the-row: a recipe photo is a picture the card
+  // and detail screen render, not a payload the Messages API reads, so there
+  // is no reason to pay SQLite (or every future row read) for the bytes.
+  imagePath: string | null;
   // Null means untagged, not "none of these" — most existing recipes predate
   // this field and nothing should guess for them. See RecipeMealType above.
   mealType: RecipeMealType | null;

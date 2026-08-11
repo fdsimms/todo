@@ -9,6 +9,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { groceryNameKey } from '../utils/groceryParse';
+import { deleteRecipeImage } from '../utils/recipePhoto';
 import {
   applyMeasuredCookTime,
   cleanRecipeName,
@@ -52,6 +53,13 @@ interface RecipeStore {
   setAuthor: (id: string, author: string | null) => void;
   setSource: (id: string, source: string | null) => void;
   setServings: (id: string, servings: number | null) => void;
+  /**
+   * Sets or clears a recipe's attached photo — `uri` is a file already saved
+   * by `pickRecipeImage` (src/utils/recipePhoto.ts); this call just records
+   * it. Deletes the previous file, if any, once the new value is committed —
+   * an orphaned image is bytes nothing else will ever point at again.
+   */
+  setImage: (id: string, uri: string | null) => void;
   setMealType: (id: string, mealType: RecipeMealType | null) => void;
   toggleFavorite: (id: string) => void;
   /**
@@ -158,6 +166,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       author: null,
       source: null,
       servings: null,
+      imagePath: null,
       mealType: null,
       ingredients: [],
       components: [],
@@ -235,6 +244,14 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, servings: next });
   },
 
+  setImage(id, uri) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const previous = recipe.imagePath;
+    save(set, { ...recipe, imagePath: uri });
+    if (previous && previous !== uri) deleteRecipeImage(previous);
+  },
+
   setMealType(id, mealType) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
@@ -248,8 +265,10 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   },
 
   deleteRecipe(id) {
+    const recipe = get().recipes.find(r => r.id === id);
     dbDeleteRecipe(id);
     set(s => ({ recipes: s.recipes.filter(r => r.id !== id) }));
+    if (recipe) deleteRecipeImage(recipe.imagePath);
   },
 
   markCooked(id) {

@@ -5,6 +5,10 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  Image,
+  ActivityIndicator,
+  Alert,
+  Linking,
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,6 +35,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { pickRecipeImage, type RecipePhotoSource } from '../utils/recipePhoto';
 import { describeCookTime, describeRecipe } from '../utils/recipeUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import {
@@ -71,6 +76,7 @@ export function RecipeDetailScreen() {
   const toggleFavorite = useRecipeStore(s => s.toggleFavorite);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
+  const setImage = useRecipeStore(s => s.setImage);
   const startCookTimer = useRecipeStore(s => s.startCookTimer);
   const pauseCookTimer = useRecipeStore(s => s.pauseCookTimer);
   const resetCookTimer = useRecipeStore(s => s.resetCookTimer);
@@ -92,6 +98,7 @@ export function RecipeDetailScreen() {
   );
 
   const [draft, setDraft] = useState('');
+  const [pickingImage, setPickingImage] = useState(false);
   const draftInputRef = useRef<TextInput>(null);
   const [prepDraft, setPrepDraft] = useState('');
   const [editorVisible, setEditorVisible] = useState(false);
@@ -216,6 +223,52 @@ export function RecipeDetailScreen() {
     haptics.tap();
   };
 
+  // Same denial copy as useRecipePhotoSource's — iOS only prompts once, so a
+  // second tap on either button needs an alert naming the permission or does
+  // nothing visible.
+  const pickImage = async (source: RecipePhotoSource) => {
+    setPickingImage(true);
+    try {
+      const result = await pickRecipeImage(source);
+      if (result.status === 'ok') {
+        haptics.success();
+        setImage(recipe.id, result.image.uri);
+      } else if (result.status === 'denied') {
+        const what = source === 'camera' ? 'the camera' : 'your photos';
+        Alert.alert(
+          `dundundun can't reach ${what}`,
+          result.canAskAgain
+            ? `Allow access to ${what} to attach a photo to this recipe.`
+            : `Turn on access to ${what} in Settings to attach a photo to this recipe.`,
+          result.canAskAgain
+            ? [{ text: 'OK' }]
+            : [
+                { text: 'Not now', style: 'cancel' },
+                { text: 'Open Settings', onPress: () => Linking.openSettings() },
+              ],
+        );
+      } else if (result.status === 'failed') {
+        Alert.alert('Could not attach photo', result.message);
+      }
+      // 'canceled' is a deliberate no-op — they changed their mind.
+    } finally {
+      setPickingImage(false);
+    }
+  };
+
+  const openImagePicker = () => {
+    if (pickingImage) return;
+    haptics.tap();
+    const options: Array<{ text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }> = [
+      { text: 'Take Photo', onPress: () => pickImage('camera') },
+      { text: 'Choose from Library', onPress: () => pickImage('library') },
+    ];
+    if (recipe.imagePath) {
+      options.push({ text: 'Remove Photo', style: 'destructive', onPress: () => setImage(recipe.id, null) });
+    }
+    options.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert('Recipe Photo', undefined, options);
+  };
   // Which ingredients open a new section heading — the first row (in stored
   // order) whose section differs from the row right before it. A label on a
   // flat list rather than a nested groups type, so this is display-only: the
@@ -400,6 +453,33 @@ export function RecipeDetailScreen() {
         keyboardShouldPersistTaps="handled"
         {...keyboardScroll.props}
       >
+        <TouchableOpacity
+          style={styles.hero}
+          activeOpacity={interaction.activeOpacity}
+          onPress={openImagePicker}
+          disabled={pickingImage}
+          accessibilityRole="button"
+          accessibilityLabel={recipe.imagePath ? 'Change recipe photo' : 'Add a recipe photo'}
+        >
+          {recipe.imagePath ? (
+            <Image
+              source={{ uri: recipe.imagePath }}
+              style={styles.heroImage}
+              resizeMode="cover"
+              accessibilityIgnoresInvertColors
+            />
+          ) : pickingImage ? (
+            <View style={styles.heroPlaceholder}>
+              <ActivityIndicator color={colors.accent} />
+            </View>
+          ) : (
+            <View style={styles.heroPlaceholder}>
+              <Ionicons name="camera-outline" size={iconSize.lg} color={colors.textTertiary} />
+              <Text style={styles.heroPlaceholderText}>Add a photo</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
         <Text style={styles.summary}>{describeRecipe(recipe)}</Text>
         {!!recipe.notes && <Text style={styles.notes}>{recipe.notes}</Text>}
 
@@ -646,6 +726,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   scroll: {
     padding: spacing.md,
     gap: spacing.sm,
+  },
+  hero: {
+    height: 180,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.bgSecondary,
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  heroPlaceholderText: {
+    color: colors.textTertiary,
+    fontSize: font.sm,
   },
   summary: {
     color: colors.textSecondary,

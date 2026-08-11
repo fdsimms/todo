@@ -61,6 +61,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     author: null,
     source: null,
     servings: null,
+    imagePath: null,
     mealType: null,
     ingredients: [],
     components: [],
