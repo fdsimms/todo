@@ -2,6 +2,7 @@ import type { GroceryItem, Recipe, RecipeIngredient, RecipePrepTask } from '../t
 import {
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
+  RECIPE_SECTION_MAX_LENGTH,
   PREP_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
@@ -65,6 +66,9 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
     prep: typeof r.prep === 'string' && r.prep.trim()
       ? r.prep.trim().slice(0, PREP_MAX_LENGTH)
       : null,
+    section: typeof r.section === 'string' && r.section.trim()
+      ? r.section.trim().slice(0, RECIPE_SECTION_MAX_LENGTH)
+      : null,
   };
 }
 
@@ -89,6 +93,7 @@ export function makeIngredient(line: string): RecipeIngredient | null {
     quantity: quantity ?? '',
     aisle: null,
     prep,
+    section: null,
   };
 }
 

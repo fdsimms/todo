@@ -1,5 +1,11 @@
 import type { Effort } from '../types';
-import { TITLE_MAX_LENGTH, GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, RECIPE_NAME_MAX_LENGTH } from '../types';
+import {
+  TITLE_MAX_LENGTH,
+  GROCERY_NAME_MAX_LENGTH,
+  GROCERY_QUANTITY_MAX_LENGTH,
+  RECIPE_NAME_MAX_LENGTH,
+  RECIPE_SECTION_MAX_LENGTH,
+} from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -370,6 +376,13 @@ export interface RecipeGroceryItem {
   /** Free text ("2 lb", "1 bunch"), or empty when the recipe didn't say. */
   quantity: string;
   aisle: string;
+  /**
+   * Which component of the recipe this belongs to ("For the cake", "For the
+   * frosting"), or null when the source wasn't written in sections. Read
+   * straight into RecipeIngredient.section by normalizeIngredient — same
+   * field name, so nothing here has to translate it.
+   */
+  section: string | null;
 }
 
 /** Same validation `suggestRecipeGroceries` always applied, now shared with extractRecipe. */
@@ -377,7 +390,9 @@ function parseExtractedItems(
   raw: unknown,
   availableAisles: string[],
 ): RecipeGroceryItem[] {
-  const items = raw as Array<{ name?: unknown; quantity?: unknown; aisle?: unknown }> | undefined;
+  const items = raw as Array<
+    { name?: unknown; quantity?: unknown; aisle?: unknown; component?: unknown }
+  > | undefined;
   if (!items) return [];
 
   const seen = new Set<string>();
@@ -397,6 +412,13 @@ function parseExtractedItems(
         ? item.quantity.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
         : '',
       aisle: canonicalAisle(item.aisle, availableAisles) ?? OTHER_AISLE,
+      // The model's field is named "component" (see sharedRecipeInstructions)
+      // to keep it unambiguous from the grocery-aisle "section" the same
+      // prompt already talks about; it lands on RecipeIngredient.section once
+      // normalizeIngredient reads this object.
+      section: typeof item.component === 'string' && item.component.trim()
+        ? item.component.trim().slice(0, RECIPE_SECTION_MAX_LENGTH)
+        : null,
     });
   }
   return result.slice(0, MAX_RECIPE_ITEMS);
@@ -442,6 +464,7 @@ function sharedRecipeInstructions(availableAisles: string[]): string[] {
   return [
     'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Give quantities in what you would buy. Ignore the method for the shopping list, and skip water.',
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
+    'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
   ];
 }
 
@@ -534,6 +557,10 @@ export async function extractRecipe(
                 aisle: {
                   type: 'string',
                   description: `Where to find it. Must be exactly one of: ${availableAisles.join(', ')}.`,
+                },
+                component: {
+                  type: 'string',
+                  description: 'The recipe\'s own label for the part this ingredient belongs to, e.g. "For the cake" or "For the frosting" — only when the source actually splits its ingredients that way. Empty string otherwise.',
                 },
               },
               required: ['name', 'quantity', 'aisle'],

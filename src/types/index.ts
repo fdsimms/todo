@@ -635,6 +635,10 @@ export const AISLE_NAME_MAX_LENGTH = 32;
 // too, not just recipe ingredient lines.
 export const PREP_MAX_LENGTH = 60;
 
+// An ingredient section label ("For the cake", "For the frosting") — a
+// component name, same order of magnitude as an aisle's.
+export const RECIPE_SECTION_MAX_LENGTH = 40;
+
 // One line of a recipe's shopping implication — deliberately not a GroceryItem.
 // A GroceryItem is a forever-row carrying purchase counters that earned a place
 // in the catalog; "1 tsp smoked paprika" has not, and minting a catalog row for
@@ -666,6 +670,15 @@ export interface RecipeIngredient {
   // a separate catalog row from plain "garlic" every time the wording of the
   // prep clause changed. null means the line didn't have one, same as aisle.
   prep: string | null;
+  // Which component of the recipe this belongs to — "For the cake", "For the
+  // frosting". null means the recipe wasn't authored with sections (the
+  // common case), and every existing reader that doesn't know about this
+  // field keeps working exactly as it did: it's a label on a flat list, not
+  // a nested groups type, so ingredients stay one array everywhere outside
+  // the editor and detail view — RecipeIngredientSheet, RecipeDetailScreen's
+  // grouping — and adding to the grocery list still flattens straight
+  // through (mealPlanGroceries' PlannedIngredient never carries it).
+  section: string | null;
 }
 
 // One recipe used as a part of another — "mashed potatoes" inside both "Steak

@@ -27,6 +27,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
     quantity: '',
     aisle: null,
     prep: null,
+    section: null,
     ...overrides,
   };
 }
@@ -167,6 +168,19 @@ describe('plannedIngredientsForRecipe', () => {
   it('carries the aisle hint through', () => {
     const ragu = recipe('Ragù', [ing('Basil', { aisle: 'Produce' })]);
     expect(plannedIngredientsForRecipe(ragu)[0].aisle).toBe('Produce');
+  });
+
+  it('flattens a sectioned recipe — the section label does not carry over', () => {
+    const cake = recipe('Layer Cake', [
+      ing('Flour', { quantity: '2 cups', section: 'For the cake' }),
+      ing('Butter', { quantity: '1 cup', section: 'For the frosting' }),
+    ]);
+    const planned = plannedIngredientsForRecipe(cake);
+    expect(planned).toEqual([
+      { name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, source: 'Layer Cake', recipeId: cake.id, recipeTitle: 'Layer Cake' },
+      { name: 'Butter', nameKey: 'butter', quantity: '1 cup', aisle: null, source: 'Layer Cake', recipeId: cake.id, recipeTitle: 'Layer Cake' },
+    ]);
+    expect(planned.some(p => 'section' in p)).toBe(false);
   });
 
   it('is empty for a recipe with no ingredients', () => {

@@ -36,6 +36,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
     quantity: '',
     aisle: null,
     prep: null,
+    section: null,
     ...overrides,
   };
 }
@@ -73,14 +74,23 @@ describe('parseRecipeIngredients', () => {
       { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled' },
     ]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled' },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled', section: null },
     ]);
   });
 
-  it('defaults prep to null for a blob written before the field existed', () => {
+  it('defaults prep and section to null for a blob written before the fields existed', () => {
     const stored = JSON.stringify([{ id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce' }]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null, section: null },
+    ]);
+  });
+
+  it('reads a stored section label', () => {
+    const stored = JSON.stringify([
+      { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, section: 'For the cake' },
+    ]);
+    expect(parseRecipeIngredients(stored)).toEqual([
+      { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, section: 'For the cake' },
     ]);
   });
 
@@ -108,6 +118,7 @@ describe('normalizeIngredient', () => {
     expect(result.quantity).toBe('');
     expect(result.aisle).toBeNull();
     expect(result.prep).toBeNull();
+    expect(result.section).toBeNull();
   });
 
   it('treats an empty aisle string as no opinion', () => {
@@ -121,6 +132,20 @@ describe('normalizeIngredient', () => {
 
   it('keeps a stored prep clause', () => {
     expect(normalizeIngredient({ name: 'Garlic', prep: 'minced' })!.prep).toBe('minced');
+  });
+
+  it('treats an empty or blank section string as ungrouped', () => {
+    expect(normalizeIngredient({ name: 'Salt', section: '' })!.section).toBeNull();
+    expect(normalizeIngredient({ name: 'Salt', section: '   ' })!.section).toBeNull();
+  });
+
+  it('keeps a stored section label', () => {
+    expect(normalizeIngredient({ name: 'Flour', section: 'For the cake' })!.section).toBe('For the cake');
+  });
+
+  it('trims a section label to RECIPE_SECTION_MAX_LENGTH', () => {
+    const long = 'x'.repeat(100);
+    expect(normalizeIngredient({ name: 'Flour', section: long })!.section).toHaveLength(40);
   });
 });
 
@@ -178,6 +203,10 @@ describe('makeIngredient', () => {
     // The lexicon knows bananas are Produce, but asserting it here would
     // outrank the user's own filing for ever after.
     expect(makeIngredient('bananas')!.aisle).toBeNull();
+  });
+
+  it('leaves a one-line add ungrouped', () => {
+    expect(makeIngredient('bananas')!.section).toBeNull();
   });
 
   it('splits prep out of the name after the quantity is peeled off', () => {
