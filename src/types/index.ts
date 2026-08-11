@@ -1119,6 +1119,24 @@ export interface MealPlanEntry {
    * its default rather than the meal losing its side.
    */
   recipeChoices: string[];
+  /**
+   * How much of the recipe this meal makes — 1 for as-written, 2 for a doubled
+   * Sunday, 0.5 for cooking for one. Applied to every ingredient quantity when
+   * the meal is shopped for (see collectPlannedIngredients), components
+   * included, and to the servings the meal is described with.
+   *
+   * **A fact about a cooking, not about the dish**, for exactly the reason
+   * `recipeChoices` above is: doubling Sunday's chili must not double the
+   * recipe, or every other meal in the week that uses it — including as a
+   * component of something else — silently doubles too. The recipe stays the
+   * document; the entry is one instance of having planned it.
+   *
+   * Never null in practice (the column defaults to 1, which is what every entry
+   * planned before this shipped says), but read through
+   * recipeScale.normalizeScale anyway, so a hand-edited row or a restored
+   * backup carrying 0 renders as-written rather than as nothing.
+   */
+  recipeScale: number;
 }
 
 /**

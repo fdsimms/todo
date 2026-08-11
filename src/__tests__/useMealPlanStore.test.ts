@@ -42,6 +42,7 @@ function entry(
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
+    recipeScale: 1,
     ...overrides,
   };
 }
@@ -411,6 +412,66 @@ describe('setRecipeChoices', () => {
     (dbUpdateMealPlanEntry as jest.Mock).mockClear();
 
     useMealPlanStore.getState().setRecipeChoices('gone', ['c-roast']);
+
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('setRecipeScale', () => {
+  it('records the factor and writes it back', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setRecipeScale(dinner.id, 2);
+
+    expect(getEntries().find(e => e.id === dinner.id)!.recipeScale).toBe(2);
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: dinner.id, recipeScale: 2 })
+    );
+  });
+
+  it('goes back to as-written', () => {
+    const dinner = entry('2026-08-05', 'dinner', { recipeScale: 0.5 });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setRecipeScale(dinner.id, 1);
+
+    expect(getEntries().find(e => e.id === dinner.id)!.recipeScale).toBe(1);
+  });
+
+  it('clamps a nonsense factor to as-written rather than storing it', () => {
+    const dinner = entry('2026-08-05', 'dinner', { recipeScale: 2 });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setRecipeScale(dinner.id, 0);
+
+    expect(getEntries().find(e => e.id === dinner.id)!.recipeScale).toBe(1);
+  });
+
+  it('skips the write when the factor is unchanged', () => {
+    const dinner = entry('2026-08-05', 'dinner', { recipeScale: 2 });
+    loadWeek([dinner]);
+    (dbUpdateMealPlanEntry as jest.Mock).mockClear();
+
+    useMealPlanStore.getState().setRecipeScale(dinner.id, 2);
+
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('is allowed on an already-cooked entry, same as a pick', () => {
+    const dinner = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setRecipeScale(dinner.id, 2);
+
+    expect(getEntries().find(e => e.id === dinner.id)!.recipeScale).toBe(2);
+  });
+
+  it('shrugs at an unknown entry', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    (dbUpdateMealPlanEntry as jest.Mock).mockClear();
+
+    useMealPlanStore.getState().setRecipeScale('gone', 2);
 
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });

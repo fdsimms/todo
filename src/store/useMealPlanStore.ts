@@ -10,6 +10,7 @@ import {
   dbSetMealPlanAddedToList,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { normalizeScale } from '../utils/recipeScale';
 import {
   cleanMealTitle,
   isKeyInRange,
@@ -114,6 +115,16 @@ interface MealPlanStore {
   setRecipeChoices: (id: string, recipeChoices: string[]) => void;
 
   /**
+   * Records that this meal is being cooked at some multiple of the recipe —
+   * see MealPlanEntry.recipeScale. Clamped through normalizeScale, so a caller
+   * passing 0 sets as-written rather than nothing.
+   *
+   * Allowed on an already-cooked entry for the same reason setRecipeChoices is:
+   * it's a note about the meal, and nothing downstream counts it.
+   */
+  setRecipeScale: (id: string, scale: number) => void;
+
+  /**
    * Stamps cookedAt with now. Idempotent — a second tap on an already-cooked
    * entry is a no-op, since the recipe's cookCount (bumped separately by the
    * caller via useRecipeStore.markCooked) must only ever go up once per
@@ -170,6 +181,11 @@ interface MealPlanStore {
    * a tracked container — the same mutually-exclusive-backing rule planMeal
    * keeps). `cookedAt` is left untouched: relabelling what a past night was
    * doesn't un-cook it.
+   *
+   * `recipeScale` is left untouched too, which is the deliberate asymmetry with
+   * `recipeChoices`: a choice group belongs to the recipe that defined it and
+   * can't survive a swap, but "I'm feeding eight on Sunday" is a fact about the
+   * night and stays true whichever dish lands on it.
    */
   bulkReplaceItem: (ids: string[], replacement: { recipeId: string | null; title: string }) => void;
 
@@ -277,6 +293,9 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       // planning a meal must never be gated on answering "mash or roast?", the
       // same call MealPlanEntry.recipeId makes about naming a recipe at all.
       recipeChoices: [],
+      // As written, for the same reason: how much of it you're making is a
+      // question a plan is allowed not to have answered.
+      recipeScale: 1,
     };
 
     dbInsertMealPlanEntry(entry);
@@ -351,6 +370,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const chosen: MealPlanEntry = { ...entry, recipeChoices };
     dbUpdateMealPlanEntry(chosen);
     set(s => ({ entries: s.entries.map(e => e.id === id ? chosen : e) }));
+  },
+
+  setRecipeScale(id, scale) {
+    const entry = get().entries.find(e => e.id === id);
+    if (!entry) return;
+    const next = normalizeScale(scale);
+    if (next === normalizeScale(entry.recipeScale)) return;
+    const scaled: MealPlanEntry = { ...entry, recipeScale: next };
+    dbUpdateMealPlanEntry(scaled);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? scaled : e) }));
   },
 
   markCooked(id) {

@@ -204,6 +204,7 @@ export function MealPlanScreen() {
   const renameEntry = useMealPlanStore(s => s.renameEntry);
   const markEntryCooked = useMealPlanStore(s => s.markCooked);
   const setRecipeChoices = useMealPlanStore(s => s.setRecipeChoices);
+  const setRecipeScale = useMealPlanStore(s => s.setRecipeScale);
   const addedToListAt = useMealPlanStore(useShallow(s => s.addedToListAt));
   const bulkDeleteEntries = useMealPlanStore(s => s.bulkDeleteEntries);
   const bulkMoveEntries = useMealPlanStore(s => s.bulkMoveEntries);
@@ -348,7 +349,7 @@ export function MealPlanScreen() {
   // Carries the entry's picks alongside the recipe: you cooked the roast
   // potatoes, so the re-shop offers the roast potatoes' lines.
   const [cookedRecipeForList, setCookedRecipeForList] =
-    useState<{ recipe: Recipe; choices: string[] } | null>(null);
+    useState<{ recipe: Recipe; choices: string[]; scale: number } | null>(null);
 
   // The leftover sheet's two modes, held apart so opening one can't leave the
   // other's state behind: an id for editing a row, a seed for logging a new
@@ -487,7 +488,9 @@ export function MealPlanScreen() {
     // counted the same way: a dish whose ingredients all live on its
     // components still has a shop.
     if (!recipe || flattenRecipeIngredients(recipe, recipesById, { chosen: entry.recipeChoices }).length === 0) return;
-    setCookedRecipeForList({ recipe, choices: entry.recipeChoices });
+    // Carries the batch as well as the picks: you cooked a double, so the
+    // re-shop offers double.
+    setCookedRecipeForList({ recipe, choices: entry.recipeChoices, scale: entry.recipeScale });
   };
 
   // ——— Bulk selection actions (#1110) ——————————————————————————————————
@@ -1007,6 +1010,13 @@ export function MealPlanScreen() {
             applyChoice(selected.recipeChoices, group, componentId)
           );
         }}
+        onScale={
+          selected?.recipeId && recipesById.has(selected.recipeId)
+            ? factor => selected && setRecipeScale(selected.id, factor)
+            : undefined
+        }
+        baseServings={selectedRecipe?.servings}
+        baseServingsMax={selectedRecipe?.servingsMax}
         onMarkCooked={selected && !selected.cookedAt ? () => markCooked(selected) : undefined}
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)
@@ -1059,6 +1069,7 @@ export function MealPlanScreen() {
         recipe={cookedRecipeForList?.recipe ?? null}
         recipesById={recipesById}
         initialChoices={cookedRecipeForList?.choices}
+        initialScale={cookedRecipeForList?.scale}
         onClose={() => setCookedRecipeForList(null)}
       />
 
