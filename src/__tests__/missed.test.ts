@@ -30,6 +30,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   targetCount: null,
   targetUnit: null,
   progressCount: 0,
+  allowOvershoot: false,
   tags: [],
   category: null,
   sortOrder: 1,
