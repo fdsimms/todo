@@ -13,6 +13,9 @@ import {
   normalizePrepTask,
   resolvePrepTaskDraft,
   describeCookHistory,
+  applyMeasuredCookTime,
+  avgCookMinutes,
+  describeCookTime,
   rankRecipeSuggestions,
   scoreRecipeAgainstCatalog,
   suggestRecipesForEmptyNight,
@@ -58,6 +61,12 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     cookCount: 0,
     lastCookedAt: null,
+    estimatedMinutes: null,
+    timerStartedAt: null,
+    timerElapsedSeconds: 0,
+    lastCookMinutes: null,
+    cookTimeCount: 0,
+    totalCookMinutes: 0,
     ...overrides,
   };
 }
@@ -396,6 +405,17 @@ describe('describeRecipe', () => {
     expect(describeRecipe(r, null)).toBe('1 ingredient');
     expect(describeRecipe(r, 0)).toBe('1 ingredient');
   });
+
+  it('adds the duration only when set, after servings and before attribution', () => {
+    expect(describeRecipe(recipe('I', { ingredients: [ing('Salt')], estimatedMinutes: 25 })))
+      .toBe('1 ingredient · 25m');
+    expect(describeRecipe(recipe('J', {
+      ingredients: [ing('Salt')],
+      servings: 4,
+      estimatedMinutes: 90,
+      sourceName: 'NYT Cooking',
+    }))).toBe('1 ingredient · serves 4 · 1.5h · NYT Cooking');
+  });
 });
 
 describe('cleanRecipeName', () => {
@@ -464,6 +484,73 @@ describe('describeCookHistory', () => {
   it('drops the date clause when there is a count but no stamp', () => {
     const r = recipe('Ragù', { cookCount: 2, lastCookedAt: null });
     expect(describeCookHistory(r)).toBe('Cooked 2×');
+  });
+});
+
+describe('applyMeasuredCookTime', () => {
+  it('rounds and floors at 1 minute, and advances the counters', () => {
+    const r = recipe('Ragù', { estimatedMinutes: 25, cookTimeCount: 2, totalCookMinutes: 50 });
+    expect(applyMeasuredCookTime(32.4, r)).toEqual({
+      lastCookMinutes: 32,
+      cookTimeCount: 3,
+      totalCookMinutes: 82,
+    });
+    expect(applyMeasuredCookTime(0.2, r).lastCookMinutes).toBe(1);
+  });
+
+  it('backfills estimatedMinutes only the first time — a typed estimate is never overwritten', () => {
+    const untimed = recipe('Ragù', { estimatedMinutes: null, cookTimeCount: 0, totalCookMinutes: 0 });
+    expect(applyMeasuredCookTime(18, untimed)).toEqual({
+      lastCookMinutes: 18,
+      cookTimeCount: 1,
+      totalCookMinutes: 18,
+      estimatedMinutes: 18,
+    });
+
+    const timed = recipe('Ragù', { estimatedMinutes: 25, cookTimeCount: 0, totalCookMinutes: 0 });
+    const patch = applyMeasuredCookTime(40, timed);
+    expect(patch).not.toHaveProperty('estimatedMinutes');
+    expect(patch.lastCookMinutes).toBe(40);
+  });
+});
+
+describe('avgCookMinutes', () => {
+  it('is null before anything has been logged', () => {
+    expect(avgCookMinutes(recipe('Ragù', { cookTimeCount: 0, totalCookMinutes: 0 }))).toBeNull();
+  });
+
+  it('rounds the mean of the logged sessions', () => {
+    expect(avgCookMinutes(recipe('Ragù', { cookTimeCount: 3, totalCookMinutes: 100 }))).toBe(33);
+  });
+});
+
+describe('describeCookTime', () => {
+  it('is empty for a recipe with no estimate and no history', () => {
+    expect(describeCookTime(recipe('Ragù'))).toBe('');
+  });
+
+  it('shows only the estimate before anything has been logged', () => {
+    expect(describeCookTime(recipe('Ragù', { estimatedMinutes: 25 }))).toBe('Est. 25m');
+  });
+
+  it('adds the single logged time without an average for one session', () => {
+    const r = recipe('Ragù', {
+      estimatedMinutes: 25,
+      lastCookMinutes: 32,
+      cookTimeCount: 1,
+      totalCookMinutes: 32,
+    });
+    expect(describeCookTime(r)).toBe('Est. 25m · took 32m');
+  });
+
+  it('adds "last time" and an average once more than one session has been logged', () => {
+    const r = recipe('Ragù', {
+      estimatedMinutes: 25,
+      lastCookMinutes: 30,
+      cookTimeCount: 4,
+      totalCookMinutes: 132,
+    });
+    expect(describeCookTime(r)).toBe('Est. 25m · took 30m last time · avg 33m over 4 cooks');
   });
 });
 

@@ -10,6 +10,7 @@ import {
 import { generateId } from '../utils/id';
 import { groceryNameKey } from '../utils/groceryParse';
 import {
+  applyMeasuredCookTime,
   cleanRecipeName,
   cleanRecipeSource,
   ingredientsFromText,
@@ -17,6 +18,7 @@ import {
   mergeIngredients,
   remapIngredientKeyIn,
 } from '../utils/recipeUtils';
+import { cookTimerElapsed } from '../utils/recipeTimer';
 
 /**
  * The recipe library.
@@ -59,6 +61,24 @@ interface RecipeStore {
    * the recipe and is never recomputed from entries (see Recipe.cookCount).
    */
   markCooked: (id: string) => void;
+
+  /** null clears it. Rounded and floored at 1 minute, same clamp as a task's estimate. */
+  setEstimatedMinutes: (id: string, minutes: number | null) => void;
+
+  /**
+   * The cook timer, mirroring useTaskStore's startTimer/pauseTimer/resetTimer/
+   * stopTimer for the plain stopwatch case (see src/utils/recipeTimer.ts).
+   * start/pause bank and resume a run segment without touching anything
+   * logged; reset abandons the current segment unlogged; stop banks the
+   * final segment and logs it via applyMeasuredCookTime, which is the one
+   * action that writes lastCookMinutes/cookTimeCount/totalCookMinutes (and
+   * backfills estimatedMinutes the first time, same as a task's stopTimer
+   * backfills estimatedMinutes/effort).
+   */
+  startCookTimer: (id: string) => void;
+  pauseCookTimer: (id: string) => void;
+  resetCookTimer: (id: string) => void;
+  stopCookTimer: (id: string) => void;
 
   /** Appends one typed line. Null when it parses to nothing or is already there. */
   addIngredient: (recipeId: string, line: string) => RecipeIngredient | null;
@@ -120,6 +140,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       cookCount: 0,
       lastCookedAt: null,
+      estimatedMinutes: null,
+      timerStartedAt: null,
+      timerElapsedSeconds: 0,
+      lastCookMinutes: null,
+      cookTimeCount: 0,
+      totalCookMinutes: 0,
     };
     dbInsertRecipe(recipe);
     set(s => ({ recipes: [...s.recipes, recipe] }));
@@ -197,6 +223,44 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     save(set, { ...recipe, cookCount: recipe.cookCount + 1, lastCookedAt: new Date().toISOString() });
+  },
+
+  setEstimatedMinutes(id, minutes) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const next = minutes === null ? null : Math.max(1, Math.round(minutes));
+    save(set, { ...recipe, estimatedMinutes: next });
+  },
+
+  startCookTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe || recipe.timerStartedAt !== null) return;
+    save(set, { ...recipe, timerStartedAt: new Date().toISOString() });
+  },
+
+  pauseCookTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe || recipe.timerStartedAt === null) return;
+    save(set, { ...recipe, timerStartedAt: null, timerElapsedSeconds: cookTimerElapsed(recipe) });
+  },
+
+  resetCookTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, timerStartedAt: null, timerElapsedSeconds: 0 });
+  },
+
+  stopCookTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    // Nothing to log — no run in flight and nothing banked from an earlier pause.
+    if (!recipe || (recipe.timerStartedAt === null && recipe.timerElapsedSeconds <= 0)) return;
+    const minutes = cookTimerElapsed(recipe) / 60;
+    save(set, {
+      ...recipe,
+      timerStartedAt: null,
+      timerElapsedSeconds: 0,
+      ...applyMeasuredCookTime(minutes, recipe),
+    });
   },
 
   addIngredient(recipeId, line) {

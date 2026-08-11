@@ -16,6 +16,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { formatDuration } from '../utils/effort';
 import { CountStepper } from './CountStepper';
 import { EditorRow } from './EditorRow';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -28,6 +29,13 @@ interface Props {
   /** Fired after a confirmed delete, so the detail screen can pop itself. */
   onDeleted: () => void;
 }
+
+// CountStepper steps by 1, so cook time is stepped in 5-minute units rather
+// than one minute at a time — a recipe's duration doesn't need minute
+// precision, and 1-minute steps would make a 45-minute braise a lot of
+// holding. Capped at 6 hours, well past anything this app times.
+const COOK_TIME_STEP_MINUTES = 5;
+const COOK_TIME_MAX_MINUTES = 360;
 
 /**
  * Everything about a recipe that isn't its ingredient list: the name, what it
@@ -44,6 +52,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const setAuthor = useRecipeStore(s => s.setAuthor);
   const setSource = useRecipeStore(s => s.setSource);
   const setServings = useRecipeStore(s => s.setServings);
+  const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const deleteRecipe = useRecipeStore(s => s.deleteRecipe);
   const recipes = useRecipeStore(s => s.recipes);
 
@@ -54,6 +63,8 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [source, setSourceDraft] = useState('');
   const [servings, setServingsDraft] = useState<number | null>(null);
   const [servingsOpen, setServingsOpen] = useState(false);
+  const [estimatedMinutes, setEstimatedMinutesDraft] = useState<number | null>(null);
+  const [durationOpen, setDurationOpen] = useState(false);
   const [authorOpen, setAuthorOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
 
@@ -91,6 +102,8 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setSourceDraft(recipe.source ?? recipe.sourceName ?? '');
     setServingsDraft(recipe.servings);
     setServingsOpen(false);
+    setEstimatedMinutesDraft(recipe.estimatedMinutes);
+    setDurationOpen(false);
     setAuthorOpen(false);
     setSourceOpen(false);
     setLinkOpen(false);
@@ -110,6 +123,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setAuthor(recipe.id, author);
     setSource(recipe.id, source);
     setServings(recipe.id, servings);
+    setEstimatedMinutes(recipe.id, estimatedMinutes);
     onClose();
   };
 
@@ -193,6 +207,30 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
               emptyLabel="—"
               label="Servings"
               describeValue={n => (n === null ? 'not set' : `serves ${n}`)}
+            />
+          </View>
+        )}
+        <EditorRow
+          icon="time-outline"
+          label="Cook time"
+          value={estimatedMinutes !== null ? formatDuration(estimatedMinutes) : undefined}
+          hint="How long this takes, start to finish — doubles as the cook timer's countdown on the recipe page."
+          expanded={durationOpen}
+          onPress={() => { animateLayout(); setDurationOpen(v => !v); }}
+          onClear={estimatedMinutes !== null ? () => { setEstimatedMinutesDraft(null); setDurationOpen(false); } : undefined}
+        />
+        {durationOpen && (
+          <View style={styles.stepperRow}>
+            <CountStepper
+              value={estimatedMinutes !== null ? Math.round(estimatedMinutes / COOK_TIME_STEP_MINUTES) : null}
+              onChange={units => setEstimatedMinutesDraft(units === null ? null : units * COOK_TIME_STEP_MINUTES)}
+              min={1}
+              max={COOK_TIME_MAX_MINUTES / COOK_TIME_STEP_MINUTES}
+              allowNull
+              emptyLabel="—"
+              label="Cook time"
+              format={units => formatDuration(units * COOK_TIME_STEP_MINUTES)}
+              describeValue={units => (units === null ? 'not set' : formatDuration(units * COOK_TIME_STEP_MINUTES))}
             />
           </View>
         )}

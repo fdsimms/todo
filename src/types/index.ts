@@ -720,6 +720,45 @@ export interface Recipe {
   cookCount: number;
   /** When this recipe was last marked cooked; null if never. */
   lastCookedAt: string | null;
+
+  // Duration + cook timer + actual-time logging (#1091).
+
+  /**
+   * How long this recipe is expected to take, in minutes. Shown next to
+   * ingredient count/servings (see describeRecipe) and doubles as the cook
+   * timer's countdown target below — a recipe's duration and "how long to
+   * time it for" are the same number, unlike a Task where estimatedMinutes
+   * (workload) and timedMinutes (an explicit countdown target) are allowed to
+   * differ.
+   */
+  estimatedMinutes: number | null;
+  // The cook timer itself — the same banked-segment design as
+  // Task.timerStartedAt/timerElapsedSeconds (see src/utils/timer.ts and its
+  // recipe counterpart src/utils/recipeTimer.ts): only these two raw fields
+  // are ever stored, and how much time has elapsed or remains is always
+  // derived against the current clock, so a phone that was backgrounded or
+  // killed mid-cook comes back with the right answer for free.
+  timerStartedAt: string | null; // ISO timestamp while a live cook timer runs; null when stopped
+  timerElapsedSeconds: number;   // banked from finished run segments; 0 when never run or reset
+
+  /**
+   * Actual cook time, logged when a timer session finishes — an aggregate,
+   * deliberately not a row-per-session log. A row per cook would grow
+   * without bound, which is the exact disease grocery_item_shops was
+   * designed around (see the note on ItemShopLink): the fix there was
+   * counters bounded by (items × stores), not a trip log, and cookCount/
+   * lastCookedAt above already made the same call for "was this cooked" one
+   * level up. So a logged session only ever touches three counters:
+   * lastCookMinutes (the most recent one, for "took 32m last time"),
+   * cookTimeCount and totalCookMinutes (paired, so an average — "usually
+   * about 30m across 4 cooks" — is `totalCookMinutes / cookTimeCount` at
+   * read time, never re-derived by scanning anything). This is what lets the
+   * recorded time diverge from `estimatedMinutes` and be compared against it
+   * over repeated cooks, without a table that grows with every meal made.
+   */
+  lastCookMinutes: number | null;
+  cookTimeCount: number;
+  totalCookMinutes: number;
 }
 
 // One prep step on a recipe — TemplateItem's anchor-relative offset model
