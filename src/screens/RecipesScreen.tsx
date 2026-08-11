@@ -27,6 +27,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { cleanRecipeName, countLikelyInPantry, describeCookHistory, describeRecipe, rankRecipeSuggestions, rankRecipes } from '../utils/recipeUtils';
+import { recipeMap } from '../utils/recipeComponents';
 import { groceryNameKey } from '../utils/groceryParse';
 
 /**
@@ -90,13 +91,14 @@ export function RecipesScreen() {
   // just reduced to a count per recipe.
   const pantryCounts = useMemo(() => {
     const now = new Date();
+    const byId = recipeMap(recipes);
     const map = new Map<string, number>();
     for (const recipe of visible) {
-      const count = countLikelyInPantry(recipe, groceryItems, now);
+      const count = countLikelyInPantry(recipe, groceryItems, now, byId);
       if (count !== null) map.set(recipe.id, count);
     }
     return map;
-  }, [visible, groceryItems]);
+  }, [visible, recipes, groceryItems]);
 
   const openRecipe = (recipe: Recipe) => {
     haptics.tap();

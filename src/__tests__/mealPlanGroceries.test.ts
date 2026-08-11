@@ -41,6 +41,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     sourceName: null,
     servings: null,
     ingredients,
+    components: [],
     prepTasks: [],
     favorite: false,
     sortOrder: seq,
@@ -129,6 +130,21 @@ describe('collectPlannedIngredients', () => {
     const entries = [entry('2026-08-11', ragu.id)];
     expect(collectPlannedIngredients(entries, recipesById, RANGE)[0].aisle).toBe('Produce');
   });
+
+  it('brings a component\'s ingredients along, sourced to the part that wants them', () => {
+    const mash = recipe('Mash', [ing('Potatoes', { quantity: '1 kg' })]);
+    const steak = recipe('Steak with mash', [ing('Steak', { quantity: '2' })]);
+    steak.components = [{ id: 'c1', recipeId: mash.id, name: 'Mash' }];
+    const recipesById = new Map([[steak.id, steak], [mash.id, mash]]);
+    const entries = [entry('2026-08-11', steak.id)]; // Tuesday
+
+    const result = collectPlannedIngredients(entries, recipesById, RANGE);
+
+    expect(result.map(r => [r.name, r.source, r.recipeTitle])).toEqual([
+      ['Steak', 'Tue Steak with mash', 'Steak with mash'],
+      ['Potatoes', 'Tue Mash', 'Mash'],
+    ]);
+  });
 });
 
 describe('plannedIngredientsForRecipe', () => {
@@ -152,6 +168,28 @@ describe('plannedIngredientsForRecipe', () => {
 
   it('is empty for a recipe with no ingredients', () => {
     expect(plannedIngredientsForRecipe(recipe('Toast', []))).toEqual([]);
+  });
+
+  it('includes a component\'s ingredients, each sourced to the recipe it\'s written on', () => {
+    const mash = recipe('Mash', [ing('Potatoes'), ing('Butter', { quantity: '50 g' })]);
+    const steak = recipe('Steak with mash', [ing('Steak')]);
+    steak.components = [{ id: 'c1', recipeId: mash.id, name: 'Mash' }];
+
+    const result = plannedIngredientsForRecipe(steak, new Map([[steak.id, steak], [mash.id, mash]]));
+
+    expect(result.map(r => [r.name, r.source])).toEqual([
+      ['Steak', 'Steak with mash'],
+      ['Potatoes', 'Mash'],
+      ['Butter', 'Mash'],
+    ]);
+    expect(result[2].recipeId).toBe(mash.id);
+  });
+
+  it('stands for itself when the caller has no library to resolve against', () => {
+    const steak = recipe('Steak with mash', [ing('Steak')]);
+    steak.components = [{ id: 'c1', recipeId: 'r-mash', name: 'Mash' }];
+
+    expect(plannedIngredientsForRecipe(steak).map(r => r.name)).toEqual(['Steak']);
   });
 });
 

@@ -9,9 +9,11 @@ import {
   Keyboard,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
 import { RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { recipesUsing } from '../utils/recipeComponents';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -38,6 +40,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
   const renameRecipe = useRecipeStore(s => s.renameRecipe);
   const setNotes = useRecipeStore(s => s.setNotes);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
@@ -82,12 +85,22 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     onClose();
   };
 
+  // Spells out what breaks, the way TemplateEditor's does for a nested
+  // template: the links aren't rewritten (see useRecipeStore.deleteRecipe), so
+  // the recipes using this one are about to show a row they have to deal with.
   const handleDelete = () => {
     if (!recipe) return;
     haptics.warning();
+    const usedBy = recipesUsing(recipes, recipe.id);
+    const base = `Delete “${recipe.name}”? Anything already on your grocery list stays there.`;
+    const message = usedBy.length === 0
+      ? base
+      : usedBy.length === 1
+        ? `${base} It's used as a component of “${usedBy[0].name}”, which will show it as missing until you remove it there.`
+        : `${base} It's used as a component of ${usedBy.length} other recipes (${usedBy.map(r => r.name).join(', ')}), which will show it as missing until you remove it there.`;
     Alert.alert(
       'Delete Recipe',
-      `Delete “${recipe.name}”? Anything already on your grocery list stays there.`,
+      message,
       [
         { text: 'Cancel', style: 'cancel' },
         {

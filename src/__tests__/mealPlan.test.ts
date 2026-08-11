@@ -54,6 +54,7 @@ function recipe(id: string, name: string): Recipe {
     sourceName: null,
     servings: null,
     ingredients: [],
+    components: [],
     prepTasks: [],
     favorite: false,
     sortOrder: 1,

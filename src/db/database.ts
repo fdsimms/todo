@@ -4,6 +4,7 @@ import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
 import { parseRecipeIngredients, parsePrepTasks } from '../utils/recipeUtils';
+import { parseRecipeComponents } from '../utils/recipeComponents';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
 
@@ -424,6 +425,12 @@ export function initDatabase(): void {
     // meant to drop out of suggestions. Same naming convention as
     // categories' exclude_from_pin_suggestions.
     'ALTER TABLE grocery_shops ADD COLUMN exclude_from_suggestions INTEGER NOT NULL DEFAULT 0',
+    // Empty array for every existing recipe — nothing predating this was
+    // composed of another recipe. A JSON blob for the reason `ingredients` is
+    // one, and a link table would buy nothing here: the only question anyone
+    // asks of it is "what are this recipe's parts", which is a read of this
+    // row. See Recipe.components.
+    "ALTER TABLE recipes ADD COLUMN components TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1484,6 +1491,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     sourceName: (row.source_name as string) ?? null,
     servings: (row.servings as number) ?? null,
     ingredients: parseRecipeIngredients(row.ingredients),
+    components: parseRecipeComponents(row.components),
     prepTasks: parsePrepTasks(row.prep_tasks),
     favorite: Boolean(row.favorite),
     sortOrder: (row.sort_order as number) ?? 0,
@@ -1503,12 +1511,13 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, servings, ingredients, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      (id, name, name_key, notes, source_url, source_name, servings, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.servings ?? null, JSON.stringify(recipe.ingredients),
-      JSON.stringify(recipe.prepTasks), recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
+      JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
+      recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
       recipe.cookCount, recipe.lastCookedAt ?? null,
     ]
   );
@@ -1517,13 +1526,14 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, servings=?, ingredients=?, prep_tasks=?,
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, servings=?, ingredients=?, components=?, prep_tasks=?,
        favorite=?, sort_order=?, cook_count=?, last_cooked_at=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.servings ?? null, JSON.stringify(recipe.ingredients),
-      JSON.stringify(recipe.prepTasks), recipe.favorite ? 1 : 0, recipe.sortOrder,
+      JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
+      recipe.favorite ? 1 : 0, recipe.sortOrder,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.id,
     ]
   );
