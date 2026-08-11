@@ -449,6 +449,19 @@ export function initDatabase(): void {
     // edited. See Recipe.author/Recipe.source.
     'ALTER TABLE recipes ADD COLUMN author TEXT',
     'ALTER TABLE recipes ADD COLUMN source TEXT',
+    // Cook timer + actual-time logging (#1091). Null/zero for every existing
+    // recipe — nothing predating this shipped has a duration or a timed
+    // session. estimated_minutes doubles as the cook timer's countdown
+    // target; timer_started_at/timer_elapsed_seconds are the banked-segment
+    // pair Task.timerStartedAt/timerElapsedSeconds already use. The logged
+    // actual time is an aggregate, not a per-session table — see
+    // Recipe.lastCookMinutes/cookTimeCount/totalCookMinutes for why.
+    'ALTER TABLE recipes ADD COLUMN estimated_minutes INTEGER',
+    'ALTER TABLE recipes ADD COLUMN timer_started_at TEXT',
+    'ALTER TABLE recipes ADD COLUMN timer_elapsed_seconds INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE recipes ADD COLUMN last_cook_minutes INTEGER',
+    'ALTER TABLE recipes ADD COLUMN cook_time_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE recipes ADD COLUMN total_cook_minutes INTEGER NOT NULL DEFAULT 0',
     // Null for every existing recipe — nothing predating this shipped had a
     // meal type to carry. See Recipe.mealType / RecipeMealType (#1104).
     'ALTER TABLE recipes ADD COLUMN meal_type TEXT',
@@ -1544,6 +1557,12 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     createdAt: row.created_at as string,
     cookCount: (row.cook_count as number) ?? 0,
     lastCookedAt: (row.last_cooked_at as string) ?? null,
+    estimatedMinutes: (row.estimated_minutes as number) ?? null,
+    timerStartedAt: (row.timer_started_at as string) ?? null,
+    timerElapsedSeconds: (row.timer_elapsed_seconds as number) ?? 0,
+    lastCookMinutes: (row.last_cook_minutes as number) ?? null,
+    cookTimeCount: (row.cook_time_count as number) ?? 0,
+    totalCookMinutes: (row.total_cook_minutes as number) ?? 0,
   };
 }
 
@@ -1557,8 +1576,9 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, servings, meal_type, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      (id, name, name_key, notes, source_url, source_name, author, source, servings, meal_type, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at,
+       estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
@@ -1566,6 +1586,8 @@ export function dbInsertRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
       recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
       recipe.cookCount, recipe.lastCookedAt ?? null,
+      recipe.estimatedMinutes ?? null, recipe.timerStartedAt ?? null, recipe.timerElapsedSeconds,
+      recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
     ]
   );
 }
@@ -1574,7 +1596,8 @@ export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
        name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, meal_type=?, ingredients=?, components=?, prep_tasks=?,
-       favorite=?, sort_order=?, cook_count=?, last_cooked_at=?
+       favorite=?, sort_order=?, cook_count=?, last_cooked_at=?,
+       estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
@@ -1582,7 +1605,10 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       recipe.servings ?? null, recipe.mealType ?? null, JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
       recipe.favorite ? 1 : 0, recipe.sortOrder,
-      recipe.cookCount, recipe.lastCookedAt ?? null, recipe.id,
+      recipe.cookCount, recipe.lastCookedAt ?? null,
+      recipe.estimatedMinutes ?? null, recipe.timerStartedAt ?? null, recipe.timerElapsedSeconds,
+      recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
+      recipe.id,
     ]
   );
 }

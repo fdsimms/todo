@@ -15,6 +15,7 @@ import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep } from 
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
+import { formatDuration } from './effort';
 import { describeComponents, flattenRecipeIngredients, recipeMap } from './recipeComponents';
 
 // splitPrep lives in groceryParse.ts now — the plain grocery quick-add field
@@ -247,6 +248,7 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): 
     parts.push(likelyInPantry === 1 ? '1 likely in pantry' : `${likelyInPantry} likely in pantry`);
   }
   if (recipe.servings) parts.push(`serves ${recipe.servings}`);
+  if (recipe.estimatedMinutes) parts.push(formatDuration(recipe.estimatedMinutes));
   const attribution = describeAttribution(recipe);
   if (attribution) parts.push(attribution);
   return parts.join(' · ');
@@ -333,6 +335,66 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
       a.recipe.name.localeCompare(b.recipe.name)
     )
     .map(s => s.recipe);
+}
+
+/**
+ * Field updates to apply when a cook timer session finishes — the recipe
+ * counterpart of effort.ts's applyMeasuredTime. `lastCookMinutes` is always
+ * set and `cookTimeCount`/`totalCookMinutes` always advance; `estimatedMinutes`
+ * is only backfilled when the recipe has never had a duration of its own, so a
+ * typed estimate is never silently overwritten by a single measurement —
+ * exactly the rule applyMeasuredTime uses for a task's estimate/effort.
+ */
+export function applyMeasuredCookTime(
+  minutes: number,
+  recipe: Pick<Recipe, 'estimatedMinutes' | 'cookTimeCount' | 'totalCookMinutes'>
+): {
+  lastCookMinutes: number;
+  cookTimeCount: number;
+  totalCookMinutes: number;
+  estimatedMinutes?: number;
+} {
+  const rounded = Math.max(1, Math.round(minutes));
+  const patch = {
+    lastCookMinutes: rounded,
+    cookTimeCount: recipe.cookTimeCount + 1,
+    totalCookMinutes: recipe.totalCookMinutes + rounded,
+  };
+  if (recipe.estimatedMinutes != null) return patch;
+  return { ...patch, estimatedMinutes: rounded };
+}
+
+/**
+ * The running average of logged cook sessions — `totalCookMinutes /
+ * cookTimeCount`, derived at read time rather than stored, same as
+ * describeShops derives a grocery item's per-store share from its links
+ * rather than ever summing them into a stored total. Null until at least one
+ * session has been logged.
+ */
+export function avgCookMinutes(recipe: Pick<Recipe, 'cookTimeCount' | 'totalCookMinutes'>): number | null {
+  if (recipe.cookTimeCount <= 0) return null;
+  return Math.round(recipe.totalCookMinutes / recipe.cookTimeCount);
+}
+
+/**
+ * "Est. 25m · took 32m last time" / "Est. 25m · avg 30m over 4 cooks" — the
+ * line that puts a recipe's static estimate next to what cooking it has
+ * actually taken, so the two can be compared rather than the estimate just
+ * being trusted forever. Empty when there's nothing to say yet.
+ */
+export function describeCookTime(recipe: Recipe): string {
+  const parts: string[] = [];
+  if (recipe.estimatedMinutes) parts.push(`Est. ${formatDuration(recipe.estimatedMinutes)}`);
+  if (recipe.lastCookMinutes != null) {
+    parts.push(recipe.cookTimeCount > 1
+      ? `took ${formatDuration(recipe.lastCookMinutes)} last time`
+      : `took ${formatDuration(recipe.lastCookMinutes)}`);
+  }
+  const avg = avgCookMinutes(recipe);
+  if (avg != null && recipe.cookTimeCount > 1) {
+    parts.push(`avg ${formatDuration(avg)} over ${recipe.cookTimeCount} cooks`);
+  }
+  return parts.join(' · ');
 }
 
 /**

@@ -35,6 +35,12 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     cookCount: 0,
     lastCookedAt: null,
+    estimatedMinutes: null,
+    timerStartedAt: null,
+    timerElapsedSeconds: 0,
+    lastCookMinutes: null,
+    cookTimeCount: 0,
+    totalCookMinutes: 0,
     ...overrides,
   };
 }
@@ -525,6 +531,110 @@ describe('markCooked', () => {
   it('shrugs at an unknown recipe id', () => {
     seed([]);
     expect(() => useRecipeStore.getState().markCooked('gone')).not.toThrow();
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('setEstimatedMinutes', () => {
+  it('sets, rounds and floors at 1 minute', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setEstimatedMinutes(r.id, 24.6);
+    expect(useRecipeStore.getState().recipeById(r.id)!.estimatedMinutes).toBe(25);
+
+    useRecipeStore.getState().setEstimatedMinutes(r.id, 0.2);
+    expect(useRecipeStore.getState().recipeById(r.id)!.estimatedMinutes).toBe(1);
+  });
+
+  it('clears it with null', () => {
+    const r = makeRecipe('Ragu', { estimatedMinutes: 25 });
+    seed([r]);
+    useRecipeStore.getState().setEstimatedMinutes(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.estimatedMinutes).toBeNull();
+  });
+});
+
+describe('cook timer', () => {
+  it('starts only when nothing is already running', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().startCookTimer(r.id);
+    const started = useRecipeStore.getState().recipeById(r.id)!;
+    expect(started.timerStartedAt).not.toBeNull();
+
+    (dbUpdateRecipe as jest.Mock).mockClear();
+    useRecipeStore.getState().startCookTimer(r.id);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('pause banks the elapsed segment without touching the logged history', () => {
+    const startedAt = new Date(Date.now() - 90_000).toISOString();
+    const r = makeRecipe('Ragu', { timerStartedAt: startedAt });
+    seed([r]);
+
+    useRecipeStore.getState().pauseCookTimer(r.id);
+
+    const paused = useRecipeStore.getState().recipeById(r.id)!;
+    expect(paused.timerStartedAt).toBeNull();
+    expect(paused.timerElapsedSeconds).toBeGreaterThanOrEqual(90);
+    expect(paused.lastCookMinutes).toBeNull();
+    expect(paused.cookTimeCount).toBe(0);
+  });
+
+  it('pause is a no-op when nothing is running', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().pauseCookTimer(r.id);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('reset abandons the current segment unlogged', () => {
+    const r = makeRecipe('Ragu', { timerStartedAt: new Date().toISOString(), timerElapsedSeconds: 60 });
+    seed([r]);
+
+    useRecipeStore.getState().resetCookTimer(r.id);
+
+    const reset = useRecipeStore.getState().recipeById(r.id)!;
+    expect(reset.timerStartedAt).toBeNull();
+    expect(reset.timerElapsedSeconds).toBe(0);
+    expect(reset.cookTimeCount).toBe(0);
+  });
+
+  it('stop banks and logs the session, and backfills a never-set estimate', () => {
+    const startedAt = new Date(Date.now() - 18 * 60_000).toISOString();
+    const r = makeRecipe('Ragu', { estimatedMinutes: null, timerStartedAt: startedAt });
+    seed([r]);
+
+    useRecipeStore.getState().stopCookTimer(r.id);
+
+    const stopped = useRecipeStore.getState().recipeById(r.id)!;
+    expect(stopped.timerStartedAt).toBeNull();
+    expect(stopped.timerElapsedSeconds).toBe(0);
+    expect(stopped.lastCookMinutes).toBe(18);
+    expect(stopped.cookTimeCount).toBe(1);
+    expect(stopped.totalCookMinutes).toBe(18);
+    expect(stopped.estimatedMinutes).toBe(18);
+  });
+
+  it('stop never overwrites a typed estimate, and logs banked time from an earlier pause', () => {
+    const r = makeRecipe('Ragu', { estimatedMinutes: 25, timerElapsedSeconds: 20 * 60, cookTimeCount: 1, totalCookMinutes: 22 });
+    seed([r]);
+
+    useRecipeStore.getState().stopCookTimer(r.id);
+
+    const stopped = useRecipeStore.getState().recipeById(r.id)!;
+    expect(stopped.estimatedMinutes).toBe(25);
+    expect(stopped.lastCookMinutes).toBe(20);
+    expect(stopped.cookTimeCount).toBe(2);
+    expect(stopped.totalCookMinutes).toBe(42);
+  });
+
+  it('stop is a no-op with nothing running and nothing banked', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().stopCookTimer(r.id);
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
   });
 });

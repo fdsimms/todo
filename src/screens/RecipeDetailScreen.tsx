@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -25,12 +25,22 @@ import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
 import { PrepTaskSheet } from '../components/PrepTaskSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { RecipeExtractSheet } from '../components/RecipeExtractSheet';
+import { ProgressBar } from '../components/ProgressBar';
 import { RecipeComponentPicker } from '../components/RecipeComponentPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { describeRecipe } from '../utils/recipeUtils';
+import { describeCookTime, describeRecipe } from '../utils/recipeUtils';
+import { formatDuration, formatStopwatch } from '../utils/effort';
+import {
+  cookTimerElapsed,
+  cookTimerProgress,
+  cookTimerRemaining,
+  hasCookTimer,
+  isCookTimerReady,
+  isCookTimerRunning,
+} from '../utils/recipeTimer';
 import {
   flattenRecipeIngredients,
   recipeMap,
@@ -61,6 +71,10 @@ export function RecipeDetailScreen() {
   const toggleFavorite = useRecipeStore(s => s.toggleFavorite);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
+  const startCookTimer = useRecipeStore(s => s.startCookTimer);
+  const pauseCookTimer = useRecipeStore(s => s.pauseCookTimer);
+  const resetCookTimer = useRecipeStore(s => s.resetCookTimer);
+  const stopCookTimer = useRecipeStore(s => s.stopCookTimer);
   const addComponent = useRecipeStore(s => s.addComponent);
   const removeComponent = useRecipeStore(s => s.removeComponent);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
@@ -91,6 +105,19 @@ export function RecipeDetailScreen() {
   const [dragging, setDragging] = useState(false);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
+  // Tick once a second only while the cook timer runs, mirroring TaskItem's
+  // own timer clock — everything else is recomputed from the stored fields
+  // against nowTick rather than counted down in state, so this reads right
+  // even after the app was backgrounded or killed mid-cook.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const cookRunning = recipe ? isCookTimerRunning(recipe) : false;
+  useEffect(() => {
+    if (!cookRunning) return;
+    setNowTick(Date.now());
+    const interval = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [cookRunning, recipe?.timerStartedAt]);
+
   // The row can be gone while the screen is still mounted (deleted from the
   // editor), so this renders rather than crashing on the next read.
   if (!recipe) {
@@ -105,6 +132,35 @@ export function RecipeDetailScreen() {
       </View>
     );
   }
+
+  const cookHasTarget = hasCookTimer(recipe);
+  const cookElapsedSeconds = cookTimerElapsed(recipe, nowTick);
+  const cookRemainingSeconds = cookHasTarget ? cookTimerRemaining(recipe, nowTick) : 0;
+  const cookProgress = cookHasTarget ? cookTimerProgress(recipe, nowTick) : 0;
+  const cookReady = cookHasTarget && isCookTimerReady(recipe, nowTick);
+  const cookPaused = !cookRunning && recipe.timerElapsedSeconds > 0;
+  const cookInProgress = cookRunning || recipe.timerElapsedSeconds > 0;
+  const cookTimeSummary = describeCookTime(recipe);
+
+  const handleCookTimerToggle = async () => {
+    if (cookRunning) {
+      await haptics.success();
+      pauseCookTimer(recipe.id);
+    } else {
+      await haptics.impactMedium();
+      startCookTimer(recipe.id);
+    }
+  };
+
+  const handleLogCookTime = async () => {
+    await haptics.success();
+    stopCookTimer(recipe.id);
+  };
+
+  const handleResetCookTimer = async () => {
+    await haptics.warning();
+    resetCookTimer(recipe.id);
+  };
 
   const submitDraft = () => {
     const text = draft;
@@ -347,6 +403,69 @@ export function RecipeDetailScreen() {
         <Text style={styles.summary}>{describeRecipe(recipe)}</Text>
         {!!recipe.notes && <Text style={styles.notes}>{recipe.notes}</Text>}
 
+        <View style={styles.timerCard}>
+          <View style={styles.timerHeader}>
+            <Ionicons
+              name={cookReady ? 'checkmark-circle' : 'timer-outline'}
+              size={16}
+              color={cookReady ? colors.green : colors.accent}
+            />
+            <Text style={styles.timerHeaderText} numberOfLines={1}>
+              {cookHasTarget
+                ? cookReady
+                  ? `Ready · ${formatDuration(recipe.estimatedMinutes!)} done`
+                  : cookRunning
+                    ? `${formatStopwatch(Math.max(0, cookRemainingSeconds))} left`
+                    : cookPaused
+                      ? `Paused · ${formatStopwatch(Math.max(0, cookRemainingSeconds))} left`
+                      : `Cook for ${formatDuration(recipe.estimatedMinutes!)}`
+                : cookRunning
+                  ? `${formatStopwatch(cookElapsedSeconds)} elapsed`
+                  : cookPaused
+                    ? `Paused · ${formatStopwatch(cookElapsedSeconds)}`
+                    : 'Time this cook'}
+            </Text>
+          </View>
+          {cookHasTarget && <ProgressBar progress={cookProgress} height={4} />}
+          <View style={styles.timerActions}>
+            <TouchableOpacity
+              style={[styles.timerBtn, cookRunning && styles.timerBtnRunning]}
+              activeOpacity={interaction.activeOpacity}
+              onPress={handleCookTimerToggle}
+              accessibilityRole="button"
+              accessibilityLabel={
+                cookRunning ? 'Pause cook timer' : cookPaused ? 'Resume cook timer' : 'Start cook timer'
+              }
+            >
+              <Ionicons name={cookRunning ? 'pause' : 'play'} size={12} color={colors.onAccent} />
+              <Text style={styles.timerBtnText}>{cookRunning ? 'Pause' : cookPaused ? 'Resume' : 'Start'}</Text>
+            </TouchableOpacity>
+            {cookInProgress && (
+              <>
+                <TouchableOpacity
+                  onPress={handleLogCookTime}
+                  hitSlop={8}
+                  style={styles.timerSecondaryBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Done cooking — log this time"
+                >
+                  <Ionicons name="checkmark" size={iconSize.sm} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleResetCookTimer}
+                  hitSlop={8}
+                  style={styles.timerSecondaryBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reset cook timer"
+                >
+                  <Ionicons name="refresh" size={iconSize.sm} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+          {!!cookTimeSummary && <Text style={styles.timerSummary}>{cookTimeSummary}</Text>}
+        </View>
+
         <Text style={styles.sectionLabel}>Ingredients</Text>
 
         {recipe.ingredients.length === 0 ? (
@@ -536,6 +655,58 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     lineHeight: font.md * 1.4,
+  },
+  timerCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  timerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  timerHeaderText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+    fontVariant: ['tabular-nums'],
+  },
+  timerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  timerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.accent,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  timerBtnRunning: {
+    backgroundColor: colors.orange,
+  },
+  timerBtnText: {
+    color: colors.onAccent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+  },
+  timerSecondaryBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timerSummary: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
   },
   sectionLabel: {
     color: colors.textTertiary,
