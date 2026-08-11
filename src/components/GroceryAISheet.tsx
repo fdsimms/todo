@@ -30,6 +30,7 @@ import {
   type RecipeGroceryItem,
 } from '../services/aiSuggestions';
 import { OTHER_AISLE } from '../utils/groceryAisles';
+import { groceryNameKey } from '../utils/groceryParse';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
@@ -162,18 +163,35 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       });
       setAisleMany(assignments);
     } else {
+      // registerUndo: false on each call, then one combined undo below — same
+      // reasoning as useGroceryStore's addManyFromText/addFromPlan, otherwise
+      // only the last accepted row of the recipe would be undoable.
+      const addedIds: string[] = [];
       recipeRows.forEach((row, i) => {
         if (!accepted.has(i)) return;
+        // A row already on the list before this apply isn't something *this*
+        // action added — same distinction addManyFromText draws — so it's
+        // excluded from what undo removes.
+        const key = groceryNameKey(row.name);
+        const before = key ? useGroceryStore.getState().items.find(it => it.nameKey === key) : undefined;
+        const wasOnList = before?.onList === true;
         // addByName so an item already in the catalog is re-listed rather than
         // duplicated; the aisle and quantity are then applied on top of
         // whatever the lexicon guessed. An aisle the user has filed this item
         // under themselves is not a guess, though — addByName has already
         // honoured it, and applying the model's on top would overwrite the
         // memory as well as the row.
-        const item = addByName(row.name);
+        const item = addByName(row.name, undefined, undefined, { registerUndo: false });
         if (row.aisle && !rememberedAisleFor(row.name)) setAisle(item.id, row.aisle);
         if (row.quantity) setQuantity(item.id, row.quantity);
+        if (!wasOnList) addedIds.push(item.id);
       });
+      if (addedIds.length > 0) {
+        useGroceryStore.getState().setLastAction({
+          label: `${addedIds.length} item${addedIds.length === 1 ? '' : 's'} added`,
+          undo: () => useGroceryStore.getState().removeFromListMany(addedIds),
+        });
+      }
     }
     haptics.success();
     onClose();
