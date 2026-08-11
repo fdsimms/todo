@@ -408,8 +408,14 @@ function makeStyles(colors: Colors) {
       // maxWidth, it doesn't force every chip to that width).
       maxWidth: 160,
       flexShrink: 1,
+      // bgSecondary sits only a few % of luminance off the sheet's own bg in
+      // light mode, so a fill alone leaves an inactive chip with no visible
+      // edge — a hairline in the separator color is what actually reads as a
+      // pill rather than as floating text.
+      borderWidth: border.hairline,
+      borderColor: colors.separator,
     },
-    chipActive: { backgroundColor: colors.accent },
+    chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
     chipText: { fontSize: font.sm, color: colors.textSecondary, flexShrink: 1 },
     chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
     selectionBar: {
