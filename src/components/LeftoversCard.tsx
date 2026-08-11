@@ -1,16 +1,59 @@
-import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Leftover, LeftoverFreshness } from '../types';
-import { useColors } from '../theme/ThemeContext';
+import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { InlineAction } from './InlineAction';
-import { describeFridge, describeLeftover, freshnessOf, liveLeftovers } from '../utils/leftovers';
+import { useFabIntentSelector, type FabIntentChannel } from './FabDropZones';
+import {
+  describeFridge,
+  describeLeftover,
+  freshnessOf,
+  isPlannedPastKeepUntil,
+  liveLeftovers,
+} from '../utils/leftovers';
 
 /** How many rows the card shows before folding the rest behind "+N more". */
 const COLLAPSED_ROWS = 3;
+
+/** All this card needs off a row's view — the same narrowing FabDropZones makes. */
+interface MeasurableRow {
+  measureInWindow?: (
+    callback: (x: number, y: number, width: number, height: number) => void,
+  ) => void;
+}
+
+/**
+ * What a row reports while it's being dragged onto the week below it: a lift, a
+ * moving finger, and however it ended.
+ *
+ * **The card reports positions and decides nothing.** Where the week is, which
+ * day a given pageY is over and what a release there should write are all the
+ * screen's business — it already owns the day drop zones the add button uses,
+ * so a fridge row dropping onto one goes through exactly the same registry
+ * rather than a second copy of the hit-testing. Same split `FabDragHandlers`
+ * draws for the add button, and for the same reason.
+ *
+ * Positions are window-space: that is the one space a PanResponder's `pageY`
+ * and a row's `measureInWindow` already agree on, and it's what
+ * `FabDropZoneProvider` measures its bands in.
+ */
+export interface LeftoverDragHandlers {
+  /**
+   * A row has been held long enough to lift. `frame` is its band on screen, so
+   * the floating card can start exactly where the row is rather than jumping
+   * to the finger.
+   */
+  onStart: (leftover: Leftover, frame: { top: number; height: number }) => void;
+  /** `translation` is measured from where the finger was when the drag claimed it. */
+  onMove: (pageY: number, translation: { x: number; y: number }) => void;
+  onEnd: (pageY: number) => void;
+  /** Touch lost, app switched — nothing was dropped. */
+  onCancel: () => void;
+}
 
 interface Props {
   /** Every leftover the store holds; the card takes the live ones itself. */
@@ -21,6 +64,11 @@ interface Props {
   onAdd: () => void;
   /** Opens FridgeHistorySheet. Offered only once something has been closed out. */
   onHistory: () => void;
+  /**
+   * Lets a row be dragged straight onto a day. Omit on any surface with no week
+   * under the card — the rows stay tap-and-button only, exactly as they were.
+   */
+  drag?: LeftoverDragHandlers;
 }
 
 /**
@@ -46,6 +94,20 @@ interface Props {
  * needs eating" to a plan was the add button, the picker, and the "In the
  * fridge" section of it: three steps away from the row already naming the thing.
  *
+ * **And the row can be dragged onto a day directly.** The button opens a sheet
+ * of day chips, which is two taps and a sheet for a decision the user has
+ * usually already made — the week is on screen, right underneath, and Thursday
+ * is a thing they can point at. So a hold lifts the container and a release
+ * over a day band plans it there. The button stays: a drag is the shortcut, not
+ * the route, and it is unreachable with VoiceOver or a shaky hand, so the
+ * tappable path has to keep working unchanged (same reason Today keeps a menu
+ * item for everything its swipes do).
+ *
+ * **A drag copies rather than moves, and the row deliberately doesn't leave.**
+ * A pot of soup feeds two dinners: planning it against Thursday doesn't take it
+ * out of the fridge (see Leftover.finishedAt), so the row dims for the lift and
+ * is back at full strength the moment the finger is up.
+ *
  * **It never takes more than three rows of the week.** A full fridge is five
  * or six containers, each a two-line row, which is most of a screen standing
  * between the header and Monday — and this card is the thing you read *before*
@@ -64,11 +126,103 @@ interface Props {
  * answer. With nothing live it shrinks to its caption and its two actions,
  * not to a full empty state.
  */
-export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory }: Props) {
+export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, drag }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [expanded, setExpanded] = useState(false);
+
+  // Which row is lifted, twice over: state for the dim, a ref for the gesture
+  // handlers, which are created once and would otherwise read a stale closure.
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const draggingIdRef = useRef<string | null>(null);
+  const rowViewsRef = useRef<Map<string, MeasurableRow>>(new Map());
+  // Where the finger was when the responder was granted. Null until then: the
+  // long-press reports no position, so there is no baseline to measure the
+  // floating card's travel against until the first move — same reason
+  // SortableList seeds its own at grant rather than at the lift.
+  const startPageRef = useRef<{ x: number; y: number } | null>(null);
+  // Whether a finger is still down, read by the measurement below.
+  const touchDownRef = useRef(false);
+  const dragRef = useRef(drag);
+  dragRef.current = drag;
+
+  const endDrag = (pageY: number) => {
+    if (draggingIdRef.current === null) return;
+    draggingIdRef.current = null;
+    startPageRef.current = null;
+    setDraggingId(null);
+    dragRef.current?.onEnd(pageY);
+  };
+
+  const cancelDrag = () => {
+    if (draggingIdRef.current === null) return;
+    draggingIdRef.current = null;
+    startPageRef.current = null;
+    setDraggingId(null);
+    dragRef.current?.onCancel();
+  };
+
+  /**
+   * The long-press landed. The row measures itself first — the screen places
+   * the floating card off that band — which costs the frame `measureInWindow`
+   * takes to answer, and so has to re-check that the gesture is still live: a
+   * measurement arriving after the finger has already gone would arm a drag
+   * that nothing can ever end, and an armed drag leaves the week's list
+   * unscrollable (see the screen's `scrollEnabled`).
+   */
+  const startDrag = (leftover: Leftover) => {
+    if (!dragRef.current || draggingIdRef.current !== null) return;
+    const view = rowViewsRef.current.get(leftover.id);
+    if (typeof view?.measureInWindow !== 'function') return;
+    view.measureInWindow((_x, y, _w, h) => {
+      if (!touchDownRef.current || draggingIdRef.current !== null) return;
+      if (!Number.isFinite(y) || !(h > 0)) return;
+      draggingIdRef.current = leftover.id;
+      setDraggingId(leftover.id);
+      // The card lifting off is the only signal the hold worked — nothing has
+      // moved yet. Same pulse SortableList's own lift uses.
+      haptics.impactMedium();
+      dragRef.current?.onStart(leftover, { top: y, height: h });
+    });
+  };
+
+  /**
+   * Claims the touch only once a row has been lifted, which is what keeps the
+   * row's tap and its calendar button intact — before the hold this responder
+   * says no to everything, so nothing about the card behaves differently.
+   *
+   * The enclosing list must be told to hold still for the duration (the screen
+   * does it off `onStart`/`onEnd`): this responder is a *descendant* of that
+   * scroll view, and a native scroll view only stands down for a JS responder
+   * that is one of its ancestors. Without it the scroll wins on the first
+   * finger move and the container is put straight back down — the failure
+   * SortableList.onDragStateChange documents at length.
+   */
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onStartShouldSetPanResponderCapture: () => false,
+        onMoveShouldSetPanResponder: () => draggingIdRef.current !== null,
+        onMoveShouldSetPanResponderCapture: () => draggingIdRef.current !== null,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: e => {
+          startPageRef.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
+        },
+        onPanResponderMove: e => {
+          const start = startPageRef.current;
+          if (draggingIdRef.current === null || !start) return;
+          const { pageX, pageY } = e.nativeEvent;
+          dragRef.current?.onMove(pageY, { x: pageX - start.x, y: pageY - start.y });
+        },
+        onPanResponderRelease: e => endDrag(e.nativeEvent.pageY),
+        onPanResponderTerminate: () => cancelDrag(),
+      }),
+    // Every handler reads refs, so one responder for the life of the card.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   const live = useMemo(() => liveLeftovers(leftovers), [leftovers]);
   const hasHistory = useMemo(() => leftovers.some(l => !!l.finishedAt), [leftovers]);
@@ -87,45 +241,72 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory }: 
       </View>
 
       {live.length > 0 && (
-      <View style={styles.card}>
+      <View
+        style={styles.card}
+        {...(drag ? panResponder.panHandlers : {})}
+        // The raw touch, not the responder: a hold that lifts a row and then
+        // releases without travelling never grants the responder at all, so
+        // neither release nor terminate fires and the row would be stranded
+        // mid-drag with the list still switched off. Both are no-ops unless a
+        // drag is actually in flight, and endDrag is idempotent, so the
+        // responder's own release racing this one is harmless.
+        onTouchStart={() => { touchDownRef.current = true; }}
+        onTouchEnd={e => { touchDownRef.current = false; endDrag(e.nativeEvent.pageY); }}
+        onTouchCancel={() => { touchDownRef.current = false; cancelDrag(); }}
+      >
         {shown.map((leftover, i) => {
           const freshness = freshnessOf(leftover);
           const tint = freshnessColor(freshness, colors);
           return (
-            <TouchableOpacity
+            // A wrapper rather than a ref on the Touchable itself, so what gets
+            // measured is a plain host view — the same reason FabDropZone wraps
+            // its rows instead of reaching into them.
+            <View
               key={leftover.id}
-              style={[styles.row, i > 0 && styles.rowDivided]}
-              onPress={() => { haptics.tap(); onPress(leftover); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={`${leftover.title}, ${describeLeftover(leftover)}`}
+              ref={(view: any) => {
+                if (view) rowViewsRef.current.set(leftover.id, view as MeasurableRow);
+                else rowViewsRef.current.delete(leftover.id);
+              }}
+              collapsable={false}
+              style={draggingId === leftover.id && styles.rowLifted}
             >
-              {/* The dot carries the whole freshness signal, so the caption is
-                  never the only thing saying it — a colour nobody can see is
-                  still legible as "there is a state here" next to text that
-                  spells it out. */}
-              <View style={[styles.dot, { backgroundColor: tint }]} />
-              <View style={styles.rowText}>
-                <Text style={styles.rowTitle} numberOfLines={1}>{leftover.title}</Text>
-                <Text style={[styles.rowCaption, { color: tint }]}>
-                  {describeLeftover(leftover)}
-                </Text>
-              </View>
-              {/* A bare glyph, not a tinted tile — the row's other controls
-                  (the dot, the chevron) are bare too, and a filled tile here
-                  would read as a second kind of row rather than an action on
-                  this one. Same call the recipe rows make. */}
               <TouchableOpacity
-                onPress={() => { haptics.tap(); onPlan(leftover); }}
+                style={[styles.row, i > 0 && styles.rowDivided]}
+                onPress={() => { haptics.tap(); onPress(leftover); }}
+                onLongPress={drag ? () => startDrag(leftover) : undefined}
+                delayLongPress={interaction.delayLongPress}
                 activeOpacity={interaction.activeOpacity}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 accessibilityRole="button"
-                accessibilityLabel={`Plan ${leftover.title} onto a day`}
+                accessibilityLabel={`${leftover.title}, ${describeLeftover(leftover)}`}
+                accessibilityHint={drag ? 'Hold and drag onto a day to plan it there' : undefined}
               >
-                <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
+                {/* The dot carries the whole freshness signal, so the caption is
+                    never the only thing saying it — a colour nobody can see is
+                    still legible as "there is a state here" next to text that
+                    spells it out. */}
+                <View style={[styles.dot, { backgroundColor: tint }]} />
+                <View style={styles.rowText}>
+                  <Text style={styles.rowTitle} numberOfLines={1}>{leftover.title}</Text>
+                  <Text style={[styles.rowCaption, { color: tint }]}>
+                    {describeLeftover(leftover)}
+                  </Text>
+                </View>
+                {/* A bare glyph, not a tinted tile — the row's other controls
+                    (the dot, the chevron) are bare too, and a filled tile here
+                    would read as a second kind of row rather than an action on
+                    this one. Same call the recipe rows make. */}
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); onPlan(leftover); }}
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Plan ${leftover.title} onto a day`}
+                >
+                  <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
+                </TouchableOpacity>
+                <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
               </TouchableOpacity>
-              <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
-            </TouchableOpacity>
+            </View>
           );
         })}
         {hidden > 0 && (
@@ -155,6 +336,61 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory }: 
             accessibilityLabel="What happened to past leftovers"
           />
         )}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The container itself, on its way to a day — what the screen floats under the
+ * finger for the length of a drag.
+ *
+ * It lives here rather than in the screen so it can't drift from the row it is
+ * a copy of: same dot, same title, same shape, off the same stylesheet. What
+ * differs is the caption, which is the whole reason a floating card beats a
+ * bare label — it stops describing the fridge and starts describing the drop,
+ * naming the day a release right now would plan onto. That's the same job the
+ * add button's `dragLabel` does, and it reads the same channel to do it.
+ *
+ * **A day past the keep-until is named, not blocked** (see
+ * isPlannedPastKeepUntil): the caption says so in the freshness colours the
+ * card already uses, and the drop lands anyway.
+ */
+export function LeftoverDragCard({
+  leftover,
+  channel,
+}: {
+  leftover: Leftover;
+  channel: FabIntentChannel;
+}) {
+  const colors = useColors();
+  const { shadows } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Selected as plain strings and booleans, never as the intent: most pointer
+  // samples don't change either, and one that doesn't must cost nothing. See
+  // useFabIntentSelector.
+  const caption = useFabIntentSelector(channel, intent => {
+    if (intent?.kind !== 'day') return describeLeftover(leftover);
+    return isPlannedPastKeepUntil(leftover, intent.dayKey)
+      ? `${intent.dayLabel} · past its use-by`
+      : `Plan on ${intent.dayLabel}`;
+  });
+  const late = useFabIntentSelector(
+    channel,
+    intent => intent?.kind === 'day' && isPlannedPastKeepUntil(leftover, intent.dayKey),
+  );
+
+  const tint = late ? colors.red : freshnessColor(freshnessOf(leftover), colors);
+
+  return (
+    <View style={[styles.dragCard, shadows.fab]}>
+      <View style={styles.row}>
+        <View style={[styles.dot, { backgroundColor: tint }]} />
+        <View style={styles.rowText}>
+          <Text style={styles.rowTitle} numberOfLines={1}>{leftover.title}</Text>
+          <Text style={[styles.rowCaption, { color: tint }]} numberOfLines={1}>{caption}</Text>
+        </View>
       </View>
     </View>
   );
@@ -223,6 +459,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowDivided: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.separator,
+  },
+  // The row a drag picked up. It stays in place and stays legible — the
+  // container isn't going anywhere, the copy on the finger is.
+  rowLifted: {
+    opacity: 0.4,
+  },
+  // The floating copy. Deliberately NOT `card` plus a shadow: that style clips
+  // to its bounds (one rounded corner treatment for three stacked rows), and an
+  // iOS shadow is drawn outside the layer it belongs to, so the same view can't
+  // both clip and cast one. One row needs no clipping anyway.
+  //
+  // It sits on the card surface — the row's own — and is lifted off the page by
+  // the shadow rather than by a different fill. `bgTertiary` was the
+  // obvious-looking alternative and is wrong in light mode: white cards are
+  // already the top surface there, so a tertiary fill reads as *recessed* under
+  // the day it's being dragged over. A shadow works in both.
+  dragCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    shadowColor: '#000',
   },
   moreRow: {
     borderTopWidth: StyleSheet.hairlineWidth,

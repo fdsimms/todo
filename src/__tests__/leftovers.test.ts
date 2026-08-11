@@ -14,6 +14,7 @@ import {
   finishedLeftovers,
   freshnessOf,
   isLiveLeftover,
+  isPlannedPastKeepUntil,
   keepDaysBetween,
   keepUntilKeyFor,
   leftoverPurgeCutoff,
@@ -446,6 +447,42 @@ describe('mealTitleForLeftover', () => {
 
   it('leaves off the age on the day it was made', () => {
     expect(mealTitleForLeftover(aged(0, 4, { title: 'Dal' }), NOW)).toBe('Dal');
+  });
+});
+
+describe('isPlannedPastKeepUntil', () => {
+  const chilli = makeLeftover({ keepUntil: '2026-08-16' });
+
+  it('is false on the keep-until day itself — that is the day it is for', () => {
+    expect(isPlannedPastKeepUntil(chilli, '2026-08-16')).toBe(false);
+  });
+
+  it('is false for any day before it', () => {
+    expect(isPlannedPastKeepUntil(chilli, '2026-08-13')).toBe(false);
+    expect(isPlannedPastKeepUntil(chilli, '2026-08-15')).toBe(false);
+  });
+
+  it('is true the day after', () => {
+    expect(isPlannedPastKeepUntil(chilli, '2026-08-17')).toBe(true);
+  });
+
+  // Day keys sort lexically, which is the whole reason this needs no date
+  // parsing — but only because they are zero-padded. Worth a case across a
+  // month and a year boundary so a future change to the key format trips here.
+  it('compares correctly across month and year boundaries', () => {
+    const newYear = makeLeftover({ keepUntil: '2026-12-31' });
+    expect(isPlannedPastKeepUntil(newYear, '2027-01-01')).toBe(true);
+    expect(isPlannedPastKeepUntil(newYear, '2026-09-02')).toBe(false);
+
+    const endOfMonth = makeLeftover({ keepUntil: '2026-08-09' });
+    expect(isPlannedPastKeepUntil(endOfMonth, '2026-08-10')).toBe(true);
+    expect(isPlannedPastKeepUntil(endOfMonth, '2026-08-08')).toBe(false);
+  });
+
+  // No clock is read at all: both sides are days the user picked.
+  it('says nothing about now — an already-past container is fine on a past day', () => {
+    const gone = makeLeftover({ keepUntil: '2026-08-01' });
+    expect(isPlannedPastKeepUntil(gone, '2026-07-30')).toBe(false);
   });
 });
 

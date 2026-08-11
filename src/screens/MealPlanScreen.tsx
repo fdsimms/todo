@@ -38,7 +38,11 @@ import { type DragScroller, type DropZone, type FabDropIntent } from '../utils/f
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
-import { LeftoversCard } from '../components/LeftoversCard';
+import {
+  LeftoverDragCard,
+  LeftoversCard,
+  type LeftoverDragHandlers,
+} from '../components/LeftoversCard';
 import { LeftoverSheet, type LeftoverSeed } from '../components/LeftoverSheet';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { FridgeHistorySheet } from '../components/FridgeHistorySheet';
@@ -186,6 +190,9 @@ function AddMealFabWithDropLabel({
  * found would be too old to be "last week" in any useful sense.
  */
 const COPY_LOOKBACK_WEEKS = 4;
+
+/** How far a lifted fridge row swells. Deliberately SortableList's LIFT_SCALE. */
+const DRAG_LIFT_SCALE = 1.03;
 
 export function MealPlanScreen() {
   const insets = useSafeAreaInsets();
@@ -384,6 +391,122 @@ export function MealPlanScreen() {
   // button; null closes the sheet.
   const [planningLeftover, setPlanningLeftover] = useState<Leftover | null>(null);
   const editingLeftover = leftovers.find(l => l.id === editingLeftoverId) ?? null;
+
+  // ——— Dragging a container out of the fridge onto a day ————————————————
+  //
+  // The card's calendar button opens PlanMealSheet's day chips; this is the
+  // same question answered by pointing at the week that is already on screen
+  // underneath it. It reuses the add button's drop zones wholesale — the day
+  // bands are registered once (see renderDay) and answer both gestures, so
+  // there is one piece of hit-testing here and one set of highlights, and a
+  // container drop lands on exactly the day a new meal would.
+  //
+  // What it does NOT reuse is the button's cancel well: dropping a container
+  // anywhere that isn't a day already means "nothing happened" (there is no
+  // sheet it would otherwise open), so `plain` is the way out and the corner
+  // needs no second meaning.
+  const [fridgeDrag, setFridgeDrag] = useState<{ leftover: Leftover; top: number } | null>(null);
+  // Whether a finger is still on a container, which is *not* the same question
+  // as whether a card is on screen: the card outlives the gesture by the length
+  // of its spring home, and the week has to be scrollable again the moment the
+  // finger lifts rather than a third of a second later.
+  const [fridgeDragging, setFridgeDragging] = useState(false);
+  // The same container, for the handlers: `onEnd` fires from a responder that
+  // was created before this render, and the state above is what draws the card
+  // rather than what the drop reads.
+  const draggedLeftoverRef = useRef<Leftover | null>(null);
+  const ghostX = useRef(new Animated.Value(0)).current;
+  const ghostY = useRef(new Animated.Value(0)).current;
+  const ghostOpacity = useRef(new Animated.Value(1)).current;
+  // Bumped per drag, so a settle animation left over from the previous one
+  // can't clear the card of the drag that has already replaced it.
+  const ghostRunRef = useRef(0);
+  // The layer the floating card is positioned inside. Measured rather than
+  // assumed: it is a child of a container that carries the top safe-area
+  // inset as padding, and an absolutely-positioned child is laid out from the
+  // padding edge — so its own window origin is the only honest thing to
+  // subtract a row's measured band from.
+  const dragLayerRef = useRef<View | null>(null);
+  const dragLayerTopRef = useRef(0);
+
+  /**
+   * Puts the floating card back where it was lifted from and fades it out.
+   *
+   * The same ending whether the drop landed or not, and deliberately so: the
+   * container does not leave the fridge either way (see Leftover.finishedAt),
+   * so a card that flew off to Thursday would be describing a move that didn't
+   * happen. What says the drop landed is the meal row appearing on the day.
+   */
+  const settleFridgeDrag = () => {
+    const run = ghostRunRef.current;
+    Animated.parallel([
+      Animated.spring(ghostX, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(ghostY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.timing(ghostOpacity, {
+        toValue: 0, duration: animation.duration.normal, useNativeDriver: true,
+      }),
+    ]).start(() => {
+      if (ghostRunRef.current === run) setFridgeDrag(null);
+    });
+  };
+
+  /**
+   * What a release over the week means. Dinner, for the same reason the
+   * picker defaults to it — a week plan is mostly about dinners, and a drop is
+   * a one-gesture decision with nowhere to say otherwise. The row's calendar
+   * button still opens the sheet for anyone who wants lunch.
+   *
+   * `planMeal` registers its own undo, so a mis-drop is a shake away.
+   */
+  const planLeftoverOnDrop = (leftover: Leftover, intent: FabDropIntent) => {
+    // Released clear of every day: the drag is the whole of what happened, and
+    // the card springing home has already said so.
+    if (intent.kind !== 'day') return;
+    animateLayout();
+    planMeal({
+      date: intent.dayKey,
+      slot: 'dinner',
+      leftoverId: leftover.id,
+      title: mealTitleForLeftover(leftover),
+    });
+    haptics.success();
+  };
+
+  const fridgeDragHandlers: LeftoverDragHandlers = {
+    onStart: (leftover, frame) => {
+      ghostRunRef.current += 1;
+      ghostX.setValue(0);
+      ghostY.setValue(0);
+      ghostOpacity.setValue(1);
+      draggedLeftoverRef.current = leftover;
+      setFridgeDragging(true);
+      setFridgeDrag({ leftover, top: frame.top - dragLayerTopRef.current });
+      dropZonesRef.current?.begin();
+    },
+    onMove: (pageY, translation) => {
+      ghostX.setValue(translation.x);
+      ghostY.setValue(translation.y);
+      // No `home` argument: with no corner to come back to, every sample is
+      // "out over the list", which is also the only state that autoscrolls —
+      // and autoscroll is what puts Sunday within reach of a card lifted from
+      // above Monday.
+      dropZonesRef.current?.moveTo(pageY);
+    },
+    onEnd: pageY => {
+      const leftover = draggedLeftoverRef.current;
+      draggedLeftoverRef.current = null;
+      setFridgeDragging(false);
+      const intent = dropZonesRef.current?.end(pageY) ?? { kind: 'plain' as const };
+      settleFridgeDrag();
+      if (leftover) planLeftoverOnDrop(leftover, intent);
+    },
+    onCancel: () => {
+      draggedLeftoverRef.current = null;
+      setFridgeDragging(false);
+      dropZonesRef.current?.cancel();
+      settleFridgeDrag();
+    },
+  };
 
   useEffect(() => {
     if (range) loadRange(range.startKey, range.endKey);
@@ -873,8 +996,11 @@ export function MealPlanScreen() {
           contentContainerStyle={styles.list}
           // The user can't scroll during an add-button drag (the button's
           // responder has the touch); the drag scrolls it instead, through the
-          // control wired up above.
-          scrollEnabled={!fabDragging}
+          // control wired up above. A fridge-row drag has to switch it off
+          // explicitly for the same reason SortableList's callers do — that
+          // responder is a *descendant* of this list, so the native scroll
+          // would otherwise take the touch on the first finger move.
+          scrollEnabled={!fabDragging && !fridgeDragging}
           onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
           scrollEventThrottle={16}
           onLayout={e => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
@@ -895,6 +1021,7 @@ export function MealPlanScreen() {
                   onPlan={l => setPlanningLeftover(l)}
                   onAdd={() => setLoggingLeftover({})}
                   onHistory={() => { haptics.tap(); setHistoryVisible(true); }}
+                  drag={fridgeDragHandlers}
                 />
                 {/*
                   The two things you do to a *week* rather than to a meal, in
@@ -992,6 +1119,44 @@ export function MealPlanScreen() {
           dragHint="Drag onto a day to plan a meal there, or back to the button to cancel"
         />
       )}
+
+      {/*
+        The container in flight, over everything else on the screen — the add
+        button included, since a drag can pass across the corner it sits in.
+        Always mounted so it can measure its own origin before a drag needs it
+        (see dragLayerTopRef), and inert: the finger is being tracked by the
+        fridge card's responder, and a layer that could take a touch would end
+        the drag it exists to draw.
+      */}
+      <View
+        ref={dragLayerRef}
+        style={styles.dragLayer}
+        pointerEvents="none"
+        onLayout={() => dragLayerRef.current?.measureInWindow?.((_x, y) => {
+          if (Number.isFinite(y)) dragLayerTopRef.current = y;
+        })}
+      >
+        {fridgeDrag && (
+          <Animated.View
+            style={[
+              styles.dragCard,
+              {
+                top: fridgeDrag.top,
+                opacity: ghostOpacity,
+                transform: [
+                  { translateX: ghostX },
+                  { translateY: ghostY },
+                  // The same lift the row drags elsewhere in the app use, so
+                  // one gesture doesn't pick things up further than another.
+                  { scale: DRAG_LIFT_SCALE },
+                ],
+              },
+            ]}
+          >
+            <LeftoverDragCard leftover={fridgeDrag.leftover} channel={fabIntentChannel} />
+          </Animated.View>
+        )}
+      </View>
 
       {selectionMode && (
         <ListBulkBar
@@ -1302,6 +1467,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,
+  },
+  // Above the list and above the add button (zIndex 20), so nothing the
+  // dragged container passes over is drawn on top of it.
+  dragLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 30,
+  },
+  // Inset to match the fridge card's own margins, so the copy starts exactly
+  // over the row it was lifted from.
+  dragCard: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
   },
   weekActions: {
     flexDirection: 'row',
