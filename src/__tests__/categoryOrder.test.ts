@@ -1,4 +1,4 @@
-import { moveCategory, alphabeticalCategories } from '../utils/categoryOrder';
+import { moveCategory, alphabeticalCategories, sortCategoriesByTaskCount } from '../utils/categoryOrder';
 
 describe('moveCategory', () => {
   const order = ['Work', 'Home', 'Health'];
@@ -42,5 +42,33 @@ describe('alphabeticalCategories', () => {
 
   it('leaves an already-sorted list alone', () => {
     expect(alphabeticalCategories(['Health', 'Home', 'Work'])).toEqual(['Health', 'Home', 'Work']);
+  });
+});
+
+describe('sortCategoriesByTaskCount', () => {
+  const counts: Record<string, number> = { Work: 3, Home: 8, Health: 1 };
+  const countFor = (name: string) => counts[name] ?? 0;
+
+  it('sorts descending by task count', () => {
+    expect(sortCategoriesByTaskCount(['Work', 'Home', 'Health'], countFor)).toEqual([
+      'Home',
+      'Work',
+      'Health',
+    ]);
+  });
+
+  it('keeps ties in their original relative order', () => {
+    const tied: Record<string, number> = { A: 2, B: 2, C: 5 };
+    expect(sortCategoriesByTaskCount(['A', 'B', 'C'], name => tied[name])).toEqual(['C', 'A', 'B']);
+  });
+
+  it('does not mutate the input', () => {
+    const order = ['Work', 'Home', 'Health'];
+    sortCategoriesByTaskCount(order, countFor);
+    expect(order).toEqual(['Work', 'Home', 'Health']);
+  });
+
+  it('treats an unrecognized category as zero tasks', () => {
+    expect(sortCategoriesByTaskCount(['Health', 'Errands'], countFor)).toEqual(['Health', 'Errands']);
   });
 });

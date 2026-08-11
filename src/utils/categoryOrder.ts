@@ -39,3 +39,23 @@ export function moveCategory(order: string[], name: string, delta: number): stri
 export function alphabeticalCategories(order: string[]): string[] {
   return [...order].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
+
+/**
+ * The same categories, busiest first.
+ *
+ * `countFor` is supplied by the caller (`tasksByCategory(name).length` in
+ * CategoryOrderSheet) rather than computed here — this file works on the
+ * plain name list and has no store access, same as `moveCategory` and
+ * `alphabeticalCategories`. The sort is stable on ties (`a.index - b.index`),
+ * so two categories with the same count keep their current relative order
+ * rather than reshuffling — a repeat tap is then a no-op instead of jitter.
+ */
+export function sortCategoriesByTaskCount(
+  order: string[],
+  countFor: (name: string) => number
+): string[] {
+  return order
+    .map((name, index) => ({ name, index, count: countFor(name) }))
+    .sort((a, b) => b.count - a.count || a.index - b.index)
+    .map(entry => entry.name);
+}
