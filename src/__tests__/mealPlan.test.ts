@@ -18,8 +18,10 @@ import {
   slotLabel,
   slotRank,
   sortMealEntries,
+  shiftDayKey,
   titleForEntry,
   upcomingDays,
+  weekCopyDrafts,
 } from '../utils/mealPlan';
 
 // mealPlan reaches dateUtils for dayKeyOf, which reaches the settings store for
@@ -227,6 +229,77 @@ describe('upcomingDays', () => {
   it('returns nothing for a non-positive count', () => {
     expect(upcomingDays(new Date(2026, 7, 6), 0)).toEqual([]);
     expect(upcomingDays(new Date(2026, 7, 6), -3)).toEqual([]);
+  });
+});
+
+describe('shiftDayKey', () => {
+  it('moves a week forward and back', () => {
+    expect(shiftDayKey('2026-08-05', 7)).toBe('2026-08-12');
+    expect(shiftDayKey('2026-08-05', -7)).toBe('2026-07-29');
+  });
+
+  it('crosses a month and a year boundary', () => {
+    expect(shiftDayKey('2026-08-30', 7)).toBe('2026-09-06');
+    expect(shiftDayKey('2026-12-29', 7)).toBe('2027-01-05');
+  });
+
+  it('handles a leap day rather than skipping it', () => {
+    expect(shiftDayKey('2028-02-22', 7)).toBe('2028-02-29');
+  });
+});
+
+describe('weekCopyDrafts', () => {
+  it('shifts every entry by the offset, keeping its slot and order', () => {
+    const drafts = weekCopyDrafts([
+      entry('2026-08-05', 'dinner', { sortOrder: 2, title: 'Salad' }),
+      entry('2026-08-06', 'breakfast', { sortOrder: 1, title: 'Porridge' }),
+    ], 7);
+
+    expect(drafts.map(d => [d.date, d.slot, d.sortOrder, d.title])).toEqual([
+      ['2026-08-12', 'dinner', 2, 'Salad'],
+      ['2026-08-13', 'breakfast', 1, 'Porridge'],
+    ]);
+  });
+
+  // A copy is a plan, not a record.
+  it('never carries cookedAt forward', () => {
+    const drafts = weekCopyDrafts(
+      [entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' })], 7);
+    expect(drafts[0].cookedAt).toBeNull();
+  });
+
+  // The container was in the fridge that week and isn't now, and its title has
+  // its age baked in — see mealTitleForLeftover.
+  it('skips a meal that was eating a tracked leftover', () => {
+    const drafts = weekCopyDrafts([
+      entry('2026-08-05', 'dinner', { leftoverId: 'lo-1', title: 'Chilli (2 days old)' }),
+      entry('2026-08-06', 'dinner', { title: 'Ragù' }),
+    ], 7);
+
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0].title).toBe('Ragù');
+  });
+
+  // The whole reason a copy beats re-planning by hand.
+  it('carries the choices and the scale', () => {
+    const drafts = weekCopyDrafts([
+      entry('2026-08-05', 'dinner', { recipeId: 'r1', recipeChoices: ['c1', 'c2'], recipeScale: 2 }),
+    ], 7);
+
+    expect(drafts[0].recipeId).toBe('r1');
+    expect(drafts[0].recipeChoices).toEqual(['c1', 'c2']);
+    expect(drafts[0].recipeScale).toBe(2);
+  });
+
+  it('copies the choices rather than sharing the array', () => {
+    const source = entry('2026-08-05', 'dinner', { recipeChoices: ['c1'] });
+    const drafts = weekCopyDrafts([source], 7);
+    drafts[0].recipeChoices.push('c2');
+    expect(source.recipeChoices).toEqual(['c1']);
+  });
+
+  it('is empty for a week that had nothing but leftovers', () => {
+    expect(weekCopyDrafts([entry('2026-08-05', 'dinner', { leftoverId: 'lo-1' })], 7)).toEqual([]);
   });
 });
 

@@ -179,6 +179,13 @@ function AddMealFabWithDropLabel({
  * app-wide, so this screen stays mounted and re-renders on every store change
  * once it has been visited.
  */
+/**
+ * How far back a "copy last week" offer will look for a week worth copying.
+ * Four weeks covers a holiday and a fortnightly cook; past that, whatever it
+ * found would be too old to be "last week" in any useful sense.
+ */
+const COPY_LOOKBACK_WEEKS = 4;
+
 export function MealPlanScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -211,6 +218,8 @@ export function MealPlanScreen() {
   const bulkMoveEntries = useMealPlanStore(s => s.bulkMoveEntries);
   const bulkReplaceItem = useMealPlanStore(s => s.bulkReplaceItem);
   const bulkSetCooked = useMealPlanStore(s => s.bulkSetCooked);
+  const copyWeek = useMealPlanStore(s => s.copyWeek);
+  const findPlannedWeekBefore = useMealPlanStore(s => s.findPlannedWeekBefore);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
@@ -790,6 +799,35 @@ export function MealPlanScreen() {
     return actions;
   }, [onThisWeek, selectionMode, page, enterSelectionMode, exitSelection]);
 
+  /**
+   * The week a "copy" would take from, and only while this one is empty.
+   *
+   * **Offered into an empty week and no other**, which is what keeps the whole
+   * feature free of a merge question: no "does it replace or add alongside",
+   * no double-booked Tuesday, no confirm dialog explaining which. A week with
+   * anything in it is a week the user is already working on.
+   *
+   * Searched rather than assumed — a fortnightly cook, or anyone back from a
+   * holiday, has an empty week directly behind them and nothing to copy from
+   * it (see findPlannedWeekBefore).
+   */
+  const copySourceKey = useMemo(
+    () => (range && entries.length === 0 ? findPlannedWeekBefore(range.startKey, COPY_LOOKBACK_WEEKS) : null),
+    [range?.startKey, entries.length, findPlannedWeekBefore]
+  );
+
+  const copySourceLabel = useMemo(
+    () => copySourceKey ? describeWeekRange(buildWeekDays(dayKeyToDate(copySourceKey), weekStartsOn)) : '',
+    [copySourceKey, weekStartsOn]
+  );
+
+  const handleCopyWeek = () => {
+    if (!copySourceKey || !range) return;
+    animateLayout();
+    const n = copyWeek(copySourceKey, range.startKey);
+    if (n > 0) haptics.success();
+  };
+
   const addedStamp = range ? addedToListAt[range.startKey] : undefined;
   const subtitle = [
     describeWeekPlan(entries),
@@ -860,8 +898,23 @@ export function MealPlanScreen() {
                 */}
                 {entries.length === 0 && (
                   <Text style={styles.emptyWeekHint}>
-                    Nothing planned this week. Tap + to plan today, or drag it onto a day.
+                    {copySourceKey
+                      ? 'Nothing planned this week. Copy the week below, tap + to plan today, or drag it onto a day.'
+                      : 'Nothing planned this week. Tap + to plan today, or drag it onto a day.'}
                   </Text>
+                )}
+                {/* Reads as the answer to the hint directly above it, and
+                    disappears the moment the week has anything — see
+                    copySourceKey. */}
+                {!!copySourceKey && (
+                  <View style={styles.weekActions}>
+                    <InlineAction
+                      label={`Copy ${copySourceLabel}`}
+                      icon="copy-outline"
+                      onPress={handleCopyWeek}
+                      accessibilityLabel={`Copy the meals from ${copySourceLabel} onto this week`}
+                    />
+                  </View>
                 )}
                 {(hasPlannableEntries || canSuggestMeals) && (
                   <View style={styles.weekActions}>

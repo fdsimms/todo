@@ -6,7 +6,7 @@ import { isSameWeek } from 'date-fns/isSameWeek';
 import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, MEAL_PLAN_RETENTION_DAYS } from '../types';
 import { cleanRecipeName } from './recipeUtils';
-import { dayKeyOf } from './dateUtils';
+import { dayKeyOf, dayKeyToDate } from './dateUtils';
 import type { WeekStart } from '../store/useSettingsStore';
 
 /**
@@ -139,6 +139,56 @@ export function daysWithoutMeal(
 ): Date[] {
   const taken = new Set(entries.filter(e => e.slot === slot).map(e => e.date));
   return days.filter(d => !taken.has(dayKeyOf(d)));
+}
+
+/** The day key `days` after `dayKey` — negative counts back. */
+export function shiftDayKey(dayKey: string, days: number): string {
+  return dayKeyOf(addDays(dayKeyToDate(dayKey), days));
+}
+
+/** Everything a copied entry carries; the store adds the id and the stamp. */
+export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt'>;
+
+/**
+ * What copying a week forward actually carries, shifted by `days`.
+ *
+ * Three rules, each about what a copy *is*:
+ *
+ * - **`cookedAt` is dropped.** A copy is a plan, not a record. Carrying it
+ *   would claim next Tuesday's dinner has already been eaten, and — worse —
+ *   would let the row's cooked toggle un-tick a cooking that really happened
+ *   on a different night.
+ * - **A meal eating a tracked leftover is skipped entirely**, rather than
+ *   copied as free text. A container is one physical thing that was in the
+ *   fridge that week; it isn't there now, and its title has its age baked in
+ *   at plan time (see mealTitleForLeftover), so "Leftover chilli (2 days old)"
+ *   copied into next week is false twice over. The night comes back empty,
+ *   which is the honest answer.
+ * - **`recipeChoices` and `recipeScale` carry.** They're facts about how you
+ *   cook the dish — the roast potatoes, the double batch — and repeating the
+ *   week is repeating those too. This is the whole reason a copy beats
+ *   re-planning by hand.
+ *
+ * `sortOrder` carries as well, so two things on one dinner keep their order
+ * relative to each other.
+ */
+export function weekCopyDrafts(
+  entries: readonly MealPlanEntry[],
+  days: number
+): MealCopyDraft[] {
+  return entries
+    .filter(e => !e.leftoverId)
+    .map(e => ({
+      date: shiftDayKey(e.date, days),
+      slot: e.slot,
+      recipeId: e.recipeId,
+      title: e.title,
+      sortOrder: e.sortOrder,
+      cookedAt: null,
+      leftoverId: null,
+      recipeChoices: [...e.recipeChoices],
+      recipeScale: e.recipeScale,
+    }));
 }
 
 /** Where one entry lands in a bulk move — see resolveBulkMoveTargets. */
