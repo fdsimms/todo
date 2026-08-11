@@ -165,6 +165,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   targetCount: null,
   targetUnit: null,
   progressCount: 0,
+  allowOvershoot: false,
   tags: [],
   category: null,
   sortOrder: 1,
@@ -5140,6 +5141,105 @@ describe('quota tasks', () => {
 
       expect(useTaskStore.getState().tasks).toHaveLength(1);
       expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
+
+    it('leaves an allowOvershoot task alone — sweepOvershootQuotas owns it', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          progressCount: 5,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(5);
+    });
+  });
+
+  describe('sweepOvershootQuotas', () => {
+    it('completes a below-target day with the low count, not a miss', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          progressCount: 5,
+          streakCount: 3,
+          streakDate: new Date(2025, 5, 9).toISOString(),
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(done.completed).toBe(true);
+      expect(done.progressCount).toBe(5); // under target(8), kept as the tally
+      expect(done.missedAt).toBeNull(); // not a miss
+      // Not the manual-close streak break rolloverQuotas uses — a normal
+      // completeTask call, so the cadence-based streak advances.
+      expect(done.streakCount).toBe(4);
+    });
+
+    it('completes an overshot day with the high count', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          progressCount: 13, // past the target of 8
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(done.completed).toBe(true);
+      expect(done.progressCount).toBe(13); // preserved, not clamped to target
+    });
+
+    it('leaves an allowOvershoot task nobody logged today alone', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          progressCount: 0,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(0);
+    });
+
+    it('leaves an opted-out quota task alone — rolloverQuotas owns it', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          progressCount: 5,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(5);
+    });
+
+    it('spawns the next occurrence, same as any other completion', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          progressCount: 5,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const tasks = useTaskStore.getState().tasks;
+      expect(tasks).toHaveLength(2);
+      const next = tasks.find(t => t.id !== 'water')!;
+      expect(next.progressCount).toBe(0);
+      expect(next.completed).toBe(false);
     });
   });
 });

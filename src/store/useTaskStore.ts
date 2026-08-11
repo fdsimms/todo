@@ -144,6 +144,7 @@ function newTaskFromDraft(
     targetCount: draft.targetCount ?? null,
     progressCount: draft.progressCount ?? 0,
     targetUnit: normalizeTargetUnit(draft.targetUnit),
+    allowOvershoot: draft.allowOvershoot ?? false,
     tags: draft.tags ?? [],
     category: draft.category ?? null,
     sortOrder,
@@ -516,6 +517,8 @@ interface TaskStore {
   holdQuotaOnToday: (id: string) => void;
   releaseQuotaHold: (id: string) => void;
   rolloverQuotas: () => void;
+  /** Opt-in counterpart to rolloverQuotas for allowOvershoot tasks — see its doc comment. */
+  sweepOvershootQuotas: () => void;
   deferTask: (id: string, until: Date) => void;
   // Applies a batch of approved "lighten this day" moves (see
   // utils/deloadPlan) under one undo entry — each move carries its own field
@@ -1349,7 +1352,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // than being logged as a partial (see isQuotaPartial). A miss keeps
       // whatever count it actually reached — that's the record of the day, the
       // same way rolloverQuotas leaves a partial alone.
-      progressCount: isQuotaTask(task) && !missed ? task.targetCount! : task.progressCount,
+      //
+      // allowOvershoot is the one exception: its whole point is a tally that
+      // can land over, at, or under target, so clamping it here would erase
+      // the overshoot the sweep exists to preserve (see sweepOvershootQuotas).
+      progressCount: isQuotaTask(task) && !missed && !task.allowOvershoot ? task.targetCount! : task.progressCount,
     };
     if (task.pinned) pendingUnpinIds.push(id);
     dbUpdateTask(completed);
@@ -1763,6 +1770,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       t.recurrenceType !== 'none' &&
       // Vacation-paused tasks are protected from streak loss by design.
       !isHiddenForVacation(t) &&
+      // allowOvershoot tasks get their own sweep (sweepOvershootQuotas, below)
+      // that goes through completeTask so an overshot count survives — this
+      // manual close always writes progressCount as-is but forces
+      // streakCount to 0, which is right for a shortfall but wrong for a
+      // task that actually met or beat its target.
+      !t.allowOvershoot &&
       t.dueDate !== null &&
       getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
     );
@@ -1825,6 +1838,45 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({
       tasks: [...s.tasks.map(t => closedById.get(t.id) ?? t), ...spawned],
     }));
+  },
+
+  // Closes out allowOvershoot quota tasks whose day has ended — the opt-in
+  // counterpart to rolloverQuotas above, kept separate because the two need
+  // different completion paths. rolloverQuotas' manual close forces
+  // streakCount to 0 unconditionally, which is right for a task that's
+  // simply been abandoned but wrong here: an allowOvershoot completion is
+  // never a miss (see below), so it should advance the streak exactly as any
+  // other non-missed completeTask call does, on the recurrence's normal
+  // cadence check, regardless of whether the tally landed under, at, or over
+  // target. Routing it through completeTask gets that for free, plus the
+  // recurrence spawn and Logbook entry every other completion gets. See the
+  // allowOvershoot branch on completeTask's progressCount line for why the
+  // tally itself survives uncapped.
+  //
+  // Gated on progressCount > 0 — deliberately, and unlike rolloverQuotas
+  // above. A target the user never touched today isn't "done with 0 of 12",
+  // it's simply not due yet resolved, so it's left overdue like any other
+  // undone task rather than manufactured into a completion record nobody
+  // asked for.
+  //
+  // Never passes { missed: true }: the user opted into "let this ride to
+  // end of day" for this specific task, a deliberate choice to defer
+  // judgment on the exact count, not a signal they expect to be marked as
+  // having failed it (see CLAUDE.md).
+  sweepOvershootQuotas() {
+    const { dayResetTime } = useSettingsStore.getState();
+    const todayStart = getCurrentDayStart();
+    const stale = get().tasks.filter(t =>
+      t.allowOvershoot &&
+      isQuotaTask(t) &&
+      !t.completed &&
+      !t.archived &&
+      t.progressCount > 0 &&
+      !isHiddenForVacation(t) &&
+      t.dueDate !== null &&
+      getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
+    );
+    stale.forEach(t => get().completeTask(t.id));
   },
 
   deferTask(id, until) {
@@ -2217,6 +2269,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       targetCount: null,
       progressCount: 0,
       targetUnit: null,
+      allowOvershoot: false,
       reminderTime: null,
       reminderKind: 'notification',
       chainEnabled: false,
@@ -2347,6 +2400,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       targetCount: null,
       progressCount: 0,
       targetUnit: null,
+      allowOvershoot: false,
       reminderTime: null,
       reminderKind: 'notification',
       chainEnabled: false,

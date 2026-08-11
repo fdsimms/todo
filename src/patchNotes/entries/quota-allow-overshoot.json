@@ -1,0 +1,4 @@
+{
+  "message": "Daily targets can now opt into \"Allow going past target\": logging past the count keeps the task on Today for the rest of the day instead of completing right away, and it wraps up on its own at day's end with whatever final tally you reached",
+  "date": "2026-08-11"
+}

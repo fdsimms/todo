@@ -363,6 +363,15 @@ export function quotaExpectedByNow(task: Task): number {
 }
 
 export function isQuotaOnPace(task: Task): boolean {
+  // An allowOvershoot task that has reached its target is never "on pace" —
+  // quotaExpectedByNow caps at targetCount, so without this it would read as
+  // permanently on pace the instant it hit target and vanish from Today for
+  // the rest of the day, exactly the behavior overshoot mode exists to avoid.
+  // A day-rollover sweep completes it later with whatever progressCount it
+  // reached; see sweepOvershootQuotas in useTaskStore.ts.
+  if (task.allowOvershoot && isQuotaTask(task) && task.progressCount >= task.targetCount!) {
+    return false;
+  }
   return task.progressCount >= quotaExpectedByNow(task);
 }
 

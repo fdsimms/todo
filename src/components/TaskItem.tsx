@@ -906,7 +906,11 @@ export const TaskItem = React.memo(function TaskItem({
       await haptics.error();
       return;
     }
-    if (task.progressCount + 1 >= task.targetCount!) {
+    // allowOvershoot tasks skip the auto-complete at target: logging past it
+    // just keeps incrementing progressCount like any unit below target, and
+    // the task rides out the day for the rollover sweep to complete (see
+    // sweepOvershootQuotas in useTaskStore.ts).
+    if (!task.allowOvershoot && task.progressCount + 1 >= task.targetCount!) {
       handleComplete();
       return;
     }

@@ -224,6 +224,15 @@ export interface Task {
   // Formatting rules (including why nothing pluralises it) are in
   // src/utils/quotaUnit.ts; null = show the bare count, as targets always did.
   targetUnit: string | null;
+  // Opt-in: when true, logging a unit past targetCount keeps incrementing
+  // progressCount instead of completing the task immediately — the task
+  // rides out the rest of the day so an overshoot (a 13th glass against a
+  // target of 12) can be logged. It's completed automatically at day
+  // rollover (see the overshoot sweep alongside sweepExpiredTasks in
+  // useTaskStore.ts) with whatever progressCount was reached, over, at, or
+  // under target — a normal completion, not a miss. Off by default, so an
+  // existing quota task keeps completing the instant it hits target.
+  allowOvershoot: boolean;
 
   tags: string[];
   category: string | null;

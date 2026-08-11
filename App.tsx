@@ -70,6 +70,7 @@ function AppRoot() {
   const sweepExpiredTasks = useTaskStore(s => s.sweepExpiredTasks);
   const checkVacationExpiry = useTaskStore(s => s.checkVacationExpiry);
   const rolloverQuotas = useTaskStore(s => s.rolloverQuotas);
+  const sweepOvershootQuotas = useTaskStore(s => s.sweepOvershootQuotas);
   const dripStalledProjects = useTaskStore(s => s.dripStalledProjects);
   const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
   const purgeOldMealPlanEntries = useMealPlanStore(s => s.purgeOldEntries);
@@ -103,6 +104,10 @@ function AppRoot() {
       // closed, so a day you fell short on is logged as a partial instead of
       // sitting overdue — also needs real settings (dayResetTime) loaded first.
       ['roll over quotas', rolloverQuotas],
+      // Opt-in counterpart to the pass above: an allowOvershoot task rides
+      // out its whole day instead of auto-completing at target, so it needs
+      // its own end-of-day close — see sweepOvershootQuotas in useTaskStore.ts.
+      ['sweep overshoot quotas', sweepOvershootQuotas],
       // Let projects the user opted into auto-scheduling date their own next
       // task if they've run dry. After rolloverQuotas, which can complete and
       // spawn members and so change what a project counts as scheduled; and
@@ -131,7 +136,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initTasks, initSettings, initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, dripStalledProjects, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initTasks, initSettings, initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any
