@@ -1,9 +1,10 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, GroceryItem, ItemShopLink, MealPlanEntry, MealSlot, Recipe, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
-import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS } from '../types';
+import type { Task, Category, GroceryItem, ItemShopLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
 import { parseRecipeIngredients, parsePrepTasks } from '../utils/recipeUtils';
+import { parseRecipeComponents } from '../utils/recipeComponents';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
 
@@ -252,6 +253,23 @@ export function initDatabase(): void {
       created_at TEXT NOT NULL
     );
 
+    -- Something cooked that's now in the fridge with a clock on it. stored_at is
+    -- an ISO instant; keep_until is a YYYY-MM-DD local day key, the same split
+    -- meal_plan_entries makes and for the same reason — see Leftover in types.
+    -- No name_key and no uniqueness: two batches of the same dish are two
+    -- containers with two different clocks.
+    CREATE TABLE IF NOT EXISTS leftovers (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      recipe_id TEXT,
+      source_entry_id TEXT,
+      stored_at TEXT NOT NULL,
+      keep_until TEXT NOT NULL,
+      finished_at TEXT,
+      outcome TEXT,
+      created_at TEXT NOT NULL
+    );
+
     -- One thing planned for one meal of one day. The date column holds a
     -- YYYY-MM-DD local day key, not an ISO instant like every other date in this
     -- schema — see MealPlanEntry in types for why, and for why recipe_id has no
@@ -434,6 +452,37 @@ export function initDatabase(): void {
     // Null for every existing recipe — no recipe written before this shipped
     // had a photo attached. See Recipe.imagePath / src/utils/recipePhoto.ts.
     'ALTER TABLE recipes ADD COLUMN image_path TEXT',
+    // Cook timer + actual-time logging (#1091). Null/zero for every existing
+    // recipe — nothing predating this shipped has a duration or a timed
+    // session. estimated_minutes doubles as the cook timer's countdown
+    // target; timer_started_at/timer_elapsed_seconds are the banked-segment
+    // pair Task.timerStartedAt/timerElapsedSeconds already use. The logged
+    // actual time is an aggregate, not a per-session table — see
+    // Recipe.lastCookMinutes/cookTimeCount/totalCookMinutes for why.
+    'ALTER TABLE recipes ADD COLUMN estimated_minutes INTEGER',
+    'ALTER TABLE recipes ADD COLUMN timer_started_at TEXT',
+    'ALTER TABLE recipes ADD COLUMN timer_elapsed_seconds INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE recipes ADD COLUMN last_cook_minutes INTEGER',
+    'ALTER TABLE recipes ADD COLUMN cook_time_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE recipes ADD COLUMN total_cook_minutes INTEGER NOT NULL DEFAULT 0',
+    // Null for every existing recipe — nothing predating this shipped had a
+    // meal type to carry. See Recipe.mealType / RecipeMealType (#1104).
+    'ALTER TABLE recipes ADD COLUMN meal_type TEXT',
+    // Empty array for every existing recipe — nothing predating this was
+    // composed of another recipe. A JSON blob for the reason `ingredients` is
+    // one, and a link table would buy nothing here: the only question anyone
+    // asks of it is "what are this recipe's parts", which is a read of this
+    // row. See Recipe.components.
+    "ALTER TABLE recipes ADD COLUMN components TEXT NOT NULL DEFAULT '[]'",
+    // Null for every existing entry — nothing planned before leftovers were
+    // trackable can be eating one. See MealPlanEntry.leftoverId. (The leftovers
+    // table itself needs no migration: its CREATE TABLE IF NOT EXISTS above runs
+    // on every launch, so an existing install gets it on the next open.)
+    'ALTER TABLE meal_plan_entries ADD COLUMN leftover_id TEXT',
+    // The list read is "what's still in the fridge", which scans the whole table
+    // rather than a range the way the meal plan does — small, but it's also the
+    // index the retention purge sweeps on.
+    'CREATE INDEX IF NOT EXISTS idx_leftovers_finished ON leftovers(finished_at)',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -567,6 +616,8 @@ export const BACKUP_TABLES = [
   'grocery_items',
   'grocery_item_shops',
   'recipes',
+  // Before meal_plan_entries: an entry can point at a leftover.
+  'leftovers',
   'meal_plan_entries',
   'templates',
   'tasks',
@@ -1496,13 +1547,26 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     source: (row.source as string) ?? null,
     servings: (row.servings as number) ?? null,
     imagePath: (row.image_path as string) ?? null,
+    // Unrecognised reads as null (untagged), not a guessed value — unlike
+    // MealSlot's dinner fallback below, an unset meal type is itself a valid,
+    // common answer, so there's no "safest" one to substitute.
+    mealType: RECIPE_MEAL_TYPES.includes(row.meal_type as RecipeMealType)
+      ? (row.meal_type as RecipeMealType)
+      : null,
     ingredients: parseRecipeIngredients(row.ingredients),
+    components: parseRecipeComponents(row.components),
     prepTasks: parsePrepTasks(row.prep_tasks),
     favorite: Boolean(row.favorite),
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
     cookCount: (row.cook_count as number) ?? 0,
     lastCookedAt: (row.last_cooked_at as string) ?? null,
+    estimatedMinutes: (row.estimated_minutes as number) ?? null,
+    timerStartedAt: (row.timer_started_at as string) ?? null,
+    timerElapsedSeconds: (row.timer_elapsed_seconds as number) ?? 0,
+    lastCookMinutes: (row.last_cook_minutes as number) ?? null,
+    cookTimeCount: (row.cook_time_count as number) ?? 0,
+    totalCookMinutes: (row.total_cook_minutes as number) ?? 0,
   };
 }
 
@@ -1516,14 +1580,19 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, servings, image_path, ingredients, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      (id, name, name_key, notes, source_url, source_name, author, source, servings, image_path, meal_type, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at,
+       estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
-      recipe.servings ?? null, recipe.imagePath ?? null, JSON.stringify(recipe.ingredients),
-      JSON.stringify(recipe.prepTasks), recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
+      recipe.servings ?? null, recipe.imagePath ?? null, recipe.mealType ?? null,
+      JSON.stringify(recipe.ingredients),
+      JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
+      recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
       recipe.cookCount, recipe.lastCookedAt ?? null,
+      recipe.estimatedMinutes ?? null, recipe.timerStartedAt ?? null, recipe.timerElapsedSeconds,
+      recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
     ]
   );
 }
@@ -1531,15 +1600,21 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, image_path=?, ingredients=?, prep_tasks=?,
-       favorite=?, sort_order=?, cook_count=?, last_cooked_at=?
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, image_path=?, meal_type=?, ingredients=?, components=?, prep_tasks=?,
+       favorite=?, sort_order=?, cook_count=?, last_cooked_at=?,
+       estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
-      recipe.servings ?? null, recipe.imagePath ?? null, JSON.stringify(recipe.ingredients),
-      JSON.stringify(recipe.prepTasks), recipe.favorite ? 1 : 0, recipe.sortOrder,
-      recipe.cookCount, recipe.lastCookedAt ?? null, recipe.id,
+      recipe.servings ?? null, recipe.imagePath ?? null, recipe.mealType ?? null,
+      JSON.stringify(recipe.ingredients),
+      JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
+      recipe.favorite ? 1 : 0, recipe.sortOrder,
+      recipe.cookCount, recipe.lastCookedAt ?? null,
+      recipe.estimatedMinutes ?? null, recipe.timerStartedAt ?? null, recipe.timerElapsedSeconds,
+      recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
+      recipe.id,
     ]
   );
 }
@@ -1566,6 +1641,7 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
     cookedAt: (row.cooked_at as string) ?? null,
+    leftoverId: (row.leftover_id as string) ?? null,
   };
 }
 
@@ -1589,19 +1665,23 @@ export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlan
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at)
-     VALUES (?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
+      entry.leftoverId ?? null,
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=? WHERE id=?`,
-    [entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder, entry.cookedAt ?? null, entry.id]
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=? WHERE id=?`,
+    [
+      entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
+      entry.cookedAt ?? null, entry.leftoverId ?? null, entry.id,
+    ]
   );
 }
 
@@ -1648,6 +1728,97 @@ export function dbGetMealPlanAddedToList(): Record<string, string> {
 
 export function dbSetMealPlanAddedToList(map: Record<string, string>): void {
   dbSetSetting('meal_plan_added_to_list', JSON.stringify(map));
+}
+
+// ─── Leftovers ──────────────────────────────────────────────────────────────
+
+function rowToLeftover(row: Record<string, unknown>): Leftover {
+  const finishedAt = (row.finished_at as string) ?? null;
+  const outcome = row.outcome as string | null;
+  return {
+    id: row.id as string,
+    title: (row.title as string) ?? '',
+    recipeId: (row.recipe_id as string) ?? null,
+    sourceEntryId: (row.source_entry_id as string) ?? null,
+    storedAt: row.stored_at as string,
+    keepUntil: row.keep_until as string,
+    finishedAt,
+    // The two columns are one fact, so the mapper enforces the invariant the
+    // type states rather than trusting a restored backup with it: an outcome
+    // with no instant would render as closed out while every "is it live" read
+    // said otherwise, and a stamp with no outcome would leave the row unable to
+    // say which ending it got. `eaten` is the honest guess for the latter —
+    // "tossed" is a claim about waste this row has no evidence for.
+    outcome: finishedAt
+      ? (outcome === 'tossed' ? 'tossed' : 'eaten')
+      : null,
+    createdAt: row.created_at as string,
+  };
+}
+
+/**
+ * Every leftover, live and closed out.
+ *
+ * Wholesale rather than range-scoped, unlike the meal plan: the live set is what
+ * the nudge counts and it's bounded by what fits in a fridge, while the closed
+ * ones are bounded by LEFTOVER_RETENTION_DAYS. There is no window to scope it
+ * *to* — "what's in the fridge right now" isn't a week.
+ */
+export function dbGetAllLeftovers(): Leftover[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM leftovers ORDER BY keep_until ASC, stored_at ASC'
+  );
+  return rows.map(rowToLeftover);
+}
+
+export function dbInsertLeftover(leftover: Leftover): void {
+  db.runSync(
+    `INSERT INTO leftovers (id, title, recipe_id, source_entry_id, stored_at, keep_until, finished_at, outcome, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+    [
+      leftover.id, leftover.title, leftover.recipeId ?? null, leftover.sourceEntryId ?? null,
+      leftover.storedAt, leftover.keepUntil, leftover.finishedAt ?? null,
+      leftover.outcome ?? null, leftover.createdAt,
+    ]
+  );
+}
+
+export function dbUpdateLeftover(leftover: Leftover): void {
+  db.runSync(
+    `UPDATE leftovers SET title=?, recipe_id=?, source_entry_id=?, stored_at=?, keep_until=?, finished_at=?, outcome=? WHERE id=?`,
+    [
+      leftover.title, leftover.recipeId ?? null, leftover.sourceEntryId ?? null,
+      leftover.storedAt, leftover.keepUntil, leftover.finishedAt ?? null,
+      leftover.outcome ?? null, leftover.id,
+    ]
+  );
+}
+
+/**
+ * Deletes the row outright.
+ *
+ * **No cascade onto meal_plan_entries.leftover_id**, and that's the same call
+ * recipe_id makes: the entries that ate it keep their captured `title`, so last
+ * Tuesday still reads "Leftover chilli" after the container is long gone.
+ * Readers resolve-or-shrug.
+ */
+export function dbDeleteLeftover(id: string): void {
+  db.runSync('DELETE FROM leftovers WHERE id = ?', [id]);
+}
+
+/**
+ * Drops leftovers closed out before `beforeIso`, returning how many went.
+ *
+ * `finished_at IS NOT NULL` is load-bearing, not a redundant guard next to the
+ * comparison — a live row has a null stamp, and a null compares false either
+ * way, but spelling it out is what makes it obvious at the call site that an
+ * ancient un-closed container survives this. See LEFTOVER_RETENTION_DAYS.
+ */
+export function dbPurgeOldLeftovers(beforeIso: string): number {
+  return db.runSync(
+    'DELETE FROM leftovers WHERE finished_at IS NOT NULL AND finished_at < ?',
+    [beforeIso]
+  ).changes ?? 0;
 }
 
 // The store the last trip was finished at, used to preselect the next one. A

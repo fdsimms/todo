@@ -1,0 +1,4 @@
+{
+  "message": "Importing a recipe now keeps its stated ingredient amounts (\"4 cloves garlic\") instead of guessing a purchasable size (\"1 bulb\").",
+  "date": "2026-08-11"
+}

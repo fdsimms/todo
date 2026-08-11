@@ -21,6 +21,10 @@ import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
+import { LeftoversCard } from '../components/LeftoversCard';
+import { LeftoverSheet, type LeftoverSeed } from '../components/LeftoverSheet';
+import { isLiveLeftover } from '../utils/leftovers';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -31,6 +35,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { buildWeekDays } from '../utils/calendarGrid';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import { resolvePrepTaskDraft, suggestRecipesForEmptyNight } from '../utils/recipeUtils';
+import { flattenRecipeIngredients, flattenRecipePrepTasks } from '../utils/recipeComponents';
 import {
   dayKeyRange,
   describeAddedToList,
@@ -86,6 +91,15 @@ export function MealPlanScreen() {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
   const markRecipeCooked = useRecipeStore(s => s.markCooked);
+
+  const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
+  const logLeftover = useLeftoverStore(s => s.logLeftover);
+  const renameLeftover = useLeftoverStore(s => s.renameLeftover);
+  const setLeftoverStoredAt = useLeftoverStore(s => s.setStoredAt);
+  const setLeftoverKeepDays = useLeftoverStore(s => s.setKeepDays);
+  const finishLeftover = useLeftoverStore(s => s.finishLeftover);
+  const reopenLeftover = useLeftoverStore(s => s.reopenLeftover);
+  const deleteLeftover = useLeftoverStore(s => s.deleteLeftover);
   const addTask = useTaskStore(s => s.addTask);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
 
@@ -115,6 +129,15 @@ export function MealPlanScreen() {
   // null closes RecipeToListSheet, same on/off pattern as `addingToList`.
   const [cookedRecipeForList, setCookedRecipeForList] = useState<Recipe | null>(null);
 
+  // The leftover sheet's two modes, held apart so opening one can't leave the
+  // other's state behind: an id for editing a row, a seed for logging a new
+  // one. Both null means the sheet is closed. The row itself is re-read from
+  // the store by id on every render, so the sheet's caption follows an edit it
+  // just made — same discipline `selected` keeps above.
+  const [editingLeftoverId, setEditingLeftoverId] = useState<string | null>(null);
+  const [loggingLeftover, setLoggingLeftover] = useState<LeftoverSeed | null>(null);
+  const editingLeftover = leftovers.find(l => l.id === editingLeftoverId) ?? null;
+
   useEffect(() => {
     if (range) loadRange(range.startKey, range.endKey);
   }, [range?.startKey, range?.endKey, loadRange]);
@@ -136,21 +159,27 @@ export function MealPlanScreen() {
       date: planningDay,
       slot: pickResult.slot,
       recipeId: pickResult.recipeId,
+      leftoverId: pickResult.leftoverId,
       title: pickResult.title,
     });
   };
 
+  // Components' prep steps come along with their ingredients — "boil the
+  // potatoes the night before" is a fact about the mash, and the night before
+  // is the same night whichever dinner the mash is part of.
   const addPrepTasksForSelected = () => {
     if (!selected?.recipeId) return;
     const recipe = recipesById.get(selected.recipeId);
-    if (!recipe || recipe.prepTasks.length === 0) return;
+    if (!recipe) return;
+    const prepTasks = flattenRecipePrepTasks(recipe, recipesById);
+    if (prepTasks.length === 0) return;
     const mealDate = dayKeyToDate(selected.date);
-    recipe.prepTasks.forEach(prepTask => {
+    prepTasks.forEach(({ prepTask }) => {
       const { dueDate, reminderTime } = resolvePrepTaskDraft(prepTask, mealDate);
       addTask({ title: prepTask.title, dueDate, reminderTime });
     });
     haptics.success();
-    Alert.alert('Prep tasks added', `Added ${recipe.prepTasks.length} to your tasks.`);
+    Alert.alert('Prep tasks added', `Added ${prepTasks.length} to your tasks.`);
   };
 
   // Shared by the sheet's "Mark cooked" action and the row's own badge tap —
@@ -163,10 +192,46 @@ export function MealPlanScreen() {
     haptics.success();
 
     // A recipe with nothing to re-shop offers nothing — same restraint
-    // RecipeDetailScreen's own "Add ingredients to list" already keeps.
-    if (!recipe || recipe.ingredients.length === 0) return;
+    // RecipeDetailScreen's own "Add ingredients to list" already keeps, and
+    // counted the same way: a dish whose ingredients all live on its
+    // components still has a shop.
+    if (!recipe || flattenRecipeIngredients(recipe, recipesById).length === 0) return;
     setCookedRecipeForList(recipe);
   };
+
+  /**
+   * Opens the log sheet prefilled from a planned meal — the entry point the
+   * leftovers tracker is mostly reached through, since a container in the
+   * fridge nearly always started as something on the plan.
+   *
+   * Deliberately an action on the entry rather than something mark-cooked does
+   * by itself: not every meal leaves any, and a sheet that opened uninvited
+   * after every cooking would be a second modal chasing the ingredient one.
+   */
+  const logLeftoversFor = (entry: MealPlanEntry) => {
+    setSelectedId(null);
+    setLoggingLeftover({
+      title: titleForEntry(entry, recipesById),
+      recipeId: entry.recipeId,
+      sourceEntryId: entry.id,
+    });
+  };
+
+  /** Whether an entry's leftover is still in the fridge and worth offering to close out. */
+  const liveLeftoverFor = (leftoverId: string) => {
+    const leftover = leftovers.find(l => l.id === leftoverId);
+    return !!leftover && isLiveLeftover(leftover);
+  };
+
+  /**
+   * Whether a meal could have left anything yet — cooked, or at least a day
+   * that's arrived. Next Thursday's dinner offering to log its leftovers is the
+   * kind of always-on action that makes a sheet longer without ever being the
+   * one you wanted. Marking cooked is the usual route in, but it isn't required:
+   * plenty of meals get eaten without the badge ever being tapped.
+   */
+  const couldHaveLeftovers = (entry: MealPlanEntry) =>
+    !!entry.cookedAt || entry.date <= dayKeyOf(new Date());
 
   const renderDay = useCallback(({ item: day }: { item: Date }) => {
     const key = dayKeyOf(day);
@@ -243,6 +308,13 @@ export function MealPlanScreen() {
   // collection just to light up a header icon.
   const hasPlannableEntries = entries.some(e => e.recipeId && recipesById.has(e.recipeId));
 
+  // Counted over the whole component tree, so a dish whose only prep steps
+  // live on one of its parts still offers the action.
+  const selectedRecipe = selected?.recipeId ? recipesById.get(selected.recipeId) : undefined;
+  const selectedPrepTaskCount = selectedRecipe
+    ? flattenRecipePrepTasks(selectedRecipe, recipesById).length
+    : 0;
+
   // Offline "what can I make from what I've got" — only worth computing once
   // there's an empty week to fill, and re-ranked each time the sheet reopens
   // by staying a plain memo rather than sheet-local state.
@@ -300,16 +372,28 @@ export function MealPlanScreen() {
         keyExtractor={d => dayKeyOf(d)}
         renderItem={renderDay}
         contentContainerStyle={styles.list}
-        ListHeaderComponent={emptyWeekSuggestions.length === 0 ? null : (
-          <InlineAction
-            label="Suggest meals"
-            icon="restaurant-outline"
-            variant="neutral"
-            onPress={() => { haptics.tap(); setSuggestingMeals(true); }}
-            accessibilityLabel="Suggest meals made from what's in your grocery catalog"
-            style={styles.suggestMeals}
-          />
-        )}
+        ListHeaderComponent={
+          <>
+            {/* Above the week rather than beside it: the fridge is what should
+                be eaten before anything new is planned, and it renders nothing
+                at all when empty (see LeftoversCard). */}
+            <LeftoversCard
+              leftovers={leftovers}
+              onPress={l => setEditingLeftoverId(l.id)}
+              onAdd={() => setLoggingLeftover({})}
+            />
+            {emptyWeekSuggestions.length > 0 && (
+              <InlineAction
+                label="Suggest meals"
+                icon="restaurant-outline"
+                variant="neutral"
+                onPress={() => { haptics.tap(); setSuggestingMeals(true); }}
+                accessibilityLabel="Suggest meals made from what's in your grocery catalog"
+                style={styles.suggestMeals}
+              />
+            )}
+          </>
+        }
         ListFooterComponent={<View style={{ height: tabBarHeight + spacing.xl }} />}
       />
 
@@ -337,7 +421,7 @@ export function MealPlanScreen() {
           setSelectedId(null);
         }}
         onRename={
-          selected && !selected.recipeId
+          selected && !selected.recipeId && !selected.leftoverId
             ? newTitle => renameEntry(selected.id, newTitle)
             : undefined
         }
@@ -347,9 +431,15 @@ export function MealPlanScreen() {
             ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })
             : undefined
         }
-        onAddPrepTasks={
-          selected?.recipeId && (recipesById.get(selected.recipeId)?.prepTasks.length ?? 0) > 0
-            ? addPrepTasksForSelected
+        onAddPrepTasks={selectedPrepTaskCount > 0 ? addPrepTasksForSelected : undefined}
+        onLogLeftovers={
+          selected && !selected.leftoverId && couldHaveLeftovers(selected)
+            ? () => logLeftoversFor(selected)
+            : undefined
+        }
+        onFinishLeftover={
+          selected?.leftoverId && liveLeftoverFor(selected.leftoverId)
+            ? () => finishLeftover(selected.leftoverId!, 'eaten')
             : undefined
         }
         onClose={() => setSelectedId(null)}
@@ -376,7 +466,31 @@ export function MealPlanScreen() {
       <RecipeToListSheet
         visible={cookedRecipeForList !== null}
         recipe={cookedRecipeForList}
+        recipesById={recipesById}
         onClose={() => setCookedRecipeForList(null)}
+      />
+
+      <LeftoverSheet
+        visible={editingLeftover !== null || loggingLeftover !== null}
+        leftover={editingLeftover}
+        seed={loggingLeftover ?? undefined}
+        // The seed's own `title` is deliberately not spread back in — it was
+        // only ever the sheet's starting text, and by the time this fires the
+        // user may have typed over it.
+        onLog={(title, storedAt, keepDays) => logLeftover({
+          title,
+          storedAt,
+          keepDays,
+          recipeId: loggingLeftover?.recipeId ?? null,
+          sourceEntryId: loggingLeftover?.sourceEntryId ?? null,
+        })}
+        onRename={title => editingLeftover && renameLeftover(editingLeftover.id, title)}
+        onSetStoredAt={storedAt => editingLeftover && setLeftoverStoredAt(editingLeftover.id, storedAt)}
+        onSetKeepDays={days => editingLeftover && setLeftoverKeepDays(editingLeftover.id, days)}
+        onFinish={outcome => editingLeftover && finishLeftover(editingLeftover.id, outcome)}
+        onReopen={() => editingLeftover && reopenLeftover(editingLeftover.id)}
+        onDelete={() => editingLeftover && deleteLeftover(editingLeftover.id)}
+        onClose={() => { setEditingLeftoverId(null); setLoggingLeftover(null); }}
       />
     </View>
   );

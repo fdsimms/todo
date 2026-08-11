@@ -3,6 +3,7 @@ import {
   View,
   Text,
   FlatList,
+  SectionList,
   ScrollView,
   TextInput,
   TouchableOpacity,
@@ -22,22 +23,32 @@ import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
-import { Fab, FabMenu, FAB_SIZE, type FabMenuItem } from '../components/Fab';
+import { Fab, FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { cleanRecipeName, countLikelyInPantry, describeCookHistory, describeRecipe, rankRecipeSuggestions, rankRecipes } from '../utils/recipeUtils';
+import { cleanRecipeName, countLikelyInPantry, describeCookHistory, describeRecipe, groupRecipesByMealType, rankRecipeSuggestions, rankRecipes, sortRecipesForDisplay } from '../utils/recipeUtils';
+import { recipeMap } from '../utils/recipeComponents';
 import { groceryNameKey } from '../utils/groceryParse';
 
 /**
  * The recipe box.
  *
- * Deliberately flat — no recipe categories, which would be the fourth category
- * table in this app (task / project / template / recipe) for a list most people
+ * Deliberately flat — no recipe categories *table*, which would be the fourth
+ * one in this app (task / project / template / recipe) for a list most people
  * will keep in the dozens. Favorites float to the top and the search field
- * ranks by name and by ingredient; if that stops being enough, categories are
- * the thing to add, not sections invented now.
+ * ranks by name and by ingredient. Recipe.mealType (breakfast/lunch/dinner/
+ * snack/dessert — see RecipeMealType in src/types) is the one closed-set tag
+ * that earned a plain column instead: it's shown in each row's subtitle via
+ * describeRecipe(), and the header's "Group" toggle switches the list between
+ * that flat favorites-first order and RECIPE_MEAL_TYPE_LABELS sections
+ * (groupRecipesByMealType, src/utils/recipeUtils.ts) — no drag-reorder across
+ * sections, unlike Today's category groups, since a recipe's meal type is a
+ * single-select field on the editor, not something to drag a row into.
+ * Grouping only applies to the unfiltered box, same as the "Cook again" shelf
+ * below: a search is already a specific question, and section headers over a
+ * handful of matches would just be noise.
  */
 export function RecipesScreen() {
   const insets = useSafeAreaInsets();
@@ -54,6 +65,7 @@ export function RecipesScreen() {
   const [query, setQuery] = useState('');
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
+  const [groupByMealType, setGroupByMealType] = useState(false);
 
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
   // still the one under your thumb.
@@ -67,16 +79,64 @@ export function RecipesScreen() {
     else setAddVisible(true);
   }, []);
 
+  // ——— Dragging the add button off its corner ————————————————————————————
+  //
+  // Same button-drag gesture as the other list-screen FABs (Projects,
+  // Templates, Today, Grocery), but with nothing underneath for it to target:
+  // the recipe box is deliberately flat and unordered (see the box comment
+  // above), so there's no row or category for a drop to name the way those
+  // screens' FabDropZoneProvider does. A drag here only ever answers one
+  // question — did it come back to the corner? — which is exactly the `home`
+  // state Fab's own PanResponder already tracks, so no drop-zone plumbing is
+  // needed to answer it. Landing anywhere else commits to the plain "New
+  // recipe" action, the same one closest to the button in the menu, skipping
+  // "From a photo" the way a task drag skips straight to a plain task rather
+  // than reopening the chain/stack/template menu.
+  const [fabDragActive, setFabDragActive] = useState(false);
+  const [dragCanceling, setDragCanceling] = useState(false);
+
+  const fabDrag: FabDragHandlers = {
+    onStart: () => {
+      setFabDragActive(true);
+      setDragCanceling(false);
+    },
+    onMove: (_pageY, home) => {
+      const canceling = home === 'returned';
+      setDragCanceling(prev => (prev === canceling ? prev : canceling));
+    },
+    onEnd: (_pageY, home) => {
+      setFabDragActive(false);
+      setDragCanceling(false);
+      if (home === 'returned') {
+        haptics.tap();
+        return;
+      }
+      setAddVisible(true);
+    },
+    onCancel: () => {
+      setFabDragActive(false);
+      setDragCanceling(false);
+    },
+  };
+
+  const fabDragLabel = fabDragActive ? (dragCanceling ? 'Cancel' : 'New recipe') : null;
+
   const visible = useMemo(() => {
     const matched = rankRecipes(query, recipes);
     // rankRecipes already orders a search by weight; only the unfiltered list
     // needs the favourites-first pass, or a name match would lose its place to
     // a starred recipe that merely mentions the word.
     if (query.trim()) return matched;
-    return [...matched].sort((a, b) =>
-      Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder
-    );
+    return sortRecipesForDisplay(matched);
   }, [query, recipes]);
+
+  // Grouping is only offered on the unfiltered box — see the doc comment
+  // above. Built from `visible` (already favourites-sorted) so the flat and
+  // grouped views agree on within-section order, not just on membership.
+  const grouped = useMemo(
+    () => (groupByMealType && !query.trim() ? groupRecipesByMealType(visible) : null),
+    [groupByMealType, query, visible]
+  );
 
   // Only offered on the unfiltered list — a search is already a specific
   // question ("what has fennel"), and a shelf of suggestions above the
@@ -91,13 +151,14 @@ export function RecipesScreen() {
   // just reduced to a count per recipe.
   const pantryCounts = useMemo(() => {
     const now = new Date();
+    const byId = recipeMap(recipes);
     const map = new Map<string, number>();
     for (const recipe of visible) {
-      const count = countLikelyInPantry(recipe, groceryItems, now);
+      const count = countLikelyInPantry(recipe, groceryItems, now, byId);
       if (count !== null) map.set(recipe.id, count);
     }
     return map;
-  }, [visible, groceryItems]);
+  }, [visible, recipes, groceryItems]);
 
   const openRecipe = (recipe: Recipe) => {
     haptics.tap();
@@ -181,6 +242,12 @@ export function RecipesScreen() {
         subtitle={recipes.length > 0
           ? `${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}`
           : undefined}
+        actions={recipes.length > 0 ? [{
+          icon: 'grid-outline',
+          onPress: () => { haptics.tap(); setGroupByMealType(g => !g); },
+          active: groupByMealType,
+          accessibilityLabel: groupByMealType ? 'Ungroup recipes' : 'Group recipes by meal type',
+        }] : undefined}
       />
       <GroceriesHubPills active="Recipes" />
 
@@ -218,6 +285,23 @@ export function RecipesScreen() {
               subtitle={`No recipe here is called “${query.trim()}” or uses it`}
               bottomOffset={tabBarHeight}
             />
+          ) : grouped ? (
+            <SectionList
+              sections={grouped}
+              keyExtractor={r => r.id}
+              renderItem={renderRecipe}
+              renderSectionHeader={({ section }) => (
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionHeaderText}>{section.title}</Text>
+                  <Text style={styles.sectionHeaderCount}>{section.data.length}</Text>
+                </View>
+              )}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.list}
+              ListHeaderComponent={cookAgainShelf}
+              ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
+              stickySectionHeadersEnabled={false}
+            />
           ) : (
             <FlatList
               data={visible}
@@ -240,12 +324,18 @@ export function RecipesScreen() {
           onSelect={handleAddMenuSelect}
           accessibilityLabel="Add recipe"
           bottom={insets.bottom + tabBarHeight + spacing.md}
+          drag={fabDrag}
+          dragHint="Drag off the button to add a recipe, or back to it to cancel"
+          dragLabel={fabDragLabel}
         />
       ) : (
         <Fab
           onPress={() => { haptics.tap(); setAddVisible(true); }}
           accessibilityLabel="Add recipe"
           bottom={insets.bottom + tabBarHeight + spacing.md}
+          drag={fabDrag}
+          dragHint="Drag off the button to add a recipe, or back to it to cancel"
+          dragLabel={fabDragLabel}
         />
       )}
 
@@ -289,6 +379,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     padding: 0,
+  },
+  // Same treatment as LogbookScreen's day headers — section headers app-wide
+  // are uppercase font.xs semibold textTertiary with 0.8 letterSpacing.
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xs,
+  },
+  sectionHeaderText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  sectionHeaderCount: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
   },
   list: {
     paddingTop: spacing.xs,

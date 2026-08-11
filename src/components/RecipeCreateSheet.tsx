@@ -284,29 +284,36 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
 
         {extracted.ingredients.map((row, i) => {
           const on = accepted.has(i);
+          // A new heading whenever this row's section differs from the one
+          // right before it — same display-only grouping RecipeDetailScreen
+          // does over the saved list, run here over the preview instead.
+          const prevSection = i > 0 ? extracted.ingredients[i - 1].section : null;
+          const sectionHeader = row.section && row.section !== prevSection ? row.section : null;
           return (
-            <TouchableOpacity
-              key={`${row.name}-${i}`}
-              style={styles.row}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => toggle(i)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: on }}
-              accessibilityLabel={`${row.name}, ${row.aisle}`}
-            >
-              <View style={[styles.checkbox, on && styles.checkboxOn]}>
-                {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-              </View>
-              <View style={styles.body}>
-                <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
-                <Text style={styles.meta} numberOfLines={1}>{row.aisle}</Text>
-              </View>
-              {!!row.quantity && (
-                <View style={styles.qtyPill}>
-                  <Text style={styles.qtyText} numberOfLines={1}>{row.quantity}</Text>
+            <React.Fragment key={`${row.name}-${i}`}>
+              {!!sectionHeader && <Text style={styles.sectionHeader}>{sectionHeader}</Text>}
+              <TouchableOpacity
+                style={styles.row}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => toggle(i)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: on }}
+                accessibilityLabel={`${row.name}, ${row.aisle}`}
+              >
+                <View style={[styles.checkbox, on && styles.checkboxOn]}>
+                  {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
                 </View>
-              )}
-            </TouchableOpacity>
+                <View style={styles.body}>
+                  <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
+                  <Text style={styles.meta} numberOfLines={1}>{row.aisle}</Text>
+                </View>
+                {!!row.quantity && (
+                  <View style={styles.qtyPill}>
+                    <Text style={styles.qtyText} numberOfLines={1}>{row.quantity}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </React.Fragment>
           );
         })}
       </ScrollView>
@@ -358,6 +365,16 @@ function makeStyles(colors: Colors) {
       paddingBottom: spacing.sm,
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
+    sectionHeader: {
+      color: colors.textTertiary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.xs,
+    },
     pasteWrap: { padding: spacing.md, gap: spacing.md },
     photoError: { color: colors.red, fontSize: font.sm, textAlign: 'center' },
     nameCard: {

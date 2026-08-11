@@ -3,6 +3,7 @@ import type { GroceryItem, MealPlanEntry, Recipe } from '../types';
 import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
 import { probablyHaveReason } from './grocerySuggest';
+import { flattenRecipeIngredients } from './recipeComponents';
 
 /**
  * Everything decidable about turning a week plan into a grocery add, kept
@@ -47,6 +48,13 @@ export interface PlannedIngredient {
  * `range` re-filters `entries` by date rather than trusting the caller to
  * have passed exactly the right window — useMealPlanStore's `entries` is
  * range-scoped already, but this stays correct even fed a wider set.
+ *
+ * A composed recipe contributes its components' ingredients too
+ * (flattenRecipeIngredients), and each line is attributed to the recipe it is
+ * actually written on: "Tue mash" rather than "Tue steak dinner" for a line
+ * that lives on the mash. Same weekday-plus-dish format either way, and it's
+ * what keeps two components that both call for butter from collapsing into one
+ * indistinguishable pair of sources on the row's breakdown.
  */
 export function collectPlannedIngredients(
   entries: readonly MealPlanEntry[],
@@ -59,16 +67,16 @@ export function collectPlannedIngredients(
     if (!entry.recipeId) continue;
     const recipe = recipesById.get(entry.recipeId);
     if (!recipe) continue;
-    const source = `${format(dayKeyToDate(entry.date), 'EEE')} ${recipe.name}`;
-    for (const ingredient of recipe.ingredients) {
+    const weekday = format(dayKeyToDate(entry.date), 'EEE');
+    for (const flat of flattenRecipeIngredients(recipe, recipesById)) {
       out.push({
-        name: ingredient.name,
-        nameKey: ingredient.nameKey,
-        quantity: ingredient.quantity,
-        aisle: ingredient.aisle,
-        source,
-        recipeId: recipe.id,
-        recipeTitle: recipe.name,
+        name: flat.ingredient.name,
+        nameKey: flat.ingredient.nameKey,
+        quantity: flat.ingredient.quantity,
+        aisle: flat.ingredient.aisle,
+        source: `${weekday} ${flat.recipe.name}`,
+        recipeId: flat.recipe.id,
+        recipeTitle: flat.recipe.name,
       });
     }
   }
@@ -80,16 +88,26 @@ export function collectPlannedIngredients(
  * week — the source a single-recipe "Add ingredients to list" needs to run
  * through the same classifyPlanned pantry-awareness AddWeekToListSheet gets,
  * instead of the blind addFromPlan RecipeDetailScreen used before.
+ *
+ * `recipesById` is what lets a composed recipe bring its components' lines
+ * along; without it (a caller that genuinely only has the one row, and the
+ * older tests) the recipe stands for itself, which is exactly what an
+ * uncomposed one does anyway.
  */
-export function plannedIngredientsForRecipe(recipe: Recipe): PlannedIngredient[] {
-  return recipe.ingredients.map(ingredient => ({
-    name: ingredient.name,
-    nameKey: ingredient.nameKey,
-    quantity: [ingredient.quantity, ingredient.prep].filter(Boolean).join(', '),
-    aisle: ingredient.aisle,
-    source: recipe.name,
-    recipeId: recipe.id,
-    recipeTitle: recipe.name,
+export function plannedIngredientsForRecipe(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe> = new Map([[recipe.id, recipe]]),
+): PlannedIngredient[] {
+  return flattenRecipeIngredients(recipe, recipesById).map(flat => ({
+    name: flat.ingredient.name,
+    nameKey: flat.ingredient.nameKey,
+    quantity: [flat.ingredient.quantity, flat.ingredient.prep].filter(Boolean).join(', '),
+    aisle: flat.ingredient.aisle,
+    // The recipe the line is written on, so a row merged from a parent and one
+    // of its parts says which parts want it — see ClassifiedIngredient.sources.
+    source: flat.recipe.name,
+    recipeId: flat.recipe.id,
+    recipeTitle: flat.recipe.name,
   }));
 }
 

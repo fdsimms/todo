@@ -1,0 +1,239 @@
+import { addDays } from 'date-fns/addDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { subDays } from 'date-fns/subDays';
+import type { Leftover, LeftoverFreshness } from '../types';
+import {
+  LEFTOVER_KEEP_DAYS_DEFAULT,
+  LEFTOVER_KEEP_DAYS_MAX,
+  LEFTOVER_KEEP_DAYS_MIN,
+  LEFTOVER_RETENTION_DAYS,
+} from '../types';
+import { cleanRecipeName } from './recipeUtils';
+import { dayKeyOf, dayKeyToDate } from './dateUtils';
+
+/**
+ * Everything decidable about what's in the fridge, kept store-free and
+ * node-testable — the same discipline mealPlan.ts and recipeUtils follow, and
+ * for the same reason: jest here runs in the `node` env with no renderer, so
+ * anything left inside a component ships untested.
+ *
+ * Two rules run through the whole module and are worth stating once:
+ *
+ * - **Age and time-left are counted in calendar days, never in 24-hour blocks.**
+ *   "Two days old" is what a person means when they open the fridge on Thursday
+ *   having cooked on Tuesday, regardless of whether it went in at 6pm or
+ *   midnight. differenceInCalendarDays is the whole reason `keepUntil` is stored
+ *   as a day key rather than an instant.
+ * - **Nothing here reads the clock by default without saying so.** Every
+ *   function that needs "now" takes it as a parameter defaulting to
+ *   `new Date()`, so the tests can place a container in a fridge on a Tuesday.
+ */
+
+/** Trims a container label for storage. Empty means "not a name" — the caller refuses it. */
+export function cleanLeftoverTitle(raw: string): string {
+  return cleanRecipeName(raw);
+}
+
+/**
+ * A keep-for count forced into the sayable range.
+ *
+ * Clamped rather than validated at the call site, matching setServings: the
+ * stepper can't overshoot, but a restored backup can carry anything.
+ */
+export function clampKeepDays(days: number): number {
+  if (!Number.isFinite(days)) return LEFTOVER_KEEP_DAYS_DEFAULT;
+  return Math.max(LEFTOVER_KEEP_DAYS_MIN, Math.min(LEFTOVER_KEEP_DAYS_MAX, Math.round(days)));
+}
+
+/** The `keepUntil` day key for "put away at `storedAt`, keep it `days` days". */
+export function keepUntilKeyFor(storedAt: string, days: number): string {
+  return dayKeyOf(addDays(new Date(storedAt), clampKeepDays(days)));
+}
+
+/**
+ * The keep-for count a stored row is currently expressing — the inverse of
+ * keepUntilKeyFor, for seeding the editor's stepper.
+ *
+ * Not stored, because the pair (storedAt, keepUntil) already says it and a third
+ * column would be a second source of truth to keep in step. Clamped on the way
+ * out so a row whose dates were edited into a negative gap still opens the
+ * editor on a number the stepper can hold.
+ */
+export function keepDaysBetween(storedAt: string, keepUntil: string): number {
+  return clampKeepDays(differenceInCalendarDays(dayKeyToDate(keepUntil), new Date(storedAt)));
+}
+
+/** Still in the fridge — nothing has closed it out. */
+export function isLiveLeftover(leftover: Leftover): boolean {
+  return !leftover.finishedAt;
+}
+
+/** How many calendar days it's been sitting there. Never negative. */
+export function daysInFridge(leftover: Leftover, now: Date = new Date()): number {
+  return Math.max(0, differenceInCalendarDays(now, new Date(leftover.storedAt)));
+}
+
+/**
+ * Calendar days until the keep-until day. 0 means "today is the day", negative
+ * means it's past.
+ */
+export function daysLeft(leftover: Leftover, now: Date = new Date()): number {
+  return differenceInCalendarDays(dayKeyToDate(leftover.keepUntil), now);
+}
+
+/**
+ * Where on the clock it sits.
+ *
+ * A closed-out leftover still answers — the row in the history list wants to
+ * show what state it was in, and asking callers to null-check before every
+ * colour lookup is how one of them ends up not doing it. Callers that only mean
+ * live ones filter with isLiveLeftover first, which reads as the question they
+ * were actually asking.
+ */
+export function freshnessOf(leftover: Leftover, now: Date = new Date()): LeftoverFreshness {
+  const left = daysLeft(leftover, now);
+  if (left < 0) return 'over';
+  if (left === 0) return 'due';
+  if (left === 1) return 'soon';
+  return 'fresh';
+}
+
+/**
+ * Whether this is what the nudge is for: still in the fridge, and down to its
+ * last day or already past it.
+ *
+ * The threshold includes 'soon' deliberately — the point is to catch it *before*
+ * it's wasted, and a nudge that only fires on the day itself has already given
+ * up the evening someone could have planned around it.
+ */
+export function needsAttention(leftover: Leftover, now: Date = new Date()): boolean {
+  return isLiveLeftover(leftover) && daysLeft(leftover, now) <= 1;
+}
+
+/** Still in the fridge, most urgent first. */
+export function liveLeftovers(leftovers: readonly Leftover[]): Leftover[] {
+  return sortLeftovers(leftovers.filter(isLiveLeftover));
+}
+
+/** Closed out, most recently closed first. */
+export function finishedLeftovers(leftovers: readonly Leftover[]): Leftover[] {
+  return leftovers
+    .filter(l => !isLiveLeftover(l))
+    .sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''));
+}
+
+/** The live ones the nudge counts. */
+export function attentionLeftovers(
+  leftovers: readonly Leftover[],
+  now: Date = new Date()
+): Leftover[] {
+  return liveLeftovers(leftovers).filter(l => needsAttention(l, now));
+}
+
+/**
+ * Reading order for the fridge: soonest keep-until first, then the one that has
+ * been in there longest, then by title.
+ *
+ * Sorting by *urgency* rather than by when it was put away is the point of the
+ * list — the thing about to go off has to be at the top even if it was cooked
+ * this morning (a fish pie kept two days beats a stew kept a week). `storedAt`
+ * breaks the tie because between two containers due the same day, the older one
+ * is the one to eat. Title last so the order is stable rather than depending on
+ * insertion.
+ */
+export function sortLeftovers(leftovers: readonly Leftover[]): Leftover[] {
+  return [...leftovers].sort(
+    (a, b) =>
+      a.keepUntil.localeCompare(b.keepUntil) ||
+      a.storedAt.localeCompare(b.storedAt) ||
+      a.title.localeCompare(b.title)
+  );
+}
+
+/** "In the fridge today", "1 day in the fridge", "6 days in the fridge". */
+export function describeAge(leftover: Leftover, now: Date = new Date()): string {
+  const days = daysInFridge(leftover, now);
+  if (days === 0) return 'In the fridge today';
+  return `${days} ${days === 1 ? 'day' : 'days'} in the fridge`;
+}
+
+/**
+ * The keep-until half of a row's caption: "Use by today", "Use by tomorrow",
+ * "3 days left", "2 days past".
+ *
+ * Deliberately its own small ladder rather than a reuse of dateUtils'
+ * formatDeadlineDate family, for the reason describeAddedToList gives for
+ * forking too: those are written for a task's due date and phrase a past one as
+ * overdue work. A leftover past its day isn't late, it's questionable — and the
+ * wording has to leave room for the user to decide it's still fine.
+ */
+export function describeKeepUntil(leftover: Leftover, now: Date = new Date()): string {
+  const left = daysLeft(leftover, now);
+  if (left === 0) return 'Use by today';
+  if (left === 1) return 'Use by tomorrow';
+  if (left > 1) return `${left} days left`;
+  const past = -left;
+  return `${past} ${past === 1 ? 'day' : 'days'} past`;
+}
+
+/** The full caption under a leftover's title — "2 days in the fridge · Use by today". */
+export function describeLeftover(leftover: Leftover, now: Date = new Date()): string {
+  return `${describeAge(leftover, now)} · ${describeKeepUntil(leftover, now)}`;
+}
+
+/**
+ * What a closed-out row says instead: "Eaten" / "Thrown out".
+ *
+ * "Thrown out" rather than "Wasted" on purpose. The app is not in a position to
+ * grade the user's week, and a history list that editorialises is one people
+ * stop opening.
+ */
+export function describeOutcome(leftover: Leftover): string {
+  if (!leftover.finishedAt) return '';
+  return leftover.outcome === 'tossed' ? 'Thrown out' : 'Eaten';
+}
+
+/**
+ * The one-line summary for the fridge card's header — "3 in the fridge · 1 to
+ * use up", or just "3 in the fridge" when nothing is close.
+ */
+export function describeFridge(
+  leftovers: readonly Leftover[],
+  now: Date = new Date()
+): string {
+  const live = leftovers.filter(isLiveLeftover);
+  if (live.length === 0) return 'Nothing in the fridge';
+  const urgent = live.filter(l => needsAttention(l, now)).length;
+  const base = `${live.length} in the fridge`;
+  return urgent > 0 ? `${base} · ${urgent} to use up` : base;
+}
+
+/**
+ * What a leftover reads as when it's the plan for a meal — "Leftover chilli
+ * (2 days old)".
+ *
+ * The age is baked into the captured title rather than resolved at render time,
+ * which is the opposite of titleForEntry's live-recipe-name rule and deliberate:
+ * a recipe's name is a fact about a document that should follow a rename, but
+ * "2 days old" is a fact about *the night you planned it for*. Resolved live it
+ * would keep counting up, so Tuesday's dinner would eventually claim it ate a
+ * three-week-old curry.
+ */
+export function mealTitleForLeftover(leftover: Leftover, now: Date = new Date()): string {
+  const days = daysInFridge(leftover, now);
+  if (days === 0) return leftover.title;
+  return `${leftover.title} (${days} ${days === 1 ? 'day' : 'days'} old)`;
+}
+
+/**
+ * The instant before which a *closed-out* leftover is old enough to purge.
+ *
+ * An instant rather than a day key because `finishedAt` is one — the closing
+ * action is a moment, unlike `keepUntil`, which is a day someone plans around.
+ */
+export function leftoverPurgeCutoff(
+  now: Date = new Date(),
+  days: number = LEFTOVER_RETENTION_DAYS
+): string {
+  return subDays(now, days).toISOString();
+}
