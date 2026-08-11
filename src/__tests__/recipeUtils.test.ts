@@ -22,6 +22,7 @@ import {
   scoreRecipeAgainstCatalog,
   suggestRecipesForEmptyNight,
   countLikelyInPantry,
+  formatServingsRange,
 } from '../utils/recipeUtils';
 import type { GroceryItem, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 
@@ -61,6 +62,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     author: null,
     source: null,
     servings: null,
+    servingsMax: null,
     imagePath: null,
     mealType: null,
     ingredients: [],
@@ -418,6 +420,18 @@ describe('describeRecipe', () => {
 
   it('adds servings only when set', () => {
     expect(describeRecipe(recipe('D', { ingredients: [ing('Salt')], servings: 4 })))
+      .toBe('1 ingredient · serves 4');
+  });
+
+  it('renders a servings range when servingsMax exceeds servings', () => {
+    expect(describeRecipe(recipe('D2', { ingredients: [ing('Salt')], servings: 4, servingsMax: 6 })))
+      .toBe('1 ingredient · serves 4-6');
+  });
+
+  it('falls back to a plain count when servingsMax does not exceed servings', () => {
+    expect(describeRecipe(recipe('D3', { ingredients: [ing('Salt')], servings: 4, servingsMax: 4 })))
+      .toBe('1 ingredient · serves 4');
+    expect(describeRecipe(recipe('D4', { ingredients: [ing('Salt')], servings: 4, servingsMax: 2 })))
       .toBe('1 ingredient · serves 4');
   });
 
@@ -852,5 +866,22 @@ describe('suggestRecipesForEmptyNight', () => {
       recipe(name, { ingredients: [ing('Onions', { nameKey: 'onions' })] })
     );
     expect(suggestRecipesForEmptyNight(recipes, items, now, 2)).toHaveLength(2);
+  });
+});
+
+describe('formatServingsRange', () => {
+  it('is null with no servings', () => {
+    expect(formatServingsRange(null, null)).toBeNull();
+    expect(formatServingsRange(null, 6)).toBeNull();
+  });
+
+  it('renders a plain count with no max, or a max that does not exceed it', () => {
+    expect(formatServingsRange(4, null)).toBe('4');
+    expect(formatServingsRange(4, 4)).toBe('4');
+    expect(formatServingsRange(4, 2)).toBe('4');
+  });
+
+  it('renders a range when the max exceeds the low end', () => {
+    expect(formatServingsRange(4, 6)).toBe('4-6');
   });
 });

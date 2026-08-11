@@ -52,7 +52,12 @@ interface RecipeStore {
   setSourceName: (id: string, source: string | null) => void;
   setAuthor: (id: string, author: string | null) => void;
   setSource: (id: string, source: string | null) => void;
-  setServings: (id: string, servings: number | null) => void;
+  /**
+   * `servingsMax` is the top of a range ("serves 4-6") and is optional — omit
+   * it (or pass null) for a plain count. A max at or below `servings` isn't a
+   * range, so it's dropped rather than stored as one.
+   */
+  setServings: (id: string, servings: number | null, servingsMax?: number | null) => void;
   /**
    * Sets or clears a recipe's attached photo — `uri` is a file already saved
    * by `pickRecipeImage` (src/utils/recipePhoto.ts); this call just records
@@ -166,6 +171,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       author: null,
       source: null,
       servings: null,
+      servingsMax: null,
       imagePath: null,
       mealType: null,
       ingredients: [],
@@ -235,13 +241,17 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, source: clean || null });
   },
 
-  setServings(id, servings) {
+  setServings(id, servings, servingsMax) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     // Clamped rather than validated at the call site: the stepper can't
     // overshoot, but a restored backup can carry anything.
     const next = servings === null ? null : Math.max(1, Math.min(99, Math.round(servings)));
-    save(set, { ...recipe, servings: next });
+    const clampedMax = servingsMax == null ? null : Math.max(1, Math.min(99, Math.round(servingsMax)));
+    // A max only means anything alongside a min it actually exceeds — no
+    // `servings` or a max that doesn't beat it collapses back to a plain count.
+    const nextMax = next !== null && clampedMax !== null && clampedMax > next ? clampedMax : null;
+    save(set, { ...recipe, servings: next, servingsMax: nextMax });
   },
 
   setImage(id, uri) {

@@ -26,6 +26,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     author: null,
     source: null,
     servings: null,
+    servingsMax: null,
     imagePath: null,
     mealType: null,
     ingredients: [],
@@ -168,6 +169,38 @@ describe('field setters', () => {
 
     useRecipeStore.getState().setServings(r.id, null);
     expect(useRecipeStore.getState().recipeById(r.id)!.servings).toBeNull();
+  });
+
+  it('stores a servingsMax range and clamps it too', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setServings(r.id, 4, 600);
+    const stored = useRecipeStore.getState().recipeById(r.id)!;
+    expect(stored.servings).toBe(4);
+    expect(stored.servingsMax).toBe(99);
+  });
+
+  it('drops a servingsMax that does not exceed servings', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setServings(r.id, 4, 4);
+    expect(useRecipeStore.getState().recipeById(r.id)!.servingsMax).toBeNull();
+
+    useRecipeStore.getState().setServings(r.id, 4, 2);
+    expect(useRecipeStore.getState().recipeById(r.id)!.servingsMax).toBeNull();
+  });
+
+  it('drops servingsMax when servings is cleared', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setServings(r.id, 4, 6);
+    expect(useRecipeStore.getState().recipeById(r.id)!.servingsMax).toBe(6);
+
+    useRecipeStore.getState().setServings(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.servingsMax).toBeNull();
   });
 
   it('sets and clears the meal type', () => {
