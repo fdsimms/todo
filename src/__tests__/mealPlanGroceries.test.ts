@@ -39,6 +39,8 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     notes: '',
     sourceUrl: null,
     sourceName: null,
+    author: null,
+    source: null,
     servings: null,
     ingredients,
     components: [],

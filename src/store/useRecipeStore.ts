@@ -45,7 +45,10 @@ interface RecipeStore {
   renameRecipe: (id: string, name: string) => boolean;
   setNotes: (id: string, notes: string) => void;
   setSourceUrl: (id: string, url: string | null) => void;
+  /** @deprecated superseded by setAuthor/setSource (#1266); kept for old callers. */
   setSourceName: (id: string, source: string | null) => void;
+  setAuthor: (id: string, author: string | null) => void;
+  setSource: (id: string, source: string | null) => void;
   setServings: (id: string, servings: number | null) => void;
   toggleFavorite: (id: string) => void;
   /**
@@ -131,6 +134,8 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       notes: '',
       sourceUrl: null,
       sourceName: null,
+      author: null,
+      source: null,
       servings: null,
       ingredients: [],
       components: [],
@@ -177,6 +182,20 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return;
     const clean = cleanRecipeSource(source ?? '');
     save(set, { ...recipe, sourceName: clean || null });
+  },
+
+  setAuthor(id, author) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const clean = cleanRecipeSource(author ?? '');
+    save(set, { ...recipe, author: clean || null });
+  },
+
+  setSource(id, source) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const clean = cleanRecipeSource(source ?? '');
+    save(set, { ...recipe, source: clean || null });
   },
 
   setServings(id, servings) {

@@ -134,6 +134,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['window', 'delete'] },
   { id: 'autoArchiveProjects', groupId: 'tasksProjects', label: 'Auto-archive projects', section: 'Projects',
     keywords: ['finished', 'complete'] },
+  { id: 'defaultProjectNudgeCadence', groupId: 'tasksProjects', label: 'Default nudge cadence', section: 'Projects',
+    keywords: ['nudge me', 'stalled', 'quiet', 'chase', 'reminder', 'stall', 'new project'] },
 
   // Privacy & AI
   { id: 'appLock', groupId: 'privacyAi', label: 'Require Face ID to open', section: 'App lock',

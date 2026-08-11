@@ -13,7 +13,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { alphabeticalCategories } from '../utils/categoryOrder';
+import { alphabeticalCategories, sortCategoriesByTaskCount } from '../utils/categoryOrder';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
@@ -95,6 +95,11 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
     commit(alphabeticalCategories(order));
   };
 
+  const sortByTaskCount = () => {
+    haptics.success();
+    commit(sortCategoriesByTaskCount(order, name => tasksByCategory(name).length));
+  };
+
   const emojiFor = (name: string) => categories.find(c => c.name === name)?.emoji ?? null;
 
   return (
@@ -130,6 +135,14 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
                   variant="neutral"
                   onPress={sortAlphabetically}
                   accessibilityLabel="Sort categories alphabetically"
+                  style={styles.sortButton}
+                />
+                <InlineAction
+                  label="Sort by task count"
+                  icon="list"
+                  variant="neutral"
+                  onPress={sortByTaskCount}
+                  accessibilityLabel="Sort categories by task count, most tasks first"
                   style={styles.sortButton}
                 />
               </View>
@@ -194,7 +207,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   introWrap: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
   intro: { color: colors.textTertiary, fontSize: font.sm },
-  introActions: { flexDirection: 'row', marginTop: spacing.md },
+  introActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   // Sits directly on the sheet's root colors.bg, where the default neutral
   // tint (bgTertiary) is nearly indistinguishable from it.
   sortButton: { backgroundColor: colors.bgSecondary },

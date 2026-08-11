@@ -38,6 +38,8 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     notes: '',
     sourceUrl: null,
     sourceName: null,
+    author: null,
+    source: null,
     servings: null,
     ingredients: [],
     components: [],

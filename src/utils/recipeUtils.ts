@@ -236,7 +236,8 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): 
     parts.push(likelyInPantry === 1 ? '1 likely in pantry' : `${likelyInPantry} likely in pantry`);
   }
   if (recipe.servings) parts.push(`serves ${recipe.servings}`);
-  if (recipe.sourceName) parts.push(recipe.sourceName);
+  const attribution = describeAttribution(recipe);
+  if (attribution) parts.push(attribution);
   return parts.join(' · ');
 }
 
@@ -263,6 +264,18 @@ export function countLikelyInPantry(
   const classified = classifyPlanned(planned, items, now);
   const count = classified.filter(row => row.category === 'probablyHave').length;
   return count > 0 ? count : null;
+}
+
+/**
+ * "by Alison Roman — Nothing Fancy", or whichever of author/source is set.
+ * Falls back to the legacy sourceName only when neither new field has ever
+ * been given a value — an old recipe nobody has re-edited since #1266.
+ */
+export function describeAttribution(recipe: Recipe): string | null {
+  if (recipe.author && recipe.source) return `by ${recipe.author} — ${recipe.source}`;
+  if (recipe.author) return `by ${recipe.author}`;
+  if (recipe.source) return recipe.source;
+  return recipe.sourceName || null;
 }
 
 /** Trims and caps a name for storage. Empty means "not a name" — callers refuse it. */

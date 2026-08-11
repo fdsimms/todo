@@ -425,6 +425,13 @@ export function initDatabase(): void {
     // meant to drop out of suggestions. Same naming convention as
     // categories' exclude_from_pin_suggestions.
     'ALTER TABLE grocery_shops ADD COLUMN exclude_from_suggestions INTEGER NOT NULL DEFAULT 0',
+    // Null for every existing recipe — splits the old single sourceName
+    // attribution into author/source (#1266). Not backfilled from
+    // source_name: an old value can't be reliably assigned to one or the
+    // other, so old recipes just keep reading their legacy column until
+    // edited. See Recipe.author/Recipe.source.
+    'ALTER TABLE recipes ADD COLUMN author TEXT',
+    'ALTER TABLE recipes ADD COLUMN source TEXT',
     // Empty array for every existing recipe — nothing predating this was
     // composed of another recipe. A JSON blob for the reason `ingredients` is
     // one, and a link table would buy nothing here: the only question anyone
@@ -1489,6 +1496,8 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     notes: (row.notes as string) ?? '',
     sourceUrl: (row.source_url as string) ?? null,
     sourceName: (row.source_name as string) ?? null,
+    author: (row.author as string) ?? null,
+    source: (row.source as string) ?? null,
     servings: (row.servings as number) ?? null,
     ingredients: parseRecipeIngredients(row.ingredients),
     components: parseRecipeComponents(row.components),
@@ -1511,11 +1520,12 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, servings, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      (id, name, name_key, notes, source_url, source_name, author, source, servings, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
-      recipe.sourceName ?? null, recipe.servings ?? null, JSON.stringify(recipe.ingredients),
+      recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
+      recipe.servings ?? null, JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
       recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
       recipe.cookCount, recipe.lastCookedAt ?? null,
@@ -1526,12 +1536,13 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, servings=?, ingredients=?, components=?, prep_tasks=?,
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, ingredients=?, components=?, prep_tasks=?,
        favorite=?, sort_order=?, cook_count=?, last_cooked_at=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
-      recipe.sourceName ?? null, recipe.servings ?? null, JSON.stringify(recipe.ingredients),
+      recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
+      recipe.servings ?? null, JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
       recipe.favorite ? 1 : 0, recipe.sortOrder,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.id,
