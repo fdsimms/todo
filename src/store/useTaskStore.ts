@@ -37,7 +37,7 @@ import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
 import { dripCandidate, projectPullUpdates } from '../utils/projectPull';
-import { dueMealPlanNudge, mealPlanNudgeSuppressed, MEAL_PLAN_NUDGE_LINK_URL } from '../utils/mealPlanNudge';
+import { dueMealPlanNudge, mealPlanNudgeSuppressed, hasLiveMealPlanNudgeTask, MEAL_PLAN_NUDGE_LINK_URL } from '../utils/mealPlanNudge';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
@@ -2019,11 +2019,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     );
     if (!due) return;
 
-    // Recorded before the suppression check, and unconditionally: a week
-    // that's already planned must not be re-diagnosed as "already planned"
-    // on every later launch this week either, so both outcomes count as
-    // "handled" for the idempotency key's purposes.
+    // Recorded before the suppression checks below, and unconditionally: a
+    // week that's already handled — planned, or still carrying last week's
+    // untouched nudge — must not be re-diagnosed the same way on every later
+    // launch this week either, so every outcome counts as "handled" for the
+    // idempotency key's purposes.
     settings.setMealPlanNudgeLastFiredWeekKey(due.weekKey);
+
+    // This is a fresh addTask() every week, not one recurring row that only
+    // spawns its successor on completion (see mealPlanNudge.ts) — so without
+    // this gate, ignoring one nudge would pile up a new one every week
+    // instead of just leaving the same task unread.
+    if (hasLiveMealPlanNudgeTask(get().tasks)) return;
 
     const plannedEntries = dbGetMealPlanEntries(due.targetWeekStartKey, due.targetWeekEndKey);
     if (mealPlanNudgeSuppressed(due, plannedEntries)) return;

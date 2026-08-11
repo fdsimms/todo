@@ -4,6 +4,7 @@ import {
   MEAL_PLAN_NUDGE_LINK_URL,
   dueMealPlanNudge,
   mealPlanNudgeSuppressed,
+  hasLiveMealPlanNudgeTask,
 } from '../utils/mealPlanNudge';
 
 // mealPlanNudge reaches dateUtils/mealPlan for dayKeyOf/describeWeekRange,
@@ -114,6 +115,46 @@ describe('mealPlanNudgeSuppressed', () => {
   it('treats both ends of the range as inclusive', () => {
     expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-10' }])).toBe(true);
     expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-16' }])).toBe(true);
+  });
+});
+
+describe('hasLiveMealPlanNudgeTask', () => {
+  const nudgeTask = (overrides: Record<string, unknown> = {}) => ({
+    linkUrl: MEAL_PLAN_NUDGE_LINK_URL,
+    completed: false,
+    archived: false,
+    ...overrides,
+  });
+
+  it('is false with no tasks at all', () => {
+    expect(hasLiveMealPlanNudgeTask([])).toBe(false);
+  });
+
+  it('is true when an incomplete, unarchived nudge task exists', () => {
+    expect(hasLiveMealPlanNudgeTask([nudgeTask()])).toBe(true);
+  });
+
+  it('ignores a completed nudge task', () => {
+    expect(hasLiveMealPlanNudgeTask([nudgeTask({ completed: true })])).toBe(false);
+  });
+
+  it('ignores an archived nudge task', () => {
+    expect(hasLiveMealPlanNudgeTask([nudgeTask({ archived: true })])).toBe(false);
+  });
+
+  it('ignores tasks that link elsewhere, live or not', () => {
+    expect(hasLiveMealPlanNudgeTask([nudgeTask({ linkUrl: 'https://example.com' })])).toBe(false);
+    expect(hasLiveMealPlanNudgeTask([nudgeTask({ linkUrl: null })])).toBe(false);
+  });
+
+  it('is true if any one task among several is a live nudge task', () => {
+    expect(
+      hasLiveMealPlanNudgeTask([
+        nudgeTask({ linkUrl: null }),
+        nudgeTask({ completed: true }),
+        nudgeTask(),
+      ])
+    ).toBe(true);
   });
 });
 

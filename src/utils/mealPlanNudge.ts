@@ -1,5 +1,5 @@
 import { addDays } from 'date-fns/addDays';
-import type { MealPlanEntry } from '../types';
+import type { MealPlanEntry, Task } from '../types';
 import type { WeekStart } from '../store/useSettingsStore';
 import { buildWeekDays } from './calendarGrid';
 import { dayKeyOf } from './dateUtils';
@@ -28,6 +28,13 @@ import { describeWeekRange, isKeyInRange } from './mealPlan';
  * and only when the week it's about to nudge for has nothing planned yet
  * (`mealPlanNudgeSuppressed`) — a reminder to plan a week you already planned
  * from the Meal Plan screen directly is noise, not help.
+ *
+ * Unlike a real recurring task, this is a fresh `addTask()` every week, not
+ * one row that only spawns its successor on completion — so an unattended
+ * weekly write with no further gate would pile up one "Plan meals for…" task
+ * a week for as long as the user leaves the last one sitting there
+ * (`hasLiveMealPlanNudgeTask`). One live nudge task at a time is the rule:
+ * finishing or archiving last week's is what lets next week's appear.
  */
 
 /** date-fns `Date.getDay()` convention: 0 = Sunday .. 6 = Saturday. */
@@ -113,4 +120,20 @@ export function mealPlanNudgeSuppressed(
   entriesInTargetWeek: readonly Pick<MealPlanEntry, 'date'>[]
 ): boolean {
   return entriesInTargetWeek.some(e => isKeyInRange(e.date, due.targetWeekStartKey, due.targetWeekEndKey));
+}
+
+/**
+ * True when a previous firing's nudge task is still live — incomplete and
+ * not archived. Checked by `linkUrl` alone, the same marker the task row's
+ * link button already opens the Meal Plan screen from, since nothing else
+ * about the task (title, dueDate) stays stable enough to key off across
+ * weeks.
+ *
+ * A completed task doesn't count (the user did the thing), and neither does
+ * an archived one (archiving is this app's other explicit "I've dealt with
+ * this, stop showing it to me" — see the note on `archiveTask` in
+ * CLAUDE.md). Only "still sitting there, untouched" blocks the next one.
+ */
+export function hasLiveMealPlanNudgeTask(tasks: readonly Pick<Task, 'linkUrl' | 'completed' | 'archived'>[]): boolean {
+  return tasks.some(t => t.linkUrl === MEAL_PLAN_NUDGE_LINK_URL && !t.completed && !t.archived);
 }

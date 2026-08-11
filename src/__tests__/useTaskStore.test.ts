@@ -2030,6 +2030,57 @@ describe('checkMealPlanNudge', () => {
     expect(s.setMealPlanNudgeLastFiredWeekKey).toHaveBeenCalledWith('2025-08-10');
   });
 
+  it('is suppressed — no task, but the week still counts as handled — when last week\'s nudge is still untouched', () => {
+    jest.setSystemTime(new Date(2025, 7, 10, 9, 0, 0));
+    const s = settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03' });
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'nudge-1', title: 'Plan meals for 10 – 16 Aug', linkUrl: 'dundundun://mealplan' })],
+    });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(1); // unchanged — no second task
+    expect(s.setMealPlanNudgeLastFiredWeekKey).toHaveBeenCalledWith('2025-08-10');
+  });
+
+  it('fires again once last week\'s nudge task has been completed', () => {
+    jest.setSystemTime(new Date(2025, 7, 10, 9, 0, 0));
+    const s = settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03' });
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'nudge-1', linkUrl: 'dundundun://mealplan', completed: true, completedAt: '2025-08-04T00:00:00.000Z' })],
+    });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
+  });
+
+  it('fires again once last week\'s nudge task has been archived', () => {
+    jest.setSystemTime(new Date(2025, 7, 10, 9, 0, 0));
+    const s = settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03' });
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'nudge-1', linkUrl: 'dundundun://mealplan', archived: true })],
+    });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
+  });
+
+  it('is not blocked by an unrelated live task that happens to link elsewhere', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    const s = settings();
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.setState({ tasks: [makeTask({ id: 'other', linkUrl: null })] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
+  });
+
   it('is suppressed — no task, but the week still counts as handled — when the coming week is already planned', () => {
     jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
     const s = settings();
