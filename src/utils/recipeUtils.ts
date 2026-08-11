@@ -16,7 +16,12 @@ import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
 import { formatDuration } from './effort';
-import { describeComponents, flattenRecipeIngredients, recipeMap } from './recipeComponents';
+import {
+  describeComponents,
+  flattenRecipeIngredients,
+  flattenRecipePrepTasks,
+  recipeMap,
+} from './recipeComponents';
 
 // splitPrep lives in groceryParse.ts now — the plain grocery quick-add field
 // runs the same split for its live preview, not just recipe ingredient lines
@@ -234,6 +239,33 @@ export function resolvePrepTaskDraft(
     ? new Date(new Date(dueDate).getTime() - prepTask.reminderOffsetMinutes * 60_000).toISOString()
     : null;
   return { dueDate, reminderTime };
+}
+
+/** One prep step, resolved against a meal date and shaped for addTask. */
+export interface PrepTaskDraft {
+  title: string;
+  dueDate: string;
+  reminderTime: string | null;
+}
+
+/**
+ * Every prep step a meal implies, resolved against the date it's planned for.
+ *
+ * Goes through flattenRecipePrepTasks rather than `recipe.prepTasks`, the same
+ * discipline every shopping read keeps: a dish that is mostly its components
+ * would otherwise look like it needed no prep at all. One place both callers
+ * share — the offer made when the meal is planned, and the entry sheet's "Add
+ * prep tasks" — so the two can't drift on which steps a composed dish has.
+ */
+export function prepTaskDraftsForMeal(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+  mealDate: Date
+): PrepTaskDraft[] {
+  return flattenRecipePrepTasks(recipe, recipesById).map(({ prepTask }) => ({
+    title: prepTask.title,
+    ...resolvePrepTaskDraft(prepTask, mealDate),
+  }));
 }
 
 /**

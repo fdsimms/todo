@@ -34,7 +34,11 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { buildWeekDays } from '../utils/calendarGrid';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
-import { resolvePrepTaskDraft, suggestRecipesForEmptyNight } from '../utils/recipeUtils';
+import {
+  prepTaskDraftsForMeal,
+  suggestRecipesForEmptyNight,
+  type PrepTaskDraft,
+} from '../utils/recipeUtils';
 import { flattenRecipeIngredients, flattenRecipePrepTasks } from '../utils/recipeComponents';
 import {
   dayKeyRange,
@@ -155,13 +159,19 @@ export function MealPlanScreen() {
   const pick = (pickResult: MealPick) => {
     if (!planningDay) return;
     animateLayout();
-    planMeal({
+    const entry = planMeal({
       date: planningDay,
       slot: pickResult.slot,
       recipeId: pickResult.recipeId,
       leftoverId: pickResult.leftoverId,
       title: pickResult.title,
     });
+    if (entry) offerPrepTasks(entry);
+  };
+
+  const addPrepTaskDrafts = (drafts: PrepTaskDraft[]) => {
+    drafts.forEach(({ title, dueDate, reminderTime }) => addTask({ title, dueDate, reminderTime }));
+    haptics.success();
   };
 
   // Components' prep steps come along with their ingredients — "boil the
@@ -171,15 +181,40 @@ export function MealPlanScreen() {
     if (!selected?.recipeId) return;
     const recipe = recipesById.get(selected.recipeId);
     if (!recipe) return;
-    const prepTasks = flattenRecipePrepTasks(recipe, recipesById);
-    if (prepTasks.length === 0) return;
-    const mealDate = dayKeyToDate(selected.date);
-    prepTasks.forEach(({ prepTask }) => {
-      const { dueDate, reminderTime } = resolvePrepTaskDraft(prepTask, mealDate);
-      addTask({ title: prepTask.title, dueDate, reminderTime });
-    });
-    haptics.success();
-    Alert.alert('Prep tasks added', `Added ${prepTasks.length} to your tasks.`);
+    const drafts = prepTaskDraftsForMeal(recipe, recipesById, dayKeyToDate(selected.date));
+    if (drafts.length === 0) return;
+    addPrepTaskDrafts(drafts);
+    Alert.alert('Prep tasks added', `Added ${drafts.length} to your tasks.`);
+  };
+
+  /**
+   * The ask at plan time. Prep steps are the part of a recipe that has to
+   * happen before the day it's cooked — "get the beef out of the freezer" is
+   * no use once you're at the hob — so the moment the meal lands on a date is
+   * both the first moment those days can be worked out and the last one where
+   * they're all still ahead of you. Leaving it to the entry sheet's action
+   * means the dish is remembered but the defrosting isn't.
+   *
+   * An offer, not something planning does by itself — the same restraint
+   * mark-cooked keeps about leftovers, and for the same reason: plenty of
+   * prep steps are ones the user does from memory and doesn't want a task for.
+   * A meal with no prep steps (and a leftover or a typed-in title, which have
+   * no recipe to have any) asks nothing at all, so most picks are unchanged.
+   */
+  const offerPrepTasks = (entry: MealPlanEntry) => {
+    const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
+    if (!recipe) return;
+    const drafts = prepTaskDraftsForMeal(recipe, recipesById, dayKeyToDate(entry.date));
+    if (drafts.length === 0) return;
+    const one = drafts.length === 1;
+    Alert.alert(
+      'Add prep tasks?',
+      `${recipe.name} has ${drafts.length} prep step${one ? '' : 's'}. Add ${one ? 'it' : 'them'} to your tasks?`,
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Add', onPress: () => addPrepTaskDrafts(drafts) },
+      ]
+    );
   };
 
   // Shared by the sheet's "Mark cooked" action and the row's own badge tap —
@@ -342,7 +377,8 @@ export function MealPlanScreen() {
 
   const planSuggestion = (recipe: Recipe, dateKey: string) => {
     animateLayout();
-    planMeal({ date: dateKey, slot: 'dinner', recipeId: recipe.id, title: recipe.name });
+    const entry = planMeal({ date: dateKey, slot: 'dinner', recipeId: recipe.id, title: recipe.name });
+    if (entry) offerPrepTasks(entry);
   };
 
   const headerActions = useMemo<ScreenHeaderAction[]>(() => {
