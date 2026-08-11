@@ -26,6 +26,13 @@ export function NotificationSettings() {
   const dailyAgendaTime = useSettingsStore(s => s.dailyAgendaTime);
   const setDailyAgendaTime = useSettingsStore(s => s.setDailyAgendaTime);
 
+  const quietHoursStart = useSettingsStore(s => s.quietHoursStart);
+  const quietHoursEnd = useSettingsStore(s => s.quietHoursEnd);
+  const setQuietHours = useSettingsStore(s => s.setQuietHours);
+  const activeHoursStart = useSettingsStore(s => s.activeHoursStart);
+  const activeHoursEnd = useSettingsStore(s => s.activeHoursEnd);
+  const quietHoursEnabled = quietHoursStart !== null && quietHoursEnd !== null;
+
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
 
@@ -53,6 +60,38 @@ export function NotificationSettings() {
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
+
+  const [quietPickerKey, setQuietPickerKey] = useState<'start' | 'end' | null>(null);
+  const [quietPickerDate, setQuietPickerDate] = useState<Date>(new Date());
+
+  // Defaults a fresh "on" to a plausible sleep window rather than leaving both
+  // fields blank — matches the shape dailyAgendaTime's own default takes.
+  const onToggleQuietHours = (next: boolean) => {
+    if (next) setQuietHours(quietHoursStart ?? '22:00', quietHoursEnd ?? '07:00');
+    else setQuietHours(null, null);
+    setQuietPickerKey(null);
+  };
+
+  const openQuietPicker = (key: 'start' | 'end') => {
+    if (quietPickerKey === key) { setQuietPickerKey(null); return; }
+    setQuietPickerDate(hhmmToDate((key === 'start' ? quietHoursStart : quietHoursEnd) ?? '00:00'));
+    setQuietPickerKey(key);
+  };
+
+  const confirmQuietPicker = () => {
+    const hhmm = dateToHHMM(quietPickerDate);
+    if (quietPickerKey === 'start') setQuietHours(hhmm, quietHoursEnd ?? '07:00');
+    else if (quietPickerKey === 'end') setQuietHours(quietHoursStart ?? '22:00', hhmm);
+    setQuietPickerKey(null);
+  };
+
+  // The mirror of the awake-hours span, not a copy of it: awake hours name
+  // when the user is up, so quiet hours run from awake-end to awake-start —
+  // asleep is exactly the complement of awake.
+  const matchAwakeHours = () => {
+    setQuietHours(activeHoursEnd, activeHoursStart);
+    setQuietPickerKey(null);
+  };
 
   const askForNotifications = async () => {
     await requestNotificationPermissions();
@@ -178,6 +217,63 @@ export function NotificationSettings() {
               onConfirm={confirmPicker}
             />
           )}
+        </>
+      )}
+
+      <View style={styles.sep} />
+      <SettingsRow
+        icon="moon-outline"
+        iconColor={quietHoursEnabled ? colors.accent : undefined}
+        label="Quiet hours"
+        hint={quietHoursEnabled
+          ? 'A reminder in this window waits until it ends; a timer alarm in it is skipped'
+          : 'Reminders and timer alarms can arrive at any hour'}
+        toggle={quietHoursEnabled}
+        onPress={() => onToggleQuietHours(!quietHoursEnabled)}
+      />
+
+      {quietHoursEnabled && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="moon-outline"
+            iconColor={colors.accent}
+            label="From"
+            value={formatHHMM(quietHoursStart ?? '00:00')}
+            onPress={() => openQuietPicker('start')}
+          />
+          {quietPickerKey === 'start' && (
+            <InlineTimePicker
+              value={quietPickerDate}
+              onChange={setQuietPickerDate}
+              onCancel={() => setQuietPickerKey(null)}
+              onConfirm={confirmQuietPicker}
+            />
+          )}
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="sunny-outline"
+            iconColor={colors.accent}
+            label="Until"
+            value={formatHHMM(quietHoursEnd ?? '00:00')}
+            onPress={() => openQuietPicker('end')}
+          />
+          {quietPickerKey === 'end' && (
+            <InlineTimePicker
+              value={quietPickerDate}
+              onChange={setQuietPickerDate}
+              onCancel={() => setQuietPickerKey(null)}
+              onConfirm={confirmQuietPicker}
+            />
+          )}
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="speedometer-outline"
+            label="Match my awake hours"
+            hint="Sets this to the mirror of Awake from/until, in Day & time"
+            value="Use"
+            onPress={matchAwakeHours}
+          />
         </>
       )}
     </SettingsSection>

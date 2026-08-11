@@ -39,6 +39,8 @@ const DEFAULT_MOCK_SETTINGS = {
   vacationMode: false,
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
+  quietHoursStart: null,
+  quietHoursEnd: null,
 };
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -62,6 +64,8 @@ import {
   MAX_PENDING_REMINDERS,
   scheduleDailyAgenda,
   cancelDailyAgenda,
+  isWithinQuietHours,
+  deferPastQuietHours,
 } from '../utils/notifications';
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 
@@ -423,6 +427,143 @@ describe('scheduleTimerAlarm', () => {
     await scheduleTimerAlarm(makeTask({ ...running, completed: true }));
     await scheduleTimerAlarm(makeTask({ ...running, archived: true }));
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});
+
+// ─── quiet hours ────────────────────────────────────────────────────────────
+
+describe('isWithinQuietHours', () => {
+  const at = (h: number, m = 0) => new Date(2026, 0, 1, h, m, 0, 0);
+
+  it('is false when either bound is null (off)', () => {
+    expect(isWithinQuietHours(at(23), null, '07:00')).toBe(false);
+    expect(isWithinQuietHours(at(23), '22:00', null)).toBe(false);
+    expect(isWithinQuietHours(at(23), null, null)).toBe(false);
+  });
+
+  it('is false for an equal start/end (zero-length window)', () => {
+    expect(isWithinQuietHours(at(22), '22:00', '22:00')).toBe(false);
+  });
+
+  it('handles a same-day window normally', () => {
+    expect(isWithinQuietHours(at(13, 30), '13:00', '15:00')).toBe(true);
+    expect(isWithinQuietHours(at(12, 59), '13:00', '15:00')).toBe(false);
+    expect(isWithinQuietHours(at(15, 0), '13:00', '15:00')).toBe(false); // end exclusive
+  });
+
+  it('treats an overnight window as inside on either side of midnight', () => {
+    expect(isWithinQuietHours(at(23), '22:00', '07:00')).toBe(true);  // before midnight
+    expect(isWithinQuietHours(at(3), '22:00', '07:00')).toBe(true);   // after midnight
+    expect(isWithinQuietHours(at(12), '22:00', '07:00')).toBe(false); // broad daylight
+    expect(isWithinQuietHours(at(7), '22:00', '07:00')).toBe(false);  // end exclusive
+  });
+});
+
+describe('deferPastQuietHours', () => {
+  it('passes a date outside the window through unchanged', () => {
+    const date = new Date(2026, 0, 1, 12, 0);
+    expect(deferPastQuietHours(date, '22:00', '07:00')).toBe(date);
+  });
+
+  it('passes a date through unchanged when quiet hours are off', () => {
+    const date = new Date(2026, 0, 1, 3, 0);
+    expect(deferPastQuietHours(date, null, null)).toBe(date);
+  });
+
+  it('defers to the same-day close for a same-day window', () => {
+    const date = new Date(2026, 0, 1, 13, 30);
+    const result = deferPastQuietHours(date, '13:00', '15:00');
+    expect(result.toISOString()).toBe(new Date(2026, 0, 1, 15, 0).toISOString());
+  });
+
+  it('defers an overnight-window early-morning trigger to that same day\'s close', () => {
+    const date = new Date(2026, 0, 2, 3, 0); // 3am, inside 22:00–07:00
+    const result = deferPastQuietHours(date, '22:00', '07:00');
+    expect(result.toISOString()).toBe(new Date(2026, 0, 2, 7, 0).toISOString());
+  });
+
+  it('defers an overnight-window before-midnight trigger to the next day\'s close', () => {
+    const date = new Date(2026, 0, 1, 23, 0); // 11pm, inside 22:00–07:00
+    const result = deferPastQuietHours(date, '22:00', '07:00');
+    expect(result.toISOString()).toBe(new Date(2026, 0, 2, 7, 0).toISOString());
+  });
+});
+
+describe('scheduleTaskReminder honors quiet hours by deferring', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('pushes a reminder landing in quiet hours out to the window close', async () => {
+    jest.setSystemTime(new Date(2026, 0, 1, 22, 30)); // 10:30pm, inside 22:00–07:00
+    mockSettings.quietHoursStart = '22:00';
+    mockSettings.quietHoursEnd = '07:00';
+    const reminderTime = new Date(2026, 0, 1, 23, 0).toISOString(); // 11pm — still inside
+    await scheduleTaskReminder(makeTask({ id: 'quiet-1', reminderTime }));
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.trigger.date.toISOString()).toBe(new Date(2026, 0, 2, 7, 0).toISOString());
+  });
+
+  it('leaves a reminder outside quiet hours untouched', async () => {
+    jest.setSystemTime(new Date(2026, 0, 1, 8, 0));
+    mockSettings.quietHoursStart = '22:00';
+    mockSettings.quietHoursEnd = '07:00';
+    const reminderTime = new Date(2026, 0, 1, 9, 0).toISOString();
+    await scheduleTaskReminder(makeTask({ id: 'quiet-2', reminderTime }));
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.trigger.date.toISOString()).toBe(new Date(reminderTime).toISOString());
+  });
+
+  it('does nothing to the trigger when quiet hours are off', async () => {
+    jest.setSystemTime(new Date(2026, 0, 1, 22, 30));
+    const reminderTime = new Date(2026, 0, 1, 23, 0).toISOString();
+    await scheduleTaskReminder(makeTask({ id: 'quiet-3', reminderTime }));
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.trigger.date.toISOString()).toBe(new Date(reminderTime).toISOString());
+  });
+
+  it('also defers an AlarmKit alarm landing in quiet hours', async () => {
+    mockAlarmKitAvailable = true;
+    jest.setSystemTime(new Date(2026, 0, 1, 22, 30));
+    mockSettings.quietHoursStart = '22:00';
+    mockSettings.quietHoursEnd = '07:00';
+    const reminderTime = new Date(2026, 0, 1, 23, 0).toISOString();
+    await scheduleTaskReminder(makeTask({ id: 'quiet-alarm', reminderTime, reminderKind: 'alarm' }));
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(
+      'quiet-alarm', new Date(2026, 0, 2, 7, 0), expect.any(String)
+    );
+  });
+});
+
+describe('scheduleTimerAlarm honors quiet hours by suppressing', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('does not schedule when the countdown would end inside quiet hours', async () => {
+    jest.setSystemTime(new Date(2026, 0, 1, 22, 50)); // 10 minutes from 23:00
+    mockSettings.quietHoursStart = '22:00';
+    mockSettings.quietHoursEnd = '07:00';
+    await scheduleTimerAlarm(
+      makeTask({
+        id: 'timer-quiet',
+        timedMinutes: 10,
+        timerStartedAt: new Date(2026, 0, 1, 22, 50).toISOString(),
+      })
+    );
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('schedules normally when the countdown ends outside quiet hours', async () => {
+    jest.setSystemTime(new Date(2026, 0, 1, 8, 0));
+    mockSettings.quietHoursStart = '22:00';
+    mockSettings.quietHoursEnd = '07:00';
+    await scheduleTimerAlarm(
+      makeTask({
+        id: 'timer-not-quiet',
+        timedMinutes: 10,
+        timerStartedAt: new Date(2026, 0, 1, 8, 0).toISOString(),
+      })
+    );
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
   });
 });
 
