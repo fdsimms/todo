@@ -63,6 +63,7 @@ beforeEach(() => {
   (dbGetMealPlanAddedToList as jest.Mock).mockReturnValue({});
   useMealPlanStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
+    lastAction: null,
   });
 });
 
@@ -213,6 +214,19 @@ describe('planMeal', () => {
     expect(dbInsertMealPlanEntry).toHaveBeenCalledWith(planned);
     expect(getEntries()).toEqual([]);
   });
+
+  it('registers an undo that removes the planned meal again', () => {
+    loadWeek();
+    const planned = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', title: 'Roast',
+    })!;
+
+    expect(useMealPlanStore.getState().lastAction?.label).toBe('Planned "Roast"');
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(dbDeleteMealPlanEntry).toHaveBeenCalledWith(planned.id);
+    expect(getEntries()).toEqual([]);
+  });
 });
 
 describe('moveEntry', () => {
@@ -275,6 +289,18 @@ describe('moveEntry', () => {
     useMealPlanStore.getState().moveEntry('gone', { date: '2026-08-07' });
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
+
+  it('registers an undo that moves the meal back to its original day and slot', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().moveEntry(dinner.id, { date: '2026-08-07', slot: 'lunch' });
+    expect(useMealPlanStore.getState().lastAction?.label).toBe(`Moved "${dinner.title}"`);
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(dbUpdateMealPlanEntry).toHaveBeenLastCalledWith(dinner);
+    expect(getEntries()[0]).toEqual(expect.objectContaining({ date: '2026-08-05', slot: 'dinner' }));
+  });
 });
 
 describe('removeEntry', () => {
@@ -286,6 +312,24 @@ describe('removeEntry', () => {
 
     expect(dbDeleteMealPlanEntry).toHaveBeenCalledWith(dinner.id);
     expect(getEntries()).toEqual([]);
+  });
+
+  it('registers an undo that re-inserts the removed meal', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().removeEntry(dinner.id);
+    expect(useMealPlanStore.getState().lastAction?.label).toBe(`Removed "${dinner.title}"`);
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(dbInsertMealPlanEntry).toHaveBeenCalledWith(dinner);
+    expect(getEntries()).toEqual([dinner]);
+  });
+
+  it('does not register an undo for an id it does not hold', () => {
+    loadWeek();
+    useMealPlanStore.getState().removeEntry('gone');
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
   });
 });
 
@@ -458,6 +502,20 @@ describe('purgeOldEntries', () => {
   });
 });
 
+describe('undoLastAction', () => {
+  it('is a no-op with nothing to undo', () => {
+    loadWeek();
+    expect(() => useMealPlanStore.getState().undoLastAction()).not.toThrow();
+  });
+
+  it('clears lastAction after undoing, so a second shake finds nothing', () => {
+    loadWeek();
+    useMealPlanStore.getState().planMeal({ date: '2026-08-05', slot: 'dinner', title: 'Roast' });
+    useMealPlanStore.getState().undoLastAction();
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+  });
+});
+
 describe('stampAddedToList', () => {
   it('records now against the week key and persists it', () => {
     jest.useFakeTimers().setSystemTime(new Date(2026, 7, 12, 9, 30));
@@ -502,6 +560,16 @@ describe('bulkDeleteEntries', () => {
     loadWeek([entry('2026-08-05', 'dinner')]);
     useMealPlanStore.getState().bulkDeleteEntries([]);
     expect(dbDeleteMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  // The confirm dialog tells the user this can't be undone — see the store's
+  // doc comment. It must not register a lastAction that would quietly
+  // contradict that.
+  it('does not register an undo — the confirm dialog promises it cannot be undone', () => {
+    const a = entry('2026-08-05', 'dinner');
+    loadWeek([a]);
+    useMealPlanStore.getState().bulkDeleteEntries([a.id]);
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
   });
 });
 
@@ -558,6 +626,20 @@ describe('bulkMoveEntries', () => {
     loadWeek([entry('2026-08-05', 'dinner')]);
     useMealPlanStore.getState().bulkMoveEntries([], { date: '2026-08-07' });
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('registers an undo that moves every entry back to its own original day and slot', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const b = entry('2026-08-06', 'lunch');
+    loadWeek([a, b]);
+
+    useMealPlanStore.getState().bulkMoveEntries([a.id, b.id], { date: '2026-08-07' });
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(getEntries().map(e => [e.id, e.date, e.slot]).sort()).toEqual([
+      [a.id, '2026-08-05', 'dinner'],
+      [b.id, '2026-08-06', 'lunch'],
+    ]);
   });
 });
 
@@ -618,6 +700,18 @@ describe('bulkReplaceItem', () => {
     expect(getEntries()[0].title).toBe('Original');
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
+
+  it('registers an undo that restores every entry to its original recipe and title', () => {
+    const a = entry('2026-08-05', 'dinner', {
+      recipeId: 'old-recipe', title: 'Old ragù', recipeChoices: ['c-roast'], leftoverId: 'lo-1',
+    });
+    loadWeek([a]);
+
+    useMealPlanStore.getState().bulkReplaceItem([a.id], { recipeId: 'new-recipe', title: 'New ragù' });
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(getEntries()[0]).toEqual(a);
+  });
 });
 
 describe('bulkSetCooked', () => {
@@ -657,5 +751,18 @@ describe('bulkSetCooked', () => {
     loadWeek([entry('2026-08-05', 'dinner')]);
     useMealPlanStore.getState().bulkSetCooked([], true);
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('registers an undo that restores each entry to its own original cookedAt', () => {
+    const a = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const b = entry('2026-08-06', 'lunch', { cookedAt: null });
+    loadWeek([a, b]);
+
+    useMealPlanStore.getState().bulkSetCooked([a.id, b.id], true);
+    useMealPlanStore.getState().undoLastAction();
+
+    const byId = new Map(getEntries().map(e => [e.id, e]));
+    expect(byId.get(a.id)!.cookedAt).toBe('2026-08-05T18:00:00.000Z');
+    expect(byId.get(b.id)!.cookedAt).toBeNull();
   });
 });
