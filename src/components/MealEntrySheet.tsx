@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   Animated,
   PanResponder,
@@ -11,7 +12,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { MealPlanEntry, MealSlot } from '../types';
-import { MEAL_SLOTS } from '../types';
+import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -28,6 +29,11 @@ interface Props {
   weekDays: Date[];
   onMove: (to: { date?: string; slot?: MealSlot }) => void;
   onRemove: () => void;
+  /**
+   * Present only for a free-text entry (no recipeId) — a recipe-backed
+   * title comes from the recipe and isn't independently editable here.
+   */
+  onRename?: (title: string) => void;
   /** Present only while the entry hasn't already been marked cooked. */
   onMarkCooked?: () => void;
   /** Present only while the entry's recipe still resolves. */
@@ -51,7 +57,7 @@ interface Props {
  * to Thursday *and* making it lunch is two taps rather than two round trips.
  */
 export function MealEntrySheet({
-  visible, entry, title, weekDays, onMove, onRemove, onMarkCooked, onOpenRecipe, onAddPrepTasks, onClose,
+  visible, entry, title, weekDays, onMove, onRemove, onRename, onMarkCooked, onOpenRecipe, onAddPrepTasks, onClose,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -59,6 +65,9 @@ export function MealEntrySheet({
 
   const translateY = useRef(new Animated.Value(600)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(title);
 
   useEffect(() => {
     if (!visible) return;
@@ -68,7 +77,18 @@ export function MealEntrySheet({
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
     ]).start();
-  }, [visible]);
+    // A fresh open (or a switch to a different entry) always starts read-only,
+    // regardless of whether the previous entry was left mid-edit.
+    setEditingTitle(false);
+    setDraftTitle(title);
+  }, [visible, entry?.id]);
+
+  const commitRename = () => {
+    setEditingTitle(false);
+    const trimmed = draftTitle.trim();
+    if (onRename && trimmed && trimmed !== title) onRename(trimmed);
+    else setDraftTitle(title);
+  };
 
   const dismiss = (after?: () => void) => {
     Animated.parallel([
@@ -109,7 +129,34 @@ export function MealEntrySheet({
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sheetTitle} numberOfLines={2}>{title}</Text>
+          {editingTitle ? (
+            <TextInput
+              style={styles.sheetTitleInput}
+              value={draftTitle}
+              onChangeText={setDraftTitle}
+              onBlur={commitRename}
+              onSubmitEditing={commitRename}
+              autoFocus
+              autoCorrect={false}
+              returnKeyType="done"
+              maxLength={RECIPE_NAME_MAX_LENGTH}
+              accessibilityLabel="Meal title"
+            />
+          ) : onRename ? (
+            <TouchableOpacity
+              style={styles.sheetTitleRow}
+              onPress={() => { haptics.tap(); setDraftTitle(title); setEditingTitle(true); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Rename ${title}`}
+              accessibilityHint="Opens a text field to edit this meal's title"
+            >
+              <Text style={[styles.sheetTitle, styles.sheetTitleEditable]} numberOfLines={2}>{title}</Text>
+              <Ionicons name="pencil-outline" size={iconSize.sm} color={colors.textTertiary} />
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.sheetTitle} numberOfLines={2}>{title}</Text>
+          )}
 
           <Text style={styles.label}>Move to</Text>
           <View style={styles.chips}>
@@ -268,6 +315,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
+  },
+  sheetTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
+  sheetTitleEditable: {
+    flexShrink: 1,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+  },
+  sheetTitleInput: {
+    color: colors.text,
+    fontSize: font.lg,
+    fontWeight: fontWeight.semibold,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    height: 28,
   },
   label: {
     color: colors.textTertiary,

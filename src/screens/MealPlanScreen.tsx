@@ -77,6 +77,7 @@ export function MealPlanScreen() {
   const planMeal = useMealPlanStore(s => s.planMeal);
   const moveEntry = useMealPlanStore(s => s.moveEntry);
   const removeEntry = useMealPlanStore(s => s.removeEntry);
+  const renameEntry = useMealPlanStore(s => s.renameEntry);
   const markEntryCooked = useMealPlanStore(s => s.markCooked);
   const addedToListAt = useMealPlanStore(useShallow(s => s.addedToListAt));
 
@@ -309,6 +310,11 @@ export function MealPlanScreen() {
           removeEntry(selected.id);
           setSelectedId(null);
         }}
+        onRename={
+          selected && !selected.recipeId
+            ? newTitle => renameEntry(selected.id, newTitle)
+            : undefined
+        }
         onMarkCooked={selected && !selected.cookedAt ? () => markCooked(selected) : undefined}
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)

@@ -73,6 +73,14 @@ interface MealPlanStore {
   removeEntry: (id: string) => void;
 
   /**
+   * Rewrites a free-text entry's title in place. Refuses a blank result (same
+   * rule as planMeal) and is a no-op on a recipe-backed entry — that title
+   * comes from the recipe, and renaming it here would just be overwritten the
+   * next time titleForEntry resolves the recipe again.
+   */
+  renameEntry: (id: string, title: string) => void;
+
+  /**
    * Stamps cookedAt with now. Idempotent — a second tap on an already-cooked
    * entry is a no-op, since the recipe's cookCount (bumped separately by the
    * caller via useRecipeStore.markCooked) must only ever go up once per
@@ -175,6 +183,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   removeEntry(id) {
     dbDeleteMealPlanEntry(id);
     set(s => ({ entries: s.entries.filter(e => e.id !== id) }));
+  },
+
+  renameEntry(id, title) {
+    const entry = get().entries.find(e => e.id === id);
+    if (!entry || entry.recipeId) return;
+    const cleaned = cleanMealTitle(title);
+    if (!cleaned || cleaned === entry.title) return;
+    const renamed: MealPlanEntry = { ...entry, title: cleaned };
+    dbUpdateMealPlanEntry(renamed);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? renamed : e) }));
   },
 
   markCooked(id) {
