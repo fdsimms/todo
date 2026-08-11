@@ -3,7 +3,6 @@ import {
   cleanMealTitle,
   dayKeyRange,
   daysWithoutMeal,
-  defaultPlanningDay,
   describeAddedToList,
   describeWeekPlan,
   describeWeekRange,
@@ -449,22 +448,6 @@ describe('dayKeyRange', () => {
 
   it('is null for no days at all', () => {
     expect(dayKeyRange([])).toBeNull();
-  });
-});
-
-describe('defaultPlanningDay', () => {
-  it('picks today when the week on screen includes it', () => {
-    const days = [new Date(2026, 7, 10), new Date(2026, 7, 11), new Date(2026, 7, 12)];
-    expect(defaultPlanningDay(days, new Date(2026, 7, 11, 9, 30))).toBe('2026-08-11');
-  });
-
-  it('falls back to the first day once paging has moved off the current week', () => {
-    const nextWeek = [new Date(2026, 7, 17), new Date(2026, 7, 18), new Date(2026, 7, 19)];
-    expect(defaultPlanningDay(nextWeek, new Date(2026, 7, 11))).toBe('2026-08-17');
-  });
-
-  it('is null for no days at all', () => {
-    expect(defaultPlanningDay([], new Date(2026, 7, 11))).toBeNull();
   });
 });
 
