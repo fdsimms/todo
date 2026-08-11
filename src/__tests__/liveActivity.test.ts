@@ -90,6 +90,7 @@ const BASE: Task = {
   emailAddress: null,
   blockedById: null,
   pendingImport: null,
+  mealEntryId: null,
 };
 
 function makeTask(overrides: Partial<Task>): Task {
