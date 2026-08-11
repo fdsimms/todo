@@ -440,7 +440,7 @@ export interface ExtractedRecipe {
  */
 function sharedRecipeInstructions(availableAisles: string[]): string[] {
   return [
-    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Give quantities in what you would buy. Ignore the method for the shopping list, and skip water.',
+    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, just with the prep instruction dropped — "4 cloves" or "3 cloves", not "1 bulb". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method for the shopping list, and skip water.',
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
   ];
 }
@@ -451,7 +451,9 @@ function sharedRecipeInstructions(availableAisles: string[]): string[] {
  *
  * The one genuinely hard thing here that a parser can't do: recipe
  * ingredients are written for cooking, not for buying ("3 cloves garlic,
- * minced" is one bulb of garlic), and the method section has to be ignored.
+ * minced" names a shop item as "garlic", keeping the stated "3 cloves" —
+ * never guessing a purchasable size like "1 bulb"), and the method section
+ * has to be ignored.
  * `suggestRecipeGroceries` below is a thin wrapper over this — one prompt,
  * one schema, one validator — so GroceryAISheet's "From a recipe" mode keeps
  * working exactly as it did before this existed.
@@ -529,7 +531,7 @@ export async function extractRecipe(
                 },
                 quantity: {
                   type: 'string',
-                  description: 'How much to buy, in shop terms ("2 lb", "1 bunch", "1 tbsp", "2 tsp"). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". Empty string if the recipe does not say.',
+                  description: 'The recipe\'s own amount, as written, with the prep dropped — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". Empty string if the recipe does not say.',
                 },
                 aisle: {
                   type: 'string',
