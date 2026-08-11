@@ -66,6 +66,18 @@ import {
  */
 const CART_HOLD_MS = 1200;
 
+/**
+ * Mirrors useTaskStore's UndoableAction: shake-to-undo reads whichever of the
+ * two stores' `lastAction` is freshest (see useShakeToUndo), so the shape has
+ * to match — `undo` reverts exactly this action, `at` is stamped centrally by
+ * setLastAction, never passed by a call site.
+ */
+interface UndoableAction {
+  label: string;
+  undo: () => void;
+  at?: number;
+}
+
 // One shared timer, re-armed by each tap, exactly like armCompletionCollapse
 // in useTaskStore — so a burst of checks sinks together instead of dribbling
 // down one row at a time.
@@ -114,6 +126,17 @@ interface GroceryStore {
   cartHoldIds: string[];
   initialized: boolean;
 
+  /**
+   * The most recent undoable grocery mutation — same shake-to-undo mechanism
+   * useTaskStore drives, kept as a twin field here rather than folded into
+   * that store because the two catalogs of undoable actions (tasks, grocery)
+   * are otherwise unrelated. useShakeToUndo compares both stores' `at` and
+   * offers whichever is freshest.
+   */
+  lastAction: UndoableAction | null;
+  setLastAction: (action: UndoableAction | null) => void;
+  undoLastAction: () => void;
+
   initialize: () => void;
 
   /**
@@ -127,7 +150,11 @@ interface GroceryStore {
   addByName: (
     raw: string,
     override?: { name: string; quantity: string | null },
-    source?: { recipeId: string; recipeTitle: string }
+    source?: { recipeId: string; recipeTitle: string },
+    /** `registerUndo: false` suppresses the per-call shake-to-undo entry — batch
+     * callers (addManyFromText, addFromPlan) use this and register one
+     * combined action of their own after the loop. */
+    opts?: { registerUndo?: boolean }
   ) => GroceryItem;
   /** A pasted block, one item per line. */
   addManyFromText: (raw: string) => { added: GroceryItem[]; alreadyOnList: GroceryItem[] };
@@ -282,6 +309,22 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   aisleOverrides: {},
   cartHoldIds: [],
   initialized: false,
+  lastAction: null,
+
+  setLastAction(action) {
+    set({ lastAction: action ? { ...action, at: Date.now() } : null });
+  },
+
+  undoLastAction() {
+    const action = get().lastAction;
+    if (!action) return;
+    try {
+      action.undo();
+    } catch (e) {
+      console.error('undoLastAction failed', e);
+    }
+    set({ lastAction: null });
+  },
 
   initialize() {
     const items = dbGetAllGroceryItems();
@@ -323,8 +366,16 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    * back on the list; only a genuinely new one inserts a row. That's why
    * there's never a duplicate, why autocomplete has history to rank, and why
    * next week's list starts from what you actually buy.
+   *
+   * Registers shake-to-undo by default (`opts.registerUndo`, default true) —
+   * "removeFromList" is the correct undo either way it branches below: it
+   * deletes a brand-new provisional row outright, or just un-lists a catalog
+   * row that was already there, restoring exactly the `onList: false` state
+   * this call found it in. Batch callers (addManyFromText, addFromPlan) pass
+   * `registerUndo: false` and register one combined action of their own
+   * instead, so a ten-line paste doesn't leave only the last line undoable.
    */
-  addByName(raw, override, source) {
+  addByName(raw, override, source, opts) {
     const { name, quantity } = override ?? parseGroceryInput(raw);
     // A name with no letters or digits ("???") normalises to an empty key.
     // Falling back to the raw text keeps the key unique, which matters: two
@@ -334,6 +385,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const key = groceryNameKey(name) || name.trim().toLowerCase();
     const now = new Date().toISOString();
     const existing = key ? get().items.find(i => i.nameKey === key) : undefined;
+    const wasOnList = existing?.onList === true;
 
     if (existing) {
       const updated: GroceryItem = {
@@ -352,6 +404,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         items: s.items.map(i => (i.id === existing.id ? updated : i)),
         cartHoldIds: s.cartHoldIds.filter(x => x !== existing.id),
       }));
+      if (opts?.registerUndo !== false && !wasOnList) {
+        get().setLastAction({
+          label: `Added "${updated.name}"`,
+          undo: () => get().removeFromList(updated.id),
+        });
+      }
       return updated;
     }
 
@@ -389,6 +447,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     };
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));
+    if (opts?.registerUndo !== false) {
+      get().setLastAction({
+        label: `Added "${item.name}"`,
+        undo: () => get().removeFromList(item.id),
+      });
+    }
     return item;
   },
 
@@ -400,9 +464,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       const key = groceryNameKey(parseGroceryInput(line).name);
       const before = key ? get().items.find(i => i.nameKey === key) : undefined;
       const wasOnList = before?.onList === true;
-      const item = get().addByName(line);
+      const item = get().addByName(line, undefined, undefined, { registerUndo: false });
       if (wasOnList) alreadyOnList.push(item);
       else added.push(item);
+    }
+    // One combined undo for the whole paste rather than addByName's per-line
+    // one, which the loop above suppresses — otherwise only the last line of
+    // a ten-item paste would be undoable.
+    if (added.length > 0) {
+      const addedIds = added.map(i => i.id);
+      get().setLastAction({
+        label: `${added.length} item${added.length === 1 ? '' : 's'} added`,
+        undo: () => get().removeFromListMany(addedIds),
+      });
     }
     return { added, alreadyOnList };
   },
@@ -426,6 +500,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     for (const u of updates) dbUpdateGroceryItem(u);
     const byId = new Map(updates.map(u => [u.id, u]));
     set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+
+    const addedIds = updates.map(u => u.id);
+    get().setLastAction({
+      label: `${addedIds.length} item${addedIds.length === 1 ? '' : 's'} added`,
+      undo: () => get().removeFromListMany(addedIds),
+    });
   },
 
   /**
@@ -465,13 +545,25 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         const item = get().addByName(
           row.name,
           undefined,
-          row.sourceRecipeId ? { recipeId: row.sourceRecipeId, recipeTitle: row.sourceRecipeTitle ?? '' } : undefined
+          row.sourceRecipeId ? { recipeId: row.sourceRecipeId, recipeTitle: row.sourceRecipeTitle ?? '' } : undefined,
+          { registerUndo: false }
         );
         if (row.aisle && !get().rememberedAisleFor(row.name)) get().setAisle(item.id, row.aisle);
         if (row.quantity) get().setQuantity(item.id, row.quantity);
         added.push(get().itemById(item.id) ?? item);
       }
     });
+
+    // One combined undo for the whole recipe, same reasoning as
+    // addManyFromText — removeFromList is still the right revert per row: it
+    // deletes a brand-new provisional row and un-lists a re-listed catalog one.
+    if (added.length > 0) {
+      const addedIds = added.map(i => i.id);
+      get().setLastAction({
+        label: `${added.length} item${added.length === 1 ? '' : 's'} added`,
+        undo: () => get().removeFromListMany(addedIds),
+      });
+    }
 
     return { added, alreadyOnList, skippedInCart };
   },

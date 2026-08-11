@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -7,9 +7,20 @@ import { useTaskStore } from '../../store/useTaskStore';
 import { useColors } from '../../theme/ThemeContext';
 import { spacing } from '../../theme';
 import { CalendarPicker } from '../../components/CalendarPicker';
+import { EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, type ExpiredTaskGraceDays } from '../../utils/expiredTaskGrace';
+import { CountStepper } from '../../components/CountStepper';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsPills, type PillOption } from './SettingsPills';
 import { makeSettingsStyles } from './settingsStyles';
+import { haptics } from '../../utils/haptics';
+import {
+  CADENCE_UNITS, CADENCE_UNIT_MAX, cadenceUnitLabel,
+  describeCadence, fromCadenceParts, toCadenceParts, withCadenceUnit,
+} from '../../utils/nudgeCadence';
+
+const EXPIRED_TASK_GRACE_PILLS: PillOption<ExpiredTaskGraceDays>[] =
+  EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
 
 export function TasksProjectsSettings() {
   const vacationMode = useSettingsStore(s => s.vacationMode);
@@ -23,12 +34,18 @@ export function TasksProjectsSettings() {
   const setAutoArchiveProjectsOnComplete = useSettingsStore(s => s.setAutoArchiveProjectsOnComplete);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
+  const defaultProjectNudgeCadenceDays = useSettingsStore(s => s.defaultProjectNudgeCadenceDays);
+  const setDefaultProjectNudgeCadenceDays = useSettingsStore(s => s.setDefaultProjectNudgeCadenceDays);
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
+
+  // The cadence is stored in days; the picker shows it as a count and a unit —
+  // same conversion the per-project field in ProjectEditor uses.
+  const defaultCadence = toCadenceParts(defaultProjectNudgeCadenceDays);
 
   return (
     <>
@@ -85,13 +102,21 @@ export function TasksProjectsSettings() {
       >
         <SettingsRow
           icon="time-outline"
-          iconColor={autoRemoveExpiredTasks ? colors.accent : undefined}
+          iconColor={autoRemoveExpiredTasks === null ? undefined : colors.accent}
           label="Auto-remove expired tasks"
-          hint={autoRemoveExpiredTasks
-            ? 'Deleted once their time window closes'
-            : 'Kept in an Expired section until you delete them'}
-          toggle={autoRemoveExpiredTasks}
-          onPress={() => setAutoRemoveExpiredTasks(!autoRemoveExpiredTasks)}
+          hint={autoRemoveExpiredTasks === null
+            ? 'Kept in an Expired section until you delete them'
+            : autoRemoveExpiredTasks === 0
+              ? 'Deleted the moment their time window closes'
+              : `Deleted ${expiredTaskGraceLabel(autoRemoveExpiredTasks).toLowerCase()} after their time window closes`}
+          tight
+        />
+        <SettingsPills
+          attached
+          options={EXPIRED_TASK_GRACE_PILLS}
+          selected={autoRemoveExpiredTasks}
+          onSelect={setAutoRemoveExpiredTasks}
+          accessibilityLabelFor={o => `Auto-remove expired tasks: ${o.label}`}
         />
       </SettingsSection>
 
@@ -120,6 +145,50 @@ export function TasksProjectsSettings() {
           toggle={autoArchiveProjectsOnComplete}
           onPress={() => setAutoArchiveProjectsOnComplete(!autoArchiveProjectsOnComplete)}
         />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="notifications-outline"
+          iconColor={defaultProjectNudgeCadenceDays > 0 ? colors.accent : undefined}
+          label="Default nudge cadence"
+          hint="What a new project starts with. Never by default — this doesn't touch projects you've already created, and each one can still override it."
+          value={describeCadence(defaultProjectNudgeCadenceDays)}
+          tight
+        />
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={defaultCadence.count}
+            onChange={next => setDefaultProjectNudgeCadenceDays(fromCadenceParts({ ...defaultCadence, count: next }))}
+            min={1}
+            max={CADENCE_UNIT_MAX[defaultCadence.unit]}
+            allowNull
+            emptyLabel="Never"
+            label="Default nudge cadence"
+            describeValue={n => describeCadence(fromCadenceParts({ ...defaultCadence, count: n }))}
+          />
+          <View style={styles.cadenceUnitRow}>
+            {CADENCE_UNITS.map(unit => {
+              // Never has no unit — leaving all three unlit is what says so.
+              const active = defaultCadence.count !== null && defaultCadence.unit === unit;
+              return (
+                <TouchableOpacity
+                  key={unit}
+                  style={[styles.pill, { flex: 0 }, active && styles.pillActive]}
+                  onPress={() => {
+                    haptics.tap();
+                    setDefaultProjectNudgeCadenceDays(fromCadenceParts(withCadenceUnit(defaultCadence, unit)));
+                  }}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Default nudge cadence in ${cadenceUnitLabel(unit)}`}
+                >
+                  <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                    {cadenceUnitLabel(unit)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
       </SettingsSection>
 
       <CalendarPicker

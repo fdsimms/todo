@@ -87,6 +87,8 @@ interface Props {
   seedLabel?: string | null;
   /** Which task type the sheet opens in — the add menu's Chain entry lands here. */
   initialType?: QuickAddType;
+  /** Seeds the title field on open, e.g. handing a search query straight into a new task. */
+  initialTitle?: string;
 }
 
 type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | 'link' | 'phone' | null;
@@ -122,7 +124,7 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
 
 export function QuickAddModal({
   visible, onClose, onOpenFull, context = 'today', onCreated, onResumed, seed, seedLabel,
-  initialType = 'task',
+  initialType = 'task', initialTitle,
 }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const addCategory = useTaskStore(s => s.addCategory);
@@ -233,7 +235,7 @@ export function QuickAddModal({
 
   useEffect(() => {
     if (visible) {
-      setTitle('');
+      setTitle(initialTitle ?? '');
       setPriority(0);
       setEffort(0);
       setEstimatedMinutes(null);
@@ -295,7 +297,7 @@ export function QuickAddModal({
       // animation rather than after it, so the keyboard is up sooner.
       inputRef.current?.focus();
     }
-  }, [visible, context, initialType]);
+  }, [visible, context, initialType, initialTitle]);
 
   // Natural-language scheduling: detect a trailing date/recurrence phrase in
   // the title ("go for a run on tuesday", "water plants every 3 days"). The

@@ -9,11 +9,13 @@ import {
   Keyboard,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
 import { RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { recipesUsing } from '../utils/recipeComponents';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { CountStepper } from './CountStepper';
@@ -38,20 +40,48 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
   const renameRecipe = useRecipeStore(s => s.renameRecipe);
   const setNotes = useRecipeStore(s => s.setNotes);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
-  const setSourceName = useRecipeStore(s => s.setSourceName);
+  const setAuthor = useRecipeStore(s => s.setAuthor);
+  const setSource = useRecipeStore(s => s.setSource);
   const setServings = useRecipeStore(s => s.setServings);
   const deleteRecipe = useRecipeStore(s => s.deleteRecipe);
 
   const [name, setName] = useState('');
   const [notes, setNotesDraft] = useState('');
   const [url, setUrl] = useState('');
-  const [source, setSource] = useState('');
+  const [author, setAuthorDraft] = useState('');
+  const [source, setSourceDraft] = useState('');
   const [servings, setServingsDraft] = useState<number | null>(null);
   const [servingsOpen, setServingsOpen] = useState(false);
+  const [authorOpen, setAuthorOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
+
+  // Distinct sources already in use elsewhere, so a repeat ("NYT Cooking" on a
+  // fifth recipe) is one tap instead of retyping it — same idea as
+  // LogbookScreen's availableCategories/availableTags, computed from the data
+  // that's actually there rather than a fixed list.
+  const existingSources = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          recipes
+            .filter(r => r.id !== recipe?.id)
+            .map(r => r.source?.trim())
+            .filter((s): s is string => !!s)
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [recipes, recipe?.id]
+  );
+  const sourceSuggestions = useMemo(() => {
+    const query = source.trim().toLowerCase();
+    const matches = query
+      ? existingSources.filter(s => s.toLowerCase().includes(query) && s.toLowerCase() !== query)
+      : existingSources;
+    return matches.slice(0, 8);
+  }, [existingSources, source]);
   const [linkOpen, setLinkOpen] = useState(false);
 
   useEffect(() => {
@@ -59,9 +89,11 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setName(recipe.name);
     setNotesDraft(recipe.notes);
     setUrl(recipe.sourceUrl ?? '');
-    setSource(recipe.sourceName ?? '');
+    setAuthorDraft(recipe.author ?? '');
+    setSourceDraft(recipe.source ?? recipe.sourceName ?? '');
     setServingsDraft(recipe.servings);
     setServingsOpen(false);
+    setAuthorOpen(false);
     setSourceOpen(false);
     setLinkOpen(false);
   }, [recipe]);
@@ -77,17 +109,28 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     }
     setNotes(recipe.id, notes);
     setSourceUrl(recipe.id, url);
-    setSourceName(recipe.id, source);
+    setAuthor(recipe.id, author);
+    setSource(recipe.id, source);
     setServings(recipe.id, servings);
     onClose();
   };
 
+  // Spells out what breaks, the way TemplateEditor's does for a nested
+  // template: the links aren't rewritten (see useRecipeStore.deleteRecipe), so
+  // the recipes using this one are about to show a row they have to deal with.
   const handleDelete = () => {
     if (!recipe) return;
     haptics.warning();
+    const usedBy = recipesUsing(recipes, recipe.id);
+    const base = `Delete “${recipe.name}”? Anything already on your grocery list stays there.`;
+    const message = usedBy.length === 0
+      ? base
+      : usedBy.length === 1
+        ? `${base} It's used as a component of “${usedBy[0].name}”, which will show it as missing until you remove it there.`
+        : `${base} It's used as a component of ${usedBy.length} other recipes (${usedBy.map(r => r.name).join(', ')}), which will show it as missing until you remove it there.`;
     Alert.alert(
       'Delete Recipe',
-      `Delete “${recipe.name}”? Anything already on your grocery list stays there.`,
+      message,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -166,19 +209,41 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           </View>
         )}
         <EditorRow
+          icon="person-outline"
+          label="Author"
+          value={author.trim() || undefined}
+          hint="Who it's from — a person, not a publication."
+          expanded={authorOpen}
+          onPress={() => { animateLayout(); setAuthorOpen(v => !v); }}
+          onClear={author.trim() ? () => { setAuthorDraft(''); setAuthorOpen(false); } : undefined}
+        />
+        {authorOpen && (
+          <TextInput
+            style={styles.urlInput}
+            value={author}
+            onChangeText={setAuthorDraft}
+            onSubmitEditing={() => Keyboard.dismiss()}
+            placeholder="Alison Roman…"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={RECIPE_SOURCE_MAX_LENGTH}
+            returnKeyType="done"
+            accessibilityLabel="Recipe author"
+          />
+        )}
+        <EditorRow
           icon="newspaper-outline"
           label="Source"
           value={source.trim() || undefined}
-          hint="Who it's from — a site, a magazine, a cookbook."
+          hint="Where it's from — a site, a magazine, a cookbook."
           expanded={sourceOpen}
           onPress={() => { animateLayout(); setSourceOpen(v => !v); }}
-          onClear={source.trim() ? () => { setSource(''); setSourceOpen(false); } : undefined}
+          onClear={source.trim() ? () => { setSourceDraft(''); setSourceOpen(false); } : undefined}
         />
         {sourceOpen && (
           <TextInput
             style={styles.urlInput}
             value={source}
-            onChangeText={setSource}
+            onChangeText={setSourceDraft}
             onSubmitEditing={() => Keyboard.dismiss()}
             placeholder="NYT Cooking, Bon Appétit…"
             placeholderTextColor={colors.textTertiary}
@@ -186,6 +251,22 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             returnKeyType="done"
             accessibilityLabel="Recipe source"
           />
+        )}
+        {sourceOpen && sourceSuggestions.length > 0 && (
+          <View style={styles.sourceChips}>
+            {sourceSuggestions.map(value => (
+              <TouchableOpacity
+                key={value}
+                style={styles.sourceChip}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => setSourceDraft(value)}
+                accessibilityRole="button"
+                accessibilityLabel={`Use source ${value}`}
+              >
+                <Text style={styles.sourceChipText} numberOfLines={1}>{value}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         )}
         <EditorRow
           icon="link-outline"
@@ -294,5 +375,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     paddingVertical: spacing.sm,
     minHeight: 96,
+  },
+  sourceChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  sourceChip: {
+    backgroundColor: colors.bgSunken,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    maxWidth: 220,
+  },
+  sourceChipText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
   },
 });

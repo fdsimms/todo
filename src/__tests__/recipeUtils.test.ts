@@ -18,7 +18,7 @@ import {
   suggestRecipesForEmptyNight,
   countLikelyInPantry,
 } from '../utils/recipeUtils';
-import type { GroceryItem, Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+import type { GroceryItem, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 
 // recipeUtils now reaches mealPlanGroceries.ts (for countLikelyInPantry) and,
 // through it, mealPlan.ts → dateUtils.ts → the settings store — which
@@ -40,6 +40,10 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
   };
 }
 
+function component(recipeId: string, name: string): RecipeComponent {
+  return { id: `c-${++seq}`, recipeId, name };
+}
+
 function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
     id: `r-${++seq}`,
@@ -48,8 +52,11 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     notes: '',
     sourceUrl: null,
     sourceName: null,
+    author: null,
+    source: null,
     servings: null,
     ingredients: [],
+    components: [],
     prepTasks: [],
     favorite: false,
     sortOrder: seq,
@@ -394,6 +401,18 @@ describe('describeRecipe', () => {
     expect(describeRecipe(r, null)).toBe('1 ingredient');
     expect(describeRecipe(r, 0)).toBe('1 ingredient');
   });
+
+  it('says a composed recipe has parts, right after its own ingredient count', () => {
+    const composed = recipe('I', {
+      ingredients: [ing('Steak')],
+      components: [component('r-mash', 'Mash')],
+      servings: 2,
+    });
+    expect(describeRecipe(composed)).toBe('1 ingredient · 1 component · serves 2');
+    expect(describeRecipe(recipe('J', {
+      components: [component('r-mash', 'Mash'), component('r-gravy', 'Gravy')],
+    }))).toBe('0 ingredients · 2 components');
+  });
 });
 
 describe('cleanRecipeName', () => {
@@ -441,6 +460,17 @@ describe('rankRecipes', () => {
 
   it('drops what does not match at all', () => {
     expect(rankRecipes('lasagne', all)).toEqual([]);
+  });
+
+  it('finds a dish by an ingredient that lives on one of its components', () => {
+    const mash = recipe('Mash', { nameKey: 'mash', ingredients: [ing('Potatoes', { nameKey: 'potatoes' })] });
+    const steak = recipe('Steak dinner', {
+      nameKey: 'steak dinner',
+      ingredients: [ing('Steak', { nameKey: 'steak' })],
+      components: [component(mash.id, 'Mash')],
+    });
+
+    expect(rankRecipes('potatoes', [steak, mash]).map(r => r.name)).toEqual(['Mash', 'Steak dinner']);
   });
 });
 
@@ -551,6 +581,21 @@ describe('scoreRecipeAgainstCatalog', () => {
     const stale = [item('Onions', { nameKey: 'onions', lastPurchasedAt: new Date(2026, 0, 1).toISOString() })];
     expect(scoreRecipeAgainstCatalog(r, fresh, now)).toBeGreaterThan(scoreRecipeAgainstCatalog(r, stale, now));
   });
+
+  it('measures coverage over the components too, not just the parent\'s own lines', () => {
+    const mash = recipe('Mash', { ingredients: [ing('Saffron', { nameKey: 'saffron' })] });
+    const steak = recipe('Steak dinner', {
+      ingredients: [ing('Onions', { nameKey: 'onions' })],
+      components: [component(mash.id, 'Mash')],
+    });
+    const items = [item('Onions', { nameKey: 'onions' })];
+    const byId = new Map([[steak.id, steak], [mash.id, mash]]);
+
+    // Half its shopping is unaccounted for once the component counts, so it
+    // has to score below the same recipe read on its own.
+    expect(scoreRecipeAgainstCatalog(steak, items, now, byId))
+      .toBeLessThan(scoreRecipeAgainstCatalog(steak, items, now));
+  });
 });
 
 describe('countLikelyInPantry', () => {
@@ -585,6 +630,20 @@ describe('countLikelyInPantry', () => {
       ],
     });
     expect(countLikelyInPantry(r, [milk, onions], now)).toBe(1);
+  });
+
+  it('counts a component\'s ingredients when given the library', () => {
+    const milk = item('Milk', {
+      nameKey: 'milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+    });
+    const mash = recipe('Mash', { ingredients: [ing('Milk', { nameKey: 'milk' })] });
+    const steak = recipe('Steak dinner', {
+      ingredients: [ing('Steak', { nameKey: 'steak' })],
+      components: [component(mash.id, 'Mash')],
+    });
+
+    expect(countLikelyInPantry(steak, [milk], now)).toBeNull();
+    expect(countLikelyInPantry(steak, [milk], now, new Map([[steak.id, steak], [mash.id, mash]]))).toBe(1);
   });
 });
 

@@ -668,6 +668,42 @@ export interface RecipeIngredient {
   prep: string | null;
 }
 
+// One recipe used as a part of another — "mashed potatoes" inside both "Steak
+// with mash" and "Salmon with mash".
+//
+// A *reference*, and the reference is the entire point: the alternative is
+// copying the component's ingredients into every parent, which is what the user
+// already has to do by hand and which stops being true the moment the component
+// is edited. Nothing here is a snapshot of the component's contents; flattening
+// happens at read time, in src/utils/recipeComponents.ts.
+//
+// **Deliberately its own list rather than a RecipeIngredient carrying a
+// refRecipeId.** TemplateItem does it the other way (a ref item sits among the
+// real ones), and that works there because a template's items are already a
+// heterogeneous pile of drafts. An ingredient is not: `nameKey` is THE bridge
+// to the grocery catalog, and every reader — mergeIngredients' dedupe,
+// remapIngredientKeyIn, classifyPlanned, the aisle lexicon — is written on the
+// assumption that a line names something you can put in a trolley. A component
+// names a dish. Mixing them makes every one of those readers ask "but is this
+// one real", which is the hidden-second-row-type shape this app has rejected
+// twice already (Series ghost rows, TaskGroup.completedAt).
+export interface RecipeComponent {
+  // The link's own id, not the target's — so a component can be removed by
+  // identity, exactly like an ingredient row.
+  id: string;
+  // The referenced recipe. **Deliberately no cascade when it's deleted**, same
+  // as MealPlanEntry.recipeId and TemplateItem.refTemplateId: foreign keys are
+  // off, and resolve-or-shrug is the house rule for every cross-row pointer
+  // here. A component that no longer resolves contributes zero ingredients and
+  // renders as a broken row the user can remove.
+  recipeId: string;
+  // Captured at link time and never refreshed, so a dangling link still has
+  // something to name. Only ever rendered when recipeId stops resolving — a
+  // live component shows the referenced recipe's current name, so a rename
+  // propagates the way the whole feature promises.
+  name: string;
+}
+
 // A dish you cook, with what it takes to shop for it.
 //
 // Its own table rather than a TaskTemplate variant: applyTemplate materialises
@@ -684,13 +720,27 @@ export interface Recipe {
   nameKey: string;
   notes: string;
   sourceUrl: string | null;
-  // Who it's from — "NYT Cooking", "Bon Appétit", a cookbook title. Separate
-  // from sourceUrl on purpose: a clipped recipe usually has a link, a recipe
-  // typed in from a magazine or a friend usually doesn't, and neither one
-  // implies the other. null means no attribution was given, not "unknown".
+  // Legacy single attribution field, superseded by author/source below
+  // (#1266). Old recipes may still carry a value here; nothing writes it any
+  // more. Kept read-only rather than backfilled: an old value like "Alison
+  // Roman, Nothing Fancy" can't be reliably split into a person vs. a
+  // publication, so guessing would just move the ambiguity into two fields.
+  // describeRecipe() falls back to it only when neither new field is set.
   sourceName: string | null;
+  // The person it's from — "Alison Roman". Independent of `source`, same as
+  // sourceUrl was independent of sourceName: plenty of recipes name one but
+  // not the other, and neither implies the other. null means no attribution
+  // was given, not "unknown".
+  author: string | null;
+  // The publication/cookbook/site it's from — "Nothing Fancy", "NYT Cooking".
+  // Independent of `author` for the same reason.
+  source: string | null;
   servings: number | null;
   ingredients: RecipeIngredient[];
+  // The recipes this one is partly made of — see RecipeComponent. Empty for
+  // every recipe that isn't composed, which is most of them; the ingredient
+  // list is still where a plain recipe lives.
+  components: RecipeComponent[];
   // "Defrost the chicken", "start the sauce at 5" — real Tasks once "Add prep
   // tasks" on a planned meal walks this list, not a meal-specific reminder
   // path. src/utils/notifications.ts is Task-typed end to end

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Alert, AppState, AppStateStatus } from 'react-native';
 import { Accelerometer } from 'expo-sensors';
 import { useTaskStore } from '../store/useTaskStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { isAppLocked } from '../store/useAppLockStore';
 import { haptics } from './haptics';
 import {
@@ -68,7 +69,16 @@ export function useShakeToUndo(enabled: boolean): void {
         // a task title on top of a lock screen. A locked app stays locked.
         if (isAppLocked()) return;
 
-        const { lastAction, undoLastAction } = useTaskStore.getState();
+        // Tasks and grocery keep independent undo queues (see useGroceryStore's
+        // lastAction doc comment) — offer whichever of the two is freshest,
+        // same as if there were one shared queue.
+        const taskState = useTaskStore.getState();
+        const groceryState = useGroceryStore.getState();
+        const fromGrocery =
+          !!groceryState.lastAction &&
+          (!taskState.lastAction || (groceryState.lastAction.at ?? 0) > (taskState.lastAction.at ?? 0));
+        const lastAction = fromGrocery ? groceryState.lastAction : taskState.lastAction;
+        const undoLastAction = fromGrocery ? groceryState.undoLastAction : taskState.undoLastAction;
         if (!lastAction) return;
         if (!isUndoActionFresh(lastAction.at, now)) return;
 

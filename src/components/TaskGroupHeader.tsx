@@ -32,13 +32,17 @@ interface Props {
   // don't render while a filter is narrowing the list underneath them.
   filtered?: boolean;
   onToggleCollapse: () => void;
-  onComplete: () => void;
-  onDefer: (date: Date) => void;
+  // These three (plus onPressEdit below) take the group's own id back rather
+  // than closing over it — the same reason TaskItem's row handlers take
+  // `task.id` — so TodayScreen can hand every header one stable `useCallback`
+  // instead of a fresh closure per group per render.
+  onComplete: (groupId: string) => void;
+  onDefer: (groupId: string, date: Date) => void;
   // Swipe left enters bulk editing with the stack's live roster selected —
   // see the roster note in TodayScreen. Omitted on a list with no bulk bar,
   // which hides the panel rather than revealing a no-op.
-  onSwipeSelect?: () => void;
-  onPressEdit: () => void;
+  onSwipeSelect?: (groupId: string) => void;
+  onPressEdit: (groupId: string) => void;
   /** Long-pressing the title starts dragging the whole group (see TodayScreen). */
   onDrag?: () => void;
 }
@@ -84,7 +88,7 @@ export function TaskGroupHeader({
   const completeAll = () => {
     if (allDone) return;
     haptics.impactMedium();
-    onComplete();
+    onComplete(group.id);
   };
 
   return (
@@ -97,7 +101,7 @@ export function TaskGroupHeader({
               "delete" on stacks and "select" on every task under them. */}
           <SwipeableRow
             selectAction={onSwipeSelect ? {
-              onSelect: onSwipeSelect,
+              onSelect: () => onSwipeSelect(group.id),
               accessibilityLabel: `Select all of ${group.title}`,
             } : undefined}
             whenAction={{
@@ -197,7 +201,7 @@ export function TaskGroupHeader({
                   buttons made the header the busiest row on the screen for
                   the rarest action on it; it lives in the stack editor now. */}
               <TouchableOpacity
-                onPress={onPressEdit}
+                onPress={() => onPressEdit(group.id)}
                 hitSlop={8}
                 style={styles.iconBtn}
                 accessibilityRole="button"
@@ -219,7 +223,7 @@ export function TaskGroupHeader({
           title="Reschedule"
           showTimeOfDay={false}
           showSuggest={false}
-          onConfirm={date => { setShowDefer(false); if (date) onDefer(date); }}
+          onConfirm={date => { setShowDefer(false); if (date) onDefer(group.id, date); }}
           onCancel={() => setShowDefer(false)}
         />
       )}

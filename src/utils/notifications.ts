@@ -18,6 +18,66 @@ function usesAlarmKit(task: Task): boolean {
   return task.reminderKind === 'alarm' && isAlarmKitAvailable();
 }
 
+// ─── Quiet hours ─────────────────────────────────────────────────────────────
+//
+// "Don't buzz me between X and Y" (useSettingsStore's quietHoursStart/End,
+// both null = off). Pure clock-time comparison against a trigger Date's local
+// hours/minutes — deliberately no dayResetTime/logical-day anchoring the way
+// visibilityUtils' window gates use, because this isn't about which day a task
+// belongs to, it's "what time does my phone read right now."
+
+function hhmmToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/**
+ * True when `date`'s wall-clock time falls inside the quiet-hours window.
+ * Handles an overnight window (start > end, e.g. "22:00"–"07:00") by treating
+ * "inside" as either side of midnight, same shape as effectiveWindowEnd's
+ * overnight handling in visibilityUtils.ts. An equal start/end (zero-length
+ * window) is treated as off rather than "always quiet."
+ */
+export function isWithinQuietHours(
+  date: Date, quietHoursStart: string | null, quietHoursEnd: string | null
+): boolean {
+  if (!quietHoursStart || !quietHoursEnd) return false;
+  const startMin = hhmmToMinutes(quietHoursStart);
+  const endMin = hhmmToMinutes(quietHoursEnd);
+  if (startMin === endMin) return false;
+  const minutes = date.getHours() * 60 + date.getMinutes();
+  return startMin < endMin
+    ? minutes >= startMin && minutes < endMin
+    : minutes >= startMin || minutes < endMin;
+}
+
+/**
+ * Pushes a trigger date that lands inside quiet hours out to the window's
+ * close. For an overnight window the close is on the *same* calendar day when
+ * the trigger fell on the early-morning side (e.g. 3am inside 22:00–07:00
+ * closes at that day's 7am) and on the *next* day when it fell on the
+ * before-midnight side (e.g. 23:00 inside 22:00–07:00 closes at tomorrow's
+ * 7am) — mirroring the wrap-around a window spanning midnight actually means.
+ * A date outside the window (or quiet hours off) passes through unchanged.
+ */
+export function deferPastQuietHours(
+  date: Date, quietHoursStart: string | null, quietHoursEnd: string | null
+): Date {
+  if (!isWithinQuietHours(date, quietHoursStart, quietHoursEnd)) return date;
+  const startMin = hhmmToMinutes(quietHoursStart!);
+  const endMin = hhmmToMinutes(quietHoursEnd!);
+  const [endH, endM] = quietHoursEnd!.split(':').map(Number);
+  const result = new Date(date);
+  result.setHours(endH, endM, 0, 0);
+  if (startMin > endMin) {
+    // Overnight window — only the before-midnight side needs the day bumped;
+    // the early-morning side's close is already later today.
+    const minutes = date.getHours() * 60 + date.getMinutes();
+    if (minutes >= startMin) result.setDate(result.getDate() + 1);
+  }
+  return result;
+}
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -60,8 +120,14 @@ export async function getNotificationPermission(): Promise<NotificationPermissio
 
 export async function scheduleTaskReminder(task: Task): Promise<void> {
   if (!task.reminderTime || task.completed || task.archived) return;
-  const triggerDate = new Date(task.reminderTime);
+  let triggerDate = new Date(task.reminderTime);
   if (triggerDate <= new Date()) return;
+
+  // Quiet hours defer rather than drop: a reminder still matters at 7am even
+  // if the moment the user asked for it was 3am. (Timer alarms below take the
+  // opposite call — see scheduleTimerAlarm.)
+  const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+  triggerDate = deferPastQuietHours(triggerDate, quietHoursStart, quietHoursEnd);
 
   if (usesAlarmKit(task)) {
     // Belt-and-suspenders: a reminder that switched from 'alarm' to
@@ -233,6 +299,14 @@ export async function scheduleTimerAlarm(task: Task): Promise<void> {
   const remaining = timerRemaining(task);
   if (remaining <= 0) return; // already up — the row shows it as ready on sight
 
+  const triggerDate = new Date(Date.now() + remaining * 1000);
+
+  // Quiet hours suppress rather than defer here, unlike scheduleTaskReminder:
+  // a finished timer's "ready to complete" is stale by the time the window
+  // ends, and a stack of them all landing at 7am is worse than none.
+  const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+  if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return;
+
   await Notifications.scheduleNotificationAsync({
     identifier: timerAlarmId(task.id),
     content: {
@@ -243,7 +317,7 @@ export async function scheduleTimerAlarm(task: Task): Promise<void> {
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: new Date(Date.now() + remaining * 1000),
+      date: triggerDate,
     },
   });
 }

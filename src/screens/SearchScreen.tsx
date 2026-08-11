@@ -14,7 +14,8 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
-import { TaskEditor } from '../components/TaskEditor';
+import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
+import { QuickAddModal } from '../components/QuickAddModal';
 import type { Task } from '../types';
 import type { SearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch } from '../utils/fuzzySearch';
@@ -137,6 +138,8 @@ export function SearchScreen() {
   const [query, setQuery] = useState('');
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
+  const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   // Handed a query by quick search (see QuickSearchModal's footer row).
@@ -199,6 +202,13 @@ export function SearchScreen() {
     setEditorVisible(true);
   };
 
+  const handleQuickAddOpenFull = (draft: TaskDraft) => {
+    setQuickAddVisible(false);
+    setEditingTask(null);
+    setEditorInitialDraft(draft);
+    setEditorVisible(true);
+  };
+
   const renderItem = ({ item }: { item: ListItem }) => {
     if (item.type === 'sectionHeader') {
       return (
@@ -232,7 +242,15 @@ export function SearchScreen() {
       />
 
       {showEmpty ? (
-        <EmptyState key="no-results" icon="search-outline" title="No results" subtitle={`No todos match "${query}"`} bottomOffset={tabBarHeight} />
+        <EmptyState
+          key="no-results"
+          icon="search-outline"
+          title="No results"
+          subtitle={`No todos match "${query}"`}
+          actionLabel="Create task"
+          onAction={() => setQuickAddVisible(true)}
+          bottomOffset={tabBarHeight}
+        />
       ) : query.trim().length === 0 ? (
         <EmptyState key="prompt" icon="search-outline" title="Find any todo" subtitle="Search active and completed todos" bottomOffset={tabBarHeight} />
       ) : (
@@ -250,7 +268,15 @@ export function SearchScreen() {
       <TaskEditor
         visible={editorVisible}
         task={editingTask}
-        onClose={() => setEditorVisible(false)}
+        initialDraft={editorInitialDraft}
+        onClose={() => { setEditorVisible(false); setEditorInitialDraft(null); }}
+      />
+
+      <QuickAddModal
+        visible={quickAddVisible}
+        onClose={() => setQuickAddVisible(false)}
+        onOpenFull={handleQuickAddOpenFull}
+        initialTitle={query}
       />
     </View>
   );

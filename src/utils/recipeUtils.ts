@@ -12,6 +12,7 @@ import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep } from 
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
+import { describeComponents, flattenRecipeIngredients, recipeMap } from './recipeComponents';
 
 // splitPrep lives in groceryParse.ts now — the plain grocery quick-add field
 // runs the same split for its live preview, not just recipe ingredient lines
@@ -215,19 +216,28 @@ export function resolvePrepTaskDraft(
 }
 
 /**
- * "8 ingredients · 6 likely in pantry · serves 4 · NYT Cooking" — the recipe
- * row's subtitle. `likelyInPantry` is optional and omitted (both the param
- * and, given a falsy count, the phrase) rather than ever rendering "0 likely
- * in pantry" — see `countLikelyInPantry`.
+ * "8 ingredients · 1 component · 6 likely in pantry · serves 4 · NYT Cooking" —
+ * the recipe row's subtitle. `likelyInPantry` is optional and omitted (both the
+ * param and, given a falsy count, the phrase) rather than ever rendering "0
+ * likely in pantry" — see `countLikelyInPantry`.
+ *
+ * The ingredient count is the recipe's *own* lines, never the flattened total,
+ * because it has to agree with the list the detail screen puts on screen right
+ * under it. What the component clause is for is saying there's more: "3
+ * ingredients" alone would read as the whole shop for a dish that's mostly its
+ * parts.
  */
 export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): string {
   const count = recipe.ingredients.length;
   const parts = [count === 1 ? '1 ingredient' : `${count} ingredients`];
+  const components = describeComponents(recipe);
+  if (components) parts.push(components);
   if (likelyInPantry) {
     parts.push(likelyInPantry === 1 ? '1 likely in pantry' : `${likelyInPantry} likely in pantry`);
   }
   if (recipe.servings) parts.push(`serves ${recipe.servings}`);
-  if (recipe.sourceName) parts.push(recipe.sourceName);
+  const attribution = describeAttribution(recipe);
+  if (attribution) parts.push(attribution);
   return parts.join(' · ');
 }
 
@@ -238,16 +248,34 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): 
  * section, reused here rather than re-deriving it, and reduced to a count for
  * the recipe list row. Null (never 0) when there's nothing worth showing: no
  * ingredients, or nothing in the catalog reads as still on hand.
+ *
+ * `recipesById` counts a composed recipe's components in, so the number means
+ * the same thing the "Add ingredients to list" sheet will show. Optional for
+ * the same reason plannedIngredientsForRecipe's is.
  */
 export function countLikelyInPantry(
   recipe: Recipe,
   items: readonly GroceryItem[],
   now: Date,
+  recipesById?: ReadonlyMap<string, Recipe>,
 ): number | null {
-  if (recipe.ingredients.length === 0) return null;
-  const classified = classifyPlanned(plannedIngredientsForRecipe(recipe), items, now);
+  const planned = plannedIngredientsForRecipe(recipe, recipesById);
+  if (planned.length === 0) return null;
+  const classified = classifyPlanned(planned, items, now);
   const count = classified.filter(row => row.category === 'probablyHave').length;
   return count > 0 ? count : null;
+}
+
+/**
+ * "by Alison Roman — Nothing Fancy", or whichever of author/source is set.
+ * Falls back to the legacy sourceName only when neither new field has ever
+ * been given a value — an old recipe nobody has re-edited since #1266.
+ */
+export function describeAttribution(recipe: Recipe): string | null {
+  if (recipe.author && recipe.source) return `by ${recipe.author} — ${recipe.source}`;
+  if (recipe.author) return `by ${recipe.author}`;
+  if (recipe.source) return recipe.source;
+  return recipe.sourceName || null;
 }
 
 /** Trims and caps a name for storage. Empty means "not a name" — callers refuse it. */
@@ -265,10 +293,16 @@ export function cleanRecipeSource(raw: string): string {
  * rankGrocerySuggestions' 3/2/1 prefix / word-start / substring weighting so
  * searching here behaves the way searching the catalog already does. Favorites
  * break ties; nothing else does, because Phase 1 has no cook history to rank on.
+ *
+ * The ingredient match runs over the *flattened* list, built from the same
+ * `recipes` array rather than a second parameter — searching "potato" has to
+ * find the dinner whose mash is where the potatoes are written down, or a
+ * component is a place ingredients go to hide from search.
  */
 export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[] {
   const q = groceryNameKey(query);
   if (!q) return [...recipes];
+  const byId = recipeMap(recipes);
   const scored: Array<{ recipe: Recipe; weight: number }> = [];
   for (const recipe of recipes) {
     const key = recipe.nameKey;
@@ -278,7 +312,7 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
     else if (key.includes(q)) weight = 1;
     // An ingredient match is a real hit — "what can I make with fennel" is the
     // question a recipe box is for — but it must never outrank a name match.
-    else if (recipe.ingredients.some(i => i.nameKey.includes(q))) weight = 0.5;
+    else if (flattenRecipeIngredients(recipe, byId).some(f => f.ingredient.nameKey.includes(q))) weight = 0.5;
     if (weight > 0) scored.push({ recipe, weight });
   }
   return scored
@@ -353,19 +387,25 @@ export function scoreRecipeAgainstCatalog(
   recipe: Recipe,
   items: readonly GroceryItem[],
   now: Date,
+  recipesById?: ReadonlyMap<string, Recipe>,
 ): number {
-  if (recipe.ingredients.length === 0) return 0;
+  // Coverage has to be measured over everything the dish actually needs — a
+  // parent with two ingredients of its own would otherwise score as a night's
+  // cooking away from ready while its components' shopping list is untouched.
+  const ingredients = flattenRecipeIngredients(recipe, recipesById ?? new Map([[recipe.id, recipe]]))
+    .map(f => f.ingredient);
+  if (ingredients.length === 0) return 0;
   const byKey = new Map(items.map(i => [i.nameKey, i]));
   let matched = 0;
   let recencySum = 0;
-  for (const ingredient of recipe.ingredients) {
+  for (const ingredient of ingredients) {
     const item = byKey.get(ingredient.nameKey);
     if (!item) continue;
     matched += 1;
     recencySum += purchaseRecency(item, now);
   }
   if (matched === 0) return 0;
-  const coverage = matched / recipe.ingredients.length;
+  const coverage = matched / ingredients.length;
   const avgRecency = recencySum / matched;
   return coverage * (0.5 + 0.5 * avgRecency);
 }
@@ -384,8 +424,9 @@ export function suggestRecipesForEmptyNight(
   now: Date,
   limit = 3,
 ): Recipe[] {
+  const byId = recipeMap(recipes);
   return recipes
-    .map(recipe => ({ recipe, score: scoreRecipeAgainstCatalog(recipe, items, now) }))
+    .map(recipe => ({ recipe, score: scoreRecipeAgainstCatalog(recipe, items, now, byId) }))
     .filter(x => x.score > 0)
     .sort((a, b) => b.score - a.score || a.recipe.name.localeCompare(b.recipe.name))
     .slice(0, limit)
