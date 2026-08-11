@@ -584,10 +584,11 @@ export interface RecipeMealTypeSection {
  * display order — mirroring how makeCategoryGroups orders Today's category
  * sections by a fixed list rather than alphabetically or by section size.
  * Untagged recipes (mealType: null) trail in their own section rather than
- * leading like Today's header-less loose group, because here there's no drag
- * to strand a recipe "above": a section list is read top to bottom, and most
- * existing recipes predate this field, so leading with a wall of "Untagged"
- * would bury the very grouping the user just asked for.
+ * leading like Today's header-less loose group: most existing recipes predate
+ * this field, so leading with a wall of "Untagged" would bury the very
+ * grouping the user just asked for. That does mean the drag surface (below)
+ * has to forbid dropping a recipe above the very first header — there's no
+ * "above every section" region here the way Today has one for uncategorized.
  *
  * A meal type with no recipes is omitted entirely rather than rendered empty,
  * same as makeCategoryGroups omitting empty categories.
@@ -612,6 +613,62 @@ export function groupRecipesByMealType(recipes: readonly Recipe[]): RecipeMealTy
     sections.push({ mealType: null, title: 'Untagged', data: sortRecipesForDisplay(untagged) });
   }
   return sections;
+}
+
+/** One row of the grouped, draggable recipe list — a section header or a recipe. */
+export type RecipeListItem =
+  | { type: 'header'; mealType: RecipeMealType | null; title: string }
+  | { type: 'recipe'; recipe: Recipe };
+
+/** Flattens grouped sections into the row list RecipesScreen's ReorderableList drags. */
+export function flattenRecipeMealTypeSections(sections: readonly RecipeMealTypeSection[]): RecipeListItem[] {
+  const items: RecipeListItem[] = [];
+  sections.forEach(section => {
+    items.push({ type: 'header', mealType: section.mealType, title: section.title });
+    section.data.forEach(recipe => items.push({ type: 'recipe', recipe }));
+  });
+  return items;
+}
+
+/** Stable row key for a RecipeListItem, for ReorderableList's keyExtractor. */
+export function recipeListItemKey(item: RecipeListItem): string {
+  return item.type === 'header' ? `h-${item.mealType ?? 'untagged'}` : item.recipe.id;
+}
+
+/**
+ * Resolve a drag-and-drop on the grouped recipe list into mealType writes.
+ *
+ * A recipe adopts the mealType of the nearest header above it — same rule
+ * `resolveDrop` (taskGrouping.ts) applies for tasks and Today's categories.
+ * There's no "above every header" case to handle here (unlike Today, where
+ * that region is the loose/uncategorized group): the caller's dragRange must
+ * keep row 0 — always a header, since groupRecipesByMealType never emits an
+ * empty section — off limits to a drop.
+ *
+ * `settled` is the regrouped layout (rebuilt with groupRecipesByMealType, so
+ * favorites-first order within a section is preserved) to render immediately,
+ * matching what the store-derived list will recompute to once the writes land.
+ */
+export function resolveRecipeMealTypeDrop(reordered: readonly RecipeListItem[]): {
+  mealTypeUpdates: Array<{ id: string; mealType: RecipeMealType | null }>;
+  settled: RecipeListItem[];
+} {
+  const mealTypeUpdates: Array<{ id: string; mealType: RecipeMealType | null }> = [];
+  const updatedRecipes: Recipe[] = [];
+  let currentMealType: RecipeMealType | null = null;
+  reordered.forEach(item => {
+    if (item.type === 'header') {
+      currentMealType = item.mealType;
+      return;
+    }
+    if (item.recipe.mealType !== currentMealType) {
+      mealTypeUpdates.push({ id: item.recipe.id, mealType: currentMealType });
+      updatedRecipes.push({ ...item.recipe, mealType: currentMealType });
+    } else {
+      updatedRecipes.push(item.recipe);
+    }
+  });
+  return { mealTypeUpdates, settled: flattenRecipeMealTypeSections(groupRecipesByMealType(updatedRecipes)) };
 }
 
 /** "Cooked once" / "Cooked 4× · last on 12 Jul" — empty when never cooked. */
