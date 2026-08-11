@@ -82,8 +82,16 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
   const plan = useMemo(() => planTrip(items, itemShops, shops), [items, itemShops, shops]);
   const total = plan.itemIds.length;
 
+  const linkItemShopMany = useGroceryStore(s => s.linkItemShopMany);
+
   // Selection order is task order, so it's an array rather than a Set.
   const [selected, setSelected] = useState<string[]>([]);
+  // The store whose record is being corrected, if any — the sheet's second
+  // mode. A mode rather than a nested sheet or an expanding card: the list of
+  // things to tick is as long as the trip is, so it wants the whole height,
+  // and a sheet over a sheet is a stack of two dismiss gestures.
+  const [correcting, setCorrecting] = useState<string | null>(null);
+  const [ticked, setTicked] = useState<string[]>([]);
 
   // Read through refs so the reset fires on opening only. The list can't
   // change while the sheet is up, but re-deriving the default from a store
@@ -104,6 +112,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
     const fallback = last && current.coverage.some(c => c.shop.id === last) ? last : null;
     const initial = best ?? fallback;
     setSelected(initial ? [initial] : []);
+    setCorrecting(null);
   }, [visible]);
 
   const summary = useMemo(() => summarizeTrip(selected, plan), [selected, plan]);
@@ -131,6 +140,56 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
     onCreate(selected.map(id => byId.get(id)).filter((s): s is Shop => !!s));
   };
 
+  /**
+   * The correction, and the reason this sheet can afford to be uncertain out
+   * loud: "at least 9 of 12" invites "no, it has the other three too", and
+   * without somewhere to say that, the hedging is just the app being vague at
+   * you. What it writes is the ordinary hand-assertion the item sheet already
+   * writes — a link with no purchase behind it — so the trip's numbers move
+   * the moment it's saved, and everywhere else that reads the links agrees.
+   *
+   * Only the store's *missing* items are listed, so this can only ever add.
+   * Taking a wrong link back off stays where it already lives, in the item
+   * sheet's own store picker: a bulk gesture that silently unlinks is how you
+   * lose a filing you made months ago and never notice.
+   */
+  const correctingShop = correcting ? (shops.find(s => s.id === correcting) ?? null) : null;
+  const correctingEntry = correcting
+    ? (plan.coverage.find(c => c.shop.id === correcting) ?? null)
+    : null;
+  const candidates = useMemo(() => {
+    if (!correctingEntry) return [];
+    const known = new Set(correctingEntry.itemIds);
+    return plan.itemIds.filter(id => !known.has(id));
+  }, [correctingEntry, plan]);
+
+  const startCorrection = (shopId: string) => {
+    const entry = plan.coverage.find(c => c.shop.id === shopId);
+    const known = new Set(entry?.itemIds ?? []);
+    haptics.tap();
+    // Everything pre-ticked: the button that got here said the store has more
+    // than the app thinks, so the work left is unticking the exceptions.
+    setTicked(plan.itemIds.filter(id => !known.has(id)));
+    setCorrecting(shopId);
+  };
+
+  const saveCorrection = () => {
+    if (!correcting) return;
+    if (ticked.length > 0) {
+      linkItemShopMany(ticked, correcting);
+      haptics.success();
+    }
+    setCorrecting(null);
+  };
+
+  // The one store a correction could be about. With several picked there's no
+  // answer to "which of them has it", and guessing is the thing this sheet is
+  // for not doing.
+  const correctable =
+    selected.length === 1
+      ? (plan.coverage.find(c => c.shop.id === selected[0] && c.itemIds.length < total) ?? null)
+      : null;
+
   const next = summary.suggestion;
   const gapGain = next.length > 0 ? countIn(next[0].itemIds, summary.gap) : 0;
   // What the whole suggested itinerary would come to — everything already
@@ -143,6 +202,72 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
   );
 
   const addLabel = selected.length > 1 ? `Add ${selected.length}` : 'Add';
+
+  if (correctingShop) {
+    const known = correctingEntry?.itemIds.length ?? 0;
+    return (
+      <Modal
+        visible={visible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setCorrecting(null)}
+      >
+        <View style={styles.root}>
+          <View style={styles.header}>
+            <SheetHeaderButton
+              label="Back"
+              role="cancel"
+              onPress={() => setCorrecting(null)}
+              minWidth={72}
+            />
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {correctingShop.name}
+            </Text>
+            <SheetHeaderButton label="Save" onPress={saveCorrection} minWidth={72} />
+          </View>
+
+          <ScrollView contentContainerStyle={styles.body}>
+            <Text style={styles.intro}>
+              Tick what you can get at {correctingShop.name}. It’s filed against the store for next
+              time, and this trip’s numbers update as soon as you save.
+            </Text>
+            {known > 0 && (
+              <Text style={styles.hint}>
+                {known} {known === 1 ? 'item is' : 'items are'} already recorded there, so{' '}
+                {known === 1 ? "it isn't" : "they aren't"} listed here.
+              </Text>
+            )}
+
+            <View style={styles.card}>
+              {candidates.map((id, i) => (
+                <Row
+                  key={id}
+                  first={i === 0}
+                  styles={styles}
+                  colors={colors}
+                  title={nameOf.get(id) ?? 'an item'}
+                  subtitle={null}
+                  selected={ticked.includes(id)}
+                  onPress={() => {
+                    haptics.tap();
+                    setTicked(prev =>
+                      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+                    );
+                  }}
+                />
+              ))}
+            </View>
+
+            <Text style={styles.footerNote}>
+              This records that the store has them, not that you’ve bought them there — so it
+              counts towards what a trip covers without pretending to be history. To take one back
+              off, open the item and use its store list.
+            </Text>
+          </ScrollView>
+        </View>
+      </Modal>
+    );
+  }
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -292,6 +417,20 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
                   Nothing’s on record about {namesFor(summary.unknown)} anywhere, so no store here
                   gets credit for {summary.unknown.length === 1 ? 'it' : 'them'}.
                 </Text>
+              )}
+              {/* The reply to "at least", sitting directly under it. A hedge
+                  with nowhere to answer it is just the app being vague at you —
+                  this is where the user gets to be the authority on their own
+                  shops, and the numbers above move the moment they are. */}
+              {correctable && (
+                <InlineAction
+                  label="Actually, it has more"
+                  icon="pricetag-outline"
+                  variant="neutral"
+                  onPress={() => startCorrection(correctable.shop.id)}
+                  accessibilityLabel={`Record what else ${correctable.shop.name} has`}
+                  style={styles.correctAction}
+                />
               )}
               <Text style={styles.footerNote}>
                 These counts are only what you’ve bought or noted — a store may well carry more.
@@ -474,6 +613,9 @@ function makeStyles(colors: Colors) {
     // fact it sits next to, rather than as a different measurement.
     barLikely: { backgroundColor: colors.accent + '59' },
     footer: { marginTop: spacing.lg },
+    // alignSelf rather than aligning the whole footer: the notes around it are
+    // full-width paragraphs and must keep wrapping at the sheet's width.
+    correctAction: { alignSelf: 'flex-start', marginTop: spacing.md, marginBottom: spacing.sm },
     footerLine: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 19 },
     footerNote: { color: colors.textTertiary, fontSize: font.sm, marginTop: spacing.xs, lineHeight: 19 },
     emptyNote: {

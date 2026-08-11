@@ -1,4 +1,4 @@
 {
-  "message": "The grocery-run button now opens a proper Shopping trip sheet instead of a list of store names: stores are ranked by how much of your list each one is known to carry, the best is picked for you, and when one store doesn't cover everything it names the next stop and what it adds. Counts are what you've bought or noted there — never a claim a store lacks something — and a store gets a “likely” credit for items in aisles it demonstrably stocks. Picking several stores makes one task each.",
+  "message": "The grocery-run button now opens a proper Shopping trip sheet instead of a list of store names: stores are ranked by how much of your list each one is known to carry, the best is picked for you, and when one store doesn't cover everything it names the next stop and what it adds. Counts are what you've bought or noted there — never a claim a store lacks something — and a store gets a “likely” credit for items in aisles it demonstrably stocks. When it undersells a shop, “Actually, it has more” lets you tick off what it really carries, and the numbers update on the spot. Picking several stores makes one task each.",
   "date": "2026-08-11"
 }
