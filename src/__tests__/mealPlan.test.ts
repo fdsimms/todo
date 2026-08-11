@@ -19,6 +19,7 @@ import {
   slotRank,
   sortMealEntries,
   titleForEntry,
+  upcomingDays,
 } from '../utils/mealPlan';
 
 // mealPlan reaches dateUtils for dayKeyOf, which reaches the settings store for
@@ -199,6 +200,33 @@ describe('nextSortOrder', () => {
   it('is scoped to the day, not to the whole plan', () => {
     const entries = [entry('2026-08-04', 'dinner', { sortOrder: 9 })];
     expect(nextSortOrder(entries, '2026-08-05', 'dinner')).toBe(1);
+  });
+});
+
+describe('upcomingDays', () => {
+  it('starts today and runs forward', () => {
+    const days = upcomingDays(new Date(2026, 7, 6), 7);
+    expect(days).toHaveLength(7);
+    expect(days.map(d => d.getDate())).toEqual([6, 7, 8, 9, 10, 11, 12]);
+  });
+
+  it('crosses a month boundary', () => {
+    expect(upcomingDays(new Date(2026, 7, 30), 4).map(d => `${d.getMonth()}-${d.getDate()}`))
+      .toEqual(['7-30', '7-31', '8-1', '8-2']);
+  });
+
+  it('anchors at midday so a day key can never slide across the boundary', () => {
+    expect(upcomingDays(new Date(2026, 7, 6, 23, 59), 1)[0].getHours()).toBe(12);
+  });
+
+  it('holds the day across a DST change rather than shifting by an hour', () => {
+    // US DST ends 1 Nov 2026; midday anchoring is what keeps day 2 on the 2nd.
+    expect(upcomingDays(new Date(2026, 9, 31), 3).map(d => d.getDate())).toEqual([31, 1, 2]);
+  });
+
+  it('returns nothing for a non-positive count', () => {
+    expect(upcomingDays(new Date(2026, 7, 6), 0)).toEqual([]);
+    expect(upcomingDays(new Date(2026, 7, 6), -3)).toEqual([]);
   });
 });
 

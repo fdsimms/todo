@@ -29,6 +29,8 @@ import { Fab, FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '
 import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { PlanRecipeSheet } from '../components/PlanRecipeSheet';
+import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -91,6 +93,9 @@ export function RecipesScreen() {
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
 
+  const { planRecipe, offerPrepTasks } = usePlanMeal();
+  // The recipe whose day is being picked; null closes the sheet.
+  const [planningRecipe, setPlanningRecipe] = useState<Recipe | null>(null);
   const [query, setQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagFilterVisible, setTagFilterVisible] = useState(false);
@@ -309,6 +314,27 @@ export function RecipesScreen() {
     if (existing) openRecipe(existing);
   };
 
+  // One affordance, two homes (a list row and a shelf card), so "plan this"
+  // looks and reads the same wherever it's reached from. Icon-only because
+  // both hosts are already dense; the spoken label carries the meaning.
+  //
+  // Deliberately a button rather than a swipe or a long-press: the row's
+  // long-press is already the drag-to-reorder handle, and the list is a
+  // DraggableFlatList, so adding a pan-driven action would be a second gesture
+  // competing with the one that's there.
+  const planButton = (recipe: Recipe) => (
+    <TouchableOpacity
+      style={styles.planButton}
+      onPress={() => { haptics.tap(); setPlanningRecipe(recipe); }}
+      activeOpacity={interaction.activeOpacity}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel={`Plan ${recipe.name} onto a day`}
+    >
+      <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
+    </TouchableOpacity>
+  );
+
   const renderRecipe = ({ item: recipe, drag, isActive }: { item: Recipe; drag?: () => void; isActive?: boolean }) => {
     const selected = selectedIds.has(recipe.id);
     return (
@@ -348,6 +374,7 @@ export function RecipesScreen() {
         {recipe.favorite && (
           <Ionicons name="star" size={iconSize.sm} color={colors.orange} />
         )}
+        {!selectionMode && planButton(recipe)}
         {!selectionMode && (
           <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
         )}
@@ -372,7 +399,13 @@ export function RecipesScreen() {
             accessibilityRole="button"
             accessibilityLabel={`${recipe.name}. ${describeCookHistory(recipe)}`}
           >
-            <Text style={styles.shelfName} numberOfLines={2}>{recipe.name}</Text>
+            <View style={styles.shelfTop}>
+              <Text style={styles.shelfName} numberOfLines={2}>{recipe.name}</Text>
+              {/* The whole point of this shelf is "have it again", and having
+                  it again means putting it on a night — so the action is on the
+                  card rather than two taps away through the recipe. */}
+              {planButton(recipe)}
+            </View>
             <Text style={styles.shelfMeta} numberOfLines={1}>{describeCookHistory(recipe)}</Text>
           </TouchableOpacity>
         ))}
@@ -619,6 +652,15 @@ export function RecipesScreen() {
         selected={activeTags}
         onChange={next => { animateLayout(); setSelectedTags(next); }}
       />
+
+      <PlanRecipeSheet
+        visible={planningRecipe !== null}
+        recipe={planningRecipe}
+        onPlan={planRecipe}
+        // After the dismissal, never before — see PlanRecipeSheet.onPlanned.
+        onPlanned={offerPrepTasks}
+        onClose={() => setPlanningRecipe(null)}
+      />
     </View>
   );
 }
@@ -732,6 +774,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     gap: spacing.sm,
   },
+  // A bare glyph, not a tinted tile. The row already opens with an
+  // accentSubtle tile carrying the recipe's own icon, and a second one at the
+  // other end reads as a matching pair of *icons* rather than as a control —
+  // the same trap CLAUDE.md documents for an accent InlineAction sitting at
+  // the end of a row of already-tinted chips. Bare, it joins the trailing
+  // cluster (star, chevron) where the row's other controls already live.
+  planButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shelfTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.xs,
+  },
   shelfCard: {
     width: 160,
     backgroundColor: colors.bgSecondary,
@@ -740,6 +798,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 3,
   },
   shelfName: {
+    flexShrink: 1,
     color: colors.text,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,

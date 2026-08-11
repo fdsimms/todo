@@ -6,7 +6,10 @@ import { spacing, font, fontWeight, radius, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
-import { needsAttention } from '../utils/leftovers';
+import { attentionLeftovers, freshnessOf } from '../utils/leftovers';
+// The colour ladder lives with the card that established it — same import
+// RecipePickerSheet makes, and for the reason given there.
+import { freshnessColor } from './LeftoversCard';
 
 type HubTab = 'Groceries' | 'Recipes' | 'MealPlan';
 
@@ -39,7 +42,16 @@ export function GroceriesHubPills({ active }: Props) {
   // than derived through attentionLeftovers so this selector returns a number —
   // an array would be a new reference on every store change and re-render all
   // three pills for nothing.
-  const leftoverCount = useLeftoverStore(s => s.leftovers.filter(l => needsAttention(l)).length);
+  const leftoverCount = useLeftoverStore(s => attentionLeftovers(s.leftovers).length);
+  // Red for something already past its day, orange while there's still an
+  // evening to use it — the ladder LeftoversCard sets out and gives its
+  // reasoning for. This badge used to be red whatever it was counting, so a
+  // container with a day left read orange on the card and red on the pill
+  // directly above it (#1381). The count is `needsAttention`, which spans
+  // both states, so the badge takes the colour of the worst one in it.
+  const worstFreshness = useLeftoverStore(s =>
+    attentionLeftovers(s.leftovers).some(l => freshnessOf(l) === 'over') ? 'over' : 'due'
+  );
 
   return (
     <ScrollView
@@ -74,7 +86,12 @@ export function GroceriesHubPills({ active }: Props) {
           >
             <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{tab.label}</Text>
             {badge > 0 && (
-              <View style={styles.pillBadge}>
+              <View
+                style={[
+                  styles.pillBadge,
+                  tab.name === 'MealPlan' && { backgroundColor: freshnessColor(worstFreshness, colors) },
+                ]}
+              >
                 <Text style={styles.pillBadgeText}>{badge}</Text>
               </View>
             )}

@@ -96,8 +96,8 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 800, damping: 28, stiffness: 320, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: 800, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
       translateY.setValue(700);
       onClose();
@@ -116,7 +116,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
         if (dy > 80 || vy > 1.2) {
           dismiss();
         } else {
-          Animated.spring(translateY, { toValue: 0, damping: 22, stiffness: 300, useNativeDriver: true }).start();
+          Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
         }
       },
     })

@@ -362,6 +362,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const renamed: MealPlanEntry = { ...entry, title: cleaned };
     dbUpdateMealPlanEntry(renamed);
     set(s => ({ entries: s.entries.map(e => e.id === id ? renamed : e) }));
+    // The only single-entry mutation here that used to write without one.
+    get().setLastAction({
+      label: `Renamed "${entry.title}"`,
+      undo: () => {
+        dbUpdateMealPlanEntry(entry);
+        set(s => ({ entries: s.entries.map(e => e.id === id ? entry : e) }));
+      },
+    });
   },
 
   setRecipeChoices(id, recipeChoices) {
