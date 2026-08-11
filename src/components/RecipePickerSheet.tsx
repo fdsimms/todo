@@ -75,9 +75,10 @@ const PRESET_PLANS = ['Leftovers', 'Takeout', 'Eating out'];
  * recipe-backed one does (see MealPlanEntry.recipeId).
  *
  * **Picking a leftover does not use it up.** A big pot feeds two dinners, so
- * planning against one leaves it in the fridge and only the offer below the
- * header — dismissible, never blocking, gone the moment anything else is picked
- * — can close it out. See Leftover.finishedAt.
+ * planning against one leaves it in the fridge — "was that the last of it?"
+ * is asked later, when the meal is actually marked cooked (see
+ * MealPlanScreen's markCooked), not here before it's been eaten. See
+ * Leftover.finishedAt.
  */
 export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onClose }: Props) {
   const colors = useColors();
@@ -87,15 +88,8 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
-  const finishLeftover = useLeftoverStore(s => s.finishLeftover);
   const [query, setQuery] = useState('');
   const [slot, setSlot] = useState<MealSlot>(defaultSlot);
-  /**
-   * The leftover the last pick used, while the "was that the last of it?" offer
-   * is still standing. Cleared by answering it, dismissing it, picking anything
-   * else, or closing the sheet — it is about one tap, not a mode.
-   */
-  const [justPicked, setJustPicked] = useState<Leftover | null>(null);
 
   const typed = cleanRecipeName(query);
 
@@ -149,7 +143,6 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
     if (!visible) return;
     setQuery('');
     setSlot(defaultSlot);
-    setJustPicked(null);
     translateY.setValue(600);
     backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
@@ -189,23 +182,19 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
   // `slot` is read at tap time rather than captured, so the chips can be changed
   // after a search has been typed without the pick going to the old one.
   //
-  // A pick no longer closes the sheet — planning a day is a burst of several
-  // picks (breakfast, lunch, dinner), not one edit, same reasoning as the
-  // chain-step/subtask/ingredient inputs elsewhere in the app. It resets back
-  // to slot selection for the same day instead; "Done" (or the backdrop /
-  // swipe / hardware back, same as before) is the only thing that actually
-  // dismisses now.
+  // A pick closes the sheet — tapping a recipe/preset/free-text row with no
+  // other feedback than a haptic otherwise reads as if nothing happened.
   const pick = (recipeId: string | null, title: string) => {
     haptics.success();
     onPick({ slot, recipeId, leftoverId: null, title });
-    setQuery('');
-    setSlot(defaultSlot);
-    setJustPicked(null);
+    dismiss();
   };
 
   /**
    * Plans a tracked leftover onto the night, and *only* that — the container
-   * stays in the fridge with its clock running.
+   * stays in the fridge with its clock running. "Was that the last of it?"
+   * is asked later, when the meal is actually marked cooked — see
+   * MealPlanScreen's markCooked — not here, before it's even been eaten.
    *
    * The title captures the age at plan time (mealTitleForLeftover) rather than
    * resolving it live like a recipe name does, because "2 days old" is a fact
@@ -224,9 +213,7 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
       leftoverId: leftover.id,
       title: mealTitleForLeftover(leftover),
     });
-    setQuery('');
-    setSlot(defaultSlot);
-    setJustPicked(leftover);
+    dismiss();
   };
 
   return (
@@ -262,43 +249,6 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
           <Text style={styles.sheetHint}>
             Pick a recipe, or type whatever it is — “leftovers” is a plan too.
           </Text>
-
-          {/* The cheap version of "how much is left", asked at the one moment
-              the answer is free. It is an offer, not a question: ignoring it
-              leaves the container in the fridge, which is the right default
-              because most meals off a leftover don't finish it. Deliberately
-              not an Alert — a modal on top of a sheet the user is still
-              planning in would make picking a leftover cost more than picking
-              anything else, which is how a feature gets avoided. */}
-          {justPicked && (
-            <View style={styles.lastOfItStrip}>
-              <Text style={styles.lastOfItText} numberOfLines={2}>
-                {`Planned ${justPicked.title}. Was that the last of it?`}
-              </Text>
-              <TouchableOpacity
-                style={styles.lastOfItButton}
-                onPress={() => {
-                  haptics.success();
-                  finishLeftover(justPicked.id, 'eaten');
-                  setJustPicked(null);
-                }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={`Yes, ${justPicked.title} is finished`}
-              >
-                <Text style={styles.lastOfItButtonText}>Finished it</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); setJustPicked(null); }}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel="Not the last of it"
-              >
-                <Ionicons name="close" size={15} color={colors.textTertiary} />
-              </TouchableOpacity>
-            </View>
-          )}
 
           <View style={styles.chips}>
             {MEAL_SLOTS.map(s => {
@@ -505,33 +455,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: 2,
     paddingBottom: spacing.sm,
-  },
-  lastOfItStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.bgTertiary,
-  },
-  lastOfItText: {
-    flex: 1,
-    color: colors.textSecondary,
-    fontSize: font.xs,
-  },
-  lastOfItButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
-    borderRadius: radius.full,
-    backgroundColor: colors.accent,
-  },
-  lastOfItButtonText: {
-    color: colors.onAccent,
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
   },
   chips: {
     flexDirection: 'row',
