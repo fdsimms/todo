@@ -46,6 +46,17 @@ interface SettingsStore {
   // dayResetTime, which decides which calendar day a task belongs to.
   activeHoursStart: string; // "HH:MM" (default "08:00")
   activeHoursEnd: string;   // "HH:MM" (default "22:00")
+  // "Don't buzz me between X and Y" for scheduleTaskReminder/scheduleTimerAlarm
+  // (src/utils/notifications.ts). Both null = off, which is the default — an
+  // existing install keeps buzzing exactly as before until the user opts in.
+  // Deliberately its own pair rather than reusing activeHoursStart/activeHoursEnd
+  // above: those are the span daily-target pacing ramps across (see the comment
+  // on them), an unrelated concept that happens to share the "HH:MM" shape —
+  // someone awake at 2am doing something else entirely still doesn't want a
+  // task reminder going off. Set together via setQuietHours so a half-set
+  // window (a start with no end) is unrepresentable.
+  quietHoursStart: string | null; // "HH:MM"
+  quietHoursEnd: string | null;   // "HH:MM"
   themeMode: ThemeMode;
   appFont: AppFont; // typeface for the whole app — see src/theme/fonts.ts
   use24HourTime: boolean; // render clock times as "17:30" rather than "5:30 PM"
@@ -107,6 +118,13 @@ interface SettingsStore {
   // install changes until the user picks a window in Settings. See
   // src/utils/retention.ts for what a purge may take.
   completedRetentionDays: RetentionDays;
+  // Pre-fills the Remind Me field when a task is given a specific clock time
+  // (its `windowStart`) — see TaskEditor's `applyDefaultReminderLead`. null =
+  // off, the default, so an existing install gets no reminders it didn't ask
+  // for. Deliberately doesn't engage for a bare due date or a time-of-day
+  // segment (morning/afternoon/evening): neither pins down an actual clock
+  // time, and "30 minutes before the day reset" is not a useful reminder.
+  defaultReminderLeadMinutes: number | null;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
   // Pulling tasks out of the Reminders app and into the Inbox — the app's voice
   // capture story, since Siri needs no app name to add a reminder. Off by
@@ -146,6 +164,13 @@ interface SettingsStore {
   // nothing ever has to clear it (same idiom as TaskGroup.completedAt).
   projectNudgeDismissedAt: string | null;
   patchNotesQaStatus: Record<string, PatchNoteQaStatus>; // patch note id -> QA result
+  // What a *new* project's nudgeCadenceDays starts at (see DEFAULT_NUDGE_CADENCE_DAYS
+  // in src/types/index.ts for why that constant itself stays 0). This is the
+  // opt-in the other direction: someone who wants every new project chasing
+  // them sets it once here instead of by hand on every project they create.
+  // Changing it only affects projects created after the change — existing
+  // projects keep whatever cadence they were given.
+  defaultProjectNudgeCadenceDays: number;
   initialized: boolean;
   initialize: () => void;
   /** Loads the keychain-backed settings. Call after initialize(). */
@@ -157,6 +182,8 @@ interface SettingsStore {
   setNightStart: (time: string) => void;
   setActiveHoursStart: (time: string) => void;
   setActiveHoursEnd: (time: string) => void;
+  /** Set both at once, or (null, null) to turn quiet hours off. */
+  setQuietHours: (start: string | null, end: string | null) => void;
   setThemeMode: (mode: ThemeMode) => void;
   setAppFont: (fontId: AppFont) => void;
   setDailyAgendaEnabled: (on: boolean) => void;
@@ -178,6 +205,7 @@ interface SettingsStore {
   setAutoRemoveExpiredTasks: (days: ExpiredTaskGraceDays) => void;
   setAutoArchiveProjectsOnComplete: (on: boolean) => void;
   setCompletedRetentionDays: (days: RetentionDays) => void;
+  setDefaultReminderLeadMinutes: (minutes: number | null) => void;
   setHideCategories: (on: boolean) => void;
   setRemindersImportEnabled: (on: boolean) => void;
   setRemindersImportListId: (id: string | null) => void;
@@ -189,6 +217,7 @@ interface SettingsStore {
   setGroceryImportDelete: (on: boolean) => void;
   setRemindersImportReview: (on: boolean) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
+  setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   resetToDefaults: () => void;
 }
@@ -217,6 +246,7 @@ const DEFAULT_SETTINGS = {
   groceryImportEnabled: false,
   groceryImportDelete: true,
   remindersImportReview: true,
+  defaultProjectNudgeCadenceDays: 0,
 };
 
 // Every value in DEFAULT_SETTINGS goes back to the settings table through
@@ -250,6 +280,25 @@ const DEFAULT_SETTINGS = {
 
 const SORT_OPTIONS: SortOption[] = ['default', 'priority', 'effort-asc', 'effort-desc', 'due-date', 'streak'];
 
+/** The Settings row's preset pills for defaultReminderLeadMinutes. */
+export const DEFAULT_REMINDER_LEAD_OPTIONS: { value: number | null; label: string }[] = [
+  { value: null, label: 'Off' },
+  { value: 15, label: '15 min' },
+  { value: 30, label: '30 min' },
+  { value: 60, label: '1 hour' },
+];
+
+/**
+ * Parses the stored settings value. Anything unrecognised reads as off, the
+ * same failure mode as parseRetentionDays: a garbled value must not start
+ * silently attaching reminders to tasks that never asked for one.
+ */
+function parseDefaultReminderLeadMinutes(raw: string | null): number | null {
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /**
  * Reads back a JSON number array written by one of the filter setters,
  * dropping anything outside `max`. These come out of a TEXT column that a
@@ -278,6 +327,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   nightStart: '21:00',
   activeHoursStart: '08:00',
   activeHoursEnd: '22:00',
+  quietHoursStart: null,
+  quietHoursEnd: null,
   themeMode: 'dark',
   appFont: DEFAULT_APP_FONT,
   use24HourTime: false,
@@ -300,6 +351,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   autoRemoveExpiredTasks: null,
   autoArchiveProjectsOnComplete: false,
   completedRetentionDays: null,
+  defaultReminderLeadMinutes: null,
   hideCategories: false,
   remindersImportEnabled: false,
   remindersImportListId: null,
@@ -312,6 +364,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   remindersImportReview: true,
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
+  defaultProjectNudgeCadenceDays: 0,
   initialized: false,
 
   initialize() {
@@ -322,6 +375,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const nightStart = dbGetSetting('nightStart') ?? '21:00';
     const activeHoursStart = dbGetSetting('activeHoursStart') ?? '08:00';
     const activeHoursEnd = dbGetSetting('activeHoursEnd') ?? '22:00';
+    const quietHoursStart = dbGetSetting('quietHoursStart') || null;
+    const quietHoursEnd = dbGetSetting('quietHoursEnd') || null;
     const themeMode = (dbGetSetting('themeMode') as ThemeMode | null) ?? 'dark';
     const storedFont = dbGetSetting('appFont');
     const appFont = isAppFont(storedFont) ? storedFont : DEFAULT_APP_FONT;
@@ -349,6 +404,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const autoRemoveExpiredTasks = parseExpiredTaskGrace(dbGetSetting('autoRemoveExpiredTasks'));
     const autoArchiveProjectsOnComplete = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
+    const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
     const remindersImportEnabled = dbGetSetting('remindersImportEnabled') === 'true';
     // `!== 'false'`, not `=== 'true'`, because this one defaults ON — an
@@ -368,6 +424,12 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const groceryImportConfirmedListId = dbGetSetting('groceryImportConfirmedListId') || null;
     const groceryImportDelete = dbGetSetting('groceryImportDelete') !== 'false';
     const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
+    // Same TEXT-column parse as every other numeric setting here: an
+    // unparseable or missing row (a fresh install, or one that predates this
+    // setting) reads back as 0 — never nudge — matching DEFAULT_NUDGE_CADENCE_DAYS.
+    const storedDefaultCadence = Number(dbGetSetting('defaultProjectNudgeCadenceDays'));
+    const defaultProjectNudgeCadenceDays =
+      Number.isFinite(storedDefaultCadence) && storedDefaultCadence > 0 ? storedDefaultCadence : 0;
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
     if (storedQaStatus) {
@@ -399,7 +461,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         // keep defaults
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, initialized: true });
   },
 
   /**
@@ -451,6 +513,12 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setActiveHoursEnd(time: string) {
     dbSetSetting('activeHoursEnd', time);
     set({ activeHoursEnd: time });
+  },
+
+  setQuietHours(start: string | null, end: string | null) {
+    dbSetSetting('quietHoursStart', start ?? '');
+    dbSetSetting('quietHoursEnd', end ?? '');
+    set({ quietHoursStart: start, quietHoursEnd: end });
   },
 
   setThemeMode(mode: ThemeMode) {
@@ -586,6 +654,13 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ completedRetentionDays: days });
   },
 
+  // Stored as '' for off, matching completedRetentionDays — an unrecognised
+  // value reads back as off, never as some inherited lead time.
+  setDefaultReminderLeadMinutes(minutes: number | null) {
+    dbSetSetting('defaultReminderLeadMinutes', minutes === null ? '' : String(minutes));
+    set({ defaultReminderLeadMinutes: minutes });
+  },
+
   setHideCategories(on: boolean) {
     dbSetSetting('hideCategories', on ? 'true' : 'false');
     set({ hideCategories: on });
@@ -647,6 +722,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       dbSetSetting('patchNotesQaStatus', JSON.stringify(next));
       return { patchNotesQaStatus: next };
     });
+  },
+
+  setDefaultProjectNudgeCadenceDays(days: number) {
+    dbSetSetting('defaultProjectNudgeCadenceDays', String(days));
+    set({ defaultProjectNudgeCadenceDays: days });
   },
 
   resetToDefaults() {
