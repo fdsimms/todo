@@ -111,6 +111,9 @@ interface Props {
 
 type PickerMode = 'none' | 'reminder';
 
+/** A subtask typed in before the parent task itself has been saved. */
+type DraftSubtask = { id: string; title: string; completed: boolean };
+
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'timeSpent' | 'subtasks';
 
@@ -274,6 +277,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // mean anyway. Cleared whenever the field closes, or a later tap would
   // silently insert at a slot chosen for a different session.
   const [pendingSubtaskIndex, setPendingSubtaskIndex] = useState<number | null>(null);
+  // Subtasks typed while creating a brand-new task, mirroring `chainItems`:
+  // there's no parent id to hang a real row off until Save runs, so these
+  // are held here and flushed to real addSubtask() calls in proceedWithSave.
+  const [draftSubtasks, setDraftSubtasks] = useState<DraftSubtask[]>([]);
 
   const [chainEnabled, setChainEnabled] = useState(false);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
@@ -372,7 +379,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setShowPhoneField(false); setPhoneText(task?.phoneNumber ?? initialDraft?.phoneNumber ?? '');
     setShowEmailField(false); setEmailText(task?.emailAddress ?? initialDraft?.emailAddress ?? '');
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
-    setNewSubtaskTitle(''); setAddingSubtask(false); setPendingSubtaskIndex(null);
+    setNewSubtaskTitle(''); setAddingSubtask(false); setPendingSubtaskIndex(null); setDraftSubtasks([]);
     setNewChainItemTitle(''); setAddingChainItem(false);
     setAiLoading(false);
     setOpenFields({}); setShowTimeOfDay(false); setShowTimeWindow(false);
@@ -505,17 +512,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return next;
   };
 
-  const commitPendingSubtask = () => {
-    if (!newSubtaskTitle.trim()) return;
-    commitSubtask(newSubtaskTitle);
+  const commitPendingSubtask = (): DraftSubtask[] => {
+    if (!newSubtaskTitle.trim()) return draftSubtasks;
+    const next = commitSubtask(newSubtaskTitle);
     setNewSubtaskTitle('');
+    return next;
   };
 
   const save = () => {
     if (!title.trim()) return;
 
     const effectiveChainItems = commitPendingChainItem();
-    commitPendingSubtask();
+    const effectiveDraftSubtasks = commitPendingSubtask();
 
     if (!task) {
       const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), title.trim());
@@ -524,7 +532,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           'Resume archived task?',
           `You archived "${archivedMatch.title}" a while back. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
           [
-            { text: 'Create New', onPress: () => proceedWithSave(effectiveChainItems) },
+            { text: 'Create New', onPress: () => proceedWithSave(effectiveChainItems, effectiveDraftSubtasks) },
             {
               text: 'Resume',
               style: 'default',
@@ -539,10 +547,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         return;
       }
     }
-    proceedWithSave(effectiveChainItems);
+    proceedWithSave(effectiveChainItems, effectiveDraftSubtasks);
   };
 
-  const proceedWithSave = (effectiveChainItems: ChainItem[] = chainItems) => {
+  const proceedWithSave = (effectiveChainItems: ChainItem[] = chainItems, effectiveDraftSubtasks: DraftSubtask[] = draftSubtasks) => {
     const data = {
       title: title.trim(), notes, category, projectId: project, tags,
       dueDate: dueDate?.toISOString() ?? null,
@@ -635,7 +643,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         if (allDates.length >= 2) {
           addTaskSeries(newData, allDates, repeat);
         } else {
-          addTask(newData);
+          const created = addTask(newData);
+          // Subtasks typed in before the parent existed (see draftSubtasks) —
+          // flush them to real rows now that there's a parent id to hang off.
+          effectiveDraftSubtasks.forEach(d => {
+            const row = addSubtask(created.id, d.title);
+            if (d.completed) toggleSubtask(row.id);
+          });
         }
       }
       onClose();
@@ -1164,7 +1178,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const effortSummary = customEffortActive && estimatedMinutes != null
     ? formatDuration(estimatedMinutes)
     : effort > 0 ? EFFORT_LABELS[effort] : undefined;
-  const subtasks = task ? subtasksOf(task.id) : [];
+  const subtasks: (Task | DraftSubtask)[] = task ? subtasksOf(task.id) : draftSubtasks;
 
   /**
    * Adds a subtask at the seam the add button was dropped on, or at the end if
@@ -1180,30 +1194,63 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
    * entries (blurOnSubmit={false}) — three typed after one drop should stay in
    * the order they were typed, not have the second and third jump to the end.
    */
-  const commitSubtask = (title: string) => {
+  const commitSubtask = (title: string): DraftSubtask[] => {
     const trimmed = title.trim();
-    if (!task || !trimmed) return;
+    if (!trimmed) return draftSubtasks;
     const index = pendingSubtaskIndex;
-    const created = addSubtask(task.id, trimmed);
-    if (index === null || index >= subtasks.length) return;
-    const ids = subtasks.map(s => s.id);
-    ids.splice(Math.max(0, index), 0, created.id);
-    reorderSubtasks(task.id, ids);
-    setPendingSubtaskIndex(index + 1);
+    if (task) {
+      const created = addSubtask(task.id, trimmed);
+      if (index === null || index >= subtasks.length) return draftSubtasks;
+      const ids = subtasks.map(s => s.id);
+      ids.splice(Math.max(0, index), 0, created.id);
+      reorderSubtasks(task.id, ids);
+      setPendingSubtaskIndex(index + 1);
+      return draftSubtasks;
+    }
+    // No parent row yet — held locally and flushed to real addSubtask() calls
+    // once Save creates the task (see proceedWithSave). Returned as well as
+    // set, since save() reads this synchronously in the same tick a still-
+    // focused field is committed — the setState here wouldn't be visible yet.
+    const created: DraftSubtask = { id: generateId(), title: trimmed, completed: false };
+    const next = index === null || index >= draftSubtasks.length
+      ? [...draftSubtasks, created]
+      : (() => { const n = [...draftSubtasks]; n.splice(Math.max(0, index), 0, created); return n; })();
+    setDraftSubtasks(next);
+    setPendingSubtaskIndex(index === null ? null : index + 1);
+    return next;
   };
 
-  const handleSubtaskTitleTap = (sub: Task) => {
+  const handleSubtaskTitleTap = (sub: Task | DraftSubtask) => {
     setSubtaskTitleEdit(sub.title);
     setEditingSubtaskId(sub.id);
     setTimeout(() => subtaskTitleEditRef.current?.focus(), 50);
   };
 
-  const saveSubtaskTitle = (sub: Task) => {
+  const saveSubtaskTitle = (sub: Task | DraftSubtask) => {
     setEditingSubtaskId(null);
     const trimmed = subtaskTitleEdit.trim();
-    if (trimmed && trimmed !== sub.title) {
+    if (!trimmed || trimmed === sub.title) return;
+    if (task) {
       updateTask(sub.id, { title: trimmed });
+    } else {
+      setDraftSubtasks(draftSubtasks.map(s => s.id === sub.id ? { ...s, title: trimmed } : s));
     }
+  };
+
+  const toggleDraftSubtask = (id: string) => {
+    if (task) { toggleSubtask(id); return; }
+    setDraftSubtasks(draftSubtasks.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
+  };
+
+  const deleteDraftSubtask = (id: string) => {
+    if (task) { deleteSubtask(id); return; }
+    setDraftSubtasks(draftSubtasks.filter(s => s.id !== id));
+  };
+
+  const reorderDraftSubtasks = (ids: string[]) => {
+    if (task) { reorderSubtasks(task.id, ids); return; }
+    const byId = new Map(draftSubtasks.map(s => [s.id, s]));
+    setDraftSubtasks(ids.map(id => byId.get(id)!).filter(Boolean));
   };
 
   const handleChainItemTitleTap = (item: ChainItem) => {
@@ -2449,8 +2496,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
-          // Subtasks are only a thing once the task exists to hang them off.
-          ...(task ? [{
+          {
             key: 'subtasks', label: 'Subtasks', primary: true, set: subtasks.length > 0,
             node: (
               <>
@@ -2464,7 +2510,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               <MiniFabList
                 onDragStateChange={setDraggingRow}
                 data={subtasks}
-                onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
+                onReorder={(newData) => reorderDraftSubtasks(newData.map(s => s.id))}
                 accessibilityLabel="Add subtask"
                 fabHidden={addingSubtask}
                 onAdd={index => {
@@ -2474,7 +2520,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 renderItem={(sub, _i, drag) => (
                   <View style={styles.subtaskRow}>
                     <TouchableOpacity
-                      onPress={() => toggleSubtask(sub.id)}
+                      onPress={() => toggleDraftSubtask(sub.id)}
                       hitSlop={6}
                       style={styles.subtaskCheck}
                       accessibilityRole="checkbox"
@@ -2523,7 +2569,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => deleteSubtask(sub.id)}
+                      onPress={() => deleteDraftSubtask(sub.id)}
                       hitSlop={8}
                       style={styles.subtaskDelete}
                       accessibilityRole="button"
@@ -2570,7 +2616,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             </CollapsibleField>
               </>
             ),
-          }] : []),
+          },
           {
             key: 'duration', label: 'Duration', set: estimatedMinutes !== null,
             node: (
