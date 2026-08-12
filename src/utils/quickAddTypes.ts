@@ -18,6 +18,42 @@ export type QuickAddType = 'task' | 'timed' | 'target' | 'chain';
 export type QuickAddChip =
   | 'date' | 'repeat' | 'segment' | 'priority' | 'effort' | 'tags' | 'category' | 'link' | 'phone' | 'email';
 
+/**
+ * What a chip reads before it has a value.
+ *
+ * Chips used to render their icon alone until something was set, and their
+ * label only afterwards — so each one named itself exactly once the user no
+ * longer needed telling, and was an unlabelled glyph for the whole period they
+ * did. Ten of those in a row is the toolbar's entire first impression.
+ *
+ * A set chip still shows its value instead (the value is the more useful of
+ * the two, and "Date: Tue 12" in an accessibility label reads better than
+ * either half alone) — this is only the resting state.
+ */
+export const QUICK_ADD_CHIP_LABELS: Record<QuickAddChip, string> = {
+  date: 'Date',
+  repeat: 'Repeat',
+  segment: 'Time of day',
+  priority: 'Priority',
+  effort: 'Effort',
+  tags: 'Tags',
+  category: 'Category',
+  link: 'Link',
+  phone: 'Phone',
+  email: 'Email',
+};
+
+/**
+ * Chips shown before the toolbar folds the rest behind one "N more".
+ *
+ * Labelling every chip costs the width the icons used to save, so ten of them
+ * is four rows of pills above the keyboard. Five is two rows — the ones a task
+ * usually needs, with the contact-detail chips (link/phone/email) a tap away.
+ * Anything already set is exempt from the cap, so a chip the typed title just
+ * filled in never hides itself (`resolvePillOverflow`).
+ */
+export const QUICK_ADD_CHIP_LIMIT = 5;
+
 export const QUICK_ADD_TYPES: readonly QuickAddType[] = ['task', 'timed', 'target', 'chain'];
 
 /** Duration a Timed task starts at, so the mode is never sitting there empty. */

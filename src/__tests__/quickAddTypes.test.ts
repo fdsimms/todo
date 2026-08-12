@@ -4,9 +4,13 @@ import {
   canSaveType,
   isChipVisible,
   typeSummary,
+  QUICK_ADD_CHIP_LABELS,
+  QUICK_ADD_CHIP_LIMIT,
+  type QuickAddChip,
   type QuickAddType,
   type TypeValues,
 } from '../utils/quickAddTypes';
+import { resolvePillOverflow } from '../utils/pillOverflow';
 import type { ChainItem } from '../types';
 
 const step = (title: string): ChainItem => ({ id: title, title, estimatedMinutes: null });
@@ -152,5 +156,43 @@ describe('typeSummary', () => {
     (['timed', 'target', 'chain'] as QuickAddType[]).forEach(t => {
       expect(typeSummary(t, values())).toBeTruthy();
     });
+  });
+});
+
+describe('QUICK_ADD_CHIP_LABELS', () => {
+  const ALL_CHIPS: QuickAddChip[] = [
+    'date', 'repeat', 'segment', 'priority', 'effort', 'tags', 'category', 'link', 'phone', 'email',
+  ];
+
+  // The bug this table exists to prevent: a chip that reads as a bare glyph
+  // until it has a value, i.e. names itself only once you no longer need it to.
+  it('names every chip', () => {
+    ALL_CHIPS.forEach(c => expect(QUICK_ADD_CHIP_LABELS[c]).toBeTruthy());
+    expect(Object.keys(QUICK_ADD_CHIP_LABELS).sort()).toEqual([...ALL_CHIPS].sort());
+  });
+
+  it('folds the toolbar down to the limit', () => {
+    const pills = ALL_CHIPS.map(key => ({ key, label: QUICK_ADD_CHIP_LABELS[key] }));
+    const { visible, hiddenCount } = resolvePillOverflow(pills, { limit: QUICK_ADD_CHIP_LIMIT });
+    expect(visible).toHaveLength(QUICK_ADD_CHIP_LIMIT);
+    expect(hiddenCount).toBe(ALL_CHIPS.length - QUICK_ADD_CHIP_LIMIT);
+    expect(visible.map(p => p.key)).toContain('date');
+  });
+
+  // A title like "pay rent tmrw #home" fills chips in as you type; the one it
+  // just answered must not be the one folded away.
+  it('never hides a chip that already has a value', () => {
+    const pills = ALL_CHIPS.map(key => ({
+      key, label: QUICK_ADD_CHIP_LABELS[key], selected: key === 'email',
+    }));
+    const { visible } = resolvePillOverflow(pills, { limit: QUICK_ADD_CHIP_LIMIT });
+    expect(visible.map(p => p.key)).toContain('email');
+  });
+
+  it('shows everything once the user asks for it', () => {
+    const pills = ALL_CHIPS.map(key => ({ key, label: QUICK_ADD_CHIP_LABELS[key] }));
+    const { visible, hiddenCount } = resolvePillOverflow(pills, { limit: QUICK_ADD_CHIP_LIMIT, showAll: true });
+    expect(visible).toHaveLength(ALL_CHIPS.length);
+    expect(hiddenCount).toBe(0);
   });
 });

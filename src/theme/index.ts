@@ -215,6 +215,18 @@ export const interaction = {
   activeOpacity: 0.7,
   pressScale: 0.96,
   delayLongPress: 350,
+  /**
+   * Smallest a control may be before it needs `hitSlop` to make up the
+   * difference — Apple's 44pt minimum.
+   *
+   * Reach for it as a `minHeight` on anything tappable rather than picking
+   * vertical padding and hoping: padding sizes the box off whatever's inside
+   * it, so a row of pills holding icons, coloured dots and text ends up at
+   * three different heights, all of them short. A control that's deliberately
+   * smaller (a clear ×, a drag handle) is fine, but it owes the user a
+   * `hitSlop` that brings its *touch* area back to this.
+   */
+  minTouchTarget: 44,
   // Max finger travel (px) for a raw touchEnd to still count as a tap rather
   // than a scroll/drag release.
   tapMoveThreshold: 10,

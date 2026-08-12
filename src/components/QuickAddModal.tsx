@@ -17,7 +17,7 @@ import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
@@ -38,10 +38,14 @@ import {
   DEFAULT_TIMED_MINUTES,
   MAX_TARGET_COUNT,
   MIN_TARGET_COUNT,
+  QUICK_ADD_CHIP_LABELS,
+  QUICK_ADD_CHIP_LIMIT,
   TIMED_MINUTE_OPTIONS,
+  type QuickAddChip,
   type QuickAddType,
   type TypeValues,
 } from '../utils/quickAddTypes';
+import { resolvePillOverflow } from '../utils/pillOverflow';
 import { MAX_TARGET_UNIT_LENGTH } from '../utils/quotaUnit';
 import { WhenPicker } from './WhenPicker';
 import { WeekdaySelector } from './WeekdaySelector';
@@ -96,6 +100,24 @@ interface Props {
 }
 
 type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | 'link' | 'phone' | 'email' | null;
+
+/** One attribute chip in the quick-add toolbar. See `chipDescriptors`. */
+interface ToolChipDescriptor {
+  key: QuickAddChip;
+  /** Omitted only by priority, which shows a coloured dot instead. */
+  icon?: React.ComponentProps<typeof Ionicons>['name'];
+  /** `null` is the resting state — the chip then reads its label instead. */
+  value: string | null;
+  /** The panel this chip opens. Omitted by chips that open their own picker. */
+  panel?: Exclude<ActivePanel, null>;
+  /** Overrides the accent tint a set chip normally takes. */
+  tint?: string;
+  dotColor?: string;
+  /** Long free text (a URL, an address) that has to give way rather than wrap. */
+  truncate?: boolean;
+  /** Set only by chips that don't just toggle `panel`. */
+  onPress?: () => void;
+}
 
 /** The type row's labels and icons. Order is fixed: plain first, then the modes. */
 const TYPE_META: { key: QuickAddType; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
@@ -241,6 +263,10 @@ export function QuickAddModal({
   const [emailText, setEmailText] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
+  // Lifts the toolbar's cap for this sheet only. Deliberately not persisted:
+  // the folded chips are the rarely-wanted ones, so the next task starts from
+  // the short toolbar again rather than inheriting a decision made once.
+  const [showAllChips, setShowAllChips] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
@@ -302,6 +328,7 @@ export function QuickAddModal({
       setEmailText('');
       setTagInput('');
       setActivePanel(null);
+      setShowAllChips(false);
       // A quota resets by spawning its next occurrence, so opening straight
       // into Target has to arrive with the repeat already on.
       setRecurrenceType(initialType === 'target' ? 'daily' : 'none');
@@ -569,6 +596,7 @@ export function QuickAddModal({
   const summary = typeSummary(type, typeValues);
   const blocked = blockedReason(type, typeValues);
 
+
   /**
    * Switching type seeds the new mode's defining value and drops the previous
    * one's — a duration left over from Timed must not ride along invisibly into
@@ -832,6 +860,96 @@ export function QuickAddModal({
     return format(d, 'MMM d');
   };
 
+  /**
+   * The attribute toolbar, as data.
+   *
+   * One descriptor per chip rather than ten near-identical blocks of JSX: they
+   * differ only in icon, value and which panel they open, and keeping them as
+   * copies is what let the resting label go missing from all ten at once.
+   *
+   * `value` is the whole state model — `null` is "unset", and everything else
+   * (the accent tint, the label the chip reads, the overflow exemption)
+   * follows from it.
+   */
+  const chipDescriptors: ToolChipDescriptor[] = [
+    {
+      key: 'date', icon: 'calendar-outline',
+      value: dueDate != null ? formatDate(dueDate) : null,
+      onPress: () => setWhenPickerVisible(true),
+    },
+    {
+      key: 'repeat', icon: 'repeat', panel: 'repeat',
+      value: recurrenceType !== 'none' ? RECURRENCE_LABELS[recurrenceType] : null,
+    },
+    {
+      key: 'segment', panel: 'segment',
+      icon: timeSegments.length > 0 ? SEGMENTS.find(s => s.key === timeSegments[0])!.icon : 'partly-sunny-outline',
+      value: timeSegments.length > 0 ? SEGMENTS.find(s => s.key === timeSegments[0])!.label : null,
+      // A segment keeps its own time-of-day colour rather than the generic
+      // accent — it's the one attribute whose value is already colour-coded
+      // everywhere else in the app.
+      tint: timeSegments.length > 0 ? {
+        morning: colors.timeMorning,
+        afternoon: colors.timeAfternoon,
+        evening: colors.timeEvening,
+        night: colors.timeNight,
+      }[timeSegments[0]] : undefined,
+    },
+    {
+      key: 'priority', panel: 'priority',
+      value: priority > 0 ? PRIORITY_LABELS_SHORT[priority] : null,
+      // Priority has no glyph anywhere in the app — it's a coloured dot, and
+      // at rest it takes the same grey as the other chips' icons.
+      dotColor: priority > 0 ? PRIORITY_COLORS[priority] : colors.textSecondary,
+      tint: priority > 0 ? PRIORITY_COLORS[priority] : undefined,
+    },
+    {
+      key: 'effort', icon: 'barbell', panel: 'effort',
+      value: effort > 0
+        ? (estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort])
+        : null,
+    },
+    {
+      key: 'tags', icon: 'pricetag-outline', panel: 'tags',
+      value: tags.length > 0 ? tags.slice(0, 2).join(', ') : null,
+    },
+    {
+      key: 'category', icon: 'folder-outline', panel: 'category',
+      value: category !== null ? categoryLabel(category, categories) : null,
+    },
+    {
+      key: 'link', icon: 'link-outline', panel: 'link',
+      value: linkUrl !== null ? linkLabel(linkUrl) : null, truncate: true,
+    },
+    {
+      key: 'phone', icon: 'call-outline', panel: 'phone',
+      value: phoneNumber, truncate: true,
+    },
+    {
+      key: 'email', icon: 'mail-outline', panel: 'email',
+      value: emailAddress, truncate: true,
+    },
+  ];
+
+  const chipOverflow = resolvePillOverflow(
+    chipDescriptors
+      .filter(c => isChipVisible(type, c.key))
+      .map(c => ({
+        ...c,
+        label: QUICK_ADD_CHIP_LABELS[c.key],
+        onPress: c.onPress ?? (() => togglePanel(c.panel!)),
+        // What the cap exempts: a chip the typed title already filled in
+        // ("pay rent tmrw #home") must not be the one that gets folded away.
+        selected: c.value !== null,
+      })),
+    // No `query` — this is a fixed toolbar, not one of the searchable pill
+    // grids the helper was written for, so it's used purely for the cap. The
+    // rule is the same one and worth not writing twice.
+    { limit: QUICK_ADD_CHIP_LIMIT, showAll: showAllChips },
+  );
+  const visibleChips = chipOverflow.visible;
+  const hiddenChipCount = chipOverflow.hiddenCount;
+
   const suggestedTags = allTags.filter(t => !tags.includes(t)).slice(0, 8);
 
   return (
@@ -870,7 +988,7 @@ export function QuickAddModal({
                   accessibilityRole="button"
                   accessibilityLabel={`Remove placement ${seedLabel}`}
                 >
-                  <Ionicons name="close" size={13} color={colors.textTertiary} />
+                  <Ionicons name="close" size={13} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -896,8 +1014,8 @@ export function QuickAddModal({
                 >
                   <Ionicons
                     name={t.icon}
-                    size={13}
-                    color={active ? colors.accent : colors.textTertiary}
+                    size={iconSize.sm}
+                    color={active ? colors.accent : colors.textSecondary}
                   />
                   <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
                     {t.label}
@@ -921,7 +1039,7 @@ export function QuickAddModal({
                 ref={inputRef}
                 style={[styles.input, activeMatch && styles.inputHidden]}
                 placeholder="New task…"
-                placeholderTextColor={colors.textTertiary}
+                placeholderTextColor={colors.textSecondary}
                 value={title}
                 onChangeText={setTitle}
                 onSubmitEditing={handleAdd}
@@ -972,7 +1090,7 @@ export function QuickAddModal({
                   accessibilityRole="button"
                   accessibilityLabel={`Use previous task: ${s.title}`}
                 >
-                  <Ionicons name="time-outline" size={15} color={colors.textTertiary} />
+                  <Ionicons name="time-outline" size={15} color={colors.textSecondary} />
                   <HighlightedText
                     text={s.title}
                     ranges={s.ranges}
@@ -1084,7 +1202,7 @@ export function QuickAddModal({
                   onChangeText={applyCustomTimed}
                   keyboardType="number-pad"
                   placeholder="custom"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   accessibilityLabel="Custom duration in minutes"
                 />
@@ -1112,7 +1230,7 @@ export function QuickAddModal({
                   value={targetUnit}
                   onChangeText={setTargetUnit}
                   placeholder="units"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   maxLength={MAX_TARGET_UNIT_LENGTH}
                   autoCapitalize="none"
                   accessibilityLabel="Unit for the daily target, optional"
@@ -1138,7 +1256,7 @@ export function QuickAddModal({
                         accessibilityRole="button"
                         accessibilityLabel={`Remove step ${item.title}`}
                       >
-                        <Ionicons name="close" size={14} color={colors.textTertiary} />
+                        <Ionicons name="close" size={14} color={colors.textSecondary} />
                       </TouchableOpacity>
                     </View>
                   ))}
@@ -1154,7 +1272,7 @@ export function QuickAddModal({
                   onChangeText={setNewStepTitle}
                   onSubmitEditing={() => addStep(newStepTitle)}
                   placeholder={chainItems.length === 0 ? 'First step…' : 'Next step…'}
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   maxLength={TITLE_MAX_LENGTH}
                   returnKeyType="next"
                   blurOnSubmit={false}
@@ -1180,224 +1298,57 @@ export function QuickAddModal({
               a type takes off the toolbar — a chip left ungated here would
               silently ignore being listed there. */}
           <View style={styles.toolbar}>
-            {/* Due date chip */}
-            {isChipVisible(type, 'date') && (
+            {visibleChips.map(chip => (
               <TouchableOpacity
-                style={[styles.toolChip, dueDate != null && styles.toolChipSet]}
-                onPress={() => setWhenPickerVisible(true)}
+                key={chip.key}
+                style={[
+                  styles.toolChip,
+                  chip.panel !== undefined && activePanel === chip.panel && styles.toolChipActive,
+                  chip.value !== null && styles.toolChipSet,
+                ]}
+                onPress={chip.onPress}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel={dueDate ? `Date: ${formatDate(dueDate)}` : 'Set date'}
+                // Same shape EditorRow uses — the label names the field and the
+                // value follows it, rather than the two being alternatives.
+                accessibilityLabel={`${chip.label}${chip.value !== null ? `: ${chip.value}` : ''}`}
               >
-                <Ionicons
-                  name="calendar-outline"
-                  size={13}
-                  color={dueDate ? colors.accent : colors.textTertiary}
-                />
-                {dueDate != null && (
-                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                    {formatDate(dueDate)}
-                  </Text>
-                )}
+                {chip.dotColor !== undefined
+                  ? <View style={[styles.priorityDot, { backgroundColor: chip.dotColor }]} />
+                  : <Ionicons
+                      name={chip.icon!}
+                      size={iconSize.sm}
+                      // A set chip takes the accent unless it carries a colour
+                      // of its own; only a resting one is grey.
+                      color={chip.tint ?? (chip.value !== null ? colors.accent : colors.textSecondary)}
+                    />}
+                <Text
+                  style={[
+                    styles.toolChipText,
+                    chip.value !== null && styles.toolChipTextSet,
+                    chip.value !== null && chip.tint !== undefined && { color: chip.tint },
+                    chip.truncate && styles.toolChipTextTruncate,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {chip.value ?? chip.label}
+                </Text>
               </TouchableOpacity>
-            )}
+            ))}
 
-            {/* Repeat chip */}
-            {isChipVisible(type, 'repeat') && (
+            {/* One disclosure for the rest, rather than four rows of pills
+                above the keyboard. Never appears for a single chip, and never
+                swallows one that's already set — see resolvePillOverflow. */}
+            {hiddenChipCount > 0 && (
               <TouchableOpacity
-                style={[styles.toolChip, activePanel === 'repeat' && styles.toolChipActive, recurrenceType !== 'none' && styles.toolChipSet]}
-                onPress={() => togglePanel('repeat')}
+                style={styles.toolChip}
+                onPress={() => { haptics.tap(); setShowAllChips(true); }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel={recurrenceType !== 'none' ? `Repeat: ${RECURRENCE_LABELS[recurrenceType]}` : 'Set repeat'}
+                accessibilityLabel={`Show ${hiddenChipCount} more options`}
               >
-                <Ionicons
-                  name="repeat"
-                  size={13}
-                  color={recurrenceType !== 'none' ? colors.accent : colors.textTertiary}
-                />
-                {recurrenceType !== 'none' && (
-                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                    {RECURRENCE_LABELS[recurrenceType]}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
-
-            {/* Segment chip */}
-            {isChipVisible(type, 'segment') && (
-              <TouchableOpacity
-                style={[styles.toolChip, activePanel === 'segment' && styles.toolChipActive, timeSegments.length > 0 && styles.toolChipSet]}
-                onPress={() => togglePanel('segment')}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={timeSegments.length > 0 ? `Segment: ${SEGMENTS.find(s => s.key === timeSegments[0])!.label}` : 'Set time segment'}
-              >
-                <Ionicons
-                  name={timeSegments.length > 0 ? SEGMENTS.find(s => s.key === timeSegments[0])!.icon : 'partly-sunny-outline'}
-                  size={13}
-                  color={timeSegments.length > 0 ? {
-                    morning: colors.timeMorning,
-                    afternoon: colors.timeAfternoon,
-                    evening: colors.timeEvening,
-                    night: colors.timeNight,
-                  }[timeSegments[0]] : colors.textTertiary}
-                />
-                {timeSegments.length > 0 && (
-                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                    {SEGMENTS.find(s => s.key === timeSegments[0])!.label}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
-
-            {/* Priority chip */}
-            {isChipVisible(type, 'priority') && (
-              <TouchableOpacity
-                style={[styles.toolChip, activePanel === 'priority' && styles.toolChipActive, priority > 0 && styles.toolChipSet]}
-                onPress={() => togglePanel('priority')}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={priority > 0 ? `Priority: ${PRIORITY_LABELS_SHORT[priority]}` : 'Set priority'}
-              >
-                <View style={[styles.priorityDot, { backgroundColor: priority > 0 ? PRIORITY_COLORS[priority] : colors.textTertiary }]} />
-                {priority > 0 && (
-                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                    {PRIORITY_LABELS_SHORT[priority]}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
-
-            {/* Effort chip */}
-            {isChipVisible(type, 'effort') && (
-              <TouchableOpacity
-                style={[styles.toolChip, activePanel === 'effort' && styles.toolChipActive, effort > 0 && styles.toolChipSet]}
-                onPress={() => togglePanel('effort')}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={effort > 0 ? `Effort: ${estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort]}` : 'Set effort'}
-              >
-                <Ionicons
-                  name="barbell"
-                  size={13}
-                  color={effort > 0 ? colors.accent : colors.textTertiary}
-                />
-                {effort > 0 && (
-                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                    {estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort]}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
-
-            {/* Tags chip */}
-            {isChipVisible(type, 'tags') && (
-              <TouchableOpacity
-                style={[styles.toolChip, activePanel === 'tags' && styles.toolChipActive, tags.length > 0 && styles.toolChipSet]}
-                onPress={() => togglePanel('tags')}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={tags.length > 0 ? `Tags: ${tags.join(', ')}` : 'Set tags'}
-              >
-                <Ionicons
-                  name="pricetag-outline"
-                  size={13}
-                  color={tags.length > 0 ? colors.accent : colors.textTertiary}
-                />
-                {tags.length > 0 && (
-                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                    {tags.slice(0, 2).join(', ')}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
-
-            {/* Category chip */}
-            {isChipVisible(type, 'category') && (
-              <TouchableOpacity
-                style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
-                onPress={() => togglePanel('category')}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={category !== null ? `Category: ${categoryLabel(category, categories)}` : 'Set category'}
-              >
-                <Ionicons
-                  name="folder-outline"
-                  size={13}
-                  color={category ? colors.accent : colors.textTertiary}
-                />
-                {category !== null && (
-                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                    {categoryLabel(category, categories)}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
-
-            {/* Link chip */}
-            {isChipVisible(type, 'link') && (
-              <TouchableOpacity
-                style={[styles.toolChip, activePanel === 'link' && styles.toolChipActive, linkUrl !== null && styles.toolChipSet]}
-                onPress={() => togglePanel('link')}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={linkUrl !== null ? `Link: ${linkLabel(linkUrl)}` : 'Set link'}
-              >
-                <Ionicons
-                  name="link-outline"
-                  size={13}
-                  color={linkUrl ? colors.accent : colors.textTertiary}
-                />
-                {linkUrl !== null && (
-                  <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
-                    {linkLabel(linkUrl)}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
-
-            {/* Phone chip */}
-            {isChipVisible(type, 'phone') && (
-              <TouchableOpacity
-                style={[styles.toolChip, activePanel === 'phone' && styles.toolChipActive, phoneNumber !== null && styles.toolChipSet]}
-                onPress={() => togglePanel('phone')}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={phoneNumber !== null ? `Phone: ${phoneNumber}` : 'Set phone number'}
-              >
-                <Ionicons
-                  name="call-outline"
-                  size={13}
-                  color={phoneNumber ? colors.accent : colors.textTertiary}
-                />
-                {phoneNumber !== null && (
-                  <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
-                    {phoneNumber}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
-
-            {/* Email chip */}
-            {isChipVisible(type, 'email') && (
-              <TouchableOpacity
-                style={[styles.toolChip, activePanel === 'email' && styles.toolChipActive, emailAddress !== null && styles.toolChipSet]}
-                onPress={() => togglePanel('email')}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={emailAddress !== null ? `Email: ${emailAddress}` : 'Set email address'}
-              >
-                <Ionicons
-                  name="mail-outline"
-                  size={13}
-                  color={emailAddress ? colors.accent : colors.textTertiary}
-                />
-                {emailAddress !== null && (
-                  <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
-                    {emailAddress}
-                  </Text>
-                )}
+                <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textSecondary} />
+                <Text style={styles.toolChipText}>{hiddenChipCount} more</Text>
               </TouchableOpacity>
             )}
 
@@ -1408,10 +1359,13 @@ export function QuickAddModal({
                 onPress={handleSuggest}
                 disabled={aiLoading}
                 activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: aiLoading, busy: aiLoading }}
+                accessibilityLabel={aiLoading ? 'Suggesting details' : 'Suggest details'}
               >
                 {aiLoading
                   ? <ActivityIndicator size="small" color={colors.purple} />
-                  : <Ionicons name="sparkles-outline" size={13} color={colors.purple} />
+                  : <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.purple} />
                 }
                 {!aiLoading && <Text style={[styles.toolChipText, styles.aiChipText]}>Suggest</Text>}
               </TouchableOpacity>
@@ -1441,7 +1395,7 @@ export function QuickAddModal({
                       onPress={() => toggleSegment(seg.key)}
                       activeOpacity={interaction.activeOpacity}
                     >
-                      <Ionicons name={seg.icon} size={13} color={active ? segColor : colors.textTertiary} />
+                      <Ionicons name={seg.icon} size={iconSize.sm} color={active ? segColor : colors.textSecondary} />
                       <Text style={[
                         styles.presetChipText,
                         active && styles.presetChipTextActive,
@@ -1704,7 +1658,7 @@ export function QuickAddModal({
                   onChangeText={applyCustomEffort}
                   keyboardType="number-pad"
                   placeholder="custom min"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 />
                 <TouchableOpacity
@@ -1746,7 +1700,7 @@ export function QuickAddModal({
                   ref={tagInputRef}
                   style={styles.tagInput}
                   placeholder="Add tag…"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   value={tagInput}
                   onChangeText={setTagInput}
                   onSubmitEditing={() => { if (tagInput.trim()) addTag(tagInput); }}
@@ -1828,7 +1782,7 @@ export function QuickAddModal({
                     >
                       <Ionicons
                         name={app.icon as never}
-                        size={13}
+                        size={iconSize.sm}
                         color={linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
                       />
                       <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
@@ -1847,7 +1801,7 @@ export function QuickAddModal({
                   onSubmitEditing={commitCustomLink}
                   onBlur={commitCustomLink}
                   placeholder="https://... or app://"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   keyboardType="url"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -1858,7 +1812,7 @@ export function QuickAddModal({
                     onPress={() => { haptics.tap(); setLinkUrl(null); setCustomLinkText(''); setActivePanel(null); }}
                     hitSlop={8}
                   >
-                    <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+                    <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -1876,7 +1830,7 @@ export function QuickAddModal({
                   onSubmitEditing={commitPhone}
                   onBlur={commitPhone}
                   placeholder="(555) 123-4567"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   keyboardType="phone-pad"
                   autoCorrect={false}
                 />
@@ -1885,7 +1839,7 @@ export function QuickAddModal({
                     onPress={() => { haptics.tap(); setPhoneNumber(null); setPhoneText(''); setActivePanel(null); }}
                     hitSlop={8}
                   >
-                    <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+                    <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -1903,7 +1857,7 @@ export function QuickAddModal({
                   onSubmitEditing={commitEmail}
                   onBlur={commitEmail}
                   placeholder="name@example.com"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -1914,7 +1868,7 @@ export function QuickAddModal({
                     onPress={() => { haptics.tap(); setEmailAddress(null); setEmailText(''); setActivePanel(null); }}
                     hitSlop={8}
                   >
-                    <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+                    <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -2081,9 +2035,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
   },
   addBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: interaction.minTouchTarget,
+    height: interaction.minTouchTarget,
+    borderRadius: interaction.minTouchTarget / 2,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2107,8 +2061,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 7,
+    gap: 5,
+    minHeight: interaction.minTouchTarget,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },
@@ -2116,8 +2070,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accentSubtle,
   },
   typeChipText: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
+    color: colors.textSecondary,
+    fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },
   typeChipTextActive: {
@@ -2128,7 +2082,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.sm,
   },
   typeSummary: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     lineHeight: 16,
   },
@@ -2136,7 +2090,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.sm,
   },
   typeBlocked: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     marginTop: spacing.xs,
   },
@@ -2149,7 +2103,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 12,
     // Matches presetChip's box so the custom field sits level with the pills.
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
-    height: 32,
+    height: interaction.minTouchTarget,
     minWidth: 72,
   },
   // Room for roughly four steps before the list scrolls, so a long chain
@@ -2165,16 +2119,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 5,
   },
   stepDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepDotText: {
-    color: colors.textTertiary,
-    fontSize: 10,
+    color: colors.textSecondary,
+    fontSize: font.xs,
     fontWeight: fontWeight.semibold,
   },
   stepTitle: {
@@ -2198,9 +2152,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   toolChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 6,
+    paddingHorizontal: 14,
+    // Height rather than padding: these carry a mix of icons, coloured dots and
+    // text, which don't share a natural line box, and a toolbar of pills at
+    // three different heights reads as broken. 44 is the HIG touch minimum,
+    // which none of these chips previously met (they stood about 25pt).
+    minHeight: interaction.minTouchTarget,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },
@@ -2211,8 +2169,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accentSubtle,
   },
   toolChipText: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
+    color: colors.textSecondary,
+    fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },
   toolChipTextSet: {
@@ -2282,9 +2240,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
   },
   intervalBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: interaction.minTouchTarget,
+    height: interaction.minTouchTarget,
+    borderRadius: interaction.minTouchTarget / 2,
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2305,8 +2263,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.sm,
   },
   schedulePill: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingHorizontal: 14,
+    minHeight: interaction.minTouchTarget,
+    justifyContent: 'center',
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },
@@ -2346,15 +2305,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 12,
     // Matches inlineCustomInput / presetChip so it sits level with the stepper.
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
-    height: 32,
+    height: interaction.minTouchTarget,
   },
   targetStepperCaption: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.sm,
   },
   presetChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    minHeight: interaction.minTouchTarget,
+    justifyContent: 'center',
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',
@@ -2372,8 +2332,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   presetChipHint: {
-    color: colors.textTertiary,
-    fontSize: 10,
+    color: colors.textSecondary,
+    fontSize: font.xs,
     marginTop: 1,
   },
   effortCustomRow: {
@@ -2406,7 +2366,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   effortNote: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     marginTop: spacing.sm,
   },
@@ -2422,8 +2382,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    minHeight: interaction.minTouchTarget,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
     borderWidth: 1,

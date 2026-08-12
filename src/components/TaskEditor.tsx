@@ -1429,7 +1429,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           value={title}
           onChangeText={setTitle}
           placeholder="Task title"
-          placeholderTextColor={colors.textTertiary}
+          placeholderTextColor={colors.textSecondary}
           maxLength={TITLE_MAX_LENGTH}
           // iOS's own inline predictive-text completion draws its candidate
           // directly into the field, on top of (and misaligned with) the
@@ -1474,7 +1474,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         value={notes}
         onChangeText={setNotes}
         placeholder="Notes"
-        placeholderTextColor={colors.textTertiary}
+        placeholderTextColor={colors.textSecondary}
         multiline
       />
 
@@ -1891,7 +1891,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       value={targetUnit}
                       onChangeText={setTargetUnit}
                       placeholder="units"
-                      placeholderTextColor={colors.textTertiary}
+                      placeholderTextColor={colors.textSecondary}
                       maxLength={MAX_TARGET_UNIT_LENGTH}
                       autoCapitalize="none"
                       returnKeyType="done"
@@ -2120,7 +2120,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                             accessibilityRole="button"
                             accessibilityLabel={`Reorder chain step ${item.title}`}
                           >
-                            <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                            <Ionicons name="reorder-three" size={18} color={colors.textSecondary} />
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => {
@@ -2145,7 +2145,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                             accessibilityRole="button"
                             accessibilityLabel={`Remove chain step ${item.title}`}
                           >
-                            <Ionicons name="close" size={14} color={colors.textTertiary} />
+                            <Ionicons name="close" size={14} color={colors.textSecondary} />
                           </TouchableOpacity>
                         </View>
                       );
@@ -2163,7 +2163,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         value={newChainItemTitle}
                         onChangeText={setNewChainItemTitle}
                         placeholder="Item title"
-                        placeholderTextColor={colors.textTertiary}
+                        placeholderTextColor={colors.textSecondary}
                         maxLength={TITLE_MAX_LENGTH}
                         returnKeyType="done"
                         onSubmitEditing={() => {
@@ -2372,7 +2372,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     setNewCategory(''); setAddingCategory(false);
                   }}
                   placeholder="category name"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   returnKeyType="done"
                   autoCapitalize="words"
                 />
@@ -2466,7 +2466,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onSubmitEditing={addTagFromInput}
                   onBlur={addTagFromInput}
                   placeholder="tag name"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   returnKeyType="done"
                   autoCapitalize="none"
                 />
@@ -2591,7 +2591,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
                   keyboardType="number-pad"
                   placeholder="0"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   autoFocus
                 />
@@ -2679,7 +2679,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       accessibilityRole="button"
                       accessibilityLabel={`Reorder subtask ${sub.title}`}
                     >
-                      <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                      <Ionicons name="reorder-three" size={18} color={colors.textSecondary} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => deleteDraftSubtask(sub.id)}
@@ -2688,7 +2688,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       accessibilityRole="button"
                       accessibilityLabel={`Delete subtask ${sub.title}`}
                     >
-                      <Ionicons name="close" size={14} color={colors.textTertiary} />
+                      <Ionicons name="close" size={14} color={colors.textSecondary} />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -2706,7 +2706,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   value={newSubtaskTitle}
                   onChangeText={setNewSubtaskTitle}
                   placeholder="Add subtask"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   maxLength={TITLE_MAX_LENGTH}
                   returnKeyType="next"
                   // Adding subtasks is a burst, not one edit: submitting keeps
@@ -2765,7 +2765,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
                 keyboardType="number-pad"
                 placeholder="0"
-                placeholderTextColor={colors.textTertiary}
+                placeholderTextColor={colors.textSecondary}
                 inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               />
               <View style={styles.unitToggle}>
@@ -2803,7 +2803,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 onChangeText={t => { setLogTimeText(t); applyLoggedTime(t, logTimeUnit); }}
                 keyboardType="number-pad"
                 placeholder="0"
-                placeholderTextColor={colors.textTertiary}
+                placeholderTextColor={colors.textSecondary}
                 inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 autoFocus
               />
@@ -2907,7 +2907,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     onSubmitEditing={commitCustomLink}
                     onBlur={commitCustomLink}
                     placeholder="https://... or app://"
-                    placeholderTextColor={colors.textTertiary}
+                    placeholderTextColor={colors.textSecondary}
                     keyboardType="url"
                     autoCapitalize="none"
                     autoCorrect={false}
@@ -2947,7 +2947,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onSubmitEditing={commitPhone}
                   onBlur={commitPhone}
                   placeholder="(555) 123-4567"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   // No return key on the iOS phone pad, so blur is still the
                   // path that saves — the checkmark below is what makes that
                   // visible instead of implicit.
@@ -2996,7 +2996,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onSubmitEditing={commitEmail}
                   onBlur={commitEmail}
                   placeholder="name@example.com"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -3052,7 +3052,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       Move this to the grocery list — for a &ldquo;buy milk&rdquo; captured as a task
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                  <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
                 </TouchableOpacity>
               </>
             ),
@@ -3108,7 +3108,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       {task.streakCount > 0 ? `${task.streakCount} day streak — tap to correct` : 'No streak yet'}
                     </Text>
                   </View>
-                  <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textTertiary} />
+                  <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
                 </TouchableOpacity>
                 {streakEditorOpen && (
                   <View style={styles.intervalRow}>
@@ -3282,7 +3282,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full,
+    paddingHorizontal: 12, minHeight: interaction.minTouchTarget,
+    borderRadius: radius.full,
   },
   tagDot: { width: 6, height: 6, borderRadius: 3 },
   tagChipText: { fontSize: font.sm, fontWeight: '500' },
@@ -3295,20 +3296,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   addBtnSpacing: { marginTop: spacing.sm, alignSelf: 'flex-start' },
   tagSuggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
   tagSuggestion: {
-    paddingHorizontal: 8, paddingVertical: 3,
+    paddingHorizontal: 12, minHeight: interaction.minTouchTarget,
+    justifyContent: 'center',
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
-  tagSuggestionText: { color: colors.textSecondary, fontSize: font.xs },
+  tagSuggestionText: { color: colors.textSecondary, fontSize: font.sm },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   pill: {
-    paddingHorizontal: 14, paddingVertical: 8,
+    paddingHorizontal: 14, minHeight: interaction.minTouchTarget,
+    justifyContent: 'center',
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
     alignItems: 'center',
   },
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
-  pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: 2 },
+  pillHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
   customEffortRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm,
   },
@@ -3325,12 +3328,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   unitChipActive: { backgroundColor: colors.bgQuaternary },
   unitChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   unitChipTextActive: { color: colors.text, fontWeight: '600' },
-  effortNote: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm },
+  effortNote: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm },
   segmentSuggestRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap',
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
   },
-  segmentNote: { color: colors.textTertiary, fontSize: font.xs, flexShrink: 1 },
+  segmentNote: { color: colors.textSecondary, fontSize: font.xs, flexShrink: 1 },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
@@ -3352,7 +3355,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingBottom: spacing.xs,
   },
   targetStepperCaption: {
-    color: colors.textTertiary, fontSize: font.sm,
+    color: colors.textSecondary, fontSize: font.sm,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
   },
   targetUnitInput: {
@@ -3403,7 +3406,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
-  optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
+  optionHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1 },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md + 18 + spacing.md },
   intervalRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
@@ -3522,7 +3525,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chainItemDotActive: { backgroundColor: colors.accent },
   chainItemDotText: {
-    color: colors.textSecondary, fontSize: 11, fontWeight: '700',
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
   },
   chainItemDotTextActive: { color: colors.bg },
   chainItemTitleWrapper: { flex: 1 },
@@ -3546,7 +3549,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 2,
   },
   chainCurrentHint: {
-    color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
+    color: colors.textSecondary, fontSize: font.xs, lineHeight: 16,
     marginTop: spacing.xs,
   },
   chainModeBlock: { marginTop: spacing.md },
@@ -3556,7 +3559,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chainModeRow: { flexDirection: 'row', gap: spacing.xs },
   chainModePill: {
-    flex: 1, paddingVertical: 7, borderRadius: radius.full,
+    flex: 1, minHeight: interaction.minTouchTarget, justifyContent: 'center',
+    borderRadius: radius.full,
     backgroundColor: colors.bgTertiary, alignItems: 'center',
   },
   chainModePillActive: { backgroundColor: colors.accent },
