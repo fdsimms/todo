@@ -450,13 +450,32 @@ There is no inventory table and there must not be one: a maintained inventory is
 dies in week three, so it's computed first and corrected second ("Got it" / "Out of it" on
 `GroceryItemSheet`, and `finishShopping` stamping what a trip bought).
 
-**`PantrySheet` is a read, not a second model.** It lists exactly the set `probablyHaveReason`
-answers for (`pantryEntries`), cut into aisles by `buildPantrySections`, and it writes nothing —
-tapping a row opens `GroceryItemSheet`, whose Pantry pills are still the only way to say you're
-out of something. That's the distinction the aggregate view turns on: nobody should have to check
-items in and out, but a set the app has already derived per-item is worth being able to look at,
-and until this there was no way to answer "do I have flour" short of opening items one at a time.
+**`PantrySheet` is a read plus one write, not a second model.** It lists exactly the set
+`probablyHaveReason` answers for (`pantryEntries`), cut into aisles by `buildPantrySections`.
+That's the distinction the aggregate view turns on: nobody should have to check items in and out,
+but a set the app has already derived per-item is worth being able to look at, and until this
+there was no way to answer "do I have flour" short of opening items one at a time.
 Don't grow quantities, expiry dates or a check-in gesture onto it — that's the inventory again.
+
+- **The one write is `addToPantry`**, off the field at the top, and it writes the same assertion
+  the item sheet's "Got it" pill writes (`defaultOnHandUntil`) on the same catalog row. It exists
+  because that correction was *unreachable* for anything with no row yet — an item sheet opens
+  from the list or from Buy again, so "I have flour" was unsayable until flour had been bought
+  through the app once. One bit, the one the pills already own; the things it deliberately doesn't
+  record are how much and until when.
+- **It never touches `onList`.** Saying you have something is not a plan to buy it. It promotes
+  `inCatalog` for the reason `linkItemShop` does — otherwise the next "Remove from list" would
+  delete the row and take the assertion with it — and it strips a typed quantity ("2 lb flour")
+  so the row keys on a name a real purchase can match.
+- **The field both filters and adds**, like `PillGroup`'s: what the search can't find is exactly
+  what you're offered the chance to add, and "do I have flour" is the moment you learn you never
+  said. It's also the one insert path besides `addByName`, so both go through `newItemRow` and a
+  column added later can't reach only one of them.
+- **Taking it back still goes through `GroceryItemSheet`'s Pantry pills**, which is why a row here
+  opens that sheet with them already unfolded (`initialField`). The sheet is dense, and a
+  collapsed "Pantry" field halfway down it was in practice no way to say you're out of something
+  at all — the caption promising it was simply wrong. Pre-opening it is the fix; a swipe action on
+  the row is the check-in gesture, and stays out.
 
 - **Rows on the list are deliberately in it.** An item can be both recently bought and back on the
   list; dropping it would make an item marked "Got it" vanish from the pantry the moment it was

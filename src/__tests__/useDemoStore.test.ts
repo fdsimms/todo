@@ -420,6 +420,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // guess needs a row older than its purchases, and a seeded row is created
     // this instant, so the guessed half of the list can't be seeded.
     expect(pantryEntries(items, new Date()).length).toBeGreaterThan(5);
+    // Added straight to the pantry: never on a list, never bought, and in the
+    // catalog anyway — what the pantry sheet's add field makes.
+    expect(
+      items.some(i => !i.onList && i.inCatalog && i.purchaseCount === 0 && !i.lastAddedAt)
+    ).toBe(true);
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {

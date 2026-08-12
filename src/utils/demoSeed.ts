@@ -790,6 +790,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     setAisle,
     setAisleOrder,
     setOnHandUntil,
+    addToPantry,
     setStaple,
     setExpiresAt,
     setUseUpTask,
@@ -922,6 +923,12 @@ function seedGroceries(recipes: DemoRecipes): void {
   const rice = itemById(itemNamed('Rice').id);
   if (rice) setOnHandUntil(rice.id, defaultOnHandUntil(rice, new Date()));
   setOnHandUntil(itemNamed('Olive oil').id, OUT_OF_IT_UNTIL);
+
+  // And the pantry's own way in: a thing you have that the app has never seen
+  // you buy. It's the one row shape nothing else here produces — off the list,
+  // in the catalog, no purchases behind it — and it's the whole reason the
+  // pantry has an add field, since an item with no row has no sheet to open.
+  addToPantry('Baking soda');
 
   // The staples — always on hand, so they sort into their own group rather
   // than "Need to buy" when a recipe's ingredients get added to the list.

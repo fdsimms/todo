@@ -30,6 +30,7 @@ import {
 import { useRecipeStore } from '../store/useRecipeStore';
 import { groceryNameKey } from '../utils/groceryParse';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
+import { OUT_OF_IT_UNTIL, probablyHaveReason } from '../utils/grocerySuggest';
 import type { GroceryItem, ItemShopLink, Shop, Task } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -1881,6 +1882,119 @@ describe('setOnHandUntil', () => {
     seed([]);
     useGroceryStore.getState().setOnHandUntil('gone', '2026-08-21T00:00:00.000Z');
     expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('addToPantry', () => {
+  it('creates an off-list catalog row marked on hand', () => {
+    seed([]);
+
+    const added = useGroceryStore.getState().addToPantry('Flour');
+
+    expect(added).not.toBeNull();
+    expect(added!.name).toBe('Flour');
+    expect(added!.onList).toBe(false);
+    // Never provisional: a name typed to say you own it has no stint on the
+    // list for a removal to end, so nothing should ever delete it silently.
+    expect(added!.inCatalog).toBe(true);
+    expect(added!.lastAddedAt).toBeNull();
+    expect(new Date(added!.onHandUntil!).getTime()).toBeGreaterThan(Date.now());
+    expect(dbInsertGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: added!.id, onList: false, inCatalog: true })
+    );
+    // Which is exactly the set the pantry sheet lists.
+    expect(probablyHaveReason(useGroceryStore.getState().items[0], new Date())).toBe(
+      'marked as on hand'
+    );
+  });
+
+  it('files the new row by the aisle lexicon, like any other new name', () => {
+    seed([]);
+
+    const added = useGroceryStore.getState().addToPantry('spinach');
+
+    expect(added!.aisle).toBe('Produce');
+  });
+
+  it('stamps a name already in the catalog instead of inserting a second row', () => {
+    const milk = makeItem({ name: 'Milk', inCatalog: true, purchaseCount: 4 });
+    seed([milk]);
+
+    const added = useGroceryStore.getState().addToPantry('milk');
+
+    expect(useGroceryStore.getState().items).toHaveLength(1);
+    expect(added!.id).toBe(milk.id);
+    expect(new Date(added!.onHandUntil!).getTime()).toBeGreaterThan(Date.now());
+    expect(dbInsertGroceryItem).not.toHaveBeenCalled();
+  });
+
+  it('leaves a row on the list on it — having something is not a plan to buy it', () => {
+    const eggs = makeItem({ name: 'Eggs', onList: true, sortOrder: 3 });
+    seed([eggs]);
+
+    useGroceryStore.getState().addToPantry('Eggs');
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.onList).toBe(true);
+    expect(updated.sortOrder).toBe(3);
+  });
+
+  it('promotes a provisional row, so the assertion survives the next removal', () => {
+    const tahini = makeItem({ name: 'Tahini', onList: true, inCatalog: false });
+    seed([tahini]);
+
+    useGroceryStore.getState().addToPantry('Tahini');
+
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+  });
+
+  it('takes back an "Out of it" marking', () => {
+    const rice = makeItem({ name: 'Rice', onHandUntil: OUT_OF_IT_UNTIL });
+    seed([rice]);
+
+    useGroceryStore.getState().addToPantry('Rice');
+
+    expect(probablyHaveReason(useGroceryStore.getState().items[0], new Date())).toBe(
+      'marked as on hand'
+    );
+  });
+
+  it('strips a quantity rather than minting a row no purchase can match', () => {
+    seed([]);
+
+    const added = useGroceryStore.getState().addToPantry('2 lb flour');
+
+    expect(added!.name).toBe('flour');
+    expect(added!.nameKey).toBe(groceryNameKey('flour'));
+    // How much you have is the inventory this feature exists not to be.
+    expect(added!.quantity).toBeNull();
+  });
+
+  it('refuses a name with nothing in it', () => {
+    seed([]);
+
+    expect(useGroceryStore.getState().addToPantry('   ')).toBeNull();
+    expect(useGroceryStore.getState().items).toHaveLength(0);
+    expect(dbInsertGroceryItem).not.toHaveBeenCalled();
+  });
+
+  it('undoes a fresh row by deleting it', () => {
+    seed([]);
+
+    useGroceryStore.getState().addToPantry('Flour');
+    useGroceryStore.getState().lastAction!.undo();
+
+    expect(useGroceryStore.getState().items).toHaveLength(0);
+  });
+
+  it('undoes a stamped row back to exactly what it was', () => {
+    const milk = makeItem({ name: 'Milk', onHandUntil: null, inCatalog: false, onList: true });
+    seed([milk]);
+
+    useGroceryStore.getState().addToPantry('Milk');
+    useGroceryStore.getState().lastAction!.undo();
+
+    expect(useGroceryStore.getState().items[0]).toEqual(milk);
   });
 });
 

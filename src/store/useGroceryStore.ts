@@ -213,6 +213,23 @@ interface GroceryStore {
    */
   setOnHandUntil: (id: string, until: string | null) => void;
   /**
+   * "I have this" for something the app hasn't worked out on its own — the add
+   * field on PantrySheet. It writes exactly the assertion GroceryItemSheet's
+   * "Got it" pill writes (defaultOnHandUntil, so it lapses on this item's own
+   * cadence), which is the point: the pantry stays a set of catalog rows the
+   * app computed and the user corrected, not a second table anyone has to keep
+   * up. What it adds is a way to make that correction about an item that isn't
+   * on the list and has never been bought through the app, which until now had
+   * no sheet to open.
+   *
+   * **Never touches `onList`.** Saying you have flour is not a plan to buy
+   * flour; a name already on the list stays on it, since the pantry lists those
+   * rows too.
+   *
+   * Returns null for a name with nothing usable in it.
+   */
+  addToPantry: (raw: string) => GroceryItem | null;
+  /**
    * The day this should be used up by, as a `YYYY-MM-DD` key, or null for
    * "doesn't go off on a schedule worth naming".
    *
@@ -384,6 +401,67 @@ interface GroceryStore {
 
 function nextSortOrder(items: GroceryItem[]): number {
   return items.reduce((m, i) => Math.max(m, i.sortOrder), 0) + 1;
+}
+
+/**
+ * A brand-new catalog row, with every field nobody passes in already decided.
+ *
+ * Both insert paths go through it — addByName's list add and addToPantry's
+ * off-list one — so there's still exactly one place that knows what a fresh row
+ * looks like, and a column added later can't reach only one of them. The two
+ * differ in `onList`/`inCatalog`/`onHandUntil`, which is why those are the
+ * fields with no default here.
+ */
+function newItemRow(fields: {
+  name: string;
+  nameKey: string;
+  aisle: string;
+  sortOrder: number;
+  createdAt: string;
+  onList: boolean;
+  /** False = provisional, deleted rather than kept when it leaves the list. */
+  inCatalog: boolean;
+  quantity?: string | null;
+  note?: string | null;
+  choiceGroup?: string | null;
+  source?: { recipeId: string; recipeTitle: string };
+  onHandUntil?: string | null;
+}): GroceryItem {
+  return {
+    id: generateId(),
+    name: fields.name,
+    nameKey: fields.nameKey,
+    aisle: fields.aisle,
+    quantity: fields.quantity ?? null,
+    note: fields.note ?? '',
+    onList: fields.onList,
+    checked: false,
+    inCatalog: fields.inCatalog,
+    sortOrder: fields.sortOrder,
+    purchaseCount: 0,
+    lastAddedAt: fields.onList ? fields.createdAt : null,
+    lastPurchasedAt: null,
+    createdAt: fields.createdAt,
+    onHandUntil: fields.onHandUntil ?? null,
+    // Only a genuinely new row gets attributed — see the field's doc comment on
+    // GroceryItem. A row reused via addByName's `existing` branch never reaches
+    // here, so a recipe re-adding a known item can't relabel it.
+    choiceGroup: fields.choiceGroup ?? null,
+    sourceRecipeId: fields.source?.recipeId ?? null,
+    sourceRecipeTitle: fields.source?.recipeTitle ?? null,
+    isStaple: false,
+    // Nothing on the *list* has a use-by date: adding a name is a plan to buy
+    // it, and the shelf life doesn't start until it's in the fridge.
+    // finishShopping is what stamps this — see defaultExpiresAt.
+    expiresAt: null,
+    useUpTask: null,
+    // Same reasoning as expiresAt: a name typed onto the list is a plan to buy
+    // something, and nothing has been paid for it yet. finishShopping and the
+    // item sheet are the two things that ever set a price.
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
+  };
 }
 
 /** One reviewed line on its way to the list. `aisle` null means "no opinion". */
@@ -654,8 +732,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       return updated;
     }
 
-    const item: GroceryItem = {
-      id: generateId(),
+    const item = newItemRow({
       name,
       nameKey: key,
       // Where the user put it last time beats where the lexicon thinks it
@@ -667,37 +744,16 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // still exist: naming a deleted one here would bring its section back.
       aisle: placeAisle(get().aisleOverrides[key] ?? aisleForName(name), get().aisleOrder),
       quantity,
-      note: note ?? '',
+      note,
       onList: true,
-      checked: false,
       // Provisional: a name nobody has bought or finished a trip with is on
       // the list, not in the catalog. removeFromList deletes it.
       inCatalog: false,
       sortOrder: nextSortOrder(get().items),
-      purchaseCount: 0,
-      lastAddedAt: now,
-      lastPurchasedAt: null,
       createdAt: now,
-      onHandUntil: null,
-      // Only a genuinely new row gets attributed — see the field's doc comment
-      // on GroceryItem. A row reused via the `existing` branch above never
-      // reaches here, so a recipe re-adding a known item can't relabel it.
       choiceGroup,
-      sourceRecipeId: source?.recipeId ?? null,
-      sourceRecipeTitle: source?.recipeTitle ?? null,
-      isStaple: false,
-      // Nothing on the *list* has a use-by date: adding a name is a plan to
-      // buy it, and the shelf life doesn't start until it's in the fridge.
-      // finishShopping is what stamps this — see defaultExpiresAt.
-      expiresAt: null,
-      useUpTask: null,
-      // Same reasoning as expiresAt: a name typed onto the list is a plan to
-      // buy something, and nothing has been paid for it yet. finishShopping and
-      // the item sheet are the two things that ever set a price.
-      lastPriceMinor: null,
-      lastPricedAt: null,
-      lastPriceQuantity: null,
-    };
+      source,
+    });
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));
     if (opts?.registerUndo !== false) {
@@ -956,6 +1012,72 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const updated = { ...item, onHandUntil: until };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  addToPantry(raw) {
+    // Parsed like a list line so "2 lb flour" files under flour rather than
+    // minting a row whose name no purchase can ever match. The quantity it
+    // strips off is deliberately dropped: how much you have is the inventory
+    // this feature exists not to be, and the row's quantity is the amount to
+    // buy next time.
+    const { name } = parseGroceryInput(raw);
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    // Same fallback addByName makes for a name that normalises away ("???"):
+    // the key has to stay unique or the second such row collides on the index.
+    const key = groceryNameKey(trimmed) || trimmed.toLowerCase();
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const existing = get().items.find(i => i.nameKey === key);
+
+    if (existing) {
+      const updated: GroceryItem = {
+        ...existing,
+        // The typed name wins, as it does in addByName.
+        name: trimmed,
+        // Promoted for the reason linkItemShop promotes: saying you have
+        // something is a statement about the item, not about this week's list,
+        // so a provisional row must not take the assertion with it the next
+        // time it comes off the list.
+        inCatalog: true,
+        onHandUntil: defaultOnHandUntil(existing, now),
+      };
+      dbUpdateGroceryItem(updated);
+      set(s => ({ items: s.items.map(i => (i.id === existing.id ? updated : i)) }));
+      get().setLastAction({
+        label: `Added "${updated.name}" to the pantry`,
+        undo: () => {
+          dbUpdateGroceryItem(existing);
+          set(s => ({ items: s.items.map(i => (i.id === existing.id ? existing : i)) }));
+        },
+      });
+      return updated;
+    }
+
+    const row = newItemRow({
+      name: trimmed,
+      nameKey: key,
+      aisle: placeAisle(get().aisleOverrides[key] ?? aisleForName(trimmed), get().aisleOrder),
+      // Off the list and in the catalog from the first moment, which is the
+      // one row shape addByName never produces: nothing is provisional about a
+      // name the user typed to say they own it, and there's no stint on the
+      // list for a later removal to end.
+      onList: false,
+      inCatalog: true,
+      sortOrder: nextSortOrder(get().items),
+      createdAt: nowIso,
+    });
+    // Stamped off the finished row rather than a literal fortnight, so this
+    // and "Got it" can't drift — with no purchases yet it lands on the same
+    // default, and it'll follow the item's own cadence once there are some.
+    const item: GroceryItem = { ...row, onHandUntil: defaultOnHandUntil(row, now) };
+    dbInsertGroceryItem(item);
+    set(s => ({ items: [...s.items, item] }));
+    get().setLastAction({
+      label: `Added "${item.name}" to the pantry`,
+      undo: () => get().deleteItem(item.id),
+    });
+    return item;
   },
 
   setItemPrice(id, minor, shopId = null) {
