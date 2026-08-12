@@ -472,7 +472,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
     setDurationText(''); setDurationUnit('min');
     setStreakEditorOpen(false); setStreakDraft(task?.streakCount ?? 0);
-    setTimeout(() => titleRef.current?.focus(), 100);
     initialStateRef.current = JSON.stringify({
       title: task ? task.title : (initialDraft?.title ?? ''),
       notes: task ? task.notes : '',
@@ -1314,7 +1313,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const handleSubtaskTitleTap = (sub: Task | DraftSubtask) => {
     setSubtaskTitleEdit(sub.title);
     setEditingSubtaskId(sub.id);
-    setTimeout(() => subtaskTitleEditRef.current?.focus(), 50);
   };
 
   const saveSubtaskTitle = (sub: Task | DraftSubtask) => {
@@ -1395,7 +1393,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const handleChainItemTitleTap = (item: ChainItem) => {
     setChainItemTitleEdit(item.title);
     setEditingChainItemId(item.id);
-    setTimeout(() => chainItemTitleEditRef.current?.focus(), 50);
   };
 
   const saveChainItemTitle = (item: ChainItem) => {
@@ -1410,6 +1407,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     <EditorSheet
       visible={visible}
       onRequestClose={handleCancel}
+      onShow={() => titleRef.current?.focus()}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}

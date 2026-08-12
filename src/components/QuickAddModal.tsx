@@ -707,9 +707,6 @@ export function QuickAddModal({
   const togglePanel = (panel: ActivePanel) => {
     haptics.tap();
     setActivePanel(prev => prev === panel ? null : panel);
-    if (panel === 'tags') {
-      setTimeout(() => tagInputRef.current?.focus(), 100);
-    }
     if (panel === 'link' && linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === linkUrl)) {
       setCustomLinkText(linkUrl);
     }
@@ -1546,6 +1543,7 @@ export function QuickAddModal({
                   blurOnSubmit={false}
                   autoCapitalize="none"
                   autoCorrect={false}
+                  autoFocus
                 />
                 {tagInput.trim().length > 0 && (
                   <TouchableOpacity onPress={() => addTag(tagInput)} hitSlop={8}>
