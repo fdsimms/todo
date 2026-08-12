@@ -507,13 +507,13 @@ describe('describeTripSuggestion', () => {
     );
     expect(copy).toEqual({
       stores: "Trader Joe's, then Ballard Pharmacy",
-      detail: 'Between them, you’ve got 4 of these 5 before',
+      detail: 'Between them, you’ve got 4 of 5 items before',
     });
   });
 
   it('reads as one stop when one store is enough', () => {
     expect(describeTripSuggestion([cover(tj, [milk.id, bread.id])], 5)?.detail).toBe(
-      'You’ve got 2 of these 5 there before'
+      'You’ve got 2 of 5 items there before'
     );
   });
 
@@ -528,7 +528,7 @@ describe('describeTripSuggestion', () => {
 
   it('keeps the guess in its own clause', () => {
     expect(describeTripSuggestion([cover(tj, [milk.id], [bread.id, eggs.id])], 5)?.detail).toBe(
-      'You’ve got 1 of these 5 there before · 2 more likely'
+      'You’ve got 1 of 5 items there before · 2 more likely'
     );
   });
 
@@ -539,7 +539,7 @@ describe('describeTripSuggestion', () => {
       [cover(tj, [milk.id, bread.id]), cover(pharmacy, [shampoo.id], [bread.id])],
       5
     );
-    expect(copy?.detail).toBe('Between them, you’ve got 3 of these 5 before');
+    expect(copy?.detail).toBe('Between them, you’ve got 3 of 5 items before');
   });
 
   it('labels a suggestion resting entirely on the aisle guess', () => {
@@ -563,7 +563,7 @@ describe('describeTripSuggestion', () => {
     const copy = describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length);
     expect(copy).toEqual({
       stores: "Trader Joe's, then Ballard Pharmacy",
-      detail: 'Between them, you’ve got 4 of these 5 before',
+      detail: 'Between them, you’ve got 4 of 5 items before',
     });
   });
 });

@@ -413,7 +413,7 @@ export interface TripSuggestionCopy {
  * that surfaces it can't word it two ways.
  *
  * The same rule as everywhere else in this module: the numbers are a floor and
- * the copy says so. "You've got 8 of these 12 there before" is a fact about
+ * the copy says so. "You've got 8 of 12 items there before" is a fact about
  * what you've bought, not a stock check — and the likely half stays its own
  * clause rather than being added into the count.
  *
@@ -459,10 +459,10 @@ export function describeTripSuggestion(
   const head = one
     ? known.size === total
       ? `You’ve got all ${total} items there before`
-      : `You’ve got ${known.size} of these ${total} there before`
+      : `You’ve got ${known.size} of ${total} items there before`
     : known.size === total
       ? `Between them, you’ve got all ${total} items there before`
-      : `Between them, you’ve got ${known.size} of these ${total} before`;
+      : `Between them, you’ve got ${known.size} of ${total} items before`;
 
   return { stores, detail: likely.size > 0 ? `${head} · ${likely.size} more likely` : head };
 }
