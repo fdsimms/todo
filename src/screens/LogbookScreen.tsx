@@ -29,6 +29,7 @@ import { SwipeableRow } from '../components/SwipeableRow';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { LogbookFilterSheet } from '../components/LogbookFilterSheet';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, border, checkboxRadius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -50,6 +51,11 @@ interface LogbookSection {
 }
 
 const CHECKBOX_SIZE = 20;
+
+// Keeps the search field's own value/onChangeText bound to the raw,
+// fast-updating `query` state — only the fuzzySearch recompute waits on this
+// delay. Same fix as SearchScreen's (#1210).
+const SEARCH_DEBOUNCE_MS = 180;
 
 // This is the only long virtualized list in the app — Today and its siblings
 // render every row into a plain ScrollView (`ReorderableList`), so nothing else
@@ -147,13 +153,15 @@ export function LogbookScreen() {
     [availableTags]
   );
 
+  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+
   const filteredTasks = useMemo(() => {
     let tasks = completedTasks;
     if (selectedCategory) tasks = tasks.filter(t => t.category === selectedCategory);
     if (selectedTag) tasks = tasks.filter(t => t.tags.includes(selectedTag));
-    if (query.trim()) tasks = fuzzySearch(tasks, query).map(r => r.task);
+    if (debouncedQuery.trim()) tasks = fuzzySearch(tasks, debouncedQuery).map(r => r.task);
     return tasks;
-  }, [completedTasks, selectedCategory, selectedTag, query]);
+  }, [completedTasks, selectedCategory, selectedTag, debouncedQuery]);
 
   const isFiltered = query.trim().length > 0 || selectedCategory !== null || selectedTag !== null;
 
