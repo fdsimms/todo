@@ -14,7 +14,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
-import { CalendarPicker } from './CalendarPicker';
+import { WhenPicker } from './WhenPicker';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -158,20 +158,24 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       }
       footer={
         <>
-          <CalendarPicker
+          <WhenPicker
             visible={showStartDatePicker}
             value={targetStartDate}
-            mode="date"
             title="Start Date"
+            showTimeOfDay={false}
+            showSuggest={false}
             onConfirm={(date) => { setTargetStartDate(date); setShowStartDatePicker(false); }}
+            onClear={() => { setTargetStartDate(null); setShowStartDatePicker(false); }}
             onCancel={() => setShowStartDatePicker(false)}
           />
-          <CalendarPicker
+          <WhenPicker
             visible={showEndDatePicker}
             value={targetEndDate}
-            mode="date"
             title="Target Date"
+            showTimeOfDay={false}
+            showSuggest={false}
             onConfirm={(date) => { setTargetEndDate(date); setShowEndDatePicker(false); }}
+            onClear={() => { setTargetEndDate(null); setShowEndDatePicker(false); }}
             onCancel={() => setShowEndDatePicker(false)}
           />
         </>
