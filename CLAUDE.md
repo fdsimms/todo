@@ -119,6 +119,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) |
 | grocery autocomplete, Buy again ranking | `src/utils/grocerySuggest.ts` |
 | which store an item comes from | `src/utils/groceryShops.ts` — see Grocery stores below |
+| the store you're shopping at right now | `src/utils/activeTrip.ts` — see The active trip below |
 | what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see The pantry below |
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see Grocery either/or below |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
@@ -387,9 +388,59 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
 - **Manage stores in the setup sheet, browse them in Buy again.** The Stores tab of
   `GroceryAislesSheet` is add/rename/reorder/delete only; the "what does Costco carry" read is the
   filter chip row in `BuyAgainSheet`, because that's the catalog browser and it's open exactly
-  when you're deciding what to buy where. **There is deliberately no store chip on the shopping
-  list rows** — the row is already dense, and while you're shopping you're standing in one store,
-  so it's noise precisely when the list is in use.
+  when you're deciding what to buy where. **There is still no store chip on the shopping list
+  rows** — the row is already dense, and a chip on every row is a column you can't act on. What
+  a row can now carry is one quiet caption, and only while a trip is running: see below.
+
+### The active trip — "I'm at this store"
+
+The store used to be captured only at the *end* of a shop, in the finish sheet, which meant the
+app never knew where you were while it could still be useful. `src/utils/activeTrip.ts` is the
+other half: a trip is a store id plus a start stamp, and while one is running the list says
+which rows you don't usually get here.
+
+- **Stored as `(tripShopId, tripStartedAt)`; everything else is derived.** There is no `isActive`
+  flag and no timer that ends a trip — the same call `timer.ts` makes about a countdown and
+  `isDismissedToday` makes about a dismissal. A flag has to be cleared by something, and that
+  something isn't running while the app is closed. The failure this rules out is specific:
+  a Saturday-evening trip still marking rows up on Sunday morning.
+- **`resolveActiveTrip` is the only sanctioned read** (`activeShop()` on the store). It drops both
+  a deleted shop and an aged-out trip, so no caller has to remember to. `TRIP_MAX_MS` is six
+  hours — generous enough that a slow shop is never cut off, short enough that an abandoned one
+  is gone by morning. Deliberately *not* the logical-day rollover `isDismissedToday` uses: an
+  11pm shop is a real thing and a day reset would end it twenty minutes in.
+- **Explicit only, and started from the planner.** `ShoppingTripSheet` grows a second verb —
+  its header confirm plans a trip (a task, possibly for tomorrow), "Start shopping at X" says
+  you're there now. Overloading the one button would set the mode at exactly the wrong moment.
+  Offered for a single selection only: you can only stand in one store, and a two-stop plan is
+  still a plan. Nothing anywhere infers a trip.
+- **Three terminators, and they're in three different places for a reason.** The Clear button and
+  `clearList` end it in the store; finishing ends it in `GroceryScreen.handleFinished` rather than
+  inside `finishShopping`, because that early-returns on an empty trolley and finishing a shop you
+  bought nothing at still ends the trip. Expiry is handled twice — `initialize` repairs at read
+  time (not written back, like the aisle order), and `checkTripExpiry` on screen focus clears the
+  fields so an expiry that happened while the app was open becomes *visible* rather than merely
+  true; a memo whose inputs haven't changed won't re-render itself away.
+- **Silence is the default and it's load-bearing** (`tripMarkerFor`). Only three things can be
+  said, and each is backed by something the user recorded: `unavailable` ("Not at Safeway", their
+  own negative claim), `only` ("Only at Costco", every store on record is one other — a hand
+  assertion counts), `usually` ("Usually Trader Joe's", observed purchases). A row this store has
+  any link for says nothing, and **so does a row nothing is known about** — the app not having
+  watched you buy tahini anywhere is ignorance, not evidence. Marking those would caption most of
+  the list on anyone's first trip, which is how the feature would come to read as noise. Same
+  discipline as `shoppingTrip.ts`.
+- **The banner is a sibling of the list, not its `ListHeaderComponent`** — unlike
+  `TripSuggestionCard`. A mode indicator that scrolls away is one you can't find to turn off, and
+  it's the answer to "why does this row say that" at the moment you're looking at the row. The two
+  never render together: the card is for deciding where to go, the banner says you've gone.
+- **The row caption is its own third text treatment**, borrowing `note`'s colour and
+  `alternatives`' weight. A row can carry all three at once (a noted either/or item on record
+  elsewhere); at identical styling they run together into a block you can't read while walking.
+  It outranks the recipe caption and only that — provenance is the least useful thing at a shelf,
+  while a user's note ("the blue cap one") is exactly what you're there for.
+- **The `usually` case can't be seeded into demo mode.** It needs an item bought at two stores
+  while you stand in a third, and the demo has two stores anyone would shop at. The seeded trip
+  is at Trader Joe's and shows the other two.
 
 ### The pantry — computed, corrected, and now browsable
 

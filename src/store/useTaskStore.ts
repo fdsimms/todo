@@ -49,7 +49,13 @@ import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
-import { postponeOutcome, nextPostponeCount } from '../utils/postpone';
+import {
+  postponeOutcome,
+  nextPostponeCount,
+  nextDriftingSince,
+  driftingTasks,
+  type DriftEntry,
+} from '../utils/postpone';
 import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
@@ -77,6 +83,10 @@ interface UndoableAction {
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
   'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'linkUrl', 'phoneNumber', 'emailAddress',
+  // The question, not the answer — `deliverableValue` is per-occurrence data
+  // like progressCount and is deliberately absent, or a scope:'occurrence'
+  // edit would capture one date's answer as the default for every date after.
+  'deliverableKind',
   // Grouped with the other visibility gates (windowStart, timeSegments) rather
   // than the recurrence rule: "this occurrence waits on that one-off errand" is
   // a normal thing to want, and without this a scope:'occurrence' edit would
@@ -221,11 +231,17 @@ function newTaskFromDraft(
     phoneNumber: draft.phoneNumber ?? null,
     emailAddress: draft.emailAddress ?? null,
     blockedById: draft.blockedById ?? null,
+    deliverableKind: draft.deliverableKind ?? null,
+    // Never read off the draft: the question carries, the answer doesn't. A
+    // template or a duplicate that arrived holding someone else's answer would
+    // read as a decision already made.
+    deliverableValue: null,
     pendingImport: draft.pendingImport ?? null,
     // Not read off the draft — they're omitted from TaskDraft on purpose, so a
     // series row or a template application can't inherit someone else's count.
     postponeCount: 0,
     postponeMuted: false,
+    driftingSince: null,
     extraTaskTally: 0,
     previousExtraTaskTally: 0,
   };
@@ -473,6 +489,10 @@ function patchTasksById(tasks: Task[], updates: Map<string, Partial<Task>>): Tas
  * was — so this can't ride along on dbBulkSetWhen / dbBulkSetDefer, which stay
  * single-purpose. Same split dbBatchUpdatePinnedOrders makes beside
  * bulkTogglePin. Only rows whose count actually moves are written.
+ *
+ * Carries driftingSince alongside, since the two are one fact (see
+ * nextDriftingSince) and splitting them across two passes would let a batch
+ * write half of it.
  */
 function bulkPostponeCounts(
   tasks: Task[],
@@ -483,13 +503,17 @@ function bulkPostponeCounts(
   // every bulk defer look like it had cleared the task's due date.
   next: Partial<Pick<Task, 'dueDate' | 'deferUntil'>>,
   dayResetTime: string,
-): Map<string, number> {
+): Map<string, { postponeCount: number; driftingSince: string | null }> {
   const idSet = new Set(ids);
-  const counts = new Map<string, number>();
+  const counts = new Map<string, { postponeCount: number; driftingSince: string | null }>();
   for (const t of tasks) {
     if (!idSet.has(t.id)) continue;
-    const count = nextPostponeCount(t.postponeCount, postponeOutcome(t, { ...t, ...next }, dayResetTime));
-    if (count !== t.postponeCount) counts.set(t.id, count);
+    const outcome = postponeOutcome(t, { ...t, ...next }, dayResetTime);
+    const postponeCount = nextPostponeCount(t.postponeCount, outcome);
+    const driftingSince = nextDriftingSince(t.driftingSince, t.postponeCount, outcome, t, dayResetTime);
+    if (postponeCount !== t.postponeCount || driftingSince !== t.driftingSince) {
+      counts.set(t.id, { postponeCount, driftingSince });
+    }
   }
   return counts;
 }
@@ -626,8 +650,21 @@ interface TaskStore {
   setLastAction: (action: UndoableAction | null) => void;
   undoLastAction: () => void;
   deleteTask: (id: string) => void;
-  completeTask: (id: string, options?: { missed?: boolean }) => void;
+  /**
+   * `deliverableValue` records the answer a decision task was completed with
+   * (see Task.deliverableKind). Omitting it completes with no answer, which
+   * every non-interactive caller does and is always allowed — bulk complete,
+   * the stack cascade, the widget queue and the overshoot sweep have nobody to
+   * ask, and a completion may never be blocked on an answer.
+   */
+  completeTask: (id: string, options?: { missed?: boolean; deliverableValue?: string | null }) => void;
   uncompleteTask: (id: string) => void;
+  /**
+   * Writes (or clears) the answer on an already-completed task — the Logbook's
+   * "Edit answer". Separate from updateTask only in that it's the one write
+   * that means "I'm correcting what I decided", so it registers its own undo.
+   */
+  setDeliverableValue: (id: string, value: string | null) => void;
   /**
    * Closes out a recurring occurrence as *not done* and moves to the next one.
    *
@@ -798,6 +835,7 @@ interface TaskStore {
   inboxTasks: () => Task[];
   unscheduledTasks: () => Task[];
   waitingTasks: () => Task[];
+  driftingTasks: () => DriftEntry[];
   deferredTasks: () => Task[];
   expiredTasks: () => Task[];
   vacationHiddenTasks: () => Task[];
@@ -1150,6 +1188,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       actualMinutes: null,
       // The duplicate keeps the duration but starts its countdown fresh.
       timerElapsedSeconds: 0,
+      // Same split as actualMinutes above: the copy still asks the question,
+      // it just hasn't been answered yet.
+      deliverableValue: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],
@@ -1162,6 +1203,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // made, so it has neither a history of being ducked nor a mute they set.
       postponeCount: 0,
       postponeMuted: false,
+      driftingSince: null,
     };
     const copy: Task = {
       ...original,
@@ -1245,19 +1287,32 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // {dueDate, deferUntil} patch (deloadTasks, pullProjectTasks) — there's no
       // field there to hide behind, and that backward move would otherwise read
       // as "resolved" and wipe the history this feature exists to keep.
-      const derivedPostponeCount =
-        options?.skipPostponeCount || 'postponeCount' in updates
+      //
+      // driftingSince rides on the same outcome and the same escape hatches, so
+      // the count and the day it started from can never be judged differently:
+      // one call to postponeOutcome answers both.
+      const derivedPostpone =
+        options?.skipPostponeCount || 'postponeCount' in updates || 'driftingSince' in updates
           ? undefined
-          : nextPostponeCount(
-              t.postponeCount,
-              postponeOutcome(t, { ...t, ...updates }, dayResetTime),
-            );
+          : (() => {
+              const outcome = postponeOutcome(t, { ...t, ...updates }, dayResetTime);
+              return {
+                postponeCount: nextPostponeCount(t.postponeCount, outcome),
+                driftingSince: nextDriftingSince(
+                  t.driftingSince,
+                  t.postponeCount,
+                  outcome,
+                  t,
+                  dayResetTime,
+                ),
+              };
+            })();
 
       const updated = {
         ...t,
         ...updates,
         seriesDefaults,
-        ...(derivedPostponeCount !== undefined ? { postponeCount: derivedPostponeCount } : {}),
+        ...(derivedPostpone ?? {}),
         ...(takenOver ? { autoScheduledAt: null } : {}),
         // Only on the transition, never on a re-save of an already-pinned
         // task: the editor writes `pinned: true` on every save of a pinned
@@ -1590,6 +1645,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // can land over, at, or under target, so clamping it here would erase
       // the overshoot the sweep exists to preserve (see sweepOvershootQuotas).
       progressCount: isQuotaTask(task) && !missed && !task.allowOvershoot ? task.targetCount! : task.progressCount,
+      // What was decided, where the caller had somewhere to ask. Omitted means
+      // "nobody asked" — every non-interactive path (bulk, cascade, widget,
+      // sweep) and every miss — which completes the row exactly as it did
+      // before this feature existed, keeping whatever was already there rather
+      // than nulling it. Explicit null is the user declining to answer.
+      deliverableValue: options?.deliverableValue !== undefined
+        ? options.deliverableValue
+        : task.deliverableValue,
       extraTaskTally: nextExtraTally,
       previousExtraTaskTally: task.extraTaskTally,
     };
@@ -1682,12 +1745,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           deferUntil: null,
           pinned: false, // pin resets on new occurrence
           progressCount: 0, // a quota starts the new day empty
+          // The question carries via ...effective, the answer doesn't: this
+          // occurrence hasn't been decided yet. Same split actualMinutes makes,
+          // and it's what turns a recurring decision task's Logbook into the
+          // log of its answers rather than one answer copied forward for ever.
+          deliverableValue: null,
           // The pushes belong to the occurrence that was pushed. postponeMuted
           // deliberately isn't reset here — it rides through on ...effective,
           // because "stop asking about this one" is a statement about the task,
           // not about today's row, and a muted chore would otherwise start
           // nagging again next week just as the count climbs back.
           postponeCount: 0,
+          // Cleared with it: a fresh occurrence has no run of pushes, so it has
+          // no day one started from.
+          driftingSince: null,
           // Carries the broken streak forward on a miss, not the pre-miss one:
           // the streak lives on whichever row is currently running it, so
           // resetting only the missed row would hand the next occurrence the
@@ -2020,6 +2091,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
+  setDeliverableValue(id, value) {
+    const task = get().tasks.find(t => t.id === id);
+    // Guarded on the kind, not on `completed`: the answer belongs to a task
+    // that asks a question, and a row can be un-completed and re-completed
+    // without the answer needing to be retyped.
+    if (!task || task.deliverableKind === null) return;
+    const previous = task.deliverableValue;
+    if (previous === value) return;
+    const updated = { ...task, deliverableValue: value };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    get().setLastAction({
+      label: value === null ? 'Answer cleared' : 'Answer saved',
+      undo: () => get().setDeliverableValue(id, previous),
+    });
+  },
+
   logQuotaUnit(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.completed || !isQuotaTask(task)) return;
@@ -2141,6 +2229,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         progressCount: 0,
         // Same as completeTask's successor: the count resets, the mute carries.
         postponeCount: 0,
+        driftingSince: null,
         streakCount: 0,
         streakDate: null,
         previousStreakCount: 0,
@@ -2707,11 +2796,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       phoneNumber: null,
       emailAddress: null,
       blockedById: null,
+      deliverableKind: null,
+      deliverableValue: null,
       mealEntryId: null,
       groceryItemId: null,
       pendingImport: null,
       postponeCount: 0,
       postponeMuted: false,
+      driftingSince: null,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));
@@ -2862,11 +2954,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       phoneNumber: null,
       emailAddress: null,
       blockedById: null,
+      deliverableKind: null,
+      deliverableValue: null,
       mealEntryId: null,
       groceryItemId: null,
       pendingImport: null,
       postponeCount: 0,
       postponeMuted: false,
+      driftingSince: null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -3401,12 +3496,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     );
     dbBulkSetDefer(ids, deferUntil);
     if (counts.size > 0) {
-      dbBatchUpdatePostponeCounts([...counts].map(([id, postponeCount]) => ({ id, postponeCount })));
+      dbBatchUpdatePostponeCounts([...counts].map(([id, moved]) => ({ id, ...moved })));
     }
     set(s => ({
       tasks: patchTasks(s.tasks, ids, t => ({
         deferUntil,
-        ...(counts.has(t.id) ? { postponeCount: counts.get(t.id)! } : {}),
+        ...(counts.get(t.id) ?? {}),
       })),
     }));
     if (snapshots.length > 0) {
@@ -3429,13 +3524,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     );
     dbBulkSetWhen(ids, dueDate, timeSegments);
     if (counts.size > 0) {
-      dbBatchUpdatePostponeCounts([...counts].map(([id, postponeCount]) => ({ id, postponeCount })));
+      dbBatchUpdatePostponeCounts([...counts].map(([id, moved]) => ({ id, ...moved })));
     }
     set(s => ({
       tasks: patchTasks(s.tasks, ids, t => ({
         dueDate,
         timeSegments,
-        ...(counts.has(t.id) ? { postponeCount: counts.get(t.id)! } : {}),
+        ...(counts.get(t.id) ?? {}),
       })),
     }));
     if (snapshots.length > 0) {
@@ -3497,6 +3592,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .filter(isWaitingTask)
       .sort((a, b) => (a.blockedById ?? '').localeCompare(b.blockedById ?? '')
         || a.sortOrder - b.sortOrder);
+  },
+
+  // Reads the user's own threshold rather than a constant of its own: the
+  // screen and the date picker's prompt have to agree about what "keeps getting
+  // pushed" means, or a task can be listed here while the picker stays silent
+  // about it.
+  driftingTasks() {
+    return driftingTasks(get().tasks, useSettingsStore.getState().postponeCheckThreshold);
   },
 
   deferredTasks() {

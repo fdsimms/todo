@@ -126,6 +126,84 @@ export function nextPostponeCount(current: number, outcome: PostponeOutcome): nu
 }
 
 /**
+ * The companion stamp: which day the current run of pushes started from.
+ *
+ * Takes `before` rather than a date, because the answer is the day the task was
+ * *leaving* — the one it was supposed to be done on when it first got moved.
+ * Only the first push in a run sets it; the rest climb the count and leave the
+ * start where it is, which is what makes "pushed 6 times since March 3rd" true
+ * rather than "since last Tuesday".
+ *
+ * Cleared on `resolved` in step with the count. The two are always written
+ * together (see dbBatchUpdatePostponeCounts) so a row can never claim a run of
+ * pushes with no day to have started from.
+ */
+export function nextDriftingSince(
+  current: string | null,
+  currentCount: number,
+  outcome: PostponeOutcome,
+  before: Pick<Task, 'dueDate' | 'deferUntil'>,
+  dayResetTime: string,
+): string | null {
+  if (outcome === 'resolved') return null;
+  if (outcome !== 'pushed') return current;
+  // Not `current ?? …`: a count of 0 starts a fresh run even on a row that
+  // still carries a stamp, which is how a task pulled back and then pushed
+  // again dates its *second* run rather than inheriting the first one's start.
+  if (currentCount > 0 && current) return current;
+  const from = effectiveDay(before, dayResetTime);
+  return from ? from.toISOString() : current;
+}
+
+/** A task that keeps being moved, and the two facts about how it's been moved. */
+export interface DriftEntry {
+  task: Task;
+  /** Task.postponeCount, hoisted so the row doesn't re-read it. */
+  count: number;
+  /** Task.driftingSince, or null on a run that predates the stamp shipping. */
+  since: string | null;
+}
+
+/**
+ * The Drift screen's list: incomplete, unarchived tasks pushed at least
+ * `threshold` times, worst first.
+ *
+ * Muted tasks are excluded, not merely sorted last. "Stop asking about this
+ * one" is an answer to exactly the question this screen asks, and a screen that
+ * keeps listing what you've told it to drop the subject on is the one that
+ * teaches you the mute doesn't work.
+ *
+ * Ranked by count, then by the longest-running drift, then by title so the
+ * order is stable across renders rather than dependent on row order — a list
+ * that reshuffles under a finger when one task's count ticks is the failure
+ * `foldRows` avoids by not re-sorting.
+ */
+export function driftingTasks(tasks: readonly Task[], threshold: number): DriftEntry[] {
+  return tasks
+    .filter(
+      t =>
+        !t.completed &&
+        !t.archived &&
+        !t.parentId &&
+        !t.postponeMuted &&
+        t.postponeCount >= threshold,
+    )
+    .map(t => ({ task: t, count: t.postponeCount, since: t.driftingSince }))
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      // A null stamp sorts last within its count: it's an older run than the
+      // feature can date, not a longer one, and guessing it's the worst would
+      // put every pre-upgrade task at the top of the screen for weeks.
+      if (a.since !== b.since) {
+        if (!a.since) return 1;
+        if (!b.since) return -1;
+        return a.since < b.since ? -1 : 1;
+      }
+      return a.task.title.localeCompare(b.task.title);
+    });
+}
+
+/**
  * Whether the date picker should say something when it opens on this task.
  *
  * `postponeMuted` is the per-task opt-out — some tasks genuinely are blocked on

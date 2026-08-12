@@ -31,6 +31,11 @@ interface Props {
   onClose: () => void;
   /** Empty means "no store" — one plain "Get groceries" task. */
   onCreate: (shops: Shop[]) => void;
+  /**
+   * "I'm at this store, now" — a different verb from onCreate, which plans a
+   * trip for later. One shop, never a list: you can only stand in one.
+   */
+  onStart: (shop: Shop) => void;
 }
 
 /**
@@ -79,7 +84,7 @@ interface Props {
  * its own rather than a cancel, and it makes exactly the task this button made
  * before any of this existed.
  */
-export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
+export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -148,6 +153,13 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
     const byId = new Map(shops.map(s => [s.id, s]));
     onCreate(selected.map(id => byId.get(id)).filter((s): s is Shop => !!s));
   };
+
+  // The one store a "start shopping" offer could name, or null. Resolved from
+  // live shops rather than trusted, same as handleCreate does.
+  const startable = useMemo(
+    () => (selected.length === 1 ? shops.find(s => s.id === selected[0]) ?? null : null),
+    [selected, shops]
+  );
 
   /**
    * The correction, and the reason this sheet can afford to be uncertain out
@@ -441,6 +453,28 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
             ))}
           </View>
 
+          {/* The other verb. The confirm in the header plans a trip — a task
+              for Today, possibly for tomorrow — and this says you're standing
+              in the place right now, which is what lets the list start naming
+              stores. Offered only for a single pick, because that's the only
+              selection the claim can be true of; a two-stop plan is still a
+              plan, and you start the trip when you get to the first one. */}
+          {startable && (
+            <>
+              <Text style={styles.label}>SHOPPING NOW?</Text>
+              <Text style={styles.hint}>
+                Sets the store you’re at. Your list will say when something isn’t one you
+                usually get there.
+              </Text>
+              <InlineAction
+                label={`Start shopping at ${startable.name}`}
+                icon="storefront-outline"
+                onPress={() => onStart(startable)}
+                style={styles.startAction}
+              />
+            </>
+          )}
+
           {total > 0 && (
             <View style={styles.footer}>
               {/* "At least" is the whole disclaimer in one word, and it needs
@@ -621,6 +655,7 @@ function makeStyles(colors: Colors) {
     },
     suggestionSub: { color: colors.textSecondary, fontSize: font.sm, marginTop: 2, lineHeight: 19 },
     suggestionAction: { marginTop: spacing.md },
+    startAction: { alignSelf: 'flex-start', marginTop: spacing.xs },
     label: {
       fontSize: font.xs,
       fontWeight: fontWeight.semibold,

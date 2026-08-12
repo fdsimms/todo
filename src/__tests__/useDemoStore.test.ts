@@ -26,12 +26,14 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD } from '../utils/postpone';
+import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
 import { isUsingDemoDatabase } from '../db/database';
 import { RECIPE_MEAL_TYPES } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
 import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
 import { cheapestShopFor } from '../utils/groceryPrice';
+import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
+import { tripMarkerFor } from '../utils/activeTrip';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockDbs: Map<string, any>;
@@ -287,6 +289,23 @@ describe('demo mode', () => {
     expect(templates.some(t => declaresRunPlaceholder(t.items))).toBe(true);
   });
 
+  // A decision task is invisible as a *capability* until something asks a
+  // question, and the answer only exists on a completed row — so the seed
+  // needs both halves for the feature to read as one that exists.
+  it('seeds a decision task, live and answered', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+    const asking = tasks.filter(t => asksOnCompletion(t));
+
+    expect(asking.length).toBeGreaterThan(0);
+    // One still outstanding, so its checkbox carries the "?".
+    expect(asking.some(t => !t.completed)).toBe(true);
+    // And one already answered, so the Logbook shows what an answer looks like.
+    const answered = asking.find(t => t.completed && t.deliverableValue !== null)!;
+    expect(answered).toBeDefined();
+    expect(formatTaskDeliverable(answered)).toBeTruthy();
+  });
+
   // A rule nothing has a row for reads as a field that does nothing.
   it('seeds a task that adds an extra task every Nth completion', () => {
     useDemoStore.getState().enterDemoMode();
@@ -336,6 +355,24 @@ describe('demo mode', () => {
     expect(
       pushed.some(t => shouldNudgePostpone(t, true, DEFAULT_POSTPONE_THRESHOLD)),
     ).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds enough drift for the Drift screen to be a list, dated', () => {
+    // Same reasoning one step on: a screen with one row doesn't show that it
+    // ranks, and a row with no driftingSince doesn't show the "first put off"
+    // line that is half of what the screen adds over the count alone.
+    useDemoStore.getState().enterDemoMode();
+
+    const drifting = driftingTasks(
+      useTaskStore.getState().tasks,
+      DEFAULT_POSTPONE_THRESHOLD,
+    );
+    expect(drifting.length).toBeGreaterThan(1);
+    expect(drifting.every(e => e.since !== null)).toBe(true);
+    // Worst first.
+    expect(drifting[0].count).toBeGreaterThanOrEqual(drifting[1].count);
 
     useDemoStore.getState().exitDemoMode();
   });
@@ -437,6 +474,27 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // at two stores, "cheapest at X" is a feature the demo can't show.
     const compared = items.filter(i => cheapestShopFor(i.id, itemShops, shops) !== null);
     expect(compared.length).toBeGreaterThan(0);
+  });
+
+  it('seeds a trip in progress, with rows that have something to say about it', () => {
+    const { items, itemShops, shops } = useGroceryStore.getState();
+
+    // The banner, and the only state in which the list mentions stores at all.
+    const trip = useGroceryStore.getState().activeShop();
+    expect(trip).not.toBeNull();
+
+    const markers = items
+      .filter(i => i.onList)
+      .map(i => tripMarkerFor(i.id, itemShops, shops, trip!))
+      .filter((m): m is NonNullable<typeof m> => !!m);
+
+    // Both kinds this seed can honestly produce: the store's own negative
+    // claim, and an item on record at exactly one other store. Without a row
+    // carrying one, the whole feature is a banner and nothing else.
+    expect(markers.some(m => m.kind === 'unavailable')).toBe(true);
+    expect(markers.some(m => m.kind === 'only')).toBe(true);
+    // ...and most of the list still says nothing, which is the point.
+    expect(markers.length).toBeLessThan(items.filter(i => i.onList).length);
   });
 
   it('seeds a recipe of every meal type, with the composed ones composed', () => {

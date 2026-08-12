@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -16,6 +16,7 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { resolveActiveTrip } from '../utils/activeTrip';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { PillGroup } from './PillGroup';
 import { haptics } from '../utils/haptics';
@@ -98,6 +99,8 @@ export function FinishShoppingSheet({
 
   const shops = useGroceryStore(useShallow(s => s.shops));
   const lastShopId = useGroceryStore(s => s.lastShopId);
+  const tripShopId = useGroceryStore(s => s.tripShopId);
+  const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
   const addShop = useGroceryStore(s => s.addShop);
   const items = useGroceryStore(useShallow(s => s.items));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
@@ -112,18 +115,30 @@ export function FinishShoppingSheet({
   // rejected value flashing an error at someone holding a receipt.
   const [priceText, setPriceText] = useState<Record<string, string>>({});
 
-  // Reset on every opening rather than on mount: the sheet outlives a trip,
-  // and last week's selection is a way to file a shop against the wrong store.
-  // The default is the store you finished at last, which is right far more
-  // often than it's wrong — most people shop the same two places.
+  // If a trip is running, the store is already known and this stops being a
+  // question — you said where you were on the way in. Falling back to where you
+  // finished last, which is right far more often than it's wrong: most people
+  // shop the same two places.
+  const defaultShopId =
+    resolveActiveTrip(tripShopId, tripStartedAt, shops, new Date())?.id ?? lastShopId;
+
+  // Read through a ref so the reset fires on opening only. Reset on every
+  // opening rather than on mount: the sheet outlives a trip, and last week's
+  // selection is a way to file a shop against the wrong store. Re-deriving the
+  // default from a store update while the sheet is up would instead silently
+  // undo a choice the user had already made — the same reason ShoppingTripSheet
+  // reads its own defaults this way.
+  const defaultShopRef = useRef(defaultShopId);
+  defaultShopRef.current = defaultShopId;
+
   useEffect(() => {
     if (visible) {
-      setSelected(lastShopId);
+      setSelected(defaultShopRef.current);
       // Same reset and the same reason: last week's typed prices belong to last
       // week's trolley.
       setPriceText({});
     }
-  }, [visible, lastShopId]);
+  }, [visible]);
 
   // A "they didn't have it" is about one named store, so changing the store
   // throws the answers away rather than refiling them. Includes the reset

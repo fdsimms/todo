@@ -93,6 +93,9 @@ jest.mock('../db/database', () => ({
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
+  dbGetTripShopId: jest.fn().mockReturnValue(null),
+  dbGetTripStartedAt: jest.fn().mockReturnValue(null),
+  dbSetTrip: jest.fn(),
   // Written when deleting a use-up task records the item's opt-out — the one
   // place this file's subject writes to the grocery catalog.
   dbUpdateGroceryItem: jest.fn(),
@@ -188,6 +191,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   pinnedOrder: 0,
   postponeCount: 0,
   postponeMuted: false,
+  driftingSince: null,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -225,6 +229,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   phoneNumber: null,
   emailAddress: null,
   blockedById: null,
+  deliverableKind: null,
+  deliverableValue: null,
   mealEntryId: null,
   groceryItemId: null,
   pendingImport: null,
@@ -6626,7 +6632,12 @@ describe('postponeCount', () => {
     const { tasks } = useTaskStore.getState();
     expect(tasks.find(t => t.id === 'a')?.postponeCount).toBe(2);
     expect(tasks.find(t => t.id === 'b')?.postponeCount).toBe(1);
-    expect(dbBatchUpdatePostponeCounts).toHaveBeenCalledWith([{ id: 'a', postponeCount: 2 }]);
+    // The count and the day it started from go in one write, so a batch can
+    // never leave a row claiming pushes with no start. The stamp is the *day*
+    // the task was leaving, not the instant it held — the screen renders a date.
+    expect(dbBatchUpdatePostponeCounts).toHaveBeenCalledWith([
+      { id: 'a', postponeCount: 2, driftingSince: new Date(2025, 5, 10).toISOString() },
+    ]);
   });
 
   it('counts a bulk defer without being confused by the untouched dueDate', () => {
@@ -6888,5 +6899,163 @@ describe('completeTask: extra task every Nth completion', () => {
     const live = completeOccurrence('practice');
     expect(live.extraTaskTally).toBe(0);
     expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(1);
+  });
+});
+
+describe('completeTask: decision tasks capture an answer', () => {
+  const decide = (overrides: Partial<Task> = {}) => makeTask({
+    id: 'trip-date',
+    title: 'Pick a date for the trip',
+    deliverableKind: 'date',
+    ...overrides,
+  });
+
+  const rowOf = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  it('stamps the answer onto the completed row', () => {
+    useTaskStore.setState({ tasks: [decide()] });
+
+    useTaskStore.getState().completeTask('trip-date', { deliverableValue: '2026-09-12T00:00:00.000Z' });
+
+    const row = rowOf('trip-date');
+    expect(row.completed).toBe(true);
+    expect(row.deliverableValue).toBe('2026-09-12T00:00:00.000Z');
+  });
+
+  it('completes with no answer when the caller has nobody to ask', () => {
+    useTaskStore.setState({ tasks: [decide()] });
+
+    // Every non-interactive path — bulk complete, the stack cascade, the
+    // widget queue, the rollover sweep — completes exactly like this.
+    useTaskStore.getState().completeTask('trip-date');
+
+    const row = rowOf('trip-date');
+    expect(row.completed).toBe(true);
+    expect(row.deliverableValue).toBeNull();
+  });
+
+  it('completes when the answer is explicitly declined', () => {
+    useTaskStore.setState({ tasks: [decide()] });
+
+    useTaskStore.getState().completeTask('trip-date', { deliverableValue: null });
+
+    expect(rowOf('trip-date').completed).toBe(true);
+    expect(rowOf('trip-date').deliverableValue).toBeNull();
+  });
+
+  it('keeps an existing answer when a later completion says nothing', () => {
+    // Un-completing keeps the answer, so re-ticking without answering again
+    // must not throw away what was already decided.
+    useTaskStore.setState({ tasks: [decide({ deliverableValue: 'The Anchor', deliverableKind: 'text' })] });
+
+    useTaskStore.getState().completeTask('trip-date');
+
+    expect(rowOf('trip-date').deliverableValue).toBe('The Anchor');
+  });
+
+  it('keeps the answer on the row when it is un-completed', () => {
+    useTaskStore.setState({ tasks: [decide({ deliverableKind: 'text' })] });
+
+    useTaskStore.getState().completeTask('trip-date', { deliverableValue: 'The Anchor' });
+    useTaskStore.getState().uncompleteTask('trip-date');
+
+    const row = rowOf('trip-date');
+    expect(row.completed).toBe(false);
+    expect(row.deliverableValue).toBe('The Anchor');
+  });
+
+  it('hands the next occurrence the question but not the answer', () => {
+    useTaskStore.setState({
+      tasks: [decide({
+        deliverableKind: 'number',
+        recurrenceType: 'weekly',
+        recurrenceInterval: 1,
+        title: 'Log the weigh-in',
+        dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      })],
+    });
+
+    useTaskStore.getState().completeTask('trip-date', { deliverableValue: '181' });
+
+    const next = useTaskStore.getState().tasks.find(t => !t.completed && t.title === 'Log the weigh-in')!;
+    expect(next.deliverableKind).toBe('number');
+    expect(next.deliverableValue).toBeNull();
+    // The completed row keeps its own, which is what makes the Logbook the
+    // log of answers over time rather than one answer copied forward.
+    expect(rowOf('trip-date').deliverableValue).toBe('181');
+  });
+
+  it('leaves an ordinary task alone', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'bins', title: 'Take the bins out' })] });
+
+    useTaskStore.getState().completeTask('bins');
+
+    expect(rowOf('bins').deliverableKind).toBeNull();
+    expect(rowOf('bins').deliverableValue).toBeNull();
+  });
+
+  it('a duplicate asks the same question with a clean slate', () => {
+    useTaskStore.setState({ tasks: [decide({ deliverableKind: 'text', deliverableValue: 'The Anchor' })] });
+
+    const copy = useTaskStore.getState().duplicateTask('trip-date')!;
+
+    expect(copy.deliverableKind).toBe('text');
+    expect(copy.deliverableValue).toBeNull();
+  });
+});
+
+describe('setDeliverableValue', () => {
+  const decide = (overrides: Partial<Task> = {}) => makeTask({
+    id: 'budget',
+    title: 'Decide on the budget',
+    deliverableKind: 'number',
+    completed: true,
+    completedAt: new Date(2025, 5, 10).toISOString(),
+    ...overrides,
+  });
+
+  const rowOf = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  it('corrects the answer on a completed entry', () => {
+    useTaskStore.setState({ tasks: [decide({ deliverableValue: '2400' })] });
+
+    useTaskStore.getState().setDeliverableValue('budget', '2600');
+
+    expect(rowOf('budget').deliverableValue).toBe('2600');
+    // Still completed — correcting an answer is not re-opening the task.
+    expect(rowOf('budget').completed).toBe(true);
+  });
+
+  it('answers an entry that was completed without one', () => {
+    useTaskStore.setState({ tasks: [decide({ deliverableValue: null })] });
+
+    useTaskStore.getState().setDeliverableValue('budget', '2400');
+
+    expect(rowOf('budget').deliverableValue).toBe('2400');
+  });
+
+  it('clears the answer', () => {
+    useTaskStore.setState({ tasks: [decide({ deliverableValue: '2400' })] });
+
+    useTaskStore.getState().setDeliverableValue('budget', null);
+
+    expect(rowOf('budget').deliverableValue).toBeNull();
+  });
+
+  it('is undoable', () => {
+    useTaskStore.setState({ tasks: [decide({ deliverableValue: '2400' })] });
+
+    useTaskStore.getState().setDeliverableValue('budget', '2600');
+    useTaskStore.getState().lastAction!.undo();
+
+    expect(rowOf('budget').deliverableValue).toBe('2400');
+  });
+
+  it('refuses to write an answer onto a task that asks nothing', () => {
+    useTaskStore.setState({ tasks: [decide({ deliverableKind: null, deliverableValue: null })] });
+
+    useTaskStore.getState().setDeliverableValue('budget', '2400');
+
+    expect(rowOf('budget').deliverableValue).toBeNull();
   });
 });

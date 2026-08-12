@@ -58,6 +58,10 @@ const MENU_ITEMS: MenuItemWithGate[] = [
   { name: 'Logbook', icon: 'book-outline', label: 'Logbook' },
   { name: 'Stats', icon: 'bar-chart-outline', label: 'Stats' },
   { name: 'Waiting', icon: 'hourglass-outline', label: 'Waiting' },
+  // Sits with Waiting rather than up with Tasks: both are "held out of the
+  // daily list for a reason", and both are somewhere you go to clear a backlog
+  // rather than somewhere you work.
+  { name: 'Drift', icon: 'trending-down-outline', label: 'Drift' },
   { name: 'Archived', icon: 'archive-outline', label: 'Archived' },
 ];
 

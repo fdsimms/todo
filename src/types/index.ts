@@ -4,6 +4,16 @@ export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
 export type ReminderKind = 'notification' | 'alarm';
+/**
+ * What a decision task asks for when you complete it — see
+ * `Task.deliverableKind` and `src/utils/deliverables.ts`.
+ *
+ * 'place' is deliberately absent until there's a place entity to point at
+ * (#1123): a string that pretends to be a place is a row nothing can ever
+ * resolve, the same mistake `splitAlternativeNames` exists to avoid on the
+ * grocery side.
+ */
+export type DeliverableKind = 'text' | 'date' | 'number';
 
 export interface Category {
   id: string;
@@ -317,6 +327,36 @@ export interface Task {
   // original. That's intended — "wait for trash day to happen once".
   blockedById: string | null;
 
+  /**
+   * "Ask on completion" — a task whose completion means recording a decision
+   * ("Pick a date for the trip"), not just ticking a box. Null on every
+   * ordinary task, which is almost all of them.
+   *
+   * Deliberately NOT a fifth `TaskKind`. The four kinds are exclusive by
+   * construction (`bakedFields` clears the other three's fields), and there is
+   * no reason a chain step or a timed task can't also end in a decision — so
+   * this is an additive optional field, like `deadline` or `blockedById`.
+   */
+  deliverableKind: DeliverableKind | null;
+  /**
+   * The answer, once given: an ISO date for 'date', the digits for 'number',
+   * free text for 'text'. Null while unanswered — which a *completed* task is
+   * allowed to be, because nothing may block a completion (see
+   * DeliverablePromptSheet, and the non-interactive paths into completeTask
+   * that can't ask at all).
+   *
+   * **Not carried to the next occurrence**, exactly like `actualMinutes`: it
+   * records what happened on this row. The *kind* carries (it's the question,
+   * which is a property of the task), the answer doesn't — so a recurring
+   * decision task's Logbook becomes the log of its answers over time.
+   *
+   * The reason this isn't appended to `notes`, which was the obvious first
+   * idea: `notes` is a CONTENT_FIELD and rides `...effective` into the next
+   * occurrence, so a recurring task would inherit every past answer and grow
+   * without bound, and a scope:'series' edit would fan the text across the set.
+   */
+  deliverableValue: string | null;
+
   // The MealPlanEntry this task was projected from — set only on a "Cook X"
   // task the meal plan spawned, null on every task a person typed. See
   // src/utils/mealTasks.ts for the projection rules.
@@ -539,15 +579,35 @@ export interface Task {
    * is a statement about the task, not about today's row.
    */
   postponeMuted: boolean;
+
+  /**
+   * The day this task was sitting on when it was first pushed off it — "you've
+   * been moving this since March 3rd". ISO, or null for a task that isn't
+   * currently drifting.
+   *
+   * Stamped and cleared in lockstep with postponeCount, by the same derivation:
+   * set when the count goes 0 → 1, left alone while it climbs, nulled whenever
+   * it resets. That pairing is the whole point — a count says how often and this
+   * says how long, and the Drift screen needs both to tell three pushes last
+   * week apart from three pushes since the spring.
+   *
+   * Deliberately *not* "first scheduled at", which #947 sketched. A stamp that
+   * never resets outlives the count beside it, so a task pushed twice last week
+   * would read "pushed 2 times · since March" — which is true about the task and
+   * a lie about the drift. This is the day the current run of pushes started
+   * from, so the two fields always describe the same run.
+   */
+  driftingSince: string | null;
 }
 
-// postponeCount/postponeMuted are omitted alongside the streak fields for the
+// postponeCount/postponeMuted/driftingSince are omitted alongside the streak
+// fields for the
 // same reason: they're derived state the app maintains, not something a draft
 // gets to assert. That makes newTaskFromDraft's hard-coded 0/false the only
 // source, so a series row or a template application can't inherit a count.
 // extraTaskTally is the same kind of thing — the rule (extraTaskEveryN,
 // extraTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'extraTaskTally' | 'previousExtraTaskTally'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"

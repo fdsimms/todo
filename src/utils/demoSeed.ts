@@ -134,7 +134,30 @@ export function seedDemoData(): void {
     effort: 1,
     tags: ['admin'],
   });
-  updateTask(dentist.id, { postponeCount: 5 });
+  // driftingSince is stamped alongside for the same reason the count is: a
+  // demo database has no history for the real rule to have derived one from.
+  // Six weeks back, so the Drift screen's "first put off" line has something to
+  // say rather than falling back to the bare count.
+  updateTask(dentist.id, {
+    postponeCount: 5,
+    driftingSince: subDays(today, 42).toISOString(),
+  });
+
+  // A second drifter, so Drift reads as the list it is rather than a single
+  // row — and so the ranking is visible: fewer moves, and a more recent start.
+  const gutters = addTask({
+    title: 'Clear the gutters',
+    notes: 'Before the autumn rain, ideally.',
+    category: 'Home',
+    dueDate: today.toISOString(),
+    priority: 1,
+    effort: 3,
+    tags: ['home'],
+  });
+  updateTask(gutters.id, {
+    postponeCount: 3,
+    driftingSince: subDays(today, 11).toISOString(),
+  });
 
   addTask({
     title: 'Swing by the farmers market',
@@ -220,6 +243,19 @@ export function seedDemoData(): void {
     effort: 2,
   });
   updateTask(violin.id, { extraTaskTally: 2 });
+
+  // A decision task — one that completes by recording an answer rather than
+  // just being ticked. Seeded live so its checkbox shows the "?" that says it
+  // will ask; the answered half is in the history below, since an answer only
+  // exists on a completed row.
+  addTask({
+    title: 'Pick a date for the trip',
+    notes: 'Ticking this asks for the date and keeps it with the task.',
+    category: 'Errands',
+    dueDate: today.toISOString(),
+    deliverableKind: 'date',
+    effort: 1,
+  });
 
   // --- A stack (three independently-scheduled tasks under one label) --------
   const supplements = createGroup('Supplements', 'Health');
@@ -351,6 +387,18 @@ export function seedDemoData(): void {
     const at = subDays(today, daysAgo);
     updateTask(t.id, { completedAt: setHours(at, 17).toISOString() });
   });
+
+  // The other half of the decision task above: one already answered, so the
+  // Logbook shows what an answer actually looks like on the row. Completed
+  // through the real action with the value, exactly as the prompt does it.
+  const budget = addTask({
+    title: 'Decide on the trip budget',
+    category: 'Errands',
+    effort: 1,
+    deliverableKind: 'number',
+  });
+  completeTask(budget.id, { deliverableValue: '2400' });
+  updateTask(budget.id, { completedAt: setHours(subDays(today, 1), 9).toISOString() });
 
   // --- A template, and the blanks it fills in at apply time ----------------
   seedTemplates();
@@ -752,6 +800,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     linkItemShopMany,
     markItemsUnavailable,
     setShopExcludedFromSuggestions,
+    startTrip,
     itemById,
   } = useGroceryStore.getState();
 
@@ -908,7 +957,7 @@ function seedGroceries(recipes: DemoRecipes): void {
   // on the list as themselves; Cheddar, Sparkling water and Ice cream were
   // never bought or linked, so clearList dropped them — they're typed fresh,
   // same as a name nobody has shopped for yet.
-  const ON_LIST_EXISTING = ['Milk', 'Eggs', 'Bananas', 'Bread', 'Tortillas'];
+  const ON_LIST_EXISTING = ['Milk', 'Eggs', 'Bananas', 'Bread', 'Tortillas', 'Peanut butter'];
   addExistingMany(idsNamed(ON_LIST_EXISTING));
   ['Cheddar', 'Sparkling water', 'Ice cream'].forEach(name =>
     addByName(name, undefined, undefined, { registerUndo: false })
@@ -930,6 +979,14 @@ function seedGroceries(recipes: DemoRecipes): void {
     sourceRecipeId: recipes.stirFry,
     sourceRecipeTitle: 'Weeknight chicken stir-fry',
   })));
+
+  // ...and you're at Trader Joe's right now, which is the only state in which
+  // the list says anything about stores. Two of the three things a row can say
+  // are on screen because of it: Tortillas are marked as not stocked here, and
+  // Peanut butter is on record at Costco alone. The third ("Usually X") can't
+  // be seeded honestly — it needs an item bought at two stores while you stand
+  // in a third, and this demo has two stores anyone would shop at.
+  startTrip(traderJoes.id);
 }
 
 // ---------------------------------------------------------------------------

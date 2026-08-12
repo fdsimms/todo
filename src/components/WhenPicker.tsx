@@ -44,7 +44,7 @@ const BLANK_SNOOZE_TASK: Task = {
   recurrenceCount: null, recurrenceFromCompletion: false,
   targetCount: null, progressCount: 0, targetUnit: null, allowOvershoot: false,
   tags: [], category: null, sortOrder: 0, pinned: false, pinnedOrder: 0, priority: 0, effort: 0,
-  estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', linkUrl: null, phoneNumber: null, emailAddress: null, blockedById: null, mealEntryId: null, groceryItemId: null,
+  estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', linkUrl: null, phoneNumber: null, emailAddress: null, blockedById: null, deliverableKind: null, deliverableValue: null, mealEntryId: null, groceryItemId: null,
   pendingImport: null,
   streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, showStreak: false,
   parentId: null, groupId: null, projectId: null,
@@ -54,7 +54,7 @@ const BLANK_SNOOZE_TASK: Task = {
   timedMinutes: null, timerElapsedSeconds: 0,
   previousOccurrenceId: null,
   seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1, seriesDefaults: null,
-  postponeCount: 0, postponeMuted: false,
+  postponeCount: 0, postponeMuted: false, driftingSince: null,
 };
 
 interface Props {

@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, GroceryItem, ItemShopLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { DeliverableKind, Task, Category, GroceryItem, ItemShopLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
@@ -593,9 +593,19 @@ export function initDatabase(): void {
     // task. See Task.extraTaskTally.
     'ALTER TABLE tasks ADD COLUMN extra_task_tally INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN previous_extra_task_tally INTEGER NOT NULL DEFAULT 0',
+    // NULL on every existing row, which is exactly "an ordinary task that
+    // completes by being ticked" — no task written before this shipped asks a
+    // question. See Task.deliverableKind.
+    'ALTER TABLE tasks ADD COLUMN deliverable_kind TEXT',
+    'ALTER TABLE tasks ADD COLUMN deliverable_value TEXT',
     // 0 for every existing row — nothing predating this feature was ever
     // marked a standing staple. See GroceryItem.isStaple.
     'ALTER TABLE grocery_items ADD COLUMN is_staple INTEGER NOT NULL DEFAULT 0',
+    // NULL on every existing row, for the same reason postpone_count is 0: a
+    // task whose pushes were never counted has no first push to date, and
+    // inventing one from created_at would put a fabricated "drifting since" on
+    // every task in the database. See Task.driftingSince.
+    'ALTER TABLE tasks ADD COLUMN drifting_since TEXT',
     // Nullable on every one of the six: null is "no price known", which is the
     // honest state for every row that predates this and for most rows after it.
     // Prices are additive — nothing reads a missing one as zero. See
@@ -915,11 +925,14 @@ function rowToTask(row: Record<string, unknown>): Task {
     phoneNumber: (row.phone_number as string) ?? null,
     emailAddress: (row.email_address as string) ?? null,
     blockedById: (row.blocked_by_id as string | null) ?? null,
+    deliverableKind: (row.deliverable_kind as DeliverableKind | null) ?? null,
+    deliverableValue: (row.deliverable_value as string | null) ?? null,
     mealEntryId: (row.meal_entry_id as string | null) ?? null,
     groceryItemId: (row.grocery_item_id as string | null) ?? null,
     pendingImport: parsePendingImport(row.pending_import),
     postponeCount: (row.postpone_count as number) ?? 0,
     postponeMuted: Boolean(row.postpone_muted),
+    driftingSince: (row.drifting_since as string | null) ?? null,
   };
 }
 
@@ -942,9 +955,10 @@ export function dbInsertTask(task: Task): void {
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, meal_entry_id,
-      grocery_item_id, postpone_count, postpone_muted,
-      extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      grocery_item_id, postpone_count, postpone_muted, drifting_since,
+      extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally,
+      deliverable_kind, deliverable_value
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -983,10 +997,13 @@ export function dbInsertTask(task: Task): void {
       task.groceryItemId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
+      task.driftingSince ?? null,
       task.extraTaskEveryN ?? null,
       task.extraTaskTitle ?? null,
       task.extraTaskTally,
       task.previousExtraTaskTally,
+      task.deliverableKind ?? null,
+      task.deliverableValue ?? null,
     ]
   );
 }
@@ -1005,8 +1022,9 @@ export function dbUpdateTask(task: Task): void {
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, meal_entry_id=?,
-      grocery_item_id=?, postpone_count=?, postpone_muted=?,
-      extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?
+      grocery_item_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
+      extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?,
+      deliverable_kind=?, deliverable_value=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -1046,10 +1064,13 @@ export function dbUpdateTask(task: Task): void {
       task.groceryItemId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
+      task.driftingSince ?? null,
       task.extraTaskEveryN ?? null,
       task.extraTaskTitle ?? null,
       task.extraTaskTally,
       task.previousExtraTaskTally,
+      task.deliverableKind ?? null,
+      task.deliverableValue ?? null,
       task.id,
     ]
   );
@@ -1083,10 +1104,20 @@ export function dbBatchUpdatePinnedOrders(updates: { id: string; pinnedOrder: nu
  * ride along on those setters. Same split dbBatchUpdatePinnedOrders makes
  * beside bulkTogglePin.
  */
-export function dbBatchUpdatePostponeCounts(updates: { id: string; postponeCount: number }[]): void {
+export function dbBatchUpdatePostponeCounts(
+  updates: { id: string; postponeCount: number; driftingSince: string | null }[],
+): void {
   db.withTransactionSync(() => {
-    for (const { id, postponeCount } of updates) {
-      db.runSync('UPDATE tasks SET postpone_count = ? WHERE id = ?', [postponeCount, id]);
+    for (const { id, postponeCount, driftingSince } of updates) {
+      // Written together, never separately: the count and the day it started
+      // from describe one run of pushes, and a batch that set one without the
+      // other would leave a row claiming pushes with no start (or a start with
+      // no pushes) until the next single-task write happened to repair it.
+      db.runSync('UPDATE tasks SET postpone_count = ?, drifting_since = ? WHERE id = ?', [
+        postponeCount,
+        driftingSince,
+        id,
+      ]);
     }
   });
 }
@@ -2169,6 +2200,29 @@ export function dbGetLastShopId(): string | null {
 
 export function dbSetLastShopId(id: string | null): void {
   dbSetSetting('grocery_last_shop_id', id ?? '');
+}
+
+// The trip happening right now — the store you're standing in, and when you
+// said so. Two keys rather than one JSON blob, following vacationMode/
+// vacationEnd, which is the same shape: a mode plus the stamp that ends it.
+// They are only ever written together (startTrip/endTrip), and a read missing
+// either half is no trip, so they can't drift into a half-state.
+//
+// Nothing here decides whether the trip is still live — utils/activeTrip.ts
+// does, against the clock, so a trip left running when the app closed is over
+// by the time anything asks. Restoring a month-old backup resurrects these two
+// rows and that's fine for the same reason.
+export function dbGetTripShopId(): string | null {
+  return dbGetSetting('grocery_trip_shop_id') || null;
+}
+
+export function dbGetTripStartedAt(): string | null {
+  return dbGetSetting('grocery_trip_started_at') || null;
+}
+
+export function dbSetTrip(shopId: string | null, startedAt: string | null): void {
+  dbSetSetting('grocery_trip_shop_id', shopId ?? '');
+  dbSetSetting('grocery_trip_started_at', startedAt ?? '');
 }
 
 // ─── Projects ───────────────────────────────────────────────────────────────
