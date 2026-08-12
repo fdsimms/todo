@@ -12,6 +12,20 @@ say why instead of opening one silently.
 Don't subscribe to PR activity and don't schedule follow-up check-ins after opening a PR unless
 the user explicitly asks for that. Just open the PR and stop.
 
+## Bugs found in passing
+
+If you notice a real bug while working on something else — not a style nit, an actual wrong
+behavior — and the fix is small (a couple of lines, one clear place, no design judgment call),
+just fix it in the same PR rather than only mentioning it. "Stay in scope" (below) is about not
+redesigning adjacent code that merely looks improvable; it was never a reason to leave a
+confirmed bug for someone else to hit. Note the fix in the PR description so it doesn't get
+buried in the diff.
+
+The line is size and confidence, not "did the user ask for this exact thing." A fix that touches
+one function and has an obvious right answer: fix it. Anything that needs a design decision,
+touches several files, or you're not sure is actually wrong: say so instead of guessing — the
+same as any other judgment call in this file.
+
 ## User-facing copy
 
 Say what a setting does in plain, literal terms — the way the rest of the app already talks

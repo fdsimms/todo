@@ -97,6 +97,7 @@ const BASE: Task = {
   blockedById: null,
   pendingImport: null,
   mealEntryId: null,
+  groceryItemId: null,
 };
 
 function makeTask(overrides: Partial<Task>): Task {

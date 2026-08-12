@@ -167,6 +167,13 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['meal plan', 'recipe', 'dinner', 'auto'], kitchen: true },
   { id: 'mealCookTaskCategory', groupId: 'tasksProjects', label: 'File cook tasks under', section: 'Meals on Today',
     keywords: ['category', 'meal plan', 'kitchen'], kitchen: true },
+  { id: 'groceryUseUpTasks', groupId: 'tasksProjects', label: 'Use-up tasks', section: 'Use-up reminders',
+    keywords: ['expiry', 'expires', 'expiration', 'use by', 'best before', 'perishable', 'spoil',
+      'waste', 'fridge', 'grocery', 'food', 'leftovers'], kitchen: true },
+  { id: 'groceryUseUpLeadDays', groupId: 'tasksProjects', label: 'Show the task', section: 'Use-up reminders',
+    keywords: ['expiry', 'use by', 'days before', 'lead', 'warning', 'grocery'], kitchen: true },
+  { id: 'groceryUseUpTaskCategory', groupId: 'tasksProjects', label: 'File use-up tasks under', section: 'Use-up reminders',
+    keywords: ['category', 'grocery', 'expiry', 'kitchen'], kitchen: true },
   // Flagged too: it only ever restates a recipe's or a grocery row's amount, so
   // with the area gone there is nothing left for it to convert.
   { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',

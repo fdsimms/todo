@@ -27,7 +27,7 @@ import {
 import { useRecipeStore } from '../store/useRecipeStore';
 import { groceryNameKey } from '../utils/groceryParse';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
-import type { GroceryItem, ItemShopLink, Shop } from '../types';
+import type { GroceryItem, ItemShopLink, Shop, Task } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetAllGroceryItems: jest.fn().mockReturnValue([]),
@@ -62,6 +62,55 @@ jest.mock('../db/database', () => ({
   dbDeleteRecipe: jest.fn(),
 }));
 
+// The task store is mocked rather than driven for real, exactly as
+// useMealPlanStore.test.ts does it and for the same two reasons: this suite is
+// about what the grocery catalog *asks* of the task list, and the real store
+// drags expo-notifications into a node environment. The other side of the link
+// — deleting a use-up task recording the item's opt-out — is covered against
+// the real stores in useTaskStore.test.ts.
+const mockTaskState = {
+  tasks: [] as Task[],
+  addTask: jest.fn((draft: Partial<Task>) => {
+    const task = { id: `t-${mockTaskState.tasks.length + 1}`, completed: false, archived: false, ...draft } as Task;
+    mockTaskState.tasks.push(task);
+    return task;
+  }),
+  updateTask: jest.fn((
+    id: string,
+    updates: Partial<Task>,
+    _options?: { scope?: 'occurrence' | 'series'; skipPostponeCount?: boolean },
+  ) => {
+    mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, ...updates } : t));
+  }),
+  deleteTask: jest.fn((id: string) => {
+    mockTaskState.tasks = mockTaskState.tasks.filter(t => t.id !== id);
+  }),
+  setLastAction: jest.fn(),
+};
+jest.mock('../store/useTaskStore', () => ({
+  useTaskStore: { getState: () => mockTaskState },
+}));
+
+// groceryUseUpTasks defaults OFF in the real store — it's opt-in — so this
+// mirrors it, and the tests that care about use-up tasks turn it on the way a
+// user would.
+let mockUseUpTasks = false;
+let mockUseUpLeadDays = 1;
+let mockUseUpCategory: string | null = null;
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: {
+    getState: () => ({
+      get groceryUseUpTasks() { return mockUseUpTasks; },
+      get groceryUseUpLeadDays() { return mockUseUpLeadDays; },
+      get groceryUseUpTaskCategory() { return mockUseUpCategory; },
+    }),
+  },
+}));
+
+/** The live use-up task for an item, as the store's own helper finds it. */
+const useUpTaskFor = (itemId: string) =>
+  mockTaskState.tasks.find(t => t.groceryItemId === itemId && !t.completed && !t.archived);
+
 let seq = 0;
 function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   const name = overrides.name;
@@ -83,6 +132,8 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     sourceRecipeId: null,
     sourceRecipeTitle: null,
     choiceGroup: null,
+    expiresAt: null,
+    useUpTask: null,
     ...overrides,
   };
 }
@@ -134,6 +185,10 @@ beforeEach(() => {
   (dbGetAllGroceryShops as jest.Mock).mockReturnValue([]);
   (dbGetAllItemShopLinks as jest.Mock).mockReturnValue([]);
   (dbGetLastShopId as jest.Mock).mockReturnValue(null);
+  mockTaskState.tasks = [];
+  mockUseUpTasks = false;
+  mockUseUpLeadDays = 1;
+  mockUseUpCategory = null;
   seed([]);
 });
 
@@ -1314,7 +1369,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping(costco.id);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), expect.any(Object), costco.id);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), expect.any(Object), costco.id, expect.any(Object));
     const links = useGroceryStore.getState().itemShops;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ itemId: milk.id, shopId: costco.id, purchaseCount: 1 });
@@ -1393,7 +1448,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping();
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), expect.any(Object), null);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), expect.any(Object), null, expect.any(Object));
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
     // ...and the item-level count still moved, which is what makes the two
     // numbers diverge and why nothing may sum links to get a total.
@@ -1408,7 +1463,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping('shop-deleted-mid-sheet');
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), expect.any(Object), null);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), expect.any(Object), null, expect.any(Object));
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
   });
 
@@ -1846,5 +1901,167 @@ describe('either/or items (choiceGroup)', () => {
     expect(useGroceryStore.getState().items.find(i => i.id === milk.id)!.checked).toBe(true);
     // The add's own undo is still the last thing registered — no choice was made.
     expect(useGroceryStore.getState().lastAction?.label).toBe('Added "milk"');
+  });
+});
+
+// ─── Use-up tasks (#1106) ───────────────────────────────────────────────────
+
+describe('use-up tasks', () => {
+  const NAME = 'Spinach';
+
+  it('setExpiresAt spawns the task, dated the lead time before the use-by day', () => {
+    mockUseUpTasks = true;
+    mockUseUpLeadDays = 2;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+
+    const task = useUpTaskFor(spinach.id)!;
+    expect(task.title).toBe('Use up Spinach');
+    expect(new Date(task.dueDate!).getDate()).toBe(15);
+    // The use-by day itself rides along as the deadline.
+    expect(new Date(task.deadline!).getDate()).toBe(17);
+  });
+
+  it('files the task under the configured category, once', () => {
+    mockUseUpTasks = true;
+    mockUseUpCategory = 'Home';
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+
+    expect(useUpTaskFor(spinach.id)!.category).toBe('Home');
+
+    // A later date change is a reconcile, and a reconcile writes only the
+    // fields the item owns — the category is the user's from here on.
+    mockUseUpCategory = 'Errands';
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-19');
+    expect(useUpTaskFor(spinach.id)!.category).toBe('Home');
+  });
+
+  it('spawns nothing with the setting off', () => {
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+    // The date is still recorded — the setting decides the task, not the fact.
+    expect(useGroceryStore.getState().items[0].expiresAt).toBe('2026-08-17');
+  });
+
+  it('lets one item opt in while the setting is off', () => {
+    const spinach = makeItem({ name: NAME, expiresAt: '2026-08-17' });
+    seed([spinach]);
+
+    useGroceryStore.getState().setUseUpTask(spinach.id, true);
+
+    expect(useUpTaskFor(spinach.id)).toBeDefined();
+  });
+
+  it('moves the existing task rather than adding a second when the date changes', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-24');
+
+    expect(mockTaskState.tasks.filter(t => t.groceryItemId === spinach.id)).toHaveLength(1);
+    expect(new Date(useUpTaskFor(spinach.id)!.dueDate!).getDate()).toBe(23);
+    // The item's date is not a schedule the user picked, so moving it doesn't
+    // count as a reschedule.
+    expect(mockTaskState.updateTask).toHaveBeenCalledWith(
+      expect.any(String), expect.any(Object), { skipPostponeCount: true }
+    );
+  });
+
+  it('drops the live task when the date is cleared, and arms no undo of its own', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+
+    useGroceryStore.getState().setExpiresAt(spinach.id, null);
+
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+    expect(mockTaskState.setLastAction).toHaveBeenCalledWith(null);
+  });
+
+  it('drops the live task when the item is forgotten', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+
+    useGroceryStore.getState().deleteItem(spinach.id);
+
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+  });
+
+  it('honours an opt-out on the item, which is what deleting the task records', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: NAME, useUpTask: false });
+    seed([spinach]);
+
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+  });
+
+  describe('finishShopping', () => {
+    it('dates what the shelf-life lexicon recognises and spawns its task', () => {
+      mockUseUpTasks = true;
+      const spinach = makeItem({ name: 'spinach', onList: true, checked: true });
+      seed([spinach]);
+      (dbFinishGroceryShopping as jest.Mock).mockReturnValue([spinach.id]);
+
+      useGroceryStore.getState().finishShopping();
+
+      const stored = useGroceryStore.getState().items.find(i => i.id === spinach.id)!;
+      expect(stored.expiresAt).not.toBeNull();
+      expect(useUpTaskFor(spinach.id)).toBeDefined();
+    });
+
+    it('leaves a store-cupboard row alone — no date, no task', () => {
+      mockUseUpTasks = true;
+      const rice = makeItem({ name: 'rice', onList: true, checked: true });
+      seed([rice]);
+      (dbFinishGroceryShopping as jest.Mock).mockReturnValue([rice.id]);
+
+      useGroceryStore.getState().finishShopping();
+
+      expect(useGroceryStore.getState().items.find(i => i.id === rice.id)!.expiresAt).toBeNull();
+      expect(useUpTaskFor(rice.id)).toBeUndefined();
+    });
+
+    it('re-stamps a fresh purchase rather than keeping the old bag\'s day', () => {
+      mockUseUpTasks = true;
+      const spinach = makeItem({ name: 'spinach', onList: true, checked: true, expiresAt: '2026-01-01' });
+      seed([spinach]);
+      (dbFinishGroceryShopping as jest.Mock).mockReturnValue([spinach.id]);
+
+      useGroceryStore.getState().finishShopping();
+
+      expect(useGroceryStore.getState().items.find(i => i.id === spinach.id)!.expiresAt)
+        .not.toBe('2026-01-01');
+    });
+
+    it('gives this month\'s bag its own task even though last month\'s is ticked off', () => {
+      mockUseUpTasks = true;
+      const spinach = makeItem({ name: 'spinach', onList: true, checked: true });
+      seed([spinach]);
+      mockTaskState.tasks.push({
+        id: 'old', title: 'Use up spinach', groceryItemId: spinach.id, completed: true, archived: false,
+      } as never);
+      (dbFinishGroceryShopping as jest.Mock).mockReturnValue([spinach.id]);
+
+      useGroceryStore.getState().finishShopping();
+
+      expect(useUpTaskFor(spinach.id)).toBeDefined();
+      expect(mockTaskState.tasks.filter(t => t.groceryItemId === spinach.id)).toHaveLength(2);
+    });
   });
 });

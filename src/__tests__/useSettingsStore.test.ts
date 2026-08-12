@@ -295,6 +295,27 @@ describe('resetToDefaults', () => {
     expect(state.appLockGraceSeconds).toBe(900);
     expect(dbSetSetting).not.toHaveBeenCalledWith('appLockEnabled', 'false');
   });
+
+  // DEFAULT_SETTINGS carries two null category defaults (mealCookTaskCategory,
+  // groceryUseUpTaskCategory). A bare String(value) over the whole object
+  // would write the literal text "null" for both, which every reader here
+  // treats as a category *named* "null" rather than "no category" — Today
+  // would grow a section header to match. '' is the stored form of "no
+  // category" everywhere else in this file.
+  it('resets every null category default to no category, not to the string "null"', () => {
+    useSettingsStore.getState().setMealCookTaskCategory('Home');
+    useSettingsStore.getState().setGroceryUseUpTaskCategory('Errands');
+
+    useSettingsStore.getState().resetToDefaults();
+
+    expect(dbSetSetting).toHaveBeenCalledWith('mealCookTaskCategory', '');
+    expect(dbSetSetting).toHaveBeenCalledWith('groceryUseUpTaskCategory', '');
+    expect(dbSetSetting).not.toHaveBeenCalledWith('mealCookTaskCategory', 'null');
+    expect(dbSetSetting).not.toHaveBeenCalledWith('groceryUseUpTaskCategory', 'null');
+    const state = useSettingsStore.getState();
+    expect(state.mealCookTaskCategory).toBeNull();
+    expect(state.groceryUseUpTaskCategory).toBeNull();
+  });
 });
 
 // ─── the API key ─────────────────────────────────────────────────────────────
@@ -655,6 +676,60 @@ describe('unitSystem', () => {
     );
     useSettingsStore.getState().initialize();
     expect(useSettingsStore.getState().unitSystem).toBe('asWritten');
+  });
+});
+
+describe('use-up task settings', () => {
+  const stored = (rows: Record<string, string>) =>
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => rows[key] ?? null);
+
+  it('defaults off — the one setting here that can put rows on a task list by itself', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().groceryUseUpTasks).toBe(false);
+  });
+
+  it('round-trips through the settings table', () => {
+    useSettingsStore.getState().setGroceryUseUpTasks(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('groceryUseUpTasks', 'true');
+    stored({ groceryUseUpTasks: 'true' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().groceryUseUpTasks).toBe(true);
+  });
+
+  it('defaults the lead time to a day rather than reading a missing row as zero', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().groceryUseUpLeadDays).toBe(1);
+  });
+
+  it('keeps a stored zero — "on the use-by day" is a real answer', () => {
+    stored({ groceryUseUpLeadDays: '0' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().groceryUseUpLeadDays).toBe(0);
+  });
+
+  it('falls back for a value out of range or not a number', () => {
+    stored({ groceryUseUpLeadDays: '400' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().groceryUseUpLeadDays).toBe(1);
+
+    stored({ groceryUseUpLeadDays: 'soon' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().groceryUseUpLeadDays).toBe(1);
+  });
+
+  it('clamps what the setter is given rather than storing it', () => {
+    useSettingsStore.getState().setGroceryUseUpLeadDays(99);
+    expect(dbSetSetting).toHaveBeenCalledWith('groceryUseUpLeadDays', '14');
+    useSettingsStore.getState().setGroceryUseUpLeadDays(-3);
+    expect(dbSetSetting).toHaveBeenCalledWith('groceryUseUpLeadDays', '0');
+  });
+
+  it('stores no category as an empty string, and reads it back as null', () => {
+    useSettingsStore.getState().setGroceryUseUpTaskCategory(null);
+    expect(dbSetSetting).toHaveBeenCalledWith('groceryUseUpTaskCategory', '');
+    stored({ groceryUseUpTaskCategory: '' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().groceryUseUpTaskCategory).toBeNull();
   });
 });
 

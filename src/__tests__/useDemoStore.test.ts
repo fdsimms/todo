@@ -504,6 +504,30 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(cookTasks.every(t => !freeOrLeftover.includes(t.mealEntryId!))).toBe(true);
   });
 
+  it('seeds use-by dates, and one item opted in to a use-up task', () => {
+    const { items } = useGroceryStore.getState();
+    const { tasks } = useTaskStore.getState();
+
+    // The finished trips date whatever the shelf-life lexicon recognises, and
+    // leave the store-cupboard rows alone.
+    expect(items.filter(i => i.expiresAt).length).toBeGreaterThan(1);
+    expect(items.find(i => i.nameKey === 'rice')!.expiresAt).toBeNull();
+
+    // The per-item opt-in, which is the only thing that can produce a task
+    // while the setting is off — as it is by default, demo included.
+    const optedIn = items.find(i => i.useUpTask === true)!;
+    expect(optedIn).toBeDefined();
+    expect(optedIn.expiresAt).not.toBeNull();
+
+    const useUpTasks = tasks.filter(t => t.groceryItemId);
+    expect(useUpTasks).toHaveLength(1);
+    expect(useUpTasks[0].groceryItemId).toBe(optedIn.id);
+    expect(useUpTasks[0].title).toBe(`Use up ${optedIn.name}`);
+    // Dated off the use-by day rather than off today, with the day itself
+    // carried as the deadline.
+    expect(useUpTasks[0].deadline).not.toBeNull();
+  });
+
   it('seeds a fridge covering every freshness state and both endings', () => {
     const { leftovers } = useLeftoverStore.getState();
     const live = leftovers.filter(isLiveLeftover);

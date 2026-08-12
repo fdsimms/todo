@@ -193,6 +193,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   emailAddress: null,
   blockedById: null,
   mealEntryId: null,
+  groceryItemId: null,
   pendingImport: null,
   ...overrides,
 });
@@ -1516,6 +1517,8 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     sourceRecipeId: null,
     sourceRecipeTitle: null,
     choiceGroup: null,
+    expiresAt: null,
+    useUpTask: null,
     ...overrides,
   };
 }
@@ -1537,10 +1540,37 @@ describe('grocery items', () => {
       lastPurchasedAt: '2026-07-25T00:00:00.000Z',
       sourceRecipeId: 'recipe-1',
       sourceRecipeTitle: 'Chili',
+      expiresAt: '2026-08-17',
+      useUpTask: true,
     });
     dbInsertGroceryItem(item);
 
     expect(dbGetAllGroceryItems()).toEqual([item]);
+  });
+
+  // The tri-state, which a plain INTEGER NOT NULL DEFAULT 0 would have
+  // flattened: unanswered has to survive as unanswered, or every item in the
+  // catalog reads as an explicit "no use-up task". See GroceryItem.useUpTask.
+  it('keeps useUpTask\'s three states apart', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', useUpTask: null }));
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', useUpTask: false }));
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g3', name: 'Bread', useUpTask: true }));
+
+    const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i.useUpTask]));
+    expect(byId.get('g1')).toBeNull();
+    expect(byId.get('g2')).toBe(false);
+    expect(byId.get('g3')).toBe(true);
+  });
+
+  // Same reading as in_catalog above: a row written before the column existed
+  // has never been asked the question.
+  it('reads a row written without use_up_task or expires_at as unanswered and undated', () => {
+    mockRawDb
+      .prepare('INSERT INTO grocery_items (id, name, name_key, created_at) VALUES (?,?,?,?)')
+      .run('g9', 'Milk', 'milk', '2026-01-01T00:00:00.000Z');
+    const [item] = dbGetAllGroceryItems();
+    expect(item.useUpTask).toBeNull();
+    expect(item.expiresAt).toBeNull();
   });
 
   it('leaves sourceRecipeId/sourceRecipeTitle null when the item was never added from a recipe', () => {

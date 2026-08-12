@@ -3,6 +3,11 @@ import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import { DEFAULT_APP_FONT, isAppFont, type AppFont } from '../theme/fonts';
 import type { SortOption, Priority, Effort, TimeOfDay } from '../types';
+import {
+  GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
+  GROCERY_USE_UP_LEAD_DAYS_MAX,
+  GROCERY_USE_UP_LEAD_DAYS_MIN,
+} from '../types';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
@@ -256,6 +261,22 @@ interface SettingsStore {
   // newTaskDefaults.category; a name that no longer exists resolves to no
   // category, same as any other stale category reference here.
   mealCookTaskCategory: string | null;
+  // Whether a grocery item with a use-by date gets a "Use up X" task a few days
+  // before it. Off by default and deliberately so: this is the one feature here
+  // that can put rows on a task list off the back of a shopping trip, and a
+  // task list that fills itself with food is the one people would turn off
+  // altogether. Nothing is backfilled when it goes on, either — only trips
+  // finished and dates set from then on spawn anything. The per-item override
+  // and the rules for which items qualify live in src/utils/groceryExpiry.ts.
+  groceryUseUpTasks: boolean;
+  // How many days before the use-by date the task falls due. See
+  // GROCERY_USE_UP_LEAD_DAYS_DEFAULT for why one and not zero.
+  groceryUseUpLeadDays: number;
+  // Which category a use-up task files itself under, by name, or null for none
+  // — the same setting mealCookTaskCategory is, for the same reason: loose
+  // tasks render above every category section on Today, which is not where
+  // food belongs. Applied when the task is created and never re-applied.
+  groceryUseUpTaskCategory: string | null;
   // Pulling tasks out of the Reminders app and into the Inbox — the app's voice
   // capture story, since Siri needs no app name to add a reminder. Off by
   // default and never inferred: importing *deletes* the reminder, so it only
@@ -380,6 +401,9 @@ interface SettingsStore {
   setMealPlanNudgeWeekday: (weekday: number) => void;
   setMealPlanNudgeTime: (time: string) => void;
   setMealPlanNudgeLastFiredWeekKey: (weekKey: string | null) => void;
+  setGroceryUseUpTasks: (on: boolean) => void;
+  setGroceryUseUpLeadDays: (days: number) => void;
+  setGroceryUseUpTaskCategory: (category: string | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   setNewTaskDefaults: (patch: Partial<NewTaskDefaults>) => void;
   resetToDefaults: () => void;
@@ -411,6 +435,9 @@ const DEFAULT_SETTINGS = {
   unitSystem: 'asWritten' as UnitSystem,
   mealCookTasks: true,
   mealCookTaskCategory: null,
+  groceryUseUpTasks: false,
+  groceryUseUpLeadDays: GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
+  groceryUseUpTaskCategory: null,
   remindersImportEnabled: false,
   remindersImportDelete: true,
   groceryImportEnabled: false,
@@ -578,6 +605,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   unitSystem: 'asWritten',
   mealCookTasks: true,
   mealCookTaskCategory: null,
+  groceryUseUpTasks: false,
+  groceryUseUpLeadDays: GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
+  groceryUseUpTaskCategory: null,
   remindersImportEnabled: false,
   remindersImportListId: null,
   remindersImportConfirmedListId: null,
@@ -661,6 +691,28 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // '' persists as "no category", matching how newTaskDefaults.category reads.
     const storedCookCategory = dbGetSetting('mealCookTaskCategory');
     const mealCookTaskCategory = storedCookCategory ? storedCookCategory : null;
+    // `=== 'true'`, the safe reading of a missing row: this one defaults OFF,
+    // and an install that predates it has a catalog full of items whose next
+    // trip would otherwise start writing tasks nobody asked for.
+    const groceryUseUpTasks = dbGetSetting('groceryUseUpTasks') === 'true';
+    // The missing row is checked before the number, not through it: zero is a
+    // real answer here ("on the use-by day"), and Number(null) is 0 — so
+    // parsing first would read every install that predates this setting as
+    // having deliberately chosen no lead time at all.
+    const storedUseUpLead = dbGetSetting('groceryUseUpLeadDays');
+    // `storedUseUpLead ?` rather than a null check alone: '' is the other way
+    // a row can say nothing, and Number('') is 0 too. '0' is a non-empty
+    // string, so a real zero still parses.
+    const parsedUseUpLead = storedUseUpLead ? Number(storedUseUpLead) : Number.NaN;
+    const groceryUseUpLeadDays =
+      Number.isFinite(parsedUseUpLead)
+      && parsedUseUpLead >= GROCERY_USE_UP_LEAD_DAYS_MIN
+      && parsedUseUpLead <= GROCERY_USE_UP_LEAD_DAYS_MAX
+        ? Math.round(parsedUseUpLead)
+        : GROCERY_USE_UP_LEAD_DAYS_DEFAULT;
+    // '' persists as "no category", matching mealCookTaskCategory above.
+    const storedUseUpCategory = dbGetSetting('groceryUseUpTaskCategory');
+    const groceryUseUpTaskCategory = storedUseUpCategory ? storedUseUpCategory : null;
     const remindersImportEnabled = dbGetSetting('remindersImportEnabled') === 'true';
     // `!== 'false'`, not `=== 'true'`, because this one defaults ON — an
     // install that predates the setting has no row, and the usual comparison
@@ -725,7 +777,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, mealCookTasks, mealCookTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -988,6 +1040,36 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ mealCookTaskCategory: category });
   },
 
+  // Turning this off deliberately leaves the use-up tasks already spawned
+  // where they are — the same restraint setMealCookTasks keeps, and the same
+  // reason: they're ordinary tasks by now, and no other behaviour setting in
+  // this app reaches back and deletes rows when it's flipped.
+  //
+  // Turning it *on* backfills nothing either. The catalog knows when things
+  // were bought, so a backfill is computable — and it would greet the user
+  // with a screenful of tasks about food, several days stale, as the first
+  // thing the feature ever did. The next trip is soon enough.
+  setGroceryUseUpTasks(on: boolean) {
+    dbSetSetting('groceryUseUpTasks', on ? 'true' : 'false');
+    set({ groceryUseUpTasks: on });
+  },
+
+  // Only read when a use-up task is created or its item's date changes, so
+  // changing it leaves the tasks already on the list where the user has them.
+  setGroceryUseUpLeadDays(days: number) {
+    const clamped = Math.max(
+      GROCERY_USE_UP_LEAD_DAYS_MIN,
+      Math.min(GROCERY_USE_UP_LEAD_DAYS_MAX, Math.round(days))
+    );
+    dbSetSetting('groceryUseUpLeadDays', String(clamped));
+    set({ groceryUseUpLeadDays: clamped });
+  },
+
+  setGroceryUseUpTaskCategory(category: string | null) {
+    dbSetSetting('groceryUseUpTaskCategory', category ?? '');
+    set({ groceryUseUpTaskCategory: category });
+  },
+
   setRemindersImportEnabled(on: boolean) {
     dbSetSetting('remindersImportEnabled', on ? 'true' : 'false');
     set({ remindersImportEnabled: on });
@@ -1083,13 +1165,20 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   },
 
   resetToDefaults() {
+    // `value === null ? ''` rather than a bare String(value): DEFAULT_SETTINGS
+    // holds two null category defaults (mealCookTaskCategory,
+    // groceryUseUpTaskCategory), and String(null) is the literal text "null" —
+    // which every reader here treats as a category *named* "null" rather than
+    // "no category", giving Today a section header to match. '' is the stored
+    // form of "no category" everywhere else in this file, and this is what
+    // keeps that true for any future null default too, not just today's two.
     Object.entries(DEFAULT_SETTINGS).forEach(([key, value]) => {
-      dbSetSetting(key, String(value));
+      dbSetSetting(key, value === null ? '' : String(value));
     });
-    // Not in DEFAULT_SETTINGS because String(null) doesn't round-trip — see the
-    // note above it. Clearing both matters: a reset that turned the import off
-    // but left the confirmed-list id in place would let re-enabling later skip
-    // the confirmation and swallow whatever had piled up meanwhile.
+    // Not in DEFAULT_SETTINGS because these two aren't reset to a fixed value
+    // at all — they're cleared. Clearing both matters: a reset that turned the
+    // import off but left the confirmed-list id in place would let re-enabling
+    // later skip the confirmation and swallow whatever had piled up meanwhile.
     dbSetSetting('remindersImportListId', '');
     dbSetSetting('remindersImportConfirmedListId', '');
     dbSetSetting('groceryImportListId', '');
