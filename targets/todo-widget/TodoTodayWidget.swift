@@ -114,6 +114,55 @@ struct TaskRowView: View {
 // handled by isQuickAddUrl in src/utils/deepLinks.ts.
 private let quickAddURL = URL(string: "dundundun://add")!
 
+/// The add button: one filled shape with the plus punched *out* of it, rather
+/// than a white glyph drawn on top of a filled circle.
+///
+/// Colour can't be relied on to separate the two. The Home Screen's tinted
+/// appearance, StandBy and the system Grayscale colour filter all flatten a
+/// widget to a single tone, keeping only the alpha channel — so a white plus
+/// over an accent circle collapses into one solid blob and the glyph vanishes.
+/// `.widgetAccentable()` doesn't help, because it moves the circle and the
+/// glyph into the *same* group. A hole is alpha 0, so it survives every mode:
+/// whatever sits behind the button shows through it.
+private struct AddButtonShape: Shape {
+    /// Both are fractions of the circle's diameter, so the glyph scales with
+    /// the header height instead of needing a second constant kept in step.
+    /// Sized to match the 11pt bold SF `plus` this replaced.
+    private let armFraction: CGFloat = 0.45
+    private let barFraction: CGFloat = 0.11
+
+    func path(in rect: CGRect) -> Path {
+        let diameter = min(rect.width, rect.height)
+        let circle = CGRect(
+            x: rect.midX - diameter / 2,
+            y: rect.midY - diameter / 2,
+            width: diameter,
+            height: diameter
+        )
+        let arm = diameter * armFraction
+        let bar = diameter * barFraction
+        let horizontal = CGRect(
+            x: circle.midX - arm / 2, y: circle.midY - bar / 2, width: arm, height: bar
+        )
+        let vertical = CGRect(
+            x: circle.midX - bar / 2, y: circle.midY - arm / 2, width: bar, height: arm
+        )
+        // Unioned, not added as two overlapping subpaths: an even-odd fill
+        // counts the region they share twice and fills it back in, which would
+        // leave a square of accent sitting in the middle of the plus.
+        let cross = CGPath(
+            roundedRect: horizontal, cornerWidth: bar / 2, cornerHeight: bar / 2, transform: nil
+        ).union(
+            CGPath(roundedRect: vertical, cornerWidth: bar / 2, cornerHeight: bar / 2, transform: nil)
+        )
+
+        var path = Path()
+        path.addEllipse(in: circle)
+        path.addPath(Path(cross))
+        return path
+    }
+}
+
 struct WidgetHeaderView: View {
     let palette: WidgetPalette
     let countLabel: String?
@@ -140,17 +189,15 @@ struct WidgetHeaderView: View {
             // app's composer. Sized to the header so the header's height
             // never depends on which of these pieces is showing.
             Link(destination: quickAddURL) {
-                Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
+                // See AddButtonShape: the plus is a hole, not a white glyph.
+                AddButtonShape()
+                    .fill(palette.accent, style: FillStyle(eoFill: true))
                     .frame(width: WidgetLayout.headerHeight, height: WidgetLayout.headerHeight)
-                    .background(Circle().fill(palette.accent))
                     .contentShape(Circle())
             }
-            // Home Screen's tinted/monochrome appearance strips widget colors
-            // down to a single tone unless a view opts back in — without this,
-            // the accent-filled circle and the white plus glyph both render as
-            // the same flat tint and the plus disappears into its own button.
+            // Keeps the button in the accent group, so a tinted Home Screen
+            // renders it a step brighter than the text beside it. Safe to do
+            // now that the plus reads by shape rather than by colour.
             .widgetAccentable()
             .accessibilityLabel("Add task")
         }
