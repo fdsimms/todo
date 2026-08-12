@@ -981,6 +981,7 @@ export function QuickAddModal({
                 autoCorrect={false}
                 blurOnSubmit={false}
                 onLayout={e => setInputW(e.nativeEvent.layout.width)}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
               />
               {/* Invisible mirrors of the input text — their widths locate the
                   highlighted phrase so the tooltip can point at it. */}
@@ -1138,6 +1139,7 @@ export function QuickAddModal({
                   placeholderTextColor={colors.textSecondary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   accessibilityLabel="Custom duration in minutes"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
               </View>
             </View>
@@ -1167,6 +1169,7 @@ export function QuickAddModal({
                   maxLength={MAX_TARGET_UNIT_LENGTH}
                   autoCapitalize="none"
                   accessibilityLabel="Unit for the daily target, optional"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 <Text style={styles.targetStepperCaption}>a day</Text>
               </View>
@@ -1209,6 +1212,7 @@ export function QuickAddModal({
                   maxLength={TITLE_MAX_LENGTH}
                   returnKeyType="next"
                   blurOnSubmit={false}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {pendingStep.length > 0 && (
                   <TouchableOpacity
@@ -1505,6 +1509,7 @@ export function QuickAddModal({
                   placeholder="custom min"
                   placeholderTextColor={colors.textSecondary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
               </View>
             </View>
@@ -1544,6 +1549,7 @@ export function QuickAddModal({
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoFocus
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {tagInput.trim().length > 0 && (
                   <TouchableOpacity onPress={() => addTag(tagInput)} hitSlop={8}>
@@ -1642,6 +1648,7 @@ export function QuickAddModal({
                   autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="done"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {linkUrl !== null && (
                   <TouchableOpacity
@@ -1669,6 +1676,7 @@ export function QuickAddModal({
                   placeholderTextColor={colors.textSecondary}
                   keyboardType="phone-pad"
                   autoCorrect={false}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                   // No return key on the iOS phone pad, and the only other way
                   // to blur this field is a tap outside — which in this sheet
                   // dismisses the whole thing, taking the number with it. So
@@ -1713,6 +1721,7 @@ export function QuickAddModal({
                   autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="done"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {emailAddress !== null && (
                   <TouchableOpacity
