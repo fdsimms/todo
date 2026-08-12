@@ -23,6 +23,7 @@ function ev(start: string, end: string, overrides: Partial<BusyEvent> = {}): Bus
     end,
     allDay: false,
     calendarId: 'cal',
+    location: null,
     status: 'confirmed',
     availability: 'busy',
     ...overrides,
