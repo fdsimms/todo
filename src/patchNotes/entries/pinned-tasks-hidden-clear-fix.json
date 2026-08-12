@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where clearing your pinned tasks while \"Hide everything but pinned\" was on could leave Today permanently empty",
+  "date": "2026-08-12"
+}

@@ -549,6 +549,14 @@ export function TodayScreen() {
   // else" arrived collapsed) and that's the half people turned the feature off
   // over.
   const [othersHidden, setOthersHidden] = useState(false);
+  // The toggle lives on the pinned block's header, and the block itself
+  // renders nothing once nothing is pinned — so if the last pin goes away
+  // (Clear, or unpinning the last one) while this is still true, there's no
+  // header left to switch it back off from, and the list stays empty for
+  // good. Drop the hide the moment it has nothing left to hide besides.
+  useEffect(() => {
+    if (pinnedTasks.length === 0) setOthersHidden(false);
+  }, [pinnedTasks.length]);
   const [showHidden, setShowHidden] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
