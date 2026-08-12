@@ -109,6 +109,32 @@ export function buyAgainItems(items: readonly GroceryItem[], now: Date, limit = 
 }
 
 /**
+ * Buckets already keyed by aisle, emitted in walk order — the shopping list's
+ * rule, shared with the pantry below so the two can't come to disagree about
+ * where an unplaced aisle goes.
+ */
+function sectionsInAisleOrder<T>(
+  byAisle: Map<string, T[]>,
+  aisleOrder: readonly string[],
+  compare: (a: T, b: T) => number
+): { aisle: string; data: T[] }[] {
+  const remaining = new Map(byAisle);
+  const sections: { aisle: string; data: T[] }[] = [];
+  for (const aisle of aisleOrder) {
+    const data = remaining.get(aisle);
+    if (!data || data.length === 0) continue;
+    sections.push({ aisle, data: [...data].sort(compare) });
+    remaining.delete(aisle);
+  }
+  // An aisle the order has never heard of still has to render — dropping it
+  // would make its items invisible rather than merely misplaced.
+  for (const [aisle, data] of remaining) {
+    sections.push({ aisle, data: [...data].sort(compare) });
+  }
+  return sections;
+}
+
+/**
  * The shopping list, cut into aisles in walk order.
  *
  * `cartHoldIds` is where the in-cart hold resolves: a just-checked row stays
@@ -142,18 +168,7 @@ export function buildGrocerySections(
   const bySortOrder = (a: GroceryItem, b: GroceryItem) =>
     a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
 
-  const sections: GrocerySection[] = [];
-  for (const aisle of aisleOrder) {
-    const data = byAisle.get(aisle);
-    if (!data || data.length === 0) continue;
-    sections.push({ aisle, data: [...data].sort(bySortOrder) });
-    byAisle.delete(aisle);
-  }
-  // An aisle the order has never heard of still has to render — dropping it
-  // would make its items invisible rather than merely misplaced.
-  for (const [aisle, data] of byAisle) {
-    sections.push({ aisle, data: [...data].sort(bySortOrder) });
-  }
+  const sections = sectionsInAisleOrder(byAisle, aisleOrder, bySortOrder);
 
   inCart.sort(bySortOrder);
 
@@ -225,6 +240,20 @@ export function estimatedPurchaseCadenceDays(item: GroceryItem, now: Date): numb
 }
 
 /**
+ * What `onHandUntil` currently asserts: `true` for an active "Got it", `false`
+ * for "Out of it", `null` when there's no usable assertion and the cadence
+ * guess gets to decide. One reading of the column, so `probablyHaveReason`
+ * and the pantry list below can't drift on what a past or unparseable
+ * timestamp means.
+ */
+function onHandAssertion(item: GroceryItem, now: Date): boolean | null {
+  if (!item.onHandUntil) return null;
+  const until = new Date(item.onHandUntil).getTime();
+  if (Number.isNaN(until)) return null;
+  return until >= now.getTime();
+}
+
+/**
  * "bought 6× · last on 12 Jul" — why an item off the list is treated as
  * probably still in the kitchen, or null when there's no such reason.
  *
@@ -237,12 +266,8 @@ export function estimatedPurchaseCadenceDays(item: GroceryItem, now: Date): numb
  * time since the last one still inside it.
  */
 export function probablyHaveReason(item: GroceryItem, now: Date): string | null {
-  if (item.onHandUntil) {
-    const until = new Date(item.onHandUntil).getTime();
-    if (!Number.isNaN(until)) {
-      return until >= now.getTime() ? 'marked as on hand' : null;
-    }
-  }
+  const asserted = onHandAssertion(item, now);
+  if (asserted !== null) return asserted ? 'marked as on hand' : null;
 
   if (item.purchaseCount < MIN_PURCHASES_FOR_PANTRY_GUESS || !item.lastPurchasedAt) return null;
   const cadenceDays = estimatedPurchaseCadenceDays(item, now);
@@ -264,4 +289,74 @@ export function defaultOnHandUntil(item: GroceryItem, now: Date): string {
   const cadenceDays = estimatedPurchaseCadenceDays(item, now);
   const days = cadenceDays !== null && cadenceDays >= 1 ? cadenceDays : DEFAULT_ON_HAND_DAYS;
   return new Date(now.getTime() + days * DAY_MS).toISOString();
+}
+
+export interface PantryEntry {
+  item: GroceryItem;
+  /**
+   * `probablyHaveReason`'s own words. That function owns this wording — it's
+   * the same line the item sheet and a week plan already show, and a second
+   * phrasing here would be a second thing to keep true.
+   */
+  reason: string;
+  /** An explicit `onHandUntil` rather than the purchase-cadence guess. */
+  asserted: boolean;
+}
+
+export interface PantrySection {
+  aisle: string;
+  data: PantryEntry[];
+}
+
+/**
+ * Everything the app currently treats as "have it", which is exactly the set
+ * `probablyHaveReason` answers for — nothing is computed here that a week plan
+ * wasn't already computing one item at a time.
+ *
+ * Rows on the list are deliberately included. An item can be both bought
+ * recently and back on the list, and dropping it would mean an item marked
+ * "Got it" disappeared from the pantry the moment it was added to a list —
+ * which reads as the assertion having been forgotten. The caller says so on
+ * the row instead.
+ */
+export function pantryEntries(items: readonly GroceryItem[], now: Date): PantryEntry[] {
+  const entries: PantryEntry[] = [];
+  for (const item of items) {
+    const reason = probablyHaveReason(item, now);
+    if (!reason) continue;
+    entries.push({ item, reason, asserted: onHandAssertion(item, now) === true });
+  }
+  return entries.sort((a, b) => a.item.name.localeCompare(b.item.name));
+}
+
+/**
+ * The pantry cut into aisles, in the same walk order the shopping list uses —
+ * a kitchen isn't laid out like a shop, but the aisle is the filing the user
+ * has already done, and a flat A–Z list of forty things answers nothing.
+ *
+ * `query` filters by name with autocomplete's own matcher, so "do I have
+ * flour" is one field away rather than a scroll.
+ */
+export function buildPantrySections(
+  items: readonly GroceryItem[],
+  aisleOrder: readonly string[],
+  now: Date,
+  query = ''
+): PantrySection[] {
+  const queryKey = groceryNameKey(query);
+  const entries = pantryEntries(items, now).filter(
+    e => !queryKey || matchWeight(e.item.nameKey, queryKey) > 0
+  );
+
+  const byAisle = new Map<string, PantryEntry[]>();
+  for (const entry of entries) {
+    const aisle = entry.item.aisle || OTHER_AISLE;
+    const bucket = byAisle.get(aisle);
+    if (bucket) bucket.push(entry);
+    else byAisle.set(aisle, [entry]);
+  }
+
+  return sectionsInAisleOrder(byAisle, aisleOrder, (a, b) =>
+    a.item.name.localeCompare(b.item.name)
+  );
 }

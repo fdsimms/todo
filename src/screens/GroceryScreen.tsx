@@ -32,6 +32,7 @@ import {
 } from '../utils/fabDrop';
 import { GroceryRow } from '../components/GroceryRow';
 import { BuyAgainSheet } from '../components/BuyAgainSheet';
+import { PantrySheet } from '../components/PantrySheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
@@ -117,6 +118,7 @@ export function GroceryScreen() {
   const [cartOpen, setCartOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [buyAgainOpen, setBuyAgainOpen] = useState(false);
+  const [pantryOpen, setPantryOpen] = useState(false);
   const [aislesOpen, setAislesOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
   const [tripOpen, setTripOpen] = useState(false);
@@ -480,6 +482,14 @@ export function GroceryScreen() {
       disabled: selectionMode,
       accessibilityLabel: 'Buy again',
     });
+    // Beside Buy again, since both read the catalog rather than the list: one
+    // is what to get, the other is what you already have.
+    list.push({
+      icon: 'file-tray-stacked-outline',
+      onPress: () => setPantryOpen(true),
+      disabled: selectionMode,
+      accessibilityLabel: 'Pantry',
+    });
     list.push({
       icon: 'walk-outline',
       onPress: handleCreateGroceryTask,
@@ -732,6 +742,7 @@ export function GroceryScreen() {
         onAdded={handleItemsAdded}
       />
       <BuyAgainSheet visible={buyAgainOpen} onClose={() => setBuyAgainOpen(false)} />
+      <PantrySheet visible={pantryOpen} onClose={() => setPantryOpen(false)} />
       <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
       <FinishShoppingSheet
         visible={finishOpen}
