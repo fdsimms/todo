@@ -458,10 +458,10 @@ export function describeTripSuggestion(
 
   const head = one
     ? known.size === total
-      ? `You’ve got all ${total} there before`
+      ? `You’ve got all ${total} items there before`
       : `You’ve got ${known.size} of these ${total} there before`
     : known.size === total
-      ? `Between them, you’ve got all ${total} before`
+      ? `Between them, you’ve got all ${total} items there before`
       : `Between them, you’ve got ${known.size} of these ${total} before`;
 
   return { stores, detail: likely.size > 0 ? `${head} · ${likely.size} more likely` : head };

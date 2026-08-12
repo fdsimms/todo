@@ -519,11 +519,11 @@ describe('describeTripSuggestion', () => {
 
   it('names a full cover rather than counting it out', () => {
     expect(describeTripSuggestion([cover(tj, [milk.id, bread.id])], 2)?.detail).toBe(
-      'You’ve got all 2 there before'
+      'You’ve got all 2 items there before'
     );
     expect(
       describeTripSuggestion([cover(tj, [milk.id]), cover(pharmacy, [shampoo.id])], 2)?.detail
-    ).toBe('Between them, you’ve got all 2 before');
+    ).toBe('Between them, you’ve got all 2 items there before');
   });
 
   it('keeps the guess in its own clause', () => {
