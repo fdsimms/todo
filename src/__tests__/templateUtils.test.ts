@@ -56,6 +56,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   recurrenceCount: null,
   vacationPause: false,
   estimatedMinutes: null,
+  deliverableKind: null,
   chainEnabled: false,
   chainItems: [],
   chainIndex: 0,
@@ -133,6 +134,14 @@ describe('normalizeTemplateItem', () => {
 
   it('preserves a stored chainIndex', () => {
     expect(normalizeTemplateItem({ chainIndex: 2 }).chainIndex).toBe(2);
+  });
+
+  it('defaults deliverableKind to null for an item saved before the field existed', () => {
+    expect(normalizeTemplateItem({}).deliverableKind).toBeNull();
+  });
+
+  it('preserves a stored deliverableKind', () => {
+    expect(normalizeTemplateItem({ deliverableKind: 'date' }).deliverableKind).toBe('date');
   });
 });
 
@@ -246,6 +255,16 @@ describe('buildDraftsFromTemplate', () => {
     });
     const [draft] = buildDraftsFromTemplate([item], noAnchors);
     expect(draft.chainIndex).toBe(1);
+  });
+
+  it('carries deliverableKind onto the draft, so an applied item asks on completion (#1471)', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem({ deliverableKind: 'date' })], noAnchors);
+    expect(draft.deliverableKind).toBe('date');
+  });
+
+  it('leaves deliverableKind null for an ordinary item', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem()], noAnchors);
+    expect(draft.deliverableKind).toBeNull();
   });
 
   it('clamps chainIndex against a chain that has since shrunk', () => {

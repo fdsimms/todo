@@ -306,6 +306,15 @@ describe('demo mode', () => {
     expect(formatTaskDeliverable(answered)).toBeTruthy();
   });
 
+  // A template item can declare the same question (#1471), and that half is
+  // invisible on the task rows above — nothing says a template carried it.
+  it('seeds a template item that asks on completion', () => {
+    useDemoStore.getState().enterDemoMode();
+    const items = useTemplateStore.getState().templates.flatMap(t => t.items);
+
+    expect(items.some(i => i.deliverableKind !== null)).toBe(true);
+  });
+
   // A rule nothing has a row for reads as a field that does nothing.
   it('seeds a task that adds an extra task every Nth completion', () => {
     useDemoStore.getState().enterDemoMode();

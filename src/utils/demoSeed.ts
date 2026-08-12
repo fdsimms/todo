@@ -436,6 +436,10 @@ function seedTemplates(): void {
   const { addTemplate, addItem } = useTemplateStore.getState();
   const template = addTemplate('Trip prep');
   const ITEMS: Partial<TemplateItem>[] = [
+    // The decision item: applying the template produces a task that asks for
+    // the dates when it's ticked, rather than one someone has to convert to a
+    // decision by hand every trip.
+    { title: 'Pick dates for {destination}', dueOffsetDays: -28, deliverableKind: 'date' },
     { title: 'Put in for PTO for {run}', category: 'Work', dueOffsetDays: -21, priority: 3 },
     { title: 'Book flights to {destination}', dueOffsetDays: -14, priority: 4, effort: 2 },
     { title: 'Somewhere to stay in {destination}', dueOffsetDays: -14, effort: 2 },
