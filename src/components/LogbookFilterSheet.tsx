@@ -221,7 +221,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   resetText: { color: colors.accent, fontSize: font.sm },
   content: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.md },
   groupLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

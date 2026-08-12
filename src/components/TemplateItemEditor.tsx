@@ -1229,7 +1229,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   timePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   timePillTextActive: { color: colors.bg, fontWeight: '600' },
   groupLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8,
     marginHorizontal: spacing.md + spacing.xs, marginBottom: spacing.xs,
   },

@@ -3005,7 +3005,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   sectionHeaderText: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
   // A lighter sub-grouping inside a Later day section (morning/afternoon/

@@ -77,7 +77,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 2,
   },
   caption: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
     marginBottom: spacing.xs,
   },

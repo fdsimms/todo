@@ -310,7 +310,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   sectionHeaderText: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',

@@ -696,7 +696,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   sectionHeaderText: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     lineHeight: lineHeight.xs,
     fontWeight: fontWeight.semibold,

@@ -709,6 +709,17 @@ interface TaskStore {
   // the countdown can be resumed later; reset throws the banked time away.
   pauseTimer: (id: string) => void;
   resetTimer: (id: string) => void;
+  /**
+   * Correct the time the stopwatch recorded. The stopwatch is the only writer
+   * of `actualMinutes`, and stopping it late otherwise leaves the wrong number
+   * on the task for good — which reaches further than it looks, because
+   * `applyMeasuredTime` makes the measurement the estimate too.
+   *
+   * Deliberately routed through the same `applyMeasuredTime` a real run is, so
+   * a corrected number lands on exactly the fields a measured one does rather
+   * than leaving the estimate and the effort bucket disagreeing with it.
+   */
+  setMeasuredTime: (id: string, minutes: number) => void;
   reorderTasks: (orderedIds: string[]) => void;
   // Explicit sortOrders rather than ids-in-order: the Today list's ranks are
   // shared with the stacks sitting in it (see resolveDrop), so the gaps a
@@ -2569,6 +2580,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!task) return;
     cancelTimerAlarm(id);
     get().updateTask(id, { timerStartedAt: null, timerElapsedSeconds: 0 });
+  },
+
+  setMeasuredTime(id, minutes) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task) return;
+    get().updateTask(id, applyMeasuredTime(minutes));
   },
 
   reorderTasks(orderedIds) {

@@ -234,7 +234,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     maxHeight: 380,
   },
   sectionHeader: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',

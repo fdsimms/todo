@@ -44,6 +44,7 @@ import {
   type TaskKind,
   type TypeValues,
 } from '../utils/taskKinds';
+import { isSimpleChip } from '../utils/simpleTaskForm';
 import { resolvePillOverflow } from '../utils/pillOverflow';
 import { MAX_TARGET_UNIT_LENGTH } from '../utils/quotaUnit';
 import { WhenPicker } from './WhenPicker';
@@ -162,6 +163,7 @@ export function QuickAddModal({
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const simpleTaskForm = useSettingsStore(s => s.simpleTaskForm);
   // Which list this actually lands in: the caller's explicit choice (a
   // screen's current sub-view, a project's "unscheduled" drop) if it named
   // one, else Settings' destination default.
@@ -854,6 +856,12 @@ export function QuickAddModal({
   const chipOverflow = resolvePillOverflow(
     chipDescriptors
       .filter(c => isChipVisible(type, c.key))
+      // "Show fewer fields" trims the toolbar to Date / Time of day / Repeat —
+      // except for a chip that already carries a value, which the typed title
+      // may well have set ("pay rent tmrw #home"). Hiding one of those would
+      // hide a value that has already been applied, which is the one thing a
+      // display preference must never do.
+      .filter(c => isSimpleChip(c.key, simpleTaskForm) || c.value !== null)
       .map(c => ({
         ...c,
         label: QUICK_ADD_CHIP_LABELS[c.key],
@@ -956,15 +964,19 @@ export function QuickAddModal({
                 </View>
               )}
             </View>
-            <TouchableOpacity
-              style={[styles.addBtn, (!title.trim() || blocked !== null) && styles.addBtnDisabled]}
-              onPress={handleAdd}
-              disabled={!title.trim() || blocked !== null}
-              accessibilityRole="button"
-              accessibilityLabel="Add task"
-            >
-              <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
-            </TouchableOpacity>
+            {/* The arrow moves into the footer as a named button while
+                "Show fewer fields" is on — see the footer row below. */}
+            {!simpleTaskForm && (
+              <TouchableOpacity
+                style={[styles.addBtn, (!title.trim() || blocked !== null) && styles.addBtnDisabled]}
+                onPress={handleAdd}
+                disabled={!title.trim() || blocked !== null}
+                accessibilityRole="button"
+                accessibilityLabel="Add task"
+              >
+                <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Autosuggest — previously-used titles matching the current input */}
@@ -1750,11 +1762,55 @@ export function QuickAddModal({
             </View>
           )}
 
-          {/* More details */}
-          <TouchableOpacity style={styles.moreBtn} onPress={handleOpenFull} activeOpacity={interaction.activeOpacity}>
-            <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
-            <Text style={styles.moreBtnText}>More details</Text>
-          </TouchableOpacity>
+          {/* More details — and, with "Show fewer fields" on, the sheet's two
+              named buttons. A bare accent arrow beside the field says what it
+              looks like and nothing about what it does; naming the action is
+              the half of the preference that isn't about hiding things.
+              Cancel is what the backdrop tap already did, said out loud. */}
+          {simpleTaskForm ? (
+            <View style={styles.footerRow}>
+              <TouchableOpacity
+                style={styles.footerMore}
+                onPress={handleOpenFull}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="More details"
+              >
+                <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
+                <Text style={styles.moreBtnText}>More details</Text>
+              </TouchableOpacity>
+              <View style={styles.footerSpacer} />
+              <TouchableOpacity
+                style={styles.footerCancel}
+                onPress={() => dismiss()}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
+                <Text style={styles.footerCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.footerAdd, (!title.trim() || blocked !== null) && styles.footerAddDisabled]}
+                onPress={handleAdd}
+                disabled={!title.trim() || blocked !== null}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Add task"
+              >
+                <Text style={[
+                  styles.footerAddText,
+                  (!title.trim() || blocked !== null) && styles.footerAddTextDisabled,
+                ]}>
+                  Add task
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.moreBtn} onPress={handleOpenFull} activeOpacity={interaction.activeOpacity}>
+              <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
+              <Text style={styles.moreBtnText}>More details</Text>
+            </TouchableOpacity>
+          )}
         </Animated.View>
       </View>
       <WhenPicker
@@ -2187,14 +2243,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     minWidth: 110,
   },
-  clearChip: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.bgTertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   priorityChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2287,6 +2335,43 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  footerSpacer: { flex: 1 },
+  footerMore: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.sm,
+  },
+  footerCancel: {
+    minHeight: interaction.pillHeight,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+  },
+  footerCancelText: {
+    color: colors.textSecondary,
+    fontSize: font.md,
+  },
+  footerAdd: {
+    minHeight: interaction.pillHeight,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+  },
+  footerAddDisabled: { backgroundColor: colors.bgTertiary },
+  footerAddText: {
+    color: colors.onAccent,
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
+  },
+  footerAddTextDisabled: { color: colors.textTertiary },
   linkAppRow: {
     flexDirection: 'row',
     gap: spacing.xs,

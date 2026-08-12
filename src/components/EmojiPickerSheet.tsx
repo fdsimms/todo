@@ -332,7 +332,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // icon-only, so there's no text/weight cue to fall back on.
   tabActive: { backgroundColor: colors.accentSubtle, borderColor: colors.accent },
   groupName: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
     paddingHorizontal: spacing.md, paddingBottom: spacing.xs,
   },

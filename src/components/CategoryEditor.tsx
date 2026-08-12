@@ -517,7 +517,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.xs, marginTop: spacing.sm, marginBottom: spacing.lg,
   },
   groupLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
     paddingHorizontal: spacing.sm, marginBottom: spacing.sm,
   },
