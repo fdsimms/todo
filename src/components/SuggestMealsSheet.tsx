@@ -668,6 +668,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   filterRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
