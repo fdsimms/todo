@@ -119,7 +119,7 @@ export function ScreenHeader({ title, subtitle, overline, actions, right }: Prop
 const makeStyles = (colors: Colors) => StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: spacing.xs,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md, paddingTop: spacing.xs,
   },
   titleBlock: { flexShrink: 1 },
   overline: {
