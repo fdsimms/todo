@@ -7,6 +7,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { recurrenceUnitLabel } from '../utils/recurrenceLabels';
 import { WeekdaySelector } from './WeekdaySelector';
+import { ordinal } from '../utils/ordinal';
 
 export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
@@ -15,17 +16,6 @@ export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   monthly: 'Monthly',
   yearly: 'Yearly',
 };
-
-export function ordinal(n: number): string {
-  const rem100 = n % 100;
-  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
-  switch (n % 10) {
-    case 1: return `${n}st`;
-    case 2: return `${n}nd`;
-    case 3: return `${n}rd`;
-    default: return `${n}th`;
-  }
-}
 
 // Nth-weekday-of-month picker options ("every 2nd Tuesday", "every last Friday").
 export const ORDINAL_OPTIONS: { value: number; label: string }[] = [

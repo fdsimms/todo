@@ -20,6 +20,7 @@ import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUt
 import { pantryEntries } from '../utils/grocerySuggest';
 import { taskKindOf } from '../utils/taskKinds';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
+import { extraTaskRule } from '../utils/extraTask';
 import { isDialable } from '../utils/phone';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -283,6 +284,22 @@ describe('demo mode', () => {
     const shared = extractPlaceholders(withBlanks[0].items)[0];
     expect(withBlanks[0].items.filter(i => i.title.includes(`{${shared}}`)).length).toBeGreaterThan(1);
     expect(templates.some(t => declaresRunPlaceholder(t.items))).toBe(true);
+  });
+
+  // A rule nothing has a row for reads as a field that does nothing.
+  it('seeds a task that adds an extra task every Nth completion', () => {
+    useDemoStore.getState().enterDemoMode();
+    const withRule = useTaskStore.getState().tasks.filter(t => extraTaskRule(t) !== null);
+
+    expect(withRule.length).toBeGreaterThan(0);
+    // Partway through the cycle, so the editor's caption describes a rule in
+    // progress rather than one nobody has started.
+    const rule = extraTaskRule(withRule[0])!;
+    expect(withRule[0].extraTaskTally).toBeGreaterThan(0);
+    expect(withRule[0].extraTaskTally).toBeLessThan(rule.everyN);
+    // The tally only advances on a completion that advances the schedule, so a
+    // rule on a one-off task could never reach its count.
+    expect(withRule[0].recurrenceType).not.toBe('none');
   });
 
   // No number on any task means no call/text button anywhere in the demo.
