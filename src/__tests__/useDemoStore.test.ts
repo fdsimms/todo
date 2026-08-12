@@ -12,7 +12,7 @@
 import { useDemoStore } from '../store/useDemoStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { useProjectStore } from '../store/useProjectStore';
+import { useProjectStore, projectDecisions } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -328,6 +328,20 @@ describe('demo mode', () => {
     const withPhone = useTaskStore.getState().tasks.filter(t => isDialable(t.phoneNumber));
 
     expect(withPhone.length).toBeGreaterThan(0);
+  });
+
+  // The Decisions block on a project's screen has nothing to render unless a
+  // project actually holds an answered decision, so without this the feature
+  // reads as one the app doesn't have.
+  it('seeds a project holding answered decisions', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    expect(kitchen).toBeDefined();
+
+    const decisions = projectDecisions(kitchen!.id, useTaskStore.getState().tasks);
+    expect(decisions.length).toBeGreaterThan(0);
+    expect(decisions.every(t => formatTaskDeliverable(t) !== null)).toBe(true);
   });
 
   it('seeds a reference-list project excluded from every nudge', () => {

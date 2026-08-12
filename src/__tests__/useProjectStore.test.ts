@@ -1,6 +1,7 @@
 import {
   useProjectStore,
   projectProgress,
+  projectDecisions,
   isProjectPastWindow,
 } from '../store/useProjectStore';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
@@ -257,6 +258,103 @@ describe('projectProgress', () => {
   it('ignores tasks belonging to a different project', () => {
     const tasks = [makeTask({ id: 'a', projectId: 'p2' })];
     expect(projectProgress('p1', tasks)).toEqual({ done: 0, total: 0 });
+  });
+});
+
+// ─── projectDecisions ───────────────────────────────────────────────────────
+
+describe('projectDecisions', () => {
+  const decision = (overrides: Partial<Task> = {}): Task => makeTask({
+    projectId: 'p1',
+    completed: true,
+    deliverableKind: 'text',
+    deliverableValue: 'an answer',
+    ...overrides,
+  });
+
+  it('is empty for a project with no answered members', () => {
+    expect(projectDecisions('p1', [])).toEqual([]);
+    expect(projectDecisions('p1', [makeTask({ id: 'a', projectId: 'p1', completed: true })])).toEqual([]);
+  });
+
+  it('lists an answered decision', () => {
+    const tasks = [
+      decision({ id: 'a', completedAt: '2025-01-02T09:00:00.000Z' }),
+      makeTask({ id: 'b', projectId: 'p1', completed: true }),
+    ];
+    expect(projectDecisions('p1', tasks).map(t => t.id)).toEqual(['a']);
+  });
+
+  // "No answer" is a real state — nothing may ever require one — but a block
+  // that exists to be read back has nothing to read back from it.
+  it('leaves out a decision that was completed without an answer', () => {
+    const tasks = [decision({ id: 'a', deliverableValue: null, completedAt: '2025-01-02T09:00:00.000Z' })];
+    expect(projectDecisions('p1', tasks)).toEqual([]);
+  });
+
+  it('keeps an answer on a task that was un-completed', () => {
+    // setDeliverableValue is guarded on the kind, not on `completed`, so
+    // un-completing a decision keeps what it recorded.
+    const tasks = [decision({ id: 'a', completed: false, completedAt: null })];
+    expect(projectDecisions('p1', tasks).map(t => t.id)).toEqual(['a']);
+  });
+
+  it('orders by when the answer was recorded, most recent first', () => {
+    const tasks = [
+      decision({ id: 'old', completedAt: '2025-01-01T09:00:00.000Z' }),
+      decision({ id: 'new', completedAt: '2025-01-05T09:00:00.000Z' }),
+      decision({ id: 'mid', completedAt: '2025-01-03T09:00:00.000Z' }),
+    ];
+    expect(projectDecisions('p1', tasks).map(t => t.id)).toEqual(['new', 'mid', 'old']);
+  });
+
+  // A recurring decision leaves one answered row per occurrence, so listing
+  // rows would grow the block by one every time it's answered.
+  it('shows only the most recent answer of a recurring decision', () => {
+    const tasks = [
+      decision({ id: 'r1', deliverableValue: 'first', completedAt: '2025-01-01T09:00:00.000Z' }),
+      decision({ id: 'r2', deliverableValue: 'second', completedAt: '2025-01-02T09:00:00.000Z', previousOccurrenceId: 'r1' }),
+      decision({ id: 'r3', deliverableValue: 'third', completedAt: '2025-01-03T09:00:00.000Z', previousOccurrenceId: 'r2' }),
+    ];
+    const result = projectDecisions('p1', tasks);
+    expect(result).toHaveLength(1);
+    expect(result[0].deliverableValue).toBe('third');
+  });
+
+  it('reads back the last answer when the current occurrence is still outstanding', () => {
+    const tasks = [
+      decision({ id: 'r1', deliverableValue: 'first', completedAt: '2025-01-01T09:00:00.000Z' }),
+      decision({ id: 'r2', completed: false, completedAt: null, deliverableValue: null, previousOccurrenceId: 'r1' }),
+    ];
+    const result = projectDecisions('p1', tasks);
+    expect(result.map(t => t.id)).toEqual(['r1']);
+  });
+
+  it('collapses a dated series to one answer', () => {
+    const tasks = [
+      decision({ id: 's1', seriesId: 'set', deliverableValue: 'tenth', completedAt: '2025-01-10T09:00:00.000Z' }),
+      decision({ id: 's2', seriesId: 'set', deliverableValue: 'fifteenth', completedAt: '2025-01-15T09:00:00.000Z' }),
+    ];
+    const result = projectDecisions('p1', tasks);
+    expect(result).toHaveLength(1);
+    expect(result[0].deliverableValue).toBe('fifteenth');
+  });
+
+  it('excludes subtasks, archived members and other projects', () => {
+    const tasks = [
+      decision({ id: 'sub', parentId: 'a', completedAt: '2025-01-02T09:00:00.000Z' }),
+      decision({ id: 'archived', archived: true, completedAt: '2025-01-02T09:00:00.000Z' }),
+      decision({ id: 'elsewhere', projectId: 'p2', completedAt: '2025-01-02T09:00:00.000Z' }),
+    ];
+    expect(projectDecisions('p1', tasks)).toEqual([]);
+  });
+
+  it('survives a previousOccurrenceId loop rather than spinning during render', () => {
+    const tasks = [
+      decision({ id: 'a', previousOccurrenceId: 'b', completedAt: '2025-01-01T09:00:00.000Z' }),
+      decision({ id: 'b', previousOccurrenceId: 'a', completedAt: '2025-01-02T09:00:00.000Z' }),
+    ];
+    expect(projectDecisions('p1', tasks).length).toBeGreaterThan(0);
   });
 });
 

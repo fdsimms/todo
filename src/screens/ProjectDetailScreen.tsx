@@ -14,7 +14,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
-import { useProjectStore } from '../store/useProjectStore';
+import { useProjectStore, projectDecisions } from '../store/useProjectStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { TaskItem } from '../components/TaskItem';
@@ -26,6 +26,8 @@ import { QuickAddModal } from '../components/QuickAddModal';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { EmptyState } from '../components/EmptyState';
+import { ProjectDecisions } from '../components/ProjectDecisions';
+import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { FabMenu, type FabMenuItem } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
@@ -60,6 +62,7 @@ export function ProjectDetailScreen() {
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
+  const setDeliverableValue = useTaskStore(s => s.setDeliverableValue);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -78,6 +81,10 @@ export function ProjectDetailScreen() {
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
+  // The decision whose answer is being corrected. Held by id and read back off
+  // the live list, so the sheet re-seeds from the store rather than from a
+  // snapshot taken when the row was tapped — same as the Logbook's.
+  const [answerTaskId, setAnswerTaskId] = useState<string | null>(null);
   const flashTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     selectionMode,
@@ -117,6 +124,11 @@ export function ProjectDetailScreen() {
   // behind a toggle, and counting hidden rows would leave the bar stuck
   // offering "Select all" after the user already had.
   const selectableTasks = showCompleted ? projectTasks : incompleteProjectTasks;
+  // What this project has already decided — one row per member, most recent
+  // answer first. It does its own filtering (members, unarchived, collapsed by
+  // identity), so it takes the whole task list rather than projectTasks.
+  const decisions = useMemo(() => projectDecisions(projectId, allTasks), [projectId, allTasks]);
+  const answerTask = answerTaskId !== null ? allTasks.find(t => t.id === answerTaskId) ?? null : null;
 
   const onClose = () => {
     if (selectionMode) exitSelection();
@@ -254,6 +266,17 @@ export function ProjectDetailScreen() {
             contentContainerStyle={[{ flexGrow: 1, paddingTop: spacing.sm }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             onHoverChange={haptics.dragTick}
             onReorder={reordered => reorderProjectTasks(projectId, reordered.map(t => t.id))}
+            // Inside the scroll content, not pinned above the list: it's
+            // reference material, so it should scroll out of the way once
+            // you're working through the tasks. Not tappable while selecting —
+            // these rows aren't selectable, and a tap that opened a sheet
+            // mid-selection would be the odd one out.
+            ListHeaderComponent={
+              <ProjectDecisions
+                decisions={decisions}
+                onPress={selectionMode ? undefined : task => setAnswerTaskId(task.id)}
+              />
+            }
             renderItem={({ item, drag, isActive }) => {
               const subs = allTasks.filter(t => t.parentId === item.id);
               // Position in the live order, 1-based — the same ranking
@@ -478,6 +501,22 @@ export function ProjectDetailScreen() {
           onClose={() => setApplyTemplate(null)}
           projectId={project?.id}
         />
+
+        {/* Correcting a decision from where it's read — the same sheet in the
+            same mode the Logbook's ⋯ menu opens, so there's one place an
+            answer is written and one way it's written. */}
+        {answerTask && (
+          <DeliverablePromptSheet
+            visible
+            task={answerTask}
+            mode="edit"
+            onConfirm={value => {
+              setDeliverableValue(answerTask.id, value);
+              setAnswerTaskId(null);
+            }}
+            onCancel={() => setAnswerTaskId(null)}
+          />
+        )}
 
         <ProjectEditor
           visible={editingProject !== null}
