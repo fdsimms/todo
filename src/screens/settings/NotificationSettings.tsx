@@ -39,6 +39,7 @@ function weekdayPills(weekStartsOn: WeekStart): PillOption<number>[] {
 }
 
 export function NotificationSettings() {
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const dailyAgendaEnabled = useSettingsStore(s => s.dailyAgendaEnabled);
   const setDailyAgendaEnabled = useSettingsStore(s => s.setDailyAgendaEnabled);
   const dailyAgendaTime = useSettingsStore(s => s.dailyAgendaTime);
@@ -316,6 +317,7 @@ export function NotificationSettings() {
       )}
     </SettingsSection>
 
+    {kitchenEnabled && (
     <SettingsSection
       label="Meal planning"
       footer="Creates one task a week reminding you to plan meals — it opens straight to the Meal Plan screen. Skipped entirely for a week that already has something planned there, so it only ever nudges when it'd actually help."
@@ -370,6 +372,7 @@ export function NotificationSettings() {
         </>
       )}
     </SettingsSection>
+    )}
 
     <SettingsSection
         label="Default reminder"

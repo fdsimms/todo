@@ -14,6 +14,7 @@ import {
   PULL_TODAY_BUDGET_MINUTES,
   suggestPullDate,
 } from '../utils/projectPull';
+import { registerProjectSource, registerTaskSource } from '../utils/blockerRegistry';
 import type { Project, Task } from '../types';
 
 const settingsState = { dayResetTime: '00:00', vacationMode: false, morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00' };
@@ -126,6 +127,7 @@ const PROJECT_BASE: Project = {
   nudgeCadenceDays: 14,
   autoSchedule: false,
   sequential: false,
+  nudgeOptIn: true,
 };
 
 const makeProject = (overrides: Partial<Project> = {}): Project => ({ ...PROJECT_BASE, ...overrides });
@@ -226,6 +228,16 @@ describe('findProjectStalls', () => {
     expect(findProjectStalls([makeProject({ nudgeCadenceDays: 0 })], [makeTask({ id: 'a' })])).toHaveLength(0);
   });
 
+  it('excludes a project with nudgeOptIn false, even with a real cadence', () => {
+    expect(findProjectStalls([makeProject({ nudgeOptIn: false })], [makeTask({ id: 'a' })])).toHaveLength(0);
+  });
+
+  it('excludes a nudgeOptIn: false project in "ask" mode too, unlike cadence 0', () => {
+    expect(
+      findProjectStalls([makeProject({ nudgeOptIn: false })], [makeTask({ id: 'a' })], 'ask')
+    ).toHaveLength(0);
+  });
+
   it('goes silent entirely in vacation mode', () => {
     settingsState.vacationMode = true;
 
@@ -242,6 +254,87 @@ describe('findProjectStalls', () => {
     ];
 
     expect(findProjectStalls([makeProject()], tasks)).toHaveLength(0);
+  });
+
+  // A task waiting on another one can't appear anywhere a date would put it,
+  // so dating it is the one thing the pull must not offer — the same argument
+  // the sequential slice above makes, for the other way a task is held.
+  describe('members waiting on another task', () => {
+    const blocker = makeTask({ id: 'blocker', projectId: null, dueDate: new Date().toISOString() });
+    const register = (tasks: Task[], projects: Project[] = []) => {
+      registerTaskSource(() => [...tasks, blocker]);
+      registerProjectSource(() => projects);
+    };
+
+    afterEach(() => {
+      registerTaskSource(null);
+      registerProjectSource(null);
+    });
+
+    it('leaves a waiting member out of the pullable set but still counts it', () => {
+      const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b', blockedById: 'blocker' })];
+      register(tasks);
+
+      const stalls = findProjectStalls([makeProject()], tasks);
+
+      expect(stalls).toHaveLength(1);
+      expect(stalls[0].pullable.map(t => t.id)).toEqual(['a']);
+      expect(stalls[0].members).toHaveLength(2);
+    });
+
+    it('is not stalled when every live member is waiting on something', () => {
+      const tasks = [makeTask({ id: 'a', blockedById: 'blocker' })];
+      register(tasks);
+
+      expect(findProjectStalls([makeProject()], tasks)).toHaveLength(0);
+    });
+
+    // A date on a waiting member puts it nowhere, so it can't be the schedule
+    // that says the project isn't quiet.
+    it('does not count a waiting member as the project having a schedule', () => {
+      const tasks = [
+        makeTask({ id: 'a' }),
+        makeTask({ id: 'b', blockedById: 'blocker', dueDate: new Date().toISOString() }),
+      ];
+      register(tasks);
+
+      expect(findProjectStalls([makeProject()], tasks)[0]?.pullable.map(t => t.id)).toEqual(['a']);
+    });
+
+    it('refuses a sequential project whose open step is waiting, rather than offering step two', () => {
+      const project = makeProject({ sequential: true });
+      const tasks = [
+        makeTask({ id: 'a', sortOrder: 10, blockedById: 'blocker' }),
+        makeTask({ id: 'b', sortOrder: 20 }),
+      ];
+      register(tasks, [project]);
+
+      expect(findProjectStalls([project], tasks)).toHaveLength(0);
+    });
+
+    // The drip dates a task with nobody watching, so a waiting one would be
+    // dated silently — and would then read as a schedule the project hasn't
+    // got, keeping it quiet until its blocker was done.
+    it('is never picked by the auto-schedule drip', () => {
+      const project = makeProject({ autoSchedule: true });
+      const tasks = [
+        makeTask({ id: 'a', sortOrder: 0, blockedById: 'blocker' }),
+        makeTask({ id: 'b', sortOrder: 1 }),
+      ];
+      register(tasks);
+
+      expect(dripCandidate(project, tasks)?.id).toBe('b');
+    });
+
+    it('reports all-waiting as the empty reason', () => {
+      const tasks = [makeTask({ id: 'a', blockedById: 'blocker' })];
+      register(tasks);
+
+      const state = diagnosePullEmpty([makeProject()], tasks);
+
+      expect(state?.reason).toBe('all-waiting');
+      expect(describePullEmpty(state!)).toContain('waiting on another task');
+    });
   });
 
   describe('cadence boundary', () => {
@@ -502,6 +595,25 @@ describe('diagnosePullEmpty', () => {
     expect(describePullEmpty(state!)).toContain('Nudge me');
   });
 
+  // Unlike cadence-off, nudgeOptIn is a hard exclusion — it reports in both
+  // modes, because the manually-opened sheet is excluded too (see classifyProject).
+  it('names nudgeOptIn: false in both modes', () => {
+    const projects = [
+      makeProject({ id: 'p1', nudgeOptIn: false }),
+      makeProject({ id: 'p2', nudgeOptIn: false }),
+    ];
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1' }),
+      makeTask({ id: 'b', projectId: 'p2' }),
+    ];
+
+    for (const mode of ['ask', 'nudge'] as const) {
+      const state = diagnosePullEmpty(projects, tasks, mode);
+      expect(state).toEqual({ reason: 'nudge-excluded', count: 2, total: 2 });
+      expect(describePullEmpty(state!)).toContain('Include in nudges');
+    }
+  });
+
   it('reports vacation mode before looking at anything else', () => {
     settingsState.vacationMode = true;
 
@@ -608,10 +720,12 @@ describe('describePullEmpty', () => {
     const reasons: PullEmptyReason[] = [
       'vacation',
       'no-projects',
+      'nudge-excluded',
       'cadence-off',
       'auto-scheduled',
       'too-soon',
       'has-schedule',
+      'all-waiting',
       'no-pullable',
       'no-live-tasks',
     ];

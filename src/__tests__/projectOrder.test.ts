@@ -102,6 +102,7 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   nudgeCadenceDays: DEFAULT_NUDGE_CADENCE_DAYS,
   autoSchedule: false,
   sequential: false,
+  nudgeOptIn: false,
   ...overrides,
 });
 

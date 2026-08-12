@@ -1,6 +1,6 @@
 /**
  * Pure geometry for "paint" selection — dragging a finger down the column of
- * checkboxes to select a run of rows instead of tapping each one.
+ * selection dots to select a run of rows instead of tapping each one.
  *
  * Kept out of the component (like reorder.ts is for drag-and-drop) so the
  * hit-testing can be reasoned about and tested without a running gesture.
@@ -19,16 +19,19 @@ export interface PaintRowRect {
 }
 
 /**
- * Width of the strip along the list's leading edge where a touch starts
+ * Width of the strip along the list's *trailing* edge where a touch starts
  * painting rather than scrolling. Sized to cover the card's outer margin plus
- * the whole checkbox (16 card margin + 16 checkbox inset + 24 checkbox = 56)
- * with a little slack, and to stop short of the title text so a scroll started
+ * the whole selection dot (16 card margin + 16 row padding + 22 dot = 54) with
+ * a little slack, and to stop short of the title text so a scroll started
  * anywhere over a row's content behaves exactly as it always has.
  *
- * Note the first 20px are already spoken for by the drawer's edge-swipe zone
- * (see AppNavigator), which sits above everything and claims touches there —
- * so in practice painting starts between 20 and this value. The checkbox
- * (roughly 34–58) sits comfortably inside that.
+ * It used to run along the leading edge, over the completion checkboxes, back
+ * when selecting a row was shown by filling that checkbox in. The selection
+ * control is now a dot at the other end of the row (see SelectionDot), and the
+ * gesture has to be over the thing it changes — a drag down the checkboxes
+ * completing nothing while a drag down the dots merely scrolled is exactly
+ * backwards. It also no longer contends with the drawer's edge-swipe zone,
+ * which claims the first 20px of the leading edge (see AppNavigator).
  */
 export const PAINT_GUTTER_WIDTH = 64;
 
@@ -41,9 +44,22 @@ export const PAINT_GUTTER_WIDTH = 64;
  */
 export const ROW_HIT_SLOP = 6;
 
-/** Whether a touch this far from the list's left edge should start painting. */
-export function isInPaintGutter(x: number, gutterWidth: number = PAINT_GUTTER_WIDTH): boolean {
-  return x >= 0 && x <= gutterWidth;
+/**
+ * Whether a touch should start painting, given its distance from the list's
+ * leading edge and the list's own width.
+ *
+ * A width of 0 means the container hasn't been measured yet, and answers false:
+ * without a width there's no trailing edge to be near, and claiming the touch
+ * on a guess would take a scroll away from a list that may not even be under
+ * the finger.
+ */
+export function isInPaintGutter(
+  x: number,
+  containerWidth: number,
+  gutterWidth: number = PAINT_GUTTER_WIDTH,
+): boolean {
+  if (!(containerWidth > 0)) return false;
+  return x <= containerWidth && x >= containerWidth - gutterWidth;
 }
 
 /**

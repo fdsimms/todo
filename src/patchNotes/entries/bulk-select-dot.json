@@ -1,0 +1,4 @@
+{
+  "message": "Picking tasks for a bulk edit no longer fills in their checkboxes, so a selected task doesn't look like a finished one. Every row you can pick now shows a circle on its right that fills in when it's selected — and dragging down that column selects a run of rows at once",
+  "date": "2026-08-12"
+}

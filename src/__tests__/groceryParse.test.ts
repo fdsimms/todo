@@ -155,6 +155,56 @@ describe('parseGroceryInput', () => {
     expect(parseGroceryInput('1 link sausage')).toEqual({ name: 'sausage', quantity: '1 link' });
   });
 
+  it('recognizes newly added cooking units', () => {
+    expect(parseGroceryInput('2 sprigs rosemary')).toEqual({
+      name: 'rosemary',
+      quantity: '2 sprigs',
+    });
+    expect(parseGroceryInput('3 stalks celery')).toEqual({
+      name: 'celery',
+      quantity: '3 stalks',
+    });
+    expect(parseGroceryInput('2 ribs celery')).toEqual({ name: 'celery', quantity: '2 ribs' });
+    expect(parseGroceryInput('4 stems thyme')).toEqual({ name: 'thyme', quantity: '4 stems' });
+    expect(parseGroceryInput('1 stick butter')).toEqual({ name: 'butter', quantity: '1 stick' });
+    expect(parseGroceryInput('2 sheets phyllo dough')).toEqual({
+      name: 'phyllo dough',
+      quantity: '2 sheets',
+    });
+    expect(parseGroceryInput('2 fillets salmon')).toEqual({
+      name: 'salmon',
+      quantity: '2 fillets',
+    });
+    expect(parseGroceryInput('3 pieces ginger')).toEqual({
+      name: 'ginger',
+      quantity: '3 pieces',
+    });
+    expect(parseGroceryInput('2 ears corn')).toEqual({ name: 'corn', quantity: '2 ears' });
+    expect(parseGroceryInput('4 wedges lime')).toEqual({ name: 'lime', quantity: '4 wedges' });
+    expect(parseGroceryInput('2 strips bacon')).toEqual({ name: 'bacon', quantity: '2 strips' });
+    expect(parseGroceryInput('1 pinch salt')).toEqual({ name: 'salt', quantity: '1 pinch' });
+    expect(parseGroceryInput('1 dash hot sauce')).toEqual({
+      name: 'hot sauce',
+      quantity: '1 dash',
+    });
+    expect(parseGroceryInput('2 handfuls spinach')).toEqual({
+      name: 'spinach',
+      quantity: '2 handfuls',
+    });
+    expect(parseGroceryInput('1 package tortillas')).toEqual({
+      name: 'tortillas',
+      quantity: '1 package',
+    });
+    expect(parseGroceryInput('2 pouches soup mix')).toEqual({
+      name: 'soup mix',
+      quantity: '2 pouches',
+    });
+    expect(parseGroceryInput('2 dl heavy cream')).toEqual({
+      name: 'heavy cream',
+      quantity: '2 dl',
+    });
+  });
+
   it('peels a bare fraction as the leading count', () => {
     expect(parseGroceryInput('1/4 cup tomato paste')).toEqual({
       name: 'tomato paste',

@@ -39,11 +39,17 @@ export function SettingsScreen() {
 
   const [query, setQuery] = useState('');
 
+  const settings = useSettingsStore();
+
   const groups = useMemo(() => visibleSettingsGroups(Platform.OS), []);
-  const entries = useMemo(() => visibleSettingsEntries(Platform.OS), []);
+  // Search must not turn up a row that isn't rendered, so the kitchen entries
+  // leave the index with the area — the same contract `iosOnly` has.
+  const entries = useMemo(
+    () => visibleSettingsEntries(Platform.OS, settings.kitchenEnabled),
+    [settings.kitchenEnabled]
+  );
   const results = useMemo(() => searchSettings(entries, query.trim()), [entries, query]);
 
-  const settings = useSettingsStore();
   const demoActive = useDemoStore(s => s.active);
 
   const summaries = useMemo(() => settingsSummaries({
@@ -56,6 +62,7 @@ export function SettingsScreen() {
     dailyAgendaEnabled: settings.dailyAgendaEnabled,
     remindersImportEnabled: settings.remindersImportEnabled,
     groceryImportEnabled: settings.groceryImportEnabled,
+    kitchenEnabled: settings.kitchenEnabled,
     vacationMode: settings.vacationMode,
     autoRemoveExpiredTasks: settings.autoRemoveExpiredTasks,
     autoArchiveProjectsOnComplete: settings.autoArchiveProjectsOnComplete,

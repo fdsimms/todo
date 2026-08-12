@@ -10,7 +10,8 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import type { GroceryItem, MealSlot, Recipe, Shop } from '../types';
+import { useTemplateStore } from '../store/useTemplateStore';
+import type { GroceryItem, MealSlot, Recipe, Shop, TemplateItem } from '../types';
 import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
 import { groceryNameKey } from './groceryParse';
@@ -302,6 +303,16 @@ export function seedDemoData(): void {
     if (done) completeTask(t.id);
   });
 
+  // A reference list, not a to-do list: nothing here ever gets a date, and
+  // nudgeOptIn defaults to false, so it never trips the gone-quiet nudge or
+  // shows up in "Pull from projects" the way an ordinary undated project
+  // would. See Project.nudgeOptIn.
+  const giftIdeas = createProject('Gift ideas', null, null);
+  ['Something for Mom\'s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
+    const t = addTask({ title });
+    addExistingToProject(t.id, giftIdeas.id);
+  });
+
   // --- Subtasks ------------------------------------------------------------
   const trip = addTask({
     title: 'Plan the Japan trip',
@@ -334,13 +345,60 @@ export function seedDemoData(): void {
     updateTask(t.id, { completedAt: setHours(at, 17).toISOString() });
   });
 
+  // --- A template, and the blanks it fills in at apply time ----------------
+  seedTemplates();
+
   // --- Groceries, recipes, the week's meals and the fridge -----------------
   // Ordered by what points at what: recipes first (grocery rows can be
   // attributed to the recipe that put them on the list), then the catalog,
   // then the plan that references both, then the leftovers a cooked meal left.
-  const recipes = seedRecipes();
-  seedGroceries(recipes);
-  seedMealPlanAndFridge(recipes, today);
+  //
+  // Skipped wholesale when the area is off. Demo mode is what someone handed
+  // the phone actually sees, and seeding a shop, a week of dinners and a
+  // fridge that none of them can reach is worse than seeding nothing: the
+  // hub isn't in the menu, so it would only surface as cook tasks on Today
+  // for meals there's no way to open.
+  if (useSettingsStore.getState().kitchenEnabled) {
+    const recipes = seedRecipes();
+    seedGroceries(recipes);
+    seedMealPlanAndFridge(recipes, today);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Templates
+// ---------------------------------------------------------------------------
+
+/**
+ * One template, with two blanks in it.
+ *
+ * The blanks are the reason this exists: `{destination}` is asked for once in
+ * the apply sheet and lands in three item titles, and `{run}` inlines the name
+ * given to the run itself. Both are invisible until a template declares one,
+ * so without a seeded example the demo says the app can't do it.
+ */
+function seedTemplates(): void {
+  const { addTemplate, addItem } = useTemplateStore.getState();
+  const template = addTemplate('Trip prep');
+  const ITEMS: Partial<TemplateItem>[] = [
+    { title: 'Put in for PTO for {run}', category: 'Work', dueOffsetDays: -21, priority: 3 },
+    { title: 'Book flights to {destination}', dueOffsetDays: -14, priority: 4, effort: 2 },
+    { title: 'Somewhere to stay in {destination}', dueOffsetDays: -14, effort: 2 },
+    {
+      title: 'Pack for {destination}',
+      dueOffsetDays: -1,
+      category: 'Home',
+      subtasks: [
+        { id: generateId(), title: 'Passport' },
+        { id: generateId(), title: 'Chargers' },
+        { id: generateId(), title: 'Meds' },
+      ],
+    },
+    // Anchored to the end date instead, and optional — the two item settings
+    // that are otherwise only described in the editor's own hints.
+    { title: 'Unpack and put a wash on', anchor: 'end', dueOffsetDays: 1, optional: true },
+  ];
+  ITEMS.forEach(item => addItem(template.id, item));
 }
 
 // ---------------------------------------------------------------------------
@@ -496,15 +554,19 @@ function seedRecipes(): DemoRecipes {
   const cake = newRecipe('Carrot cake with cream cheese frosting');
   addIngredientsFromText(
     cake.id,
+    // The one recipe written in metric, and it's the one copied out of a
+    // British cookbook — which is also how a real library ends up mixed. It's
+    // what the Units setting has to convert *from* when it's set to US; every
+    // other recipe here covers the other direction.
     [
-      '2 cups flour',
+      '250 g flour',
       '3 carrots, grated',
-      '1 cup brown sugar',
+      '200 g brown sugar',
       '3 eggs',
       '1 tsp cinnamon',
-      '8 oz cream cheese',
-      '1/2 cup butter',
-      '2 cups sugar',
+      '225 g cream cheese',
+      '115 g butter',
+      '400 g sugar',
     ].join('\n')
   );
   setMealType(cake.id, 'dessert');
@@ -742,15 +804,11 @@ function seedGroceries(recipes: DemoRecipes): void {
   setCheckedMany(idsNamed(CORNER_SHOP), true);
   finishShopping(null);
 
-  // Everything typed above is still sitting on the list, since only what a
-  // trip actually bought came off it. Clearing promotes the stragglers into
-  // the catalog without counting them as bought, so what's on the list below
-  // is the list someone chose rather than the leavings of the seed order.
-  clearList();
-
   // "I can get this here" with no trip behind it — an assertion, not an
   // observation. Almonds are linked to Costco alone, so they read as available
-  // at exactly one store.
+  // at exactly one store. Linking (like finishing a trip) promotes a
+  // provisional row into the catalog, so this runs before the clear below —
+  // otherwise these names, never bought, would have nothing left to promote.
   linkItemShop(itemNamed('Almonds').id, costco.id);
   linkItemShopMany(idsNamed(['Peanut butter', 'Ground beef']), costco.id);
   linkItemShopMany(idsNamed(['Dish soap', 'Toilet paper']), amazon.id);
@@ -759,8 +817,16 @@ function seedGroceries(recipes: DemoRecipes): void {
   // bought here" from "they don't stock it". Tortillas are marked absent at
   // Trader Joe's — a store with plenty else on record, so the trip planner has
   // to route round one item rather than write the shop off — and Almonds at
-  // Trader Joe's too, where Costco is the answer.
+  // Trader Joe's too, where Costco is the answer. Same promotion as above.
   markItemsUnavailable(idsNamed(['Tortillas', 'Almonds']), traderJoes.id);
+
+  // Everything else typed above is still sitting on the list, since only what
+  // a trip actually bought — or a link/unavailable claim above — came off it
+  // or promoted it. Clearing parks what's already catalog and drops the rest,
+  // same as removing an untouched name from the list by hand, so what's on
+  // the list below is the list someone chose rather than the leavings of the
+  // seed order.
+  clearList();
 
   // The pantry override, both directions. "Got it" parks an item as on hand
   // for a while; "Out of it" is the user overruling the purchase-history guess
@@ -783,9 +849,16 @@ function seedGroceries(recipes: DemoRecipes): void {
   setAisleOrder([...order.filter(a => a !== 'Frozen'), 'Frozen']);
 
   // What's on the list right now, with two things already in the trolley — the
-  // state the finish-shopping sheet is for.
-  const ON_LIST = ['Milk', 'Eggs', 'Bananas', 'Bread', 'Cheddar', 'Tortillas', 'Sparkling water', 'Ice cream'];
-  addExistingMany(idsNamed(ON_LIST));
+  // state the finish-shopping sheet is for. Milk, Eggs, Bananas, Bread and
+  // Tortillas are already catalog rows (bought or linked above) and go back
+  // on the list as themselves; Cheddar, Sparkling water and Ice cream were
+  // never bought or linked, so clearList dropped them — they're typed fresh,
+  // same as a name nobody has shopped for yet.
+  const ON_LIST_EXISTING = ['Milk', 'Eggs', 'Bananas', 'Bread', 'Tortillas'];
+  addExistingMany(idsNamed(ON_LIST_EXISTING));
+  ['Cheddar', 'Sparkling water', 'Ice cream'].forEach(name =>
+    addByName(name, undefined, undefined, { registerUndo: false })
+  );
   setCheckedMany(idsNamed(['Milk', 'Bananas']), true);
 
   // ...plus tonight's dinner, added off the recipe, so a few rows carry "from

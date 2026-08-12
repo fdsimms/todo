@@ -51,8 +51,9 @@ import {
  *
  * `inCatalog` is the second axis, and it's what stops the catalog filling with
  * things that were never really yours: a name typed for the first time is
- * provisional, so taking it straight back off the list deletes it, while
- * finishing or clearing a trip promotes what was on it. A row that was already
+ * provisional, so taking it back off the list deletes it — whether that's a
+ * removal, a finished trip that bought it (which promotes it: you own it now),
+ * or a cleared trip that abandoned it (which doesn't). A row that was already
  * catalog before this stint on the list is never touched by that — "remove"
  * means remove from the list, exactly as it always did.
  *
@@ -976,17 +977,22 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   },
 
   clearList() {
+    const before = get().items;
     const ids = dbClearGroceryList();
     if (ids.length === 0) return 0;
     const cleared = new Set(ids);
     // Deliberately no purchaseCount bump: nothing was bought, and inflating
-    // the ranking signal would teach autocomplete a lie. inCatalog *is* set —
-    // clearing parks the list rather than forgetting it, which is what the
-    // confirm promises, and it keeps !onList ⇒ inCatalog true.
+    // the ranking signal would teach autocomplete a lie. Same split
+    // removeFromList makes: a row already in the catalog parks off-list, a
+    // provisional row (never in the catalog before this trip) is gone —
+    // dbClearGroceryList already deleted it, so drop it here too rather than
+    // reviving it as a catalog entry.
+    const deleted = new Set(before.filter(i => cleared.has(i.id) && !i.inCatalog).map(i => i.id));
     set(s => ({
-      items: s.items.map(i =>
-        cleared.has(i.id) ? { ...i, onList: false, checked: false, inCatalog: true } : i
-      ),
+      items: s.items
+        .filter(i => !deleted.has(i.id))
+        .map(i => (cleared.has(i.id) ? { ...i, onList: false, checked: false } : i)),
+      itemShops: s.itemShops.filter(l => !deleted.has(l.itemId)),
       cartHoldIds: [],
     }));
     return ids.length;

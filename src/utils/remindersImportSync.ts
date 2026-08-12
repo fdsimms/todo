@@ -264,6 +264,7 @@ function drainTargets(): DrainTarget[] {
     remindersImportDelete,
     groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId,
     groceryImportDelete,
+    kitchenEnabled,
   } = useSettingsStore.getState();
 
   const targets: DrainTarget[] = [];
@@ -275,7 +276,12 @@ function drainTargets(): DrainTarget[] {
       deleteAfterImport: remindersImportDelete,
     });
   }
-  if (groceryImportEnabled && groceryImportListId
+  // The grocery sink goes with the area it feeds. Dropping the target rather
+  // than clearing the setting is what makes it resume on its own: the list id
+  // and its confirmation are still there, so turning groceries back on picks
+  // up where it left off instead of re-asking. And nothing is lost meanwhile —
+  // a reminder that isn't drained stays in the Reminders list.
+  if (kitchenEnabled && groceryImportEnabled && groceryImportListId
       && groceryImportConfirmedListId === groceryImportListId) {
     targets.push({
       listId: groceryImportListId,
@@ -315,9 +321,13 @@ function takenNames(sink: Sink, deleteAfterImport: boolean): Set<string> | null 
 async function drainOnce(): Promise<ImportOutcome> {
   if (Platform.OS !== 'ios') return NOTHING('unsupported');
 
-  const { remindersImportEnabled, groceryImportEnabled, remindersImportReview } =
+  const { remindersImportEnabled, groceryImportEnabled, kitchenEnabled, remindersImportReview } =
     useSettingsStore.getState();
-  if (!remindersImportEnabled && !groceryImportEnabled) return NOTHING('off');
+  // The grocery half only counts while the area it feeds exists — the same
+  // gate drainTargets applies below, repeated here so the two can't disagree.
+  // Without it, turning the groceries area off reported 'no-list' ("the list
+  // you chose has gone") for a list that is still perfectly there.
+  if (!remindersImportEnabled && !(groceryImportEnabled && kitchenEnabled)) return NOTHING('off');
 
   const targets = drainTargets();
   if (targets.length === 0) return NOTHING('no-list');

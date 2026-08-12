@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useSettingsStore, type MealsOnToday } from '../../store/useSettingsStore';
+import type { UnitSystem } from '../../utils/unitConvert';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useCategoryStore } from '../../store/useCategoryStore';
 import { useColors } from '../../theme/ThemeContext';
@@ -55,6 +56,11 @@ const MEALS_ON_TODAY_PILLS: PillOption<MealsOnToday>[] = [
   { value: 'block', label: 'Full list' },
   { value: 'off', label: 'Off' },
 ];
+const UNIT_SYSTEM_PILLS: PillOption<UnitSystem>[] = [
+  { value: 'asWritten', label: 'As written' },
+  { value: 'metric', label: 'Metric' },
+  { value: 'us', label: 'US' },
+];
 
 export function TasksProjectsSettings() {
   const vacationMode = useSettingsStore(s => s.vacationMode);
@@ -74,12 +80,16 @@ export function TasksProjectsSettings() {
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const timerLiveActivity = useSettingsStore(s => s.timerLiveActivity);
   const setTimerLiveActivity = useSettingsStore(s => s.setTimerLiveActivity);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const setKitchenEnabled = useSettingsStore(s => s.setKitchenEnabled);
   const mealsOnToday = useSettingsStore(s => s.mealsOnToday);
   const setMealsOnToday = useSettingsStore(s => s.setMealsOnToday);
   const mealCookTasks = useSettingsStore(s => s.mealCookTasks);
   const setMealCookTasks = useSettingsStore(s => s.setMealCookTasks);
   const mealCookTaskCategory = useSettingsStore(s => s.mealCookTaskCategory);
   const setMealCookTaskCategory = useSettingsStore(s => s.setMealCookTaskCategory);
+  const unitSystem = useSettingsStore(s => s.unitSystem);
+  const setUnitSystem = useSettingsStore(s => s.setUnitSystem);
   const defaultProjectNudgeCadenceDays = useSettingsStore(s => s.defaultProjectNudgeCadenceDays);
   const setDefaultProjectNudgeCadenceDays = useSettingsStore(s => s.setDefaultProjectNudgeCadenceDays);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
@@ -244,6 +254,25 @@ export function TasksProjectsSettings() {
       </SettingsSection>
 
       <SettingsSection
+        label="Feature areas"
+        footer="Turning this off hides the groceries, recipes and meal plan screens, the cook tasks and meal reminders that come with them, and their settings. Nothing is deleted — your lists, recipes and planned meals are kept, and turning it back on returns everything as you left it."
+      >
+        <SettingsRow
+          icon="cart-outline"
+          iconColor={kitchenEnabled ? colors.accent : undefined}
+          label="Groceries & meals"
+          hint={kitchenEnabled ? 'Shown in the menu' : 'Hidden from the menu'}
+          toggle={kitchenEnabled}
+          onPress={() => setKitchenEnabled(!kitchenEnabled)}
+        />
+      </SettingsSection>
+
+      {/* Both sections belong to the groceries/meals area: one puts its meals
+          on Today, the other restates its amounts. Neither has anything to
+          configure once the area is hidden. */}
+      {kitchenEnabled && (
+      <>
+      <SettingsSection
         label="Meals on Today"
         footer="Cook tasks appear on the day the meal is planned for, hidden until that part of the day — breakfast in the morning, dinner in the evening. Ticking one off marks the meal cooked, and vice versa. Only meals made from a recipe get one; delete a cook task and that meal won't get another."
       >
@@ -300,6 +329,34 @@ export function TasksProjectsSettings() {
           </>
         )}
       </SettingsSection>
+
+      <SettingsSection
+        label="Recipe & grocery amounts"
+        footer="Only what's shown changes — recipes and the grocery list keep the amounts that were typed, and editing one shows it as written. Converted amounts are rounded, and marked with ≈. Counts, container sizes like &quot;14 oz can&quot;, and amounts with no number are left alone."
+      >
+        <SettingsRow
+          icon="swap-horizontal-outline"
+          iconColor={unitSystem === 'asWritten' ? undefined : colors.accent}
+          label="Units"
+          hint={
+            unitSystem === 'metric'
+              ? 'Ounces, pounds, cups and spoons show in grams and millilitres'
+              : unitSystem === 'us'
+                ? 'Grams, kilograms and millilitres show in ounces, pounds and cups'
+                : 'Amounts show exactly as they were typed'
+          }
+          tight
+        />
+        <SettingsPills
+          attached
+          options={UNIT_SYSTEM_PILLS}
+          selected={unitSystem}
+          onSelect={system => { haptics.tap(); setUnitSystem(system); }}
+          accessibilityLabelFor={o => `Units: ${o.label}`}
+        />
+      </SettingsSection>
+      </>
+      )}
 
       <SettingsSection
         label="New tasks"

@@ -16,6 +16,10 @@ import {
   flattenApplyTree,
   expandSelectionWithAncestors,
   extractPlaceholders,
+  itemPlaceholders,
+  normalizePlaceholderName,
+  withPlaceholder,
+  withoutPlaceholder,
   substitutePlaceholders,
   substituteDraftPlaceholders,
   declaresRunPlaceholder,
@@ -543,6 +547,93 @@ describe('extractPlaceholders', () => {
 
   it('ignores braces that are not placeholders', () => {
     expect(extractPlaceholders([makeItem({ title: 'Fix {} and {2} and {' })])).toEqual([]);
+  });
+});
+
+describe('itemPlaceholders', () => {
+  it('reads all four fields of one item, in first-appearance order', () => {
+    const item = makeItem({
+      title: 'Pack for {where}',
+      notes: 'ask {who}',
+      subtasks: [{ id: 's1', title: 'Charge the {device}' }],
+      chainItems: [{ id: 'c1', title: 'Confirm with {who}', estimatedMinutes: null }],
+    });
+    expect(itemPlaceholders(item)).toEqual(['where', 'who', 'device']);
+  });
+
+  // The apply sheet hides `run` (it's bound to the run name); the editor can't,
+  // or a title that is nothing but `{run}` would show as having no blanks.
+  it('includes run, unlike extractPlaceholders', () => {
+    const item = makeItem({ title: 'Put in for PTO for {run}' });
+    expect(itemPlaceholders(item)).toEqual(['run']);
+    expect(extractPlaceholders([item])).toEqual([]);
+  });
+});
+
+describe('normalizePlaceholderName', () => {
+  it('lowercases, trims and unwraps braces the user typed', () => {
+    expect(normalizePlaceholderName('  {Where}  ')).toBe('where');
+    expect(normalizePlaceholderName('Who Is Coming')).toBe('who is coming');
+  });
+
+  it('collapses inner whitespace so the name matches what the pattern reads back', () => {
+    expect(normalizePlaceholderName('who  is\tcoming')).toBe('who is coming');
+  });
+
+  it('refuses a name the pattern would not match again', () => {
+    expect(normalizePlaceholderName('')).toBeNull();
+    expect(normalizePlaceholderName('   ')).toBeNull();
+    expect(normalizePlaceholderName('2 nights')).toBeNull();  // must start with a letter
+    expect(normalizePlaceholderName('where?')).toBeNull();
+    expect(normalizePlaceholderName('a{b}c')).toBeNull();
+  });
+
+  it('accepts a name that survives a round trip through the extractor', () => {
+    const name = normalizePlaceholderName('{Check-in Date}')!;
+    expect(extractPlaceholders([makeItem({ title: `Book {${name}}` })])).toEqual([name]);
+  });
+});
+
+describe('withPlaceholder', () => {
+  it('appends the token to a title', () => {
+    expect(withPlaceholder('Book flights', 'where')).toBe('Book flights {where}');
+  });
+
+  it('is the whole title when there was none', () => {
+    expect(withPlaceholder('', 'where')).toBe('{where}');
+    expect(withPlaceholder('   ', 'where')).toBe('{where}');
+  });
+
+  it('leaves a name the text already declares where the user put it', () => {
+    expect(withPlaceholder('Book {where} flights', 'where')).toBe('Book {where} flights');
+    expect(withPlaceholder('Book {Where} flights', 'where')).toBe('Book {Where} flights');
+  });
+
+  it('does not double the space before the token', () => {
+    expect(withPlaceholder('Book flights ', 'where')).toBe('Book flights {where}');
+  });
+});
+
+describe('withoutPlaceholder', () => {
+  it('removes the token and tidies what it left behind', () => {
+    expect(withoutPlaceholder('Book flights to {where}', 'where')).toBe('Book flights to');
+    expect(withoutPlaceholder('Pack {what} bags', 'what')).toBe('Pack bags');
+    expect(withoutPlaceholder('Call {who}, then pack', 'who')).toBe('Call, then pack');
+  });
+
+  it('leaves other blanks alone', () => {
+    expect(withoutPlaceholder('Tell {who} about {where}', 'who')).toBe('Tell about {where}');
+  });
+
+  it('matches case-insensitively, like every other read', () => {
+    expect(withoutPlaceholder('Book {Where}', 'where')).toBe('Book');
+  });
+
+  // Same guarantee substitutePlaceholders makes: text this doesn't touch is
+  // never quietly reformatted.
+  it('returns text that never declared the name byte for byte', () => {
+    expect(withoutPlaceholder('Buy  tickets  -', 'where')).toBe('Buy  tickets  -');
+    expect(withoutPlaceholder('Book {other}', 'where')).toBe('Book {other}');
   });
 });
 

@@ -1577,6 +1577,7 @@ describe('isSequenceBlocked', () => {
       nudgeCadenceDays: 0,
       autoSchedule: false,
       sequential,
+      nudgeOptIn: false,
     }]);
     registerTaskSource(() => tasks);
   };

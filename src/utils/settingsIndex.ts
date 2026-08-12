@@ -69,6 +69,15 @@ export interface SettingsEntry {
   section: string;
   /** Words that should find the row but don't appear in its label. */
   keywords?: string[];
+  /**
+   * Configures the groceries/recipes/meal plan area, so it disappears with it
+   * when `kitchenEnabled` is off — the same treatment `iosOnly` gives a group,
+   * one row at a time. These rows are scattered across four groups rather than
+   * gathered into one, so the flag has to live per-entry.
+   *
+   * The master switch itself is deliberately *not* flagged: it's the way back.
+   */
+  kitchen?: boolean;
 }
 
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
@@ -105,9 +114,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'dailyAgendaTime', groupId: 'notifications', label: 'Send it at', section: 'Notifications',
     keywords: ['agenda time'] },
   { id: 'mealPlanNudge', groupId: 'notifications', label: 'Plan meals for the week', section: 'Meal planning',
-    keywords: ['meal plan', 'recipes', 'dinner', 'nudge', 'reminder', 'weekly', 'grocery'] },
+    keywords: ['meal plan', 'recipes', 'dinner', 'nudge', 'reminder', 'weekly', 'grocery'], kitchen: true },
   { id: 'mealPlanNudgeTime', groupId: 'notifications', label: 'Nudge me on', section: 'Meal planning',
-    keywords: ['weekday', 'meal plan time', 'day'] },
+    keywords: ['weekday', 'meal plan time', 'day'], kitchen: true },
 
   // Capture from Reminders (iOS)
   { id: 'remindersImport', groupId: 'capture', label: 'Import from Reminders', section: 'Apple Reminders',
@@ -121,11 +130,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'remindersImportDelete', groupId: 'capture', label: 'Delete after importing', section: 'Apple Reminders',
     keywords: ['remove', 'keep', 'leave', 'duplicate', 'copy', 'one-way', 'mirror'] },
   { id: 'groceryImport', groupId: 'capture', label: 'Send a list to Groceries', section: 'Apple Reminders',
-    keywords: ['siri', 'shopping', 'voice', 'apple', 'milk', 'hey siri'] },
+    keywords: ['siri', 'shopping', 'voice', 'apple', 'milk', 'hey siri'], kitchen: true },
   { id: 'groceryImportList', groupId: 'capture', label: 'Grocery list', section: 'Apple Reminders',
-    keywords: ['which list', 'shopping'] },
+    keywords: ['which list', 'shopping'], kitchen: true },
   { id: 'groceryImportDelete', groupId: 'capture', label: 'Delete after adding to Groceries', section: 'Apple Reminders',
-    keywords: ['remove', 'keep', 'leave', 'duplicate', 'shopping', 'mirror'] },
+    keywords: ['remove', 'keep', 'leave', 'duplicate', 'shopping', 'mirror'], kitchen: true },
   { id: 'importNow', groupId: 'capture', label: 'Import now', section: 'Apple Reminders',
     keywords: ['sync', 'refresh'] },
 
@@ -146,12 +155,23 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['finished', 'complete'] },
   { id: 'defaultProjectNudgeCadence', groupId: 'tasksProjects', label: 'Default nudge cadence', section: 'Projects',
     keywords: ['nudge me', 'stalled', 'quiet', 'chase', 'reminder', 'stall', 'new project'] },
+  // The master switch for the groceries/recipes/meal plan area. Unflagged, and
+  // has to stay that way — a row that hid itself when switched off would be a
+  // setting with no way back.
+  { id: 'kitchenEnabled', groupId: 'tasksProjects', label: 'Groceries & meals', section: 'Feature areas',
+    keywords: ['grocery', 'recipes', 'meal plan', 'shopping', 'food', 'cooking',
+      'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer'] },
   { id: 'mealsOnToday', groupId: 'tasksProjects', label: 'Show the day\'s meals', section: 'Meals on Today',
-    keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'strip', 'block'] },
+    keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'strip', 'block'], kitchen: true },
   { id: 'mealCookTasks', groupId: 'tasksProjects', label: 'Cook tasks', section: 'Meals on Today',
-    keywords: ['meal plan', 'recipe', 'dinner', 'auto'] },
+    keywords: ['meal plan', 'recipe', 'dinner', 'auto'], kitchen: true },
   { id: 'mealCookTaskCategory', groupId: 'tasksProjects', label: 'File cook tasks under', section: 'Meals on Today',
-    keywords: ['category', 'meal plan', 'kitchen'] },
+    keywords: ['category', 'meal plan', 'kitchen'], kitchen: true },
+  // Flagged too: it only ever restates a recipe's or a grocery row's amount, so
+  // with the area gone there is nothing left for it to convert.
+  { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',
+    keywords: ['metric', 'imperial', 'convert', 'grams', 'ounces', 'pounds', 'cups', 'millilitres', 'measurement'],
+    kitchen: true },
 
   // Privacy & AI
   { id: 'appLock', groupId: 'privacyAi', label: 'Require Face ID to open', section: 'App lock',
@@ -165,9 +185,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'aiTemplateSuggestions', groupId: 'privacyAi', label: 'Template drafting', section: 'AI features',
     keywords: ['claude', 'model', 'checklist'] },
   { id: 'aiGroceryAisles', groupId: 'privacyAi', label: 'Grocery aisle sorting', section: 'AI features',
-    keywords: ['claude', 'model', 'shopping'] },
+    keywords: ['claude', 'model', 'shopping'], kitchen: true },
   { id: 'aiRecipeExtraction', groupId: 'privacyAi', label: 'Recipe import', section: 'AI features',
-    keywords: ['claude', 'model', 'ingredients'] },
+    keywords: ['claude', 'model', 'ingredients'], kitchen: true },
+  { id: 'aiMealIdeas', groupId: 'privacyAi', label: 'Meal ideas', section: 'AI features',
+    keywords: ['claude', 'model', 'dinner', 'suggest', 'meal plan'], kitchen: true },
 
   // Data & reset
   { id: 'exportBackup', groupId: 'dataReset', label: 'Export all data', section: 'Backup',
@@ -194,10 +216,17 @@ export function visibleSettingsGroups(platformOS: string): SettingsGroup[] {
   return SETTINGS_GROUPS.filter(g => !g.iosOnly || platformOS === 'ios');
 }
 
-/** The entries reachable on this platform — an iOS-only group takes its rows with it. */
-export function visibleSettingsEntries(platformOS: string): SettingsEntry[] {
+/**
+ * The entries reachable right now — an iOS-only group takes its rows with it,
+ * and the kitchen rows go with `kitchenEnabled`.
+ *
+ * `kitchenEnabled` defaults to true so a caller that doesn't care (a test, a
+ * platform check) gets the whole index, the way it did before the setting
+ * existed.
+ */
+export function visibleSettingsEntries(platformOS: string, kitchenEnabled = true): SettingsEntry[] {
   const shown = new Set(visibleSettingsGroups(platformOS).map(g => g.id));
-  return SETTINGS_ENTRIES.filter(e => shown.has(e.groupId));
+  return SETTINGS_ENTRIES.filter(e => shown.has(e.groupId) && (kitchenEnabled || !e.kitchen));
 }
 
 export function settingsGroup(id: SettingsGroupId): SettingsGroup | undefined {

@@ -13,6 +13,7 @@ import {
 } from '../utils/aiFeatures';
 import { DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY } from '../utils/mealPlanNudge';
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
+import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
 
@@ -208,7 +209,32 @@ interface SettingsStore {
   // above, so an install that predates the setting keeps the behavior it
   // already had once this ships.
   timerLiveActivity: boolean;
+  // Whether the app shows the groceries / recipes / meal plan trio at all —
+  // one switch for all three because they aren't separable: a meal plan entry
+  // points at a recipe by id, and a recipe reaches the grocery catalog by
+  // nameKey (RecipeToListSheet, scoreRecipeAgainstCatalog, classifyPlanned).
+  // Two of the three switched off individually would leave the third half
+  // working, which is the state this setting exists to prevent.
+  //
+  // It hides UI and suppresses background behaviour; it never deletes a row or
+  // rewrites another setting. Everything downstream — mealsOnToday, the meal
+  // plan nudge, the grocery leg of the Reminders import, the three kitchen AI
+  // features — is gated by *reading* this alongside its own setting, so
+  // turning the area back on restores exactly what was there. Writing those
+  // settings off instead would quietly destroy the user's configuration of a
+  // feature they only meant to put away.
+  //
+  // Defaults on, read `!== 'false'` like hapticsEnabled, so an existing
+  // install is unchanged. Deliberately kept out of DEFAULT_SETTINGS — see the
+  // note there.
+  kitchenEnabled: boolean;
   mealsOnToday: MealsOnToday;
+  // Which units recipe and grocery amounts are *shown* in — see
+  // src/utils/unitConvert.ts. Display only: the quantity stored on the recipe
+  // or the grocery row is never rewritten, and an editable field always shows
+  // what's stored. Defaults to 'asWritten', so an install upgrading into this
+  // reads exactly as it did.
+  unitSystem: UnitSystem;
   // Whether planning a meal also puts a "Cook X" task on the day it's planned
   // for. On by default, but deliberately with no backfill — only meals planned
   // from here on get one — so an install upgrading into this sees nothing
@@ -318,6 +344,7 @@ interface SettingsStore {
   setHapticsEnabled: (on: boolean) => void;
   setShakeToUndoEnabled: (on: boolean) => void;
   setMealsOnToday: (mode: MealsOnToday) => void;
+  setUnitSystem: (system: UnitSystem) => void;
   setMealCookTasks: (on: boolean) => void;
   setMealCookTaskCategory: (category: string | null) => void;
   setSortOption: (sort: SortOption) => void;
@@ -337,6 +364,7 @@ interface SettingsStore {
   setDefaultReminderLeadMinutes: (minutes: number | null) => void;
   setHideCategories: (on: boolean) => void;
   setTimerLiveActivity: (on: boolean) => void;
+  setKitchenEnabled: (on: boolean) => void;
   setRemindersImportEnabled: (on: boolean) => void;
   setRemindersImportListId: (id: string | null) => void;
   setRemindersImportConfirmedListId: (id: string | null) => void;
@@ -380,6 +408,7 @@ const DEFAULT_SETTINGS = {
   hideCategories: false,
   timerLiveActivity: true,
   mealsOnToday: 'strip' as MealsOnToday,
+  unitSystem: 'asWritten' as UnitSystem,
   mealCookTasks: true,
   mealCookTaskCategory: null,
   remindersImportEnabled: false,
@@ -414,6 +443,10 @@ const DEFAULT_SETTINGS = {
 //   because there the danger runs the other way: turning the import off while
 //   leaving the confirmed-list id in place would let a later re-enable skip the
 //   confirmation that is the whole safeguard.
+// - kitchenEnabled stays out, on the app lock's reasoning rather than a
+//   mechanical one: it would round-trip fine as a boolean, but "reset
+//   appearance and formatting" is not a request to put a whole feature area
+//   back in the menu of someone who deliberately removed it.
 // - autoRemoveExpiredTasks stays out too, for the same reason as
 //   completedRetentionDays: it's a setting that deletes tasks unattended, so
 //   "reset appearance and formatting" must not quietly change how aggressively
@@ -540,7 +573,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   defaultReminderLeadMinutes: null,
   hideCategories: false,
   timerLiveActivity: true,
+  kitchenEnabled: true,
   mealsOnToday: 'strip',
+  unitSystem: 'asWritten',
   mealCookTasks: true,
   mealCookTaskCategory: null,
   remindersImportEnabled: false,
@@ -608,9 +643,15 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // `!== 'false'`, not `=== 'true'` — defaults on, same reasoning as
     // hapticsEnabled/shakeToUndoEnabled above.
     const timerLiveActivity = dbGetSetting('timerLiveActivity') !== 'false';
+    // Same `!== 'false'`: the groceries/recipes/meal plan area is on unless
+    // someone has turned it off, so no existing install loses it.
+    const kitchenEnabled = dbGetSetting('kitchenEnabled') !== 'false';
     const storedMealsOnToday = dbGetSetting('mealsOnToday') as MealsOnToday | null;
     const mealsOnToday: MealsOnToday =
       storedMealsOnToday && MEALS_ON_TODAY.includes(storedMealsOnToday) ? storedMealsOnToday : 'strip';
+    const storedUnitSystem = dbGetSetting('unitSystem') as UnitSystem | null;
+    const unitSystem: UnitSystem =
+      storedUnitSystem && UNIT_SYSTEMS.includes(storedUnitSystem) ? storedUnitSystem : 'asWritten';
     // Defaults on, like hapticsEnabled — but unlike it, "on" here is a change
     // for an existing install rather than a preservation of what it had. It's
     // safe to default on anyway because nothing is backfilled: no cook task
@@ -684,7 +725,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, timerLiveActivity, mealsOnToday, mealCookTasks, mealCookTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, mealCookTasks, mealCookTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -907,9 +948,26 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ timerLiveActivity: on });
   },
 
+  // Nothing else is written here on purpose. Every kitchen setting downstream
+  // of this one (mealsOnToday, mealCookTasks, mealPlanNudgeEnabled, the
+  // grocery import, the three kitchen AI features) is read *alongside*
+  // kitchenEnabled at the point of use rather than being switched off here, so
+  // turning the area back on returns it exactly as it was left. And no row is
+  // touched: the groceries, recipes, meals and leftovers stay in the database,
+  // and the three stores stay initialized, so this is reversible in one tap.
+  setKitchenEnabled(on: boolean) {
+    dbSetSetting('kitchenEnabled', on ? 'true' : 'false');
+    set({ kitchenEnabled: on });
+  },
+
   setMealsOnToday(mode: MealsOnToday) {
     dbSetSetting('mealsOnToday', mode);
     set({ mealsOnToday: mode });
+  },
+
+  setUnitSystem(system: UnitSystem) {
+    dbSetSetting('unitSystem', system);
+    set({ unitSystem: system });
   },
 
   // Turning this off deliberately leaves the cook tasks already spawned where

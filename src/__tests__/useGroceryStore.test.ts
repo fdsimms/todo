@@ -538,17 +538,21 @@ describe('clearList', () => {
     expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
   });
 
-  // The confirm says nothing is deleted, so clearing parks a provisional row
-  // rather than forgetting it — and that keeps !onList ⇒ inCatalog true.
-  it('parks a provisional row in the catalog rather than deleting it', () => {
+  // Same split removeFromList makes: a provisional row was never in the
+  // catalog, so clearing the list it's on has nothing to keep — it's gone,
+  // not minted into a catalog entry for something that was never bought.
+  it('deletes a provisional row rather than parking it in the catalog', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: true });
     const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
-    seed([nduja]);
-    (dbClearGroceryList as jest.Mock).mockReturnValue([nduja.id]);
+    seed([milk, nduja]);
+    (dbClearGroceryList as jest.Mock).mockReturnValue([milk.id, nduja.id]);
 
-    useGroceryStore.getState().clearList();
+    expect(useGroceryStore.getState().clearList()).toBe(2);
 
-    expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+    const items = useGroceryStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe(milk.id);
+    expect(items[0].onList).toBe(false);
   });
 });
 

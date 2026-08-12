@@ -66,4 +66,36 @@ describe('settings index', () => {
       expect(visibleSettingsEntries('ios')).toHaveLength(SETTINGS_ENTRIES.length);
     });
   });
+
+  describe('kitchen gating', () => {
+    it('drops every kitchen row when the area is off', () => {
+      const off = visibleSettingsEntries('ios', false);
+      expect(off.some(e => e.kitchen)).toBe(false);
+      // Not a no-op test: the rows it removes are spread over four groups, so
+      // a gate wired into only one of them would still pass a spot check.
+      const dropped = SETTINGS_ENTRIES.filter(e => e.kitchen);
+      expect(new Set(dropped.map(e => e.groupId)).size).toBeGreaterThan(1);
+      expect(off).toHaveLength(SETTINGS_ENTRIES.length - dropped.length);
+    });
+
+    it('keeps them all when it is on, and by default', () => {
+      expect(visibleSettingsEntries('ios', true)).toHaveLength(SETTINGS_ENTRIES.length);
+      expect(visibleSettingsEntries('ios')).toHaveLength(SETTINGS_ENTRIES.length);
+    });
+
+    it('keeps the master switch itself, which is the way back', () => {
+      const off = visibleSettingsEntries('ios', false);
+      expect(off.find(e => e.id === 'kitchenEnabled')).toBeDefined();
+    });
+
+    it('leaves no kitchen row stranded in a group it emptied', () => {
+      // A group left with no visible rows is a destination that opens onto
+      // nothing — the same failure the whole-index check above guards against,
+      // but reachable here by turning the area off rather than by editing.
+      const off = visibleSettingsEntries('ios', false);
+      for (const group of visibleSettingsGroups('ios')) {
+        expect(off.filter(e => e.groupId === group.id).length).toBeGreaterThan(0);
+      }
+    });
+  });
 });
