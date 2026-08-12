@@ -1,0 +1,4 @@
+{
+  "message": "Pick-one settings like Repeat, Ends and a chain's next step are now single segmented controls instead of rows of separate pills, so an editor reads as a list of questions rather than a wall of buttons. Multi-select rows like the weekday picker are unchanged.",
+  "date": "2026-08-12"
+}

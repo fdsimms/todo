@@ -8,6 +8,7 @@ import { border, font, fontWeight, iconSize, interaction, radius, spacing, type 
 import { ORDINAL_OPTIONS, recurrenceUnitLabel } from '../utils/recurrenceLabels';
 import { WeekdaySelector } from './WeekdaySelector';
 import { CountStepper } from './CountStepper';
+import { SegmentedControl } from './SegmentedControl';
 import { haptics } from '../utils/haptics';
 import { ordinal } from '../utils/ordinal';
 
@@ -87,23 +88,8 @@ interface Props {
   endDate?: EndDateProps;
 }
 
-/** One option in a closed set — the type, the monthly anchor, the end mode. */
-function OptionPill({
-  label, selected, onPress, styles,
-}: { label: string; selected: boolean; onPress: () => void; styles: Styles }) {
-  return (
-    <TouchableOpacity
-      style={[styles.pill, selected && styles.pillActive]}
-      onPress={() => { haptics.tap(); onPress(); }}
-      activeOpacity={interaction.activeOpacity}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      accessibilityLabel={label}
-    >
-      <Text style={[styles.pillText, selected && styles.pillTextActive]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
+/** The monthly day-anchor modes, as one closed set the picker can switch on. */
+type MonthAnchor = 'dueDate' | 'monthDay' | 'lastDay' | 'weekday';
 
 /**
  * One labelled block of the rule. Every block but the first states its own
@@ -166,22 +152,45 @@ export function RecurrencePicker({
     endDate?.value ? 'date' : recurrenceCount !== null ? 'count' : 'never';
 
   const monthDaySelected = recurrenceMonthDay !== null && recurrenceMonthDay > 0;
-  const sameDayAsDue = recurrenceMonthDay === null && (weekOrdinal ? weekOrdinal.value === null : true);
+
+  const monthAnchor: MonthAnchor =
+    weekOrdinal?.value != null ? 'weekday'
+      : recurrenceMonthDay === -1 ? 'lastDay'
+        : monthDaySelected ? 'monthDay'
+          : 'dueDate';
+
+  const selectMonthAnchor = (anchor: MonthAnchor) => {
+    switch (anchor) {
+      case 'dueDate':
+        weekOrdinal?.onChange(null);
+        onChangeMonthDay(null);
+        break;
+      case 'monthDay':
+        weekOrdinal?.onChange(null);
+        onChangeMonthDay(monthDaySelected ? recurrenceMonthDay : seedMonthDay());
+        break;
+      case 'lastDay':
+        weekOrdinal?.onChange(null);
+        onChangeMonthDay(-1);
+        break;
+      case 'weekday':
+        onChangeMonthDay(null);
+        weekOrdinal?.onChange(weekOrdinal.value ?? 1);
+        if (recurrenceDays.length === 0 && weekOrdinal) onChangeDays([weekOrdinal.seedWeekday()]);
+        break;
+    }
+  };
 
   return (
     <>
       <Group first styles={styles}>
-        <View style={styles.pillRow}>
-          {(['daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[]).map(type => (
-            <OptionPill
-              key={type}
-              label={RECURRENCE_LABELS[type]}
-              selected={recurrenceType === type}
-              onPress={() => onChangeType(type)}
-              styles={styles}
-            />
-          ))}
-        </View>
+        <SegmentedControl
+          label="Repeats"
+          value={recurrenceType}
+          onChange={onChangeType}
+          options={(['daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[])
+            .map(type => ({ value: type, label: RECURRENCE_LABELS[type] }))}
+        />
         <View style={styles.stepperRow}>
           <Text style={styles.stepperLabel}>Every</Text>
           <CountStepper
@@ -203,41 +212,20 @@ export function RecurrencePicker({
 
       {recurrenceType === 'monthly' && (
         <Group label="On which day" styles={styles}>
-          <View style={styles.pillRow}>
-            <OptionPill
-              label="Same day as due date"
-              selected={sameDayAsDue}
-              onPress={() => { onChangeMonthDay(null); weekOrdinal?.onChange(null); }}
-              styles={styles}
-            />
-            <OptionPill
-              label="On a day"
-              selected={monthDaySelected}
-              onPress={() => {
-                weekOrdinal?.onChange(null);
-                onChangeMonthDay(monthDaySelected ? recurrenceMonthDay : seedMonthDay());
-              }}
-              styles={styles}
-            />
-            <OptionPill
-              label="Last day"
-              selected={recurrenceMonthDay === -1}
-              onPress={() => { weekOrdinal?.onChange(null); onChangeMonthDay(-1); }}
-              styles={styles}
-            />
-            {weekOrdinal && (
-              <OptionPill
-                label="On a weekday"
-                selected={weekOrdinal.value !== null}
-                onPress={() => {
-                  onChangeMonthDay(null);
-                  weekOrdinal.onChange(weekOrdinal.value ?? 1);
-                  if (recurrenceDays.length === 0) onChangeDays([weekOrdinal.seedWeekday()]);
-                }}
-                styles={styles}
-              />
-            )}
-          </View>
+          <SegmentedControl
+            label="On which day"
+            value={monthAnchor}
+            onChange={selectMonthAnchor}
+            // Two columns: "Same day as due date" has no one-row spelling that
+            // isn't confusable with "On a day".
+            columns={2}
+            options={[
+              { value: 'dueDate' as MonthAnchor, label: 'Same day as due date' },
+              { value: 'monthDay' as MonthAnchor, label: 'On a day' },
+              { value: 'lastDay' as MonthAnchor, label: 'Last day' },
+              ...(weekOrdinal ? [{ value: 'weekday' as MonthAnchor, label: 'On a weekday' }] : []),
+            ]}
+          />
           {monthDaySelected && (
             <View style={styles.stepperRow}>
               <Text style={styles.stepperLabel}>On the</Text>
@@ -253,16 +241,17 @@ export function RecurrencePicker({
           )}
           {weekOrdinal && weekOrdinal.value !== null && (
             <>
-              <View style={[styles.pillRow, styles.pillRowSpaced]}>
-                {ORDINAL_OPTIONS.map(({ value, label }) => (
-                  <OptionPill
-                    key={value}
-                    label={label}
-                    selected={weekOrdinal.value === value}
-                    onPress={() => weekOrdinal.onChange(value)}
-                    styles={styles}
-                  />
-                ))}
+              <View style={styles.controlSpaced}>
+                <SegmentedControl
+                  label="Which week"
+                  value={weekOrdinal.value}
+                  onChange={weekOrdinal.onChange}
+                  options={ORDINAL_OPTIONS.map(({ value, label }) => ({
+                    value,
+                    label,
+                    accessibilityLabel: `${label} week of the month`,
+                  }))}
+                />
               </View>
               <View style={styles.weekdayRow}>
                 <WeekdaySelector value={recurrenceDays} onChange={onlyNewestWeekday(recurrenceDays, onChangeDays)} />
@@ -277,45 +266,32 @@ export function RecurrencePicker({
         hint="After completion counts from the day you tick it off, so a late task moves the whole schedule."
         styles={styles}
       >
-        <View style={styles.pillRow}>
-          <OptionPill
-            label="On schedule"
-            selected={!recurrenceFromCompletion}
-            onPress={() => onChangeFromCompletion(false)}
-            styles={styles}
-          />
-          <OptionPill
-            label="After completion"
-            selected={recurrenceFromCompletion}
-            onPress={() => onChangeFromCompletion(true)}
-            styles={styles}
-          />
-        </View>
+        <SegmentedControl
+          label="Next due date"
+          value={recurrenceFromCompletion}
+          onChange={onChangeFromCompletion}
+          options={[
+            { value: false, label: 'On schedule' },
+            { value: true, label: 'After completion' },
+          ]}
+        />
       </Group>
 
       <Group label="Ends" styles={styles}>
-        <View style={styles.pillRow}>
-          <OptionPill
-            label={neverEndsLabel}
-            selected={endMode === 'never'}
-            onPress={onSelectEndNever}
-            styles={styles}
-          />
-          {endDate && (
-            <OptionPill
-              label="On date"
-              selected={endMode === 'date'}
-              onPress={endDate.onSelect}
-              styles={styles}
-            />
-          )}
-          <OptionPill
-            label={afterCountLabel}
-            selected={endMode === 'count'}
-            onPress={onSelectEndCount}
-            styles={styles}
-          />
-        </View>
+        <SegmentedControl
+          label="Ends"
+          value={endMode}
+          onChange={mode => {
+            if (mode === 'never') onSelectEndNever();
+            else if (mode === 'count') onSelectEndCount();
+            else endDate?.onSelect();
+          }}
+          options={[
+            { value: 'never' as const, label: neverEndsLabel },
+            ...(endDate ? [{ value: 'date' as const, label: 'On date' }] : []),
+            { value: 'count' as const, label: afterCountLabel },
+          ]}
+        />
         {endDate && endMode === 'date' && endDate.value && (
           <View style={styles.stepperRow}>
             <TouchableOpacity
@@ -367,25 +343,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   groupHint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.sm,
   },
-  pillRow: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs + 2,
-    // Without an explicit width, a wrapping row's own width is sized to fit
-    // its content rather than stretched to the group's width — so it never
-    // hits a boundary to wrap against and just runs past the card's edge
-    // instead (clipped there by the card's `overflow: hidden`). This row is
-    // usually short enough not to show it, but the monthly day-anchor row
-    // (four pills, one of them long) is wide enough to need the wrap.
-    alignSelf: 'stretch',
-  },
-  pillRowSpaced: { marginTop: spacing.sm + 2 },
-  pill: {
-    paddingHorizontal: 14, minHeight: interaction.pillHeight,
-    alignItems: 'center', justifyContent: 'center',
-    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
-  },
-  pillActive: { backgroundColor: colors.accent },
-  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-  pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+  controlSpaced: { marginTop: spacing.sm + 2 },
   stepperRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     marginTop: spacing.sm + 2,

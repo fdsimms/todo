@@ -71,6 +71,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { BlockerPickerSheet } from './BlockerPickerSheet';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { RecurrencePicker } from './RecurrencePicker';
+import { SegmentedControl } from './SegmentedControl';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 
@@ -2057,41 +2058,23 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     {chainItems.length > 1 && (
                       <View style={styles.chainModeBlock}>
                         <Text style={styles.chainModeLabel}>Next step</Text>
-                        <View style={styles.chainModeRow}>
-                          {([false, true] as const).map(onSchedule => {
-                            const active = chainStepOnSchedule === onSchedule;
-                            // "On the next repeat" needs a repeat to wait for. Shown
-                            // disabled rather than hidden so the choice — and the
-                            // fact that Repeat is what unlocks it — stays visible.
-                            const disabled = onSchedule && recurrenceType === 'none';
-                            return (
-                              <TouchableOpacity
-                                key={String(onSchedule)}
-                                style={[
-                                  styles.chainModePill,
-                                  active && styles.chainModePillActive,
-                                  disabled && styles.chainModePillDisabled,
-                                ]}
-                                disabled={disabled}
-                                onPress={() => { haptics.tap(); setChainStepOnSchedule(onSchedule); }}
-                                activeOpacity={interaction.activeOpacity}
-                                accessibilityRole="radio"
-                                accessibilityState={{ selected: active, disabled }}
-                                accessibilityLabel={onSchedule ? 'Next step on the next repeat' : 'Next step right away'}
-                              >
-                                <Text
-                                  style={[
-                                    styles.chainModePillText,
-                                    active && styles.chainModePillTextActive,
-                                    disabled && styles.chainModePillTextDisabled,
-                                  ]}
-                                >
-                                  {onSchedule ? 'On the next repeat' : 'Right away'}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
+                        <SegmentedControl
+                          label="Next step"
+                          value={chainStepOnSchedule}
+                          onChange={setChainStepOnSchedule}
+                          options={[
+                            { value: false, label: 'Right away', accessibilityLabel: 'Next step right away' },
+                            {
+                              value: true,
+                              label: 'On the next repeat',
+                              accessibilityLabel: 'Next step on the next repeat',
+                              // Needs a repeat to wait for. Disabled rather than
+                              // hidden so the choice — and the fact that Repeat is
+                              // what unlocks it — stays visible.
+                              disabled: recurrenceType === 'none',
+                            },
+                          ]}
+                        />
                         <Text style={styles.chainCurrentHint}>
                           {recurrenceType === 'none'
                             ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
@@ -3937,15 +3920,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.xs,
   },
-  chainModeRow: { flexDirection: 'row', gap: spacing.xs },
-  chainModePill: {
-    flex: 1, minHeight: interaction.pillHeight, justifyContent: 'center',
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary, alignItems: 'center',
-  },
-  chainModePillActive: { backgroundColor: colors.accent },
-  chainModePillDisabled: { opacity: 0.4 },
-  chainModePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  chainModePillTextActive: { color: colors.onAccent, fontWeight: '600' },
-  chainModePillTextDisabled: { color: colors.textTertiary },
 });
