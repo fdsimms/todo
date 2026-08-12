@@ -1920,7 +1920,9 @@ export function TodayScreen() {
         }
       />
     </FabDropZone>
-    <View style={styles.pinnedBlockFooter} />
+    <View style={styles.pinnedBlockFooter}>
+      <SpotlightScrim />
+    </View>
     </>
   );
 
