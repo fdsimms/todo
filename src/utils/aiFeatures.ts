@@ -4,10 +4,10 @@
 // on grocery-aisle sorting shouldn't have to choose one setting for both.
 
 export type AiFeatureId =
-  | 'taskSuggestions' | 'taskBreakdown' | 'templateSuggestions' | 'groceryAisles' | 'recipeExtraction' | 'mealIdeas';
+  | 'taskBreakdown' | 'templateSuggestions' | 'groceryAisles' | 'recipeExtraction' | 'mealIdeas';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
-  'taskSuggestions', 'taskBreakdown', 'templateSuggestions', 'groceryAisles', 'recipeExtraction', 'mealIdeas',
+  'taskBreakdown', 'templateSuggestions', 'groceryAisles', 'recipeExtraction', 'mealIdeas',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -32,18 +32,10 @@ export interface AiFeatureMeta {
 
 export const AI_FEATURES: AiFeatureMeta[] = [
   {
-    id: 'taskSuggestions',
-    label: 'Task suggestions',
-    hint: 'Auto-tag, effort, and category suggestions in the task editor',
-  },
-  {
     id: 'taskBreakdown',
     label: 'Task breakdown',
-    // Separate from taskSuggestions rather than folded into it: that one
-    // enriches a task you're already writing, this one is reached from the
-    // postpone prompt, by someone who has pushed the same thing five times and
-    // is past wanting to think about it. Different moment, different answer to
-    // "is this worth an API call".
+    // Reached from the postpone prompt, by someone who has pushed the same
+    // thing five times and is past wanting to think about it.
     hint: 'Drafts the steps for a task that keeps getting put off',
   },
   {
@@ -81,7 +73,6 @@ export type AiFeatureConfigMap = Record<AiFeatureId, AiFeatureConfig>;
 
 export function defaultAiFeatureConfig(): AiFeatureConfigMap {
   return {
-    taskSuggestions: { enabled: true, model: DEFAULT_AI_MODEL },
     taskBreakdown: { enabled: true, model: DEFAULT_AI_MODEL },
     templateSuggestions: { enabled: true, model: DEFAULT_AI_MODEL },
     groceryAisles: { enabled: true, model: DEFAULT_AI_MODEL },

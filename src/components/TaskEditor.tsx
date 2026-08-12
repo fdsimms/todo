@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
   StyleSheet,
   Platform,
   Animated,
@@ -52,11 +51,7 @@ import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, h
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/parseTaskInput';
-import { suggestTaskAttributes, describeAIError } from '../services/aiSuggestions';
-import { suggestSegment } from '../utils/rhythms';
-import { rhythmOptionsFromSettings } from '../utils/rhythmsSettings';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
-import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -161,18 +156,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const allGroups = useTaskGroupStore(useShallow(s => s.groups));
   const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived)));
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const [aiLoading, setAiLoading] = useState(false);
   // True while a subtask/chain row is mid-drag. The sheet's ScrollView has to
   // stand down for the drag to survive the first finger move — a JS responder
   // nested *inside* a scroll view doesn't stop it from claiming the touch (see
   // SortableList's onDragStateChange).
   const [draggingRow, setDraggingRow] = useState(false);
-  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -230,7 +222,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [customEffortOpen, setCustomEffortOpen] = useState(false);
   const [customEffortText, setCustomEffortText] = useState('');
   const [customEffortUnit, setCustomEffortUnit] = useState<'min' | 'hr'>('min');
-  const [segmentNote, setSegmentNote] = useState<string | null>(null);
   const [actualMinutes, setActualMinutes] = useState<number | null>(null);
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
   const [durationText, setDurationText] = useState('');
@@ -403,13 +394,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setPendingSubtaskIndex(null); setDraftSubtasks([]);
     setNewChainItemTitle(''); setAddingChainItem(false);
-    setAiLoading(false);
     setOpenFields({}); setShowTimeOfDay(false); setShowTimeWindow(false);
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
     setDurationText(''); setDurationUnit('min');
-    setSegmentNote(null);
     setStreakEditorOpen(false); setStreakDraft(task?.streakCount ?? 0);
-    setPendingCategory(null);
     setTimeout(() => titleRef.current?.focus(), 100);
     initialStateRef.current = JSON.stringify({
       title: task ? task.title : (initialDraft?.title ?? ''),
@@ -1106,32 +1094,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     );
   };
 
-  const handleSuggest = async () => {
-    setAiLoading(true);
-    try {
-      const result = await suggestTaskAttributes(title.trim(), notes, allTags, allCategories);
-      if (result.effort > 0) {
-        setEffort(prev => {
-          if (prev !== 0) return prev;
-          setEstimatedMinutes(EFFORT_MINUTES[result.effort]);
-          return result.effort;
-        });
-      }
-      if (result.tags.length > 0) {
-        setTags(prev => [...new Set([...prev, ...result.tags])]);
-      }
-      setCategory(prev => {
-        if (prev) return prev;
-        if (result.category) return result.category;
-        if (result.newCategory) setPendingCategory(result.newCategory);
-        return prev;
-      });
-    } catch (e) {
-      Alert.alert('AI suggestion failed', describeAIError(e));
-    } finally {
-      setAiLoading(false);
-    }
-  };
 
   // Whether the current estimate is a precise value that isn't one of the presets.
   const customEffortActive = estimatedMinutes != null && estimatedMinutes !== effortToMinutes(effort);
@@ -1188,21 +1150,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   // Reads the user's own history for when this task usually gets done, and
   // abstains with a reason when there isn't enough of it. See utils/rhythms.
-  const handleSuggestSegment = () => {
-    const result = suggestSegment(
-      title.trim(),
-      { category, tags, seriesId: task?.seriesId ?? null, excludeTaskId: task?.id ?? null },
-      useTaskStore.getState().tasks,
-      rhythmOptionsFromSettings(),
-    );
-    if (result) {
-      haptics.tap();
-      setTimeSegments([result.segment]);
-      setSegmentNote(result.reason);
-    } else {
-      setSegmentNote('Not enough history yet to tell when you do this.');
-    }
-  };
 
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const timeOfDaySummary = timeSegments.length > 0
@@ -1410,19 +1357,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
             onClear={() => { setDeadline(null); setShowDeadlinePicker(false); }}
             onCancel={() => setShowDeadlinePicker(false)}
-          />
-          <SuggestedCategorySheet
-            visible={pendingCategory !== null}
-            categoryName={pendingCategory ?? ''}
-            onConfirm={() => {
-              if (pendingCategory) {
-                addCategory(pendingCategory);
-                setCategory(pendingCategory);
-                haptics.success();
-              }
-              setPendingCategory(null);
-            }}
-            onDismiss={() => setPendingCategory(null)}
           />
           <BlockerPickerSheet
             visible={showBlockerPicker}
@@ -2229,22 +2163,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     );
                   })}
                 </View>
-                <View style={styles.segmentSuggestRow}>
-                  <TouchableOpacity
-                    style={styles.suggestBtn}
-                    onPress={handleSuggestSegment}
-                    disabled={!title.trim()}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Suggest a time of day from past completions"
-                  >
-                    <Ionicons name="analytics-outline" size={12} color={colors.purple} />
-                    <Text style={styles.suggestBtnText}>From history</Text>
-                  </TouchableOpacity>
-                  {segmentNote ? (
-                    <Text style={styles.segmentNote}>{segmentNote}</Text>
-                  ) : null}
-                </View>
               </>
             )}
               </>
@@ -2542,24 +2460,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             hint="Free-form labels. A task can carry several, and you can filter or search by them."
             expanded={fieldOpen('tags')}
             onToggle={() => toggleField('tags')}
-            right={!!anthropicApiKey && (
-              <TouchableOpacity
-                style={styles.suggestBtn}
-                onPress={handleSuggest}
-                disabled={aiLoading || !title.trim()}
-                hitSlop={8}
-              >
-                {aiLoading
-                  ? <ActivityIndicator size="small" color={colors.purple} />
-                  : (
-                    <>
-                      <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
-                      <Text style={styles.suggestBtnText}>Suggest</Text>
-                    </>
-                  )
-                }
-              </TouchableOpacity>
-            )}
           >
             <View style={styles.tagRow}>
               {tags.map(tag => (
@@ -3300,13 +3200,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
   },
-  suggestBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: radius.full,
-    backgroundColor: colors.purple + '22',
-  },
-  suggestBtnText: { color: colors.purple, fontSize: font.xs, fontWeight: '600' },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -3372,11 +3265,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   unitChipActive: { backgroundColor: colors.bgQuaternary },
   unitChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   unitChipTextActive: { color: colors.text, fontWeight: '600' },
-  segmentSuggestRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap',
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
-  },
-  segmentNote: { color: colors.textSecondary, fontSize: font.xs, flexShrink: 1 },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,

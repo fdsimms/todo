@@ -6,7 +6,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
   Animated,
   StyleSheet,
   Keyboard,
@@ -61,9 +60,7 @@ import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
 import { getLogicalToday, getLogicalTomorrow, getLogicalNow } from '../utils/dateUtils';
-import { suggestTaskAttributes, describeAIError } from '../services/aiSuggestions';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
-import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { ORDINAL_OPTIONS, RECURRENCE_LABELS, onlyNewestWeekday, ordinal } from './RecurrencePicker';
 
@@ -156,13 +153,11 @@ export function QuickAddModal({
   initialType = 'task', initialTitle,
 }: Props) {
   const addTask = useTaskStore(s => s.addTask);
-  const addCategory = useTaskStore(s => s.addCategory);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
   const tasks = useTaskStore(s => s.tasks);
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
   // Which list this actually lands in: the caller's explicit choice (a
@@ -277,8 +272,6 @@ export function QuickAddModal({
   const tooltipAnim = useRef(new Animated.Value(0)).current;
   const hadParse = useRef(false);
   const [whenPickerVisible, setWhenPickerVisible] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
   // Whether the drop's placement still applies — the chip can shake it off.
   const [seedActive, setSeedActive] = useState(false);
   // Read only when the sheet opens: a seed that changes identity mid-edit must
@@ -335,8 +328,6 @@ export function QuickAddModal({
       tooltipAnim.setValue(0);
       hadParse.current = false;
       setWhenPickerVisible(false);
-      setAiLoading(false);
-      setPendingCategory(null);
       setPostCreateTask(null);
       scaleAnim.setValue(0.95);
       translateYAnim.setValue(16);
@@ -748,31 +739,6 @@ export function QuickAddModal({
     setTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
   };
 
-  const handleSuggest = async () => {
-    if (!title.trim()) return;
-    setAiLoading(true);
-    try {
-      const result = await suggestTaskAttributes(title.trim(), '', allTags, allCategories);
-      if (result.effort > 0) {
-        setEffort(prev => {
-          if (prev !== 0) return prev;
-          setEstimatedMinutes(EFFORT_MINUTES[result.effort]);
-          return result.effort;
-        });
-      }
-      if (result.tags.length > 0) setTags(prev => [...new Set([...prev, ...result.tags])]);
-      setCategory(prev => {
-        if (prev) return prev;
-        if (result.category) return result.category;
-        if (result.newCategory) setPendingCategory(result.newCategory);
-        return prev;
-      });
-    } catch (e) {
-      Alert.alert('AI suggestion failed', describeAIError(e));
-    } finally {
-      setAiLoading(false);
-    }
-  };
 
   const customEffortActive = estimatedMinutes != null && estimatedMinutes !== effortToMinutes(effort);
 
@@ -1273,24 +1239,6 @@ export function QuickAddModal({
               </TouchableOpacity>
             )}
 
-            {/* AI Suggest chip */}
-            {!!anthropicApiKey && !!title.trim() && (
-              <TouchableOpacity
-                style={[styles.toolChip, styles.aiChip]}
-                onPress={handleSuggest}
-                disabled={aiLoading}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: aiLoading, busy: aiLoading }}
-                accessibilityLabel={aiLoading ? 'Suggesting details' : 'Suggest details'}
-              >
-                {aiLoading
-                  ? <ActivityIndicator size="small" color={colors.purple} />
-                  : <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.purple} />
-                }
-                {!aiLoading && <Text style={[styles.toolChipText, styles.aiChipText]}>Suggest</Text>}
-              </TouchableOpacity>
-            )}
           </View>
 
           {/* Inline panels */}
@@ -1830,19 +1778,6 @@ export function QuickAddModal({
         }}
         onCancel={() => setWhenPickerVisible(false)}
       />
-      <SuggestedCategorySheet
-        visible={pendingCategory !== null}
-        categoryName={pendingCategory ?? ''}
-        onConfirm={() => {
-          if (pendingCategory) {
-            addCategory(pendingCategory);
-            setCategory(pendingCategory);
-            haptics.success();
-          }
-          setPendingCategory(null);
-        }}
-        onDismiss={() => setPendingCategory(null)}
-      />
       <NumberPadAccessory />
     </Modal>
     {/* newTaskDefaults.openEditorAfterQuickAdd hand-off — see createTask. A
@@ -2350,13 +2285,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
-  },
-  aiChip: {
-    backgroundColor: colors.purple + '22',
-  },
-  aiChipText: {
-    color: colors.purple,
-    fontWeight: '600',
   },
   linkAppRow: {
     flexDirection: 'row',

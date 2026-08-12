@@ -2,7 +2,6 @@ import {
   segmentOf,
   buildRhythmProfile,
   findSegmentMismatches,
-  suggestSegment,
   formatHour,
   formatHourRange,
   describeRhythm,
@@ -420,80 +419,5 @@ describe('findSegmentMismatches', () => {
     ];
     expect(findSegmentMismatches(tasks, { windowDays: 30, now })).toEqual([]);
     expect(findSegmentMismatches(tasks)).toHaveLength(1);
-  });
-});
-
-describe('suggestSegment', () => {
-  it('abstains with no history', () => {
-    expect(suggestSegment('Gym', {}, [])).toBeNull();
-  });
-
-  it('abstains below the sample floor', () => {
-    const tasks = completionsAt('Gym', 18, MIN_SAMPLES - 1);
-    expect(suggestSegment('Gym', {}, tasks)).toBeNull();
-  });
-
-  it('suggests from past completions of the same title', () => {
-    const tasks = completionsAt('Gym', 18, 4);
-    expect(suggestSegment('Gym', {}, tasks)).toMatchObject({ segment: 'evening' });
-  });
-
-  it('matches titles case- and whitespace-insensitively', () => {
-    const tasks = completionsAt('Gym  Session', 18, 4);
-    expect(suggestSegment('gym session', {}, tasks)?.segment).toBe('evening');
-  });
-
-  it('prefers the series tier over the title tier', () => {
-    const tasks = [
-      ...completionsAt('Walk', 9, 5, { seriesId: 's1' }),
-      ...completionsAt('Walk', 21, 8),
-    ];
-    const found = suggestSegment('Walk', { seriesId: 's1' }, tasks);
-    expect(found?.segment).toBe('morning');
-    expect(found?.reason).toContain('in this set');
-  });
-
-  it('falls back to a shared title word', () => {
-    const tasks = [
-      ...completionsAt('Gym legs', 18, 2),
-      ...completionsAt('Gym arms', 18, 2),
-    ];
-    const found = suggestSegment('Gym core', {}, tasks);
-    expect(found?.segment).toBe('evening');
-    expect(found?.reason).toContain('gym');
-  });
-
-  it('falls back to category and tags', () => {
-    const tasks = completionsAt('Something else entirely', 21, 4, { category: 'Home' });
-    const found = suggestSegment('Brand new task', { category: 'Home' }, tasks);
-    expect(found?.segment).toBe('night');
-    expect(found?.reason).toContain('similar category or tag');
-  });
-
-  it('has no global tier — an unrelated task gets no suggestion', () => {
-    const tasks = completionsAt('Totally unrelated', 9, 20);
-    expect(suggestSegment('Brand new task', {}, tasks)).toBeNull();
-  });
-
-  it('abstains when the history is spread across the day', () => {
-    const tasks = [
-      ...completionsAt('Scattered', 9, 2),
-      ...completionsAt('Scattered', 14, 2),
-      ...completionsAt('Scattered', 21, 2),
-    ];
-    expect(suggestSegment('Scattered', {}, tasks)).toBeNull();
-  });
-
-  it('excludes the task being edited from its own history', () => {
-    const tasks = completionsAt('Gym', 18, 3);
-    expect(suggestSegment('Gym', { excludeTaskId: tasks[0].id }, tasks)).toBeNull();
-  });
-
-  it('ignores archived and incomplete rows', () => {
-    const tasks = [
-      ...completionsAt('Gym', 18, 5, { archived: true }),
-      makeTask({ title: 'Gym', completed: false, completedAt: null }),
-    ];
-    expect(suggestSegment('Gym', {}, tasks)).toBeNull();
   });
 });
