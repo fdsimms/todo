@@ -22,23 +22,30 @@ interface Props<T> {
    * as one control rather than as a row and a separate strip.
    */
   attached?: boolean;
+  /**
+   * For an open-ended option set (e.g. the user's own categories) rather than
+   * a small fixed one — wraps to as many rows as needed instead of squeezing
+   * every option into an equal-width column, which is unreadable once there
+   * are more than a handful (#1466).
+   */
+  wrap?: boolean;
 }
 
 /** The full-width segmented control: theme, add-button corner, week start, grace, retention. */
 export function SettingsPills<T extends string | number | null>({
-  options, selected, onSelect, accessibilityLabelFor, attached,
+  options, selected, onSelect, accessibilityLabelFor, attached, wrap,
 }: Props<T>) {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
 
   return (
-    <View style={[styles.pillRow, attached && styles.pillRowAttached]}>
+    <View style={[styles.pillRow, attached && styles.pillRowAttached, wrap && styles.pillRowWrap]}>
       {options.map(opt => {
         const active = opt.value === selected;
         return (
           <TouchableOpacity
             key={String(opt.value)}
-            style={[styles.pill, active && styles.pillActive]}
+            style={[styles.pill, wrap && styles.pillAuto, active && styles.pillActive]}
             onPress={() => onSelect(opt.value)}
             accessibilityRole="radio"
             accessibilityState={{ selected: active }}

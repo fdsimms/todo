@@ -38,6 +38,12 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
 
   pillRow: { flexDirection: 'row', padding: spacing.sm, gap: spacing.sm },
   pillRowAttached: { paddingTop: 0 },
+  // For an open-ended option set (categories) rather than the handful a
+  // segmented control assumes — wraps instead of squeezing every option into
+  // an equal-width column, which is what turned 15 categories into unreadable
+  // one-letter-per-line pills (#1466).
+  pillRowWrap: { flexWrap: 'wrap' },
+  pillAuto: { flex: 0, paddingHorizontal: spacing.md },
   // A stepper paired with its own unit pills, sitting under a `tight` row —
   // the unit pills stay one group and wrap together rather than splitting off
   // on their own at a narrow width (same idiom as ProjectEditor's cadenceRow).
