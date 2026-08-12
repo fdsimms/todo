@@ -227,10 +227,6 @@ export const GroceryRow = React.memo(function GroceryRow({
           )}
         </View>
 
-        {item.favorite && !item.checked && (
-          <Ionicons name="star" size={iconSize.xs} color={colors.warning} style={styles.star} />
-        )}
-
         {!!shownQuantity && (
           <View style={[styles.qtyPill, item.checked && styles.qtyPillChecked]}>
             <Text style={[styles.qtyText, item.checked && styles.qtyTextChecked]} numberOfLines={1}>
@@ -405,9 +401,6 @@ function makeStyles(colors: Colors) {
       fontSize: font.sm,
       color: colors.textTertiary,
       marginTop: 2,
-    },
-    star: {
-      marginRight: -spacing.xs,
     },
     qtyPill: {
       backgroundColor: colors.bgTertiary,

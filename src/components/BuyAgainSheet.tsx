@@ -56,7 +56,6 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const addExistingMany = useGroceryStore(s => s.addExistingMany);
-  const toggleFavorite = useGroceryStore(s => s.toggleFavorite);
   const deleteItems = useGroceryStore(s => s.deleteItems);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -227,21 +226,6 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
             {!!usual && ` · ${usual.name}`}
           </Text>
         </View>
-        <TouchableOpacity
-          onPress={() => {
-            haptics.tap();
-            toggleFavorite(item.id);
-          }}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          accessibilityRole="button"
-          accessibilityLabel={item.favorite ? `Unstar ${item.name}` : `Star ${item.name}`}
-        >
-          <Ionicons
-            name={item.favorite ? 'star' : 'star-outline'}
-            size={iconSize.md}
-            color={item.favorite ? colors.warning : colors.textTertiary}
-          />
-        </TouchableOpacity>
       </TouchableOpacity>
     );
   };

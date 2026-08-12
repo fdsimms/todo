@@ -1494,7 +1494,6 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     checked: false,
     inCatalog: true,
     sortOrder: 1,
-    favorite: false,
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,
@@ -1519,7 +1518,6 @@ describe('grocery items', () => {
       onList: true,
       checked: true,
       sortOrder: 4,
-      favorite: true,
       purchaseCount: 12,
       lastAddedAt: '2026-08-01T00:00:00.000Z',
       lastPurchasedAt: '2026-07-25T00:00:00.000Z',
@@ -1545,20 +1543,17 @@ describe('grocery items', () => {
 
   it('stores booleans as 0/1 and reads them back as booleans', () => {
     dbInsertGroceryItem(makeGroceryItem({
-      id: 'g1', name: 'Milk', onList: false, checked: false, favorite: true, inCatalog: false,
+      id: 'g1', name: 'Milk', onList: false, checked: false, inCatalog: false,
     }));
-    const raw = mockRawDb.prepare('SELECT on_list, favorite, in_catalog FROM grocery_items WHERE id = ?').get('g1') as {
+    const raw = mockRawDb.prepare('SELECT on_list, in_catalog FROM grocery_items WHERE id = ?').get('g1') as {
       on_list: number;
-      favorite: number;
       in_catalog: number;
     };
     expect(raw.on_list).toBe(0);
-    expect(raw.favorite).toBe(1);
     expect(raw.in_catalog).toBe(0);
 
     const item = dbGetAllGroceryItems()[0];
     expect(item.onList).toBe(false);
-    expect(item.favorite).toBe(true);
     expect(item.inCatalog).toBe(false);
   });
 

@@ -472,6 +472,15 @@ export function TodayScreen() {
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const segmentColors: Record<string, string> = useMemo(
+    () => ({
+      morning: colors.timeMorning,
+      afternoon: colors.timeAfternoon,
+      evening: colors.timeEvening,
+      night: colors.timeNight,
+    }),
+    [colors],
+  );
 
   const [viewMode, setViewMode] = useState<ViewMode>('today');
   const [quickAddVisible, setQuickAddVisible] = useState(false);
@@ -485,6 +494,13 @@ export function TodayScreen() {
   // value, so it fires again instead of being deduped away.
   const [pendingJump, setPendingJump] = useState<{ key: string; n: number } | null>(null);
   const jumpCount = useRef(0);
+  // The Later/Unscheduled/Inbox counterparts of pendingJump — a newly-created
+  // task can land in any of the four views (see handleTaskCreated), and each
+  // list needs its own queued scroll since each is its own component with its
+  // own ref, mounted only while that view is showing.
+  const [pendingLaterJump, setPendingLaterJump] = useState<{ key: string; n: number } | null>(null);
+  const [pendingUnscheduledJump, setPendingUnscheduledJump] = useState<{ index: number; n: number } | null>(null);
+  const [pendingInboxJump, setPendingInboxJump] = useState<{ index: number; n: number } | null>(null);
   const [autoCompletingIds, setAutoCompletingIds] = useState<Set<string>>(new Set());
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -641,7 +657,11 @@ export function TodayScreen() {
 
   // Switch to whichever sub-view the new task actually landed in, so it's never
   // created into a view that can't show it. A quick-add with no organizing
-  // metadata at all is an Inbox task, whichever view it was added from.
+  // metadata at all is an Inbox task, whichever view it was added from. Beyond
+  // the switch, scroll to and flash the row itself — a task landing off-screen
+  // (a different category section on Today, a later page of Later, anywhere
+  // in Unscheduled/Inbox) would otherwise just silently appear somewhere the
+  // user has to go looking for it.
   const handleTaskCreated = (task: Task, placed = false) => {
     // A drag of the add button chose where this goes; a plain tap didn't, and
     // shaking the chip off in the sheet takes the choice back.
@@ -660,6 +680,24 @@ export function TodayScreen() {
       placeCreatedTask(task, dropped);
     }
     if (destination !== viewMode) setViewMode(destination);
+
+    if (destination === 'today') {
+      revealTaskInToday(task);
+    } else if (destination === 'later') {
+      // Later pages itself in behind a task budget (see laterTaskLimit) — jump
+      // it straight to the settled size so the new row's section is actually
+      // in the data the list is about to scroll.
+      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT));
+      setPendingLaterJump({ key: task.id, n: jumpCount.current++ });
+    } else if (destination === 'unscheduled') {
+      const index = unscheduledTasks.findIndex(t => t.id === task.id);
+      if (index >= 0) setPendingUnscheduledJump({ index, n: jumpCount.current++ });
+    } else {
+      // A freshly-created task is never a stack member (quick-add has no way
+      // to set groupId), so it's always a loose 'task' entry here.
+      const index = inboxData.findIndex(item => item.type === 'task' && item.task.id === task.id);
+      if (index >= 0) setPendingInboxJump({ index, n: jumpCount.current++ });
+    }
     flashTask(task.id);
   };
 
@@ -1134,6 +1172,9 @@ export function TodayScreen() {
   // Set by Today's one list. There used to be two — a plain FlatList swapped
   // in whenever anything was pinned — and the swap is gone with the lift-out.
   const todayRowScroller = useRef<RowScroller | null>(null);
+  // Later's counterpart — its ReorderableList never needed one before this,
+  // since nothing but a fresh task's jump ever asks Later to scroll anywhere.
+  const laterRowScroller = useRef<RowScroller | null>(null);
 
   // The scroll half of a jump (see jumpToTask). In an effect so it runs
   // against the committed list: expanding a section and asking for the jump
@@ -1146,6 +1187,32 @@ export function TodayScreen() {
     todayRowScroller.current?.scrollToKey(pendingJump.key);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingJump]);
+
+  useEffect(() => {
+    if (!pendingLaterJump) return;
+    setPendingLaterJump(null);
+    laterRowScroller.current?.scrollToKey(pendingLaterJump.key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingLaterJump]);
+
+  // Unscheduled and Inbox are plain FlatLists with no row-layout tracking of
+  // their own, so the scroll is by index rather than by key — and since
+  // neither list measures every row up front, a target past what's already
+  // rendered needs the onScrollToIndexFailed fallback wired below to retry
+  // once RN has measured far enough to know where it is.
+  useEffect(() => {
+    if (!pendingUnscheduledJump) return;
+    setPendingUnscheduledJump(null);
+    unscheduledScroll.ref.current?.scrollToIndex({ index: pendingUnscheduledJump.index, animated: true, viewPosition: 0.3 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingUnscheduledJump]);
+
+  useEffect(() => {
+    if (!pendingInboxJump) return;
+    setPendingInboxJump(null);
+    inboxScroll.ref.current?.scrollToIndex({ index: pendingInboxJump.index, animated: true, viewPosition: 0.3 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingInboxJump]);
 
   // What each section header needs to know to leave with its rows when the last
   // of them is ticked off (see CompletionCollapse). Built from `data` — the list
@@ -1930,27 +1997,17 @@ export function TodayScreen() {
     animateLayout();
     markTasksSeen(newTasks.map(t => t.id));
   };
-  /**
-   * Take a title tapped in the new-todos banner to the row it stands for,
-   * rather than opening it: the banner's job is "what showed up and where is
-   * it", and the answer to the second half is a place in this list, not a
-   * sheet on top of it. Anything folded over the row — its category section,
-   * "Everything else", the stack it's filed in — opens on the way.
-   *
-   * Seeing where it landed counts as seeing it, the same as tapping the row
-   * itself does (see TaskItem.handleContentPress).
-   */
-  const jumpToTask = (task: Task) => {
-    markTaskSeen(task.id);
+  // Expands/unhides whatever in Today's own list is folding a task away
+  // (collapsed category, "everything else" hidden, a collapsed stack, a
+  // category filter aimed elsewhere) and queues the scroll to its row.
+  // Returns false if the task has no row in this list at all — a filter is
+  // hiding it, not just folding it — so a caller can fall back to opening it
+  // directly. Shared by jumpToTask and handleTaskCreated.
+  const revealTaskInToday = (task: Task): boolean => {
     // Resolved against the pre-collapse list, so a task folded away still has
-    // a row to aim at. Nothing at all means a filter is hiding it, and there's
-    // nowhere to scroll — open it instead of eating the tap.
+    // a row to aim at.
     const target = findTaskJumpTarget(listItems, task.id, listItemKey);
-    if (!target) {
-      openEditor(task);
-      return;
-    }
-    haptics.tap();
+    if (!target) return false;
     const expandCategory = target.category !== null && collapsedCategories.has(target.category);
     // Every row but the pinned block is behind the hide, and the jump target is
     // always one of those (the block isn't in `listItems`), so a jump while
@@ -1978,6 +2035,28 @@ export function TodayScreen() {
     }
     setExpandedTaskId(null);
     setPendingJump({ key: target.key, n: jumpCount.current++ });
+    return true;
+  };
+
+  /**
+   * Take a title tapped in the new-todos banner to the row it stands for,
+   * rather than opening it: the banner's job is "what showed up and where is
+   * it", and the answer to the second half is a place in this list, not a
+   * sheet on top of it. Anything folded over the row — its category section,
+   * "Everything else", the stack it's filed in — opens on the way.
+   *
+   * Seeing where it landed counts as seeing it, the same as tapping the row
+   * itself does (see TaskItem.handleContentPress).
+   */
+  const jumpToTask = (task: Task) => {
+    markTaskSeen(task.id);
+    // Nothing to land on means a filter is hiding it — open it instead of
+    // eating the tap.
+    if (!revealTaskInToday(task)) {
+      openEditor(task);
+      return;
+    }
+    haptics.tap();
     flashTask(task.id);
   };
 
@@ -2260,6 +2339,7 @@ export function TodayScreen() {
         {viewMode === 'later' && (
           <ReorderableList
             scrollEnabled={!painting && !draggingSubtask}
+            rowScrollerRef={laterRowScroller}
             data={laterDraggableData}
             keyExtractor={item => item.key}
             renderItem={({ item, drag, isActive }) => {
@@ -2267,6 +2347,20 @@ export function TodayScreen() {
                 return (
                   <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
                     <Text style={styles.sectionHeaderText}>{item.label}</Text>
+                    <SpotlightScrim />
+                  </Pressable>
+                );
+              }
+              if (item.type === 'subheader') {
+                return (
+                  <Pressable style={styles.laterSubHeader} onPress={() => setExpandedTaskId(null)}>
+                    <View
+                      style={[
+                        styles.laterSubHeaderDot,
+                        { backgroundColor: item.segment ? segmentColors[item.segment] : colors.textTertiary },
+                      ]}
+                    />
+                    <Text style={styles.laterSubHeaderText}>{item.label}</Text>
                     <SpotlightScrim />
                   </Pressable>
                 );
@@ -2528,6 +2622,14 @@ export function TodayScreen() {
             scrollEnabled={!painting && !draggingSubtask}
             data={unscheduledTasks}
             keyExtractor={t => t.id}
+            // No getItemLayout (rows are variable-height), so a target past
+            // what's mounted so far fails the first attempt — retry once RN's
+            // own estimate has caught up.
+            onScrollToIndexFailed={info => {
+              setTimeout(() => {
+                unscheduledScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
+              }, 100);
+            }}
             {...unscheduledScroll.props}
             renderItem={({ item }) => {
               const subs = subtasksByParent.get(item.id) ?? NO_SUBTASKS;
@@ -2603,6 +2705,11 @@ export function TodayScreen() {
             scrollEnabled={!painting && !draggingSubtask}
             data={inboxData}
             keyExtractor={listItemKey}
+            onScrollToIndexFailed={info => {
+              setTimeout(() => {
+                inboxScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
+              }, 100);
+            }}
             {...inboxScroll.props}
             renderItem={({ item }) =>
               item.type === 'group'
@@ -2883,6 +2990,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionHeaderText: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
+  },
+  // A lighter sub-grouping inside a Later day section (morning/afternoon/
+  // evening/night, or a time window) — no full section break, so same-day
+  // segments read as one day rather than several unrelated blocks (#1162).
+  laterSubHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: 2,
+    backgroundColor: colors.bg,
+  },
+  laterSubHeaderDot: {
+    width: 6, height: 6, borderRadius: 3,
+  },
+  laterSubHeaderText: {
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium,
   },
   categorySectionHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

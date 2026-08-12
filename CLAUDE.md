@@ -104,6 +104,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) |
 | grocery autocomplete, Buy again ranking | `src/utils/grocerySuggest.ts` |
 | which store an item comes from | `src/utils/groceryShops.ts` — see Grocery stores below |
+| what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see The pantry below |
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see Grocery either/or below |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
 | halving or doubling a recipe | `src/utils/recipeScale.ts` — see Scaling below |
@@ -374,6 +375,38 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   when you're deciding what to buy where. **There is deliberately no store chip on the shopping
   list rows** — the row is already dense, and while you're shopping you're standing in one store,
   so it's noise precisely when the list is in use.
+
+### The pantry — computed, corrected, and now browsable
+
+What the app treats as "have it" is one function, `probablyHaveReason` — an explicit
+`onHandUntil` assertion if there is one, otherwise a guess from this item's own purchase cadence.
+There is no inventory table and there must not be one: a maintained inventory is the feature that
+dies in week three, so it's computed first and corrected second ("Got it" / "Out of it" on
+`GroceryItemSheet`, and `finishShopping` stamping what a trip bought).
+
+**`PantrySheet` is a read, not a second model.** It lists exactly the set `probablyHaveReason`
+answers for (`pantryEntries`), cut into aisles by `buildPantrySections`, and it writes nothing —
+tapping a row opens `GroceryItemSheet`, whose Pantry pills are still the only way to say you're
+out of something. That's the distinction the aggregate view turns on: nobody should have to check
+items in and out, but a set the app has already derived per-item is worth being able to look at,
+and until this there was no way to answer "do I have flour" short of opening items one at a time.
+Don't grow quantities, expiry dates or a check-in gesture onto it — that's the inventory again.
+
+- **Rows on the list are deliberately in it.** An item can be both recently bought and back on the
+  list; dropping it would make an item marked "Got it" vanish from the pantry the moment it was
+  added to a list, which reads as the assertion having been forgotten. The row says "on the list"
+  instead.
+- **The row's caption is `probablyHaveReason`'s own words**, verbatim — the same line a week plan
+  and the item sheet already show. A second phrasing here is a second thing to keep true.
+- **The cadence half can't be seeded into demo mode.** A guess needs a row older than its purchases
+  (`estimatedPurchaseCadenceDays` divides the row's age by its count), and every seeded row is
+  created at seed time, so the demo's pantry is all assertions. That's the honest reason it shows
+  one kind of reason and not both.
+- **`GroceryItemSheet` is rendered *inside* `PantrySheet`'s `Modal`, not beside it.** A `Modal`
+  presents from the view controller its React parent belongs to, so a sibling would ask the
+  screen's controller to present a second sheet while the pantry is already up. Nesting is what
+  lets it stack — and keeping the pantry mounted underneath is the point, since correcting one
+  item should drop you back into the list you were reading.
 
 ### Grocery either/or — two rows you pick between at the shelf
 
@@ -817,7 +850,18 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 - `CollapsibleField` (`src/components/CollapsibleField.tsx`) — a picker section inside an editor card. Collapsed it is `LABEL … value ⌄`; expanded it shows a one-line `hint` explaining the field, then the pills. **Every editor picker (category, project, tags, priority, effort, …) uses this** — see the progressive disclosure note below.
 - `EditorRow` (`src/components/EditorRow.tsx`) — the `icon — label — value ›` row every editor sheet is built from (Date, Deadline, Remind me, Link, …). Pass `expanded` for rows whose controls unfold in place rather than opening a picker, and the chevron becomes up/down.
 - **Filtering by an open-ended set of options (tags, categories) is a bottom sheet with wrapping chips, never a horizontal scrolling chip row.** `LogbookFilterSheet` and `RecipeTagFilterSheet` are the two instances — both replaced a scroll row that had shipped first. A scroll row hides every option past what fits on screen behind a swipe nobody is prompted to make, and a vocabulary the user builds themselves (tags especially) has no ceiling a phone-width row can assume; wrapping puts the whole set on screen at once. The screen itself keeps only a small trigger row: a "Filter"/"Tags" button that opens the sheet, plus whatever's *currently selected* as removable pills (`ActiveFilterPill` in `LogbookScreen`, the `activePill` styles in `RecipesScreen`) — that set stays small by construction, so a scrolling row is still the right shape for it. Don't reach for a horizontal `ScrollView` of chips as the *filter control itself* again; that's the mistake both of these fixed.
-- `PaintSelectionProvider` (`src/components/PaintSelection.tsx`) — wraps a task list so that, while bulk selecting, a drag down the checkbox column "paints" a run of rows instead of needing a tap each. Screens get it by spreading `paintProps` from `useTaskSelection` and passing `scrollEnabled={!painting}` to the list; rows register themselves from inside `TaskItem`, so nothing else has to change. The touch is claimed **on touch-down in the capture phase** within `PAINT_GUTTER_WIDTH` of the leading edge — a native scroll can't be taken back once it starts dragging, so deciding later would let the list scroll out from under the paint. That's why a drag started right on the checkboxes can't scroll (the deliberate trade), and why every other pixel of the row scrolls exactly as before. Hit-testing math and its tests live in `src/utils/paintSelect.ts` / `paintSelect.test.ts`.
+- `SelectionDot` (`src/components/SelectionDot.tsx`) — the circle at a row's **trailing** edge that
+  says whether it's picked for a bulk edit: empty ring on every eligible row, accent fill + tick on
+  the selected ones. Selection used to be shown by filling in the row's own completion checkbox,
+  which made a picked task look ticked off and — worse — made a list with nothing yet picked look
+  identical to a list that wasn't selecting at all. The empty rings are the more important half.
+  It's a *circle* where completion checkboxes are rounded squares (`checkboxRadius`), it sits at the
+  opposite end from the checkbox, and it takes the slot the row's own action buttons vacate on
+  entering selection mode, so nothing has to move aside for it. It is not its own accessibility
+  element — the row already exposes a checkbox with the same state. Two rows use it (`TaskItem`,
+  `LogbookScreen`'s row); a third selectable row type should use it too rather than tinting its
+  checkbox.
+- `PaintSelectionProvider` (`src/components/PaintSelection.tsx`) — wraps a task list so that, while bulk selecting, a drag down the column of `SelectionDot`s "paints" a run of rows instead of needing a tap each. Screens get it by spreading `paintProps` from `useTaskSelection` and passing `scrollEnabled={!painting}` to the list; rows register themselves from inside `TaskItem`, so nothing else has to change. The touch is claimed **on touch-down in the capture phase** within `PAINT_GUTTER_WIDTH` of the **trailing** edge — a native scroll can't be taken back once it starts dragging, so deciding later would let the list scroll out from under the paint. That's why a drag started right on the dots can't scroll (the deliberate trade), and why every other pixel of the row scrolls exactly as before. The gutter follows the dots: it ran along the leading edge while the checkbox was the selection control, and a gesture that isn't over the thing it changes is the bug that pairing them avoids. Hit-testing math and its tests live in `src/utils/paintSelect.ts` / `paintSelect.test.ts`.
 - `src/utils/haptics.ts` — semantic haptics (`tap`, `success`, `warning`, `error`, `impactLight/Medium/Heavy`). Never import `expo-haptics` directly; pick by meaning so intensities stay consistent.
 - `src/utils/layoutAnimation.ts` — `animateLayout()` immediately before a state change that inserts/removes list rows (complete, delete, add, selection-mode toggle). **Never call it on a drag-reorder commit path** (`ReorderableList.onReorder`, `DraggableFlatList.onDragEnd`) — those drive their own row animations.
 - **Accessibility on icon-only controls isn't a missing primitive, it's an adoption gap** — `PressableScale` already supplies `accessibilityRole="button"`, and every icon-only `TouchableOpacity` (drag handles, delete X's, calendar day cells, month-nav chevrons) needs an explicit `accessibilityLabel` alongside it, following `TaskItem`'s style (e.g. `` `Reorder subtask ${sub.title}` ``). Hand-rolled on/off controls (a `View` toggle knob inside a `Touchable`, not a real `Switch`) need `accessibilityRole="switch"` + `accessibilityState={{ checked }}` too — see the vacation-pause and archive toggles in `TaskEditor`/`ProjectEditor`.

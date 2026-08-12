@@ -371,7 +371,6 @@ export function LeftoverSheet({
               // complete answer, not a draft to type over, so the keyboard
               // shouldn't summon itself on top of it.
               autoFocus={!editing && !seed?.title}
-              autoCorrect={false}
               returnKeyType={editing ? 'done' : 'go'}
               maxLength={LEFTOVER_NAME_MAX_LENGTH}
               accessibilityLabel="Leftover name"

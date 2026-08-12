@@ -418,35 +418,88 @@ describe('resolveDrop', () => {
   });
 });
 
+// A single-segment-per-day helper: no sub-header, since there's nothing
+// within the day to distinguish.
+const daySection = (title: string, label: string | null, segment: string | null, data: Task[]) => ({
+  title,
+  segments: [{ label, segment, data }],
+});
+
 // Readable view of a flattened Later layout.
 const laterSeq = (items: ReturnType<typeof flattenLaterSections>) =>
-  items.map(item => (item.type === 'header' ? `#${item.label}` : item.task.id));
+  items.map(item =>
+    item.type === 'header' ? `#${item.label}` : item.type === 'subheader' ? `##${item.label}` : item.task.id,
+  );
 
 describe('flattenLaterSections', () => {
-  it('flattens sections into header + task items in order', () => {
+  it('flattens day sections into header + task items in order', () => {
     const a = makeTask({ id: 'a' });
     const b = makeTask({ id: 'b' });
     const c = makeTask({ id: 'c' });
     const flattened = flattenLaterSections([
-      { title: 'TODAY — EVENING', data: [a, b] },
-      { title: 'TOMORROW — MORNING', data: [c] },
+      daySection('TODAY', 'Evening', 'evening', [a, b]),
+      daySection('TOMORROW', 'Morning', 'morning', [c]),
     ]);
-    expect(laterSeq(flattened)).toEqual(['#TODAY — EVENING', 'a', 'b', '#TOMORROW — MORNING', 'c']);
+    expect(laterSeq(flattened)).toEqual(['#TODAY', 'a', 'b', '#TOMORROW', 'c']);
+  });
+
+  // The point of #1162: same-day segments render under ONE date header, with
+  // a lighter sub-header per segment rather than a fully separate section.
+  it('renders one header per day, with a sub-header per segment when a day has more than one', () => {
+    const morning = makeTask({ id: 'morning-task' });
+    const evening = makeTask({ id: 'evening-task' });
+    const flattened = flattenLaterSections([
+      {
+        title: 'TODAY',
+        segments: [
+          { label: 'Morning', segment: 'morning', data: [morning] },
+          { label: 'Evening', segment: 'evening', data: [evening] },
+        ],
+      },
+    ]);
+    expect(laterSeq(flattened)).toEqual(['#TODAY', '##Morning', 'morning-task', '##Evening', 'evening-task']);
+  });
+
+  // A day with exactly one sub-group has nothing to distinguish, so no
+  // sub-header renders — just the day header and its tasks.
+  it('omits the sub-header when a day has only one segment', () => {
+    const flattened = flattenLaterSections([daySection('TODAY', 'Evening', 'evening', [makeTask({ id: 'a' })])]);
+    expect(laterSeq(flattened)).toEqual(['#TODAY', 'a']);
   });
 
   it('gives a unique key to each occurrence of a multi-segment task', () => {
     const a = makeTask({ id: 'a' });
     const flattened = flattenLaterSections([
-      { title: 'TOMORROW — MORNING', data: [a] },
-      { title: 'TOMORROW — EVENING', data: [a] },
+      {
+        title: 'TOMORROW',
+        segments: [
+          { label: 'Morning', segment: 'morning', data: [a] },
+          { label: 'Evening', segment: 'evening', data: [a] },
+        ],
+      },
     ]);
     const keys = flattened.filter(i => i.type === 'task').map(i => i.key);
     expect(new Set(keys).size).toBe(2);
   });
 
   it('marks header items with isLaterHeader', () => {
-    const flattened = flattenLaterSections([{ title: 'TODAY — EVENING', data: [makeTask({ id: 'a' })] }]);
+    const flattened = flattenLaterSections([daySection('TODAY', 'Evening', 'evening', [makeTask({ id: 'a' })])]);
     expect(flattened.map(isLaterHeader)).toEqual([true, false]);
+  });
+
+  // A sub-header is also a boundary for drag confinement — each segment used
+  // to be its own independent section, and this keeps that behavior.
+  it('marks sub-header items with isLaterHeader too', () => {
+    const flattened = flattenLaterSections([
+      {
+        title: 'TODAY',
+        segments: [
+          { label: 'Morning', segment: 'morning', data: [makeTask({ id: 'a' })] },
+          { label: 'Evening', segment: 'evening', data: [makeTask({ id: 'b' })] },
+        ],
+      },
+    ]);
+    expect(flattened.map(isLaterHeader)).toEqual([true, true, false, true, false]);
   });
 });
 
@@ -454,7 +507,7 @@ describe('laterTaskOrder', () => {
   it('returns task ids in flattened order, skipping headers', () => {
     const a = makeTask({ id: 'a' });
     const b = makeTask({ id: 'b' });
-    const flattened = flattenLaterSections([{ title: 'TODAY — EVENING', data: [a, b] }]);
+    const flattened = flattenLaterSections([daySection('TODAY', 'Evening', 'evening', [a, b])]);
     expect(laterTaskOrder(flattened)).toEqual(['a', 'b']);
   });
 
@@ -462,8 +515,13 @@ describe('laterTaskOrder', () => {
     const a = makeTask({ id: 'a' });
     const b = makeTask({ id: 'b' });
     const flattened = flattenLaterSections([
-      { title: 'TOMORROW — MORNING', data: [a, b] },
-      { title: 'TOMORROW — EVENING', data: [a] },
+      {
+        title: 'TOMORROW',
+        segments: [
+          { label: 'Morning', segment: 'morning', data: [a, b] },
+          { label: 'Evening', segment: 'evening', data: [a] },
+        ],
+      },
     ]);
     expect(laterTaskOrder(flattened)).toEqual(['a', 'b']);
   });
@@ -506,27 +564,44 @@ describe('laterSections', () => {
     return d.toISOString();
   };
 
-  it('orders sections by when their tasks surface', () => {
+  const flatIds = (sections: ReturnType<typeof laterSections>) =>
+    sections.flatMap(day => day.segments.flatMap(s => s.data.map(t => t.id)));
+
+  it('orders day sections by when their tasks surface', () => {
     const far = makeTask({ id: 'far', deferUntil: daysFromNow(3) });
     const near = makeTask({ id: 'near', deferUntil: daysFromNow(1) });
     const sections = laterSections([far, near]);
     expect(sections).toHaveLength(2);
-    expect(sections.flatMap(s => s.data.map(t => t.id))).toEqual(['near', 'far']);
+    expect(flatIds(sections)).toEqual(['near', 'far']);
   });
 
-  it('collects tasks surfacing on the same day under one section', () => {
+  it('collects tasks surfacing on the same day under one day section', () => {
     const a = makeTask({ id: 'a', deferUntil: daysFromNow(2) });
     const b = makeTask({ id: 'b', deferUntil: daysFromNow(2) });
     const sections = laterSections([a, b]);
     expect(sections).toHaveLength(1);
-    expect(sections[0].data.map(t => t.id)).toEqual(['a', 'b']);
+    expect(sections[0].segments).toHaveLength(1);
+    expect(sections[0].segments[0].data.map(t => t.id)).toEqual(['a', 'b']);
   });
 
-  it('lists a multi-segment task under one section per segment', () => {
+  it('lists a multi-segment task under one segment per matching time-of-day, within the same day section', () => {
     const task = makeTask({ id: 'a', deferUntil: daysFromNow(1), timeSegments: ['morning', 'evening'] });
     const sections = laterSections([task]);
-    expect(sections.map(s => s.title.split(' — ')[1])).toEqual(['Morning', 'Evening']);
-    expect(sections.every(s => s.data.map(t => t.id).includes('a'))).toBe(true);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].segments.map(s => s.label)).toEqual(['Morning', 'Evening']);
+    expect(sections[0].segments.every(s => s.data.map(t => t.id).includes('a'))).toBe(true);
+  });
+
+  // The whole point of #1162: a day with tasks in different segments is
+  // still ONE header-worthy day section, with several sub-groups inside it —
+  // not several independent day sections.
+  it('groups different-segment tasks on the same day into one day section with several sub-groups', () => {
+    const morning = makeTask({ id: 'morning-task', deferUntil: daysFromNow(1), timeSegments: ['morning'] });
+    const evening = makeTask({ id: 'evening-task', deferUntil: daysFromNow(1), timeSegments: ['evening'] });
+    const sections = laterSections([morning, evening]);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].segments.map(s => s.label)).toEqual(['Morning', 'Evening']);
+    expect(sections[0].segments.map(s => s.data.map(t => t.id))).toEqual([['morning-task'], ['evening-task']]);
   });
 
   // The sort works on a mapped array of (task, visibleAt) pairs rather than a
@@ -542,26 +617,43 @@ describe('laterSections', () => {
 });
 
 describe('visibleLaterSections', () => {
-  const section = (title: string, count: number) => ({
+  const daySection = (title: string, count: number) => ({
     title,
-    data: Array.from({ length: count }, (_, i) => makeTask({ id: `${title}-${i}` })),
+    segments: [{ label: null, segment: null, data: Array.from({ length: count }, (_, i) => makeTask({ id: `${title}-${i}` })) }],
   });
 
-  it('includes whole sections up to the task budget', () => {
-    const sections = [section('a', 30), section('b', 30), section('c', 30)];
+  it('includes whole day sections up to the task budget', () => {
+    const sections = [daySection('a', 30), daySection('b', 30), daySection('c', 30)];
     expect(visibleLaterSections(sections, 60).map(s => s.title)).toEqual(['a', 'b']);
   });
 
-  // A section straddling the budget boundary is included in full rather than
-  // cut off mid-section — a header must never render without all its tasks.
-  it('includes an entire section that pushes the running count past the budget', () => {
-    const sections = [section('a', 40), section('b', 40)];
+  // A day straddling the budget boundary is included in full rather than
+  // cut off mid-day — a header must never render without all its tasks.
+  it('includes an entire day that pushes the running count past the budget', () => {
+    const sections = [daySection('a', 40), daySection('b', 40)];
     expect(visibleLaterSections(sections, 60).map(s => s.title)).toEqual(['a', 'b']);
   });
 
   it('includes everything when the budget exceeds the total', () => {
-    const sections = [section('a', 10), section('b', 10)];
+    const sections = [daySection('a', 10), daySection('b', 10)];
     expect(visibleLaterSections(sections, 60).map(s => s.title)).toEqual(['a', 'b']);
+  });
+
+  // The budget counts tasks across every sub-group in a day, not just the
+  // first — a day with morning+evening tasks totalling over budget must
+  // still be counted as one whole day, not split mid-day.
+  it('sums tasks across every segment in a day for the budget', () => {
+    const sections = [
+      {
+        title: 'a',
+        segments: [
+          { label: 'Morning', segment: 'morning', data: Array.from({ length: 20 }, (_, i) => makeTask({ id: `a-m-${i}` })) },
+          { label: 'Evening', segment: 'evening', data: Array.from({ length: 20 }, (_, i) => makeTask({ id: `a-e-${i}` })) },
+        ],
+      },
+      daySection('b', 30),
+    ];
+    expect(visibleLaterSections(sections, 30).map(s => s.title)).toEqual(['a']);
   });
 });
 
