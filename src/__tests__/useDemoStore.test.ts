@@ -17,6 +17,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { pantryEntries } from '../utils/grocerySuggest';
 import { taskKindOf } from '../utils/taskKinds';
+import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { isDialable } from '../utils/phone';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -247,6 +248,23 @@ describe('demo mode', () => {
     expect(target.progressCount).toBeLessThan(target.targetCount!);
     // A target always repeats — it resets by spawning its next occurrence.
     expect(target.recurrenceType).not.toBe('none');
+  });
+
+  // A timed task can hand its countdown out to its subtasks, and one that
+  // hasn't reads exactly like every timed task did before that was possible.
+  it('seeds a timed task with its countdown split across its subtasks', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const timed = tasks.filter(t => !t.parentId && taskKindOf(t) === 'timed');
+    const apportioned = timed
+      .map(t => ({ task: t, subtasks: tasks.filter(s => s.parentId === t.id) }))
+      .find(({ subtasks }) => apportionedMinutes(subtasks) !== null)!;
+
+    expect(apportioned).toBeDefined();
+    expect(timerSegments(apportioned.subtasks).length).toBeGreaterThan(1);
+    // The task's own duration is the sum of the stretches, not a second number.
+    expect(apportioned.task.timedMinutes).toBe(apportionedMinutes(apportioned.subtasks));
   });
 
   // No number on any task means no call/text button anywhere in the demo.

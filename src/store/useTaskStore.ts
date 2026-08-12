@@ -53,6 +53,7 @@ import { postponeOutcome, nextPostponeCount } from '../utils/postpone';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { isTimedTask, timerElapsed } from '../utils/timer';
+import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
 
 interface UndoableAction {
   label: string;
@@ -2626,15 +2627,30 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   deleteSubtask(id) {
     const subtask = get().tasks.find(t => t.id === id);
     if (!subtask) return;
+    // A subtask carrying a stretch of its parent's timer is part of that
+    // timer's length (see utils/timerSegments.ts), so deleting it has to
+    // re-total the parent — the editor is not the only place a subtask can go.
+    // Deleting the *last* stretch leaves the total where it was rather than
+    // clearing it: the split is gone, but the task is still a timed task of
+    // that length, and a null here would quietly demote it to a plain one.
+    const parent = subtask.parentId ? get().tasks.find(t => t.id === subtask.parentId) : undefined;
+    const retotal = parent != null && parent.timedMinutes != null && segmentMinutesOf(subtask) !== null;
+    const previousTotal = parent?.timedMinutes ?? null;
 
     dbDeleteTask(id);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id) }));
+
+    if (retotal) {
+      const total = apportionedMinutes(get().subtasksOf(parent!.id));
+      if (total !== null) get().updateTask(parent!.id, { timedMinutes: total });
+    }
 
     get().setLastAction({
       label: 'Subtask deleted',
       undo: () => {
         dbInsertTask(subtask);
         set(s => ({ tasks: [...s.tasks, subtask] }));
+        if (retotal) get().updateTask(parent!.id, { timedMinutes: previousTotal });
       },
     });
   },

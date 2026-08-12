@@ -5,22 +5,26 @@ import { font, radius, spacing, type Colors } from '../theme';
 import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 
 interface Props {
-  /** Minutes this step is expected to take; null = inherit the task's estimate. */
+  /** Minutes on this row; null = none set, and whatever the fallback is applies. */
   value: number | null;
-  /** The step's title, for the accessibility label. */
+  /** The row's title, for the accessibility label. */
   label: string;
+  /** What the number is for, for the accessibility label — "Time estimate", "Timer". */
+  what?: string;
   onChange: (minutes: number | null) => void;
 }
 
 /**
- * The per-step time estimate on a chain step row, in the task editor and the
- * template item editor.
+ * The minutes field on a step row inside an editor: a chain step's own time
+ * estimate (task editor, template item editor), and a subtask's stretch of a
+ * timed task's countdown (task editor).
  *
  * Minutes only, with no min/hr toggle like the task-level effort field has —
- * a chain step is the small unit a task breaks into, and every step of a
- * routine long enough to need hours would still be typed in two digits.
- * Clearing the field restores the fallback (the task's own estimate), which is
- * why an empty value has to be null rather than 0.
+ * these are the small units a task breaks into, and every step of a routine
+ * long enough to need hours would still be typed in two digits. Clearing the
+ * field restores the fallback (for a chain step, the task's own estimate; for a
+ * subtask, no stretch at all), which is why an empty value has to be null
+ * rather than 0.
  *
  * Deliberately always visible rather than unfolding on tap, which is how the
  * rest of the editor handles a secondary control: this one sits inside a
@@ -28,7 +32,7 @@ interface Props {
  * height mid-drag — the one thing that list's displacement math can't absorb.
  * The fixed height keeps the row from resizing as the value comes and goes.
  */
-export function ChainStepMinutes({ value, label, onChange }: Props) {
+export function StepMinutes({ value, label, what = 'Time estimate', onChange }: Props) {
   const colors = useColors();
   const styles = makeStyles(colors);
 
@@ -48,7 +52,7 @@ export function ChainStepMinutes({ value, label, onChange }: Props) {
         maxLength={4}
         returnKeyType="done"
         inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-        accessibilityLabel={`Time estimate in minutes for ${label}`}
+        accessibilityLabel={`${what} in minutes for ${label}`}
       />
       {value != null ? <Text style={styles.unit}>m</Text> : null}
     </View>
@@ -60,7 +64,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     flexShrink: 0,
   },
-  // Unfilled it's just the placeholder — most chains never set a per-step time,
+  // Unfilled it's just the placeholder — most lists never set a per-row time,
   // and a row of empty wells reads as fields waiting to be completed. The
   // surface appears once the value does, so a step that carries a time looks
   // like it carries one.

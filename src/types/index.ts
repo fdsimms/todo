@@ -420,6 +420,13 @@ export interface Task {
   // complete; it never blocks completion (see isTimerReady in utils/timer.ts).
   // Readiness is derived from these two plus timerStartedAt, never stored, so
   // it stays correct across backgrounding and app restarts.
+  //
+  // On a *subtask* the same field means that subtask's stretch of its parent's
+  // run ("5 min scales, 10 min known pieces") — see utils/timerSegments.ts. It
+  // is the same kind of number, so it reuses the same column; what a subtask
+  // never gets is a timer of its own, since the run it belongs to is the
+  // parent's. Once any subtask carries a stretch the parent's own value is the
+  // sum of them, written by whatever changed a stretch rather than typed.
   timedMinutes: number | null;   // the target duration; null = not a timed task
   timerElapsedSeconds: number;   // banked from finished run segments; 0 when never run or reset
 

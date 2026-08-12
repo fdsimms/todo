@@ -26,7 +26,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { SortableList } from './SortableList';
-import { ChainStepMinutes } from './ChainStepMinutes';
+import { StepMinutes } from './StepMinutes';
 import { RecurrencePicker } from './RecurrencePicker';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
@@ -630,7 +630,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                       <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
                         {chainItem.title}
                       </Text>
-                      <ChainStepMinutes
+                      <StepMinutes
                         value={chainItem.estimatedMinutes}
                         label={chainItem.title}
                         onChange={mins => setChainItems(prev => prev.map(
