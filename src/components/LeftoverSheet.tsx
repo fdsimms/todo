@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
+  Platform,
   View,
   Text,
   TextInput,
@@ -141,6 +142,35 @@ export function LeftoverSheet({
 
   const translateY = useRef(new Animated.Value(600)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  // The sheet is bottom-anchored, the same edge the keyboard docks to — with
+  // nothing accounting for it, an autofocused TextInput (fresh, unseeded
+  // "Log a leftover") raises a keyboard that covers the sheet entirely rather
+  // than sitting beside it. Same fix TemplateItemQuickAdd's doc comment
+  // describes: track the keyboard's own height and slide the sheet up by it.
+  const keyboardOffset = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, e => {
+      Animated.timing(keyboardOffset, {
+        toValue: -(e.endCoordinates?.height ?? 0),
+        duration: e.duration ?? animation.duration.normal,
+        useNativeDriver: true,
+      }).start();
+    });
+    const hideSub = Keyboard.addListener(hideEvent, e => {
+      Animated.timing(keyboardOffset, {
+        toValue: 0,
+        duration: e.duration ?? animation.duration.normal,
+        useNativeDriver: true,
+      }).start();
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [keyboardOffset]);
 
   const editing = leftover !== null;
   const live = leftover ? isLiveLeftover(leftover) : true;
@@ -291,7 +321,7 @@ export function LeftoverSheet({
         style={[
           styles.sheetOuter,
           { maxHeight: windowHeight - TOP_INSET },
-          { transform: [{ translateY }] },
+          { transform: [{ translateY: Animated.add(translateY, keyboardOffset) }] },
         ]}
       >
         <View style={styles.handleArea} {...panResponder.panHandlers}>
