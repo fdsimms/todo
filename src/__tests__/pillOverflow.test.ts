@@ -172,6 +172,52 @@ describe('resolvePillOverflow', () => {
   });
 });
 
+// The walk-order scope picker in GroceryAislesSheet: a pinned "Default"
+// followed by every store the user has, which is an entirely user-built list
+// with no ceiling. Pinned here it means "the order every store follows unless
+// it has its own", so it must never be the thing behind the disclosure.
+describe('the per-store walk order picker', () => {
+  const scopePicker = (storeCount: number, selectedIndex: number | null): OverflowPill[] => [
+    { key: 'default', label: 'Default', pinned: true, selected: selectedIndex === null },
+    ...Array.from({ length: storeCount }, (_, i) => ({
+      key: `shop-${i}`,
+      label: `Store ${i + 1}`,
+      selected: selectedIndex === i,
+    })),
+  ];
+
+  it('never renders twenty stores inline', () => {
+    const r = resolvePillOverflow(scopePicker(20, null));
+
+    expect(r.visible).toHaveLength(DEFAULT_PILL_LIMIT);
+    expect(r.hiddenCount).toBe(13);
+    expect(r.filterable).toBe(true);
+  });
+
+  it('always keeps Default on screen, however many stores there are', () => {
+    const r = resolvePillOverflow(scopePicker(50, 40));
+
+    expect(labels(r.visible)).toContain('Default');
+    // ...and the store being edited, which is the picker's current value.
+    expect(labels(r.visible)).toContain('Store 41');
+    expect(r.visible).toHaveLength(DEFAULT_PILL_LIMIT);
+  });
+
+  it('shows every store when there are only a few', () => {
+    const r = resolvePillOverflow(scopePicker(3, null));
+
+    expect(r.visible).toHaveLength(4);
+    expect(r.hiddenCount).toBe(0);
+    expect(r.filterable).toBe(false);
+  });
+
+  it('finds a buried store by name', () => {
+    const r = resolvePillOverflow(scopePicker(20, null), { query: 'store 17' });
+
+    expect(labels(r.visible)).toEqual(['Store 17']);
+  });
+});
+
 describe('resolvePillSubmit', () => {
   const aisles = pills(
     'Produce', 'Bakery', 'Deli', 'Meat & Seafood', 'Dairy & Eggs', 'Frozen',
