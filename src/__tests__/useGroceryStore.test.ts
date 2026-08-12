@@ -626,6 +626,36 @@ describe('clearList', () => {
     expect(items[0].id).toBe(milk.id);
     expect(items[0].onList).toBe(false);
   });
+
+  it('queues an undo that re-parks catalog rows and revives deleted provisional ones', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, inCatalog: true });
+    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
+    seed([milk, nduja]);
+    (dbClearGroceryList as jest.Mock).mockReturnValue([milk.id, nduja.id]);
+    useGroceryStore.setState({ lastAction: null });
+
+    useGroceryStore.getState().clearList();
+    useGroceryStore.getState().undoLastAction();
+
+    const items = useGroceryStore.getState().items;
+    expect(items).toHaveLength(2);
+    const restoredMilk = items.find(i => i.id === milk.id)!;
+    expect(restoredMilk.onList).toBe(true);
+    expect(restoredMilk.checked).toBe(true);
+    const restoredNduja = items.find(i => i.id === nduja.id)!;
+    expect(restoredNduja.onList).toBe(true);
+    expect(dbInsertGroceryItem).toHaveBeenCalledWith(nduja);
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(milk);
+  });
+
+  it('leaves no undo entry when there was nothing to clear', () => {
+    (dbClearGroceryList as jest.Mock).mockReturnValue([]);
+    useGroceryStore.setState({ lastAction: null });
+
+    useGroceryStore.getState().clearList();
+
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+  });
 });
 
 // ─── renameItem ──────────────────────────────────────────────────────────────

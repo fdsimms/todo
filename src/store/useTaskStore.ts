@@ -3665,12 +3665,31 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   deleteTag(tag) {
+    const affectedTaskIds = get().tasks.filter(t => t.tags.includes(tag)).map(t => t.id);
+    const wasRegistered = get().tagRegistry.includes(tag);
+
     dbRemoveTagFromAllTasks(tag);
     dbRemoveFromTagRegistry(tag);
     set(s => ({
       tasks: s.tasks.map(t => ({ ...t, tags: t.tags.filter(tg => tg !== tag) })),
       tagRegistry: s.tagRegistry.filter(t => t !== tag),
     }));
+
+    get().setLastAction({
+      label: `Deleted tag "${tag}"`,
+      undo: () => {
+        if (wasRegistered) {
+          dbAddToTagRegistry(tag);
+          set(s => ({ tagRegistry: [...s.tagRegistry, tag] }));
+        }
+        if (affectedTaskIds.length > 0) {
+          dbBulkAddTags(affectedTaskIds, [tag]);
+          set(s => ({
+            tasks: patchTasks(s.tasks, affectedTaskIds, t => ({ tags: Array.from(new Set([...t.tags, tag])) })),
+          }));
+        }
+      },
+    });
   },
 
   allCategories() {

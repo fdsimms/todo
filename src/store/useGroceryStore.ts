@@ -1429,6 +1429,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   clearList() {
     const before = get().items;
+    const beforeItemShops = get().itemShops;
     const ids = dbClearGroceryList();
     if (ids.length === 0) return 0;
     const cleared = new Set(ids);
@@ -1438,12 +1439,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // provisional row (never in the catalog before this trip) is gone —
     // dbClearGroceryList already deleted it, so drop it here too rather than
     // reviving it as a catalog entry.
-    const deleted = new Set(before.filter(i => cleared.has(i.id) && !i.inCatalog).map(i => i.id));
+    const deleted = before.filter(i => cleared.has(i.id) && !i.inCatalog);
+    const deletedIds = new Set(deleted.map(i => i.id));
+    const deletedItemShops = beforeItemShops.filter(l => deletedIds.has(l.itemId));
+    const parked = before.filter(i => cleared.has(i.id) && i.inCatalog);
     set(s => ({
       items: s.items
-        .filter(i => !deleted.has(i.id))
+        .filter(i => !deletedIds.has(i.id))
         .map(i => (cleared.has(i.id) ? { ...i, onList: false, checked: false } : i)),
-      itemShops: s.itemShops.filter(l => !deleted.has(l.itemId)),
+      itemShops: s.itemShops.filter(l => !deletedIds.has(l.itemId)),
       cartHoldIds: [],
     }));
     // A trip whose list just went away is over. The other terminator is
@@ -1451,6 +1455,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // finishShopping — that one early-returns on an empty trolley, and ending
     // the trip must not be conditional on having bought something.
     get().endTrip();
+    get().setLastAction({
+      label: 'Cleared the list',
+      undo: () => {
+        const parkedById = new Map(parked.map(item => [item.id, item]));
+        deleted.forEach(item => dbInsertGroceryItem(item));
+        parked.forEach(item => dbUpdateGroceryItem(item));
+        set(s => ({
+          items: [...s.items.map(i => parkedById.get(i.id) ?? i), ...deleted],
+          itemShops: [...s.itemShops, ...deletedItemShops],
+        }));
+      },
+    });
     return ids.length;
   },
 
