@@ -4,9 +4,11 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { RecurrenceType } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, interaction, type Colors } from '../theme';
-import { recurrenceUnitLabel } from '../utils/recurrenceLabels';
+import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { ORDINAL_OPTIONS, recurrenceUnitLabel } from '../utils/recurrenceLabels';
 import { WeekdaySelector } from './WeekdaySelector';
+import { CountStepper } from './CountStepper';
+import { haptics } from '../utils/haptics';
 import { ordinal } from '../utils/ordinal';
 
 export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
@@ -17,14 +19,11 @@ export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   yearly: 'Yearly',
 };
 
-// Nth-weekday-of-month picker options ("every 2nd Tuesday", "every last Friday").
-export const ORDINAL_OPTIONS: { value: number; label: string }[] = [
-  { value: 1, label: '1st' },
-  { value: 2, label: '2nd' },
-  { value: 3, label: '3rd' },
-  { value: 4, label: '4th' },
-  { value: -1, label: 'Last' },
-];
+// Every N days/weeks/… — 99 is well past any real schedule, and a stepper
+// needs a ceiling. The occurrence count gets a looser one: "after 200 times"
+// is an ordinary way to bound a daily habit.
+const MAX_INTERVAL = 99;
+const MAX_COUNT = 999;
 
 // WeekdaySelector toggles a day in/out of an array; the Nth-weekday-of-month
 // picker needs exactly one day selected at a time, so this wraps its
@@ -88,6 +87,43 @@ interface Props {
   endDate?: EndDateProps;
 }
 
+/** One option in a closed set — the type, the monthly anchor, the end mode. */
+function OptionPill({
+  label, selected, onPress, styles,
+}: { label: string; selected: boolean; onPress: () => void; styles: Styles }) {
+  return (
+    <TouchableOpacity
+      style={[styles.pill, selected && styles.pillActive]}
+      onPress={() => { haptics.tap(); onPress(); }}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={label}
+    >
+      <Text style={[styles.pillText, selected && styles.pillTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * One labelled block of the rule. Every block but the first states its own
+ * name, because unlabelled pill rows stacked four deep read as one field of
+ * blue-and-grey blobs — which is the whole reason this section was hard to
+ * scan. The first block needs no label: the "Repeat" row sits directly above
+ * it and names it.
+ */
+function Group({
+  label, hint, first, styles, children,
+}: { label?: string; hint?: string; first?: boolean; styles: Styles; children: React.ReactNode }) {
+  return (
+    <View style={[styles.group, first && styles.groupFirst]}>
+      {!!label && <Text style={styles.groupLabel}>{label}</Text>}
+      {children}
+      {!!hint && <Text style={styles.groupHint}>{hint}</Text>}
+    </View>
+  );
+}
+
 /**
  * The recurrence rule picker shared by TaskEditor and TemplateItemEditor:
  * daily/weekly/monthly/yearly type pills, the "Every N <unit>" interval
@@ -95,6 +131,12 @@ interface Props {
  * due date / on a day / last day / on a weekday), the day-of-month stepper,
  * the on-schedule/after-completion pills, and the ends never/date/count
  * pills with the occurrence-count stepper.
+ *
+ * Those are six independent settings, so the controls are cut into labelled
+ * groups separated by hairlines rather than run together as one column of
+ * pill rows — see `Group`. The read-back for the whole rule is the Repeat
+ * row's own value (`describeRecurrence`), which is why there's no summary
+ * line in here: it would be the same sentence twice, 40pt apart.
  *
  * Callers own all the state — this component is pure render + callbacks —
  * because TaskEditor and TemplateItemEditor each fold recurrence into their
@@ -123,260 +165,238 @@ export function RecurrencePicker({
   const endMode: 'never' | 'date' | 'count' =
     endDate?.value ? 'date' : recurrenceCount !== null ? 'count' : 'never';
 
+  const monthDaySelected = recurrenceMonthDay !== null && recurrenceMonthDay > 0;
+  const sameDayAsDue = recurrenceMonthDay === null && (weekOrdinal ? weekOrdinal.value === null : true);
+
   return (
     <>
-      <View style={styles.pillRow}>
-        {(['daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[]).map(type => (
-          <TouchableOpacity
-            key={type}
-            style={[styles.pill, recurrenceType === type && styles.pillActive]}
-            onPress={() => onChangeType(type)}
-          >
-            <Text style={[styles.pillText, recurrenceType === type && styles.pillTextActive]}>
-              {RECURRENCE_LABELS[type]}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      <View style={styles.intervalRow}>
-        <Text style={styles.intervalLabel}>Every</Text>
-        <TouchableOpacity
-          style={styles.intervalBtn}
-          onPress={() => onChangeInterval(Math.max(1, recurrenceInterval - 1))}
-          accessibilityRole="button"
-          accessibilityLabel="Decrease recurrence interval"
-        >
-          <Ionicons name="remove" size={16} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.intervalValue}>{recurrenceInterval}</Text>
-        <TouchableOpacity
-          style={styles.intervalBtn}
-          onPress={() => onChangeInterval(recurrenceInterval + 1)}
-          accessibilityRole="button"
-          accessibilityLabel="Increase recurrence interval"
-        >
-          <Ionicons name="add" size={16} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.intervalLabel}>{recurrenceUnitLabel(recurrenceType, recurrenceInterval)}</Text>
-      </View>
-      {recurrenceType === 'weekly' && (
-        <View style={styles.weekdayRow}>
-          <WeekdaySelector value={recurrenceDays} onChange={onChangeDays} />
-        </View>
-      )}
-      {recurrenceType === 'monthly' && (
+      <Group first styles={styles}>
         <View style={styles.pillRow}>
-          <TouchableOpacity
-            style={[styles.pill, recurrenceMonthDay === null && (weekOrdinal ? weekOrdinal.value === null : true) && styles.pillActive]}
-            onPress={() => { onChangeMonthDay(null); weekOrdinal?.onChange(null); }}
-          >
-            <Text style={[styles.pillText, recurrenceMonthDay === null && (weekOrdinal ? weekOrdinal.value === null : true) && styles.pillTextActive]}>
-              Same day as due date
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.pill, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.pillActive]}
-            onPress={() => {
-              weekOrdinal?.onChange(null);
-              onChangeMonthDay(recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : seedMonthDay());
-            }}
-          >
-            <Text style={[styles.pillText, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.pillTextActive]}>
-              On a day
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.pill, recurrenceMonthDay === -1 && styles.pillActive]}
-            onPress={() => { weekOrdinal?.onChange(null); onChangeMonthDay(-1); }}
-          >
-            <Text style={[styles.pillText, recurrenceMonthDay === -1 && styles.pillTextActive]}>
-              Last day
-            </Text>
-          </TouchableOpacity>
-          {weekOrdinal && (
-            <TouchableOpacity
-              style={[styles.pill, weekOrdinal.value !== null && styles.pillActive]}
-              onPress={() => {
-                onChangeMonthDay(null);
-                weekOrdinal.onChange(weekOrdinal.value ?? 1);
-                if (recurrenceDays.length === 0) onChangeDays([weekOrdinal.seedWeekday()]);
-              }}
-            >
-              <Text style={[styles.pillText, weekOrdinal.value !== null && styles.pillTextActive]}>
-                On a weekday
-              </Text>
-            </TouchableOpacity>
-          )}
+          {(['daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[]).map(type => (
+            <OptionPill
+              key={type}
+              label={RECURRENCE_LABELS[type]}
+              selected={recurrenceType === type}
+              onPress={() => onChangeType(type)}
+              styles={styles}
+            />
+          ))}
         </View>
-      )}
-      {recurrenceType === 'monthly' && recurrenceMonthDay !== null && recurrenceMonthDay > 0 && (
-        <View style={styles.intervalRow}>
-          <Text style={styles.intervalLabel}>On the</Text>
-          <TouchableOpacity
-            style={styles.intervalBtn}
-            onPress={() => onChangeMonthDay(Math.max(1, recurrenceMonthDay - 1))}
-            accessibilityRole="button"
-            accessibilityLabel="Decrease day of month"
-          >
-            <Ionicons name="remove" size={16} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.intervalValue}>{ordinal(recurrenceMonthDay)}</Text>
-          <TouchableOpacity
-            style={styles.intervalBtn}
-            onPress={() => onChangeMonthDay(Math.min(31, recurrenceMonthDay + 1))}
-            accessibilityRole="button"
-            accessibilityLabel="Increase day of month"
-          >
-            <Ionicons name="add" size={16} color={colors.text} />
-          </TouchableOpacity>
+        <View style={styles.stepperRow}>
+          <Text style={styles.stepperLabel}>Every</Text>
+          <CountStepper
+            value={recurrenceInterval}
+            onChange={n => onChangeInterval(n ?? 1)}
+            min={1}
+            max={MAX_INTERVAL}
+            label="Repeat interval"
+          />
+          <Text style={styles.stepperLabel}>{recurrenceUnitLabel(recurrenceType, recurrenceInterval)}</Text>
         </View>
+      </Group>
+
+      {recurrenceType === 'weekly' && (
+        <Group label="On these days" styles={styles}>
+          <WeekdaySelector value={recurrenceDays} onChange={onChangeDays} />
+        </Group>
       )}
-      {weekOrdinal && recurrenceType === 'monthly' && weekOrdinal.value !== null && (
-        <>
+
+      {recurrenceType === 'monthly' && (
+        <Group label="On which day" styles={styles}>
           <View style={styles.pillRow}>
-            {ORDINAL_OPTIONS.map(({ value, label }) => (
-              <TouchableOpacity
-                key={value}
-                style={[styles.pill, weekOrdinal.value === value && styles.pillActive]}
-                onPress={() => weekOrdinal.onChange(value)}
-              >
-                <Text style={[styles.pillText, weekOrdinal.value === value && styles.pillTextActive]}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <OptionPill
+              label="Same day as due date"
+              selected={sameDayAsDue}
+              onPress={() => { onChangeMonthDay(null); weekOrdinal?.onChange(null); }}
+              styles={styles}
+            />
+            <OptionPill
+              label="On a day"
+              selected={monthDaySelected}
+              onPress={() => {
+                weekOrdinal?.onChange(null);
+                onChangeMonthDay(monthDaySelected ? recurrenceMonthDay : seedMonthDay());
+              }}
+              styles={styles}
+            />
+            <OptionPill
+              label="Last day"
+              selected={recurrenceMonthDay === -1}
+              onPress={() => { weekOrdinal?.onChange(null); onChangeMonthDay(-1); }}
+              styles={styles}
+            />
+            {weekOrdinal && (
+              <OptionPill
+                label="On a weekday"
+                selected={weekOrdinal.value !== null}
+                onPress={() => {
+                  onChangeMonthDay(null);
+                  weekOrdinal.onChange(weekOrdinal.value ?? 1);
+                  if (recurrenceDays.length === 0) onChangeDays([weekOrdinal.seedWeekday()]);
+                }}
+                styles={styles}
+              />
+            )}
           </View>
-          <View style={styles.weekdayRow}>
-            <WeekdaySelector value={recurrenceDays} onChange={onlyNewestWeekday(recurrenceDays, onChangeDays)} />
-          </View>
-        </>
+          {monthDaySelected && (
+            <View style={styles.stepperRow}>
+              <Text style={styles.stepperLabel}>On the</Text>
+              <CountStepper
+                value={recurrenceMonthDay}
+                onChange={n => onChangeMonthDay(n ?? 1)}
+                min={1}
+                max={31}
+                format={ordinal}
+                label="Day of month"
+              />
+            </View>
+          )}
+          {weekOrdinal && weekOrdinal.value !== null && (
+            <>
+              <View style={[styles.pillRow, styles.pillRowSpaced]}>
+                {ORDINAL_OPTIONS.map(({ value, label }) => (
+                  <OptionPill
+                    key={value}
+                    label={label}
+                    selected={weekOrdinal.value === value}
+                    onPress={() => weekOrdinal.onChange(value)}
+                    styles={styles}
+                  />
+                ))}
+              </View>
+              <View style={styles.weekdayRow}>
+                <WeekdaySelector value={recurrenceDays} onChange={onlyNewestWeekday(recurrenceDays, onChangeDays)} />
+              </View>
+            </>
+          )}
+        </Group>
       )}
-      <View style={styles.pillRow}>
-        <TouchableOpacity
-          style={[styles.pill, !recurrenceFromCompletion && styles.pillActive]}
-          onPress={() => onChangeFromCompletion(false)}
-        >
-          <Text style={[styles.pillText, !recurrenceFromCompletion && styles.pillTextActive]}>
-            On schedule
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.pill, recurrenceFromCompletion && styles.pillActive]}
-          onPress={() => onChangeFromCompletion(true)}
-        >
-          <Text style={[styles.pillText, recurrenceFromCompletion && styles.pillTextActive]}>
-            After completion
-          </Text>
-        </TouchableOpacity>
-      </View>
-      <View style={styles.pillRow}>
-        {endDate && <Text style={[styles.intervalLabel, styles.endsLabel]}>Ends</Text>}
-        <TouchableOpacity
-          style={[styles.pill, endMode === 'never' && styles.pillActive]}
-          onPress={onSelectEndNever}
-        >
-          <Text style={[styles.pillText, endMode === 'never' && styles.pillTextActive]}>
-            {neverEndsLabel}
-          </Text>
-        </TouchableOpacity>
-        {endDate && (
-          <TouchableOpacity
-            style={[styles.pill, endMode === 'date' && styles.pillActive]}
-            onPress={endDate.onSelect}
-          >
-            <Text style={[styles.pillText, endMode === 'date' && styles.pillTextActive]}>
-              On date
-            </Text>
-          </TouchableOpacity>
+
+      <Group
+        label="Next due date"
+        hint="After completion counts from the day you tick it off, so a late task moves the whole schedule."
+        styles={styles}
+      >
+        <View style={styles.pillRow}>
+          <OptionPill
+            label="On schedule"
+            selected={!recurrenceFromCompletion}
+            onPress={() => onChangeFromCompletion(false)}
+            styles={styles}
+          />
+          <OptionPill
+            label="After completion"
+            selected={recurrenceFromCompletion}
+            onPress={() => onChangeFromCompletion(true)}
+            styles={styles}
+          />
+        </View>
+      </Group>
+
+      <Group label="Ends" styles={styles}>
+        <View style={styles.pillRow}>
+          <OptionPill
+            label={neverEndsLabel}
+            selected={endMode === 'never'}
+            onPress={onSelectEndNever}
+            styles={styles}
+          />
+          {endDate && (
+            <OptionPill
+              label="On date"
+              selected={endMode === 'date'}
+              onPress={endDate.onSelect}
+              styles={styles}
+            />
+          )}
+          <OptionPill
+            label={afterCountLabel}
+            selected={endMode === 'count'}
+            onPress={onSelectEndCount}
+            styles={styles}
+          />
+        </View>
+        {endDate && endMode === 'date' && endDate.value && (
+          <View style={styles.stepperRow}>
+            <TouchableOpacity
+              style={styles.endDateChip}
+              onPress={() => { haptics.tap(); endDate.onOpenPicker(); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Ends on ${format(endDate.value, 'MMMM d, yyyy')}. Change`}
+            >
+              <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
+              <Text style={styles.endDateChipText}>{format(endDate.value, 'MMM d, yyyy')}</Text>
+            </TouchableOpacity>
+          </View>
         )}
-        <TouchableOpacity
-          style={[styles.pill, endMode === 'count' && styles.pillActive]}
-          onPress={onSelectEndCount}
-        >
-          <Text style={[styles.pillText, endMode === 'count' && styles.pillTextActive]}>
-            {afterCountLabel}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      {endDate && endMode === 'date' && endDate.value && (
-        <View style={styles.endDateRow}>
-          <TouchableOpacity
-            style={styles.endDateChip}
-            onPress={endDate.onOpenPicker}
-            activeOpacity={interaction.activeOpacity}
-          >
-            <Ionicons name="calendar-outline" size={14} color={colors.accent} />
-            <Text style={styles.endDateChipText}>{format(endDate.value, 'MMM d, yyyy')}</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      {endMode === 'count' && (
-        <View style={styles.intervalRow}>
-          <Text style={styles.intervalLabel}>After</Text>
-          <TouchableOpacity
-            style={styles.intervalBtn}
-            onPress={() => onChangeCount(c => Math.max(1, (c ?? 1) - 1))}
-            accessibilityRole="button"
-            accessibilityLabel="Decrease occurrence count"
-          >
-            <Ionicons name="remove" size={16} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.intervalValue}>{recurrenceCount ?? 1}</Text>
-          <TouchableOpacity
-            style={styles.intervalBtn}
-            onPress={() => onChangeCount(c => (c ?? 0) + 1)}
-            accessibilityRole="button"
-            accessibilityLabel="Increase occurrence count"
-          >
-            <Ionicons name="add" size={16} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.intervalLabel}>{countUnitLabel(recurrenceCount ?? 1)}</Text>
-        </View>
-      )}
+        {endMode === 'count' && (
+          <View style={styles.stepperRow}>
+            <CountStepper
+              value={recurrenceCount ?? 1}
+              onChange={n => onChangeCount(n ?? 1)}
+              min={1}
+              max={MAX_COUNT}
+              label="Occurrence count"
+            />
+            <Text style={styles.stepperLabel}>{countUnitLabel(recurrenceCount ?? 1)}</Text>
+          </View>
+        )}
+      </Group>
     </>
   );
 }
 
+type Styles = ReturnType<typeof makeStyles>;
+
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  group: {
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm + spacing.xs,
+    borderTopWidth: border.thin, borderTopColor: colors.separator,
+  },
+  // The Repeat row is its own separator, and there's nothing above the group
+  // to divide it from.
+  groupFirst: { borderTopWidth: 0, paddingTop: 2 },
+  // The app-wide section-header treatment (see the note in CLAUDE.md on
+  // uppercase headers), so a group inside the card labels itself the same way
+  // a group of cards does.
+  groupLabel: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.bold,
+    textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
+  },
+  groupHint: {
+    color: colors.textTertiary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.sm,
+  },
   pillRow: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs + 2,
     // Without an explicit width, a wrapping row's own width is sized to fit
-    // its content rather than stretched to the sheet's width — so it never
+    // its content rather than stretched to the group's width — so it never
     // hits a boundary to wrap against and just runs past the card's edge
     // instead (clipped there by the card's `overflow: hidden`). This row is
     // usually short enough not to show it, but the monthly day-anchor row
     // (four pills, one of them long) is wide enough to need the wrap.
     alignSelf: 'stretch',
   },
+  pillRowSpaced: { marginTop: spacing.sm + 2 },
   pill: {
-    paddingHorizontal: 12, paddingVertical: 5,
+    paddingHorizontal: 14, minHeight: interaction.pillHeight,
+    alignItems: 'center', justifyContent: 'center',
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
   pillActive: { backgroundColor: colors.accent },
-  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  pillTextActive: { color: colors.bg },
-  intervalRow: {
+  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+  stepperRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+    marginTop: spacing.sm + 2,
   },
-  intervalLabel: { color: colors.textSecondary, fontSize: font.sm },
-  intervalBtn: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center',
-  },
-  intervalValue: {
-    color: colors.text, fontSize: font.md, fontWeight: '600',
-    minWidth: 24, textAlign: 'center',
-  },
-  weekdayRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
-  endsLabel: { marginRight: spacing.xs },
-  endDateRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
+  stepperLabel: { color: colors.textSecondary, fontSize: font.md },
+  weekdayRow: { marginTop: spacing.sm + 2 },
   endDateChip: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
     alignSelf: 'flex-start',
-    paddingHorizontal: 12, paddingVertical: 7,
+    paddingHorizontal: 14, minHeight: interaction.pillHeight,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
-  endDateChipText: { color: colors.accent, fontSize: font.sm, fontWeight: '500' },
+  endDateChipText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium },
 });

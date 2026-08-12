@@ -71,7 +71,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { BlockerPickerSheet } from './BlockerPickerSheet';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { RecurrencePicker } from './RecurrencePicker';
-import { recurrenceUnitLabel } from '../utils/recurrenceLabels';
+import { describeRecurrence } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 
 /** Pre-filled values carried over from the quick add modal when creating a new task. */
@@ -133,10 +133,6 @@ const DURATION_PRESETS = [5, 10, 15, 25, 30, 45, 60] as const;
 // whether it's read in the expanded row or in this editor.
 const SUBTASK_CHECKBOX_SIZE = 16;
 
-function formatRecurrenceSummary(type: RecurrenceType, interval: number): string {
-  if (type === 'none') return '';
-  return `Every ${interval} ${recurrenceUnitLabel(type, interval)}`;
-}
 
 export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const addTask = useTaskStore(s => s.addTask);
@@ -2546,7 +2542,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               icon="repeat"
               label="Repeat"
               hint="Come back on a schedule after each completion"
-              value={recurrenceType !== 'none' ? formatRecurrenceSummary(recurrenceType, recurrenceInterval) : undefined}
+              // The picker has no read-back line of its own — this row, sitting
+              // directly above it, is where the whole rule reads as a sentence.
+              value={recurrenceType !== 'none' ? describeRecurrence({
+                type: recurrenceType,
+                interval: recurrenceInterval,
+                days: recurrenceDays,
+                monthDay: recurrenceMonthDay,
+                weekOrdinal: recurrenceWeekOrdinal,
+              }) : undefined}
               onPress={enableRecurrence}
               onClear={recurrenceType !== 'none' ? () => setRecurrenceType('none') : undefined}
             />
