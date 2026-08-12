@@ -134,6 +134,8 @@ export type PullEmptyReason =
   | 'vacation'
   /** No unarchived projects to pull from at all. */
   | 'no-projects'
+  /** nudgeOptIn is false — the project is excluded from every nudge surface. */
+  | 'nudge-excluded'
   /** nudgeCadenceDays is 0 — the project has never been opted in. */
   | 'cadence-off'
   /** Stalled, but on auto-schedule, so the drip handles it instead. */
@@ -247,6 +249,12 @@ function classifyProject(
   todayStart: Date,
   mode: StallMode,
 ): ProjectVerdict {
+  // Excluded from every nudge surface, in both modes — unlike cadenceDays
+  // below, this isn't softened for a sheet the user opened by hand. A
+  // reference list ("Gift ideas") is never a candidate to pull into today,
+  // whether the app suggests it or the user goes looking.
+  if (!project.nudgeOptIn) return { reason: 'nudge-excluded' };
+
   // 0 means "don't bring this up unasked", for a project deliberately parked —
   // not a degenerate cadence. It silences the volunteered surfaces only; see
   // StallMode for why a sheet the user opened themselves ignores it.
@@ -445,6 +453,7 @@ export function suggestPullDate(
  * needs no action at all.
  */
 const REASON_PRIORITY: readonly PullEmptyReason[] = [
+  'nudge-excluded',
   'cadence-off',
   'too-soon',
   'declined-today',
@@ -529,6 +538,10 @@ export function describePullEmpty(state: PullEmptyState): string {
       return 'Vacation mode is on — project nudges are paused until you turn it off.';
     case 'no-projects':
       return 'No projects yet. Tasks filed under one can be pulled in from here.';
+    case 'nudge-excluded':
+      return count === total
+        ? 'No project is included in nudges yet. Open a project and turn on “Include in nudges” to have it show up here.'
+        : `${projects(count)} of ${total} aren't included in nudges — turn on “Include in nudges” on one to have it show up here.${rest}`;
     case 'cadence-off':
       return count === total
         ? 'No project is set to be nudged yet. Open a project and set “Nudge me” to have it show up here.'

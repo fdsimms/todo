@@ -1,0 +1,4 @@
+{
+  "message": "Projects now stay out of nudges by default — the gone-quiet banner, the auto-schedule drip, and \"Pull from projects\" all skip a project until you turn on \"Include in nudges\" in its editor. If a project was already showing up there, switch it back on.",
+  "date": "2026-08-12"
+}

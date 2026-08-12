@@ -126,6 +126,15 @@ export interface Project {
   // happen to share a project is the normal case and gating it would hide work
   // the user never asked to have hidden.
   sequential: boolean;
+  // Off by default: a project has to be explicitly opted in before it can
+  // appear in ANY nudge surface — the gone-quiet banner, the auto-schedule
+  // drip, and even the manually-opened "Pull from projects" sheet (see
+  // classifyProject in utils/projectPull.ts, which gates on this ahead of
+  // every other rule, in both modes). A reference list like "Gift ideas" is
+  // never going to want a due date; without this, the only way to keep it
+  // quiet was nudgeCadenceDays === 0, which only silenced the unprompted
+  // surfaces and still showed up the moment someone opened the Pull sheet.
+  nudgeOptIn: boolean;
 }
 
 // Fallback cadence for a project row written before the nudge columns existed,
