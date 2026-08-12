@@ -120,7 +120,7 @@ type PickerMode = 'none' | 'reminder';
 type DraftSubtask = { id: string; title: string; completed: boolean };
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'timeSpent' | 'subtasks' | 'chainSteps';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -234,8 +234,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [effortNote, setEffortNote] = useState<string | null>(null);
   const [segmentNote, setSegmentNote] = useState<string | null>(null);
   const [actualMinutes, setActualMinutes] = useState<number | null>(null);
-  const [logTimeText, setLogTimeText] = useState('');
-  const [logTimeUnit, setLogTimeUnit] = useState<'min' | 'hr'>('min');
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
   const [durationText, setDurationText] = useState('');
   const [durationUnit, setDurationUnit] = useState<'min' | 'hr'>('min');
@@ -410,7 +408,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setAiLoading(false);
     setOpenFields({}); setShowTimeOfDay(false); setShowTimeWindow(false);
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
-    setLogTimeText(''); setLogTimeUnit('min');
     setDurationText(''); setDurationUnit('min');
     setEffortNote(null);
     setSegmentNote(null);
@@ -827,18 +824,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   // Opening "Time spent" drops you straight into the input, so prefill it from
   // whatever is already logged before the section unfolds.
-  const toggleTimeSpent = () => {
-    if (!fieldOpen('timeSpent')) {
-      if (actualMinutes != null && actualMinutes % 60 === 0) {
-        setLogTimeUnit('hr');
-        setLogTimeText(String(actualMinutes / 60));
-      } else {
-        setLogTimeUnit('min');
-        setLogTimeText(actualMinutes != null ? String(actualMinutes) : '');
-      }
-    }
-    toggleField('timeSpent');
-  };
 
   // Same prefill dance for Duration — open it and the current target is already
   // in the input, ready to be edited rather than retyped.
@@ -943,12 +928,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     const raw = title.trim() || task.title;
     if (!raw) return;
     Alert.alert(
-      'Send to groceries?',
+      'Convert to grocery item?',
       `“${raw}” moves to your grocery list, and this task is deleted.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Send',
+          text: 'Convert',
           onPress: () => {
             useGroceryStore.getState().addByName(raw);
             deleteTask(task.id);
@@ -1192,19 +1177,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setEffort(minutesToEffort(minutes));
   };
 
-  // Manually log how long the task actually took. The measured time becomes the
-  // recorded actual and also drives the estimate/effort, matching the stopwatch.
-  const applyLoggedTime = (text: string, unit: 'min' | 'hr') => {
-    const n = parseFloat(text);
-    if (!Number.isFinite(n) || n <= 0) {
-      setActualMinutes(null);
-      return;
-    }
-    const minutes = Math.max(1, Math.round(unit === 'hr' ? n * 60 : n));
-    setActualMinutes(minutes);
-    setEstimatedMinutes(minutes);
-    setEffort(minutesToEffort(minutes));
-  };
 
   // The countdown target. Unlike logged time this deliberately leaves the
   // estimate alone — how long you mean to sit with a task and how long the task
@@ -2659,6 +2631,118 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       />
 
       {/* Priority + Effort */}
+      {/* Subtasks — its own card rather than a row inside "Priority & effort", which it
+          was never about — and a plain card rather than an EditorGroup,
+          because a group caption reading SUBTASKS above a field also reading
+          SUBTASKS is the same name twice. The field's own label is the
+          section heading, and its "2/5 done" summary is what a fold would
+          otherwise cost. */}
+      <View style={styles.optionsCard}>
+        <CollapsibleField
+          label="Subtasks"
+          summary={subtasks.length > 0 ? `${subtasks.filter(s => s.completed).length}/${subtasks.length} done` : undefined}
+          emptySummary="None"
+          expanded={fieldOpen('subtasks', subtasks.length > 0)}
+          onToggle={() => toggleField('subtasks', subtasks.length > 0)}
+        >
+          <SortableList
+            onDragStateChange={setDraggingRow}
+            data={subtasks}
+            onReorder={(newData) => reorderDraftSubtasks(newData.map(s => s.id))}
+            renderItem={(sub, _i, drag) => (
+              <View style={styles.subtaskRow}>
+                <TouchableOpacity
+                  onPress={() => toggleDraftSubtask(sub.id)}
+                  hitSlop={6}
+                  style={styles.subtaskCheck}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={sub.title}
+                  accessibilityState={{ checked: sub.completed }}
+                >
+                  <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
+                    {sub.completed && (
+                      <Ionicons name="checkmark" size={11} color={colors.onAccent} />
+                    )}
+                  </View>
+                  </TouchableOpacity>
+                  {editingSubtaskId === sub.id ? (
+                    <TextInput
+                      ref={subtaskTitleEditRef}
+                      style={styles.subtaskTitleInput}
+                      value={subtaskTitleEdit}
+                      onChangeText={setSubtaskTitleEdit}
+                      onBlur={() => saveSubtaskTitle(sub)}
+                      onSubmitEditing={() => saveSubtaskTitle(sub)}
+                      returnKeyType="done"
+                      maxLength={TITLE_MAX_LENGTH}
+                      blurOnSubmit
+                      autoFocus
+                    />
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.subtaskTitleWrapper}
+                      onPress={() => handleSubtaskTitleTap(sub)}
+                      activeOpacity={interaction.activeOpacity}
+                      hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
+                    >
+                      <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
+                        {sub.title}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    onLongPress={drag}
+                    delayLongPress={150}
+                    hitSlop={8}
+                    style={styles.dragHandle}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Reorder subtask ${sub.title}`}
+                  >
+                    <Ionicons name="reorder-three" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => deleteDraftSubtask(sub.id)}
+                    hitSlop={8}
+                    style={styles.subtaskDelete}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete subtask ${sub.title}`}
+                  >
+                    <Ionicons name="close" size={14} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            />
+            {/* Always here, pinned at the end of the list — adding a subtask is a
+                burst, not a one-off edit gated behind a button tap. */}
+            <View style={styles.subtaskInputRow}>
+              {/* An empty copy of the row checkbox, so the field being typed
+                  into lines up with the subtasks above it. */}
+              <View style={styles.subtaskCheck}>
+                <View style={styles.subtaskBox} />
+              </View>
+              <TextInput
+                style={styles.subtaskInput}
+                value={newSubtaskTitle}
+                onChangeText={setNewSubtaskTitle}
+                placeholder="Add subtask"
+                placeholderTextColor={colors.textSecondary}
+                maxLength={TITLE_MAX_LENGTH}
+                returnKeyType="next"
+                // Adding subtasks is a burst, not one edit: submitting keeps
+                // the field focused so the keyboard never drops between them.
+                // This used to blur on submit and refocus on a 50ms timer,
+                // which dismissed and reopened the keyboard on every entry.
+                blurOnSubmit={false}
+                onSubmitEditing={() => {
+                  commitSubtask(newSubtaskTitle);
+                  setNewSubtaskTitle('');
+                }}
+                onBlur={() => commitPendingSubtask()}
+              />
+            </View>
+          </CollapsibleField>
+      </View>
+
       <EditorGroup
         label="Priority & effort"
         divider="full"
@@ -2780,165 +2864,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'subtasks', label: 'Subtasks', primary: true, set: subtasks.length > 0,
-            node: (
-              <>
-            <CollapsibleField
-              label="Subtasks"
-              summary={subtasks.length > 0 ? `${subtasks.filter(s => s.completed).length}/${subtasks.length} done` : undefined}
-              emptySummary="None"
-              expanded={fieldOpen('subtasks', subtasks.length > 0)}
-              onToggle={() => toggleField('subtasks', subtasks.length > 0)}
-            >
-              <SortableList
-                onDragStateChange={setDraggingRow}
-                data={subtasks}
-                onReorder={(newData) => reorderDraftSubtasks(newData.map(s => s.id))}
-                renderItem={(sub, _i, drag) => (
-                  <View style={styles.subtaskRow}>
-                    <TouchableOpacity
-                      onPress={() => toggleDraftSubtask(sub.id)}
-                      hitSlop={6}
-                      style={styles.subtaskCheck}
-                      accessibilityRole="checkbox"
-                      accessibilityLabel={sub.title}
-                      accessibilityState={{ checked: sub.completed }}
-                    >
-                      <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
-                        {sub.completed && (
-                          <Ionicons name="checkmark" size={11} color={colors.onAccent} />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                    {editingSubtaskId === sub.id ? (
-                      <TextInput
-                        ref={subtaskTitleEditRef}
-                        style={styles.subtaskTitleInput}
-                        value={subtaskTitleEdit}
-                        onChangeText={setSubtaskTitleEdit}
-                        onBlur={() => saveSubtaskTitle(sub)}
-                        onSubmitEditing={() => saveSubtaskTitle(sub)}
-                        returnKeyType="done"
-                        maxLength={TITLE_MAX_LENGTH}
-                        blurOnSubmit
-                        autoFocus
-                      />
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.subtaskTitleWrapper}
-                        onPress={() => handleSubtaskTitleTap(sub)}
-                        activeOpacity={interaction.activeOpacity}
-                        hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
-                      >
-                        <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
-                          {sub.title}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                    <TouchableOpacity
-                      onLongPress={drag}
-                      delayLongPress={150}
-                      hitSlop={8}
-                      style={styles.dragHandle}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Reorder subtask ${sub.title}`}
-                    >
-                      <Ionicons name="reorder-three" size={18} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => deleteDraftSubtask(sub.id)}
-                      hitSlop={8}
-                      style={styles.subtaskDelete}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Delete subtask ${sub.title}`}
-                    >
-                      <Ionicons name="close" size={14} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              />
-              {/* Always here, pinned at the end of the list — adding a subtask is a
-                  burst, not a one-off edit gated behind a button tap. */}
-              <View style={styles.subtaskInputRow}>
-                {/* An empty copy of the row checkbox, so the field being typed
-                    into lines up with the subtasks above it. */}
-                <View style={styles.subtaskCheck}>
-                  <View style={styles.subtaskBox} />
-                </View>
-                <TextInput
-                  style={styles.subtaskInput}
-                  value={newSubtaskTitle}
-                  onChangeText={setNewSubtaskTitle}
-                  placeholder="Add subtask"
-                  placeholderTextColor={colors.textSecondary}
-                  maxLength={TITLE_MAX_LENGTH}
-                  returnKeyType="next"
-                  // Adding subtasks is a burst, not one edit: submitting keeps
-                  // the field focused so the keyboard never drops between them.
-                  // This used to blur on submit and refocus on a 50ms timer,
-                  // which dismissed and reopened the keyboard on every entry.
-                  blurOnSubmit={false}
-                  onSubmitEditing={() => {
-                    commitSubtask(newSubtaskTitle);
-                    setNewSubtaskTitle('');
-                  }}
-                  onBlur={() => commitPendingSubtask()}
-                />
-              </View>
-            </CollapsibleField>
-              </>
-            ),
-          },
-          {
-            key: 'timeSpent', label: 'Time spent', set: actualMinutes !== null,
-            node: (
-              <>
-          <CollapsibleField
-            label="Time spent"
-            summary={actualMinutes != null ? formatDuration(actualMinutes) : undefined}
-            emptySummary="Not logged"
-            hint="How long it actually took. Time it with the stopwatch on the task's row, or log it here — either way it also sets the estimate."
-            expanded={fieldOpen('timeSpent')}
-            onToggle={toggleTimeSpent}
-          >
-            <View style={styles.customEffortRow}>
-              <TextInput
-                style={styles.customEffortInput}
-                value={logTimeText}
-                onChangeText={t => { setLogTimeText(t); applyLoggedTime(t, logTimeUnit); }}
-                keyboardType="number-pad"
-                placeholder="0"
-                placeholderTextColor={colors.textSecondary}
-                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                autoFocus
-              />
-              <View style={styles.unitToggle}>
-                {(['min', 'hr'] as const).map(u => (
-                  <TouchableOpacity
-                    key={u}
-                    style={[styles.unitChip, logTimeUnit === u && styles.unitChipActive]}
-                    onPress={() => { setLogTimeUnit(u); applyLoggedTime(logTimeText, u); }}
-                  >
-                    <Text style={[styles.unitChipText, logTimeUnit === u && styles.unitChipTextActive]}>{u}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </CollapsibleField>
-              </>
-            ),
-          },
-        ]}
-      />
-      {/* Everything else — rarely changed, so it sits last */}
-      <EditorGroup
-        label="More"
-        // Keeps the card open while a contact nudge (below) is steering the
-        // user at the Phone/Email row it's about to reveal — those rows
-        // aren't `set` yet, so the group would otherwise fold right past them.
-        forceOpen={showPhoneNudge || showEmailNudge || showPhoneField || showEmailField}
-        rows={[
-          {
             key: 'pin', label: 'Pin to Today', set: pinned,
             node: (
               <>
@@ -2962,6 +2887,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+        ]}
+      />
+      {/* Ways to act on the task from its row, rather than things about the
+          task itself — the one group here whose rows produce a button on the
+          list rather than changing how the task behaves. */}
+      <EditorGroup
+        label="Task actions"
+        // Keeps the card open while a contact nudge is steering the user at the
+        // Phone/Email row it's about to reveal — those rows aren't `set` yet,
+        // so the group would otherwise fold right past them.
+        forceOpen={showPhoneNudge || showEmailNudge || showPhoneField || showEmailField}
+        rows={[
           {
             key: 'link', label: 'Link', set: !!linkUrl,
             node: (
@@ -3113,6 +3050,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+        ]}
+      />
+
+      {/* Vacation pause sits with the streak rather than under a general
+          "More", because keeping a streak alive through a week away is what
+          it's for. */}
+      <EditorGroup
+        label="Streaks"
+        rows={[
           {
             key: 'vacation', label: 'Vacation pause', set: vacationPause,
             node: (
@@ -3137,67 +3083,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
-          // These carry their own guards, so they contribute no row at all
-          // unless the task is the kind that has them.
-          ...(task && !task.parentId ? [{
-            key: 'groceries', label: 'Send to groceries', set: false,
-            node: (
-              <>
-                <TouchableOpacity
-                  style={styles.optionRow}
-                  onPress={handleSendToGroceries}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel="Send to groceries"
-                >
-                  <Ionicons name="cart-outline" size={18} color={colors.textSecondary} />
-                  <View style={styles.optionContent}>
-                    <Text style={styles.optionLabel}>Send to groceries</Text>
-                    <Text style={styles.optionHint}>
-                      Move this to the grocery list — for a &ldquo;buy milk&rdquo; captured as a task
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </>
-            ),
-          }] : []),
-          // One row for two controls: the archive toggle and the streak-count
-          // editor shared a guard, and both exist only for a saved repeating task.
           ...(task && task.recurrenceType !== 'none' ? [{
-            key: 'archive', label: 'Archive & streak', set: !!task.archived || task.streakCount > 0,
+            key: 'streak', label: 'Streak', set: task.streakCount > 0,
             node: (
               <>
-                <TouchableOpacity
-                  style={styles.optionRow}
-                  onPress={() => {
-                    if (task.archived) {
-                      unarchiveTask(task.id);
-                    } else {
-                      haptics.success();
-                      archiveTask(task.id);
-                      onClose();
-                    }
-                  }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="switch"
-                  accessibilityLabel="Archive"
-                  accessibilityState={{ checked: task.archived }}
-                >
-                  <Ionicons name="archive-outline" size={18} color={task.archived ? colors.accent : colors.textSecondary} />
-                  <View style={styles.optionContent}>
-                    <Text style={styles.optionLabel}>Archive</Text>
-                    <Text style={styles.optionHint}>
-                      {task.archived
-                        ? 'Hidden from every list — resuming resets your streak'
-                        : 'Hide indefinitely, keeping history — find it later in Archived'}
-                    </Text>
-                  </View>
-                  <View style={[styles.toggle, task.archived && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, task.archived && styles.toggleKnobOn]} />
-                  </View>
-                </TouchableOpacity>
-                <View style={styles.sep} />
                 <TouchableOpacity
                   style={styles.optionRow}
                   onPress={() => {
@@ -3279,8 +3168,76 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         ]}
       />
 
+      {/* Gated as a whole, not just its row: its only entry needs a saved
+          top-level task, and EditorGroup with no rows still draws its card. */}
+      {task && !task.parentId && (
+      <EditorGroup
+        label="Convert"
+        rows={[
+          ...(task && !task.parentId ? [{
+            key: 'groceries', label: 'Convert to grocery item', set: false,
+            node: (
+              <>
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={handleSendToGroceries}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel="Convert to grocery item"
+                >
+                  <Ionicons name="cart-outline" size={18} color={colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Convert to grocery item</Text>
+                    <Text style={styles.optionHint}>
+                      Deletes the task and adds it to the grocery list — for a &ldquo;buy milk&rdquo; captured as a task
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </>
+            ),
+          }] : []),
+        ]}
+      />
+      )}
+
+      {/* The two ways a task leaves the list, together and last. Archive was
+          previously gated on the task repeating — collateral from sharing a
+          row with the streak editor, which genuinely is recurrence-only. Any
+          saved task can be archived, and every other entry point already
+          allowed it. */}
       {task && (
         <View style={[styles.optionsCard, { marginTop: spacing.xl }]}>
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => {
+                    if (task.archived) {
+                      unarchiveTask(task.id);
+                    } else {
+                      haptics.success();
+                      archiveTask(task.id);
+                      onClose();
+                    }
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Archive"
+                  accessibilityState={{ checked: task.archived }}
+                >
+                  <Ionicons name="archive-outline" size={18} color={task.archived ? colors.accent : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Archive</Text>
+                    <Text style={styles.optionHint}>
+                      {task.archived
+                        ? 'Hidden from every list — resuming resets your streak'
+                        : 'Hide indefinitely, keeping history — find it later in Archived'}
+                    </Text>
+                  </View>
+                  <View style={[styles.toggle, task.archived && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, task.archived && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+          <View style={styles.sep} />
           <TouchableOpacity style={styles.optionRow} onPress={handleDelete} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="trash-outline" size={18} color={colors.red} />
             <View style={styles.optionContent}>
