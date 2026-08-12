@@ -27,6 +27,7 @@ import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
 import { LogbookBulkBar } from '../components/LogbookBulkBar';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
+import { SelectionDot } from '../components/SelectionDot';
 import { LogbookFilterSheet } from '../components/LogbookFilterSheet';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
@@ -456,9 +457,9 @@ interface RowProps {
 // change re-renders the whole list.
 //
 // Every branch below keeps the row exactly ROW_HEIGHT tall: the leading
-// control swaps its contents rather than its box, and the trailing menu button
-// only comes and goes horizontally. getItemLayout has no way to hear about a
-// row that grew (see the note on ROW_HEIGHT).
+// control swaps its contents rather than its box, and the trailing slot only
+// ever swaps one short control for another. getItemLayout has no way to hear
+// about a row that grew (see the note on ROW_HEIGHT).
 const LogbookRow = React.memo(function LogbookRow({
   task,
   categoryLabel,
@@ -497,14 +498,16 @@ const LogbookRow = React.memo(function LogbookRow({
       }}
     >
       <View ref={paintRef} style={[styles.row, selectionMode && selected && styles.rowSelected]}>
+        {/* Unchanged by selection mode, like TaskItem's — this circle says what
+            happened to the task, and a row picked for a bulk edit must not read
+            as one whose completion state just changed. Selection is the dot at
+            the row's other end. */}
         <TouchableOpacity
           style={[
             styles.checkCircle,
             // A miss still outranks a partial in the border, same as the glyph:
             // no fill to show for zero progress.
-            !selectionMode && partial && !missed && styles.checkCircleQuota,
-            selectionMode && styles.selectCircle,
-            selectionMode && selected && styles.selectCircleOn,
+            partial && !missed && styles.checkCircleQuota,
           ]}
           onPress={() => {
             if (selectionMode) {
@@ -526,9 +529,7 @@ const LogbookRow = React.memo(function LogbookRow({
                 : `Mark ${task.title} as not done`
           }
         >
-          {selectionMode ? (
-            selected && <Ionicons name="checkmark" size={12} color={colors.onAccent} />
-          ) : partial && !missed ? (
+          {partial && !missed ? (
             // Same proportional fill Today's meter uses instead of a flat dash —
             // "6/12" and "1/12" no longer render identically.
             <View
@@ -587,7 +588,12 @@ const LogbookRow = React.memo(function LogbookRow({
             )}
           </View>
         </TouchableOpacity>
-        {!selectionMode && (
+        {selectionMode ? (
+          // Straight into the slot the ⋯ button leaves, so the row's width
+          // budget is unchanged and its fixed height (see ROW_HEIGHT) can't be
+          // disturbed by the swap.
+          <SelectionDot selected={selected} onPress={() => onToggleSelect(task.id)} />
+        ) : (
           <TouchableOpacity
             style={styles.menuButton}
             onPress={() => onOpenMenu(task)}
@@ -730,10 +736,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  // Same box, restated as a selection checkbox — matching TaskItem's circle /
-  // circleSelected so picking rows looks the same wherever you do it.
-  selectCircle: { borderColor: colors.bgQuaternary },
-  selectCircleOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   // A partial quota row's border and fill — matching TaskItem's circleQuota /
   // quotaFill, just painted at rest instead of animated (this is history, not
   // a live meter).

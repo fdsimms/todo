@@ -14,21 +14,29 @@ const rects: PaintRowRect[] = [
   { id: 'c', top: 204, bottom: 252 },
 ];
 
+const WIDTH = 390;
+
 describe('isInPaintGutter', () => {
-  it('claims touches over the checkbox column', () => {
-    expect(isInPaintGutter(0)).toBe(true);
-    expect(isInPaintGutter(34)).toBe(true);
-    expect(isInPaintGutter(58)).toBe(true);
-    expect(isInPaintGutter(PAINT_GUTTER_WIDTH)).toBe(true);
+  it('claims touches over the selection-dot column', () => {
+    expect(isInPaintGutter(WIDTH, WIDTH)).toBe(true);
+    expect(isInPaintGutter(WIDTH - 20, WIDTH)).toBe(true);
+    expect(isInPaintGutter(WIDTH - 54, WIDTH)).toBe(true);
+    expect(isInPaintGutter(WIDTH - PAINT_GUTTER_WIDTH, WIDTH)).toBe(true);
   });
 
   it('leaves touches over the row content to the scroll view', () => {
-    expect(isInPaintGutter(PAINT_GUTTER_WIDTH + 1)).toBe(false);
-    expect(isInPaintGutter(200)).toBe(false);
+    expect(isInPaintGutter(WIDTH - PAINT_GUTTER_WIDTH - 1, WIDTH)).toBe(false);
+    expect(isInPaintGutter(0, WIDTH)).toBe(false);
+    expect(isInPaintGutter(200, WIDTH)).toBe(false);
   });
 
-  it('ignores touches left of the container', () => {
-    expect(isInPaintGutter(-5)).toBe(false);
+  it('ignores touches past the container', () => {
+    expect(isInPaintGutter(WIDTH + 5, WIDTH)).toBe(false);
+    expect(isInPaintGutter(-5, WIDTH)).toBe(false);
+  });
+
+  it('stands down until the container has been measured', () => {
+    expect(isInPaintGutter(300, 0)).toBe(false);
   });
 });
 

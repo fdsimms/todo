@@ -53,6 +53,7 @@ import { WhenPicker } from './WhenPicker';
 import { TaskBreakdownSheet } from './TaskBreakdownSheet';
 import { PressableScale } from './PressableScale';
 import { usePaintSelectionRow } from './PaintSelection';
+import { SelectionDot } from './SelectionDot';
 import { SwipeableRow } from './SwipeableRow';
 import { SortableList } from './SortableList';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
@@ -184,7 +185,7 @@ function describeRecurrence(task: Task): string {
  * Memoized: a task list re-renders its rows on every store mutation, and
  * without this each of those renders is O(all rows) rather than O(the rows
  * that actually changed) — most visible while paint-selecting, where a drag
- * down the checkbox column mutates the selection on every frame.
+ * down the column of selection dots mutates the selection on every frame.
  *
  * The shallow prop compare this relies on is only as good as its callers.
  * Every handler passed in has to be stable across renders (`useCallback`) and
@@ -405,15 +406,6 @@ export const TaskItem = React.memo(function TaskItem({
     outputRange: [1, 1 / CIRCLE_POP_SCALE],
     extrapolate: 'clamp',
   });
-  // Crossfades the checkbox glyph into the selection dot (and back) when bulk
-  // selection toggles. The circle View itself stays mounted across the swap —
-  // LayoutAnimation (see enterSelectionMode/exitSelection in useRowSelection)
-  // only smooths mounts/removes and frame changes, not a style/content swap on
-  // a view that stays put — so without this the content pops instead of
-  // transitioning along with the rest of the row. Seeded at the current mode
-  // so a row that mounts already in selection (e.g. scrolled into view mid
-  // bulk-edit) doesn't play the fade-in it never needed.
-  const selectionSwap = useRef(new Animated.Value(selectionMode ? 1 : 0)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
   // The daily-target meter's level, 0–1. An Animated.Value rather than a height
   // computed straight from progressCount so a logged unit slides up instead of
@@ -628,15 +620,6 @@ export const TaskItem = React.memo(function TaskItem({
   }, [isActive]);
 
   useEffect(() => {
-    if (reduceMotion) { selectionSwap.setValue(selectionMode ? 1 : 0); return; }
-    Animated.timing(selectionSwap, {
-      toValue: selectionMode ? 1 : 0,
-      duration: animation.duration.fast,
-      useNativeDriver: true,
-    }).start();
-  }, [selectionMode]);
-
-  useEffect(() => {
     if (!highlighted || reduceMotion) return;
     highlightOpacity.setValue(0.35);
     Animated.timing(highlightOpacity, {
@@ -793,13 +776,15 @@ export const TaskItem = React.memo(function TaskItem({
   const quotaReturnAt = quotaSettled || isOnPaceQuota(task)
     ? formatHHMM(dateToHHMM(quotaNextDueAt(task)))
     : '';
-  // Selection mode keeps the plain circle so the paint-select gutter behaves
-  // exactly as it does for every other row. A completion that came from the
-  // meter keeps it — the fill topping out *is* that row's animation.
-  const showQuotaMeter = isQuota && !selectionMode && (!completing || quotaCompleting);
+  // A completion that came from the meter keeps it — the fill topping out *is*
+  // that row's animation. Bulk selection doesn't take it away either: the row
+  // says what it always said, and the selection lives on its own control at the
+  // trailing edge (see SelectionDot).
+  const showQuotaMeter = isQuota && (!completing || quotaCompleting);
   // Shown but no longer a meter to tap: once the run-up starts, the control
-  // does what a completing row's checkbox does — undo.
-  const meterInteractive = showQuotaMeter && !completing && !pacingOut;
+  // does what a completing row's checkbox does — undo. Nor while selecting,
+  // where every tap on the row means "pick this one".
+  const meterInteractive = showQuotaMeter && !completing && !pacingOut && !selectionMode;
 
   // Opt-in per task (TaskEditor → "Show streak on row"). Shown at zero too, so
   // a habit whose streak just broke doesn't silently lose a chip — the row
@@ -881,7 +866,7 @@ export const TaskItem = React.memo(function TaskItem({
     // not a box, and a checkmark stamped over it reads as a different control
     // appearing at the last moment. Any completion of a row that's currently
     // showing a meter takes this path, the widget's included.
-    const viaMeter = isQuota && !selectionMode;
+    const viaMeter = isQuota;
     // The unit that meets the target can land inside a linger window (log the
     // seventh, then the eighth). The completion owns the row from here, so the
     // send-off queued behind that seventh unit must not fire over it — the hold
@@ -1237,19 +1222,22 @@ export const TaskItem = React.memo(function TaskItem({
         }
         accessibilityHint={meterInteractive && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined}
       >
+        {/* Bulk selection deliberately changes nothing about this circle: it's
+            the completion checkbox in both modes, and a row that's been picked
+            for a bulk edit shouldn't read as a row that's been ticked off. The
+            selection state lives on SelectionDot at the row's other end. */}
         <Animated.View style={[
           styles.circle,
-          !selectionMode && completing && !quotaCompleting && styles.circleCompleting,
-          !selectionMode && completionLocked && styles.circleLocked,
+          completing && !quotaCompleting && styles.circleCompleting,
+          completionLocked && styles.circleLocked,
           // Ready is a nudge, not a lock — the checkbox stays tappable either way.
-          !selectionMode && !completing && !completionLocked && timerReady && styles.circleReady,
-          selectionMode && selected && styles.circleSelected,
+          !completing && !completionLocked && timerReady && styles.circleReady,
           showQuotaMeter && styles.circleQuota,
           // The ring can only follow the fill once the fill has reached it —
           // swapped rather than animated because this node's transform is on
           // the native driver, and a JS-driven colour on the same node throws.
           quotaToppedOut && styles.circleQuotaDone,
-          { transform: selectionMode ? [] : [{ scale: circleScale }] },
+          { transform: [{ scale: circleScale }] },
         ]}>
           {showQuotaMeter && (
             <Animated.View
@@ -1270,31 +1258,10 @@ export const TaskItem = React.memo(function TaskItem({
               pointerEvents="none"
             />
           )}
-          {/* Two overlapping layers crossfade via selectionSwap rather than
-              popping between selectionMode branches on the same mounted view —
-              see the comment on selectionSwap above. Both are absolutely
-              positioned over the circle (which centers its children), so they
-              can overlap mid-transition instead of the layout jumping between
-              them. */}
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.circleContentLayer,
-              {
-                opacity: selectionSwap,
-                transform: [{ scale: selectionSwap.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1], extrapolate: 'clamp' }) }],
-              },
-            ]}
-          >
-            {selected && <Ionicons name="checkmark" size={12} color={colors.onAccent} />}
-          </Animated.View>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.circleContentLayer,
-              { opacity: selectionSwap.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
-            ]}
-          >
+          {/* Absolutely positioned over the circle (which centers its children)
+              so the glyph sits on top of the quota fill rather than being laid
+              out beside it. */}
+          <View pointerEvents="none" style={styles.circleContentLayer}>
             {completing && !quotaCompleting && (
               // The spring (animation.spring.bouncy) overshoots past 1 for the pop
               // feel, but animating a native-driven `scale` transform on an Ionicons
@@ -1321,7 +1288,7 @@ export const TaskItem = React.memo(function TaskItem({
             {!completing && !recurrenceNotYetDue && locked && (
               <Ionicons name="lock-closed" size={iconSize.xs} color={colors.textTertiary} />
             )}
-          </Animated.View>
+          </View>
         </Animated.View>
       </TouchableOpacity>
 
@@ -1706,6 +1673,14 @@ export const TaskItem = React.memo(function TaskItem({
             color={task.pinned ? colors.orange : colors.textTertiary}
           />
         </TouchableOpacity>
+      )}
+
+      {/* Takes the slot the row's action buttons vacate on entering selection
+          mode, so nothing else has to move aside for it — and it mounts and
+          unmounts in the same commit they do, which is what gives it its fade
+          (animateLayout in enterSelectionMode/exitSelection). */}
+      {selectionMode && (
+        <SelectionDot selected={selected} onPress={() => onSelect?.(task.id)} />
       )}
 
     </View>
@@ -2408,9 +2383,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.green,
     borderColor: colors.green,
   },
-  // Both crossfading layers (checkbox glyph, selection dot) sit here so they
-  // can overlap mid-transition instead of the circle's own alignItems/
-  // justifyContent flow reshuffling between them.
+  // The circle's glyph, lifted out of its own flow so it draws over the quota
+  // fill rather than being laid out alongside it.
   circleContentLayer: {
     position: 'absolute',
     alignItems: 'center',
@@ -2424,10 +2398,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   circleReady: {
     borderColor: colors.green,
     backgroundColor: colors.bgTertiary,
-  },
-  circleSelected: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
   },
   circleQuota: {
     borderColor: colors.accent,
