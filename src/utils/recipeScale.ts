@@ -154,6 +154,21 @@ const UNIT_PLURALS: Record<string, string> = {
   link: 'links',
   pouch: 'pouches',
   package: 'packages',
+  deciliter: 'deciliters',
+  sprig: 'sprigs',
+  stalk: 'stalks',
+  rib: 'ribs',
+  stem: 'stems',
+  stick: 'sticks',
+  sheet: 'sheets',
+  fillet: 'fillets',
+  piece: 'pieces',
+  ear: 'ears',
+  wedge: 'wedges',
+  strip: 'strips',
+  pinch: 'pinches',
+  dash: 'dashes',
+  handful: 'handfuls',
 };
 
 const UNIT_SINGULARS: Record<string, string> = Object.fromEntries(
