@@ -7,6 +7,7 @@ import { spacing, font, fontWeight, radius, animation, interaction, iconSize, ty
 import { haptics } from '../utils/haptics';
 import { slotLabel } from '../utils/mealPlan';
 import { formatScale, isUnscaled } from '../utils/recipeScale';
+import { SwipeableRow } from './SwipeableRow';
 
 interface Props {
   entry: MealPlanEntry;
@@ -37,6 +38,13 @@ interface Props {
    */
   selectionMode?: boolean;
   selected?: boolean;
+  /**
+   * Swipe left to enter bulk selection with this row pre-selected — the same
+   * entry point tasks use (#1378). No `whenAction`: there's no single-tap
+   * "when" to offer a meal, since moving one to another day is already a
+   * multi-step flow behind the entry sheet's day picker.
+   */
+  onSwipeSelect?: (id: string) => void;
 }
 
 /**
@@ -59,7 +67,7 @@ interface Props {
  * absence a reader is expected to infer.
  */
 export function MealSlotRow({
-  entry, title, hasRecipe, choices, onPress, onToggleCooked, selectionMode, selected,
+  entry, title, hasRecipe, choices, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -89,7 +97,7 @@ export function MealSlotRow({
   // shows it without having to open each night's sheet.
   const scaleLabel = isUnscaled(entry.recipeScale) ? null : formatScale(entry.recipeScale);
 
-  return (
+  const rowBody = (
     <TouchableOpacity
       style={[styles.row, selectionMode && selected && styles.rowSelected]}
       onPress={onPress}
@@ -168,6 +176,22 @@ export function MealSlotRow({
         <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
       )}
     </TouchableOpacity>
+  );
+
+  // Swipe stays off entirely in selection mode, same as the header controls
+  // it sits beside — a finger reaching for the row is reaching to toggle it,
+  // not to open a select panel that only re-enters the mode it's already in.
+  if (selectionMode) return rowBody;
+
+  return (
+    <SwipeableRow
+      selectAction={onSwipeSelect ? {
+        onSelect: () => onSwipeSelect(entry.id),
+        accessibilityLabel: `Select ${title}`,
+      } : undefined}
+    >
+      {rowBody}
+    </SwipeableRow>
   );
 }
 

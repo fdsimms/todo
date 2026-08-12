@@ -28,6 +28,7 @@ import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
 import { Fab, FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
+import { SwipeableRow } from '../components/SwipeableRow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
@@ -303,12 +304,10 @@ export function RecipesScreen() {
   };
 
   // Icon-only because the row is already dense; the spoken label carries the
-  // meaning.
-  //
-  // Deliberately a button rather than a swipe or a long-press: the row's
-  // long-press is already the drag-to-reorder handle, and the list is a
-  // DraggableFlatList, so adding a pan-driven action would be a second gesture
-  // competing with the one that's there.
+  // meaning. Deliberately a button rather than a long-press: the row's
+  // long-press is already the drag-to-reorder handle. It's not on the swipe
+  // panel either — that's select-only (#1378), same contract as every other
+  // SwipeableRow in the app.
   const planButton = (recipe: Recipe) => (
     <TouchableOpacity
       style={styles.planButton}
@@ -324,9 +323,9 @@ export function RecipesScreen() {
 
   const renderRecipe = ({ item: recipe, drag, isActive }: { item: Recipe; drag?: () => void; isActive?: boolean }) => {
     const selected = selectedIds.has(recipe.id);
-    return (
+    const rowBody = (
       <TouchableOpacity
-        style={[styles.row, selectionMode && selected && styles.rowSelected, isActive && styles.rowActive]}
+        style={[styles.row, selectionMode && selected && styles.rowSelected]}
         onPress={() => (selectionMode ? toggleSelection(recipe.id) : openRecipe(recipe))}
         onLongPress={selectionMode ? undefined : drag}
         activeOpacity={interaction.activeOpacity}
@@ -367,6 +366,21 @@ export function RecipesScreen() {
         )}
       </TouchableOpacity>
     );
+    return (
+      <View style={[styles.itemWrapper, isActive && styles.itemWrapperActive]}>
+        {selectionMode ? rowBody : (
+          <SwipeableRow
+            enabled={!isActive}
+            selectAction={{
+              onSelect: () => enterSelectionMode(recipe.id),
+              accessibilityLabel: `Select ${recipe.name}`,
+            }}
+          >
+            {rowBody}
+          </SwipeableRow>
+        )}
+      </View>
+    );
   };
 
   return (
@@ -387,12 +401,6 @@ export function RecipesScreen() {
             onPress: () => { haptics.tap(); setGroupByMealType(g => !g); },
             active: groupByMealType,
             accessibilityLabel: groupByMealType ? 'Ungroup recipes' : 'Group recipes by meal type',
-          },
-          {
-            icon: 'checkmark-circle-outline',
-            onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
-            active: selectionMode,
-            accessibilityLabel: selectionMode ? 'Done selecting' : 'Select recipes',
           },
         ] : undefined}
       />
@@ -720,22 +728,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   // Same inset-grouped card footprint as TaskItem and the Stacks rows.
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // The card: margin, radius and resting background, split from `row` below
+  // so a SwipeableRow's child renders flush — see the matching split in
+  // GroceryRow.tsx (#1378).
+  itemWrapper: {
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
     marginVertical: 2,
     borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  itemWrapperActive: {
+    backgroundColor: colors.bgSecondary,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
     gap: spacing.md,
   },
   rowSelected: {
     backgroundColor: colors.accent + '1A',
-  },
-  rowActive: {
-    backgroundColor: colors.bgSecondary,
   },
   // Subtle slot marking where a dragged recipe will land; mirrors the row's
   // own footprint (margin + radius), same treatment as Today's dropSlot.

@@ -458,14 +458,6 @@ export function GroceryScreen() {
     // it lives at the foot of the list instead, which is where you look when
     // you're done rather than mid-shop.
     const list: ScreenHeaderAction[] = [];
-    if (listCount > 0) {
-      list.push({
-        icon: 'checkmark-circle-outline',
-        onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
-        active: selectionMode,
-        accessibilityLabel: selectionMode ? 'Done selecting' : 'Select items',
-      });
-    }
     list.push({
       icon: 'basket-outline',
       onPress: () => setBuyAgainOpen(true),
@@ -494,7 +486,7 @@ export function GroceryScreen() {
       accessibilityLabel: 'Finish shopping',
     });
     return list;
-  }, [checkedCount, listCount, selectionMode, enterSelectionMode, exitSelection, handleCreateGroceryTask]);
+  }, [checkedCount, selectionMode, handleCreateGroceryTask]);
 
   // Bottom-up: "Add an item" ends up closest to the button. The recipe entry
   // no longer needs a key by itself — a saved recipe imports nothing over the
@@ -576,6 +568,7 @@ export function GroceryScreen() {
           selectionMode={selectionMode}
           selected={selectedIds.has(row.item.id)}
           onSelect={toggleSelection}
+          onSwipeSelect={id => enterSelectionMode(id)}
           onOpenRecipe={
             row.item.sourceRecipeId && recipeIds.has(row.item.sourceRecipeId)
               ? openRecipe
@@ -585,7 +578,7 @@ export function GroceryScreen() {
         />
       );
     },
-    [styles, colors, cartOpen, handleToggle, handleEdit, zoneByKey, selectionMode, selectedIds, toggleSelection, recipeIds, openRecipe, alternativeCaptionById]
+    [styles, colors, cartOpen, handleToggle, handleEdit, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, recipeIds, openRecipe, alternativeCaptionById]
   );
 
   return (
