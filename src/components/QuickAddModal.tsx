@@ -55,7 +55,7 @@ import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseCategoryAndTagsInput, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
-import { KNOWN_LINK_APPS } from '../constants/linkApps';
+import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
@@ -160,6 +160,7 @@ export function QuickAddModal({
   const tasks = useTaskStore(s => s.tasks);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   // Which list this actually lands in: the caller's explicit choice (a
   // screen's current sub-view, a project's "unscheduled" drop) if it named
   // one, else Settings' destination default.
@@ -1632,7 +1633,7 @@ export function QuickAddModal({
                   the panel's height in line with every other quick-add panel. */}
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
                 <View style={styles.linkAppRow}>
-                  {KNOWN_LINK_APPS.map(app => (
+                  {linkAppsFor(kitchenEnabled).map(app => (
                     <TouchableOpacity
                       key={app.scheme}
                       style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}

@@ -66,6 +66,7 @@ export default function App() {
 
 function AppRoot() {
   const initTasks = useTaskStore(s => s.initialize);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const initSettings = useSettingsStore(s => s.initialize);
   const initSecrets = useSettingsStore(s => s.initializeSecrets);
   const sweepExpiredTasks = useTaskStore(s => s.sweepExpiredTasks);
@@ -152,8 +153,10 @@ function AppRoot() {
 
   // Handles a Home Screen quick action (long-press the app icon → Add Task /
   // Groceries / Search / Projects). Same ordering rationale as the deep links
-  // above: after the navigator has had a chance to mount.
-  useHomeScreenQuickActions();
+  // above: after the navigator has had a chance to mount. The setting is read
+  // here rather than inside the hook so quickActions.ts stays free of the
+  // store, and so the Groceries action is republished when it changes.
+  useHomeScreenQuickActions(kitchenEnabled);
 
   // Pulls anything waiting in the chosen Apple Reminders list into the Inbox
   // ("Hey Siri, remind me to…"). Same ordering requirement as the deep links

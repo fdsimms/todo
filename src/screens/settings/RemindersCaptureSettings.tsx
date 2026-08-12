@@ -41,6 +41,7 @@ export function RemindersCaptureSettings() {
   const setRemindersImportReview = useSettingsStore(s => s.setRemindersImportReview);
   const remindersImportDelete = useSettingsStore(s => s.remindersImportDelete);
   const setRemindersImportDelete = useSettingsStore(s => s.setRemindersImportDelete);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const groceryImportEnabled = useSettingsStore(s => s.groceryImportEnabled);
   const setGroceryImportEnabled = useSettingsStore(s => s.setGroceryImportEnabled);
   const groceryImportListId = useSettingsStore(s => s.groceryImportListId);
@@ -442,6 +443,12 @@ export function RemindersCaptureSettings() {
         </>
       )}
 
+      {/* The grocery leg of the import, gated as one block: without the
+          groceries area there's nowhere for these reminders to land. The
+          setting and the chosen list are left as they are — turning the area
+          back on resumes the import that was already configured. */}
+      {kitchenEnabled && (
+      <>
       <View style={styles.sep} />
       <SettingsRow
         icon="cart-outline"
@@ -512,6 +519,8 @@ export function RemindersCaptureSettings() {
             hint="Nothing is being imported into groceries. Pick another list above, or turn this off."
           />
         </>
+      )}
+      </>
       )}
 
       {/* There's no change notification to subscribe to, so a reminder

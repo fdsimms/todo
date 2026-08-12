@@ -28,6 +28,8 @@ export interface AiFeatureMeta {
   id: AiFeatureId;
   label: string;
   hint: string;
+  /** Only reachable inside the groceries/recipes/meal plan area. */
+  kitchen?: boolean;
 }
 
 export const AI_FEATURES: AiFeatureMeta[] = [
@@ -47,11 +49,13 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     id: 'groceryAisles',
     label: 'Grocery aisle sorting',
     hint: 'Files grocery items the offline list didn\'t recognize into an aisle',
+    kitchen: true,
   },
   {
     id: 'recipeExtraction',
     label: 'Recipe import',
     hint: 'Pulls a name, servings, and shopping list out of pasted recipe text or a photo',
+    kitchen: true,
   },
   {
     id: 'mealIdeas',
@@ -61,8 +65,22 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     // stands, and a key that can do the first but not the second would offer
     // an idea it can't then save as a recipe.
     hint: 'Invents new meals for empty nights, and drafts a shopping list for one you accept',
+    kitchen: true,
   },
 ];
+
+/**
+ * The features worth showing a switch for, given whether the
+ * groceries/recipes/meal plan area is on.
+ *
+ * Only the *rows* go — `aiFeatureConfig` is left untouched, so the model and
+ * on/off state someone chose for recipe import survive the area being put away
+ * and come back with it. Nothing needs to gate the calls themselves: all three
+ * of these are reached from inside the three screens.
+ */
+export function aiFeaturesFor(kitchenEnabled: boolean): AiFeatureMeta[] {
+  return kitchenEnabled ? AI_FEATURES : AI_FEATURES.filter(f => !f.kitchen);
+}
 
 export interface AiFeatureConfig {
   enabled: boolean;

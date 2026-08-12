@@ -24,6 +24,14 @@ export interface SettingsSummaryInput {
   dailyAgendaEnabled: boolean;
   remindersImportEnabled: boolean;
   groceryImportEnabled: boolean;
+  /**
+   * Whether the groceries/recipes/meal plan area is shown at all. The grocery
+   * import doesn't run without it, so the Capture line must not claim it does
+   * — the setting is deliberately left switched on underneath (it resumes when
+   * the area comes back), which is exactly why this can't be read off
+   * `groceryImportEnabled` alone.
+   */
+  kitchenEnabled: boolean;
   vacationMode: boolean;
   autoRemoveExpiredTasks: ExpiredTaskGraceDays;
   autoArchiveProjectsOnComplete: boolean;
@@ -79,7 +87,7 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
 
     capture: line(
       s.remindersImportEnabled && 'Importing from Apple Reminders',
-      s.groceryImportEnabled && 'Groceries from Apple Reminders',
+      s.groceryImportEnabled && s.kitchenEnabled && 'Groceries from Apple Reminders',
     ) || 'Off — say “Hey Siri, remind me to…”',
 
     tasksProjects: line(

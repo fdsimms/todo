@@ -104,6 +104,7 @@ beforeEach(() => {
     mockSettingsRows[key] = value;
   });
   mockSettings = {
+    kitchenEnabled: true,
     remindersImportEnabled: true,
     remindersImportListId: LIST.id,
     remindersImportConfirmedListId: LIST.id,
@@ -423,6 +424,10 @@ const GROCERY_LIST = {
 /** Points settings at the grocery list only, with the task import off. */
 function groceryOnly() {
   mockSettings = {
+    // The groceries area is on unless a test says otherwise — drainTargets
+    // reads it alongside groceryImportEnabled, so an absent key would silently
+    // drop the grocery destination from every case below.
+    kitchenEnabled: true,
     remindersImportEnabled: false,
     remindersImportListId: null,
     remindersImportConfirmedListId: null,
@@ -507,8 +512,40 @@ describe('importReminders — the grocery destination', () => {
     expect(mockCalendar.getRemindersAsync).not.toHaveBeenCalled();
   });
 
+  it('stands down while the groceries area is off, leaving the reminders alone', async () => {
+    groceryOnly();
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'milk' })]);
+    mockSettings.kitchenEnabled = false;
+
+    const outcome = await freshSync().importReminders();
+
+    // Nothing to drain into, so the pass reads as off rather than as failing.
+    expect(outcome.reason).toBe('off');
+    expect(mockAddByName).not.toHaveBeenCalled();
+    // The reminders stay put: nothing was deleted from a list this app has
+    // stopped reading, so turning the area back on picks them all up.
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
+  it('resumes on its own, with the list it had already confirmed', async () => {
+    // The reason the setting and the confirmed-list id are left alone rather
+    // than cleared: coming back must not re-ask for a confirmation already
+    // given, and the backlog that piled up meanwhile is what it picks up.
+    groceryOnly();
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'milk' })]);
+    mockSettings.kitchenEnabled = false;
+    await freshSync().importReminders();
+
+    mockSettings.kitchenEnabled = true;
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.imported).toBe(1);
+    expect(mockAddByName).toHaveBeenCalled();
+  });
+
   it('drains both destinations in one pass, each to its own sink', async () => {
     mockSettings = {
+      kitchenEnabled: true,
       remindersImportEnabled: true,
       remindersImportListId: LIST.id,
       remindersImportConfirmedListId: LIST.id,
@@ -538,6 +575,7 @@ describe('importReminders — the grocery destination', () => {
   // One misconfigured destination must not strand the other.
   it('still drains groceries when the task list has gone missing', async () => {
     mockSettings = {
+      kitchenEnabled: true,
       remindersImportEnabled: true,
       remindersImportListId: 'a-list-that-vanished',
       remindersImportConfirmedListId: 'a-list-that-vanished',

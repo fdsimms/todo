@@ -51,7 +51,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
-import { useSettingsStore } from '../store/useSettingsStore';
+import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
 import { SuggestedPinsSheet } from '../components/SuggestedPinsSheet';
@@ -2017,7 +2017,14 @@ export function TodayScreen() {
   const openMealPlan = useCallback(() => {
     navigation.navigate('MealPlan' as never);
   }, [navigation]);
-  const mealsOnToday = useSettingsStore(s => s.mealsOnToday);
+  // Resolved rather than read straight through: with the groceries/meals area
+  // off, Today shows no meals whatever this is set to, but the setting itself
+  // is left alone so turning the area back on restores the shape the user
+  // picked. Both render sites below test this one value, so neither can be
+  // missed.
+  const storedMealsOnToday = useSettingsStore(s => s.mealsOnToday);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const mealsOnToday: MealsOnToday = kitchenEnabled ? storedMealsOnToday : 'off';
   // What the strip shows: only what's still to be eaten, so the line empties
   // as the day goes and disappears once everything's cooked. The block
   // deliberately keeps the cooked ones — see uncookedEntries.

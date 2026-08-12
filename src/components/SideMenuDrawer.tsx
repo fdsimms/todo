@@ -20,6 +20,7 @@ import { animation, font, fontWeight, interaction, radius, spacing } from '../th
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.72);
 
@@ -40,11 +41,16 @@ interface MenuItem {
 // getting to the other two once you're in.
 const GROCERIES_HUB_TABS = ['Groceries', 'Recipes', 'MealPlan'];
 
-const MENU_ITEMS: MenuItem[] = [
+interface MenuItemWithGate extends MenuItem {
+  /** Dropped from the menu while `kitchenEnabled` is off. */
+  kitchen?: boolean;
+}
+
+const MENU_ITEMS: MenuItemWithGate[] = [
   { name: 'Today', icon: 'checkbox-outline', label: 'Tasks' },
   // Sits with Tasks rather than down among Logbook/Archived: it's a peer
   // surface you go to on purpose, not somewhere things end up.
-  { name: 'Groceries', icon: 'cart-outline', label: 'Groceries & Meals', alsoActiveFor: GROCERIES_HUB_TABS },
+  { name: 'Groceries', icon: 'cart-outline', label: 'Groceries & Meals', alsoActiveFor: GROCERIES_HUB_TABS, kitchen: true },
   { name: 'Categories', icon: 'folder-outline', label: 'Categories' },
   { name: 'Tags', icon: 'pricetag-outline', label: 'Tags' },
   { name: 'Stacks', icon: 'layers-outline', label: 'Stacks' },
@@ -70,6 +76,10 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   // A scalar, so it's referentially stable and needs no useShallow. Counts
   // what's still to buy — items already in the trolley aren't a reason to go.
   const groceryCount = useGroceryStore(s => s.items.filter(i => i.onList && !i.checked).length);
+  // The one row this can remove, so the filter runs on every render rather
+  // than being hoisted — it's a ten-item array and the setting is a scalar.
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const menuItems = kitchenEnabled ? MENU_ITEMS : MENU_ITEMS.filter(i => !i.kitchen);
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const dragOffsetX = useRef(new Animated.Value(0)).current;
@@ -222,7 +232,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
             contentContainerStyle={styles.itemsContent}
             showsVerticalScrollIndicator={false}
           >
-            {MENU_ITEMS.map((item, index) => {
+            {menuItems.map((item, index) => {
               const isActive = activeTab === item.name || item.alsoActiveFor?.includes(activeTab) === true;
               return (
                 <DrawerItemAppear key={item.name} index={index}>
@@ -269,7 +279,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           </ScrollView>
 
           <View style={[styles.footer, { borderTopColor: colors.separator, paddingBottom: spacing.md + insets.bottom }]}>
-            <DrawerItemAppear index={MENU_ITEMS.length}>
+            <DrawerItemAppear index={menuItems.length}>
               <TouchableOpacity
                 style={styles.item}
                 onPress={handleSettings}
