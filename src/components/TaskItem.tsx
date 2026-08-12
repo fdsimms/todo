@@ -31,7 +31,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { chainPreview, isChainFinish } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
@@ -785,11 +785,12 @@ export const TaskItem = React.memo(function TaskItem({
     ? formatQuotaProgress(quotaLogged, task.targetCount!, task.targetUnit)
     : '';
   // When the next unit falls due. Shown for as long as the row is on borrowed
-  // time, so a target that goes quiet at 2/8 reads as scheduled rather than as
-  // swallowed — and so the window in which another tap still lands is a visible
-  // thing rather than a hidden one. Each tap moves it later, being one more
-  // logged.
-  const quotaReturnAt = quotaSettled
+  // time on Today (quotaSettled), and *always* once the task has actually
+  // dropped into on-pace/hidden territory (isOnPaceQuota) — that's the same
+  // row rendered in Later's Today section, where a partial target ("5/12
+  // cups") would otherwise say nothing about when it comes back. Each tap
+  // moves it later, being one more logged.
+  const quotaReturnAt = quotaSettled || isOnPaceQuota(task)
     ? formatHHMM(dateToHHMM(quotaNextDueAt(task)))
     : '';
   // Selection mode keeps the plain circle so the paint-select gutter behaves
