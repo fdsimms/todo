@@ -22,9 +22,11 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useCategoryStore } from '../store/useCategoryStore';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { wouldCycle, resolverFor, sortByBlockerAffinity, type BlockerContext } from '../utils/blocking';
 import { displayTitleFor } from '../utils/visibilityUtils';
+import { categoryLabel } from '../utils/categoryLabel';
 import type { Task } from '../types';
 
 interface Props {
@@ -63,6 +65,7 @@ export function BlockerPickerSheet({ visible, onClose, taskId, context, onSelect
   const tasks = useTaskStore(useShallow(s => s.tasks));
   const groups = useTaskGroupStore(useShallow(s => s.groups));
   const projects = useProjectStore(useShallow(s => s.projects));
+  const categories = useCategoryStore(useShallow(s => s.categories));
   const [query, setQuery] = useState('');
 
   const ctx: BlockerContext = context ?? {};
@@ -91,19 +94,24 @@ export function BlockerPickerSheet({ visible, onClose, taskId, context, onSelect
   }, [tasks, taskId, query, ctx.groupId, ctx.projectId, ctx.category]);
 
   /**
-   * The one-line "where this lives" under a candidate's title, so the ordering
-   * reads as an ordering rather than as an arbitrary shuffle. It names whatever
-   * put the row where it is, falling back to the category for the unrelated
-   * tail — which is all this row used to show.
+   * The one-line "where this lives" under a candidate's title — the category
+   * (with its emoji, if it has one) plus whatever stack or project the task
+   * belongs to. Several rows can share a title ("Book flights"), so both are
+   * shown together rather than one eclipsing the other, for the same reason
+   * the ordering already floats a task's stack/project neighbours to the top.
    */
   const subtitleFor = (task: Task): string | null => {
-    if (ctx.groupId && task.groupId === ctx.groupId) {
-      return groups.find(g => g.id === task.groupId)?.title ?? task.category;
+    const parts: string[] = [];
+    const catLabel = categoryLabel(task.category, categories);
+    if (catLabel) parts.push(catLabel);
+    const group = task.groupId ? groups.find(g => g.id === task.groupId) : undefined;
+    if (group) {
+      parts.push(group.title);
+    } else {
+      const project = task.projectId ? projects.find(p => p.id === task.projectId) : undefined;
+      if (project) parts.push(project.title);
     }
-    if (ctx.projectId && task.projectId === ctx.projectId) {
-      return projects.find(p => p.id === task.projectId)?.title ?? task.category;
-    }
-    return task.category;
+    return parts.length ? parts.join(' · ') : null;
   };
 
   const translateY = useRef(new Animated.Value(600)).current;
