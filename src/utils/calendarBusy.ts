@@ -34,6 +34,8 @@ export interface BusyEvent {
   end: string;
   allDay: boolean;
   calendarId: string;
+  /** Event location, verbatim from EventKit. Empty string or null when unset. */
+  location: string | null;
   /** EventKit's `EventStatus` — 'confirmed' | 'tentative' | 'canceled' | 'none'. */
   status: string;
   /** EventKit's `Availability` — 'busy' | 'free' | 'tentative' | 'unavailable' | 'notSupported'. */

@@ -111,6 +111,7 @@ function toBusyEvent(event: Event): BusyEvent | null {
     end,
     allDay: !!event.allDay,
     calendarId: event.calendarId ?? '',
+    location: event.location ?? null,
     // Passed through as written rather than interpreted here — `calendarBusy`
     // owns what they mean.
     status: String(event.status ?? ''),

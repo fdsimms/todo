@@ -97,7 +97,12 @@ import { TodayMealStrip } from '../components/TodayMealStrip';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex, uncookedEntries } from '../utils/mealPlan';
-import { dayKeyOf } from '../utils/dateUtils';
+import { dayKeyOf, getDayStart } from '../utils/dateUtils';
+import { addDays } from 'date-fns/addDays';
+import { useCalendarStore } from '../store/useCalendarStore';
+import { eventsIn } from '../utils/calendarBusy';
+import { TodayEventsStrip } from '../components/TodayEventsStrip';
+import { TodayEventsSheet } from '../components/TodayEventsSheet';
 import {
   SpotlightOverlay,
   SpotlightProvider,
@@ -2124,6 +2129,22 @@ export function TodayScreen() {
     [todayMealEntries]
   );
 
+  // Today's calendar (#1489) — silent unless the read is on and succeeded, per
+  // TodayEventsStrip's own note. `calendarLoaded` is checked separately from
+  // `events` being empty for the reason useCalendarStore documents: an empty
+  // day and a failed read both look like `[]`.
+  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarLoaded = useCalendarStore(s => s.loaded);
+  const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
+  const todayCalendarDayEnd = useMemo(() => addDays(getDayStart(new Date()), 1), [todayKey]);
+  const todayCalendarEvents = useMemo(
+    () => (calendarReadEnabled && calendarLoaded
+      ? eventsIn(calendarEvents, getDayStart(new Date()), todayCalendarDayEnd)
+      : []),
+    [calendarReadEnabled, calendarLoaded, calendarEvents, todayCalendarDayEnd]
+  );
+
   const laterSections = useMemo(() => computeLaterSections(deferredTasks), [deferredTasks]);
 
   // The Later list can grow unboundedly (nothing prunes it), and its
@@ -2311,6 +2332,14 @@ export function TodayScreen() {
               setPullVisible(true);
             }}
             onDismiss={dismissProjectNudge}
+          />
+        )}
+
+        {viewMode === 'today' && (
+          <TodayEventsStrip
+            events={todayCalendarEvents}
+            dayEnd={todayCalendarDayEnd}
+            onOpen={() => setEventsSheetVisible(true)}
           />
         )}
 
@@ -2869,6 +2898,12 @@ export function TodayScreen() {
         <CategoryOrderSheet
           visible={categoryOrderVisible}
           onClose={() => setCategoryOrderVisible(false)}
+        />
+
+        <TodayEventsSheet
+          visible={eventsSheetVisible}
+          onClose={() => setEventsSheetVisible(false)}
+          events={todayCalendarEvents}
         />
 
         <DeloadSheet
