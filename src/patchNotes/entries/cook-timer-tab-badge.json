@@ -1,0 +1,4 @@
+{
+  "message": "A dot on the More tab now shows when a cook or prep timer is still running, so it's harder to forget one after you've left the recipe. Also fixed the Live Activity's Dynamic Island clock getting cut off (\"4:08:...\") on timers past an hour.",
+  "date": "2026-08-12"
+}

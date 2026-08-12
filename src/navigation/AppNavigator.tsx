@@ -32,6 +32,8 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useRecipeStore } from '../store/useRecipeStore';
+import { hasRunningRecipeTimer } from '../utils/recipeTimer';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
@@ -63,6 +65,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: EDGE_WIDTH,
   },
+  timerDot: {
+    position: 'absolute',
+    top: -1,
+    right: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
 });
 
 interface MainTabsProps {
@@ -80,6 +90,11 @@ interface MainTabsProps {
 const MainTabs = React.memo(function MainTabs({
   screenOptions, tabPressHaptic, menuOpen, accentColor, onOpenMenu,
 }: MainTabsProps) {
+  const colors = useColors();
+  // Recipes and meal plan live behind the drawer with no tab of their own, so
+  // a cook/prep timer left running has nowhere to show once you've left the
+  // recipe screen except here — see hasRunningRecipeTimer's doc comment.
+  const timerRunning = useRecipeStore(state => state.recipes.some(hasRunningRecipeTimer));
   return (
     <Tab.Navigator screenOptions={screenOptions}>
       <Tab.Screen
@@ -120,9 +135,12 @@ const MainTabs = React.memo(function MainTabs({
           },
         }}
         options={{
-          tabBarAccessibilityLabel: 'More, opens menu',
+          tabBarAccessibilityLabel: timerRunning ? 'More, opens menu, a cook timer is running' : 'More, opens menu',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="menu" size={24} color={menuOpen ? accentColor : color} />
+            <View>
+              <Ionicons name="menu" size={24} color={menuOpen ? accentColor : color} />
+              {timerRunning && <View style={[styles.timerDot, { backgroundColor: colors.orange }]} />}
+            </View>
           ),
         }}
       />
