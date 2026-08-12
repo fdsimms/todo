@@ -348,6 +348,113 @@ export function hiddenDefaultAisles(order: readonly string[]): string[] {
 }
 
 /**
+ * One store's walk order, resolved against the default one.
+ *
+ * A Costco walk isn't a Safeway walk, but the *aisles* are the same set either
+ * way — an item is in one kind of section conceptually even if two shops shelve
+ * it differently. So a per-store entry may only **reorder** what the default
+ * order already holds: it can't add an aisle, and it can't remove one.
+ *
+ * That single rule is what keeps every property the global order had:
+ *
+ * - **A bigger `DEFAULT_AISLES` still needs no migration.** A new built-in
+ *   lands in the default order at read time and this appends it to every
+ *   store's, in the default's own position — nothing is stored, nothing is
+ *   rewritten.
+ * - **`hiddenAisles` stays global and stays derived.** Deleting an aisle is a
+ *   statement about your vocabulary, not about your route through one shop, so
+ *   there's still exactly one order that derives tombstones (`commitAisleOrder`)
+ *   and no way for two of them to disagree about what's deleted.
+ * - **A name that's gone can't be resurrected by a stale entry.** Anything not
+ *   in `base` is dropped rather than trusted, which is `placeAisle`'s rule one
+ *   level up.
+ *
+ * `base` is expected to be an already-normalized order (`normalizeAisleOrder`),
+ * so it ends in 'Other'; the result does too, however the entry arrived.
+ */
+export function shopAisleOrder(
+  base: readonly string[],
+  stored: readonly string[] | null | undefined
+): string[] {
+  if (!stored || stored.length === 0) return [...base];
+
+  const allowed = new Set(base);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (aisle: string) => {
+    const trimmed = aisle.trim();
+    if (!trimmed || trimmed === OTHER_AISLE || !allowed.has(trimmed) || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    out.push(trimmed);
+  };
+
+  for (const aisle of stored) push(aisle);
+  // Whatever the entry didn't mention, in the default's own order — a store
+  // that diverged before an aisle existed shouldn't lose it.
+  for (const aisle of base) push(aisle);
+
+  out.push(OTHER_AISLE);
+  return out;
+}
+
+/**
+ * Carries an aisle rename into every store that walks its own order.
+ *
+ * The one fan-out per-store orders cost. Without it the old name would simply
+ * fall out of each entry the next time `shopAisleOrder` ran, and the aisle
+ * would jump back to its default position at every store that had moved it —
+ * a silent loss, which is the worst kind. A *delete* deliberately needs no
+ * equivalent: the name leaving the default order is enough for `shopAisleOrder`
+ * to drop it, and leaving it in the entry means re-adding that aisle by name
+ * restores its per-store position too, exactly as re-adding a built-in un-hides
+ * it globally.
+ *
+ * Returns null when no store had an opinion about that name, so a caller can
+ * skip the write.
+ */
+export function renameInShopAisleOrders(
+  stored: Record<string, string[]>,
+  from: string,
+  to: string
+): Record<string, string[]> | null {
+  let touched = false;
+  const out: Record<string, string[]> = {};
+  for (const [shopId, order] of Object.entries(stored)) {
+    if (!order.includes(from)) {
+      out[shopId] = order;
+      continue;
+    }
+    touched = true;
+    // A store that somehow lists both ends up with one entry, deduped by
+    // shopAisleOrder on the way out.
+    out[shopId] = order.map(a => (a === from ? to : a));
+  }
+  return touched ? out : null;
+}
+
+/**
+ * Drops the junk a stored per-store map can accumulate: entries for stores that
+ * no longer exist, and anything that isn't a list of strings. Same per-entry
+ * tolerance `dbGetGroceryAisleOverrides` applies to its map — one bad row
+ * shouldn't cost the user every other store's order.
+ *
+ * Returns null when nothing needed dropping, so a caller can skip the write.
+ */
+export function pruneShopAisleOrders(
+  stored: Record<string, string[]>,
+  shopIds: readonly string[]
+): Record<string, string[]> | null {
+  const live = new Set(shopIds);
+  const out: Record<string, string[]> = {};
+  let dropped = false;
+  for (const [shopId, order] of Object.entries(stored)) {
+    if (live.has(shopId) && Array.isArray(order) && order.length > 0) out[shopId] = order;
+    else dropped = true;
+  }
+  return dropped ? out : null;
+}
+
+/**
  * Pins a proposed aisle to one that actually exists, falling back to Other.
  *
  * The lexicon and the remembered filings both name aisles by string and neither

@@ -48,7 +48,7 @@ import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet
 import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { OTHER_AISLE } from '../utils/groceryAisles';
+import { OTHER_AISLE, shopAisleOrder } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -117,6 +117,7 @@ export function GroceryScreen() {
   const applyDrop = useGroceryStore(s => s.applyDrop);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
+  const aisleOrderByShop = useGroceryStore(useShallow(s => s.aisleOrderByShop));
   const tripShopId = useGroceryStore(s => s.tripShopId);
   const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
   const startTrip = useGroceryStore(s => s.startTrip);
@@ -174,11 +175,6 @@ export function GroceryScreen() {
   // an entry point — the offline lexicon carries the feature on its own.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
 
-  const { sections, inCart, remaining } = useMemo(
-    () => buildGrocerySections(items, aisleOrder, cartHoldIds),
-    [items, aisleOrder, cartHoldIds]
-  );
-
   // The store you're standing in, if you've said. Everything the trip changes
   // on this screen hangs off this one value being non-null.
   const activeTripShop = useMemo(
@@ -193,6 +189,20 @@ export function GroceryScreen() {
     useCallback(() => {
       checkTripExpiry();
     }, [checkTripExpiry])
+  );
+
+  // The walk order this list is sorted by: the store's own if you're in one
+  // that has diverged, otherwise the default. This is the only place the
+  // per-store order is *used* — the pantry deliberately keeps the default one,
+  // since you're standing in your kitchen, not in a shop.
+  const walkOrder = useMemo(
+    () => shopAisleOrder(aisleOrder, activeTripShop ? aisleOrderByShop[activeTripShop.id] : null),
+    [aisleOrder, aisleOrderByShop, activeTripShop]
+  );
+
+  const { sections, inCart, remaining } = useMemo(
+    () => buildGrocerySections(items, walkOrder, cartHoldIds),
+    [items, walkOrder, cartHoldIds]
   );
 
   // Computed here rather than in the row for the reason `alternatives` is:
@@ -803,7 +813,9 @@ export function GroceryScreen() {
           totalCount={selectableItemIds.length}
           category={{
             title: 'Move to Aisle',
-            options: aisleOrder,
+            // Same set either way; shown in the order the list above is
+            // currently sorted in, so the picker and the sections agree.
+            options: walkOrder,
             onSet: handleBulkSetAisle,
             onCreate: name => addAisle(name),
             allowNone: false,

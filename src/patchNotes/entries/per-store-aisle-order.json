@@ -1,0 +1,4 @@
+{
+  "message": "Each store can now have its own aisle order. Pick a store at the top of the Aisles tab and drag the rows into the order you walk it; your list uses that order while you're shopping there. Stores without one of their own follow the default order, and still move when you change it",
+  "date": "2026-08-12"
+}

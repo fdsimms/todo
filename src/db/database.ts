@@ -1651,6 +1651,36 @@ export function dbSetGroceryAisleOverrides(overrides: Record<string, string>): v
   dbSetSetting('grocery_aisle_overrides', JSON.stringify(overrides));
 }
 
+// shop id → that store's own walk order. Sparse on purpose: an absent entry
+// means "walks the default order", and is never materialised when a store is
+// created, so the default keeps reaching every store that hasn't diverged.
+//
+// A settings key rather than a column for the same reason the default order is
+// one — it's a list of names and positions. It's keyed by shop *id* rather than
+// name so renaming a store keeps its order, which is the whole reason stores
+// got a table in the first place. Per-entry tolerance, like the map above.
+export function dbGetGroceryAisleOrderByShop(): Record<string, string[]> {
+  const val = dbGetSetting('grocery_aisle_order_by_shop');
+  if (!val) return {};
+  try {
+    const parsed = JSON.parse(val) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, string[]> = {};
+    for (const [shopId, order] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!shopId || !Array.isArray(order)) continue;
+      const names = order.filter((a): a is string => typeof a === 'string' && !!a.trim());
+      if (names.length > 0) out[shopId] = names;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function dbSetGroceryAisleOrderByShop(orders: Record<string, string[]>): void {
+  dbSetSetting('grocery_aisle_order_by_shop', JSON.stringify(orders));
+}
+
 // ─── Grocery stores ─────────────────────────────────────────────────────────
 //
 // A table rather than a JSON list in `settings` — the opposite call to the

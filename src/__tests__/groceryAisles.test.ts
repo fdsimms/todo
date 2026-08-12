@@ -5,6 +5,9 @@ import {
   aisleForName,
   normalizeAisleOrder,
   hiddenDefaultAisles,
+  shopAisleOrder,
+  pruneShopAisleOrders,
+  renameInShopAisleOrders,
   placeAisle,
   rememberAisles,
   remapRememberedAisle,
@@ -255,5 +258,113 @@ describe('renameRememberedAisle', () => {
   it('leaves everything else alone', () => {
     const result = renameRememberedAisle({ milk: 'Frozen', nduja: 'Deli' }, 'milk', 'whole milk');
     expect(result).toEqual({ 'whole milk': 'Frozen', nduja: 'Deli' });
+  });
+});
+
+describe('shopAisleOrder', () => {
+  // An already-normalized default order, as normalizeAisleOrder would hand it over.
+  const base = ['Produce', 'Bakery', 'Dairy & Eggs', 'Frozen', OTHER_AISLE];
+
+  it('falls back to the default order when the store has no entry of its own', () => {
+    expect(shopAisleOrder(base, null)).toEqual(base);
+    expect(shopAisleOrder(base, undefined)).toEqual(base);
+    expect(shopAisleOrder(base, [])).toEqual(base);
+  });
+
+  it('reorders the default set', () => {
+    expect(shopAisleOrder(base, ['Frozen', 'Produce'])).toEqual([
+      'Frozen', 'Produce', 'Bakery', 'Dairy & Eggs', OTHER_AISLE,
+    ]);
+  });
+
+  // The property that keeps a bigger DEFAULT_AISLES migration-free: a new
+  // built-in reaches a store that diverged before it existed.
+  it('appends anything the entry never mentioned, in the default order', () => {
+    expect(shopAisleOrder(base, ['Frozen'])).toEqual([
+      'Frozen', 'Produce', 'Bakery', 'Dairy & Eggs', OTHER_AISLE,
+    ]);
+  });
+
+  // A per-store entry reorders; it never adds. Otherwise a store could
+  // resurrect a deleted aisle that hiddenAisles is holding down globally.
+  it('drops a name the default order no longer has', () => {
+    expect(shopAisleOrder(base, ['Snacks', 'Frozen'])).toEqual([
+      'Frozen', 'Produce', 'Bakery', 'Dairy & Eggs', OTHER_AISLE,
+    ]);
+  });
+
+  it('never loses an aisle the default has', () => {
+    const result = shopAisleOrder(base, ['Frozen', 'Bakery']);
+    expect([...result].sort()).toEqual([...base].sort());
+  });
+
+  it('forces Other last however the entry arrived', () => {
+    expect(shopAisleOrder(base, [OTHER_AISLE, 'Frozen'])).toEqual([
+      'Frozen', 'Produce', 'Bakery', 'Dairy & Eggs', OTHER_AISLE,
+    ]);
+  });
+
+  it('ignores duplicates and blanks in a stored entry', () => {
+    expect(shopAisleOrder(base, ['Frozen', 'Frozen', '  ', 'Produce'])).toEqual([
+      'Frozen', 'Produce', 'Bakery', 'Dairy & Eggs', OTHER_AISLE,
+    ]);
+  });
+
+  it('trims a stored name so it still matches', () => {
+    expect(shopAisleOrder(base, ['  Frozen  '])[0]).toBe('Frozen');
+  });
+});
+
+describe('pruneShopAisleOrders', () => {
+  it('returns null when every entry names a live store', () => {
+    expect(pruneShopAisleOrders({ a: ['Frozen'] }, ['a', 'b'])).toBeNull();
+  });
+
+  it('drops an entry whose store is gone', () => {
+    expect(pruneShopAisleOrders({ a: ['Frozen'], gone: ['Bakery'] }, ['a'])).toEqual({
+      a: ['Frozen'],
+    });
+  });
+
+  it('drops a malformed or empty entry', () => {
+    const stored = { a: ['Frozen'], b: [], c: 'nope' as unknown as string[] };
+    expect(pruneShopAisleOrders(stored, ['a', 'b', 'c'])).toEqual({ a: ['Frozen'] });
+  });
+});
+
+describe('renameInShopAisleOrders', () => {
+  it('renames in place, keeping the store\'s own position', () => {
+    const result = renameInShopAisleOrders(
+      { costco: ['Frozen', 'Snacks', 'Produce'] },
+      'Snacks',
+      'Crisps'
+    );
+    expect(result).toEqual({ costco: ['Frozen', 'Crisps', 'Produce'] });
+  });
+
+  it('reaches every store that had an opinion', () => {
+    const result = renameInShopAisleOrders(
+      { costco: ['Snacks', 'Produce'], safeway: ['Produce', 'Snacks'] },
+      'Snacks',
+      'Crisps'
+    );
+    expect(result).toEqual({
+      costco: ['Crisps', 'Produce'],
+      safeway: ['Produce', 'Crisps'],
+    });
+  });
+
+  it('leaves stores that never mentioned it alone', () => {
+    const result = renameInShopAisleOrders(
+      { costco: ['Snacks'], safeway: ['Produce'] },
+      'Snacks',
+      'Crisps'
+    );
+    expect(result?.safeway).toEqual(['Produce']);
+  });
+
+  it('is null when no store had an opinion about that name', () => {
+    expect(renameInShopAisleOrders({ costco: ['Produce'] }, 'Snacks', 'Crisps')).toBeNull();
+    expect(renameInShopAisleOrders({}, 'Snacks', 'Crisps')).toBeNull();
   });
 });

@@ -24,6 +24,8 @@ import {
   dbSetTrip,
   dbGetGroceryAisleOverrides,
   dbSetGroceryAisleOverrides,
+  dbGetGroceryAisleOrderByShop,
+  dbSetGroceryAisleOrderByShop,
   dbGetGroceryHiddenAisles,
   dbSetGroceryHiddenAisles,
   dbTransaction,
@@ -40,6 +42,9 @@ import {
   aisleForName,
   normalizeAisleOrder,
   hiddenDefaultAisles,
+  shopAisleOrder,
+  pruneShopAisleOrders,
+  renameInShopAisleOrders,
   placeAisle,
   rememberAisles,
   remapRememberedAisle,
@@ -143,6 +148,16 @@ interface GroceryStore {
    * row it was made on is gone. See rememberAisles.
    */
   aisleOverrides: Record<string, string>;
+  /**
+   * shop id → that store's own walk order, sparse.
+   *
+   * An absent entry is not "no order", it's "walks the default one" — which is
+   * why nothing is written when a store is created, and why editing the default
+   * still moves every store that hasn't diverged. Never read raw: `orderForShop`
+   * resolves an entry against the default, and a per-store entry may only
+   * reorder what the default holds (see shopAisleOrder).
+   */
+  aisleOrderByShop: Record<string, string[]>;
   /** Checked rows still holding their place in their own aisle. */
   cartHoldIds: string[];
   initialized: boolean;
@@ -301,6 +316,21 @@ interface GroceryStore {
    * on and so has to exist.
    */
   deleteAisle: (aisle: string) => void;
+
+  /**
+   * The walk order to sort by at a given store — the default one when the shop
+   * is null or hasn't diverged. Every read of a walk order that might be
+   * store-specific goes through this rather than `aisleOrder`.
+   */
+  orderForShop: (shopId: string | null) => string[];
+  /**
+   * Gives a store an order of its own, or replaces the one it had. The saved
+   * sequence is clamped to the default order's set first (see shopAisleOrder),
+   * so this can only ever reorder.
+   */
+  setShopAisleOrder: (shopId: string, order: string[]) => void;
+  /** Puts a store back on the default order by forgetting its entry. */
+  resetShopAisleOrder: (shopId: string) => void;
 
   /** Null when the name collides with an existing store. */
   addShop: (name: string) => Shop | null;
@@ -509,6 +539,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   tripShopId: null,
   tripStartedAt: null,
   aisleOverrides: {},
+  aisleOrderByShop: {},
   cartHoldIds: [],
   initialized: false,
   lastAction: null,
@@ -559,6 +590,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     );
     const tripShopId = storedTrip?.id ?? null;
     const tripStartedAt = tripShopId ? dbGetTripStartedAt() : null;
+    // The one repair here that *is* written back, unlike the orders themselves:
+    // an entry for a deleted store can never be looked up again, so leaving it
+    // is a slow leak rather than a harmless dead key. Only writes when
+    // something actually had to go.
+    const storedShopOrders = dbGetGroceryAisleOrderByShop();
+    const pruned = pruneShopAisleOrders(storedShopOrders, shops.map(s => s.id));
+    if (pruned) dbSetGroceryAisleOrderByShop(pruned);
     if (cartHoldTimer) {
       clearTimeout(cartHoldTimer);
       cartHoldTimer = null;
@@ -568,6 +606,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       aisleOrder,
       hiddenAisles,
       aisleOverrides: dbGetGroceryAisleOverrides(),
+      aisleOrderByShop: pruned ?? storedShopOrders,
       shops,
       itemShops,
       lastShopId,
@@ -1267,6 +1306,33 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(commitAisleOrder(order, get().items.map(i => i.aisle)));
   },
 
+  orderForShop(shopId) {
+    const { aisleOrder, aisleOrderByShop } = get();
+    if (!shopId) return aisleOrder;
+    return shopAisleOrder(aisleOrder, aisleOrderByShop[shopId]);
+  },
+
+  setShopAisleOrder(shopId, order) {
+    if (!get().shops.some(s => s.id === shopId)) return;
+    // Stored already clamped, so the settings row can't hold a name the
+    // default order doesn't have — the same discipline commitAisleOrder
+    // applies to the default itself.
+    const clamped = shopAisleOrder(get().aisleOrder, order);
+    const next = { ...get().aisleOrderByShop, [shopId]: clamped };
+    dbSetGroceryAisleOrderByShop(next);
+    set({ aisleOrderByShop: next });
+  },
+
+  resetShopAisleOrder(shopId) {
+    if (!get().aisleOrderByShop[shopId]) return;
+    const next = { ...get().aisleOrderByShop };
+    // Deleted rather than set to a copy of the default: an absent entry is what
+    // "follows the default" means, and a copy would silently stop following it.
+    delete next[shopId];
+    dbSetGroceryAisleOrderByShop(next);
+    set({ aisleOrderByShop: next });
+  },
+
   renameAisle(from, to) {
     const trimmed = to.trim();
     if (!trimmed || from === OTHER_AISLE || trimmed === OTHER_AISLE) return false;
@@ -1291,9 +1357,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // In place, not appended: renaming an aisle doesn't move it in the walk.
     const order = aisleOrder.filter(a => a !== OTHER_AISLE).map(a => (a === from ? trimmed : a));
 
+    // ...and in place in every store that walks its own order, for exactly the
+    // same reason. This is the one fan-out per-store orders cost: without it
+    // the old name would simply fall out of each entry at read time and the
+    // aisle would silently jump back to its default position at every store
+    // that had moved it. The fourth place a rename has to reach, after the
+    // order, the rows and the remembered filings.
+    const shopOrders = renameInShopAisleOrders(get().aisleOrderByShop, from, trimmed);
+    if (shopOrders) dbSetGroceryAisleOrderByShop(shopOrders);
+
     set({
       items: nextItems,
       aisleOverrides: remembered ?? aisleOverrides,
+      aisleOrderByShop: shopOrders ?? get().aisleOrderByShop,
       ...commitAisleOrder(order, nextItems.map(i => i.aisle)),
     });
     return true;
@@ -1428,15 +1504,23 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // left for it to be. Inlined rather than routed through endTrip() for the
     // same reason lastShopId is: the whole cleanup belongs in one set().
     const wasTrip = get().tripShopId === id;
+    // Its walk order goes with it — the entry is keyed by an id nothing can
+    // resolve again, and a store re-added under the same name is a new store
+    // with a new id, so there's nothing for the old order to come back to.
+    const hadOrder = !!get().aisleOrderByShop[id];
+    const nextOrders = { ...get().aisleOrderByShop };
+    delete nextOrders[id];
     dbDeleteGroceryShop(id);
     if (wasLast) dbSetLastShopId(null);
     if (wasTrip) dbSetTrip(null, null);
+    if (hadOrder) dbSetGroceryAisleOrderByShop(nextOrders);
     set(s => ({
       shops: s.shops.filter(x => x.id !== id),
       itemShops: s.itemShops.filter(l => l.shopId !== id),
       lastShopId: wasLast ? null : s.lastShopId,
       tripShopId: wasTrip ? null : s.tripShopId,
       tripStartedAt: wasTrip ? null : s.tripStartedAt,
+      aisleOrderByShop: hadOrder ? nextOrders : s.aisleOrderByShop,
     }));
   },
 
