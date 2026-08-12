@@ -12,6 +12,17 @@ say why instead of opening one silently.
 Don't subscribe to PR activity and don't schedule follow-up check-ins after opening a PR unless
 the user explicitly asks for that. Just open the PR and stop.
 
+## User-facing copy
+
+Say what a setting does in plain, literal terms — the way the rest of the app already talks
+(see any existing row label/subtitle for the tone to match). No jokey metaphors, no cutesy
+voice, no invented figures of speech ("how much rope", "offers you a way out", "speaks up").
+If a label or subtitle reads like it's trying to be charming or funny, rewrite it to just state
+the mechanism. Example: "After this many pushes" / "How much rope a task gets before the picker
+offers you a way out" should instead be something like "Reschedule threshold" /
+"Show the suggestion after moving a task this many times." This applies to settings rows,
+empty states, hints, alerts, and patch notes alike.
+
 ## GitHub issue labels
 
 When creating an issue, apply exactly four labels from these fixed sets (verbatim strings — don't
