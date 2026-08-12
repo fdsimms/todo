@@ -33,6 +33,7 @@ import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { asksOnCompletion } from '../utils/deliverables';
 import { chainPreview, isChainFinish } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
@@ -52,6 +53,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { WhenPicker } from './WhenPicker';
 import { TaskBreakdownSheet } from './TaskBreakdownSheet';
+import { DeliverablePromptSheet } from './DeliverablePromptSheet';
 import { PressableScale } from './PressableScale';
 import { usePaintSelectionRow } from './PaintSelection';
 import { SelectionDot } from './SelectionDot';
@@ -356,6 +358,7 @@ export const TaskItem = React.memo(function TaskItem({
   const reduceMotion = useReduceMotion();
   const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
   // The postpone prompt's "Break it up…" needs somewhere to send the user. With
   // a key it's the AI sheet; without one it falls back to the editor, where the
   // subtask field is. A row that can't do either (no onEdit) offers no pill.
@@ -787,6 +790,13 @@ export const TaskItem = React.memo(function TaskItem({
   // needs "can this be ticked" asks this one.
   const completionLocked = recurrenceNotYetDue || locked;
 
+  // A decision task asks for a value on the way out (see Task.deliverableKind),
+  // so its box carries a "?" instead of sitting empty — the tap is about to
+  // open a sheet rather than just tick, and the control that behaves
+  // differently is where that belongs. Never while it's completing or locked:
+  // those states own the glyph, and both outrank "this one will ask".
+  const asksOnComplete = asksOnCompletion(task) && !task.completed;
+
   // A quota task is logged a unit at a time rather than ticked off once, so
   // its circle becomes a fill meter and a tap logs one glass/rep/page instead
   // of completing — except the last one, which completes for real.
@@ -886,12 +896,15 @@ export const TaskItem = React.memo(function TaskItem({
     onDismissImport?.(task.id);
   };
 
-  const handleComplete = async () => {
+  /**
+   * The completion itself, once there's nothing left to ask.
+   *
+   * `deliverableValue` is threaded through rather than written first because
+   * the store's completion is what stamps it onto the row, and a separate
+   * write would leave a window where the task is answered but not done.
+   */
+  const runCompletion = async (deliverableValue?: string | null) => {
     if (completingRef.current || pacingOutRef.current) return;
-    if (completionLocked) {
-      await haptics.error();
-      return;
-    }
     if (isNew) markTaskSeen(task.id);
     // A quota row completes through its meter, so it plays the same beats with
     // the fill topping out where the checkmark would be: the circle is a level,
@@ -960,9 +973,27 @@ export const TaskItem = React.memo(function TaskItem({
       // since the store masks a held completion as incomplete (see
       // withHeldCompletions) and the row would render as ordinary work again.
       setAwaitingCollapse(true);
-      completeTask(task.id);
+      completeTask(task.id, deliverableValue !== undefined ? { deliverableValue } : undefined);
       endQuotaHold();
     });
+  };
+
+  const handleComplete = async () => {
+    if (completingRef.current || pacingOutRef.current) return;
+    if (completionLocked) {
+      await haptics.error();
+      return;
+    }
+    // The question comes before the animation, not after it: the row has to
+    // still be there to cancel back to. Answering (or explicitly skipping)
+    // then runs the ordinary completion, so nothing downstream — the hold, the
+    // batched collapse, the recurrence — learns about deliverables at all.
+    if (asksOnComplete) {
+      await haptics.tap();
+      setShowDeliverablePrompt(true);
+      return;
+    }
+    await runCompletion();
   };
 
   // Every change to the count — a tap here, the long-press undo, the shake
@@ -1250,7 +1281,9 @@ export const TaskItem = React.memo(function TaskItem({
                   ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${quotaProgress} done, ${task.title}`
                   : timerReady
                     ? `${task.title}, timer done, complete`
-                    : `Complete ${task.title}`
+                    : asksOnComplete
+                      ? `Complete ${task.title}, asks for an answer`
+                      : `Complete ${task.title}`
         }
         accessibilityHint={meterInteractive && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined}
       >
@@ -1319,6 +1352,12 @@ export const TaskItem = React.memo(function TaskItem({
             )}
             {!completing && !recurrenceNotYetDue && locked && (
               <Ionicons name="lock-closed" size={iconSize.xs} color={colors.textTertiary} />
+            )}
+            {!completing && !completionLocked && asksOnComplete && (
+              // xs like the lock, not sm like the repeat: a "?" is tall where
+              // the repeat glyph is wide and short, so the same nominal size
+              // fills far more of a 20pt box and reads as crowded.
+              <Ionicons name="help" size={iconSize.xs} color={colors.textTertiary} />
             )}
           </View>
         </Animated.View>
@@ -2418,6 +2457,19 @@ export const TaskItem = React.memo(function TaskItem({
           visible
           taskId={task.id}
           onClose={() => setShowBreakdown(false)}
+        />
+      )}
+      {showDeliverablePrompt && (
+        <DeliverablePromptSheet
+          visible
+          task={task}
+          onConfirm={value => {
+            setShowDeliverablePrompt(false);
+            runCompletion(value);
+          }}
+          // Cancel leaves the task exactly as it was — the tap is taken back,
+          // not turned into an unanswered completion.
+          onCancel={() => setShowDeliverablePrompt(false)}
         />
       )}
     </>

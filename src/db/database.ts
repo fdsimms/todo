@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, GroceryItem, ItemShopLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { DeliverableKind, Task, Category, GroceryItem, ItemShopLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
@@ -593,6 +593,11 @@ export function initDatabase(): void {
     // task. See Task.extraTaskTally.
     'ALTER TABLE tasks ADD COLUMN extra_task_tally INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN previous_extra_task_tally INTEGER NOT NULL DEFAULT 0',
+    // NULL on every existing row, which is exactly "an ordinary task that
+    // completes by being ticked" — no task written before this shipped asks a
+    // question. See Task.deliverableKind.
+    'ALTER TABLE tasks ADD COLUMN deliverable_kind TEXT',
+    'ALTER TABLE tasks ADD COLUMN deliverable_value TEXT',
     // 0 for every existing row — nothing predating this feature was ever
     // marked a standing staple. See GroceryItem.isStaple.
     'ALTER TABLE grocery_items ADD COLUMN is_staple INTEGER NOT NULL DEFAULT 0',
@@ -910,6 +915,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     phoneNumber: (row.phone_number as string) ?? null,
     emailAddress: (row.email_address as string) ?? null,
     blockedById: (row.blocked_by_id as string | null) ?? null,
+    deliverableKind: (row.deliverable_kind as DeliverableKind | null) ?? null,
+    deliverableValue: (row.deliverable_value as string | null) ?? null,
     mealEntryId: (row.meal_entry_id as string | null) ?? null,
     groceryItemId: (row.grocery_item_id as string | null) ?? null,
     pendingImport: parsePendingImport(row.pending_import),
@@ -939,8 +946,9 @@ export function dbInsertTask(task: Task): void {
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, meal_entry_id,
       grocery_item_id, postpone_count, postpone_muted, drifting_since,
-      extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally,
+      deliverable_kind, deliverable_value
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -984,6 +992,8 @@ export function dbInsertTask(task: Task): void {
       task.extraTaskTitle ?? null,
       task.extraTaskTally,
       task.previousExtraTaskTally,
+      task.deliverableKind ?? null,
+      task.deliverableValue ?? null,
     ]
   );
 }
@@ -1003,7 +1013,8 @@ export function dbUpdateTask(task: Task): void {
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, meal_entry_id=?,
       grocery_item_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
-      extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?
+      extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?,
+      deliverable_kind=?, deliverable_value=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -1048,6 +1059,8 @@ export function dbUpdateTask(task: Task): void {
       task.extraTaskTitle ?? null,
       task.extraTaskTally,
       task.previousExtraTaskTally,
+      task.deliverableKind ?? null,
+      task.deliverableValue ?? null,
       task.id,
     ]
   );

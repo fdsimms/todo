@@ -4,6 +4,16 @@ export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
 export type ReminderKind = 'notification' | 'alarm';
+/**
+ * What a decision task asks for when you complete it — see
+ * `Task.deliverableKind` and `src/utils/deliverables.ts`.
+ *
+ * 'place' is deliberately absent until there's a place entity to point at
+ * (#1123): a string that pretends to be a place is a row nothing can ever
+ * resolve, the same mistake `splitAlternativeNames` exists to avoid on the
+ * grocery side.
+ */
+export type DeliverableKind = 'text' | 'date' | 'number';
 
 export interface Category {
   id: string;
@@ -316,6 +326,36 @@ export interface Task {
   // spawns a new row with a NEW id, so this keeps pointing at the completed
   // original. That's intended — "wait for trash day to happen once".
   blockedById: string | null;
+
+  /**
+   * "Ask on completion" — a task whose completion means recording a decision
+   * ("Pick a date for the trip"), not just ticking a box. Null on every
+   * ordinary task, which is almost all of them.
+   *
+   * Deliberately NOT a fifth `TaskKind`. The four kinds are exclusive by
+   * construction (`bakedFields` clears the other three's fields), and there is
+   * no reason a chain step or a timed task can't also end in a decision — so
+   * this is an additive optional field, like `deadline` or `blockedById`.
+   */
+  deliverableKind: DeliverableKind | null;
+  /**
+   * The answer, once given: an ISO date for 'date', the digits for 'number',
+   * free text for 'text'. Null while unanswered — which a *completed* task is
+   * allowed to be, because nothing may block a completion (see
+   * DeliverablePromptSheet, and the non-interactive paths into completeTask
+   * that can't ask at all).
+   *
+   * **Not carried to the next occurrence**, exactly like `actualMinutes`: it
+   * records what happened on this row. The *kind* carries (it's the question,
+   * which is a property of the task), the answer doesn't — so a recurring
+   * decision task's Logbook becomes the log of its answers over time.
+   *
+   * The reason this isn't appended to `notes`, which was the obvious first
+   * idea: `notes` is a CONTENT_FIELD and rides `...effective` into the next
+   * occurrence, so a recurring task would inherit every past answer and grow
+   * without bound, and a scope:'series' edit would fan the text across the set.
+   */
+  deliverableValue: string | null;
 
   // The MealPlanEntry this task was projected from — set only on a "Cook X"
   // task the meal plan spawned, null on every task a person typed. See

@@ -130,6 +130,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   phoneNumber: null,
   emailAddress: null,
   blockedById: null,
+  deliverableKind: null,
+  deliverableValue: null,
   mealEntryId: null,
   groceryItemId: null,
   pendingImport: null,

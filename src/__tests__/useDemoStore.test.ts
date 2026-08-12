@@ -31,6 +31,7 @@ import { isUsingDemoDatabase } from '../db/database';
 import { RECIPE_MEAL_TYPES } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
 import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
+import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor } from '../utils/activeTrip';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -285,6 +286,23 @@ describe('demo mode', () => {
     const shared = extractPlaceholders(withBlanks[0].items)[0];
     expect(withBlanks[0].items.filter(i => i.title.includes(`{${shared}}`)).length).toBeGreaterThan(1);
     expect(templates.some(t => declaresRunPlaceholder(t.items))).toBe(true);
+  });
+
+  // A decision task is invisible as a *capability* until something asks a
+  // question, and the answer only exists on a completed row — so the seed
+  // needs both halves for the feature to read as one that exists.
+  it('seeds a decision task, live and answered', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+    const asking = tasks.filter(t => asksOnCompletion(t));
+
+    expect(asking.length).toBeGreaterThan(0);
+    // One still outstanding, so its checkbox carries the "?".
+    expect(asking.some(t => !t.completed)).toBe(true);
+    // And one already answered, so the Logbook shows what an answer looks like.
+    const answered = asking.find(t => t.completed && t.deliverableValue !== null)!;
+    expect(answered).toBeDefined();
+    expect(formatTaskDeliverable(answered)).toBeTruthy();
   });
 
   // A rule nothing has a row for reads as a field that does nothing.
