@@ -37,6 +37,7 @@ import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
+import { TripSuggestionCard } from '../components/TripSuggestionCard';
 import { InlineAction } from '../components/InlineAction';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
@@ -642,6 +643,15 @@ export function GroceryScreen() {
         placeholderStyle={styles.dropSlot}
         onReorder={reordered => applyDrop(resolveGroceryDrop(reordered))}
         contentContainerStyle={rows.length === 0 ? styles.emptyContainer : styles.list}
+        // Scrolls with the rows rather than sitting above the list: it's worth
+        // seeing when you open the screen and worth getting out of the way for
+        // the rest of the shop. Inside the ScrollView is also the only place a
+        // header can go here — see ReorderableList.ListHeaderComponent, where
+        // one hung in the container silently offsets the drag math. Hidden
+        // while selecting, like every header action is.
+        ListHeaderComponent={
+          selectionMode ? null : <TripSuggestionCard onPress={() => setTripOpen(true)} />
+        }
         // Nothing in the footer applies to an empty list, and the tab-bar
         // spacer would take its height off the box the empty state centres in
         // (the empty state clears the tab bar itself, via bottomOffset).

@@ -25,6 +25,7 @@ import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD } from '../utils/postpo
 import { isUsingDemoDatabase } from '../db/database';
 import { RECIPE_MEAL_TYPES } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
+import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockDbs: Map<string, any>;
@@ -331,6 +332,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(aisleOrder).not.toContain('Personal Care');
     expect(items.some(i => i.aisle === 'Bulk bins')).toBe(true);
     expect(aisleOrder.indexOf('Frozen')).toBeGreaterThan(aisleOrder.indexOf('Pantry'));
+
+    // …and enough of them on the seeded list for the card at the top of the
+    // Groceries screen to have something to say. It renders nothing when the
+    // suggestion is empty, so a seed that shopped its whole list clean would
+    // read as a feature the app hasn't got.
+    const plan = planTrip(items, itemShops, shops);
+    expect(plan.coverage.length).toBeGreaterThanOrEqual(2);
+    expect(
+      describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length)
+    ).not.toBeNull();
   });
 
   it('seeds a recipe of every meal type, with the composed ones composed', () => {
