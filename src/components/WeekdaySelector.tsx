@@ -5,6 +5,9 @@ import { spacing, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+// A single letter is three ambiguous pairs read aloud (two S's, two T's), so
+// the circles carry the full name for screen readers.
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 interface Props {
   /** Selected weekdays, 0 = Sunday. */
@@ -36,6 +39,9 @@ export function WeekdaySelector({ value, onChange }: Props) {
             style={[styles.day, active && styles.dayActive]}
             onPress={() => toggle(day)}
             activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={DAY_NAMES[day]}
           >
             <Text style={[styles.dayText, active && styles.dayTextActive]}>{label}</Text>
           </TouchableOpacity>
@@ -50,10 +56,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.xs,
   },
+  // Matches `interaction.pillHeight`, so a weekday circle and an option pill
+  // in the same picker are the same size.
   day: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: interaction.pillHeight,
+    height: interaction.pillHeight,
+    borderRadius: interaction.pillHeight / 2,
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',
     justifyContent: 'center',

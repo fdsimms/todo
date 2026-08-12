@@ -63,7 +63,9 @@ import { format } from 'date-fns/format';
 import { getLogicalToday, getLogicalTomorrow, getLogicalNow } from '../utils/dateUtils';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
-import { ORDINAL_OPTIONS, RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
+import { RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
+import { SegmentedControl } from './SegmentedControl';
+import { ORDINAL_OPTIONS } from '../utils/recurrenceLabels';
 import { ordinal } from '../utils/ordinal';
 
 interface Props {
@@ -774,6 +776,39 @@ export function QuickAddModal({
 
   const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
 
+  // The four monthly day-anchor modes as one closed set, so the row can be a
+  // segmented control rather than four independently-computed pills. Mirrors
+  // `RecurrencePicker`'s; both fold the same two nullable fields into one value.
+  const monthAnchor: 'dueDate' | 'monthDay' | 'lastDay' | 'weekday' =
+    recurrenceWeekOrdinal !== null ? 'weekday'
+      : recurrenceMonthDay === -1 ? 'lastDay'
+        : recurrenceMonthDay !== null && recurrenceMonthDay > 0 ? 'monthDay'
+          : 'dueDate';
+
+  const selectMonthAnchor = (anchor: 'dueDate' | 'monthDay' | 'lastDay' | 'weekday') => {
+    switch (anchor) {
+      case 'dueDate':
+        setRecurrenceWeekOrdinal(null);
+        setRecurrenceMonthDay(null);
+        break;
+      case 'monthDay':
+        setRecurrenceWeekOrdinal(null);
+        setRecurrenceMonthDay(
+          recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : (dueDate ?? new Date()).getDate(),
+        );
+        break;
+      case 'lastDay':
+        setRecurrenceWeekOrdinal(null);
+        setRecurrenceMonthDay(-1);
+        break;
+      case 'weekday':
+        setRecurrenceMonthDay(null);
+        setRecurrenceWeekOrdinal(recurrenceWeekOrdinal ?? 1);
+        if (recurrenceDays.length === 0) setRecurrenceDays([(dueDate ?? new Date()).getDay()]);
+        break;
+    }
+  };
+
   const formatDate = (d: Date) => {
     const today = getLogicalToday(dayResetTime);
     const tomorrow = getLogicalTomorrow(dayResetTime);
@@ -1325,22 +1360,14 @@ export function QuickAddModal({
 
           {activePanel === 'repeat' && (
             <View style={styles.panel}>
-              <View style={styles.presetRow}>
-                {(['none', 'daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[]).map(t => (
-                  <TouchableOpacity
-                    key={t}
-                    style={[styles.presetChip, recurrenceType === t && styles.presetChipActive]}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceType(t);
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Text style={[styles.presetChipText, recurrenceType === t && styles.presetChipTextActive]}>
-                      {RECURRENCE_LABELS[t]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={styles.segmentRow}>
+                <SegmentedControl
+                  label="Repeats"
+                  value={recurrenceType}
+                  onChange={setRecurrenceType}
+                  options={(['none', 'daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[])
+                    .map(t => ({ value: t, label: RECURRENCE_LABELS[t] }))}
+                />
               </View>
               {recurrenceType !== 'none' && (
                 <View style={styles.intervalRow}>
@@ -1378,60 +1405,19 @@ export function QuickAddModal({
                 </View>
               )}
               {recurrenceType === 'monthly' && (
-                <View style={styles.scheduleRow}>
-                  <TouchableOpacity
-                    style={[styles.schedulePill, recurrenceMonthDay === null && recurrenceWeekOrdinal === null && styles.schedulePillActive]}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceMonthDay(null);
-                      setRecurrenceWeekOrdinal(null);
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Text style={[styles.schedulePillText, recurrenceMonthDay === null && recurrenceWeekOrdinal === null && styles.schedulePillTextActive]}>
-                      Same day as due date
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.schedulePill, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillActive]}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceWeekOrdinal(null);
-                      setRecurrenceMonthDay(recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : (dueDate ?? new Date()).getDate());
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Text style={[styles.schedulePillText, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillTextActive]}>
-                      On a day
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.schedulePill, recurrenceMonthDay === -1 && styles.schedulePillActive]}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceWeekOrdinal(null);
-                      setRecurrenceMonthDay(-1);
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Text style={[styles.schedulePillText, recurrenceMonthDay === -1 && styles.schedulePillTextActive]}>
-                      Last day
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.schedulePill, recurrenceWeekOrdinal !== null && styles.schedulePillActive]}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceMonthDay(null);
-                      setRecurrenceWeekOrdinal(recurrenceWeekOrdinal ?? 1);
-                      if (recurrenceDays.length === 0) setRecurrenceDays([(dueDate ?? new Date()).getDay()]);
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Text style={[styles.schedulePillText, recurrenceWeekOrdinal !== null && styles.schedulePillTextActive]}>
-                      On a weekday
-                    </Text>
-                  </TouchableOpacity>
+                <View style={styles.segmentRow}>
+                  <SegmentedControl
+                    label="On which day"
+                    value={monthAnchor}
+                    onChange={selectMonthAnchor}
+                    columns={2}
+                    options={[
+                      { value: 'dueDate' as const, label: 'Same day as due date' },
+                      { value: 'monthDay' as const, label: 'On a day' },
+                      { value: 'lastDay' as const, label: 'Last day' },
+                      { value: 'weekday' as const, label: 'On a weekday' },
+                    ]}
+                  />
                 </View>
               )}
               {recurrenceType === 'monthly' && recurrenceMonthDay !== null && recurrenceMonthDay > 0 && (
@@ -1460,22 +1446,17 @@ export function QuickAddModal({
               )}
               {recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null && (
                 <>
-                  <View style={styles.scheduleRow}>
-                    {ORDINAL_OPTIONS.map(({ value, label }) => (
-                      <TouchableOpacity
-                        key={value}
-                        style={[styles.schedulePill, recurrenceWeekOrdinal === value && styles.schedulePillActive]}
-                        onPress={() => {
-                          haptics.tap();
-                          setRecurrenceWeekOrdinal(value);
-                        }}
-                        activeOpacity={interaction.activeOpacity}
-                      >
-                        <Text style={[styles.schedulePillText, recurrenceWeekOrdinal === value && styles.schedulePillTextActive]}>
-                          {label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                  <View style={styles.segmentRow}>
+                    <SegmentedControl
+                      label="Which week"
+                      value={recurrenceWeekOrdinal}
+                      onChange={setRecurrenceWeekOrdinal}
+                      options={ORDINAL_OPTIONS.map(({ value, label }) => ({
+                        value,
+                        label,
+                        accessibilityLabel: `${label} week of the month`,
+                      }))}
+                    />
                   </View>
                   <View style={styles.weekdayRow}>
                     <WeekdaySelector value={recurrenceDays} onChange={onlyNewestWeekday(recurrenceDays, setRecurrenceDays)} />
@@ -1483,31 +1464,16 @@ export function QuickAddModal({
                 </>
               )}
               {recurrenceType !== 'none' && (
-                <View style={styles.scheduleRow}>
-                  <TouchableOpacity
-                    style={[styles.schedulePill, !recurrenceFromCompletion && styles.schedulePillActive]}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceFromCompletion(false);
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Text style={[styles.schedulePillText, !recurrenceFromCompletion && styles.schedulePillTextActive]}>
-                      On schedule
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.schedulePill, recurrenceFromCompletion && styles.schedulePillActive]}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceFromCompletion(true);
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Text style={[styles.schedulePillText, recurrenceFromCompletion && styles.schedulePillTextActive]}>
-                      After completion
-                    </Text>
-                  </TouchableOpacity>
+                <View style={styles.segmentRow}>
+                  <SegmentedControl
+                    label="Next due date"
+                    value={recurrenceFromCompletion}
+                    onChange={setRecurrenceFromCompletion}
+                    options={[
+                      { value: false, label: 'On schedule' },
+                      { value: true, label: 'After completion' },
+                    ]}
+                  />
                 </View>
               )}
             </View>
@@ -2148,29 +2114,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   weekdayRow: {
     marginTop: spacing.sm,
   },
-  scheduleRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    marginTop: spacing.sm,
-  },
-  schedulePill: {
-    paddingHorizontal: 14,
-    minHeight: interaction.pillHeight,
-    justifyContent: 'center',
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-  },
-  schedulePillActive: {
-    backgroundColor: colors.accent,
-  },
-  schedulePillText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
-  },
-  schedulePillTextActive: {
-    color: colors.onAccent,
-  },
+  segmentRow: { marginTop: spacing.sm },
   panel: {
     marginBottom: spacing.sm,
     paddingTop: spacing.xs,
