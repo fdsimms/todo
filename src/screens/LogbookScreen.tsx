@@ -632,24 +632,30 @@ const LogbookRow = React.memo(function LogbookRow({
                 the Logbook to read back. It shrinks where the others don't, so
                 a long answer truncates instead of shoving them off the row.
 
-                The "?" is what says this is an *answer* rather than one more
-                timestamp — "9:14 AM · Sat 12 Sep" alone reads as two times of
-                the same kind. It's the glyph the task's own checkbox carried
-                before it was ticked, so the row and its Logbook entry say the
-                same thing about it. Glyph and no bullet, exactly like the
-                category chip beside it: the glyph is the separator.
+                A tinted pill rather than one more "· value" in the line, and
+                the "?" needs the pill as much as the pill needs it: bare, the
+                glyph sits between two unrelated bits of text and reads as
+                uncertainty about the value it's next to. Enclosed, it's a
+                label on the thing it belongs to — and the answer stops reading
+                as a second timestamp, which "9:14 AM · Sat 12 Sep" plainly
+                did. Same glyph the task's own checkbox carried before it was
+                ticked, so the row and its Logbook entry say the same thing.
 
                 An asked-but-unanswered entry says so rather than showing
-                nothing. Otherwise it's indistinguishable from an ordinary
-                task, and the ⋯ menu's "Add Answer" appears with no visible
-                reason for being there. */}
+                nothing — otherwise it's indistinguishable from an ordinary
+                task and the ⋯ menu's "Add Answer" appears with no visible
+                reason. Deliberately *not* in the pill: a tinted pill is the
+                app saying "here's what you decided", and an empty one would
+                make a claim the row can't back. */}
             {asksOnCompletion(task) && (
-              <View style={styles.answerChip}>
-                <Ionicons name="help" size={iconSize.xs} color={colors.textTertiary} />
-                {answer !== null
-                  ? <Text style={styles.answer} numberOfLines={1}>{answer}</Text>
-                  : <Text style={styles.noAnswer} numberOfLines={1}>No answer</Text>}
-              </View>
+              answer !== null ? (
+                <View style={styles.answerPill}>
+                  <Ionicons name="help" size={iconSize.xs} color={colors.accent} />
+                  <Text style={styles.answer} numberOfLines={1}>{answer}</Text>
+                </View>
+              ) : (
+                <Text style={styles.noAnswer} numberOfLines={1}>No answer</Text>
+              )
             )}
           </View>
         </TouchableOpacity>
@@ -836,23 +842,30 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: lineHeight.xs,
     flexShrink: 0,
   },
-  // Glyph + text, laid out exactly like categoryChip above it — the meta row's
-  // established shape for "a labelled thing" as opposed to "one more number".
-  answerChip: {
+  // **Horizontal padding only, and a height pinned to the meta line.** Every
+  // row here is a fixed ROW_HEIGHT for getItemLayout, computed as
+  // title + 2 + lineHeight.xs — so a pill that padded itself vertically would
+  // make its row taller than the list believes every row is, and the list
+  // becomes unstable at scroll depth (see the note on ROW_HEIGHT).
+  answerPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
+    height: lineHeight.xs,
+    paddingHorizontal: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSubtle,
     flexShrink: 1,
   },
   answer: {
-    color: colors.textSecondary,
+    color: colors.accent,
     fontSize: font.xs,
     lineHeight: lineHeight.xs,
     fontWeight: fontWeight.medium,
     flexShrink: 1,
   },
-  // Nothing was recorded, so this is bookkeeping again and drops back to the
-  // meta grey the rest of the line uses.
+  // Nothing was recorded, so this is bookkeeping again: no pill, and back to
+  // the meta grey the rest of the line uses.
   noAnswer: {
     color: colors.textTertiary,
     fontSize: font.xs,

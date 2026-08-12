@@ -124,8 +124,8 @@ function SearchResultItem({ result, onPress, styles, colors }: {
               found and still doesn't tell you what you decided. Same glyph
               the Logbook entry and the unticked checkbox use. */}
           {answer !== null && (
-            <View style={styles.projectChip}>
-              <Ionicons name="help" size={iconSize.xs} color={colors.textSecondary} />
+            <View style={styles.answerPill}>
+              <Ionicons name="help" size={iconSize.xs} color={colors.accent} />
               <Text style={styles.answerText} numberOfLines={1}>{answer}</Text>
             </View>
           )}
@@ -392,9 +392,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   tagDot: { width: 7, height: 7, borderRadius: 4 },
   metaText: { color: colors.textSecondary, fontSize: font.xs },
-  // A shade up from metaText, like the Logbook's — the answer is the one thing
-  // on the row that isn't bookkeeping about the task.
-  answerText: { color: colors.text, fontSize: font.xs, fontWeight: fontWeight.medium, flexShrink: 1 },
+  // The same tinted pill the Logbook entry wears, so a decision looks like one
+  // wherever it's read back. The "?" needs the enclosure: loose in a meta row
+  // it reads as uncertainty about the value beside it rather than as a label
+  // on it.
+  answerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSubtle,
+    flexShrink: 1,
+  },
+  answerText: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.medium, flexShrink: 1 },
   completedLabel: { color: colors.green, fontSize: font.xs },
   archivedLabel: { color: colors.orange, fontSize: font.xs, fontWeight: fontWeight.semibold },
   notesPreview: {
