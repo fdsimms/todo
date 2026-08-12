@@ -20,6 +20,15 @@ export interface PillGroupOption extends OverflowPill {
    * Costco by typing "3" would be nonsense.
    */
   suffix?: string;
+  /**
+   * A pill carrying a stated *negative* — "this store doesn't have it". Tinted
+   * red and struck through rather than filled like a selected pill, because it
+   * isn't one: `selected` means this option is the value, and a ruled-out
+   * option is the opposite of chosen. The two states are mutually exclusive by
+   * construction (the grocery item sheet's store picker cycles between them),
+   * and `negative` wins if a caller ever sets both.
+   */
+  negative?: boolean;
   accessibilityLabel?: string;
   onPress: () => void;
 }
@@ -91,7 +100,16 @@ export function PillGroup({
   const [error, setError] = useState<string | null>(null);
 
   const overflow = useMemo(
-    () => resolvePillOverflow(options, { query, limit, showAll }),
+    // A negative pill is exempt from the cap for the same reason a selected one
+    // is: it's something the user said about this row, and burying "not at
+    // Safeway" behind "4 more" hides the fact and its only undo. Mapped here
+    // rather than pushed into `pillOverflow`, so callers keep using `pinned`
+    // for the one thing it means — the option that stands for no choice.
+    () =>
+      resolvePillOverflow(
+        options.map(o => (o.negative ? { ...o, pinned: true } : o)),
+        { query, limit, showAll },
+      ),
     [options, query, limit, showAll],
   );
   const { visible, hiddenCount, filterable, exact, noMatches } = overflow;
@@ -174,14 +192,24 @@ export function PillGroup({
         {visible.map(option => (
           <TouchableOpacity
             key={option.key}
-            style={[styles.pill, option.selected && styles.pillActive]}
+            style={[
+              styles.pill,
+              option.selected && !option.negative && styles.pillActive,
+              option.negative && styles.pillNegative,
+            ]}
             activeOpacity={interaction.activeOpacity}
             onPress={option.onPress}
             accessibilityRole="button"
-            accessibilityState={{ selected: !!option.selected }}
+            accessibilityState={{ selected: !!option.selected && !option.negative }}
             accessibilityLabel={option.accessibilityLabel ?? option.label}
           >
-            <Text style={[styles.pillText, option.selected && styles.pillTextActive]}>
+            <Text
+              style={[
+                styles.pillText,
+                option.selected && !option.negative && styles.pillTextActive,
+                option.negative && styles.pillTextNegative,
+              ]}
+            >
               {option.label}
               {option.suffix}
             </Text>
@@ -298,8 +326,13 @@ const makeStyles = (colors: Colors, surface: Surface) => {
       paddingVertical: spacing.sm,
     },
     pillActive: { backgroundColor: colors.accent },
+    // Tinted rather than filled: a filled red pill in a grid where filled means
+    // "picked" reads as an emphatic selection, which is the wrong half of the
+    // meaning. The strike-through on the label is what carries "ruled out".
+    pillNegative: { backgroundColor: colors.red + '1A' },
     pillText: { fontSize: font.sm, color: colors.textSecondary },
     pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+    pillTextNegative: { color: colors.red, textDecorationLine: 'line-through' },
     morePill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     // Weighted, so the disclosure doesn't read as one more option in the grid
     // it sits at the end of.

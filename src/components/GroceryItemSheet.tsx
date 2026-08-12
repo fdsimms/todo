@@ -30,7 +30,7 @@ import { InlineAction } from './InlineAction';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { describeShops, shopsForItem } from '../utils/groceryShops';
+import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
 
@@ -83,6 +83,8 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const linkItemShop = useGroceryStore(s => s.linkItemShop);
   const unlinkItemShop = useGroceryStore(s => s.unlinkItemShop);
+  const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
+  const clearItemUnavailable = useGroceryStore(s => s.clearItemUnavailable);
   const addShop = useGroceryStore(s => s.addShop);
 
   const [name, setName] = useState('');
@@ -166,6 +168,9 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   const linkedCounts = new Map(
     shopsForItem(item.id, itemShops, shops).map(s => [s.shop.id, s.purchaseCount])
   );
+  // Stores the user has said don't stock this — the third pill state, and the
+  // only place in the app those claims can be seen and taken back.
+  const notStocked = new Set(unavailableShopsFor(item.id, itemShops, shops).map(s => s.id));
   const summary = describeShops(item, itemShops, shops);
 
   // A future onHandUntil is an active "Got it"; a past one (always
@@ -186,29 +191,58 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
     setOnHandUntil(item.id, null);
   };
 
+  /**
+   * One pill, three states, cycled by tapping: nothing → *you get it here* →
+   * *they don't have it* → nothing.
+   *
+   * A cycle rather than two controls because the states are answers to one
+   * question, and the field's hint spells the order out — the alternative was a
+   * second grid of the same stores, which is the exact thing PillGroup exists
+   * to stop (~30 pills pushing the name and quantity off the sheet).
+   *
+   * The one branch that isn't a plain step is a store with real purchases:
+   * dropping those destroys a record, and groceries have no undo, so it asks —
+   * and the ask is where "they've stopped stocking it" lives, since that's the
+   * case where the history is worth keeping and the shelf is still empty.
+   */
   const toggleShop = (shopId: string) => {
+    const shopName = shops.find(s => s.id === shopId)?.name ?? 'this store';
+
+    // Third state → back to nothing. clearItemUnavailable keeps any purchases
+    // and drops a row that was only ever the claim.
+    if (notStocked.has(shopId)) {
+      haptics.tap();
+      clearItemUnavailable(item.id, shopId);
+      return;
+    }
+
     const count = linkedCounts.get(shopId);
     if (count === undefined) {
       haptics.tap();
       linkItemShop(item.id, shopId);
       return;
     }
-    // Unlinking a store you've actually bought here destroys a record, and
-    // groceries have no undo anywhere — so an observed link asks first while an
-    // assertion (count 0, nothing to lose) just goes.
     if (count === 0) {
       haptics.tap();
-      unlinkItemShop(item.id, shopId);
+      markItemsUnavailable([item.id], shopId);
       return;
     }
-    const shopName = shops.find(s => s.id === shopId)?.name ?? 'this store';
     Alert.alert(
-      `Forget buying ${item.name} at ${shopName}?`,
-      `${count} ${count === 1 ? 'purchase' : 'purchases'} recorded here. This can’t be undone — the item and its overall count stay.`,
+      `${shopName} and ${item.name}`,
+      `${count} ${count === 1 ? 'purchase' : 'purchases'} recorded here. Forgetting them can’t be undone — the item and its overall count stay either way.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Forget',
+          // The common case by far, and it keeps everything: the shop did sell
+          // it to you, and has stopped.
+          text: 'They don’t have it now',
+          onPress: () => {
+            markItemsUnavailable([item.id], shopId);
+            haptics.tap();
+          },
+        },
+        {
+          text: 'Forget purchases',
           style: 'destructive',
           onPress: () => {
             unlinkItemShop(item.id, shopId);
@@ -256,6 +290,7 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   const shopOptions: PillGroupOption[] = shops.map(shop => {
     const count = linkedCounts.get(shop.id);
     const active = count !== undefined;
+    const absent = notStocked.has(shop.id);
     return {
       key: shop.id,
       label: shop.name,
@@ -263,11 +298,14 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
       // store reads as "never bought here", the opposite of what the tap meant.
       suffix: count ? ` · ${count}` : undefined,
       selected: active,
-      accessibilityLabel: active
-        ? count === 0
-          ? `${shop.name}, marked by you. Tap to remove.`
-          : `${shop.name}, bought here ${count} ${count === 1 ? 'time' : 'times'}. Tap to remove.`
-        : `${shop.name}. Tap to mark that you can get this here.`,
+      negative: absent,
+      accessibilityLabel: absent
+        ? `${shop.name}, marked as not stocking this. Tap to clear.`
+        : active
+          ? count === 0
+            ? `${shop.name}, marked by you. Tap to say they don’t have it.`
+            : `${shop.name}, bought here ${count} ${count === 1 ? 'time' : 'times'}. Tap for options.`
+          : `${shop.name}. Tap to mark that you can get this here.`,
       onPress: () => toggleShop(shop.id),
     };
   });
@@ -294,14 +332,21 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   ];
 
   const linkedNames = shops.filter(s => linkedCounts.has(s.id)).map(s => s.name);
+  const notStockedNames = shops.filter(s => notStocked.has(s.id)).map(s => s.name);
   // Names, not a bare count: which shops is the fact, and the first one plus
   // "+3" fits the one line a collapsed field gets. Counting *stores* rather
   // than purchases, so this can't be read as a trip total — see describeShops.
+  const plusMore = (names: string[]) =>
+    names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`;
+  // A collapsed field shows one value, so the positives win the line when there
+  // are any — where you *can* get it is the more useful half. An item with only
+  // negatives would otherwise summarise as "Any", which is the one thing the
+  // user has said it isn't.
   const storesSummary = linkedNames.length
-    ? linkedNames.length === 1
-      ? linkedNames[0]
-      : `${linkedNames[0]} +${linkedNames.length - 1}`
-    : undefined;
+    ? plusMore(linkedNames)
+    : notStockedNames.length
+      ? `Not ${plusMore(notStockedNames)}`
+      : undefined;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -423,7 +468,7 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
               label="Stores"
               summary={storesSummary}
               emptySummary="Any"
-              hint="Tap a store to say you can get this there. Finishing a shop marks it for you."
+              hint="Tap a store to say you can get this there, again to say they don’t have it. Finishing a shop marks them for you."
               expanded={openField === 'stores'}
               onToggle={() => toggleField('stores')}
             >

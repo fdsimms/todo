@@ -66,6 +66,15 @@ interface Props {
  * because a ranking that looks authoritative is exactly the one worth
  * undercutting.
  *
+ * **One kind of line here does assert an absence**, and only because the user
+ * asserted it first: an item they marked as not stocked when they finished a
+ * shop there (`ItemShopLink.unavailableAt`). Those come through as
+ * `TripSummary.missing`, are never softened into "you haven't got it here
+ * before", and are the strongest reason the sheet has to propose a second stop
+ * — they're the one thing on the list this trip definitely won't come back
+ * with. The correction mode lists them too, unticked, so changing your mind
+ * stays one tap away.
+ *
  * No store stays a real answer, same as `FinishShoppingSheet`: it's a row of
  * its own rather than a cancel, and it makes exactly the task this button made
  * before any of this existed.
@@ -162,14 +171,26 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
     const known = new Set(correctingEntry.itemIds);
     return plan.itemIds.filter(id => !known.has(id));
   }, [correctingEntry, plan]);
+  // Rows in that list the user has already answered for — shown, labelled, and
+  // left unticked. Ticking one is how you say the store has it after all, and
+  // linkItemShopMany takes the "not stocked" off when it writes.
+  const correctingAbsent = useMemo(
+    () => new Set(correctingEntry?.unavailableItemIds ?? []),
+    [correctingEntry]
+  );
 
   const startCorrection = (shopId: string) => {
     const entry = plan.coverage.find(c => c.shop.id === shopId);
     const known = new Set(entry?.itemIds ?? []);
+    const absent = new Set(entry?.unavailableItemIds ?? []);
     haptics.tap();
     // Everything pre-ticked: the button that got here said the store has more
     // than the app thinks, so the work left is unticking the exceptions.
-    setTicked(plan.itemIds.filter(id => !known.has(id)));
+    // Everything, that is, except what the user themselves marked as not
+    // stocked here — those are listed (this is a fine place to change your
+    // mind) but never pre-ticked, or Save would quietly undo a deliberate
+    // answer they gave at the checkout.
+    setTicked(plan.itemIds.filter(id => !known.has(id) && !absent.has(id)));
     setCorrecting(shopId);
   };
 
@@ -192,6 +213,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
 
   const next = summary.suggestion;
   const gapGain = next.length > 0 ? countIn(next[0].itemIds, summary.gap) : 0;
+  const missingGain = next.length > 0 ? countIn(next[0].itemIds, summary.missing) : 0;
   // What the whole suggested itinerary would come to — everything already
   // covered, plus the gap it closes.
   const plannedTotal =
@@ -246,7 +268,9 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
                   styles={styles}
                   colors={colors}
                   title={nameOf.get(id) ?? 'an item'}
-                  subtitle={null}
+                  subtitle={
+                    correctingAbsent.has(id) ? 'You marked this as not stocked here' : null
+                  }
                   selected={ticked.includes(id)}
                   onPress={() => {
                     haptics.tap();
@@ -307,6 +331,28 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
                         {plannedTotal} of {total}.
                       </Text>
                     )}
+                  </>
+                ) : summary.missing.length > 0 ? (
+                  <>
+                    {/* The one card here that states an absence outright, and
+                        it can, because it's quoting the user back to them:
+                        these are items they marked as not stocked when they
+                        finished a shop there. */}
+                    <Text style={styles.suggestionTitle}>
+                      {selectedNames} {selected.length > 1 ? 'don’t' : 'doesn’t'} have{' '}
+                      {namesFor(summary.missing)}.
+                    </Text>
+                    <Text style={styles.suggestionSub}>
+                      {missingGain > 0
+                        ? `${next[0].shop.name} has ${
+                            missingGain === summary.missing.length
+                              ? summary.missing.length === 1
+                                ? 'it'
+                                : 'them all'
+                              : `${missingGain} of them`
+                          }.`
+                        : `${next[0].shop.name} stocks that aisle, so it’s the likeliest bet.`}
+                    </Text>
                   </>
                 ) : summary.gap.length > 0 ? (
                   <>
@@ -412,6 +458,16 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
                           : ''
                       }.`}
               </Text>
+              {summary.missing.length > 0 && (
+                // Stated flatly, unlike every other line in this footer: this
+                // one is the user's own answer from a finished shop, not the
+                // app reading absence as evidence.
+                <Text style={styles.footerNote}>
+                  You’ve marked {namesFor(summary.missing)} as not stocked{' '}
+                  {selected.length > 1 ? 'at those stores' : `at ${selectedNames}`}, so{' '}
+                  {summary.missing.length === 1 ? 'it needs' : 'they need'} another stop.
+                </Text>
+              )}
               {summary.unknown.length > 0 && (
                 <Text style={styles.footerNote}>
                   Nothing’s on record about {namesFor(summary.unknown)} anywhere, so no store here

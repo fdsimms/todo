@@ -713,6 +713,24 @@ export interface ItemShopLink {
   // trip. That's the whole distinction — it doesn't need a second flag.
   purchaseCount: number;
   lastPurchasedAt: string | null;
+  // "They don't have it here" — the negative claim, stamped when it was made.
+  //
+  // A link row is therefore one of three things, and the count alone can't say
+  // which: an observed purchase, a hand-assertion of availability
+  // (purchaseCount 0, no stamp), or a store the user has said doesn't stock
+  // this. The negative is the *current* answer and the count is history, so
+  // both can sit on one row — a shop that stocked it eleven times and stopped
+  // is exactly the case, and zeroing the count to express it would destroy the
+  // record. Every "where can I get this" read (shopsForItem, primaryShopFor,
+  // exclusiveShopFor, itemIdsForShop, planTrip) drops a stamped link; only the
+  // item sheet's own store list, which exists to show and undo it, reads it.
+  //
+  // A date rather than a boolean because stock changes and the claim ages: it
+  // says *when* you found the gap, which is what makes "not at Safeway (March)"
+  // a fact you can weigh rather than a permanent verdict. Buying the thing
+  // there clears it automatically — a purchase refutes the claim outright, and
+  // that's the one correction nobody should have to make by hand.
+  unavailableAt: string | null;
 }
 
 // Shorter than a grocery item's: this is a chip label that has to sit in a row

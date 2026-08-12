@@ -274,6 +274,24 @@ interface GroceryStore {
    */
   linkItemShopMany: (itemIds: string[], shopId: string) => void;
   unlinkItemShop: (itemId: string, shopId: string) => void;
+  /**
+   * The opposite claim: "this store doesn't have it". Written by the finish-
+   * shopping sheet for whatever was left on the list after a trip, and by the
+   * item sheet's own store picker.
+   *
+   * Takes a set for the same reason linkItemShopMany does — the trip answers
+   * for a whole list at once — and leaves any purchase history on the row
+   * alone: a shop that stocked it and stopped is the case, and clearing the
+   * count to say so would destroy the record. See ItemShopLink.unavailableAt.
+   */
+  markItemsUnavailable: (itemIds: string[], shopId: string) => void;
+  /**
+   * Takes the claim back. An observed link keeps its purchases and simply stops
+   * being marked; a link that was *only* the claim is deleted outright, because
+   * clearing the stamp in place would silently turn "they don't have it" into
+   * the opposite assertion ("I get it here" — purchaseCount 0, no stamp).
+   */
+  clearItemUnavailable: (itemId: string, shopId: string) => void;
   setLastShopId: (id: string | null) => void;
 
   itemByNameKey: (key: string) => GroceryItem | null;
@@ -927,12 +945,26 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         itemShops = [
           ...s.itemShops.map(l =>
             l.shopId === shop.id && done.has(l.itemId)
-              ? { ...l, purchaseCount: l.purchaseCount + 1, lastPurchasedAt: purchasedAt }
+              ? {
+                  ...l,
+                  purchaseCount: l.purchaseCount + 1,
+                  lastPurchasedAt: purchasedAt,
+                  // Mirrors dbFinishGroceryShopping: buying it here refutes any
+                  // "they don't have it" outright, so the trip clears it rather
+                  // than leaving the user to.
+                  unavailableAt: null,
+                }
               : l
           ),
           ...ids
             .filter(id => !bumped.has(id))
-            .map(id => ({ itemId: id, shopId: shop.id, purchaseCount: 1, lastPurchasedAt: purchasedAt })),
+            .map(id => ({
+              itemId: id,
+              shopId: shop.id,
+              purchaseCount: 1,
+              lastPurchasedAt: purchasedAt,
+              unavailableAt: null,
+            })),
         ];
       }
 
@@ -1201,12 +1233,23 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     for (const itemId of itemIds) {
       const item = items.find(i => i.id === itemId);
       if (!item) continue;
-      if (itemShops.some(l => l.itemId === itemId && l.shopId === shopId)) continue;
+      const existing = itemShops.find(l => l.itemId === itemId && l.shopId === shopId);
+      // An existing *positive* link already says this, so there's nothing to
+      // write. A negative one says the opposite, and the user is now correcting
+      // it — so this overwrites the row rather than skipping it, keeping
+      // whatever purchases it carries.
+      if (existing && !existing.unavailableAt) continue;
       if (links.some(l => l.itemId === itemId)) continue;
 
       // purchaseCount 0 is the assertion: the user says it's here, no trip has
       // confirmed it. Ranking reads that and declines to call it "usually".
-      const link: ItemShopLink = { itemId, shopId, purchaseCount: 0, lastPurchasedAt: null };
+      const link: ItemShopLink = {
+        itemId,
+        shopId,
+        purchaseCount: existing?.purchaseCount ?? 0,
+        lastPurchasedAt: existing?.lastPurchasedAt ?? null,
+        unavailableAt: null,
+      };
       dbSetItemShopLink(link);
       links.push(link);
 
@@ -1223,8 +1266,17 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }
     if (links.length === 0) return;
 
+    // A link correcting a negative one is a replacement, not an addition — the
+    // db upserted it, so appending blind would leave two rows in memory for a
+    // pair the table can only hold one of.
+    const written = new Map(links.map(l => [`${l.itemId}|${l.shopId}`, l]));
     set(s => ({
-      itemShops: [...s.itemShops, ...links],
+      itemShops: [
+        ...s.itemShops.map(l => written.get(`${l.itemId}|${l.shopId}`) ?? l),
+        ...links.filter(
+          l => !s.itemShops.some(x => x.itemId === l.itemId && x.shopId === l.shopId)
+        ),
+      ],
       items: promoted.size > 0 ? s.items.map(i => promoted.get(i.id) ?? i) : s.items,
     }));
   },
@@ -1233,6 +1285,76 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     dbDeleteItemShopLink(itemId, shopId);
     set(s => ({
       itemShops: s.itemShops.filter(l => !(l.itemId === itemId && l.shopId === shopId)),
+    }));
+  },
+
+  markItemsUnavailable(itemIds, shopId) {
+    const { items, shops, itemShops } = get();
+    if (!shops.some(s => s.id === shopId)) return;
+
+    const markedAt = new Date().toISOString();
+    const links: ItemShopLink[] = [];
+    const promoted = new Map<string, GroceryItem>();
+    for (const itemId of itemIds) {
+      const item = items.find(i => i.id === itemId);
+      if (!item) continue;
+      const existing = itemShops.find(l => l.itemId === itemId && l.shopId === shopId);
+      if (existing?.unavailableAt) continue;
+      if (links.some(l => l.itemId === itemId)) continue;
+
+      const link: ItemShopLink = {
+        itemId,
+        shopId,
+        // History is history: the store did sell it to you those six times, and
+        // the claim being made is about today's shelf.
+        purchaseCount: existing?.purchaseCount ?? 0,
+        lastPurchasedAt: existing?.lastPurchasedAt ?? null,
+        unavailableAt: markedAt,
+      };
+      dbSetItemShopLink(link);
+      links.push(link);
+
+      // Same promotion as linkItemShopMany, for the same reason: this is a
+      // statement about the item, and a provisional row is deleted the moment
+      // it leaves the list — which is precisely what a thing the store didn't
+      // have is about to do.
+      if (!item.inCatalog) {
+        const next = { ...item, inCatalog: true };
+        dbUpdateGroceryItem(next);
+        promoted.set(item.id, next);
+      }
+    }
+    if (links.length === 0) return;
+
+    const written = new Map(links.map(l => [`${l.itemId}|${l.shopId}`, l]));
+    set(s => ({
+      itemShops: [
+        ...s.itemShops.map(l => written.get(`${l.itemId}|${l.shopId}`) ?? l),
+        ...links.filter(
+          l => !s.itemShops.some(x => x.itemId === l.itemId && x.shopId === l.shopId)
+        ),
+      ],
+      items: promoted.size > 0 ? s.items.map(i => promoted.get(i.id) ?? i) : s.items,
+    }));
+  },
+
+  clearItemUnavailable(itemId, shopId) {
+    const existing = get().itemShops.find(l => l.itemId === itemId && l.shopId === shopId);
+    if (!existing?.unavailableAt) return;
+
+    // Nothing but the claim on this row, so taking the claim away leaves
+    // nothing — and a bare row would read as the opposite assertion.
+    if (existing.purchaseCount === 0) {
+      get().unlinkItemShop(itemId, shopId);
+      return;
+    }
+
+    const link: ItemShopLink = { ...existing, unavailableAt: null };
+    dbSetItemShopLink(link);
+    set(s => ({
+      itemShops: s.itemShops.map(l =>
+        l.itemId === itemId && l.shopId === shopId ? link : l
+      ),
     }));
   },
 

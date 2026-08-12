@@ -108,6 +108,7 @@ export function GroceryScreen() {
   const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
   const deleteItems = useGroceryStore(s => s.deleteItems);
   const finishShopping = useGroceryStore(s => s.finishShopping);
+  const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
   const clearList = useGroceryStore(s => s.clearList);
   const applyDrop = useGroceryStore(s => s.applyDrop);
   const shops = useGroceryStore(useShallow(s => s.shops));
@@ -168,6 +169,16 @@ export function GroceryScreen() {
   );
 
   const checkedCount = useMemo(() => items.filter(i => i.onList && i.checked).length, [items]);
+  // What the trip is about to leave behind, in the walk order the list is in —
+  // the finish sheet asks about these, and only these. Ids and names only: the
+  // sheet has no business holding rows it can't edit.
+  const leftover = useMemo(
+    () =>
+      sections.flatMap(section =>
+        section.data.filter(i => !i.checked).map(i => ({ id: i.id, name: i.name }))
+      ),
+    [sections]
+  );
   const listCount = remaining + checkedCount;
   const catalogCount = items.length;
   // Only worth offering when the lexicon actually left a gap.
@@ -389,13 +400,18 @@ export function GroceryScreen() {
   // picker, and an Alert can't hold one. It's still a confirm: nothing is
   // recorded until Finish.
   const handleFinished = useCallback(
-    (shopId: string | null) => {
+    (shopId: string | null, unavailableIds: string[]) => {
       setFinishOpen(false);
       animateLayout();
+      // Two writes rather than one, and they can't collide: finishShopping
+      // only touches what was ticked into the trolley, and these are precisely
+      // what wasn't. The claim goes first so it's recorded even if the trip
+      // itself finds nothing left to record.
+      if (shopId && unavailableIds.length > 0) markItemsUnavailable(unavailableIds, shopId);
       if (finishShopping(shopId) > 0) haptics.success();
       setCartOpen(false);
     },
-    [finishShopping]
+    [finishShopping, markItemsUnavailable]
   );
 
   const confirmClear = useCallback(() => {
@@ -720,6 +736,7 @@ export function GroceryScreen() {
       <FinishShoppingSheet
         visible={finishOpen}
         checkedCount={checkedCount}
+        leftover={leftover}
         onClose={() => setFinishOpen(false)}
         onFinished={handleFinished}
       />
