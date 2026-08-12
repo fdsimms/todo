@@ -284,6 +284,16 @@ interface GroceryStore {
    * taken back by hand.
    */
   setItemPrice: (id: string, minor: number | null, shopId?: string | null) => void;
+  /**
+   * Forgets what one store charged, and only that — the item's own price and
+   * every other store's are left alone.
+   *
+   * Deliberately not `setItemPrice(id, null, shopId)`, which nulls the item's
+   * price on the way past: "I don't know what Costco charges any more" is not
+   * "I've never paid anything for this", and the second is what clearing the
+   * item-level field means.
+   */
+  clearItemShopPrice: (itemId: string, shopId: string) => void;
   /** Abandons the trip: everything comes off the list, nothing counts as bought. */
   clearList: () => number;
 
@@ -992,6 +1002,26 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({
       itemShops: s.itemShops.map(l =>
         l.itemId === id && l.shopId === shopId ? nextLink : l
+      ),
+    }));
+  },
+
+  clearItemShopPrice(itemId, shopId) {
+    const link = get().itemShops.find(l => l.itemId === itemId && l.shopId === shopId);
+    if (!link || link.lastPriceMinor === null) return;
+    // The stamp and the quantity go with the number, never outliving it — the
+    // same pairing setItemPrice keeps, and for the same reason: a date and a
+    // "for 2 lb" describing a price that isn't there is furniture at best.
+    const next: ItemShopLink = {
+      ...link,
+      lastPriceMinor: null,
+      lastPricedAt: null,
+      lastPriceQuantity: null,
+    };
+    dbSetItemShopLink(next);
+    set(s => ({
+      itemShops: s.itemShops.map(l =>
+        l.itemId === itemId && l.shopId === shopId ? next : l
       ),
     }));
   },
