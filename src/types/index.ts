@@ -621,9 +621,10 @@ export interface GroceryItem {
   // Whether the row has earned a place in the catalog in its own right, rather
   // than only existing because it's on the list right now. A name typed for the
   // first time is `false` — provisional — and taking it off the list deletes it
-  // instead of parking it; a trip that's finished or cleared promotes what was
-  // on it. Invariant: !onList implies inCatalog, which is what lets Buy again
-  // and the pruner keep reading the whole off-list set.
+  // instead of parking it, whether that's a removal, a finished trip that
+  // bought it, or a clear that abandoned it. Invariant: !onList implies
+  // inCatalog, which is what lets Buy again and the pruner keep reading the
+  // whole off-list set.
   inCatalog: boolean;
   sortOrder: number;
   // Bumped by finishShopping, never by clearList. Together with
