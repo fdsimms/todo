@@ -692,7 +692,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   groupLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,

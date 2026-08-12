@@ -558,7 +558,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginLeft: spacing.md + 32 + spacing.md,
   },
   listSection: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,

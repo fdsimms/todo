@@ -4743,6 +4743,32 @@ describe('timers', () => {
     expect(task.effort).toBe(2);
   });
 
+  // The stopwatch is the only writer of actualMinutes, so a run stopped ten
+  // minutes late otherwise leaves the wrong number on the task for good — and
+  // since a measurement overwrites the estimate, it takes that with it.
+  it('setMeasuredTime corrects the recorded time, the estimate and the effort together', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', actualMinutes: 40, estimatedMinutes: 40, effort: 3 })],
+    });
+    useTaskStore.getState().setMeasuredTime('a', 10);
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.actualMinutes).toBe(10);
+    expect(task.estimatedMinutes).toBe(10);
+    expect(task.effort).toBe(2);
+  });
+
+  it('setMeasuredTime rounds and floors the same way a measured run does', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', actualMinutes: 40 })] });
+    useTaskStore.getState().setMeasuredTime('a', 0.2);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')!.actualMinutes).toBe(1);
+  });
+
+  it('setMeasuredTime is a no-op for a task that is not there', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', actualMinutes: 40 })] });
+    useTaskStore.getState().setMeasuredTime('missing', 10);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')!.actualMinutes).toBe(40);
+  });
+
   it('completing a task with a running timer saves the elapsed time first', () => {
     const started = new Date(Date.now() - 5 * 60000).toISOString();
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', timerStartedAt: started })] });

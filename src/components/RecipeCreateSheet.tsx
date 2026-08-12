@@ -371,7 +371,7 @@ function makeStyles(colors: Colors) {
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
     sectionHeader: {
-      color: colors.textTertiary,
+      color: colors.textSecondary,
       fontSize: font.xs,
       fontWeight: fontWeight.semibold,
       letterSpacing: 0.8,

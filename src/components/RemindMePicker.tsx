@@ -381,7 +381,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: spacing.xs,
   },
   sectionLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',

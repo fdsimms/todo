@@ -151,6 +151,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['postpone', 'procrastinate', 'snooze', 'defer', 'avoid'] },
   { id: 'postponeCheckThreshold', groupId: 'tasksProjects', label: 'Reschedule threshold', section: 'Rescheduling',
     keywords: ['postpone', 'how many'] },
+  { id: 'simpleTaskForm', groupId: 'tasksProjects', label: 'Show fewer fields', section: 'Task form',
+    keywords: ['simple', 'quick add', 'editor', 'chips', 'declutter', 'basic', 'minimal'] },
   { id: 'autoArchiveProjects', groupId: 'tasksProjects', label: 'Auto-archive projects', section: 'Projects',
     keywords: ['finished', 'complete'] },
   { id: 'defaultProjectNudgeCadence', groupId: 'tasksProjects', label: 'Default nudge cadence', section: 'Projects',

@@ -57,6 +57,7 @@ import { usePaintSelectionRow } from './PaintSelection';
 import { SelectionDot } from './SelectionDot';
 import { SwipeableRow } from './SwipeableRow';
 import { SortableList } from './SortableList';
+import { StepMinutes } from './StepMinutes';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 import { ProgressBar } from './ProgressBar';
 
@@ -266,6 +267,7 @@ export const TaskItem = React.memo(function TaskItem({
     discardTimer,
     pauseTimer,
     resetTimer,
+    setMeasuredTime,
     toggleSubtask,
     deleteSubtask,
     reorderSubtasks,
@@ -385,6 +387,12 @@ export const TaskItem = React.memo(function TaskItem({
   const [titleEdit, setTitleEdit] = useState('');
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
   const [subtaskTitleEdit, setSubtaskTitleEdit] = useState('');
+  // Correcting the time the stopwatch recorded. The draft is separate from the
+  // stored value so an abandoned edit leaves it alone, and separate from the
+  // open flag because clearing the field is a real state (null = nothing to
+  // save yet), not a closed editor.
+  const [editingTimed, setEditingTimed] = useState(false);
+  const [timedDraft, setTimedDraft] = useState<number | null>(null);
   // Whether the row's chain summary is showing every step instead of just the
   // current/next truncated line — see chainStepPreview.
   const [chainStepsExpanded, setChainStepsExpanded] = useState(false);
@@ -735,6 +743,13 @@ export const TaskItem = React.memo(function TaskItem({
       Keyboard.dismiss();
     }
   }, [expanded, isEditingTitle]);
+
+  // A time correction is abandoned by collapsing, not saved — unlike the title
+  // above, which is a field you were already committed to editing. Reopening
+  // the row shows the stored number again rather than a stale draft.
+  useEffect(() => {
+    if (!expanded && editingTimed) setEditingTimed(false);
+  }, [expanded, editingTimed]);
 
   // Everything below this line that consults the wall clock — the window
   // state, the deadline countdown and its colour, the "N left" text in the
@@ -1980,13 +1995,74 @@ export const TaskItem = React.memo(function TaskItem({
               </View>
             )}
 
+            {/* The stopwatch is the only writer of `actualMinutes`, so this
+                readout is also the only place a mistimed run can be put right
+                — stop it ten minutes late and the number is wrong for good
+                otherwise, estimate included (`applyMeasuredTime`). Editing in
+                place rather than back in the editor because this is where you
+                are when you notice. */}
             {task.actualMinutes != null && (
               <View style={[
                 styles.recurrenceRow,
                 (hasExpandContent || timed) && styles.sectionDivider,
               ]}>
                 <Ionicons name="timer-outline" size={12} color={colors.textTertiary} />
-                <Text style={styles.expandMeta}>Timed · {formatDuration(task.actualMinutes)}</Text>
+                {editingTimed ? (
+                  <>
+                    <Text style={styles.expandMeta}>Timed ·</Text>
+                    <StepMinutes
+                      value={timedDraft}
+                      label={task.title}
+                      what="Time spent"
+                      onChange={setTimedDraft}
+                    />
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (timedDraft == null) return;
+                        haptics.tap();
+                        setMeasuredTime(task.id, timedDraft);
+                        setEditingTimed(false);
+                      }}
+                      disabled={timedDraft == null}
+                      hitSlop={8}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Save time spent on ${task.title}`}
+                    >
+                      <Text style={[
+                        styles.timedEditAction,
+                        timedDraft == null && styles.timedEditActionDisabled,
+                      ]}>
+                        Save
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => { haptics.tap(); setEditingTimed(false); }}
+                      hitSlop={8}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Cancel editing time spent on ${task.title}`}
+                    >
+                      <Text style={styles.timedEditCancel}>Cancel</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptics.tap();
+                      setTimedDraft(task.actualMinutes);
+                      setEditingTimed(true);
+                    }}
+                    hitSlop={8}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Time spent on ${task.title}: ${formatDuration(task.actualMinutes)}. Tap to correct.`}
+                  >
+                    <Text style={styles.expandMeta}>
+                      Timed · {formatDuration(task.actualMinutes)}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
 
@@ -2817,6 +2893,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
   },
+  timedEditAction: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
+  timedEditActionDisabled: { color: colors.textTertiary },
+  timedEditCancel: { color: colors.textSecondary, fontSize: font.xs },
   streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',

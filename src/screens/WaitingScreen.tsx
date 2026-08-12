@@ -136,7 +136,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   sectionTitle: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',

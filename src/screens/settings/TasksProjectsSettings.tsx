@@ -83,6 +83,8 @@ export function TasksProjectsSettings() {
   const setPostponeCheckThreshold = useSettingsStore(s => s.setPostponeCheckThreshold);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
+  const simpleTaskForm = useSettingsStore(s => s.simpleTaskForm);
+  const setSimpleTaskForm = useSettingsStore(s => s.setSimpleTaskForm);
   const timerLiveActivity = useSettingsStore(s => s.timerLiveActivity);
   const setTimerLiveActivity = useSettingsStore(s => s.setTimerLiveActivity);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
@@ -431,6 +433,22 @@ export function TasksProjectsSettings() {
       </SettingsSection>
       </>
       )}
+
+      <SettingsSection
+        label="Task form"
+        footer="Nothing is removed. The other fields sit behind &quot;more&quot; in quick add and in the editor's sections, and the editor's field search still finds all of them. A task created either way is the same task."
+      >
+        <SettingsRow
+          icon="remove-outline"
+          iconColor={simpleTaskForm ? colors.accent : undefined}
+          label="Show fewer fields"
+          hint={simpleTaskForm
+            ? 'Quick add shows Date, Time of day and Repeat, and names its buttons; the editor opens the same three'
+            : 'Quick add and the editor show every field they have'}
+          toggle={simpleTaskForm}
+          onPress={() => setSimpleTaskForm(!simpleTaskForm)}
+        />
+      </SettingsSection>
 
       <SettingsSection
         label="New tasks"
