@@ -10,6 +10,7 @@ import {
   Animated,
 } from 'react-native';
 import { SortableList } from './SortableList';
+import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { EditorSheet } from './EditorSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
@@ -59,7 +60,7 @@ import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
-import { DELIVERABLE_META, deliverableMeta } from '../utils/deliverables';
+import { deliverableMeta } from '../utils/deliverables';
 import { InlineAction } from './InlineAction';
 import { SearchField } from './SearchField';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -2129,33 +2130,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 expanded={fieldOpen('deliverable')}
                 onToggle={() => toggleField('deliverable')}
               >
-                <View style={styles.pillRow}>
-                  <TouchableOpacity
-                    style={[styles.pill, !deliverableKind && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); setDeliverableKind(null); closeField('deliverable'); }}
-                  >
-                    <Text style={[styles.pillText, !deliverableKind && styles.pillTextActive]}>Nothing</Text>
-                  </TouchableOpacity>
-                  {DELIVERABLE_META.map(meta => (
-                    <TouchableOpacity
-                      key={meta.key}
-                      style={[styles.pill, styles.pillWithIcon, deliverableKind === meta.key && styles.pillActiveNeutral]}
-                      onPress={() => { haptics.tap(); setDeliverableKind(meta.key); closeField('deliverable'); }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: deliverableKind === meta.key }}
-                      accessibilityLabel={`${meta.label}. ${meta.hint}`}
-                    >
-                      <Ionicons
-                        name={meta.icon as never}
-                        size={iconSize.sm}
-                        color={deliverableKind === meta.key ? colors.text : colors.textSecondary}
-                      />
-                      <Text style={[styles.pillText, deliverableKind === meta.key && styles.pillTextActive]}>
-                        {meta.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <DeliverableKindPicker
+                  value={deliverableKind}
+                  onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
+                />
               </CollapsibleField>
             ),
           },

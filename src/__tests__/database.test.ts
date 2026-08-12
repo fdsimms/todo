@@ -1096,6 +1096,7 @@ describe('Templates', () => {
     recurrenceCount: null,
     vacationPause: false,
     estimatedMinutes: null,
+    deliverableKind: null,
     chainEnabled: false,
     chainItems: [],
     chainIndex: 0,

@@ -46,6 +46,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceCount: raw.recurrenceCount ?? null,
     vacationPause: raw.vacationPause ?? false,
     estimatedMinutes: raw.estimatedMinutes ?? null,
+    deliverableKind: raw.deliverableKind ?? null,
     chainEnabled: raw.chainEnabled ?? false,
     chainItems: parseChainItems(raw.chainItems),
     chainIndex: raw.chainIndex ?? 0,
@@ -115,6 +116,9 @@ export function buildDraftsFromTemplate(
       recurrenceCount: item.recurrenceCount,
       vacationPause: item.vacationPause,
       estimatedMinutes: item.estimatedMinutes,
+      // The question only — createTask never reads a draft's deliverableValue,
+      // so an applied item always starts with the decision still to make.
+      deliverableKind: item.deliverableKind,
       chainEnabled: item.chainEnabled,
       chainItems: item.chainItems.map(c => ({ ...c })),
       // Clamped rather than trusted verbatim: chainItems can have shrunk (a

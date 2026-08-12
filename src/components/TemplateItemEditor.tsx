@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, RecurrenceType, ChainItem } from '../types';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, RecurrenceType, ChainItem, DeliverableKind } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -34,7 +34,9 @@ import {
 import { categoryLabel } from '../utils/categoryLabel';
 import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
+import { deliverableMeta } from '../utils/deliverables';
 import { SortableList } from './SortableList';
+import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { StepMinutes } from './StepMinutes';
 import { RecurrencePicker } from './RecurrencePicker';
 import { CollapsibleField } from './CollapsibleField';
@@ -45,7 +47,7 @@ import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'blanks' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps';
+type FieldKey = 'blanks' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable';
 
 interface Props {
   visible: boolean;
@@ -104,6 +106,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [recurrenceMonthDay, setRecurrenceMonthDay] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
+  const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
   const [chainEnabled, setChainEnabled] = useState(false);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   const [chainIndex, setChainIndex] = useState(0);
@@ -152,6 +155,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setRecurrenceMonthDay(item?.recurrenceMonthDay ?? draft?.recurrenceMonthDay ?? null);
     setRecurrenceFromCompletion(item?.recurrenceFromCompletion ?? draft?.recurrenceFromCompletion ?? false);
     setRecurrenceCount(item?.recurrenceCount ?? draft?.recurrenceCount ?? null);
+    setDeliverableKind(item?.deliverableKind ?? draft?.deliverableKind ?? null);
     setChainEnabled(item?.chainEnabled ?? draft?.chainEnabled ?? false);
     setChainItems(item?.chainItems ?? draft?.chainItems ?? []);
     setChainIndex(item?.chainIndex ?? draft?.chainIndex ?? 0);
@@ -217,6 +221,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceMonthDay: recurrenceType === 'monthly' ? recurrenceMonthDay : null,
       recurrenceFromCompletion,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
+      deliverableKind,
       chainEnabled: chainEnabled && chainItems.length > 0,
       chainItems,
       chainIndex: chainItems.length > 0 ? Math.min(chainIndex, chainItems.length - 1) : 0,
@@ -824,6 +829,30 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             </>
           )}
           </CollapsibleField>
+      </View>
+
+      {/* Ask on completion. Its own card below Chain, the way TaskEditor puts
+          it below the kinds: it answers the same question they do — what
+          finishing this task means — and a chained or repeating item can end
+          in a decision too. */}
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Ask on completion"
+          summary={deliverableKind ? deliverableMeta(deliverableKind).label : undefined}
+          emptySummary="Nothing"
+          hint={
+            deliverableKind
+              ? deliverableMeta(deliverableKind).hint
+              : 'Asks you to record an answer when the task is completed, and keeps it in the Logbook.'
+          }
+          expanded={fieldOpen('deliverable')}
+          onToggle={() => toggleField('deliverable')}
+        >
+          <DeliverableKindPicker
+            value={deliverableKind}
+            onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
+          />
+        </CollapsibleField>
       </View>
 
       {/* Subtasks */}
