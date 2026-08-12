@@ -781,6 +781,27 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 
 **Editors are progressive disclosure.** `TaskEditor`, `TemplateItemEditor`, `TaskGroupEditor`, `ProjectEditor` and `TemplateEditor` all follow the same shape: title/notes, then cards under uppercase `groupLabel` headers (Schedule → Organize → Priority & effort → Subtasks → More), rarely-changed rows last. Nothing renders its picker expanded by default — every pill grid lives inside a `CollapsibleField` that shows only its current value until tapped, and picking a single-choice value collapses the section again (`closeField`). Inline controls hung off an `EditorRow` (time-of-day pills, time window, link picker) render only while that row is expanded. When adding a field, give it a `hint` that says what it does in one line: that hint is the only in-app documentation these options have.
 
+**The task editor's fields are searchable, and the index is the JSX.** The magnifier in
+`TaskEditor`'s header opens a `SearchField` that filters the sheet down to matching rows
+(`src/utils/editorSearch.ts`, `searchTerms` on `EditorGroup`) — groups with no hit disappear,
+matching ones open regardless of the fold. Three decisions worth not re-deriving:
+
+- **An `EditorGroupRow` carries its own `keywords`**, so there is no `taskEditorIndex.ts` to keep in
+  step with the form the way `settingsIndex.ts` must. The rows already declare `label` and `set`
+  computed against the task being edited, which is exactly the index a search needs; a separate
+  file would be a second copy that goes stale, and #1229 correctly sized that as the expensive part.
+  **The keywords are the feature**, not a nicety — a tidier layout can't help someone looking for
+  *blocked*, *away*, *snooze* or *url*, and that gets worse with every field added.
+- **It filters in place; it does not scroll to a row.** `searchSettings` ranks and jumps because
+  Settings renders a *result list* over rows that live behind a navigation step. These rows are the
+  form, so the match is shown where it lives — which is also why `filterEditorRows` is deliberately
+  unranked (a form that re-sorts as you type is one you can't learn — the same call `foldRows` makes
+  about not hoisting set rows).
+- **It's behind the magnifier, not a permanent bar.** The sheet is dense, and a bar every task edit
+  pays for to serve the edits that need it is the trade that made the editor long in the first place.
+  Closing clears the query, and reopening the sheet resets it — handing someone back a filtered form
+  with no visible reason why is the one way this breaks.
+
 **List rows** use the iOS inset-grouped card treatment app-wide — match the styling in `TaskItem.itemWrapper` (Search/Logbook/Tags/Categories/Projects rows follow the same pattern). Section headers are uppercase `font.xs` semibold `textTertiary` with `letterSpacing: 0.8`. The one row that is deliberately *not* a card is `TaskGroupHeader` — a stack heads its tasks rather than sitting among them, so it's a transparent caption (see the note on its `band` style; every filled-card version of it read as a *selected* row, because a brighter card surface is what this app uses for pressed and dragged). What ties it to its tasks is enclosure, not resemblance: `TaskGroupTray` puts the header and the child cards in one `bgSunken` region, and the children drop their own margins to sit on its padding. Grouping a header with its rows by giving the header a card-like treatment is the move that keeps failing here — reach for the region instead.
 
 ### Drag and drop — handle with care

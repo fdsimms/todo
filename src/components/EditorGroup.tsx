@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
@@ -6,11 +6,18 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { foldRows, moreLabel, moreHint, foldedSummary, type FoldRow } from '../utils/editorFold';
+import { filterEditorRows } from '../utils/editorSearch';
 
 export interface EditorGroupRow {
   key: string;
   /** The row's own name, for the "N more" hint and the folded summary. */
   label: string;
+  /**
+   * Words that should find the row by search but don't appear in its label —
+   * "blocked" for Waiting on, "away" for Vacation pause. See `editorSearch.ts`
+   * for why these are the point rather than a nicety.
+   */
+  keywords?: string[];
   /** Does it hold a value? A set row is never hidden, and opens its group. */
   set?: boolean;
   /** One of the few shown even when empty. */
@@ -42,6 +49,20 @@ interface Props {
    * `startOpen` this is expected to flip back off once its reason is gone.
    */
   forceOpen?: boolean;
+  /**
+   * Search terms from the editor's field search, already split by
+   * `editorSearchTerms`. Empty means not searching and the group behaves
+   * exactly as it did before search existed.
+   */
+  searchTerms?: string[];
+  /** Identifies this group in the editor's match tally. */
+  groupKey?: string;
+  /**
+   * How many rows survived the search, reported so the editor can tell that
+   * *nothing* matched — a form that silently empties itself is worse than one
+   * that says why.
+   */
+  onMatchCount?: (groupKey: string, count: number) => void;
 }
 
 /**
@@ -60,9 +81,33 @@ interface Props {
  * tap away and nothing has moved screens — see `editorFold.ts` for the split,
  * which is where the behaviour is actually tested.
  */
-export function EditorGroup({ label, rows, divider = 'icon', startOpen, forceOpen }: Props) {
+/** Shared so the not-searching default doesn't mint a new array every render. */
+const NO_TERMS: string[] = [];
+
+export function EditorGroup({
+  label, rows, divider = 'icon', startOpen, forceOpen,
+  searchTerms = NO_TERMS, groupKey = label, onMatchCount,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const searching = searchTerms.length > 0;
+  const matches = useMemo(() => filterEditorRows(rows, searchTerms), [rows, searchTerms]);
+
+  useEffect(() => {
+    onMatchCount?.(groupKey, searching ? matches.length : 0);
+  }, [onMatchCount, groupKey, searching, matches.length]);
+
+  // Withdraw the count on unmount. Two groups exist only while editing an
+  // existing task (Streaks, Convert), so without this their last count would
+  // sit in the tally for a task that doesn't render them and stop "nothing
+  // matched" from ever showing. Through a ref so it runs on unmount alone,
+  // rather than re-reporting zero every time the query changes.
+  const reportRef = useRef({ groupKey, onMatchCount });
+  reportRef.current = { groupKey, onMatchCount };
+  useEffect(() => () => {
+    reportRef.current.onMatchCount?.(reportRef.current.groupKey, 0);
+  }, []);
 
   const fold = useMemo(
     () => foldRows<EditorGroupRow>(
@@ -85,6 +130,29 @@ export function EditorGroup({ label, rows, divider = 'icon', startOpen, forceOpe
     animateLayout();
     fn();
   };
+
+  // Searching replaces the fold rather than layering on top of it: the whole
+  // point of typing a field's name is that you already know you want it, so
+  // "nothing set" and "not one of the few most tasks want" have stopped being
+  // reasons to hide it. A group with no hit disappears entirely — the rows
+  // left on screen are the answer, so a card standing there empty (or folded,
+  // still naming rows that didn't match) would be noise around it.
+  if (searching) {
+    if (matches.length === 0) return null;
+    return (
+      <>
+        <Text style={styles.groupLabel}>{label}</Text>
+        <View style={styles.card}>
+          {matches.map((r, i) => (
+            <React.Fragment key={r.key}>
+              {i > 0 && <View style={divider === 'full' ? styles.sepFull : styles.sep} />}
+              {r.node}
+            </React.Fragment>
+          ))}
+        </View>
+      </>
+    );
+  }
 
   if (!open) {
     return (
