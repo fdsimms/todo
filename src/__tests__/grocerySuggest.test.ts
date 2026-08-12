@@ -29,7 +29,6 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     checked: false,
     inCatalog: true,
     sortOrder: seq,
-    favorite: false,
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,
@@ -126,14 +125,6 @@ describe('buyAgainItems', () => {
     ];
     expect(buyAgainItems(items, NOW)[0].name).toBe('Milk');
   });
-
-  it('floats a favourite up', () => {
-    const items = [
-      makeItem({ name: 'Plain', purchaseCount: 3, lastPurchasedAt: daysAgo(5) }),
-      makeItem({ name: 'Starred', purchaseCount: 3, lastPurchasedAt: daysAgo(5), favorite: true }),
-    ];
-    expect(buyAgainItems(items, NOW)[0].name).toBe('Starred');
-  });
 });
 
 // ─── buildGrocerySections ────────────────────────────────────────────────────
@@ -210,9 +201,9 @@ describe('catalogPruneCandidates', () => {
     expect(catalogPruneCandidates(items, NOW)).toEqual([]);
   });
 
-  it('never names a favourite', () => {
-    const items = [makeItem({ name: 'Truffle oil', favorite: true, lastAddedAt: daysAgo(200) })];
-    expect(catalogPruneCandidates(items, NOW)).toEqual([]);
+  it('names a stale never-bought row even with a long-ago add date', () => {
+    const items = [makeItem({ name: 'Truffle oil', lastAddedAt: daysAgo(200) })];
+    expect(catalogPruneCandidates(items, NOW).map(i => i.name)).toEqual(['Truffle oil']);
   });
 
   it('never names something currently on the list', () => {

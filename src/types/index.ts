@@ -622,11 +622,10 @@ export interface GroceryItem {
   // than only existing because it's on the list right now. A name typed for the
   // first time is `false` — provisional — and taking it off the list deletes it
   // instead of parking it; a trip that's finished or cleared promotes what was
-  // on it, as does starring. Invariant: !onList implies inCatalog, which is what
-  // lets Buy again and the pruner keep reading the whole off-list set.
+  // on it. Invariant: !onList implies inCatalog, which is what lets Buy again
+  // and the pruner keep reading the whole off-list set.
   inCatalog: boolean;
   sortOrder: number;
-  favorite: boolean;
   // Bumped by finishShopping, never by clearList. Together with
   // lastPurchasedAt this *is* the autocomplete ranking signal, which is the
   // real reason a finished trip must not delete rows.

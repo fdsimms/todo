@@ -184,7 +184,6 @@ interface GroceryStore {
   /** False when the new name collides with another catalog row. */
   renameItem: (id: string, name: string) => boolean;
   setNote: (id: string, note: string) => void;
-  toggleFavorite: (id: string) => void;
   /**
    * The pantry override — "Got it" / "Out of it" on GroceryItemSheet. A dumb
    * setter, same as setQuantity/setNote: the caller decides the value
@@ -490,11 +489,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       note: note ?? '',
       onList: true,
       checked: false,
-      // Provisional: a name nobody has bought, starred or finished a trip with
-      // is on the list, not in the catalog. removeFromList deletes it.
+      // Provisional: a name nobody has bought or finished a trip with is on
+      // the list, not in the catalog. removeFromList deletes it.
       inCatalog: false,
       sortOrder: nextSortOrder(get().items),
-      favorite: false,
       purchaseCount: 0,
       lastAddedAt: now,
       lastPurchasedAt: null,
@@ -767,21 +765,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
-  toggleFavorite(id) {
-    const item = get().items.find(i => i.id === id);
-    if (!item) return;
-    // Starring is the explicit "keep this one", so it promotes a provisional
-    // row. Unstarring doesn't demote: the row is in the catalog by then, and a
-    // mis-tap on a star shouldn't arm a delete.
-    const updated = {
-      ...item,
-      favorite: !item.favorite,
-      inCatalog: item.inCatalog || !item.favorite,
-    };
-    dbUpdateGroceryItem(updated);
-    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
-  },
-
   /**
    * Takes a row off the list. A catalog row stays behind — "not this week" —
    * but a provisional one goes altogether, because it only ever existed as this
@@ -789,8 +772,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    *
    * The delete is deliberately not behind the confirm every other delete has.
    * That confirm protects history, and a provisional row has none by
-   * definition: never bought, never starred, no purchase count to lose. The
-   * sheet says which of the two will happen before you tap.
+   * definition: never bought, no purchase count to lose. The sheet says which
+   * of the two will happen before you tap.
    */
   resolveChoice(id) {
     const item = get().items.find(i => i.id === id);
@@ -1253,11 +1236,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       dbSetItemShopLink(link);
       links.push(link);
 
-      // ...and it promotes a provisional row, for the same reason starring
-      // does. Saying where you get something is a statement about the item,
-      // not about this week's list — but a provisional row is *deleted* when
-      // it comes off the list, so without this the assertion is thrown away by
-      // the next "Remove from list" and the store the user just named is gone.
+      // ...and it promotes a provisional row. Saying where you get something
+      // is a statement about the item, not about this week's list — but a
+      // provisional row is *deleted* when it comes off the list, so without
+      // this the assertion is thrown away by the next "Remove from list" and
+      // the store the user just named is gone.
       if (!item.inCatalog) {
         const next = { ...item, inCatalog: true };
         dbUpdateGroceryItem(next);
