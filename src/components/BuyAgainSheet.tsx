@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
-  ScrollView,
   StyleSheet,
   Alert,
 } from 'react-native';
@@ -30,6 +29,7 @@ import { itemIdsForShop, itemCountsByShop, primaryShopFor } from '../utils/groce
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
+import { PillGroup } from './PillGroup';
 import { haptics } from '../utils/haptics';
 import type { GroceryItem } from '../types';
 
@@ -82,6 +82,40 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
     () => shops.filter(s => (shopCounts.get(s.id) ?? 0) > 0),
     [shops, shopCounts]
   );
+
+  // Wrapping pills, not a horizontal scroll row — the same call
+  // LogbookFilterSheet/RecipeTagFilterSheet made for the same reason: a
+  // scroll row hides options past what fits on screen behind a swipe nobody
+  // is prompted to make. "All" is pinned so the no-filter option is never
+  // buried behind PillGroup's "N more".
+  const shopFilterOptions = useMemo(() => [
+    {
+      key: '__all__',
+      label: 'All',
+      selected: shopFilter === null,
+      pinned: true,
+      accessibilityLabel: 'All stores',
+      onPress: () => {
+        haptics.tap();
+        setShopFilter(null);
+      },
+    },
+    ...filterShops.map(shop => {
+      const active = shop.id === shopFilter;
+      const count = shopCounts.get(shop.id) ?? 0;
+      return {
+        key: shop.id,
+        label: shop.name,
+        suffix: ` ${count}`,
+        selected: active,
+        accessibilityLabel: `${shop.name}, ${count} ${count === 1 ? 'item' : 'items'}`,
+        onPress: () => {
+          haptics.tap();
+          setShopFilter(active ? null : shop.id);
+        },
+      };
+    }),
+  ], [filterShops, shopFilter, shopCounts]);
 
   // Filter first, then rank. Ranking a filtered set is the same function on
   // fewer rows; filtering a ranked set would silently shrink the 50-row cap.
@@ -245,54 +279,9 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
             here rather than on the shopping list: this is the catalog browser,
             and it's open exactly when you're deciding what to buy where. */}
         {filterShops.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}
-            keyboardShouldPersistTaps="handled"
-          >
-            <TouchableOpacity
-              style={[styles.chip, shopFilter === null && styles.chipActive]}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => {
-                haptics.tap();
-                setShopFilter(null);
-              }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: shopFilter === null }}
-              accessibilityLabel="All stores"
-            >
-              <Text style={[styles.chipText, shopFilter === null && styles.chipTextActive]}>
-                All
-              </Text>
-            </TouchableOpacity>
-            {filterShops.map(shop => {
-              const active = shop.id === shopFilter;
-              const count = shopCounts.get(shop.id) ?? 0;
-              return (
-                <TouchableOpacity
-                  key={shop.id}
-                  style={[styles.chip, active && styles.chipActive]}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => {
-                    haptics.tap();
-                    setShopFilter(active ? null : shop.id);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={`${shop.name}, ${count} ${count === 1 ? 'item' : 'items'}`}
-                >
-                  <Text
-                    style={[styles.chipText, active && styles.chipTextActive]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {shop.name} {count}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          <View style={styles.filterWrap}>
+            <PillGroup options={shopFilterOptions} noun="store" surface="page" />
+          </View>
         )}
 
         {/* Directly under the search rather than in the footer: a catalog is
@@ -390,28 +379,7 @@ function makeStyles(colors: Colors) {
       height: 40,
       padding: 0,
     },
-    filterRow: {
-      gap: spacing.sm,
-      paddingHorizontal: spacing.md,
-      paddingTop: spacing.md,
-      alignItems: 'center',
-    },
-    chip: {
-      backgroundColor: colors.bgSecondary,
-      borderRadius: radius.full,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      // Long store names need somewhere to stop growing before the Text's
-      // numberOfLines/ellipsizeMode can kick in — without a bound here the
-      // chip just grows to fit the string and nothing ever elides. With it,
-      // shortNames still hug their content (flexShrink only kicks in past
-      // maxWidth, it doesn't force every chip to that width).
-      maxWidth: 160,
-      flexShrink: 1,
-    },
-    chipActive: { backgroundColor: colors.accent },
-    chipText: { fontSize: font.sm, color: colors.textSecondary, flexShrink: 1 },
-    chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+    filterWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
     selectionBar: {
       flexDirection: 'row',
       alignItems: 'center',
