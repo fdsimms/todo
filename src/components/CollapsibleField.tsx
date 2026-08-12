@@ -114,7 +114,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
   },
   label: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
   spacer: { flex: 1 },

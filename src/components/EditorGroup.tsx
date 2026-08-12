@@ -7,6 +7,8 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { foldRows, moreLabel, moreHint, foldedSummary, type FoldRow } from '../utils/editorFold';
 import { filterEditorRows } from '../utils/editorSearch';
+import { simplePrimaryRow } from '../utils/simpleTaskForm';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 export interface EditorGroupRow {
   key: string;
@@ -90,6 +92,11 @@ export function EditorGroup({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // Read here rather than threaded down from TaskEditor: this is the one
+  // component that decides which rows are on show, and the setting only ever
+  // means "fewer of them". See `simpleTaskForm.ts` — it demotes rows, it never
+  // hides a set one, so a task still shows its own shape either way.
+  const simple = useSettingsStore(s => s.simpleTaskForm);
 
   const searching = searchTerms.length > 0;
   const matches = useMemo(() => filterEditorRows(rows, searchTerms), [rows, searchTerms]);
@@ -111,9 +118,14 @@ export function EditorGroup({
 
   const fold = useMemo(
     () => foldRows<EditorGroupRow>(
-      rows.map(r => ({ key: r.key, set: !!r.set, primary: r.primary, row: r }))
+      rows.map(r => ({
+        key: r.key,
+        set: !!r.set,
+        primary: simplePrimaryRow(r.key, r.primary, simple),
+        row: r,
+      }))
     ),
-    [rows]
+    [rows, simple]
   );
 
   // Opened by hand. The group is otherwise open exactly while it holds
@@ -224,7 +236,7 @@ export function EditorGroup({
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   groupLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.bold,
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.bold,
     textTransform: 'uppercase', letterSpacing: 0.8,
     marginHorizontal: spacing.md + spacing.xs, marginBottom: spacing.xs,
   },
@@ -247,7 +259,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary, borderRadius: radius.md,
   },
   foldedLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.bold,
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.bold,
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
   foldedSummary: { flex: 1, color: colors.textTertiary, fontSize: font.sm },

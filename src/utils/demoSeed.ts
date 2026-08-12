@@ -134,7 +134,30 @@ export function seedDemoData(): void {
     effort: 1,
     tags: ['admin'],
   });
-  updateTask(dentist.id, { postponeCount: 5 });
+  // driftingSince is stamped alongside for the same reason the count is: a
+  // demo database has no history for the real rule to have derived one from.
+  // Six weeks back, so the Drift screen's "first put off" line has something to
+  // say rather than falling back to the bare count.
+  updateTask(dentist.id, {
+    postponeCount: 5,
+    driftingSince: subDays(today, 42).toISOString(),
+  });
+
+  // A second drifter, so Drift reads as the list it is rather than a single
+  // row — and so the ranking is visible: fewer moves, and a more recent start.
+  const gutters = addTask({
+    title: 'Clear the gutters',
+    notes: 'Before the autumn rain, ideally.',
+    category: 'Home',
+    dueDate: today.toISOString(),
+    priority: 1,
+    effort: 3,
+    tags: ['home'],
+  });
+  updateTask(gutters.id, {
+    postponeCount: 3,
+    driftingSince: subDays(today, 11).toISOString(),
+  });
 
   addTask({
     title: 'Swing by the farmers market',
@@ -767,6 +790,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     setAisle,
     setAisleOrder,
     setOnHandUntil,
+    setStaple,
     setExpiresAt,
     setUseUpTask,
     finishShopping,
@@ -776,6 +800,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     linkItemShopMany,
     markItemsUnavailable,
     setShopExcludedFromSuggestions,
+    startTrip,
     itemById,
   } = useGroceryStore.getState();
 
@@ -787,7 +812,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     // Meat & Seafood
     'Chicken breast', 'Ground beef',
     // Pantry / Canned
-    'Pasta', 'Rice', 'Olive oil', 'Peanut butter', 'Black beans',
+    'Pasta', 'Rice', 'Olive oil', 'Peanut butter', 'Black beans', 'Salt', 'Black pepper',
     // Bakery
     'Bread', 'Tortillas',
     // Beverages / Breakfast
@@ -838,6 +863,15 @@ function seedGroceries(recipes: DemoRecipes): void {
   setCheckedMany(idsNamed(CORNER_SHOP), true);
   finishShopping(null);
 
+  // Salt and pepper need a trip too — like every catalog row here, isStaple
+  // is a corrected-by-hand flag on an item, not something a provisional row
+  // can carry, so they have to earn their catalog place the same way Greek
+  // yogurt and Butter just did before setStaple below has anything to mark.
+  const STAPLES = ['Salt', 'Black pepper'];
+  addExistingMany(idsNamed(STAPLES));
+  setCheckedMany(idsNamed(STAPLES), true);
+  finishShopping(null);
+
   // "I can get this here" with no trip behind it — an assertion, not an
   // observation. Almonds are linked to Costco alone, so they read as available
   // at exactly one store. Linking (like finishing a trip) promotes a
@@ -869,6 +903,11 @@ function seedGroceries(recipes: DemoRecipes): void {
   if (rice) setOnHandUntil(rice.id, defaultOnHandUntil(rice, new Date()));
   setOnHandUntil(itemNamed('Olive oil').id, OUT_OF_IT_UNTIL);
 
+  // The staples — always on hand, so they sort into their own group rather
+  // than "Need to buy" when a recipe's ingredients get added to the list.
+  setStaple(itemNamed('Salt').id, true);
+  setStaple(itemNamed('Black pepper').id, true);
+
   // The use-by half. The three finished trips above already stamped a date on
   // everything the shelf-life lexicon recognises, so most of that is here for
   // free — this is the pair the seed has to say out loud: a date corrected by
@@ -898,7 +937,7 @@ function seedGroceries(recipes: DemoRecipes): void {
   // on the list as themselves; Cheddar, Sparkling water and Ice cream were
   // never bought or linked, so clearList dropped them — they're typed fresh,
   // same as a name nobody has shopped for yet.
-  const ON_LIST_EXISTING = ['Milk', 'Eggs', 'Bananas', 'Bread', 'Tortillas'];
+  const ON_LIST_EXISTING = ['Milk', 'Eggs', 'Bananas', 'Bread', 'Tortillas', 'Peanut butter'];
   addExistingMany(idsNamed(ON_LIST_EXISTING));
   ['Cheddar', 'Sparkling water', 'Ice cream'].forEach(name =>
     addByName(name, undefined, undefined, { registerUndo: false })
@@ -920,6 +959,14 @@ function seedGroceries(recipes: DemoRecipes): void {
     sourceRecipeId: recipes.stirFry,
     sourceRecipeTitle: 'Weeknight chicken stir-fry',
   })));
+
+  // ...and you're at Trader Joe's right now, which is the only state in which
+  // the list says anything about stores. Two of the three things a row can say
+  // are on screen because of it: Tortillas are marked as not stocked here, and
+  // Peanut butter is on record at Costco alone. The third ("Usually X") can't
+  // be seeded honestly — it needs an item bought at two stores while you stand
+  // in a third, and this demo has two stores anyone would shop at.
+  startTrip(traderJoes.id);
 }
 
 // ---------------------------------------------------------------------------

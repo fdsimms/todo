@@ -1440,7 +1440,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Uppercase section-header treatment, matching every other list section
   // header in the app.
   dayName: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,

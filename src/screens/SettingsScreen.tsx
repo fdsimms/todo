@@ -224,7 +224,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
 
   resultSection: { marginTop: spacing.lg, paddingHorizontal: spacing.md },
   resultGroupLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
     marginBottom: spacing.sm, paddingHorizontal: spacing.sm,
   },

@@ -598,6 +598,14 @@ export function initDatabase(): void {
     // question. See Task.deliverableKind.
     'ALTER TABLE tasks ADD COLUMN deliverable_kind TEXT',
     'ALTER TABLE tasks ADD COLUMN deliverable_value TEXT',
+    // 0 for every existing row — nothing predating this feature was ever
+    // marked a standing staple. See GroceryItem.isStaple.
+    'ALTER TABLE grocery_items ADD COLUMN is_staple INTEGER NOT NULL DEFAULT 0',
+    // NULL on every existing row, for the same reason postpone_count is 0: a
+    // task whose pushes were never counted has no first push to date, and
+    // inventing one from created_at would put a fabricated "drifting since" on
+    // every task in the database. See Task.driftingSince.
+    'ALTER TABLE tasks ADD COLUMN drifting_since TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -914,6 +922,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     pendingImport: parsePendingImport(row.pending_import),
     postponeCount: (row.postpone_count as number) ?? 0,
     postponeMuted: Boolean(row.postpone_muted),
+    driftingSince: (row.drifting_since as string | null) ?? null,
   };
 }
 
@@ -936,10 +945,10 @@ export function dbInsertTask(task: Task): void {
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, meal_entry_id,
-      grocery_item_id, postpone_count, postpone_muted,
+      grocery_item_id, postpone_count, postpone_muted, drifting_since,
       extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally,
       deliverable_kind, deliverable_value
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -978,6 +987,7 @@ export function dbInsertTask(task: Task): void {
       task.groceryItemId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
+      task.driftingSince ?? null,
       task.extraTaskEveryN ?? null,
       task.extraTaskTitle ?? null,
       task.extraTaskTally,
@@ -1002,7 +1012,7 @@ export function dbUpdateTask(task: Task): void {
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, meal_entry_id=?,
-      grocery_item_id=?, postpone_count=?, postpone_muted=?,
+      grocery_item_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
       extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?,
       deliverable_kind=?, deliverable_value=?
     WHERE id=?`,
@@ -1044,6 +1054,7 @@ export function dbUpdateTask(task: Task): void {
       task.groceryItemId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
+      task.driftingSince ?? null,
       task.extraTaskEveryN ?? null,
       task.extraTaskTitle ?? null,
       task.extraTaskTally,
@@ -1083,10 +1094,20 @@ export function dbBatchUpdatePinnedOrders(updates: { id: string; pinnedOrder: nu
  * ride along on those setters. Same split dbBatchUpdatePinnedOrders makes
  * beside bulkTogglePin.
  */
-export function dbBatchUpdatePostponeCounts(updates: { id: string; postponeCount: number }[]): void {
+export function dbBatchUpdatePostponeCounts(
+  updates: { id: string; postponeCount: number; driftingSince: string | null }[],
+): void {
   db.withTransactionSync(() => {
-    for (const { id, postponeCount } of updates) {
-      db.runSync('UPDATE tasks SET postpone_count = ? WHERE id = ?', [postponeCount, id]);
+    for (const { id, postponeCount, driftingSince } of updates) {
+      // Written together, never separately: the count and the day it started
+      // from describe one run of pushes, and a batch that set one without the
+      // other would leave a row claiming pushes with no start (or a start with
+      // no pushes) until the next single-task write happened to repair it.
+      db.runSync('UPDATE tasks SET postpone_count = ?, drifting_since = ? WHERE id = ?', [
+        postponeCount,
+        driftingSince,
+        id,
+      ]);
     }
   });
 }
@@ -1439,6 +1460,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     sourceRecipeId: (row.source_recipe_id as string) ?? null,
     sourceRecipeTitle: (row.source_recipe_title as string) ?? null,
     choiceGroup: (row.choice_group as string) ?? null,
+    isStaple: Boolean(row.is_staple),
     expiresAt: (row.expires_at as string) ?? null,
     // Nullable on purpose — see the column's migration note. `?? null` rather
     // than Boolean(), which would flatten the unanswered state into a refusal.
@@ -1460,8 +1482,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
-       source_recipe_id, source_recipe_title, choice_group, expires_at, use_up_task)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, use_up_task)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -1469,7 +1491,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
-      item.choiceGroup ?? null,
+      item.choiceGroup ?? null, item.isStaple ? 1 : 0,
       item.expiresAt ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
     ]
@@ -1481,7 +1503,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
     `UPDATE grocery_items SET
        name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
-       on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?,
+       on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
        expires_at=?, use_up_task=?
      WHERE id=?`,
     [
@@ -1491,7 +1513,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
-      item.choiceGroup ?? null,
+      item.choiceGroup ?? null, item.isStaple ? 1 : 0,
       item.expiresAt ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.id,
@@ -2116,6 +2138,29 @@ export function dbGetLastShopId(): string | null {
 
 export function dbSetLastShopId(id: string | null): void {
   dbSetSetting('grocery_last_shop_id', id ?? '');
+}
+
+// The trip happening right now — the store you're standing in, and when you
+// said so. Two keys rather than one JSON blob, following vacationMode/
+// vacationEnd, which is the same shape: a mode plus the stamp that ends it.
+// They are only ever written together (startTrip/endTrip), and a read missing
+// either half is no trip, so they can't drift into a half-state.
+//
+// Nothing here decides whether the trip is still live — utils/activeTrip.ts
+// does, against the clock, so a trip left running when the app closed is over
+// by the time anything asks. Restoring a month-old backup resurrects these two
+// rows and that's fine for the same reason.
+export function dbGetTripShopId(): string | null {
+  return dbGetSetting('grocery_trip_shop_id') || null;
+}
+
+export function dbGetTripStartedAt(): string | null {
+  return dbGetSetting('grocery_trip_started_at') || null;
+}
+
+export function dbSetTrip(shopId: string | null, startedAt: string | null): void {
+  dbSetSetting('grocery_trip_shop_id', shopId ?? '');
+  dbSetSetting('grocery_trip_started_at', startedAt ?? '');
 }
 
 // ─── Projects ───────────────────────────────────────────────────────────────

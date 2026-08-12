@@ -9,7 +9,7 @@ import { disclosureValue } from '../../theme/textStyles';
 export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   section: { paddingHorizontal: spacing.md, marginTop: spacing.xl },
   sectionLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.5,
     marginBottom: spacing.sm, paddingHorizontal: spacing.sm,
   },

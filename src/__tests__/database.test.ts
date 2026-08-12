@@ -155,6 +155,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   pinnedOrder: 0,
   postponeCount: 0,
   postponeMuted: false,
+  driftingSince: null,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -1519,6 +1520,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     sourceRecipeId: null,
     sourceRecipeTitle: null,
     choiceGroup: null,
+    isStaple: false,
     expiresAt: null,
     useUpTask: null,
     ...overrides,
@@ -1542,6 +1544,7 @@ describe('grocery items', () => {
       lastPurchasedAt: '2026-07-25T00:00:00.000Z',
       sourceRecipeId: 'recipe-1',
       sourceRecipeTitle: 'Chili',
+      isStaple: true,
       expiresAt: '2026-08-17',
       useUpTask: true,
     });

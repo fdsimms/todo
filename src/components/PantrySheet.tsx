@@ -221,7 +221,7 @@ function makeStyles(colors: Colors) {
     sectionTitle: {
       fontSize: font.xs,
       fontWeight: fontWeight.semibold,
-      color: colors.textTertiary,
+      color: colors.textSecondary,
       letterSpacing: 0.8,
       textTransform: 'uppercase',
     },

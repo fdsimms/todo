@@ -54,7 +54,7 @@ const BLANK_SNOOZE_TASK: Task = {
   timedMinutes: null, timerElapsedSeconds: 0,
   previousOccurrenceId: null,
   seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1, seriesDefaults: null,
-  postponeCount: 0, postponeMuted: false,
+  postponeCount: 0, postponeMuted: false, driftingSince: null,
 };
 
 interface Props {
@@ -622,7 +622,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textAlign: 'right',
   },
   sectionLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',

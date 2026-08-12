@@ -1168,7 +1168,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   sectionLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,
@@ -1189,7 +1189,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // uppercase treatment as sectionLabel, just scoped to sit above a run of
   // rows rather than the whole list.
   ingredientSectionHeader: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,

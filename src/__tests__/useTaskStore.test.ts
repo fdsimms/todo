@@ -93,6 +93,9 @@ jest.mock('../db/database', () => ({
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
+  dbGetTripShopId: jest.fn().mockReturnValue(null),
+  dbGetTripStartedAt: jest.fn().mockReturnValue(null),
+  dbSetTrip: jest.fn(),
   // Written when deleting a use-up task records the item's opt-out — the one
   // place this file's subject writes to the grocery catalog.
   dbUpdateGroceryItem: jest.fn(),
@@ -188,6 +191,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   pinnedOrder: 0,
   postponeCount: 0,
   postponeMuted: false,
+  driftingSince: null,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -4745,6 +4749,32 @@ describe('timers', () => {
     expect(task.effort).toBe(2);
   });
 
+  // The stopwatch is the only writer of actualMinutes, so a run stopped ten
+  // minutes late otherwise leaves the wrong number on the task for good — and
+  // since a measurement overwrites the estimate, it takes that with it.
+  it('setMeasuredTime corrects the recorded time, the estimate and the effort together', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', actualMinutes: 40, estimatedMinutes: 40, effort: 3 })],
+    });
+    useTaskStore.getState().setMeasuredTime('a', 10);
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.actualMinutes).toBe(10);
+    expect(task.estimatedMinutes).toBe(10);
+    expect(task.effort).toBe(2);
+  });
+
+  it('setMeasuredTime rounds and floors the same way a measured run does', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', actualMinutes: 40 })] });
+    useTaskStore.getState().setMeasuredTime('a', 0.2);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')!.actualMinutes).toBe(1);
+  });
+
+  it('setMeasuredTime is a no-op for a task that is not there', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', actualMinutes: 40 })] });
+    useTaskStore.getState().setMeasuredTime('missing', 10);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')!.actualMinutes).toBe(40);
+  });
+
   it('completing a task with a running timer saves the elapsed time first', () => {
     const started = new Date(Date.now() - 5 * 60000).toISOString();
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', timerStartedAt: started })] });
@@ -6602,7 +6632,12 @@ describe('postponeCount', () => {
     const { tasks } = useTaskStore.getState();
     expect(tasks.find(t => t.id === 'a')?.postponeCount).toBe(2);
     expect(tasks.find(t => t.id === 'b')?.postponeCount).toBe(1);
-    expect(dbBatchUpdatePostponeCounts).toHaveBeenCalledWith([{ id: 'a', postponeCount: 2 }]);
+    // The count and the day it started from go in one write, so a batch can
+    // never leave a row claiming pushes with no start. The stamp is the *day*
+    // the task was leaving, not the instant it held — the screen renders a date.
+    expect(dbBatchUpdatePostponeCounts).toHaveBeenCalledWith([
+      { id: 'a', postponeCount: 2, driftingSince: new Date(2025, 5, 10).toISOString() },
+    ]);
   });
 
   it('counts a bulk defer without being confused by the untouched dueDate', () => {
@@ -6670,7 +6705,7 @@ describe('deleting a use-up task', () => {
     onList: false, checked: false, inCatalog: true, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
-    expiresAt: '2026-08-17', useUpTask: null,
+    isStaple: false, expiresAt: '2026-08-17', useUpTask: null,
   };
 
   const seedItem = () => {

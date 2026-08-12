@@ -19,6 +19,9 @@ import {
   dbDeleteItemShopLink,
   dbGetLastShopId,
   dbSetLastShopId,
+  dbGetTripShopId,
+  dbGetTripStartedAt,
+  dbSetTrip,
   dbGetGroceryAisleOverrides,
   dbSetGroceryAisleOverrides,
   dbGetGroceryHiddenAisles,
@@ -44,6 +47,7 @@ import {
   renameRememberedAisle,
   OTHER_AISLE,
 } from '../utils/groceryAisles';
+import { isTripLive, resolveActiveTrip } from '../utils/activeTrip';
 
 /**
  * The grocery catalog, which is also the shopping list.
@@ -121,6 +125,18 @@ interface GroceryStore {
   itemShops: ItemShopLink[];
   /** The store the last trip was finished at, if it still exists. */
   lastShopId: string | null;
+  /**
+   * The trip happening right now: the store you said you're at, and when.
+   *
+   * Past tense above, present tense here — `lastShopId` is where the previous
+   * shop *ended* and only ever preselects a picker, while these two say where
+   * you are, and the list marks rows up accordingly. Never read them raw: they
+   * are a stamp, not a state, and `resolveActiveTrip` is what turns them into a
+   * store by checking both that it still exists and that the trip hasn't aged
+   * out. `activeShop()` is that read.
+   */
+  tripShopId: string | null;
+  tripStartedAt: string | null;
   /**
    * name_key → the aisle the user last filed that item under. Consulted ahead
    * of the lexicon when a row is created, so a correction sticks even after the
@@ -217,6 +233,12 @@ interface GroceryStore {
    * feature off, delete the task the user just asked to have back.
    */
   setUseUpTask: (id: string, value: boolean | null, options?: { reconcile?: boolean }) => void;
+
+  /**
+   * Staple on/off — "always have it", GroceryItemSheet's third pantry pill.
+   * Unlike setOnHandUntil this never expires; a dumb setter, same shape.
+   */
+  setStaple: (id: string, isStaple: boolean) => void;
 
   /**
    * Picks this row at the shelf: it stays (no longer an either/or) and every
@@ -318,6 +340,27 @@ interface GroceryStore {
    */
   clearItemUnavailable: (itemId: string, shopId: string) => void;
   setLastShopId: (id: string | null) => void;
+
+  /**
+   * Say you're at a store. Explicit only — nothing in the app infers a trip,
+   * because a wrong guess marks up the whole list in the one place it has to
+   * stay scannable one-handed.
+   */
+  startTrip: (shopId: string) => void;
+  /**
+   * End it. Called by the Clear button, by finishing a shop, and by clearing
+   * the list — a trip whose list just went away is over whatever else happened.
+   * Idempotent, so callers never have to check first.
+   */
+  endTrip: () => void;
+  /**
+   * The store you're at, or null. The only sanctioned read of the trip fields:
+   * it drops a deleted shop and an aged-out trip, so no caller has to remember
+   * to. Takes `now` so the callers that already have one don't disagree with it.
+   */
+  activeShop: (now?: Date) => Shop | null;
+  /** Ends a trip that aged out while the app was open. Called on screen focus. */
+  checkTripExpiry: () => void;
 
   itemByNameKey: (key: string) => GroceryItem | null;
   itemById: (id: string) => GroceryItem | null;
@@ -463,6 +506,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   shops: [],
   itemShops: [],
   lastShopId: null,
+  tripShopId: null,
+  tripStartedAt: null,
   aisleOverrides: {},
   cartHoldIds: [],
   initialized: false,
@@ -501,6 +546,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // record the next trip against nothing.
     const storedLast = dbGetLastShopId();
     const lastShopId = shops.some(s => s.id === storedLast) ? storedLast : null;
+    // The trip is repaired the same way, against the clock as well as against
+    // live shops, and — like the aisle order above — deliberately not written
+    // back. A launch the morning after a shop simply has no trip: the rows are
+    // still in the settings table and resolve to nothing for ever after, which
+    // costs two dead keys and saves a write on every cold start.
+    const storedTrip = resolveActiveTrip(
+      dbGetTripShopId(),
+      dbGetTripStartedAt(),
+      shops,
+      new Date()
+    );
+    const tripShopId = storedTrip?.id ?? null;
+    const tripStartedAt = tripShopId ? dbGetTripStartedAt() : null;
     if (cartHoldTimer) {
       clearTimeout(cartHoldTimer);
       cartHoldTimer = null;
@@ -513,6 +571,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       shops,
       itemShops,
       lastShopId,
+      tripShopId,
+      tripStartedAt,
       cartHoldIds: [],
       initialized: true,
     });
@@ -611,6 +671,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       choiceGroup,
       sourceRecipeId: source?.recipeId ?? null,
       sourceRecipeTitle: source?.recipeTitle ?? null,
+      isStaple: false,
       // Nothing on the *list* has a use-by date: adding a name is a plan to
       // buy it, and the shelf life doesn't start until it's in the fridge.
       // finishShopping is what stamps this — see defaultExpiresAt.
@@ -873,6 +934,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const item = get().items.find(i => i.id === id);
     if (!item) return;
     const updated = { ...item, onHandUntil: until };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setStaple(id, isStaple) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    const updated = { ...item, isStaple };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
@@ -1154,6 +1223,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       itemShops: s.itemShops.filter(l => !deleted.has(l.itemId)),
       cartHoldIds: [],
     }));
+    // A trip whose list just went away is over. The other terminator is
+    // finishing a shop, which lives in the screen's handler rather than in
+    // finishShopping — that one early-returns on an empty trolley, and ending
+    // the trip must not be conditional on having bought something.
+    get().endTrip();
     return ids.length;
   },
 
@@ -1350,12 +1424,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    */
   deleteShop(id) {
     const wasLast = get().lastShopId === id;
+    // Deleting the store you said you were in ends the trip — there's nowhere
+    // left for it to be. Inlined rather than routed through endTrip() for the
+    // same reason lastShopId is: the whole cleanup belongs in one set().
+    const wasTrip = get().tripShopId === id;
     dbDeleteGroceryShop(id);
     if (wasLast) dbSetLastShopId(null);
+    if (wasTrip) dbSetTrip(null, null);
     set(s => ({
       shops: s.shops.filter(x => x.id !== id),
       itemShops: s.itemShops.filter(l => l.shopId !== id),
       lastShopId: wasLast ? null : s.lastShopId,
+      tripShopId: wasTrip ? null : s.tripShopId,
+      tripStartedAt: wasTrip ? null : s.tripStartedAt,
     }));
   },
 
@@ -1509,6 +1590,45 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setLastShopId(id) {
     dbSetLastShopId(id);
     set({ lastShopId: id });
+  },
+
+  startTrip(shopId) {
+    // Resolved against live state for the same reason finishShopping re-resolves
+    // its shop: the picker that offered this id may have been open while the
+    // store was deleted somewhere else.
+    if (!get().shops.some(s => s.id === shopId)) return;
+    const startedAt = new Date().toISOString();
+    dbSetTrip(shopId, startedAt);
+    set({ tripShopId: shopId, tripStartedAt: startedAt });
+  },
+
+  endTrip() {
+    if (!get().tripShopId && !get().tripStartedAt) return;
+    dbSetTrip(null, null);
+    set({ tripShopId: null, tripStartedAt: null });
+  },
+
+  activeShop(now = new Date()) {
+    const { tripShopId, tripStartedAt, shops } = get();
+    return resolveActiveTrip(tripShopId, tripStartedAt, shops, now);
+  },
+
+  /**
+   * Drops a trip that has aged out while the app was open.
+   *
+   * `initialize` already does this for a cold start, and `activeShop` refuses
+   * to resolve a dead trip whenever it's asked — but a screen that derived the
+   * banner from `tripShopId` an hour ago is holding a memo whose inputs haven't
+   * changed, so nothing re-renders it away. Clearing the fields is what makes
+   * the expiry visible rather than merely true, which is why this is wired to
+   * the grocery screen gaining focus. Same reason `checkVacationExpiry` runs on
+   * foreground: no timer is running to notice.
+   */
+  checkTripExpiry() {
+    const { tripShopId, tripStartedAt } = get();
+    if (!tripShopId) return;
+    if (isTripLive(tripStartedAt, new Date())) return;
+    get().endTrip();
   },
 
   itemByNameKey(key) {

@@ -251,7 +251,7 @@ export function describeQuantities(quantities: readonly string[]): string {
   return quantities.length > 1 ? `×${quantities.length}` : '';
 }
 
-export type PlanCategory = 'needToBuy' | 'alreadyOnList' | 'inTrolley' | 'probablyHave';
+export type PlanCategory = 'needToBuy' | 'alreadyOnList' | 'inTrolley' | 'probablyHave' | 'staple';
 
 export interface ClassifiedIngredient {
   nameKey: string;
@@ -283,14 +283,18 @@ export interface ClassifiedIngredient {
  * | needToBuy        | no catalog row, or known but off the list    |
  * | alreadyOnList     | on the list, unchecked                       |
  * | inTrolley         | on the list *and* checked                    |
+ * | staple            | known, off the list, and marked isStaple —   |
+ * |                   | always on hand, unconditionally              |
  * | probablyHave      | known, off the list, and grocerySuggest's    |
  * |                   | pantry guess (or an explicit onHandUntil     |
  * |                   | assertion) says it's probably still around   |
  *
- * `probablyHaveReason` is checked only for a row that's known but off the
- * list — never for one already on the list or in the trolley, and never for
- * a name with no catalog row at all, which has no purchase history to guess
- * from in the first place.
+ * `staple` is checked ahead of `probablyHave` — a staple is a standing fact
+ * ("I always have salt"), not a guess from recent purchases, and it needs no
+ * purchase history to be true. Both are checked only for a row that's known
+ * but off the list — never for one already on the list or in the trolley
+ * (already on the list this week wins, staple or not), and never for a name
+ * with no catalog row at all.
  *
  * Display name, among sources sharing a key: the live catalog row's own name
  * wins — that's what the user themselves typed, and addByName already holds
@@ -331,6 +335,8 @@ export function classifyPlanned(
     let reason: string | null = null;
     if (match?.onList) {
       category = match.checked ? 'inTrolley' : 'alreadyOnList';
+    } else if (match?.isStaple) {
+      category = 'staple';
     } else if (match && (reason = probablyHaveReason(match, now))) {
       category = 'probablyHave';
     } else {

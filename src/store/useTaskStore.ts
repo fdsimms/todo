@@ -49,7 +49,13 @@ import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
-import { postponeOutcome, nextPostponeCount } from '../utils/postpone';
+import {
+  postponeOutcome,
+  nextPostponeCount,
+  nextDriftingSince,
+  driftingTasks,
+  type DriftEntry,
+} from '../utils/postpone';
 import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
@@ -235,6 +241,7 @@ function newTaskFromDraft(
     // series row or a template application can't inherit someone else's count.
     postponeCount: 0,
     postponeMuted: false,
+    driftingSince: null,
     extraTaskTally: 0,
     previousExtraTaskTally: 0,
   };
@@ -482,6 +489,10 @@ function patchTasksById(tasks: Task[], updates: Map<string, Partial<Task>>): Tas
  * was — so this can't ride along on dbBulkSetWhen / dbBulkSetDefer, which stay
  * single-purpose. Same split dbBatchUpdatePinnedOrders makes beside
  * bulkTogglePin. Only rows whose count actually moves are written.
+ *
+ * Carries driftingSince alongside, since the two are one fact (see
+ * nextDriftingSince) and splitting them across two passes would let a batch
+ * write half of it.
  */
 function bulkPostponeCounts(
   tasks: Task[],
@@ -492,13 +503,17 @@ function bulkPostponeCounts(
   // every bulk defer look like it had cleared the task's due date.
   next: Partial<Pick<Task, 'dueDate' | 'deferUntil'>>,
   dayResetTime: string,
-): Map<string, number> {
+): Map<string, { postponeCount: number; driftingSince: string | null }> {
   const idSet = new Set(ids);
-  const counts = new Map<string, number>();
+  const counts = new Map<string, { postponeCount: number; driftingSince: string | null }>();
   for (const t of tasks) {
     if (!idSet.has(t.id)) continue;
-    const count = nextPostponeCount(t.postponeCount, postponeOutcome(t, { ...t, ...next }, dayResetTime));
-    if (count !== t.postponeCount) counts.set(t.id, count);
+    const outcome = postponeOutcome(t, { ...t, ...next }, dayResetTime);
+    const postponeCount = nextPostponeCount(t.postponeCount, outcome);
+    const driftingSince = nextDriftingSince(t.driftingSince, t.postponeCount, outcome, t, dayResetTime);
+    if (postponeCount !== t.postponeCount || driftingSince !== t.driftingSince) {
+      counts.set(t.id, { postponeCount, driftingSince });
+    }
   }
   return counts;
 }
@@ -731,6 +746,17 @@ interface TaskStore {
   // the countdown can be resumed later; reset throws the banked time away.
   pauseTimer: (id: string) => void;
   resetTimer: (id: string) => void;
+  /**
+   * Correct the time the stopwatch recorded. The stopwatch is the only writer
+   * of `actualMinutes`, and stopping it late otherwise leaves the wrong number
+   * on the task for good — which reaches further than it looks, because
+   * `applyMeasuredTime` makes the measurement the estimate too.
+   *
+   * Deliberately routed through the same `applyMeasuredTime` a real run is, so
+   * a corrected number lands on exactly the fields a measured one does rather
+   * than leaving the estimate and the effort bucket disagreeing with it.
+   */
+  setMeasuredTime: (id: string, minutes: number) => void;
   reorderTasks: (orderedIds: string[]) => void;
   // Explicit sortOrders rather than ids-in-order: the Today list's ranks are
   // shared with the stacks sitting in it (see resolveDrop), so the gaps a
@@ -809,6 +835,7 @@ interface TaskStore {
   inboxTasks: () => Task[];
   unscheduledTasks: () => Task[];
   waitingTasks: () => Task[];
+  driftingTasks: () => DriftEntry[];
   deferredTasks: () => Task[];
   expiredTasks: () => Task[];
   vacationHiddenTasks: () => Task[];
@@ -1176,6 +1203,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // made, so it has neither a history of being ducked nor a mute they set.
       postponeCount: 0,
       postponeMuted: false,
+      driftingSince: null,
     };
     const copy: Task = {
       ...original,
@@ -1259,19 +1287,32 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // {dueDate, deferUntil} patch (deloadTasks, pullProjectTasks) — there's no
       // field there to hide behind, and that backward move would otherwise read
       // as "resolved" and wipe the history this feature exists to keep.
-      const derivedPostponeCount =
-        options?.skipPostponeCount || 'postponeCount' in updates
+      //
+      // driftingSince rides on the same outcome and the same escape hatches, so
+      // the count and the day it started from can never be judged differently:
+      // one call to postponeOutcome answers both.
+      const derivedPostpone =
+        options?.skipPostponeCount || 'postponeCount' in updates || 'driftingSince' in updates
           ? undefined
-          : nextPostponeCount(
-              t.postponeCount,
-              postponeOutcome(t, { ...t, ...updates }, dayResetTime),
-            );
+          : (() => {
+              const outcome = postponeOutcome(t, { ...t, ...updates }, dayResetTime);
+              return {
+                postponeCount: nextPostponeCount(t.postponeCount, outcome),
+                driftingSince: nextDriftingSince(
+                  t.driftingSince,
+                  t.postponeCount,
+                  outcome,
+                  t,
+                  dayResetTime,
+                ),
+              };
+            })();
 
       const updated = {
         ...t,
         ...updates,
         seriesDefaults,
-        ...(derivedPostponeCount !== undefined ? { postponeCount: derivedPostponeCount } : {}),
+        ...(derivedPostpone ?? {}),
         ...(takenOver ? { autoScheduledAt: null } : {}),
         // Only on the transition, never on a re-save of an already-pinned
         // task: the editor writes `pinned: true` on every save of a pinned
@@ -1715,6 +1756,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // not about today's row, and a muted chore would otherwise start
           // nagging again next week just as the count climbs back.
           postponeCount: 0,
+          // Cleared with it: a fresh occurrence has no run of pushes, so it has
+          // no day one started from.
+          driftingSince: null,
           // Carries the broken streak forward on a miss, not the pre-miss one:
           // the streak lives on whichever row is currently running it, so
           // resetting only the missed row would hand the next occurrence the
@@ -2185,6 +2229,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         progressCount: 0,
         // Same as completeTask's successor: the count resets, the mute carries.
         postponeCount: 0,
+        driftingSince: null,
         streakCount: 0,
         streakDate: null,
         previousStreakCount: 0,
@@ -2626,6 +2671,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(id, { timerStartedAt: null, timerElapsedSeconds: 0 });
   },
 
+  setMeasuredTime(id, minutes) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task) return;
+    get().updateTask(id, applyMeasuredTime(minutes));
+  },
+
   reorderTasks(orderedIds) {
     const updates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
     dbBatchUpdateSortOrders(updates);
@@ -2752,6 +2803,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       pendingImport: null,
       postponeCount: 0,
       postponeMuted: false,
+      driftingSince: null,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));
@@ -2909,6 +2961,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       pendingImport: null,
       postponeCount: 0,
       postponeMuted: false,
+      driftingSince: null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -3443,12 +3496,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     );
     dbBulkSetDefer(ids, deferUntil);
     if (counts.size > 0) {
-      dbBatchUpdatePostponeCounts([...counts].map(([id, postponeCount]) => ({ id, postponeCount })));
+      dbBatchUpdatePostponeCounts([...counts].map(([id, moved]) => ({ id, ...moved })));
     }
     set(s => ({
       tasks: patchTasks(s.tasks, ids, t => ({
         deferUntil,
-        ...(counts.has(t.id) ? { postponeCount: counts.get(t.id)! } : {}),
+        ...(counts.get(t.id) ?? {}),
       })),
     }));
     if (snapshots.length > 0) {
@@ -3471,13 +3524,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     );
     dbBulkSetWhen(ids, dueDate, timeSegments);
     if (counts.size > 0) {
-      dbBatchUpdatePostponeCounts([...counts].map(([id, postponeCount]) => ({ id, postponeCount })));
+      dbBatchUpdatePostponeCounts([...counts].map(([id, moved]) => ({ id, ...moved })));
     }
     set(s => ({
       tasks: patchTasks(s.tasks, ids, t => ({
         dueDate,
         timeSegments,
-        ...(counts.has(t.id) ? { postponeCount: counts.get(t.id)! } : {}),
+        ...(counts.get(t.id) ?? {}),
       })),
     }));
     if (snapshots.length > 0) {
@@ -3539,6 +3592,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .filter(isWaitingTask)
       .sort((a, b) => (a.blockedById ?? '').localeCompare(b.blockedById ?? '')
         || a.sortOrder - b.sortOrder);
+  },
+
+  // Reads the user's own threshold rather than a constant of its own: the
+  // screen and the date picker's prompt have to agree about what "keeps getting
+  // pushed" means, or a task can be listed here while the picker stays silent
+  // about it.
+  driftingTasks() {
+    return driftingTasks(get().tasks, useSettingsStore.getState().postponeCheckThreshold);
   },
 
   deferredTasks() {

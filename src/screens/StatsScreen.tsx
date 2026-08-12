@@ -556,7 +556,7 @@ const makeStyles = (colors: Colors) =>
     },
     section: { marginBottom: spacing.lg },
     sectionTitle: {
-      color: colors.textTertiary,
+      color: colors.textSecondary,
       fontSize: font.xs,
       fontWeight: '700',
       textTransform: 'uppercase',

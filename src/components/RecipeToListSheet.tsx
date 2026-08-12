@@ -66,6 +66,7 @@ const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; c
   { category: 'needToBuy', label: 'Need to buy', interactive: true, collapsible: false },
   { category: 'alreadyOnList', label: 'Already on your list', interactive: true, collapsible: false },
   { category: 'inTrolley', label: 'In your trolley', interactive: false, collapsible: false },
+  { category: 'staple', label: 'Always have', interactive: true, collapsible: true },
   { category: 'probablyHave', label: 'Probably have', interactive: true, collapsible: true },
 ];
 
@@ -132,7 +133,7 @@ export function RecipeToListSheet({
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {
-      needToBuy: [], alreadyOnList: [], inTrolley: [], probablyHave: [],
+      needToBuy: [], alreadyOnList: [], inTrolley: [], probablyHave: [], staple: [],
     };
     for (const row of classified) out[row.category].push(row);
     return out;
@@ -456,7 +457,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   sectionLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,

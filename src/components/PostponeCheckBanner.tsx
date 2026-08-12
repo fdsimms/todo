@@ -11,6 +11,53 @@ export interface PostponeCheckAction {
   onPress: () => void;
 }
 
+/**
+ * The row of ways out — one filled primary, then the quieter pills.
+ *
+ * Its own component because the Drift screen offers the same four choices per
+ * row that the picker's banner offers for one task, and two copies of this
+ * vocabulary is how the two surfaces would come to disagree about what the ways
+ * out are. The banner below owns the framing; this owns the buttons.
+ *
+ * One wrapping row rather than a full-width primary above a second row of
+ * pills. The picker's card is centered with no scroll view, and on a small
+ * phone a six-week month plus the Time of day section already fills it — a
+ * two-row banner was enough to push the calendar off the bottom. Weight and
+ * fill carry the hierarchy instead of size.
+ */
+export function PostponeCheckActions({
+  primary,
+  secondary,
+}: {
+  primary: PostponeCheckAction;
+  secondary: PostponeCheckAction[];
+}) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  return (
+    <View style={styles.actionRow}>
+      <PressableScale
+        style={[styles.action, styles.primaryAction]}
+        onPress={primary.onPress}
+        accessibilityLabel={primary.label}
+      >
+        <Text style={styles.primaryLabel}>{primary.label}</Text>
+      </PressableScale>
+      {secondary.map(action => (
+        <PressableScale
+          key={action.key}
+          style={styles.action}
+          onPress={action.onPress}
+          accessibilityLabel={action.label}
+        >
+          <Text style={styles.secondaryLabel}>{action.label}</Text>
+        </PressableScale>
+      ))}
+    </View>
+  );
+}
+
 interface Props {
   /** How many times the task has been pushed (Task.postponeCount). */
   count: number;
@@ -57,30 +104,7 @@ export function PostponeCheckBanner({ count, primary, secondary }: Props) {
         </Text>
       </View>
 
-      {/* One wrapping row rather than a full-width primary above a second row
-          of pills. The picker's card is centered with no scroll view, and on a
-          small phone a six-week month plus the Time of day section already
-          fills it — a two-row banner was enough to push the calendar off the
-          bottom. Weight and fill carry the hierarchy instead of size. */}
-      <View style={styles.actionRow}>
-        <PressableScale
-          style={[styles.action, styles.primaryAction]}
-          onPress={primary.onPress}
-          accessibilityLabel={primary.label}
-        >
-          <Text style={styles.primaryLabel}>{primary.label}</Text>
-        </PressableScale>
-        {secondary.map(action => (
-          <PressableScale
-            key={action.key}
-            style={styles.action}
-            onPress={action.onPress}
-            accessibilityLabel={action.label}
-          >
-            <Text style={styles.secondaryLabel}>{action.label}</Text>
-          </PressableScale>
-        ))}
-      </View>
+      <PostponeCheckActions primary={primary} secondary={secondary} />
     </View>
   );
 }

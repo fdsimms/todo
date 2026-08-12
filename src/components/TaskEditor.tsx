@@ -3615,7 +3615,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   sectionLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
   },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
@@ -3930,7 +3930,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chainModeBlock: { marginTop: spacing.md },
   chainModeLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.xs,
   },
   chainModeRow: { flexDirection: 'row', gap: spacing.xs },

@@ -526,7 +526,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   cardSep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
   sectionLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.bold,
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.bold,
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
   },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
