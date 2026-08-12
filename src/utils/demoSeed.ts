@@ -134,7 +134,30 @@ export function seedDemoData(): void {
     effort: 1,
     tags: ['admin'],
   });
-  updateTask(dentist.id, { postponeCount: 5 });
+  // driftingSince is stamped alongside for the same reason the count is: a
+  // demo database has no history for the real rule to have derived one from.
+  // Six weeks back, so the Drift screen's "first put off" line has something to
+  // say rather than falling back to the bare count.
+  updateTask(dentist.id, {
+    postponeCount: 5,
+    driftingSince: subDays(today, 42).toISOString(),
+  });
+
+  // A second drifter, so Drift reads as the list it is rather than a single
+  // row — and so the ranking is visible: fewer moves, and a more recent start.
+  const gutters = addTask({
+    title: 'Clear the gutters',
+    notes: 'Before the autumn rain, ideally.',
+    category: 'Home',
+    dueDate: today.toISOString(),
+    priority: 1,
+    effort: 3,
+    tags: ['home'],
+  });
+  updateTask(gutters.id, {
+    postponeCount: 3,
+    driftingSince: subDays(today, 11).toISOString(),
+  });
 
   addTask({
     title: 'Swing by the farmers market',

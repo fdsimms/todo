@@ -191,6 +191,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   pinnedOrder: 0,
   postponeCount: 0,
   postponeMuted: false,
+  driftingSince: null,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -6629,7 +6630,12 @@ describe('postponeCount', () => {
     const { tasks } = useTaskStore.getState();
     expect(tasks.find(t => t.id === 'a')?.postponeCount).toBe(2);
     expect(tasks.find(t => t.id === 'b')?.postponeCount).toBe(1);
-    expect(dbBatchUpdatePostponeCounts).toHaveBeenCalledWith([{ id: 'a', postponeCount: 2 }]);
+    // The count and the day it started from go in one write, so a batch can
+    // never leave a row claiming pushes with no start. The stamp is the *day*
+    // the task was leaving, not the instant it held — the screen renders a date.
+    expect(dbBatchUpdatePostponeCounts).toHaveBeenCalledWith([
+      { id: 'a', postponeCount: 2, driftingSince: new Date(2025, 5, 10).toISOString() },
+    ]);
   });
 
   it('counts a bulk defer without being confused by the untouched dueDate', () => {

@@ -539,15 +539,35 @@ export interface Task {
    * is a statement about the task, not about today's row.
    */
   postponeMuted: boolean;
+
+  /**
+   * The day this task was sitting on when it was first pushed off it — "you've
+   * been moving this since March 3rd". ISO, or null for a task that isn't
+   * currently drifting.
+   *
+   * Stamped and cleared in lockstep with postponeCount, by the same derivation:
+   * set when the count goes 0 → 1, left alone while it climbs, nulled whenever
+   * it resets. That pairing is the whole point — a count says how often and this
+   * says how long, and the Drift screen needs both to tell three pushes last
+   * week apart from three pushes since the spring.
+   *
+   * Deliberately *not* "first scheduled at", which #947 sketched. A stamp that
+   * never resets outlives the count beside it, so a task pushed twice last week
+   * would read "pushed 2 times · since March" — which is true about the task and
+   * a lie about the drift. This is the day the current run of pushes started
+   * from, so the two fields always describe the same run.
+   */
+  driftingSince: string | null;
 }
 
-// postponeCount/postponeMuted are omitted alongside the streak fields for the
+// postponeCount/postponeMuted/driftingSince are omitted alongside the streak
+// fields for the
 // same reason: they're derived state the app maintains, not something a draft
 // gets to assert. That makes newTaskFromDraft's hard-coded 0/false the only
 // source, so a series row or a template application can't inherit a count.
 // extraTaskTally is the same kind of thing — the rule (extraTaskEveryN,
 // extraTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'extraTaskTally' | 'previousExtraTaskTally'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"
