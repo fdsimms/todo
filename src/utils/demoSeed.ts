@@ -10,7 +10,8 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import type { GroceryItem, MealSlot, Recipe, Shop } from '../types';
+import { useTemplateStore } from '../store/useTemplateStore';
+import type { GroceryItem, MealSlot, Recipe, Shop, TemplateItem } from '../types';
 import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
 import { groceryNameKey } from './groceryParse';
@@ -318,6 +319,9 @@ export function seedDemoData(): void {
     updateTask(t.id, { completedAt: setHours(at, 17).toISOString() });
   });
 
+  // --- A template, and the blanks it fills in at apply time ----------------
+  seedTemplates();
+
   // --- Groceries, recipes, the week's meals and the fridge -----------------
   // Ordered by what points at what: recipes first (grocery rows can be
   // attributed to the recipe that put them on the list), then the catalog,
@@ -325,6 +329,42 @@ export function seedDemoData(): void {
   const recipes = seedRecipes();
   seedGroceries(recipes);
   seedMealPlanAndFridge(recipes, today);
+}
+
+// ---------------------------------------------------------------------------
+// Templates
+// ---------------------------------------------------------------------------
+
+/**
+ * One template, with two blanks in it.
+ *
+ * The blanks are the reason this exists: `{destination}` is asked for once in
+ * the apply sheet and lands in three item titles, and `{run}` inlines the name
+ * given to the run itself. Both are invisible until a template declares one,
+ * so without a seeded example the demo says the app can't do it.
+ */
+function seedTemplates(): void {
+  const { addTemplate, addItem } = useTemplateStore.getState();
+  const template = addTemplate('Trip prep');
+  const ITEMS: Partial<TemplateItem>[] = [
+    { title: 'Put in for PTO for {run}', category: 'Work', dueOffsetDays: -21, priority: 3 },
+    { title: 'Book flights to {destination}', dueOffsetDays: -14, priority: 4, effort: 2 },
+    { title: 'Somewhere to stay in {destination}', dueOffsetDays: -14, effort: 2 },
+    {
+      title: 'Pack for {destination}',
+      dueOffsetDays: -1,
+      category: 'Home',
+      subtasks: [
+        { id: generateId(), title: 'Passport' },
+        { id: generateId(), title: 'Chargers' },
+        { id: generateId(), title: 'Meds' },
+      ],
+    },
+    // Anchored to the end date instead, and optional — the two item settings
+    // that are otherwise only described in the editor's own hints.
+    { title: 'Unpack and put a wash on', anchor: 'end', dueOffsetDays: 1, optional: true },
+  ];
+  ITEMS.forEach(item => addItem(template.id, item));
 }
 
 // ---------------------------------------------------------------------------

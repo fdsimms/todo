@@ -21,7 +21,16 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
-import { anchorLabel, formatOffsetWithAnchor, formatMinutesOffset } from '../utils/templateUtils';
+import {
+  anchorLabel,
+  formatOffsetWithAnchor,
+  formatMinutesOffset,
+  itemPlaceholders,
+  normalizePlaceholderName,
+  withPlaceholder,
+  withoutPlaceholder,
+  RUN_PLACEHOLDER,
+} from '../utils/templateUtils';
 import { categoryLabel } from '../utils/categoryLabel';
 import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
@@ -36,7 +45,7 @@ import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps';
+type FieldKey = 'blanks' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps';
 
 interface Props {
   visible: boolean;
@@ -109,6 +118,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const subtaskSavedRef = useRef(false);
   const [addingTag, setAddingTag] = useState(false);
   const [newTag, setNewTag] = useState('');
+  const [addingBlank, setAddingBlank] = useState(false);
+  const [newBlank, setNewBlank] = useState('');
   // Same progressive disclosure as TaskEditor: each picker collapses to its
   // current value so the form reads as a list of fields, not a wall of pills.
   const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
@@ -147,6 +158,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setSubtasks(item?.subtasks ?? draft?.subtasks ?? []);
     setAddingTag(false);
     setNewTag('');
+    setAddingBlank(false);
+    setNewBlank('');
     setAddingChainItem(false);
     setNewChainItemTitle('');
     setAddingSubtask(false);
@@ -232,6 +245,41 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setAddingTag(false);
   };
 
+  // Every blank this item declares, across all four fields that can hold one.
+  const blanks = useMemo(
+    () => itemPlaceholders({ title, notes, subtasks, chainItems }),
+    [title, notes, subtasks, chainItems]
+  );
+
+  // The new blank goes on the end of the title: it's the field every item has,
+  // it's the one the blank is nearly always for, and it's on screen while this
+  // section is open, so the token lands somewhere the user can see and move.
+  const addBlankFromInput = () => {
+    const name = normalizePlaceholderName(newBlank);
+    if (name) setTitle(prev => withPlaceholder(prev, name));
+    setNewBlank('');
+    setAddingBlank(false);
+  };
+
+  /** Take a blank out of every field that mentions it — the chip's × is the only undo for a token typed into notes or a step. */
+  const removeBlank = (name: string) => {
+    haptics.tap();
+    setTitle(prev => withoutPlaceholder(prev, name));
+    setNotes(prev => withoutPlaceholder(prev, name));
+    // A subtask or step whose whole title was the blank has nothing left to be,
+    // so it goes with it rather than sitting there as an untitled row.
+    setSubtasks(subtasks
+      .map(s => ({ ...s, title: withoutPlaceholder(s.title, name) }))
+      .filter(s => s.title.trim()));
+    const nextChain = chainItems
+      .map(c => ({ ...c, title: withoutPlaceholder(c.title, name) }))
+      .filter(c => c.title.trim());
+    setChainItems(nextChain);
+    // Same re-clamp the step delete button does: the starting step can't point
+    // past the end of a list that just got shorter.
+    setChainIndex(i => Math.min(i, Math.max(0, nextChain.length - 1)));
+  };
+
   const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
   const timeOfDaySummary = timeSegments.length > 0
     ? timeSegments.map(capitalize).join(', ')
@@ -284,6 +332,51 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         placeholderTextColor={colors.textTertiary}
         multiline
       />
+
+      {/* Blanks. Sits directly under the two fields it's about, and its hint is
+          the only place the {name} syntax is written down anywhere in the app. */}
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Blanks"
+          summary={blanks.length > 0 ? blanks.map(n => `{${n}}`).join(' ') : undefined}
+          hint={`Type {a name in braces} in the title, notes, a subtask or a chain step. Applying the template asks for each one and puts what you enter in its place. {${RUN_PLACEHOLDER}} is filled in with the name you give the run.`}
+          expanded={fieldOpen('blanks', blanks.length > 0)}
+          onToggle={() => toggleField('blanks', blanks.length > 0)}
+        >
+          <View style={styles.blankRow}>
+            {blanks.map(name => (
+              <TouchableOpacity
+                key={name}
+                style={styles.blankChip}
+                onPress={() => removeBlank(name)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove the ${name} blank`}
+              >
+                <Text style={styles.blankChipText}>{`{${name}}`}</Text>
+                <Ionicons name="close" size={12} color={colors.accent} />
+              </TouchableOpacity>
+            ))}
+            {addingBlank ? (
+              <TextInput
+                autoFocus
+                style={styles.blankInput}
+                value={newBlank}
+                onChangeText={setNewBlank}
+                onSubmitEditing={addBlankFromInput}
+                onBlur={addBlankFromInput}
+                placeholder="name"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            ) : (
+              <InlineAction icon="add" label="Add blank" variant="neutral" onPress={() => setAddingBlank(true)} />
+            )}
+          </View>
+        </CollapsibleField>
+      </View>
 
       {/* Scheduling relative to one of the template's two anchor dates */}
       <Text style={styles.groupLabel}>Schedule</Text>
@@ -1090,6 +1183,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tagDot: { width: 6, height: 6, borderRadius: 3 },
   tagChipText: { fontSize: font.sm, fontWeight: '500' },
   tagInput: {
+    color: colors.text, fontSize: font.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.accent,
+    paddingVertical: 4, paddingHorizontal: 4, minWidth: 80,
+  },
+  blankRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
+  blankChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full,
+    backgroundColor: colors.accentSubtle,
+  },
+  blankChipText: { color: colors.accent, fontSize: font.sm, fontWeight: '500' },
+  blankInput: {
     color: colors.text, fontSize: font.sm,
     borderBottomWidth: 1, borderBottomColor: colors.accent,
     paddingVertical: 4, paddingHorizontal: 4, minWidth: 80,
