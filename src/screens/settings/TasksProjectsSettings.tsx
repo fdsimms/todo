@@ -21,6 +21,9 @@ import {
   CADENCE_UNITS, CADENCE_UNIT_MAX, cadenceUnitLabel,
   describeCadence, fromCadenceParts, toCadenceParts, withCadenceUnit,
 } from '../../utils/nudgeCadence';
+import {
+  DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD,
+} from '../../utils/postpone';
 
 const EXPIRED_TASK_GRACE_PILLS: PillOption<ExpiredTaskGraceDays>[] =
   EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
@@ -56,6 +59,10 @@ export function TasksProjectsSettings() {
   const setAutoRemoveExpiredTasks = useSettingsStore(s => s.setAutoRemoveExpiredTasks);
   const autoArchiveProjectsOnComplete = useSettingsStore(s => s.autoArchiveProjectsOnComplete);
   const setAutoArchiveProjectsOnComplete = useSettingsStore(s => s.setAutoArchiveProjectsOnComplete);
+  const postponeCheckEnabled = useSettingsStore(s => s.postponeCheckEnabled);
+  const setPostponeCheckEnabled = useSettingsStore(s => s.setPostponeCheckEnabled);
+  const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
+  const setPostponeCheckThreshold = useSettingsStore(s => s.setPostponeCheckThreshold);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const defaultProjectNudgeCadenceDays = useSettingsStore(s => s.defaultProjectNudgeCadenceDays);
@@ -150,6 +157,43 @@ export function TasksProjectsSettings() {
           onSelect={setAutoRemoveExpiredTasks}
           accessibilityLabelFor={o => `Auto-remove expired tasks: ${o.label}`}
         />
+      </SettingsSection>
+
+      <SettingsSection
+        label="Rescheduling"
+        footer="Counted per task, and the count resets as soon as you pull one back to today. You can also silence the prompt for a single task from the reminder itself."
+      >
+        <SettingsRow
+          icon="repeat-outline"
+          iconColor={postponeCheckEnabled ? colors.accent : undefined}
+          label="Say something when I keep pushing"
+          hint={postponeCheckEnabled
+            ? `The date picker speaks up once you've moved a task ${postponeCheckThreshold} times`
+            : 'Off — a task can be pushed as often as you like without a word'}
+          toggle={postponeCheckEnabled}
+          onPress={() => setPostponeCheckEnabled(!postponeCheckEnabled)}
+        />
+        {postponeCheckEnabled && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              icon="hand-left-outline"
+              label="After this many pushes"
+              hint="How much rope a task gets before the picker offers you a way out"
+              tight
+            />
+            <View style={styles.cadenceRow}>
+              <CountStepper
+                value={postponeCheckThreshold}
+                onChange={next => setPostponeCheckThreshold(next ?? DEFAULT_POSTPONE_THRESHOLD)}
+                min={MIN_POSTPONE_THRESHOLD}
+                max={MAX_POSTPONE_THRESHOLD}
+                label="After this many pushes"
+                describeValue={n => `${n} pushes`}
+              />
+            </View>
+          </>
+        )}
       </SettingsSection>
 
       <SettingsSection

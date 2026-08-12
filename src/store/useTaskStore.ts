@@ -17,6 +17,7 @@ import {
   dbBulkSetCategory,
   dbBulkSetPinned,
   dbBatchUpdatePinnedOrders,
+  dbBatchUpdatePostponeCounts,
   dbBulkAddTags,
   dbGetTagRegistry,
   dbAddToTagRegistry,
@@ -48,6 +49,7 @@ import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
+import { postponeOutcome, nextPostponeCount } from '../utils/postpone';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { isTimedTask, timerElapsed } from '../utils/timer';
@@ -78,7 +80,23 @@ export const CONTENT_FIELDS: (keyof Task)[] = [
   // a normal thing to want, and without this a scope:'occurrence' edit would
   // quietly become the template for every occurrence after it.
   'blockedById',
+  // Deliberately NOT here: postponeCount / postponeMuted. A scope:'occurrence'
+  // edit captures every content field into seriesDefaults, which is applied on
+  // top of the row that spawns the next occurrence — so listing them would hand
+  // a fresh occurrence a stale count that completeTask had just reset to 0.
 ];
+
+/**
+ * The updateTask option for a date write nobody chose — series reconciliation,
+ * a recurrence skip, a background drip. See utils/postpone.ts for the rule this
+ * opts out of.
+ *
+ * applyTaskDates is the sharp case: without it an editor save that adds an
+ * *earlier* extra date counts the push it just made and then immediately resets
+ * it, because the reconcile re-points the anchor at `sorted[0]` — the earliest
+ * date of the new set.
+ */
+const SKIP_POSTPONE = { skipPostponeCount: true } as const;
 
 function captureField<K extends keyof Task>(target: Partial<Task>, source: Task, key: K): void {
   target[key] = source[key];
@@ -198,6 +216,10 @@ function newTaskFromDraft(
     emailAddress: draft.emailAddress ?? null,
     blockedById: draft.blockedById ?? null,
     pendingImport: draft.pendingImport ?? null,
+    // Not read off the draft — they're omitted from TaskDraft on purpose, so a
+    // series row or a template application can't inherit someone else's count.
+    postponeCount: 0,
+    postponeMuted: false,
   };
 }
 
@@ -435,6 +457,36 @@ function patchTasksById(tasks: Task[], updates: Map<string, Partial<Task>>): Tas
 }
 
 /**
+ * Per-task postpone counts for a bulk reschedule, persisted and returned so the
+ * in-memory patch can carry them too.
+ *
+ * bulkSetWhen and bulkDefer set one date across a selection but land a
+ * *different* count on each task, since the rule compares against where each one
+ * was — so this can't ride along on dbBulkSetWhen / dbBulkSetDefer, which stay
+ * single-purpose. Same split dbBatchUpdatePinnedOrders makes beside
+ * bulkTogglePin. Only rows whose count actually moves are written.
+ */
+function bulkPostponeCounts(
+  tasks: Task[],
+  ids: string[],
+  // Partial on purpose: dbBulkSetDefer writes defer_until and nothing else,
+  // dbBulkSetWhen writes due_date and nothing else. Spelling the untouched
+  // field as an explicit null here would wipe it from the comparison and make
+  // every bulk defer look like it had cleared the task's due date.
+  next: Partial<Pick<Task, 'dueDate' | 'deferUntil'>>,
+  dayResetTime: string,
+): Map<string, number> {
+  const idSet = new Set(ids);
+  const counts = new Map<string, number>();
+  for (const t of tasks) {
+    if (!idSet.has(t.id)) continue;
+    const count = nextPostponeCount(t.postponeCount, postponeOutcome(t, { ...t, ...next }, dayResetTime));
+    if (count !== t.postponeCount) counts.set(t.id, count);
+  }
+  return counts;
+}
+
+/**
  * The rank a newly pinned task should take: one past the highest currently in
  * use, so a pin lands at the *bottom* of the Pinned section.
  *
@@ -524,7 +576,13 @@ interface TaskStore {
   // Task.seriesId), content-field updates also fan out to the set's later
   // still-incomplete dates — "this and future tasks" means the same thing for
   // a series as it does for a recurrence, it just has real rows to write to.
-  updateTask: (id: string, updates: Partial<Task>, options?: { scope?: 'occurrence' | 'series' }) => void;
+  updateTask: (
+    id: string,
+    updates: Partial<Task>,
+    // skipPostponeCount: this move wasn't the user ducking the task — an engine
+    // proposed it, or it's bookkeeping. See utils/postpone.ts.
+    options?: { scope?: 'occurrence' | 'series'; skipPostponeCount?: boolean },
+  ) => void;
   // The two ends of an Apple Reminders suggestion (see Task.pendingImport).
   // Applying writes the parsed schedule onto the task, which is also the
   // moment it stops satisfying isInboxTask and leaves the Inbox for Today or
@@ -899,7 +957,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // unfiled from a series that no longer exists.
     if (sorted.length <= 1) {
       if (!anchor.seriesId) {
-        get().updateTask(taskId, { dueDate: sorted[0]?.toISOString() ?? anchor.dueDate });
+        get().updateTask(
+          taskId,
+          { dueDate: sorted[0]?.toISOString() ?? anchor.dueDate },
+          SKIP_POSTPONE,
+        );
         return;
       }
       const others = get().seriesRowsOf(anchor.seriesId).filter(t => t.id !== taskId);
@@ -927,7 +989,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         seriesId: null,
         seriesMonthDays: [],
         seriesRepeatMonths: 1,
-      });
+      }, SKIP_POSTPONE);
       return;
     }
 
@@ -948,7 +1010,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // The anchor gives up its recurrence rule along with the rows cloned
       // from it — the dates are the schedule now (see NO_RECURRENCE).
       ...NO_RECURRENCE,
-    });
+    }, SKIP_POSTPONE);
 
     const rows = get().seriesRowsOf(seriesId);
     if (rows.length === 0) return;
@@ -1078,6 +1140,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       archived: false,
       archivedAt: null,
       chainIndex: 0, // a duplicate starts a chain fresh, not mid-way through the original
+      // Both, unlike a recurrence successor: a copy is a new task the user just
+      // made, so it has neither a history of being ducked nor a mute they set.
+      postponeCount: 0,
+      postponeMuted: false,
     };
     const copy: Task = {
       ...original,
@@ -1108,6 +1174,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Computed once, outside the map: it scans every task, and the map is
     // already a full pass. Only consumed on the 0→1 transition below.
     const freshPinnedOrder = updates.pinned === true ? nextPinnedOrder(get().tasks) : 0;
+    const dayResetTime = useSettingsStore.getState().dayResetTime;
     const tasks = get().tasks.map(t => {
       if (t.id !== id) return t;
 
@@ -1147,10 +1214,32 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         !('autoScheduledAt' in updates) &&
         t.autoScheduledAt !== null;
 
+      // How many times the user has pushed this out (see utils/postpone.ts).
+      // Derived from the move rather than asked for, so every hand-picked date —
+      // the row's swipe, the editor's Date row — is counted without its call
+      // site having to remember to.
+      //
+      // Two ways out, and both are needed. An update that names postponeCount
+      // itself wins outright, which is what makes every snapshot undo correct
+      // for free: they replay a whole pre-write `{ ...task }`, so the count goes
+      // back to what it was instead of being re-judged by a backward date move.
+      // And skipPostponeCount covers the engine paths that undo with a narrow
+      // {dueDate, deferUntil} patch (deloadTasks, pullProjectTasks) — there's no
+      // field there to hide behind, and that backward move would otherwise read
+      // as "resolved" and wipe the history this feature exists to keep.
+      const derivedPostponeCount =
+        options?.skipPostponeCount || 'postponeCount' in updates
+          ? undefined
+          : nextPostponeCount(
+              t.postponeCount,
+              postponeOutcome(t, { ...t, ...updates }, dayResetTime),
+            );
+
       const updated = {
         ...t,
         ...updates,
         seriesDefaults,
+        ...(derivedPostponeCount !== undefined ? { postponeCount: derivedPostponeCount } : {}),
         ...(takenOver ? { autoScheduledAt: null } : {}),
         // Only on the transition, never on a re-save of an already-pinned
         // task: the editor writes `pinned: true` on every save of a pinned
@@ -1530,6 +1619,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           deferUntil: null,
           pinned: false, // pin resets on new occurrence
           progressCount: 0, // a quota starts the new day empty
+          // The pushes belong to the occurrence that was pushed. postponeMuted
+          // deliberately isn't reset here — it rides through on ...effective,
+          // because "stop asking about this one" is a statement about the task,
+          // not about today's row, and a muted chore would otherwise start
+          // nagging again next week just as the count climbs back.
+          postponeCount: 0,
           // Carries the broken streak forward on a miss, not the pre-miss one:
           // the streak lives on whichever row is currently running it, so
           // resetting only the missed row would hand the next occurrence the
@@ -1902,6 +1997,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         deferUntil: null,
         pinned: false,
         progressCount: 0,
+        // Same as completeTask's successor: the count resets, the mute carries.
+        postponeCount: 0,
         streakCount: 0,
         streakDate: null,
         previousStreakCount: 0,
@@ -1983,11 +2080,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const applied = moves.filter(m => byId.has(m.id));
     if (applied.length === 0) return;
 
+    // postponeCount rides along in the snapshot because the undo below is a
+    // narrow patch, not a whole-task replay: without it the restore moves each
+    // date *backward*, which reads as "resolved" and would zero a count the
+    // user never resolved. See utils/postpone.ts.
     const snapshots = applied.map(m => {
       const t = byId.get(m.id)!;
-      return { id: m.id, dueDate: t.dueDate, deferUntil: t.deferUntil };
+      return { id: m.id, dueDate: t.dueDate, deferUntil: t.deferUntil, postponeCount: t.postponeCount };
     });
 
+    // Deliberately counted, unlike every other engine-proposed move here:
+    // "Lighten this day" is the most explicit *I am pushing today's work* action
+    // in the app, and exempting it would leave the person who deloads six days
+    // running sitting at a count of zero — exactly the person the prompt exists
+    // for. The prompt still only ever appears in the date picker, so a task
+    // moved in a batch is noted here and mentioned later, not accused now.
     dbTransaction(() => {
       applied.forEach(m => get().updateTask(m.id, m.updates));
     });
@@ -1995,7 +2102,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: `${applied.length} task${applied.length === 1 ? '' : 's'} moved`,
       undo: () => snapshots.forEach(s =>
-        get().updateTask(s.id, { dueDate: s.dueDate, deferUntil: s.deferUntil })
+        get().updateTask(s.id, { dueDate: s.dueDate, deferUntil: s.deferUntil, postponeCount: s.postponeCount })
       ),
     });
   },
@@ -2010,14 +2117,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       return { id: m.id, dueDate: t.dueDate, deferUntil: t.deferUntil };
     });
 
+    // Never counted, both ways: this pulls tasks *in*, and its members are
+    // undated by construction (see findProjectStalls), so there's no earlier
+    // date for the rule to compare against anyway. Belt and braces.
     dbTransaction(() => {
-      applied.forEach(m => get().updateTask(m.id, m.updates));
+      applied.forEach(m => get().updateTask(m.id, m.updates, { skipPostponeCount: true }));
     });
 
     get().setLastAction({
       label: `${applied.length} task${applied.length === 1 ? '' : 's'} pulled in`,
       undo: () => snapshots.forEach(s =>
-        get().updateTask(s.id, { dueDate: s.dueDate, deferUntil: s.deferUntil })
+        get().updateTask(s.id, { dueDate: s.dueDate, deferUntil: s.deferUntil }, { skipPostponeCount: true })
       ),
     });
   },
@@ -2052,8 +2162,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     if (picks.length === 0) return;
 
+    // Never counted: nobody performed this. (Like the pull it shares updates
+    // with, the candidates are undated anyway, so the rule couldn't fire.)
     dbTransaction(() => {
-      picks.forEach(p => get().updateTask(p.id, p.updates));
+      picks.forEach(p => get().updateTask(p.id, p.updates, { skipPostponeCount: true }));
     });
 
     // Deliberately no setLastAction: an unattended background write must not
@@ -2145,7 +2257,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         dueDate: stepDue.toISOString(),
         deferUntil: null,
         reminderTime: stepReminderTime,
-      });
+      }, SKIP_POSTPONE);
       return;
     }
     const nextDue = getNextDueDate(task, dayResetTime);
@@ -2164,7 +2276,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       reminderTime: nextReminderTime,
       chainIndex: nextChainIndex,
       recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
-    });
+    }, SKIP_POSTPONE);
   },
 
   togglePin(id) {
@@ -2445,6 +2557,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       emailAddress: null,
       blockedById: null,
       pendingImport: null,
+      postponeCount: 0,
+      postponeMuted: false,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));
@@ -2577,6 +2691,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       emailAddress: null,
       blockedById: null,
       pendingImport: null,
+      postponeCount: 0,
+      postponeMuted: false,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -3106,8 +3222,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .map(id => get().tasks.find(t => t.id === id))
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
+    const counts = bulkPostponeCounts(
+      get().tasks, ids, { deferUntil }, useSettingsStore.getState().dayResetTime,
+    );
     dbBulkSetDefer(ids, deferUntil);
-    set(s => ({ tasks: patchTasks(s.tasks, ids, { deferUntil }) }));
+    if (counts.size > 0) {
+      dbBatchUpdatePostponeCounts([...counts].map(([id, postponeCount]) => ({ id, postponeCount })));
+    }
+    set(s => ({
+      tasks: patchTasks(s.tasks, ids, t => ({
+        deferUntil,
+        ...(counts.has(t.id) ? { postponeCount: counts.get(t.id)! } : {}),
+      })),
+    }));
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
@@ -3123,8 +3250,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .map(id => get().tasks.find(t => t.id === id))
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
+    const counts = bulkPostponeCounts(
+      get().tasks, ids, { dueDate }, useSettingsStore.getState().dayResetTime,
+    );
     dbBulkSetWhen(ids, dueDate, timeSegments);
-    set(s => ({ tasks: patchTasks(s.tasks, ids, { dueDate, timeSegments }) }));
+    if (counts.size > 0) {
+      dbBatchUpdatePostponeCounts([...counts].map(([id, postponeCount]) => ({ id, postponeCount })));
+    }
+    set(s => ({
+      tasks: patchTasks(s.tasks, ids, t => ({
+        dueDate,
+        timeSegments,
+        ...(counts.has(t.id) ? { postponeCount: counts.get(t.id)! } : {}),
+      })),
+    }));
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,

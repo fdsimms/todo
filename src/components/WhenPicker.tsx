@@ -50,6 +50,7 @@ const BLANK_SNOOZE_TASK: Task = {
   timedMinutes: null, timerElapsedSeconds: 0,
   previousOccurrenceId: null,
   seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1, seriesDefaults: null,
+  postponeCount: 0, postponeMuted: false,
 };
 
 interface Props {

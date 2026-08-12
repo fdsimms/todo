@@ -429,9 +429,36 @@ export interface Task {
   // on itself; and applying is a straight spread into updateTask, which takes
   // Partial<Task>.
   pendingImport: Partial<Task> | null;
+
+  /**
+   * How many times this task has been pushed to a later day (see
+   * utils/postpone.ts for what counts). Read by the date picker, which offers
+   * a way out once it passes the user's threshold.
+   *
+   * 0 for every existing row, which is the only honest backfill: nothing before
+   * this shipped recorded a push, so no task can start out accused of one. It
+   * resets when the task is pulled back to today or earlier, and a recurring
+   * task's next occurrence starts from 0 — the pushes belong to the occurrence
+   * that was pushed.
+   */
+  postponeCount: number;
+
+  /**
+   * "Stop asking about this one." Some tasks genuinely are waiting on someone
+   * else, and being asked about them every week is how the whole feature gets
+   * turned off.
+   *
+   * Unlike postponeCount this deliberately survives into the next occurrence: it
+   * is a statement about the task, not about today's row.
+   */
+  postponeMuted: boolean;
 }
 
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt'>;
+// postponeCount/postponeMuted are omitted alongside the streak fields for the
+// same reason: they're derived state the app maintains, not something a draft
+// gets to assert. That makes newTaskFromDraft's hard-coded 0/false the only
+// source, so a series row or a template application can't inherit a count.
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"

@@ -16,6 +16,7 @@ import {
   dbClearAllPins,
   dbBatchUpdateSortOrders,
   dbBatchUpdatePinnedOrders,
+  dbBatchUpdatePostponeCounts,
   dbBulkDeleteTasks,
   dbBulkSetPriority,
   dbBulkSetDefer,
@@ -63,9 +64,11 @@ jest.mock('../db/database', () => ({
   dbClearAllPins: jest.fn(),
   dbBatchUpdateSortOrders: jest.fn(),
   dbBatchUpdatePinnedOrders: jest.fn(),
+  dbBatchUpdatePostponeCounts: jest.fn(),
   dbBulkDeleteTasks: jest.fn(),
   dbBulkSetPriority: jest.fn(),
   dbBulkSetDefer: jest.fn(),
+  dbBulkSetWhen: jest.fn(),
   dbBulkSetCategory: jest.fn(),
   dbBulkSetTimeSegments: jest.fn(),
   dbBulkSetPinned: jest.fn(),
@@ -179,6 +182,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   sortOrder: 1,
   pinned: false,
   pinnedOrder: 0,
+  postponeCount: 0,
+  postponeMuted: false,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -6445,5 +6450,137 @@ describe('placing a new stack member at an index', () => {
     const created = addAt(0);
     expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id))
       .toEqual([created.id, 'A', 'B']);
+  });
+});
+
+// ─── postpone counting ───
+//
+// The rule itself is tested in postpone.test.ts; these cover the wiring — which
+// store paths count a move, which opt out, and what survives an undo.
+describe('postponeCount', () => {
+  // Fixed "now" so "today" and "tomorrow" are unambiguous, matching the
+  // dayResetTime: '00:00' the shared beforeEach installs.
+  const TODAY = new Date(2025, 5, 10, 12, 0, 0);
+  const TOMORROW = new Date(2025, 5, 11, 12, 0, 0);
+  const NEXT_WEEK = new Date(2025, 5, 17, 12, 0, 0);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 9, 0, 0));
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const dueToday = (overrides: Partial<Task> = {}) =>
+    makeTask({ id: 'a', dueDate: TODAY.toISOString(), ...overrides });
+
+  it('counts a hand-picked push through updateTask', () => {
+    useTaskStore.setState({ tasks: [dueToday()] });
+    useTaskStore.getState().updateTask('a', { dueDate: TOMORROW.toISOString() });
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(1);
+  });
+
+  it('accumulates across successive pushes', () => {
+    useTaskStore.setState({ tasks: [dueToday({ postponeCount: 3 })] });
+    useTaskStore.getState().updateTask('a', { dueDate: TOMORROW.toISOString() });
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(4);
+  });
+
+  it('clears the count when the task is pulled back to today', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', dueDate: NEXT_WEEK.toISOString(), postponeCount: 6 })],
+    });
+    useTaskStore.getState().updateTask('a', { dueDate: TODAY.toISOString() });
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(0);
+  });
+
+  it('leaves the count alone on an edit that touches no date', () => {
+    // TaskEditor's save payload writes dueDate on every save, so an unchanged
+    // date must not read as a resolve — that would zero the count on a rename.
+    useTaskStore.setState({ tasks: [dueToday({ postponeCount: 4 })] });
+    useTaskStore.getState().updateTask('a', { title: 'Renamed', dueDate: TODAY.toISOString() });
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(4);
+  });
+
+  it('restores the previous count when a push is undone', () => {
+    // Every undo in the app replays a whole pre-write snapshot, which names
+    // postponeCount and so wins over the derived value.
+    const snapshot = dueToday({ postponeCount: 2 });
+    useTaskStore.setState({ tasks: [snapshot] });
+    useTaskStore.getState().updateTask('a', { dueDate: TOMORROW.toISOString() });
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(3);
+
+    useTaskStore.getState().updateTask('a', { ...snapshot });
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(2);
+  });
+
+  it('counts a bulk reschedule per task, from where each one was', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', dueDate: TODAY.toISOString(), postponeCount: 1 }),
+        // Already scheduled for next week, so moving it further out is
+        // re-planning, not ducking — it must not count.
+        makeTask({ id: 'b', dueDate: NEXT_WEEK.toISOString(), postponeCount: 1 }),
+      ],
+    });
+    useTaskStore.getState().bulkSetWhen(['a', 'b'], new Date(2025, 5, 20, 12, 0, 0), []);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'a')?.postponeCount).toBe(2);
+    expect(tasks.find(t => t.id === 'b')?.postponeCount).toBe(1);
+    expect(dbBatchUpdatePostponeCounts).toHaveBeenCalledWith([{ id: 'a', postponeCount: 2 }]);
+  });
+
+  it('counts a bulk defer without being confused by the untouched dueDate', () => {
+    useTaskStore.setState({ tasks: [dueToday()] });
+    useTaskStore.getState().bulkDefer(['a'], NEXT_WEEK);
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(1);
+  });
+
+  it('counts a deload move but survives its undo', () => {
+    // Deload is deliberately counted — it's the most explicit "push today's
+    // work" gesture there is. Its undo is a narrow patch, so the count has to
+    // ride along in the snapshot or the restore would zero it.
+    useTaskStore.setState({ tasks: [dueToday({ postponeCount: 2 })] });
+    useTaskStore.getState().deloadTasks([{ id: 'a', updates: { dueDate: NEXT_WEEK.toISOString() } }]);
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(3);
+
+    useTaskStore.getState().lastAction?.undo();
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(2);
+  });
+
+  it('does not count a recurrence skip', () => {
+    useTaskStore.setState({
+      tasks: [dueToday({ recurrenceType: 'daily', postponeCount: 2 })],
+    });
+    useTaskStore.getState().skipNextRecurrence('a');
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(2);
+  });
+
+  it('gives a recurring successor a clean count but keeps the mute', () => {
+    useTaskStore.setState({
+      tasks: [dueToday({ recurrenceType: 'daily', postponeCount: 5, postponeMuted: true })],
+    });
+    useTaskStore.getState().completeTask('a');
+    const successor = useTaskStore.getState().tasks.find(t => t.id !== 'a');
+    expect(successor?.postponeCount).toBe(0);
+    expect(successor?.postponeMuted).toBe(true);
+  });
+
+  it('never captures either field into seriesDefaults', () => {
+    // They aren't CONTENT_FIELDS, and mustn't become them: seriesDefaults is
+    // applied on top of the row that spawns the next occurrence, so a captured
+    // count would undo the reset above.
+    useTaskStore.setState({ tasks: [dueToday({ postponeCount: 4 })] });
+    useTaskStore.getState().updateTask('a', { title: 'Scoped edit' }, { scope: 'occurrence' });
+    const defaults = useTaskStore.getState().tasks[0].seriesDefaults ?? {};
+    expect(defaults).not.toHaveProperty('postponeCount');
+    expect(defaults).not.toHaveProperty('postponeMuted');
+  });
+
+  it('starts a brand-new task at zero', () => {
+    const created = useTaskStore.getState().addTask({ title: 'Fresh' });
+    expect(created.postponeCount).toBe(0);
+    expect(created.postponeMuted).toBe(false);
   });
 });

@@ -14,7 +14,7 @@ import { differenceInCalendarYears } from 'date-fns/differenceInCalendarYears';
 import { setDate } from 'date-fns/setDate';
 import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import type { Task } from '../types';
-import { hhmmToDate, formatHHMM as formatClockTime, clockTimeToken, logicalDayStart } from './clockTime';
+import { hhmmToDate, formatHHMM as formatClockTime, clockTimeToken, logicalDayStart, taskDayStart } from './clockTime';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 
 /**
@@ -85,11 +85,9 @@ export function dayKeyToDate(key: string): Date {
  * precede the current dayResetTime.
  */
 export function getTaskDayStart(date: Date, dayResetTime?: string): Date {
-  const rt = dayResetTime ?? useSettingsStore.getState().dayResetTime;
-  const [h, m] = rt.split(':').map(Number);
-  const result = startOfDay(date);
-  result.setHours(h, m, 0, 0);
-  return result;
+  // The math itself lives in the store-free clockTime module, same as
+  // getDayStart's does, so postpone.ts can share it rather than fork it.
+  return taskDayStart(date, dayResetTime ?? useSettingsStore.getState().dayResetTime);
 }
 
 // The "HH:MM" clock helpers live in the store-free clockTime module; re-exported
