@@ -93,6 +93,9 @@ jest.mock('../db/database', () => ({
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
+  dbGetTripShopId: jest.fn().mockReturnValue(null),
+  dbGetTripStartedAt: jest.fn().mockReturnValue(null),
+  dbSetTrip: jest.fn(),
   // Written when deleting a use-up task records the item's opt-out — the one
   // place this file's subject writes to the grocery catalog.
   dbUpdateGroceryItem: jest.fn(),

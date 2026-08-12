@@ -31,6 +31,7 @@ import { isUsingDemoDatabase } from '../db/database';
 import { RECIPE_MEAL_TYPES } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
 import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
+import { tripMarkerFor } from '../utils/activeTrip';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockDbs: Map<string, any>;
@@ -412,6 +413,27 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(
       describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length)
     ).not.toBeNull();
+  });
+
+  it('seeds a trip in progress, with rows that have something to say about it', () => {
+    const { items, itemShops, shops } = useGroceryStore.getState();
+
+    // The banner, and the only state in which the list mentions stores at all.
+    const trip = useGroceryStore.getState().activeShop();
+    expect(trip).not.toBeNull();
+
+    const markers = items
+      .filter(i => i.onList)
+      .map(i => tripMarkerFor(i.id, itemShops, shops, trip!))
+      .filter((m): m is NonNullable<typeof m> => !!m);
+
+    // Both kinds this seed can honestly produce: the store's own negative
+    // claim, and an item on record at exactly one other store. Without a row
+    // carrying one, the whole feature is a banner and nothing else.
+    expect(markers.some(m => m.kind === 'unavailable')).toBe(true);
+    expect(markers.some(m => m.kind === 'only')).toBe(true);
+    // ...and most of the list still says nothing, which is the point.
+    expect(markers.length).toBeLessThan(items.filter(i => i.onList).length);
   });
 
   it('seeds a recipe of every meal type, with the composed ones composed', () => {
