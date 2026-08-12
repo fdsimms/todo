@@ -25,11 +25,13 @@ import {
  * between units, understand "a bunch" or "a knob", or know that 3 cloves is a
  * fraction of one bulb.
  *
- * The one thing that *does* multiply a quantity is recipeScale, reached from
- * here only through a factor the user picked explicitly (a halved recipe, a
- * doubled Sunday). It is bound by the same rules — no unit conversion, and a
- * line it can't parse passes through untouched and flagged rather than guessed
- * at — so nothing above is weakened by it.
+ * Three modules elsewhere *do* do arithmetic on a quantity, and none of them
+ * weakens the above, because each is reached only on an explicit request and
+ * each refuses rather than guesses when it can't read a line: recipeScale
+ * multiplies through a factor the user picked (a halved recipe, a doubled
+ * Sunday), unitConvert converts for display through a setting, and
+ * groceryPrice divides to compare two stores' prices per unit — and that last
+ * one refuses the whole set unless every quantity in it can be measured.
  */
 
 /** One recipe's ingredient, as it landed on one planned meal. */

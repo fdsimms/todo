@@ -2,6 +2,8 @@ import { format } from 'date-fns/format';
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
 import { GROCERY_PRICE_MINOR_MAX } from '../types';
 import { isUnavailable } from './groceryShops';
+import { splitLeadingAmount, unitKey } from './recipeScale';
+import { measureQuantity, shelfUnit, type Dimension } from './unitConvert';
 
 /**
  * What things cost — parsing a typed price, rendering one, and the one
@@ -13,17 +15,23 @@ import { isUnavailable } from './groceryShops';
  * corrected by hand, and it is always rendered with its age. See
  * GroceryItem.lastPriceMinor for the storage rules.
  *
- * Two things this module deliberately does not do:
+ * **Per-unit arithmetic is allowed, and only ever all-or-nothing.** This module
+ * used to refuse it outright, on the grounds that a comparison silently
+ * dropping the part of a set it can't parse is worse than no comparison. That
+ * concern is the design, not the refusal — so nothing is ever dropped: a set is
+ * compared per unit only when *every* price in it names a quantity that can be
+ * measured, in one dimension. One "a bunch" among them and the whole set falls
+ * back to what it always did, which is to state the prices and rank nothing
+ * (`unitPricesFor`). The set is small, it's one item's prices, and it's on
+ * screen — so the reader can see exactly what was and wasn't answered.
  *
- * - **No arithmetic on `quantity`.** A per-unit price ("$0.21/oz") needs a
- *   parsed, normalised unit, so it would inherit every refusal
- *   parseQuantityAmount makes — and a comparison that silently drops the third
- *   of a catalog it can't parse is worse than no comparison. The quantity a
- *   price was for is carried as a verbatim string and shown next to it; the
- *   reader does the comparing.
- * - **No currency conversion, and no second currency.** There is one symbol,
- *   it's a setting, and it's cosmetic — every stored number is minor units of
- *   whatever the user shops in.
+ * The measuring itself is `unitConvert.measureQuantity`, so the units live in
+ * one table rather than two.
+ *
+ * One thing this module still deliberately does not do: **no currency
+ * conversion, and no second currency**. There is one symbol, it's a setting,
+ * and it's cosmetic — every stored number is minor units of whatever the user
+ * shops in.
  */
 
 /** Money is integers here — see the note on GroceryItem.lastPriceMinor. */
@@ -127,6 +135,13 @@ export function describePriceContext(item: GroceryItem, now: Date): string | nul
  * drift from the data it's labelling: pass `cheapestShopId` only from
  * cheapestShopFor, and where that refuses, the list simply carries no tag and
  * claims nothing.
+ *
+ * **Where the ranking is per unit, the line shows its working**: "Safeway $3.19
+ * for 1 lb · Costco $4.29 for 2 lb (≈$2.15/lb, cheapest)". Without it a tag on
+ * the larger number reads as a bug — the whole point is that $4.29 beats $3.19
+ * here, and a reader can't be asked to take that on faith. A quantity that *is*
+ * one display unit says nothing extra, since its per-unit price is the price
+ * already printed two words to the left.
  */
 export function describeShopPrices(
   prices: readonly ShopPrice[],
@@ -134,13 +149,24 @@ export function describeShopPrices(
   cheapestShopId?: string | null
 ): string | null {
   if (prices.length === 0) return null;
+  // Only when they differ: identical quantities are directly comparable, and
+  // "$3.19 for 1 lb (≈$3.19/lb)" is the same number twice.
+  const quantityKey = (q: string | null) => (q ?? '').trim().toLowerCase();
+  const mixed = prices.some(p => quantityKey(p.quantity) !== quantityKey(prices[0].quantity));
+  const perUnit = mixed ? unitPricesFor(prices) : null;
+
   return prices
     .map(p => {
       const amount = formatPrice(p.minor, symbol);
       const head = p.quantity
         ? `${p.shop.name} ${amount} for ${p.quantity}`
         : `${p.shop.name} ${amount}`;
-      return p.shop.id === cheapestShopId ? `${head} (cheapest)` : head;
+      const rate = perUnit?.find(u => u.shop.id === p.shop.id);
+      const clauses = [
+        rate && !rate.redundant ? unitPriceText(rate.minorPerUnit, rate.unit, symbol) : null,
+        p.shop.id === cheapestShopId ? 'cheapest' : null,
+      ].filter(Boolean);
+      return clauses.length > 0 ? `${head} (${clauses.join(', ')})` : head;
     })
     .join(' · ');
 }
@@ -188,6 +214,127 @@ export function shopPricesFor(
   return out.sort((a, b) => a.minor - b.minor || a.shop.name.localeCompare(b.shop.name));
 }
 
+/** The unit word of whatever follows a count's amount — "can" out of "3 cans". */
+const LEADING_UNIT_WORD = /^[a-z]+/i;
+
+interface Comparable {
+  /** How much: base units for a measurement, its own unit for a count. */
+  amount: number;
+  /** Two quantities are comparable exactly when these match. */
+  key: string;
+  /** A measurement, and which units to answer it in. Null for a count. */
+  measure: { dimension: Dimension; system: 'metric' | 'us' } | null;
+  /** A count's unit word — '' for a bare number ("12"). Empty for a measurement. */
+  countUnit: string;
+}
+
+/**
+ * A quantity string as something two prices can be divided by, or null when it
+ * isn't one ("a bunch", "some", an empty quantity).
+ *
+ * A count is comparable to another count of the same word — "3 cans" against "5
+ * cans", "12" against "6" — which is safe *here* in a way it would not be in
+ * general: every price in a set is a price for the one item, so its counts are
+ * counts of the same thing. That's also why the unit word has to match exactly
+ * rather than being coerced: "1 bag" against "6" is two ways of counting one
+ * item, and nothing in the app knows how many are in the bag.
+ */
+function comparableQuantity(quantity: string | null): Comparable | null {
+  const text = (quantity ?? '').trim();
+  if (!text) return null;
+
+  const measured = measureQuantity(text);
+  // Prefixed keys so a measurement and a count can never collide on a word.
+  if (measured) {
+    return {
+      amount: measured.base,
+      key: `dim:${measured.dimension}`,
+      measure: { dimension: measured.dimension, system: measured.system },
+      countUnit: '',
+    };
+  }
+
+  const amount = splitLeadingAmount(text);
+  if (!amount || amount.value <= 0) return null;
+  const rest = amount.rest.trim();
+  if (rest.startsWith('%')) return null;
+  const word = LEADING_UNIT_WORD.exec(rest)?.[0] ?? '';
+  const unit = word ? unitKey(word) : '';
+  return { amount: amount.value, key: `unit:${unit}`, measure: null, countUnit: unit };
+}
+
+export interface UnitPrice {
+  shop: Shop;
+  /** Minor units per display unit, rounded — a price is compared as it's shown. */
+  minorPerUnit: number;
+  /** "kg", "lb", "can" — or '' for a bare count, which reads "each". */
+  unit: string;
+  /**
+   * The quantity is exactly one display unit, so the per-unit price is the
+   * price already on screen. Nothing worth saying twice — see describeShopPrices.
+   */
+  redundant: boolean;
+}
+
+/**
+ * Every price in a set expressed per unit, or null when the set can't be
+ * compared that way.
+ *
+ * All-or-nothing by design (see the header): one quantity that can't be
+ * measured, or two that measure in different dimensions, refuses the set rather
+ * than ranking the part of it that happened to parse.
+ *
+ * **The units are the winner's**, not a fixed canonical pair: a set written in
+ * pounds is answered in pounds. Where a set mixes systems, whichever price wins
+ * decides, since that's the one the verdict names.
+ */
+export function unitPricesFor(prices: readonly ShopPrice[]): UnitPrice[] | null {
+  if (prices.length < 2) return null;
+
+  const parsed: Comparable[] = [];
+  for (const price of prices) {
+    const part = comparableQuantity(price.quantity);
+    if (!part) return null;
+    parsed.push(part);
+  }
+  const { key } = parsed[0];
+  if (parsed.some(p => p.key !== key)) return null;
+
+  // Cheapest per base unit — needed before the display unit can be picked, since
+  // it's the winner's own system that gets answered in.
+  let best = 0;
+  for (let i = 1; i < prices.length; i++) {
+    if (prices[i].minor / parsed[i].amount < prices[best].minor / parsed[best].amount) best = i;
+  }
+  const measure = parsed[best].measure;
+  const display = measure
+    ? shelfUnit(measure.dimension, measure.system)
+    : { unit: parsed[best].countUnit, base: 1 };
+
+  const out: UnitPrice[] = [];
+  for (let i = 0; i < prices.length; i++) {
+    const minorPerUnit = Math.round((prices[i].minor / parsed[i].amount) * display.base);
+    // A price that rounds away to nothing per unit has no comparison to state,
+    // and "$0.00/kg" is worse than the silence it would replace.
+    if (minorPerUnit <= 0) return null;
+    out.push({
+      shop: prices[i].shop,
+      minorPerUnit,
+      unit: display.unit,
+      redundant: parsed[i].amount === display.base,
+    });
+  }
+  return out;
+}
+
+/** "≈$2.15/lb", or "≈$0.36 each" for a bare count with no unit word to hang on. */
+function unitPriceText(minorPerUnit: number, unit: string, symbol: string): string {
+  const amount = formatPrice(minorPerUnit, symbol);
+  // `≈` for the same reason a converted quantity carries one: it's the app's
+  // number, arrived at by dividing and rounding, not one anybody was quoted.
+  return unit ? `≈${amount}/${unit}` : `≈${amount} each`;
+}
+
 /**
  * The cheapest store for an item, or null when there's nothing to compare.
  *
@@ -195,12 +342,17 @@ export function shopPricesFor(
  * saying "cheapest at Costco" when Costco is the only place you've ever priced
  * it is the app inventing a finding out of a single observation.
  *
- * Prices for different quantities are not compared either: "$4.29 for 2 lb"
- * against "$3.19 for 1 lb" is a worse deal dressed as a better one, and
- * normalising them means dividing by a parsed unit, which this module doesn't
- * do (see the header). Unequal quantity strings therefore mean no answer —
- * both prices are still shown by shopPricesFor, side by side, where the reader
- * can see exactly why.
+ * Prices recorded for the same quantity are compared as they stand. Prices for
+ * *different* quantities — "$4.29 for 2 lb" against "$3.19 for 1 lb", a better
+ * deal that looks like a worse one — go through unitPricesFor, which answers
+ * only when every quantity in the set can be measured. When it declines, so
+ * does this: both prices are still shown by shopPricesFor, side by side, where
+ * the reader can see exactly what couldn't be compared.
+ *
+ * **A tie is not a cheapest**, at either resolution. Per unit that's judged on
+ * the rounded figures, because those are the ones on screen — naming a winner
+ * two stores that both read "≈$2.15/lb" reads as a bug, whichever of them is
+ * a hundredth of a penny ahead.
  */
 export function cheapestShopFor(
   itemId: string,
@@ -209,12 +361,19 @@ export function cheapestShopFor(
 ): ShopPrice | null {
   const priced = shopPricesFor(itemId, links, shops);
   if (priced.length < 2) return null;
-  const [best, next] = priced;
-  // A tie is not a cheapest.
-  if (best.minor === next.minor) return null;
+
   const quantityKey = (q: string | null) => (q ?? '').trim().toLowerCase();
-  if (priced.some(p => quantityKey(p.quantity) !== quantityKey(best.quantity))) return null;
-  return best;
+  const [best, next] = priced;
+  if (priced.every(p => quantityKey(p.quantity) === quantityKey(best.quantity))) {
+    // Sorted by price already, so the first two are the ones that can tie.
+    return best.minor === next.minor ? null : best;
+  }
+
+  const perUnit = unitPricesFor(priced);
+  if (!perUnit) return null;
+  const ranked = [...perUnit].sort((a, b) => a.minorPerUnit - b.minorPerUnit);
+  if (ranked[0].minorPerUnit === ranked[1].minorPerUnit) return null;
+  return priced.find(p => p.shop.id === ranked[0].shop.id) ?? null;
 }
 
 export interface ListEstimate {

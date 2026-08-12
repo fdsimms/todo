@@ -824,10 +824,14 @@ function seedGroceries(recipes: DemoRecipes): void {
   ];
   CATALOG.forEach(name => addByName(name, undefined, undefined, { registerUndo: false }));
 
-  // Quantities and notes — free text, nothing does arithmetic on either.
+  // Quantities and notes — free text. The only thing that reads a quantity as a
+  // number is the per-unit price comparison, and only when every price in a set
+  // names one it can measure: "a bunch" below is the demo's example of the
+  // refusal, "5 lb" of Rice further down the example of the comparison.
   setQuantity(itemNamed('Milk').id, '2 gal');
   setQuantity(itemNamed('Ground beef').id, '2 lb');
   setQuantity(itemNamed('Bananas').id, 'a bunch');
+  setQuantity(itemNamed('Rice').id, '5 lb');
   setNote(itemNamed('Black beans').id, 'The low-sodium ones');
   setNote(itemNamed('Bread').id, 'Seeded, from the back shelf');
 
@@ -873,6 +877,17 @@ function seedGroceries(recipes: DemoRecipes): void {
   addExistingMany(idsNamed(['Olive oil']));
   setCheckedMany(idsNamed(['Olive oil']), true);
   finishShopping(traderJoes.id, priced({ 'Olive oil': 1599 }));
+
+  // …and the same again for an item bought in *different sizes*, which is the
+  // only shape a per-unit comparison can be shown in: 5 lb of rice for $7.99 at
+  // Costco against 1 lb for $2.49 here. The bigger number is the better deal,
+  // which is exactly the reading the rate exists to correct. The quantity has
+  // to be set before the trip that prices it, since a price is paired with what
+  // the trip bought.
+  setQuantity(itemNamed('Rice').id, '1 lb');
+  addExistingMany(idsNamed(['Rice']));
+  setCheckedMany(idsNamed(['Rice']), true);
+  finishShopping(traderJoes.id, priced({ Rice: 249 }));
 
   // A trip with no store named — a first-class answer, and the reason an
   // item's own purchaseCount runs ahead of the sum of its per-store links. Its

@@ -10,6 +10,7 @@ import {
   parsePriceInput,
   priceToInput,
   shopPricesFor,
+  unitPricesFor,
 } from '../utils/groceryPrice';
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
 
@@ -217,16 +218,109 @@ describe('cheapestShopFor', () => {
     expect(cheapestShopFor('i1', links, SHOPS)).toBeNull();
   });
 
-  it('refuses when the prices were for different quantities', () => {
+  it('compares different quantities per unit', () => {
     // $4.29 for 2 lb is the better deal, and saying "cheapest at Safeway"
     // because 3.19 < 4.29 would be exactly backwards.
     const links = [
       link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 429, lastPriceQuantity: '2 lb' }),
       link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 319, lastPriceQuantity: '1 lb' }),
     ];
+    expect(cheapestShopFor('i1', links, SHOPS)?.shop.name).toBe('Costco');
+  });
+
+  it('compares across systems, and answers in the winner’s units', () => {
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 400, lastPriceQuantity: '500 g' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 900, lastPriceQuantity: '1 lb' }),
+    ];
+    expect(cheapestShopFor('i1', links, SHOPS)?.shop.name).toBe('Costco');
+    // $8.00/kg against $19.84/kg — metric, because the metric price won.
+    expect(unitPricesFor(shopPricesFor('i1', links, SHOPS))).toEqual([
+      expect.objectContaining({ minorPerUnit: 800, unit: 'kg' }),
+      expect.objectContaining({ minorPerUnit: 1984, unit: 'kg' }),
+    ]);
+  });
+
+  it('compares counts of the same thing', () => {
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 480, lastPriceQuantity: '12' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 300, lastPriceQuantity: '6' }),
+    ];
+    // 40c an egg against 50c an egg.
+    expect(cheapestShopFor('i1', links, SHOPS)?.shop.name).toBe('Costco');
+  });
+
+  it('compares counts sharing a unit word', () => {
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 900, lastPriceQuantity: '3 cans' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 250, lastPriceQuantity: '1 can' }),
+    ];
+    expect(cheapestShopFor('i1', links, SHOPS)?.shop.name).toBe('Safeway');
+  });
+
+  it('refuses to compare a count against a measurement', () => {
+    // Nothing in the app knows how much is in the bag.
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 429, lastPriceQuantity: '1 bag' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 319, lastPriceQuantity: '500 g' }),
+    ];
     expect(cheapestShopFor('i1', links, SHOPS)).toBeNull();
-    // …but both are still shown, where the quantities explain themselves.
-    expect(shopPricesFor('i1', links, SHOPS)).toHaveLength(2);
+  });
+
+  it('refuses to compare across dimensions', () => {
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 429, lastPriceQuantity: '500 ml' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 319, lastPriceQuantity: '500 g' }),
+    ];
+    expect(cheapestShopFor('i1', links, SHOPS)).toBeNull();
+  });
+
+  it('refuses the whole set when one quantity cannot be measured', () => {
+    // The refusal is all-or-nothing on purpose: ranking the two that parsed
+    // would silently drop the third and still call itself "cheapest".
+    const wholeFoods = makeShop('WholeFoods', 3);
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 429, lastPriceQuantity: '2 lb' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 319, lastPriceQuantity: '1 lb' }),
+      link({ itemId: 'i1', shopId: wholeFoods.id, lastPriceMinor: 275, lastPriceQuantity: 'a bunch' }),
+    ];
+    expect(cheapestShopFor('i1', links, [...SHOPS, wholeFoods])).toBeNull();
+    // …but all three are still shown, where the quantities explain themselves.
+    expect(shopPricesFor('i1', links, [...SHOPS, wholeFoods])).toHaveLength(3);
+  });
+
+  it('refuses when one price has no quantity at all', () => {
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 429, lastPriceQuantity: '2 lb' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 319 }),
+    ];
+    expect(cheapestShopFor('i1', links, SHOPS)).toBeNull();
+  });
+
+  it('refuses a per-unit tie, judged on the figures it would show', () => {
+    // $4.30/2 lb is $2.15/lb and $6.44/3 lb is $2.1466…/lb — a hundredth of a
+    // penny apart, and both render "≈$2.15/lb".
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 430, lastPriceQuantity: '2 lb' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 644, lastPriceQuantity: '3 lb' }),
+    ];
+    expect(cheapestShopFor('i1', links, SHOPS)).toBeNull();
+  });
+
+  it('measures a sized container, but not a count of them', () => {
+    const sized = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 300, lastPriceQuantity: '28 oz can' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 200, lastPriceQuantity: '14 oz can' }),
+    ];
+    // Fourteen ounces really is how much is in the tin.
+    expect(cheapestShopFor('i1', sized, SHOPS)?.shop.name).toBe('Costco');
+
+    const counted = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 300, lastPriceQuantity: '2 14 oz cans' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 200, lastPriceQuantity: '14 oz can' }),
+    ];
+    // Two of them is not fourteen ounces, and nothing here will pretend it is.
+    expect(cheapestShopFor('i1', counted, SHOPS)).toBeNull();
   });
 
   it('compares happily when the quantities match', () => {
@@ -271,17 +365,65 @@ describe('describeShopPrices', () => {
     );
   });
 
-  it('claims nothing when the comparison was refused', () => {
-    // Different quantities: cheapestShopFor returns null, so no tag is passed
-    // and the line states two prices without ranking them.
+  it('shows its working when the ranking is per unit', () => {
+    // A tag on the *larger* number is only readable with the rate beside it.
     const links = [
       link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 429, lastPriceQuantity: '2 lb' }),
       link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 319, lastPriceQuantity: '1 lb' }),
     ];
     const prices = shopPricesFor('i1', links, SHOPS);
+    // Safeway's 1 lb is one display unit, so its rate is the price already
+    // printed and isn't repeated.
+    expect(describeShopPrices(prices, '$', cheapestShopFor('i1', links, SHOPS)?.shop.id)).toBe(
+      'Safeway $3.19 for 1 lb · Costco $4.29 for 2 lb (≈$2.15/lb, cheapest)'
+    );
+  });
+
+  it('states a rate for every store when none of them is one unit', () => {
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 900, lastPriceQuantity: '3 lb' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 700, lastPriceQuantity: '2 lb' }),
+    ];
+    const prices = shopPricesFor('i1', links, SHOPS);
+    expect(describeShopPrices(prices, '$', cheapestShopFor('i1', links, SHOPS)?.shop.id)).toBe(
+      'Safeway $7.00 for 2 lb (≈$3.50/lb) · Costco $9.00 for 3 lb (≈$3.00/lb, cheapest)'
+    );
+  });
+
+  it('says "each" where a count has no unit word to hang a rate on', () => {
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 480, lastPriceQuantity: '12' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 300, lastPriceQuantity: '6' }),
+    ];
+    const prices = shopPricesFor('i1', links, SHOPS);
+    expect(describeShopPrices(prices, '$', cheapestShopFor('i1', links, SHOPS)?.shop.id)).toBe(
+      'Safeway $3.00 for 6 (≈$0.50 each) · Costco $4.80 for 12 (≈$0.40 each, cheapest)'
+    );
+  });
+
+  it('claims nothing when the comparison was refused', () => {
+    // One unmeasurable quantity: no tag, no rates, just the prices.
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 429, lastPriceQuantity: '2 lb' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 319, lastPriceQuantity: 'a bunch' }),
+    ];
+    const prices = shopPricesFor('i1', links, SHOPS);
     const line = describeShopPrices(prices, '$', cheapestShopFor('i1', links, SHOPS)?.shop.id);
-    expect(line).toBe('Safeway $3.19 for 1 lb · Costco $4.29 for 2 lb');
+    expect(line).toBe('Safeway $3.19 for a bunch · Costco $4.29 for 2 lb');
     expect(line).not.toContain('cheapest');
+  });
+
+  it('leaves a matched-quantity line exactly as it was', () => {
+    // Directly comparable, so no rate is added — "$4.29 for 2 lb (≈$2.15/lb)"
+    // beside an identical quantity is the same number twice.
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 429, lastPriceQuantity: '2 lb' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 519, lastPriceQuantity: '2 lb' }),
+    ];
+    const prices = shopPricesFor('i1', links, SHOPS);
+    expect(describeShopPrices(prices, '$', cheapestShopFor('i1', links, SHOPS)?.shop.id)).toBe(
+      'Costco $4.29 for 2 lb (cheapest) · Safeway $5.19 for 2 lb'
+    );
   });
 
   it('is null with nothing priced', () => {
