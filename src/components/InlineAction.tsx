@@ -21,6 +21,13 @@ interface Props {
   variant?: Variant;
   /** Overrides the accent tint — `colors.purple` for AI actions, `colors.warning` for repairs. */
   tint?: string;
+  /**
+   * Which surface the pill sits on, for the `neutral` variant only. `card` (the
+   * default) is inside a `bgSecondary` card, where `bgTertiary` reads as a step
+   * down. `page` is straight onto `colors.bg`, where `bgTertiary` is nearly
+   * invisible against it — same distinction `PillGroup`'s `surface` prop makes.
+   */
+  surface?: 'page' | 'card';
   disabled?: boolean;
   accessibilityLabel?: string;
   haptic?: boolean;
@@ -47,6 +54,7 @@ export function InlineAction({
   icon,
   variant = 'accent',
   tint,
+  surface = 'card',
   disabled = false,
   accessibilityLabel,
   haptic = false,
@@ -58,7 +66,7 @@ export function InlineAction({
   const neutral = variant === 'neutral';
   const fg = neutral ? colors.textSecondary : tint ?? colors.accent;
   const bg = neutral
-    ? colors.bgTertiary
+    ? (surface === 'page' ? colors.bgSecondary : colors.bgTertiary)
     : tint
       ? tint + (isDark ? '26' : '1F')
       : colors.accentSubtle;
