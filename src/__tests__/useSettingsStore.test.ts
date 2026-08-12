@@ -260,6 +260,17 @@ describe('resetToDefaults', () => {
     expect(dbSetSetting).toHaveBeenCalledWith('dayResetTime', '00:00');
   });
 
+  // Same reasoning as the app lock below: a reset is about appearance and
+  // formatting, not about putting a whole feature area back in someone's menu.
+  it('does not put the groceries area back', () => {
+    useSettingsStore.getState().setKitchenEnabled(false);
+
+    useSettingsStore.getState().resetToDefaults();
+
+    expect(useSettingsStore.getState().kitchenEnabled).toBe(false);
+    expect(dbSetSetting).not.toHaveBeenCalledWith('kitchenEnabled', 'true');
+  });
+
   it('does not touch the API key or vacation mode', () => {
     useSettingsStore.getState().setAnthropicApiKey('sk-ant-secret');
     useSettingsStore.getState().setVacationMode(true);
@@ -757,6 +768,53 @@ describe('timerLiveActivity', () => {
     useSettingsStore.getState().setTimerLiveActivity(false);
     expect(dbSetSetting).toHaveBeenCalledWith('timerLiveActivity', 'false');
     expect(useSettingsStore.getState().timerLiveActivity).toBe(false);
+  });
+});
+
+describe('kitchenEnabled', () => {
+  // Same `!== 'false'` reading as timerLiveActivity above: every install that
+  // predates this setting keeps the groceries area it already had.
+  it('defaults to on, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().kitchenEnabled).toBe(true);
+  });
+
+  it('only turns off for an explicit "false"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'kitchenEnabled' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().kitchenEnabled).toBe(false);
+  });
+
+  it('round-trips through setKitchenEnabled', () => {
+    useSettingsStore.getState().setKitchenEnabled(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('kitchenEnabled', 'false');
+    expect(useSettingsStore.getState().kitchenEnabled).toBe(false);
+  });
+
+  // The whole promise of the setting: it hides, it doesn't reconfigure. A
+  // turn-off that wrote these to their own "off" values would lose what the
+  // user had chosen, and turning the area back on would return it changed.
+  it('leaves every downstream kitchen setting exactly as it was', () => {
+    useSettingsStore.getState().setMealsOnToday('block');
+    useSettingsStore.getState().setMealCookTasks(false);
+    useSettingsStore.getState().setMealPlanNudgeEnabled(true);
+    useSettingsStore.getState().setGroceryImportEnabled(true);
+    useSettingsStore.getState().setGroceryImportListId('list-1');
+    useSettingsStore.getState().setGroceryImportConfirmedListId('list-1');
+
+    useSettingsStore.getState().setKitchenEnabled(false);
+
+    const state = useSettingsStore.getState();
+    expect(state.mealsOnToday).toBe('block');
+    expect(state.mealCookTasks).toBe(false);
+    expect(state.mealPlanNudgeEnabled).toBe(true);
+    expect(state.groceryImportEnabled).toBe(true);
+    // The confirmed-list pair especially: clearing it would make re-enabling
+    // re-ask for a confirmation the user already gave.
+    expect(state.groceryImportListId).toBe('list-1');
+    expect(state.groceryImportConfirmedListId).toBe('list-1');
   });
 });
 

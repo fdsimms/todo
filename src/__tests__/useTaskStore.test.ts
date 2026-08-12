@@ -1972,6 +1972,7 @@ describe('checkMealPlanNudge', () => {
     dayResetTime: '00:00',
     weekStartsOn: 0,
     vacationMode: false,
+    kitchenEnabled: true,
     mealPlanNudgeEnabled: true,
     mealPlanNudgeWeekday: 0,
     mealPlanNudgeTime: '09:00',
@@ -1999,6 +2000,22 @@ describe('checkMealPlanNudge', () => {
     useTaskStore.getState().checkMealPlanNudge();
 
     expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+
+  // The loudest thing the groceries/meals area does unattended: it creates a
+  // task, carrying a link to a screen the menu no longer lists.
+  it('is a no-op with the groceries area off, and does not record the week as fired', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    const s = settings({ kitchenEnabled: false });
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+    // Not recorded, so the nudge fires properly for this week if the area
+    // comes back before the week is out — same restraint as vacation below.
+    expect(s.setMealPlanNudgeLastFiredWeekKey).not.toHaveBeenCalled();
   });
 
   it('is a no-op during vacation mode, and does not record the week as fired', () => {

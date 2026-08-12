@@ -336,9 +336,17 @@ export function seedDemoData(): void {
   // Ordered by what points at what: recipes first (grocery rows can be
   // attributed to the recipe that put them on the list), then the catalog,
   // then the plan that references both, then the leftovers a cooked meal left.
-  const recipes = seedRecipes();
-  seedGroceries(recipes);
-  seedMealPlanAndFridge(recipes, today);
+  //
+  // Skipped wholesale when the area is off. Demo mode is what someone handed
+  // the phone actually sees, and seeding a shop, a week of dinners and a
+  // fridge that none of them can reach is worse than seeding nothing: the
+  // hub isn't in the menu, so it would only surface as cook tasks on Today
+  // for meals there's no way to open.
+  if (useSettingsStore.getState().kitchenEnabled) {
+    const recipes = seedRecipes();
+    seedGroceries(recipes);
+    seedMealPlanAndFridge(recipes, today);
+  }
 }
 
 // ---------------------------------------------------------------------------

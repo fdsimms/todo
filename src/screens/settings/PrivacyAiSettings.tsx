@@ -10,7 +10,7 @@ import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsPills, type PillOption } from './SettingsPills';
 import { makeSettingsStyles } from './settingsStyles';
-import { AI_FEATURES, AI_MODEL_OPTIONS } from '../../utils/aiFeatures';
+import { AI_MODEL_OPTIONS, aiFeaturesFor } from '../../utils/aiFeatures';
 
 interface Props {
   /** The host screen's scroll view, so focusing the key field can reveal it. */
@@ -27,6 +27,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   const setAppLockGraceSeconds = useSettingsStore(s => s.setAppLockGraceSeconds);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const setAnthropicApiKey = useSettingsStore(s => s.setAnthropicApiKey);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const aiFeatureConfig = useSettingsStore(s => s.aiFeatureConfig);
   const setAiFeatureConfig = useSettingsStore(s => s.setAiFeatureConfig);
 
@@ -173,7 +174,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
         label="AI features"
         footer="Turn any of these off if you'd rather they never call out to Anthropic, or pick a different model per feature — a faster, cheaper model for quick suggestions, or a stronger one where it's worth the extra cost."
       >
-        {AI_FEATURES.map((feature, i) => {
+        {aiFeaturesFor(kitchenEnabled).map((feature, i) => {
           const config = aiFeatureConfig[feature.id];
           return (
             <React.Fragment key={feature.id}>
