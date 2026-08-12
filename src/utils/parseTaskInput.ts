@@ -739,6 +739,13 @@ export interface ParsedCategoryAndTags {
 // globally rather than once, since more than one "#word" can appear.
 const CATEGORY_OR_TAG_TOKEN_PATTERN = /(?<!\w)#([a-z][\w-]*)/gi;
 
+// Below this many characters a prefix match is too eager — "#c" is still
+// closer to "just started typing" than to a chosen category, and the
+// shorter the token the more likely it prefixes several categories at once
+// anyway. Chosen to still light up well before the word is finished
+// ("#chore" already gets there for "Chores").
+const MIN_CATEGORY_PREFIX_LENGTH = 3;
+
 /**
  * Finds every "#word" token in a quick-add title and, for each one in turn,
  * tries it against known categories first and known tags second — so
@@ -749,6 +756,18 @@ const CATEGORY_OR_TAG_TOKEN_PATTERN = /(?<!\w)#([a-z][\w-]*)/gi;
  * keeping this module free of any store dependency (see the header note);
  * matching is case-insensitive so "#Home" and "#home" both resolve to the
  * one category.
+ *
+ * The category slot also accepts an unambiguous *prefix* of a category name
+ * ("#chore" resolving to "Chores") rather than requiring the full word —
+ * this is what lets the quick-add tooltip fire while the word is still being
+ * typed instead of only on the keystroke that completes it. It stays exact
+ * for tags: this module has no read on which "#word" the user is reaching
+ * for, and a category is what the tooltip is actually built to surface, so
+ * that's the one slot worth the false-positive risk of guessing early. An
+ * exact tag still outranks a category prefix guess (see below), and a
+ * prefix that matches more than one category is left unresolved rather than
+ * guessing — "#wor" with both "Work" and "Worship" registered should keep
+ * typing, not lock in the wrong one.
  *
  * Deliberately doesn't create a category or tag from an unrecognized token —
  * a typo or an unrelated "#" in the title (e.g. a hashtag someone's pasting)
@@ -777,10 +796,23 @@ export function parseCategoryAndTagsInput(
       consumed.push({ start, end });
       continue;
     }
+    // An exact tag still outranks a guessed category prefix — "#errand" is a
+    // known tag in its own right even though it also prefixes "Errands", and
+    // guessing the category there would take the word away from the tag it
+    // was actually typed to name.
     const tagName = tagByLower.get(token);
     if (tagName) {
       matchedTags.push(tagName);
       consumed.push({ start, end });
+      continue;
+    }
+    if (category === null && token.length >= MIN_CATEGORY_PREFIX_LENGTH) {
+      const prefixMatches = categories.filter(c => c.toLowerCase().startsWith(token));
+      if (prefixMatches.length === 1) {
+        category = prefixMatches[0];
+        consumed.push({ start, end });
+        continue;
+      }
     }
     // else: unrecognized "#word" — leave as literal text
   }
