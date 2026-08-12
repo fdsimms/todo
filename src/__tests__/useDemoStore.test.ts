@@ -15,6 +15,8 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useTemplateStore } from '../store/useTemplateStore';
+import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
 import { pantryEntries } from '../utils/grocerySuggest';
 import { taskKindOf } from '../utils/taskKinds';
 import { isDialable } from '../utils/phone';
@@ -247,6 +249,21 @@ describe('demo mode', () => {
     expect(target.progressCount).toBeLessThan(target.targetCount!);
     // A target always repeats — it resets by spawning its next occurrence.
     expect(target.recurrenceType).not.toBe('none');
+  });
+
+  // A blank is invisible until a template declares one, so a demo with no
+  // `{name}` in it says the app can't do this at all.
+  it('seeds a template whose items declare blanks, including the run one', () => {
+    useDemoStore.getState().enterDemoMode();
+    const templates = useTemplateStore.getState().templates;
+
+    expect(templates.length).toBeGreaterThan(0);
+    const withBlanks = templates.filter(t => extractPlaceholders(t.items).length > 0);
+    expect(withBlanks.length).toBeGreaterThan(0);
+    // One blank asked for once and used by several items is the point of them.
+    const shared = extractPlaceholders(withBlanks[0].items)[0];
+    expect(withBlanks[0].items.filter(i => i.title.includes(`{${shared}}`)).length).toBeGreaterThan(1);
+    expect(templates.some(t => declaresRunPlaceholder(t.items))).toBe(true);
   });
 
   // No number on any task means no call/text button anywhere in the demo.

@@ -440,6 +440,10 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
               no label is unidentifiable. */}
           {placeholderNames.length > 0 && (
             <View style={styles.runBlock}>
+              {/* Named, because "blanks" is what the item editor calls them —
+                  a labelled group is also what tells someone who has never
+                  written one where these boxes came from. */}
+              <Text style={styles.blanksLabel}>Blanks</Text>
               {placeholderNames.map(name => (
                 <View key={name} style={styles.blankRow}>
                   <Text style={styles.blankLabel} numberOfLines={1}>{name}</Text>
@@ -621,6 +625,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   runHint: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  blanksLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   blankRow: {
     flexDirection: 'row',
