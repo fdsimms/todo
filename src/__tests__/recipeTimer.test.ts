@@ -11,6 +11,7 @@ import {
   prepTimerRemaining,
   prepTimerProgress,
   isPrepTimerReady,
+  hasRunningRecipeTimer,
   type CookTimerState,
   type PrepTimerState,
 } from '../utils/recipeTimer';
@@ -224,5 +225,25 @@ describe('prep timer', () => {
     const paused: PrepTimerState = { ...idlePrep(15), prepTimerElapsedSeconds: 5 * 60 };
     expect(prepTimerRemaining(paused, NOW + 60 * 60 * 1000)).toBe(10 * 60);
     expect(isPrepTimerReady(paused, NOW + 60 * 60 * 1000)).toBe(false);
+  });
+});
+
+// ─── hasRunningRecipeTimer ───
+
+describe('hasRunningRecipeTimer', () => {
+  it('is false when neither the cook nor prep segment is in flight', () => {
+    expect(hasRunningRecipeTimer({ ...idle(), ...idlePrep() })).toBe(false);
+  });
+
+  it('is true while the cook segment is running, regardless of prep', () => {
+    expect(hasRunningRecipeTimer({ ...running(25, 60), ...idlePrep() })).toBe(true);
+  });
+
+  it('is true while the prep segment is running, regardless of cook', () => {
+    expect(hasRunningRecipeTimer({ ...idle(), ...runningPrep(15, 30) })).toBe(true);
+  });
+
+  it('is true with no duration set at all — a plain running stopwatch', () => {
+    expect(hasRunningRecipeTimer({ ...running(null, 45), ...idlePrep(null) })).toBe(true);
   });
 });

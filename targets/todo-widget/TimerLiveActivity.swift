@@ -175,12 +175,19 @@ struct TimerLiveActivity: Widget {
                 Image(systemName: context.attributes.symbolName)
                     .foregroundColor(palette.accent)
             } compactTrailing: {
+                // maxWidth 44 only fits mm:ss (e.g. "12:34"). Text(timerInterval:)
+                // switches to h:mm:ss once a run passes an hour ("4:08:22"), which
+                // doesn't fit and was getting clipped to "4:08:…". Widen the frame
+                // to fit that format and let minimumScaleFactor shrink the digits
+                // rather than truncate if it's ever still too tight.
                 TimerClockView(
                     attributes: context.attributes,
                     font: .system(size: 13).monospacedDigit(),
                     color: palette.textSecondary
                 )
-                .frame(maxWidth: 44)
+                .frame(maxWidth: 64)
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
             } minimal: {
                 Image(systemName: context.attributes.symbolName)
                     .foregroundColor(palette.accent)

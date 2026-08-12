@@ -104,3 +104,15 @@ export function prepTimerProgress(recipe: PrepTimerState, now: number = Date.now
 export function isPrepTimerReady(recipe: PrepTimerState, now: number = Date.now()): boolean {
   return hasPrepTimer(recipe) && prepTimerRemaining(recipe, now) <= 0;
 }
+
+/**
+ * Is a cook or prep segment currently in flight for this recipe? Drives the
+ * "a timer is running" ambient indicator (the tab bar dot) that stays visible
+ * once you've navigated away from the recipe itself — a cook/prep timer has
+ * no OS notification when it wraps up (it may never wrap up at all: with no
+ * estimatedMinutes/prepMinutes it's a plain stopwatch), so this is the only
+ * thing standing between starting one and forgetting it's still going.
+ */
+export function hasRunningRecipeTimer(recipe: CookTimerState & PrepTimerState): boolean {
+  return isCookTimerRunning(recipe) || isPrepTimerRunning(recipe);
+}
