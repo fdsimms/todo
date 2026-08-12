@@ -198,6 +198,22 @@ export function seedDemoData(): void {
   // Part-done, so the meter on the row reads as a meter rather than an empty bar.
   updateTask(water.id, { progressCount: 2 });
 
+  // An extra-task rule. Invisible until it fires, so the seed carries a tally
+  // partway through the cycle: the editor's caption then reads as a rule in
+  // progress rather than one nobody has started.
+  const violin = addTask({
+    title: 'Practise the violin',
+    notes: 'Every fourth session adds a one-off task to rosin the bow.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    extraTaskEveryN: 4,
+    extraTaskTitle: 'Rosin the bow',
+    effort: 2,
+  });
+  updateTask(violin.id, { extraTaskTally: 2 });
+
   // --- A stack (three independently-scheduled tasks under one label) --------
   const supplements = createGroup('Supplements', 'Health');
   addNewGroupedTask(supplements.id, 'Vitamin D');
