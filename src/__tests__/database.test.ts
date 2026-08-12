@@ -1516,6 +1516,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     sourceRecipeId: null,
     sourceRecipeTitle: null,
     choiceGroup: null,
+    isStaple: false,
     ...overrides,
   };
 }
@@ -1537,6 +1538,7 @@ describe('grocery items', () => {
       lastPurchasedAt: '2026-07-25T00:00:00.000Z',
       sourceRecipeId: 'recipe-1',
       sourceRecipeTitle: 'Chili',
+      isStaple: true,
     });
     dbInsertGroceryItem(item);
 

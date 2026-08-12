@@ -39,6 +39,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     sourceRecipeId: null,
     sourceRecipeTitle: null,
     choiceGroup: null,
+    isStaple: false,
     ...overrides,
   };
 }
@@ -279,6 +280,16 @@ describe('probablyHaveReason', () => {
       onHandUntil: daysAgo(1),
     });
     expect(probablyHaveReason(item, NOW)).toBeNull();
+  });
+
+  it('a staple reads as on hand with no purchases and no onHandUntil at all', () => {
+    const item = makeItem({ name: 'Salt', purchaseCount: 0, isStaple: true });
+    expect(probablyHaveReason(item, NOW)).toBe('always have it');
+  });
+
+  it('a staple outranks even a past onHandUntil', () => {
+    const item = makeItem({ name: 'Salt', isStaple: true, onHandUntil: daysAgo(1) });
+    expect(probablyHaveReason(item, NOW)).toBe('always have it');
   });
 });
 

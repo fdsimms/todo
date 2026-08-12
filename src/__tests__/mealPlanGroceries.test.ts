@@ -112,6 +112,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     sourceRecipeId: null,
     sourceRecipeTitle: null,
     choiceGroup: null,
+    isStaple: false,
     ...overrides,
   };
 }
@@ -459,6 +460,28 @@ describe('classifyPlanned', () => {
     const items = [item({ name: 'Flour', onList: false, inCatalog: true })];
     const planned = [{ name: 'Flour', nameKey: 'flour', quantity: '', aisle: null, source: 'Wed Bread' }];
     expect(classifyPlanned(planned, items, now)[0].category).toBe('needToBuy');
+  });
+
+  it('classifies a staple, off the list, as staple — with no purchase history needed', () => {
+    const items = [item({ name: 'Salt', onList: false, isStaple: true, purchaseCount: 0 })];
+    const planned = [{ name: 'Salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Tue Ragù' }];
+    expect(classifyPlanned(planned, items, now)[0].category).toBe('staple');
+  });
+
+  it('a staple still wins over the pantry guess', () => {
+    const items = [item({
+      name: 'Salt', onList: false, isStaple: true, purchaseCount: 3,
+      createdAt: new Date(2026, 4, 14).toISOString(),
+      lastPurchasedAt: new Date(2026, 7, 2).toISOString(),
+    })];
+    const planned = [{ name: 'Salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Tue Ragù' }];
+    expect(classifyPlanned(planned, items, now)[0].category).toBe('staple');
+  });
+
+  it('an on-list staple still classifies by list state, not as a staple', () => {
+    const items = [item({ name: 'Salt', onList: true, checked: false, isStaple: true })];
+    const planned = [{ name: 'Salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Tue Ragù' }];
+    expect(classifyPlanned(planned, items, now)[0].category).toBe('alreadyOnList');
   });
 
   it('classifies an unchecked on-list row as alreadyOnList', () => {

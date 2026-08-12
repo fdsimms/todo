@@ -44,6 +44,9 @@ const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; c
   { category: 'needToBuy', label: 'Need to buy', interactive: true, collapsible: false },
   { category: 'alreadyOnList', label: 'Already on your list', interactive: true, collapsible: false },
   { category: 'inTrolley', label: 'In your trolley', interactive: false, collapsible: false },
+  // Collapsed by default, same reasoning as probablyHave below: salt and
+  // water aren't a decision the user asked to make on every add.
+  { category: 'staple', label: 'Always have', interactive: true, collapsible: true },
   // Collapsed by default: this is grocerySuggest's pantry guess, not
   // something the user asked for, so it starts out of the way with its
   // count visible rather than pre-expanded among rows that need a decision.
@@ -80,7 +83,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {
-      needToBuy: [], alreadyOnList: [], inTrolley: [], probablyHave: [],
+      needToBuy: [], alreadyOnList: [], inTrolley: [], probablyHave: [], staple: [],
     };
     for (const row of classified) out[row.category].push(row);
     return out;

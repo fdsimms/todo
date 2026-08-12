@@ -83,6 +83,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     sourceRecipeId: null,
     sourceRecipeTitle: null,
     choiceGroup: null,
+    isStaple: false,
     ...overrides,
   };
 }
@@ -1759,6 +1760,35 @@ describe('setOnHandUntil', () => {
   it('shrugs at an id it does not hold', () => {
     seed([]);
     useGroceryStore.getState().setOnHandUntil('gone', '2026-08-21T00:00:00.000Z');
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('setStaple', () => {
+  it('writes the given value and persists it', () => {
+    const salt = makeItem({ name: 'Salt' });
+    seed([salt]);
+
+    useGroceryStore.getState().setStaple(salt.id, true);
+
+    expect(useGroceryStore.getState().items[0].isStaple).toBe(true);
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: salt.id, isStaple: true })
+    );
+  });
+
+  it('clears back to false', () => {
+    const salt = makeItem({ name: 'Salt', isStaple: true });
+    seed([salt]);
+
+    useGroceryStore.getState().setStaple(salt.id, false);
+
+    expect(useGroceryStore.getState().items[0].isStaple).toBe(false);
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    seed([]);
+    useGroceryStore.getState().setStaple('gone', true);
     expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
   });
 });

@@ -194,6 +194,12 @@ interface GroceryStore {
   setOnHandUntil: (id: string, until: string | null) => void;
 
   /**
+   * Staple on/off — "always have it", GroceryItemSheet's third pantry pill.
+   * Unlike setOnHandUntil this never expires; a dumb setter, same shape.
+   */
+  setStaple: (id: string, isStaple: boolean) => void;
+
+  /**
    * Picks this row at the shelf: it stays (no longer an either/or) and every
    * other option in its group comes off the list. Registers one undo that puts
    * them all back exactly as they were, group included.
@@ -505,6 +511,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       choiceGroup,
       sourceRecipeId: source?.recipeId ?? null,
       sourceRecipeTitle: source?.recipeTitle ?? null,
+      isStaple: false,
     };
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));
@@ -762,6 +769,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const item = get().items.find(i => i.id === id);
     if (!item) return;
     const updated = { ...item, onHandUntil: until };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setStaple(id, isStaple) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    const updated = { ...item, isStaple };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },

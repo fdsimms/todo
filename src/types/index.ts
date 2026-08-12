@@ -716,6 +716,14 @@ export interface GroceryItem {
   // just sits there looking outstanding, and finishShopping would leave it on
   // the list for ever.
   choiceGroup: string | null;
+  // Always on hand — salt, pepper, water, the things nobody actually shops
+  // for. Set by hand on GroceryItemSheet, and unlike onHandUntil it never
+  // expires: a staple isn't a guess about recent purchases, it's a standing
+  // fact about the kitchen. classifyPlanned (mealPlanGroceries.ts) sorts a
+  // staple into its own section when a recipe's ingredients are added to the
+  // list, so "salt" doesn't sit in Need to buy next to what the trip is
+  // actually for.
+  isStaple: boolean;
 }
 
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task

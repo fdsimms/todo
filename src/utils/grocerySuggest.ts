@@ -264,6 +264,13 @@ function onHandAssertion(item: GroceryItem, now: Date): boolean | null {
  * time since the last one still inside it.
  */
 export function probablyHaveReason(item: GroceryItem, now: Date): string | null {
+  // A staple outranks everything below: it's a standing fact ("I always have
+  // salt"), not a guess, and it doesn't need purchase history or an
+  // onHandUntil assertion to be true. This is also why PantrySheet — every
+  // name this function answers for — reads a staple as on hand with no
+  // purchases ever recorded.
+  if (item.isStaple) return 'always have it';
+
   const asserted = onHandAssertion(item, now);
   if (asserted !== null) return asserted ? 'marked as on hand' : null;
 

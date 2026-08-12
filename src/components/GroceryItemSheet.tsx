@@ -76,6 +76,7 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   const setAisle = useGroceryStore(s => s.setAisle);
   const addAisle = useGroceryStore(s => s.addAisle);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
+  const setStaple = useGroceryStore(s => s.setStaple);
   const removeFromList = useGroceryStore(s => s.removeFromList);
   const deleteItem = useGroceryStore(s => s.deleteItem);
   const shops = useGroceryStore(useShallow(s => s.shops));
@@ -188,6 +189,10 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   const clearOnHand = () => {
     haptics.tap();
     setOnHandUntil(item.id, null);
+  };
+  const toggleStaple = () => {
+    haptics.tap();
+    setStaple(item.id, !item.isStaple);
   };
 
   /**
@@ -310,6 +315,15 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   });
 
   const pantryOptions: PillGroupOption[] = [
+    {
+      key: 'staple',
+      label: 'Always have it',
+      selected: item.isStaple,
+      accessibilityLabel: item.isStaple
+        ? 'Always have it, marked as a staple. Tap to clear.'
+        : 'Always have it — mark as a staple you always keep stocked',
+      onPress: toggleStaple,
+    },
     {
       key: 'got',
       label: 'Got it',
@@ -479,17 +493,21 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
             <CollapsibleField
               label="Pantry"
               summary={
-                onHandFuture
-                  ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
-                  : onHandPast
-                    ? 'Out of it'
-                    : undefined
+                item.isStaple
+                  ? 'Always have it'
+                  : onHandFuture
+                    ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
+                    : onHandPast
+                      ? 'Out of it'
+                      : undefined
               }
               emptySummary="Automatic"
               hint={
-                onHandPast
-                  ? 'Marked out of it — won’t show as probably-have until you buy it again.'
-                  : 'Decided automatically from purchase history when this comes up in a week plan.'
+                item.isStaple
+                  ? 'Treated as on hand at all times, and kept out of the way in its own group when a recipe adds ingredients to the list.'
+                  : onHandPast
+                    ? 'Marked out of it — won’t show as probably-have until you buy it again.'
+                    : 'Decided automatically from purchase history when this comes up in a week plan.'
               }
               expanded={openField === 'pantry'}
               onToggle={() => toggleField('pantry')}

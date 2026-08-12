@@ -580,6 +580,9 @@ export function initDatabase(): void {
     // task. See Task.extraTaskTally.
     'ALTER TABLE tasks ADD COLUMN extra_task_tally INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN previous_extra_task_tally INTEGER NOT NULL DEFAULT 0',
+    // 0 for every existing row — nothing predating this feature was ever
+    // marked a standing staple. See GroceryItem.isStaple.
+    'ALTER TABLE grocery_items ADD COLUMN is_staple INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1410,6 +1413,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     sourceRecipeId: (row.source_recipe_id as string) ?? null,
     sourceRecipeTitle: (row.source_recipe_title as string) ?? null,
     choiceGroup: (row.choice_group as string) ?? null,
+    isStaple: Boolean(row.is_staple),
   };
 }
 
@@ -1425,8 +1429,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
-       source_recipe_id, source_recipe_title, choice_group)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       source_recipe_id, source_recipe_title, choice_group, is_staple)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -1434,7 +1438,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
-      item.choiceGroup ?? null,
+      item.choiceGroup ?? null, item.isStaple ? 1 : 0,
     ]
   );
 }
@@ -1444,7 +1448,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
     `UPDATE grocery_items SET
        name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
-       on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?
+       on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
@@ -1453,7 +1457,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
-      item.choiceGroup ?? null, item.id,
+      item.choiceGroup ?? null, item.isStaple ? 1 : 0, item.id,
     ]
   );
 }
