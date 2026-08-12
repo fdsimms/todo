@@ -231,7 +231,6 @@ export function MealEntrySheet({
               onBlur={commitRename}
               onSubmitEditing={commitRename}
               autoFocus
-              autoCorrect={false}
               returnKeyType="done"
               maxLength={RECIPE_NAME_MAX_LENGTH}
               accessibilityLabel="Meal title"
