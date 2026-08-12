@@ -2591,24 +2591,25 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderColor: colors.green,
   },
   // Height and colour both come from Animated values at the call site — see
-  // quotaFill / quotaDone. Top radius matches the circle's own, minus the
-  // border width it sits inside of — clipping via the parent's
-  // overflow:hidden alone rounds the fill to the *outer* radius, which is too
-  // round for this inset box and leaves a sliver of the border's own colour
-  // showing between the fill and the ring near the top corners once the
-  // meter is close to full. The bottom corners get no radius at all: the
-  // fill's bottom edge sits flush on the circle's own bottom edge, so there's
-  // no curve there to match — rounding it just opened a gap between the fill
-  // and the ring along the bottom.
+  // quotaFill / quotaDone. It's a level in a container, so it's a plain
+  // rectangle: the top edge is the water line and must be straight and the
+  // full width of the circle, and the corners it needs at the bottom are the
+  // circle's own, which the parent's overflow:hidden already gives it. Rounding
+  // the fill's top corners was the bug — at a 5.5pt radius in a 17pt-wide box
+  // the water line was a 6pt bump in the middle, so a half-full meter read as a
+  // white blob floating inside a blue circle rather than as a level. The
+  // negative side insets put the fill under the ring rather than inside it, so
+  // the filled part is solid to the circle's edge and the ring is left
+  // outlining only the empty part above the line. `bottom` stays 0 because the
+  // height is a percentage of the *inner* box: pulling the fill below it too
+  // would leave a hairline of unfilled circle at the top at 100%, and the ring
+  // it sits on is the fill's own colour anyway.
   quotaFill: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: -border.md,
+    right: -border.md,
     bottom: 0,
-    borderTopLeftRadius: Math.max(0, checkboxRadius(CHECKBOX_SIZE) - border.md),
-    borderTopRightRadius: Math.max(0, checkboxRadius(CHECKBOX_SIZE) - border.md),
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
+    borderRadius: 0,
   },
   content: {
     flex: 1,
