@@ -638,6 +638,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
+    marginBottom: spacing.md,
   },
   keepText: { flex: 1, gap: 2 },
   keepLabel: {
@@ -652,7 +653,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sep: {
     height: border.hairline,
     backgroundColor: colors.separator,
-    marginTop: spacing.md,
   },
   cancelCard: {
     backgroundColor: colors.bgSecondary,
