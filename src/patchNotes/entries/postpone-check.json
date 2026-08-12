@@ -1,4 +1,4 @@
 {
-  "message": "Tasks now remember how often you've pushed them out. Once one has moved a few times, opening its date picker says so and offers a way out — do it today, break it into steps, drop it, or stop asking about that one. Turn it off (or change how much rope a task gets) under Settings › Tasks & projects › Rescheduling",
+  "message": "Tasks now remember how many times you've rescheduled them. After a few moves, opening the date picker offers to do it today, break it into steps, drop it, or stop asking about that one. Turn it off, or change the threshold, under Settings › Tasks & projects › Rescheduling",
   "date": "2026-08-12"
 }
