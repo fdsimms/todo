@@ -25,8 +25,9 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { ReorderableList } from './ReorderableList';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
+import { PillGroup, type PillGroupOption } from './PillGroup';
 import { EmptyState } from './EmptyState';
-import { OTHER_AISLE } from '../utils/groceryAisles';
+import { OTHER_AISLE, shopAisleOrder } from '../utils/groceryAisles';
 import { itemCountsByShop } from '../utils/groceryShops';
 import { haptics } from '../utils/haptics';
 import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type Shop } from '../types';
@@ -84,6 +85,9 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const reorderShops = useGroceryStore(s => s.reorderShops);
   const deleteShop = useGroceryStore(s => s.deleteShop);
   const setShopExcludedFromSuggestions = useGroceryStore(s => s.setShopExcludedFromSuggestions);
+  const aisleOrderByShop = useGroceryStore(useShallow(s => s.aisleOrderByShop));
+  const setShopAisleOrder = useGroceryStore(s => s.setShopAisleOrder);
+  const resetShopAisleOrder = useGroceryStore(s => s.resetShopAisleOrder);
 
   const [tab, setTab] = useState<Tab>('aisles');
   const [newAisle, setNewAisle] = useState('');
@@ -94,6 +98,10 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   // under it. Only one tab renders at a time, so the two share the draft text.
   const [editingAisle, setEditingAisle] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  // Whose walk order is being edited — null is the default one. Session-only
+  // and reset on opening: it's a lens on this sheet, not a preference, and a
+  // sheet that reopened on "Costco" would look like the default had changed.
+  const [orderShopId, setOrderShopId] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -102,6 +110,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
       setNewShop('');
       setEditingShopId(null);
       setEditingAisle(null);
+      setOrderShopId(null);
     }
   }, [visible]);
 
@@ -148,9 +157,49 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
     );
   };
 
+  // The store whose order is on screen, dropped if it's been deleted since.
+  const orderShop = useMemo(
+    () => (orderShopId ? shops.find(s => s.id === orderShopId) ?? null : null),
+    [orderShopId, shops]
+  );
+  const editingDefaultOrder = !orderShop;
+  const shopHasOwnOrder = !!orderShop && !!aisleOrderByShop[orderShop.id];
+
+  // What's being dragged: this store's order, or the default one.
+  const shownOrder = useMemo(
+    () => (orderShop ? shopAisleOrder(aisleOrder, aisleOrderByShop[orderShop.id]) : aisleOrder),
+    [orderShop, aisleOrder, aisleOrderByShop]
+  );
+
+  // "Default" first and pinned — it's the order every store without one of its
+  // own follows, so burying it behind "N more" would make it look unavailable.
+  const orderScopeOptions = useMemo<PillGroupOption[]>(() => [
+    {
+      key: 'default',
+      label: 'Default',
+      selected: editingDefaultOrder,
+      pinned: true,
+      onPress: () => {
+        haptics.tap();
+        setOrderShopId(null);
+      },
+    },
+    ...shops.map(shop => ({
+      key: shop.id,
+      label: shop.name,
+      // Says which stores have diverged without a second control to read.
+      suffix: aisleOrderByShop[shop.id] ? '· own' : undefined,
+      selected: orderShopId === shop.id,
+      onPress: () => {
+        haptics.tap();
+        setOrderShopId(shop.id);
+      },
+    })),
+  ], [shops, aisleOrderByShop, orderShopId, editingDefaultOrder]);
+
   // 'Other' rides along at the bottom outside the draggable set, so a drag can
   // never land something below it.
-  const draggable = useMemo(() => aisleOrder.filter(a => a !== OTHER_AISLE), [aisleOrder]);
+  const draggable = useMemo(() => shownOrder.filter(a => a !== OTHER_AISLE), [shownOrder]);
 
   const countFor = (aisle: string) => items.filter(i => i.aisle === aisle && i.onList).length;
 
@@ -260,9 +309,33 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
         ) : (
         <>
         <Text style={styles.intro}>
-          Hold a row and drag it into the order you walk your store. Your list follows the same
-          order. Tap a name to rename it.
+          {editingDefaultOrder
+            ? 'Hold a row and drag it into the order you walk. Your list follows this order unless a store has one of its own. Tap a name to rename it.'
+            : `Hold a row and drag it into the order you walk ${orderShop!.name}. Your list uses it while you're shopping there. Aisles are added, renamed and deleted on the default order.`}
         </Text>
+
+        {shops.length > 0 && (
+          <View style={styles.scopeWrap}>
+            <PillGroup
+              options={orderScopeOptions}
+              noun="store"
+              surface="page"
+              filterPlaceholder="Find a store…"
+            />
+            {shopHasOwnOrder && (
+              <InlineAction
+                label="Use the default order"
+                icon="arrow-undo-outline"
+                variant="neutral"
+                onPress={() => {
+                  haptics.tap();
+                  resetShopAisleOrder(orderShop!.id);
+                }}
+                style={styles.scopeReset}
+              />
+            )}
+          </View>
+        )}
 
         <ReorderableList
           data={draggable}
@@ -273,7 +346,12 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
           // and unthrottled ticks run together into one long buzz. The lift
           // itself is fired by ReorderableList.
           onHoverChange={haptics.dragTick}
-          onReorder={reordered => setAisleOrder(reordered)}
+          onReorder={reordered => {
+            // The first drag on a store is what gives it an order of its own —
+            // there's no "diverge" button, because the drag *is* the divergence.
+            if (orderShop) setShopAisleOrder(orderShop.id, reordered);
+            else setAisleOrder(reordered);
+          }}
           renderItem={({ item: aisle, drag, isActive }) => {
             const count = countFor(aisle);
             const editing = aisle === editingAisle;
@@ -286,7 +364,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                 // instead would put the dead zone back — a long press starting
                 // on the name would go to a child with no onLongPress, and the
                 // drag would never start across most of the row's width.
-                onPress={editing ? undefined : () => {
+                onPress={editing || !editingDefaultOrder ? undefined : () => {
                   setEditingAisle(aisle);
                   setEditingName(aisle);
                 }}
@@ -295,7 +373,11 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={count > 0 ? `${aisle}, ${count} on the list` : aisle}
-                accessibilityHint="Double tap to rename. Long press to reorder."
+                accessibilityHint={
+                  editingDefaultOrder
+                    ? 'Double tap to rename. Long press to reorder.'
+                    : 'Long press to reorder.'
+                }
               >
                 <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
 
@@ -318,15 +400,21 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
 
                 {count > 0 && !editing && <Text style={styles.rowCount}>{count}</Text>}
 
-                <TouchableOpacity
-                  onPress={() => confirmDeleteAisle(aisle)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Delete ${aisle}`}
-                >
-                  <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
-                </TouchableOpacity>
+                {/* Deleting is a statement about your vocabulary, not about
+                    one shop's route, so it lives on the default order only —
+                    an × here while "Costco" is selected would read as deleting
+                    the aisle at Costco, which isn't a thing this model has. */}
+                {editingDefaultOrder && (
+                  <TouchableOpacity
+                    onPress={() => confirmDeleteAisle(aisle)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${aisle}`}
+                  >
+                    <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                )}
               </TouchableOpacity>
             );
           }}
@@ -340,6 +428,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                 <Text style={styles.rowPinnedNote}>always last</Text>
               </View>
 
+              {editingDefaultOrder && (
               <View style={styles.addWrap}>
                 <TextInput
                   style={styles.addInput}
@@ -363,6 +452,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                   style={styles.addButton}
                 />
               </View>
+              )}
             </View>
           }
         />
@@ -555,6 +645,8 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingTop: spacing.md,
     },
+    scopeWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+    scopeReset: { alignSelf: 'flex-start', marginTop: spacing.xs },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
     dropSlot: {
       marginHorizontal: spacing.md,

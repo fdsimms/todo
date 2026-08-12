@@ -322,6 +322,40 @@ never made, and it would outrank the lexicon for ever after.
 
 `Other` can't be renamed or deleted — it's the floor `aisleForName` returning null lands on.
 
+**A store can walk its own order** (`aisleOrderByShop`, `grocery_aisle_order_by_shop`), because a
+Costco walk isn't a Safeway walk. The map is **sparse and keyed by shop id**, and an absent entry
+means "walks the default order" rather than "has no order" — nothing is written when a store is
+created, which is what lets the default keep reaching every store that hasn't diverged. Keyed by
+id rather than name so a rename keeps the order, the same call the `grocery_shops` table itself
+made.
+
+- **An entry may only reorder, never add or remove** (`shopAisleOrder`). That one rule is what
+  keeps every property the single global order had: a bigger `DEFAULT_AISLES` still needs no
+  migration (a new built-in appends itself to every store's order at read time, in the default's
+  own position), `hiddenAisles` stays global and stays *derived* from the one order that
+  `commitAisleOrder` saves, and a stale entry can't resurrect a name that's been deleted. The
+  read-time repair the global order always had is now per entry.
+- **Deleting an aisle is a statement about your vocabulary, not about one shop's route.** So there
+  is no per-store hide, and the Aisles tab drops the delete ×, the rename tap and the add field
+  the moment a store is selected — reorder-only, which is exactly what the model allows. An × there
+  would read as deleting the aisle *at Costco*, which isn't a thing this design has.
+- **Rename is the one fan-out this costs** (`renameInShopAisleOrders`). Without it the old name
+  just falls out of each entry at read time and the aisle silently jumps back to its default
+  position at every store that had moved it. Delete deliberately needs no equivalent: dropping it
+  at read time is enough, and leaving the dead name in the entry means re-adding that aisle by name
+  restores its per-store position too — the same courtesy re-adding a built-in gets from
+  `hiddenAisles`.
+- **The first drag *is* the divergence.** No "give this store its own order" button, and
+  `resetShopAisleOrder` deletes the entry rather than writing a copy of the default — a copy would
+  silently stop following it, which is the thing an absent entry exists to express.
+- **Only the shopping list reads it**, via the active trip (see The active trip above);
+  `orderForShop(null)` is the default. **The pantry deliberately keeps the default order** — you're
+  standing in your kitchen, not in a shop. That's why this feature was worth nothing until the
+  "I'm at this store" mode existed, and why the two were ordered.
+- **`initialize` prunes entries for deleted stores and writes that back** — the one repair here
+  that isn't read-only, because an entry keyed by an id nothing can resolve is a slow leak rather
+  than a harmless dead key.
+
 ### Grocery stores (`Shop`) — which shop has which items
 
 The rest of the grocery feature isn't written up here yet; this section covers only stores, which

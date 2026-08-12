@@ -93,6 +93,8 @@ jest.mock('../db/database', () => ({
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
+  dbGetGroceryAisleOrderByShop: jest.fn().mockReturnValue({}),
+  dbSetGroceryAisleOrderByShop: jest.fn(),
   dbGetTripShopId: jest.fn().mockReturnValue(null),
   dbGetTripStartedAt: jest.fn().mockReturnValue(null),
   dbSetTrip: jest.fn(),

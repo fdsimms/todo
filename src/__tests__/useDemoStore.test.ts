@@ -415,6 +415,24 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     ).not.toBeNull();
   });
 
+  it('seeds a store that walks its own order', () => {
+    const { aisleOrder, aisleOrderByShop, shops } = useGroceryStore.getState();
+
+    const diverged = shops.filter(s => aisleOrderByShop[s.id]);
+    expect(diverged).toHaveLength(1);
+
+    const own = useGroceryStore.getState().orderForShop(diverged[0].id);
+    // Genuinely different from the default, or the seed proves nothing...
+    expect(own).not.toEqual(aisleOrder);
+    // ...but the same set of aisles, which is the rule the whole feature rests
+    // on: a per-store entry reorders, it never adds or removes.
+    expect([...own].sort()).toEqual([...aisleOrder].sort());
+
+    // And it's the store the seeded trip is at, so the list actually sorts by
+    // it — a per-store order nothing is walking is invisible.
+    expect(useGroceryStore.getState().activeShop()?.id).toBe(diverged[0].id);
+  });
+
   it('seeds a trip in progress, with rows that have something to say about it', () => {
     const { items, itemShops, shops } = useGroceryStore.getState();
 

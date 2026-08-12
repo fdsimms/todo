@@ -24,6 +24,8 @@ import {
   dbGetTripShopId,
   dbGetTripStartedAt,
   dbSetTrip,
+  dbGetGroceryAisleOrderByShop,
+  dbSetGroceryAisleOrderByShop,
   dbGetAllRecipes,
   dbUpdateRecipe,
 } from '../db/database';
@@ -57,6 +59,8 @@ jest.mock('../db/database', () => ({
   dbGetTripShopId: jest.fn().mockReturnValue(null),
   dbGetTripStartedAt: jest.fn().mockReturnValue(null),
   dbSetTrip: jest.fn(),
+  dbGetGroceryAisleOrderByShop: jest.fn().mockReturnValue({}),
+  dbSetGroceryAisleOrderByShop: jest.fn(),
   // Runs the body inline — these tests assert on store state, not on
   // transaction boundaries, and a no-op wrapper would silently skip the work.
   dbTransaction: jest.fn((fn: () => void) => fn()),
@@ -168,6 +172,7 @@ function seed(
     itemShops?: ItemShopLink[];
     tripShopId?: string | null;
     tripStartedAt?: string | null;
+    aisleOrderByShop?: Record<string, string[]>;
   } = {}
 ) {
   useGroceryStore.setState({
@@ -175,6 +180,7 @@ function seed(
     aisleOrder: [...DEFAULT_AISLES],
     hiddenAisles: [],
     aisleOverrides: extra.aisleOverrides ?? {},
+    aisleOrderByShop: extra.aisleOrderByShop ?? {},
     shops: extra.shops ?? [],
     itemShops: extra.itemShops ?? [],
     lastShopId: null,
@@ -196,6 +202,7 @@ beforeEach(() => {
   (dbGetAllGroceryShops as jest.Mock).mockReturnValue([]);
   (dbGetAllItemShopLinks as jest.Mock).mockReturnValue([]);
   (dbGetLastShopId as jest.Mock).mockReturnValue(null);
+  (dbGetGroceryAisleOrderByShop as jest.Mock).mockReturnValue({});
   (dbGetTripShopId as jest.Mock).mockReturnValue(null);
   (dbGetTripStartedAt as jest.Mock).mockReturnValue(null);
   mockTaskState.tasks = [];
@@ -2266,5 +2273,155 @@ describe('the active trip', () => {
     useGroceryStore.getState().initialize();
 
     expect(useGroceryStore.getState().tripShopId).toBeNull();
+  });
+});
+
+describe('per-store walk order', () => {
+  it('a store with no order of its own follows the default', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+
+    expect(useGroceryStore.getState().orderForShop(costco.id)).toEqual(
+      useGroceryStore.getState().aisleOrder
+    );
+  });
+
+  it('orderForShop(null) is the default order', () => {
+    seed([], { shops: [] });
+    expect(useGroceryStore.getState().orderForShop(null)).toEqual(
+      useGroceryStore.getState().aisleOrder
+    );
+  });
+
+  it('giving a store its own order diverges it from the default', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+    const base = useGroceryStore.getState().aisleOrder;
+
+    useGroceryStore.getState().setShopAisleOrder(costco.id, ['Frozen', ...base]);
+
+    expect(useGroceryStore.getState().orderForShop(costco.id)[0]).toBe('Frozen');
+    // ...and the default is untouched.
+    expect(useGroceryStore.getState().aisleOrder).toEqual(base);
+    expect(dbSetGroceryAisleOrderByShop).toHaveBeenCalled();
+  });
+
+  // The issue's second question: editing the default must not reach a store
+  // that has already diverged.
+  it('editing the default leaves a diverged store alone but moves the others', () => {
+    const costco = makeShop('Costco');
+    const safeway = makeShop('Safeway');
+    seed([], { shops: [costco, safeway] });
+    const base = useGroceryStore.getState().aisleOrder;
+    useGroceryStore.getState().setShopAisleOrder(costco.id, ['Frozen', ...base]);
+
+    useGroceryStore.getState().setAisleOrder(['Bakery', ...base.filter(a => a !== 'Bakery')]);
+
+    expect(useGroceryStore.getState().orderForShop(costco.id)[0]).toBe('Frozen');
+    expect(useGroceryStore.getState().orderForShop(safeway.id)[0]).toBe('Bakery');
+  });
+
+  it('resetting puts a store back on the default, live', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+    const base = useGroceryStore.getState().aisleOrder;
+    useGroceryStore.getState().setShopAisleOrder(costco.id, ['Frozen', ...base]);
+
+    useGroceryStore.getState().resetShopAisleOrder(costco.id);
+
+    expect(useGroceryStore.getState().aisleOrderByShop[costco.id]).toBeUndefined();
+    expect(useGroceryStore.getState().orderForShop(costco.id)).toEqual(base);
+  });
+
+  it('refuses to give an order to a store that does not exist', () => {
+    seed([], { shops: [] });
+
+    useGroceryStore.getState().setShopAisleOrder('shop-gone', ['Frozen']);
+
+    expect(useGroceryStore.getState().aisleOrderByShop).toEqual({});
+    expect(dbSetGroceryAisleOrderByShop).not.toHaveBeenCalled();
+  });
+
+  // A per-store entry reorders; it can never add or remove.
+  it('clamps a saved order to the aisles the default actually has', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+    const base = useGroceryStore.getState().aisleOrder;
+
+    useGroceryStore.getState().setShopAisleOrder(costco.id, ['Not an aisle', 'Frozen']);
+
+    const stored = useGroceryStore.getState().aisleOrderByShop[costco.id];
+    expect(stored).not.toContain('Not an aisle');
+    expect([...stored].sort()).toEqual([...base].sort());
+  });
+
+  it('a new default aisle reaches a store that diverged before it existed', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+    useGroceryStore.getState().setShopAisleOrder(costco.id, ['Frozen']);
+
+    const created = useGroceryStore.getState().addAisle('Bulk bins');
+
+    expect(useGroceryStore.getState().orderForShop(costco.id)).toContain(created);
+  });
+
+  it('deleting an aisle drops it from every store order', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+    const base = useGroceryStore.getState().aisleOrder;
+    useGroceryStore.getState().setShopAisleOrder(costco.id, ['Snacks', ...base]);
+
+    useGroceryStore.getState().deleteAisle('Snacks');
+
+    expect(useGroceryStore.getState().orderForShop(costco.id)).not.toContain('Snacks');
+  });
+
+  // The one fan-out this feature costs: without it the aisle would silently
+  // jump back to its default position at every store that had moved it.
+  it('renaming an aisle keeps its position in every store order', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+    const base = useGroceryStore.getState().aisleOrder;
+    useGroceryStore.getState().setShopAisleOrder(costco.id, ['Frozen', 'Snacks', ...base]);
+
+    useGroceryStore.getState().renameAisle('Snacks', 'Crisps');
+
+    const order = useGroceryStore.getState().orderForShop(costco.id);
+    expect(order.indexOf('Crisps')).toBe(1);
+    expect(order).not.toContain('Snacks');
+  });
+
+  it('deleting a store forgets its walk order', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+    useGroceryStore.getState().setShopAisleOrder(costco.id, ['Frozen']);
+
+    useGroceryStore.getState().deleteShop(costco.id);
+
+    expect(useGroceryStore.getState().aisleOrderByShop[costco.id]).toBeUndefined();
+  });
+
+  it('initialize prunes an order whose store is gone, and writes the pruning back', () => {
+    const costco = makeShop('Costco');
+    (dbGetAllGroceryShops as jest.Mock).mockReturnValue([costco]);
+    (dbGetGroceryAisleOrderByShop as jest.Mock).mockReturnValue({
+      [costco.id]: ['Frozen'],
+      'shop-gone': ['Bakery'],
+    });
+
+    useGroceryStore.getState().initialize();
+
+    expect(useGroceryStore.getState().aisleOrderByShop).toEqual({ [costco.id]: ['Frozen'] });
+    expect(dbSetGroceryAisleOrderByShop).toHaveBeenCalledWith({ [costco.id]: ['Frozen'] });
+  });
+
+  it('initialize leaves a clean map alone', () => {
+    const costco = makeShop('Costco');
+    (dbGetAllGroceryShops as jest.Mock).mockReturnValue([costco]);
+    (dbGetGroceryAisleOrderByShop as jest.Mock).mockReturnValue({ [costco.id]: ['Frozen'] });
+
+    useGroceryStore.getState().initialize();
+
+    expect(dbSetGroceryAisleOrderByShop).not.toHaveBeenCalled();
   });
 });

@@ -752,6 +752,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     linkItemShopMany,
     markItemsUnavailable,
     setShopExcludedFromSuggestions,
+    setShopAisleOrder,
     startTrip,
     itemById,
   } = useGroceryStore.getState();
@@ -882,6 +883,14 @@ function seedGroceries(recipes: DemoRecipes): void {
   deleteAisle('Personal Care');
   const order = useGroceryStore.getState().aisleOrder;
   setAisleOrder([...order.filter(a => a !== 'Frozen'), 'Frozen']);
+
+  // ...and one store that walks differently from that. Trader Joe's rather
+  // than Costco because the seeded trip below is there, so the list someone
+  // opens is actually sorted by this rather than by the default — a per-store
+  // order nothing is currently walking is invisible. Only the front of the
+  // order is given: the rest is appended from the default, which is the whole
+  // point of an entry being a reordering rather than a copy.
+  setShopAisleOrder(traderJoes.id, ['Frozen', 'Bakery', 'Produce']);
 
   // What's on the list right now, with two things already in the trolley — the
   // state the finish-shopping sheet is for. Milk, Eggs, Bananas, Bread and
