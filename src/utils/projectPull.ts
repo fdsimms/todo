@@ -2,7 +2,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { getCurrentDayStart, getDayStart } from './dateUtils';
-import { hasNoDateSignal } from './visibilityUtils';
+import { hasNoDateSignal, isHeldBack } from './visibilityUtils';
 import { liveProjectSteps } from './projectOrder';
 import { scoreTask, type PinContext } from './pinSuggest';
 import { computeSnoozeSuggestion } from './snoozeEngine';
@@ -142,6 +142,8 @@ export type PullEmptyReason =
   | 'too-soon'
   /** A member carries a date signal, so the project isn't silent. */
   | 'has-schedule'
+  /** Everything left is waiting on another task, which a date can't free. */
+  | 'all-waiting'
   /** Only mid-chain steps left, which can't be dated. */
   | 'no-pullable'
   /** The user cleared what the drip scheduled today — it stands down till tomorrow. */
@@ -256,17 +258,29 @@ function classifyProject(
   // members are all done — that one isn't silent, it's finished.
   if (members.length === 0) return { reason: 'no-live-tasks' };
 
+  // A held-back member is invisible everywhere a date could put it, so it can
+  // neither rescue the project from being quiet nor be the thing pulled in —
+  // this is the same argument the sequential slice below already makes, applied
+  // to both ways a task can be held (see visibilityUtils.isHeldBack). Without
+  // it the drip dates a waiting task unattended, which then reads as a schedule
+  // the project hasn't got and silences the nudge until its blocker is done.
+  const actionable = members.filter(t => !isHeldBack(t));
+  if (actionable.length === 0) return { reason: 'all-waiting' };
+
   // One scheduled member and the project is not quiet. hasNoDateSignal is the
   // same predicate the visibility gates use, so "stalled" means precisely
   // "nothing in here can appear anywhere".
-  if (!members.every(hasNoDateSignal)) return { reason: 'has-schedule' };
+  if (!actionable.every(hasNoDateSignal)) return { reason: 'has-schedule' };
 
   // A sequential project has exactly one task available to bring into play,
   // whatever else is sitting in it: dating a step further down the order lands
   // it on a day it still can't appear on (isSequenceBlocked), so the sheet
   // would be offering a task that then goes nowhere — and auto-schedule would
-  // do it unattended.
-  const available = project.sequential ? liveProjectSteps(project.id, members).slice(0, 1) : members;
+  // do it unattended. Ranked over every live member rather than over
+  // `actionable`, so a held first step refuses rather than promoting step two.
+  const available = project.sequential
+    ? liveProjectSteps(project.id, members).slice(0, 1).filter(t => !isHeldBack(t))
+    : actionable;
   const pullable = available.filter(isPullable);
   if (pullable.length === 0) return { reason: 'no-pullable' };
 
@@ -436,6 +450,7 @@ const REASON_PRIORITY: readonly PullEmptyReason[] = [
   'declined-today',
   'auto-scheduled',
   'has-schedule',
+  'all-waiting',
   'no-pullable',
   'no-live-tasks',
 ];
@@ -534,6 +549,10 @@ export function describePullEmpty(state: PullEmptyState): string {
       return count === total
         ? 'Every project has something scheduled.'
         : `${projects(count)} of ${total} already have something scheduled.${rest}`;
+    case 'all-waiting':
+      return count === total
+        ? 'Everything left is waiting on another task. Those come back once the task they wait on is done.'
+        : `${projects(count)} of ${total} have only tasks that are waiting on another task.${rest}`;
     case 'no-pullable':
       return count === total
         ? 'Only mid-chain steps are left, and those get their turn by being completed, not by being dated.'
