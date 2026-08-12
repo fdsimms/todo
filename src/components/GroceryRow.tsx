@@ -58,6 +58,13 @@ interface Props {
    * buying one of these and buying all of them.
    */
   alternatives?: string;
+  /**
+   * "Usually Trader Joe's" — what this row has to say about the store you're
+   * standing in, computed by the screen (only it knows the trip) and absent
+   * both when no trip is running and on the rows the store already covers.
+   * See utils/activeTrip.ts for why silence is the common case.
+   */
+  storeMarker?: string;
 }
 
 /**
@@ -92,6 +99,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   onSwipeSelect,
   onOpenRecipe,
   alternatives,
+  storeMarker,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -216,11 +224,20 @@ export const GroceryRow = React.memo(function GroceryRow({
           {/* A note the user wrote themselves outranks this — it's their own
               word on the row, and the two together would be one caption too
               many. The recipe stays reachable either way: the button below is
-              what opens it, and it doesn't depend on this line rendering. */}
-          {!item.note && !!item.sourceRecipeTitle && (
+              what opens it, and it doesn't depend on this line rendering.
+
+              The store marker outranks it too, and only it: where this came
+              from is provenance, which is the least useful thing to know at a
+              shelf, while "not at Safeway" is the one line that can send you
+              somewhere else. A note is never suppressed — "the blue cap one"
+              is shelf information, which is exactly what you're here for. */}
+          {!item.note && !storeMarker && !!item.sourceRecipeTitle && (
             <Text style={styles.note} numberOfLines={1}>
               recipe: {item.sourceRecipeTitle}
             </Text>
+          )}
+          {!!storeMarker && (
+            <Text style={styles.storeMarker} numberOfLines={1}>{storeMarker}</Text>
           )}
           {!!alternatives && (
             <Text style={styles.alternatives} numberOfLines={1}>{alternatives}</Text>
@@ -395,6 +412,22 @@ function makeStyles(colors: Colors) {
       fontSize: font.sm,
       fontWeight: fontWeight.medium,
       color: colors.textSecondary,
+      marginTop: 1,
+    },
+    // Deliberately its own third treatment, between `note` and `alternatives`
+    // — it borrows the weight of one and the colour of the other. A row can
+    // carry all three at once (a noted either/or item on record elsewhere),
+    // and at identical styling the captions run together into one block you
+    // can't read at a glance while walking: weight separates it from the note,
+    // tone from the alternatives.
+    //
+    // No colour of its own beyond that. "Not at Safeway" and "Usually Trader
+    // Joe's" are told apart by their words, and a warning tint on a row you're
+    // walking past would make the quiet version of this feature the loud one.
+    storeMarker: {
+      fontSize: font.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.textTertiary,
       marginTop: 1,
     },
     note: {

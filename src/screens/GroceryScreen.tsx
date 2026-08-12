@@ -7,7 +7,7 @@ import {
   Alert,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -38,6 +38,8 @@ import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { TripSuggestionCard } from '../components/TripSuggestionCard';
+import { ActiveTripBanner } from '../components/ActiveTripBanner';
+import { describeTripMarker, resolveActiveTrip, tripMarkerFor } from '../utils/activeTrip';
 import { InlineAction } from '../components/InlineAction';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
@@ -114,6 +116,12 @@ export function GroceryScreen() {
   const clearList = useGroceryStore(s => s.clearList);
   const applyDrop = useGroceryStore(s => s.applyDrop);
   const shops = useGroceryStore(useShallow(s => s.shops));
+  const itemShops = useGroceryStore(useShallow(s => s.itemShops));
+  const tripShopId = useGroceryStore(s => s.tripShopId);
+  const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
+  const startTrip = useGroceryStore(s => s.startTrip);
+  const endTrip = useGroceryStore(s => s.endTrip);
+  const checkTripExpiry = useGroceryStore(s => s.checkTripExpiry);
   const addTask = useTaskStore(s => s.addTask);
 
   const [cartOpen, setCartOpen] = useState(false);
@@ -170,6 +178,37 @@ export function GroceryScreen() {
     () => buildGrocerySections(items, aisleOrder, cartHoldIds),
     [items, aisleOrder, cartHoldIds]
   );
+
+  // The store you're standing in, if you've said. Everything the trip changes
+  // on this screen hangs off this one value being non-null.
+  const activeTripShop = useMemo(
+    () => resolveActiveTrip(tripShopId, tripStartedAt, shops, new Date()),
+    [tripShopId, tripStartedAt, shops]
+  );
+  // A trip can outlive the moment it was last rendered, and the memo above
+  // can't notice on its own — its inputs haven't changed. Clearing the store
+  // fields is what makes an expired trip disappear rather than merely stop
+  // resolving. Focus rather than mount: this screen stays mounted behind a tab.
+  useFocusEffect(
+    useCallback(() => {
+      checkTripExpiry();
+    }, [checkTripExpiry])
+  );
+
+  // Computed here rather than in the row for the reason `alternatives` is:
+  // only the screen has the links, and a row that subscribed to them would
+  // re-render every one of them on any purchase. Empty whenever no trip is
+  // running, so the rows go back to exactly what they rendered before.
+  const storeMarkers = useMemo(() => {
+    const out = new Map<string, string>();
+    if (!activeTripShop) return out;
+    for (const item of items) {
+      if (!item.onList) continue;
+      const marker = tripMarkerFor(item.id, itemShops, shops, activeTripShop);
+      if (marker) out.set(item.id, describeTripMarker(marker));
+    }
+    return out;
+  }, [activeTripShop, items, itemShops, shops]);
 
   const checkedCount = useMemo(() => items.filter(i => i.onList && i.checked).length, [items]);
   // What the trip is about to leave behind, in the walk order the list is in —
@@ -412,9 +451,32 @@ export function GroceryScreen() {
       // itself finds nothing left to record.
       if (shopId && unavailableIds.length > 0) markItemsUnavailable(unavailableIds, shopId);
       if (finishShopping(shopId) > 0) haptics.success();
+      // Unconditional, and deliberately not inside finishShopping: that
+      // early-returns on an empty trolley, and finishing a shop you bought
+      // nothing at still ends the trip you were on.
+      endTrip();
       setCartOpen(false);
     },
-    [finishShopping, markItemsUnavailable]
+    [finishShopping, markItemsUnavailable, endTrip]
+  );
+
+  const handleClearTrip = useCallback(() => {
+    animateLayout();
+    endTrip();
+  }, [endTrip]);
+
+  // Starting a trip and planning one are different verbs on the same sheet:
+  // the confirm below makes a task for later, this says you're there now. Only
+  // ever one store — you can only stand in one — so the sheet offers it for a
+  // single selection and the planner keeps the multi-stop case.
+  const handleStartTrip = useCallback(
+    (shop: Shop) => {
+      animateLayout();
+      startTrip(shop.id);
+      haptics.success();
+      setTripOpen(false);
+    },
+    [startTrip]
   );
 
   const confirmClear = useCallback(() => {
@@ -602,10 +664,11 @@ export function GroceryScreen() {
               : undefined
           }
           alternatives={alternativeCaptionById.get(row.item.id)}
+          storeMarker={storeMarkers.get(row.item.id)}
         />
       );
     },
-    [styles, colors, cartOpen, handleToggle, handleEdit, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, recipeIds, openRecipe, alternativeCaptionById]
+    [styles, colors, cartOpen, handleToggle, handleEdit, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, recipeIds, openRecipe, alternativeCaptionById, storeMarkers]
   );
 
   return (
@@ -620,6 +683,18 @@ export function GroceryScreen() {
         actions={actions}
       />
       <GroceriesHubPills active="Groceries" />
+      {/* A sibling of the list, not its header: the one thing on screen saying
+          why rows have started naming other stores has to still be there when
+          you're looking at such a row, and a way out of a mode shouldn't have
+          to be scrolled back to. Hidden while selecting, like the card below
+          and every header action. */}
+      {!selectionMode && !!activeTripShop && (
+        <ActiveTripBanner
+          shopName={activeTripShop.name}
+          onChange={() => setTripOpen(true)}
+          onClear={handleClearTrip}
+        />
+      )}
 
       <FabDropZoneProvider
         ref={dropZonesRef}
@@ -649,8 +724,14 @@ export function GroceryScreen() {
         // header can go here — see ReorderableList.ListHeaderComponent, where
         // one hung in the container silently offsets the drag math. Hidden
         // while selecting, like every header action is.
+        // The banner replaces it outright once a trip is running: the card is
+        // for deciding where to go, and the banner says you've gone. Two cards
+        // about one trip would be the "two controls for one plan" the card's
+        // own note warns about.
         ListHeaderComponent={
-          selectionMode ? null : <TripSuggestionCard onPress={() => setTripOpen(true)} />
+          selectionMode || activeTripShop ? null : (
+            <TripSuggestionCard onPress={() => setTripOpen(true)} />
+          )
         }
         // Nothing in the footer applies to an empty list, and the tab-bar
         // spacer would take its height off the box the empty state centres in
@@ -765,6 +846,7 @@ export function GroceryScreen() {
         visible={tripOpen}
         onClose={() => setTripOpen(false)}
         onCreate={createGroceryTasks}
+        onStart={handleStartTrip}
       />
       <GroceryItemSheet
         visible={editingId !== null}

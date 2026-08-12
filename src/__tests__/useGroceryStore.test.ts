@@ -21,6 +21,9 @@ import {
   dbDeleteItemShopLink,
   dbGetLastShopId,
   dbSetLastShopId,
+  dbGetTripShopId,
+  dbGetTripStartedAt,
+  dbSetTrip,
   dbGetAllRecipes,
   dbUpdateRecipe,
 } from '../db/database';
@@ -51,6 +54,9 @@ jest.mock('../db/database', () => ({
   dbDeleteItemShopLink: jest.fn(),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
   dbSetLastShopId: jest.fn(),
+  dbGetTripShopId: jest.fn().mockReturnValue(null),
+  dbGetTripStartedAt: jest.fn().mockReturnValue(null),
+  dbSetTrip: jest.fn(),
   // Runs the body inline — these tests assert on store state, not on
   // transaction boundaries, and a no-op wrapper would silently skip the work.
   dbTransaction: jest.fn((fn: () => void) => fn()),
@@ -160,6 +166,8 @@ function seed(
     aisleOverrides?: Record<string, string>;
     shops?: Shop[];
     itemShops?: ItemShopLink[];
+    tripShopId?: string | null;
+    tripStartedAt?: string | null;
   } = {}
 ) {
   useGroceryStore.setState({
@@ -170,6 +178,8 @@ function seed(
     shops: extra.shops ?? [],
     itemShops: extra.itemShops ?? [],
     lastShopId: null,
+    tripShopId: extra.tripShopId ?? null,
+    tripStartedAt: extra.tripStartedAt ?? null,
     cartHoldIds: [],
     initialized: true,
   });
@@ -186,6 +196,8 @@ beforeEach(() => {
   (dbGetAllGroceryShops as jest.Mock).mockReturnValue([]);
   (dbGetAllItemShopLinks as jest.Mock).mockReturnValue([]);
   (dbGetLastShopId as jest.Mock).mockReturnValue(null);
+  (dbGetTripShopId as jest.Mock).mockReturnValue(null);
+  (dbGetTripStartedAt as jest.Mock).mockReturnValue(null);
   mockTaskState.tasks = [];
   mockUseUpTasks = false;
   mockUseUpLeadDays = 1;
@@ -2093,5 +2105,166 @@ describe('use-up tasks', () => {
       expect(useUpTaskFor(spinach.id)).toBeDefined();
       expect(mockTaskState.tasks.filter(t => t.groceryItemId === spinach.id)).toHaveLength(2);
     });
+  });
+});
+
+describe('the active trip', () => {
+  const HOUR = 60 * 60 * 1000;
+
+  it('starts a trip at a live store and persists both halves', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco] });
+
+    useGroceryStore.getState().startTrip(costco.id);
+
+    const state = useGroceryStore.getState();
+    expect(state.tripShopId).toBe(costco.id);
+    expect(state.tripStartedAt).not.toBeNull();
+    expect(dbSetTrip).toHaveBeenCalledWith(costco.id, state.tripStartedAt);
+  });
+
+  it('refuses to start a trip at a store that does not exist', () => {
+    seed([], { shops: [] });
+
+    useGroceryStore.getState().startTrip('shop-gone');
+
+    expect(useGroceryStore.getState().tripShopId).toBeNull();
+    expect(dbSetTrip).not.toHaveBeenCalled();
+  });
+
+  it('ends a trip', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco], tripShopId: costco.id, tripStartedAt: new Date().toISOString() });
+
+    useGroceryStore.getState().endTrip();
+
+    expect(useGroceryStore.getState().tripShopId).toBeNull();
+    expect(useGroceryStore.getState().tripStartedAt).toBeNull();
+    expect(dbSetTrip).toHaveBeenCalledWith(null, null);
+  });
+
+  it('ending a trip that is not running writes nothing', () => {
+    seed([], { shops: [] });
+
+    useGroceryStore.getState().endTrip();
+
+    expect(dbSetTrip).not.toHaveBeenCalled();
+  });
+
+  it('activeShop resolves a live trip', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco], tripShopId: costco.id, tripStartedAt: new Date().toISOString() });
+
+    expect(useGroceryStore.getState().activeShop()?.id).toBe(costco.id);
+  });
+
+  // The whole point of the stamp: yesterday's trip is not today's.
+  it('activeShop refuses a trip that has aged out', () => {
+    const costco = makeShop('Costco');
+    seed([], {
+      shops: [costco],
+      tripShopId: costco.id,
+      tripStartedAt: new Date(Date.now() - 12 * HOUR).toISOString(),
+    });
+
+    expect(useGroceryStore.getState().activeShop()).toBeNull();
+  });
+
+  it('checkTripExpiry clears an aged-out trip', () => {
+    const costco = makeShop('Costco');
+    seed([], {
+      shops: [costco],
+      tripShopId: costco.id,
+      tripStartedAt: new Date(Date.now() - 12 * HOUR).toISOString(),
+    });
+
+    useGroceryStore.getState().checkTripExpiry();
+
+    expect(useGroceryStore.getState().tripShopId).toBeNull();
+    expect(dbSetTrip).toHaveBeenCalledWith(null, null);
+  });
+
+  it('checkTripExpiry leaves a running trip alone', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco], tripShopId: costco.id, tripStartedAt: new Date().toISOString() });
+
+    useGroceryStore.getState().checkTripExpiry();
+
+    expect(useGroceryStore.getState().tripShopId).toBe(costco.id);
+    expect(dbSetTrip).not.toHaveBeenCalled();
+  });
+
+  it('deleting the store you are shopping at ends the trip', () => {
+    const costco = makeShop('Costco');
+    seed([], { shops: [costco], tripShopId: costco.id, tripStartedAt: new Date().toISOString() });
+
+    useGroceryStore.getState().deleteShop(costco.id);
+
+    expect(useGroceryStore.getState().tripShopId).toBeNull();
+    expect(useGroceryStore.getState().tripStartedAt).toBeNull();
+    expect(dbSetTrip).toHaveBeenCalledWith(null, null);
+  });
+
+  it('deleting a different store leaves the trip running', () => {
+    const costco = makeShop('Costco');
+    const safeway = makeShop('Safeway');
+    seed([], {
+      shops: [costco, safeway],
+      tripShopId: costco.id,
+      tripStartedAt: new Date().toISOString(),
+    });
+
+    useGroceryStore.getState().deleteShop(safeway.id);
+
+    expect(useGroceryStore.getState().tripShopId).toBe(costco.id);
+    expect(dbSetTrip).not.toHaveBeenCalled();
+  });
+
+  it('clearing the list ends the trip', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: true });
+    (dbClearGroceryList as jest.Mock).mockReturnValue([milk.id]);
+    seed([milk], { shops: [costco], tripShopId: costco.id, tripStartedAt: new Date().toISOString() });
+
+    useGroceryStore.getState().clearList();
+
+    expect(useGroceryStore.getState().tripShopId).toBeNull();
+  });
+
+  it('initialize restores a trip that is still running', () => {
+    const costco = makeShop('Costco');
+    const startedAt = new Date(Date.now() - HOUR).toISOString();
+    (dbGetAllGroceryShops as jest.Mock).mockReturnValue([costco]);
+    (dbGetTripShopId as jest.Mock).mockReturnValue(costco.id);
+    (dbGetTripStartedAt as jest.Mock).mockReturnValue(startedAt);
+
+    useGroceryStore.getState().initialize();
+
+    expect(useGroceryStore.getState().tripShopId).toBe(costco.id);
+    expect(useGroceryStore.getState().tripStartedAt).toBe(startedAt);
+  });
+
+  // Repaired at read time and not written back, like the aisle order.
+  it('initialize drops a trip that aged out while the app was closed', () => {
+    const costco = makeShop('Costco');
+    (dbGetAllGroceryShops as jest.Mock).mockReturnValue([costco]);
+    (dbGetTripShopId as jest.Mock).mockReturnValue(costco.id);
+    (dbGetTripStartedAt as jest.Mock).mockReturnValue(new Date(Date.now() - 12 * HOUR).toISOString());
+
+    useGroceryStore.getState().initialize();
+
+    expect(useGroceryStore.getState().tripShopId).toBeNull();
+    expect(useGroceryStore.getState().tripStartedAt).toBeNull();
+    expect(dbSetTrip).not.toHaveBeenCalled();
+  });
+
+  it('initialize drops a trip whose store is gone', () => {
+    (dbGetAllGroceryShops as jest.Mock).mockReturnValue([]);
+    (dbGetTripShopId as jest.Mock).mockReturnValue('shop-gone');
+    (dbGetTripStartedAt as jest.Mock).mockReturnValue(new Date().toISOString());
+
+    useGroceryStore.getState().initialize();
+
+    expect(useGroceryStore.getState().tripShopId).toBeNull();
   });
 });

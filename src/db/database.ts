@@ -2109,6 +2109,29 @@ export function dbSetLastShopId(id: string | null): void {
   dbSetSetting('grocery_last_shop_id', id ?? '');
 }
 
+// The trip happening right now — the store you're standing in, and when you
+// said so. Two keys rather than one JSON blob, following vacationMode/
+// vacationEnd, which is the same shape: a mode plus the stamp that ends it.
+// They are only ever written together (startTrip/endTrip), and a read missing
+// either half is no trip, so they can't drift into a half-state.
+//
+// Nothing here decides whether the trip is still live — utils/activeTrip.ts
+// does, against the clock, so a trip left running when the app closed is over
+// by the time anything asks. Restoring a month-old backup resurrects these two
+// rows and that's fine for the same reason.
+export function dbGetTripShopId(): string | null {
+  return dbGetSetting('grocery_trip_shop_id') || null;
+}
+
+export function dbGetTripStartedAt(): string | null {
+  return dbGetSetting('grocery_trip_started_at') || null;
+}
+
+export function dbSetTrip(shopId: string | null, startedAt: string | null): void {
+  dbSetSetting('grocery_trip_shop_id', shopId ?? '');
+  dbSetSetting('grocery_trip_started_at', startedAt ?? '');
+}
+
 // ─── Projects ───────────────────────────────────────────────────────────────
 
 function rowToProject(row: Record<string, unknown>): Project {

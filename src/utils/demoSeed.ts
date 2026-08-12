@@ -752,6 +752,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     linkItemShopMany,
     markItemsUnavailable,
     setShopExcludedFromSuggestions,
+    startTrip,
     itemById,
   } = useGroceryStore.getState();
 
@@ -888,7 +889,7 @@ function seedGroceries(recipes: DemoRecipes): void {
   // on the list as themselves; Cheddar, Sparkling water and Ice cream were
   // never bought or linked, so clearList dropped them — they're typed fresh,
   // same as a name nobody has shopped for yet.
-  const ON_LIST_EXISTING = ['Milk', 'Eggs', 'Bananas', 'Bread', 'Tortillas'];
+  const ON_LIST_EXISTING = ['Milk', 'Eggs', 'Bananas', 'Bread', 'Tortillas', 'Peanut butter'];
   addExistingMany(idsNamed(ON_LIST_EXISTING));
   ['Cheddar', 'Sparkling water', 'Ice cream'].forEach(name =>
     addByName(name, undefined, undefined, { registerUndo: false })
@@ -910,6 +911,14 @@ function seedGroceries(recipes: DemoRecipes): void {
     sourceRecipeId: recipes.stirFry,
     sourceRecipeTitle: 'Weeknight chicken stir-fry',
   })));
+
+  // ...and you're at Trader Joe's right now, which is the only state in which
+  // the list says anything about stores. Two of the three things a row can say
+  // are on screen because of it: Tortillas are marked as not stocked here, and
+  // Peanut butter is on record at Costco alone. The third ("Usually X") can't
+  // be seeded honestly — it needs an item bought at two stores while you stand
+  // in a third, and this demo has two stores anyone would shop at.
+  startTrip(traderJoes.id);
 }
 
 // ---------------------------------------------------------------------------
