@@ -64,12 +64,11 @@ interface Props {
  * haven't shopped that way — not a store without bread. That's why no string
  * in this file asserts an absence: rows say "seen here", the gap card says
  * these items "haven't come from" the store before, and the total says "at
- * least". `shoppingTrip.ts` supplies the softer half — items a store probably
- * has, on the evidence of aisles it demonstrably stocks — which is the only
- * way a shop you've recorded twice can ever climb past one you've recorded
- * four hundred times. The footnote under the list says both things plainly,
- * because a ranking that looks authoritative is exactly the one worth
- * undercutting.
+ * least". The footnote under the list says so plainly, because a ranking that
+ * looks authoritative is exactly the one worth undercutting — and the
+ * correction flow below is where a hedge gets answered, by the only party who
+ * can: "Actually, it has more" writes what the user knows, rather than the app
+ * inferring it.
  *
  * **One kind of line here does assert an absence**, and only because the user
  * asserted it first: an item they marked as not stocked when they finished a
@@ -363,10 +362,14 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
                                 : 'them all'
                               : `${missingGain} of them`
                           }.`
-                        : `${next[0].shop.name} stocks that aisle, so it’s the likeliest bet.`}
+                        : // Nothing suggested closes the marked items, so the
+                          // stop is worth making for the rest of the gap
+                          // instead — the greedy walk only ever picks a store
+                          // that covers something on record.
+                          `${next[0].shop.name} doesn’t, but it has ${gapGain} of the rest.`}
                     </Text>
                   </>
-                ) : summary.gap.length > 0 ? (
+                ) : (
                   <>
                     {/* A fact about your history, not about the shop's shelves:
                         the app has no idea whether the selected store stocks
@@ -376,27 +379,17 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
                       {summary.gap.length === 1 ? 'hasn’t' : 'haven’t'} come from {selectedNames}{' '}
                       before.
                     </Text>
+                    {/* Reached only when there's a gap and nothing marked as
+                        not stocked, and the walk only suggests a store that
+                        covers some of it — so this count is never zero. */}
                     <Text style={styles.suggestionSub}>
-                      {gapGain > 0
-                        ? `${next[0].shop.name} has ${
-                            gapGain === summary.gap.length
-                              ? summary.gap.length === 1
-                                ? 'it'
-                                : 'them all'
-                              : `${gapGain} of them`
-                          }.`
-                        : `${next[0].shop.name} stocks that aisle, so it probably has ${
-                            summary.gap.length === 1 ? 'it' : 'some'
-                          }.`}
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.suggestionTitle}>
-                      No store on record has {namesFor(summary.maybe)}.
-                    </Text>
-                    <Text style={styles.suggestionSub}>
-                      {next[0].shop.name} stocks that aisle, so it’s the likeliest bet.
+                      {`${next[0].shop.name} has ${
+                        gapGain === summary.gap.length
+                          ? summary.gap.length === 1
+                            ? 'it'
+                            : 'them all'
+                          : `${gapGain} of them`
+                      }.`}
                     </Text>
                   </>
                 )}
@@ -446,7 +439,6 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
                 title={entry.shop.name}
                 subtitle={describeShopCoverage(entry, total)}
                 progress={total > 0 ? entry.itemIds.length / total : 0}
-                likelyProgress={total > 0 ? entry.likelyItemIds.length / total : 0}
                 selected={selected.includes(entry.shop.id)}
                 onPress={() => toggle(entry.shop.id)}
               />
@@ -486,11 +478,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
                   ? 'No store picked — the task won’t name one.'
                   : summary.covered.length === total
                     ? `${selectedNames} covers your whole list.`
-                    : `${selectedNames} covers at least ${summary.covered.length} of ${total}${
-                        summary.likely.length > 0
-                          ? `, and probably ${summary.covered.length + summary.likely.length}`
-                          : ''
-                      }.`}
+                    : `${selectedNames} covers at least ${summary.covered.length} of ${total}.`}
               </Text>
               {summary.missing.length > 0 && (
                 // Stated flatly, unlike every other line in this footer: this
@@ -524,7 +512,6 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
               )}
               <Text style={styles.footerNote}>
                 These counts are only what you’ve bought or noted — a store may well carry more.
-                “Likely” means it stocks that aisle.
               </Text>
             </View>
           )}
@@ -551,7 +538,6 @@ function Row({
   title,
   subtitle,
   progress,
-  likelyProgress = 0,
   selected,
   first = false,
   onPress,
@@ -561,7 +547,6 @@ function Row({
   title: string;
   subtitle: string | null;
   progress?: number;
-  likelyProgress?: number;
   selected: boolean;
   first?: boolean;
   onPress: () => void;
@@ -584,15 +569,13 @@ function Row({
         </Text>
         {!!subtitle && <Text style={styles.rowSub}>{subtitle}</Text>}
       </View>
-      {progress !== undefined && progress + likelyProgress > 0 && (
-        // Not `ProgressBar`: this is two segments, and which half is which is
-        // the entire point — a solid run of what you've actually bought here,
-        // then a faded run of what the store's aisles suggest. One fill would
-        // have to either drop the guess or launder it into the known count.
+      {progress !== undefined && progress > 0 && (
+        // One fill, and only ever what's on record here: a bar you can rank
+        // the stores by at a glance. It used to carry a second faded segment
+        // for the aisle guess, which is gone — see shoppingTrip.ts.
         <View style={styles.bar}>
           <View style={[styles.barFill, { flex: clamp(progress) }]} />
-          <View style={[styles.barLikely, { flex: clamp(likelyProgress) }]} />
-          <View style={{ flex: Math.max(0, 1 - clamp(progress) - clamp(likelyProgress)) }} />
+          <View style={{ flex: Math.max(0, 1 - clamp(progress)) }} />
         </View>
       )}
     </TouchableOpacity>
@@ -702,7 +685,6 @@ function makeStyles(colors: Colors) {
     barFill: { backgroundColor: colors.accent },
     // Same hue, half-present — a guess reading as a quieter version of the
     // fact it sits next to, rather than as a different measurement.
-    barLikely: { backgroundColor: colors.accent + '59' },
     footer: { marginTop: spacing.lg },
     // alignSelf rather than aligning the whole footer: the notes around it are
     // full-width paragraphs and must keep wrapping at the sheet's width.

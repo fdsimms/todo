@@ -448,7 +448,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const plan = planTrip(items, itemShops, shops);
     expect(plan.coverage.length).toBeGreaterThanOrEqual(2);
     expect(
-      describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length)
+      describeTripSuggestion(
+        summarizeTrip([], plan).suggestion,
+        plan.itemIds.length,
+        new Map(items.map(i => [i.id, i.name]))
+      )
     ).not.toBeNull();
   });
 

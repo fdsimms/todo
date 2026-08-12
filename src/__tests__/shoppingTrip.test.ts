@@ -5,8 +5,6 @@ import {
   describeTripSuggestion,
   joinNames,
   MAX_TRIP_STOPS,
-  SHOP_RECORD_MIN,
-  AISLE_EVIDENCE_MIN,
   type ShopCoverage,
 } from '../utils/shoppingTrip';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -62,7 +60,7 @@ function link(itemId: string, shopId: string, purchaseCount = 1): ItemShopLink {
   };
 }
 
-/** The user's own "they don't have it", which no aisle guess may overrule. */
+/** The user's own "they don't have it" — the only negative in the module. */
 function notAt(itemId: string, shopId: string, purchaseCount = 0): ItemShopLink {
   return {
     itemId,
@@ -174,109 +172,67 @@ describe('planTrip', () => {
   });
 });
 
-describe('planTrip — the aisle guess', () => {
+describe('planTrip — what a store is never credited with', () => {
   // A store with a broad record in one aisle, and one on-list item from that
-  // aisle it has never been seen with.
+  // aisle it has never been seen with. This used to earn the store credit for
+  // it ("likely", on aisle evidence); the guess is gone and this pins that.
   const bagels = makeItem('bagels', { aisle: 'Bakery' });
   const rye = makeItem('rye', { aisle: 'Bakery' });
   const baguette = makeItem('baguette', { aisle: 'Bakery' });
   const apples = makeItem('apples', { aisle: 'Produce' });
 
-  function bakeryRecord(shop: Shop, count: number): ItemShopLink[] {
-    return [rye, baguette, apples].slice(0, count).map(i => link(i.id, shop.id, 1));
+  function bakeryRecord(shop: Shop): ItemShopLink[] {
+    return [rye, baguette, apples].map(i => link(i.id, shop.id, 1));
   }
 
-  it('credits an item it has never seen, when the store stocks that aisle', () => {
+  it('never credits a store with an item it has not been seen with', () => {
     const catalog = [bagels, rye, baguette, apples].map(i => ({ ...i, onList: i.id === bagels.id }));
-    const plan = planTrip(catalog, bakeryRecord(union, 3), [union]);
+    const plan = planTrip(catalog, bakeryRecord(union), [union]);
+    expect(plan.coverage[0].itemIds).toEqual([]);
+    // Stocking the whole aisle is not the same as having sold you this.
+    expect(plan.coverage[0].recordedItems).toBe(3);
+  });
+
+  it('ranks the store that has been seen with it, aisles notwithstanding', () => {
+    const broad = makeShop('Big Market', 1);
+    const knower = makeShop('Corner Shop', 2);
+    const catalog = [bagels, rye, baguette, apples].map(i => ({ ...i, onList: i.id === bagels.id }));
+    const plan = planTrip(
+      catalog,
+      [...bakeryRecord(broad), link(bagels.id, knower.id, 1)],
+      [broad, knower]
+    );
+    expect(plan.coverage.map(c => c.shop.name)).toEqual(['Corner Shop', 'Big Market']);
+  });
+
+  it('keeps a stated absence out of the record as well as the coverage', () => {
+    const catalog = [bagels, rye, baguette, apples].map(i => ({ ...i, onList: i.id === bagels.id }));
+    const plan = planTrip(
+      catalog,
+      [...bakeryRecord(union), notAt(bagels.id, union.id)],
+      [union]
+    );
     const entry = plan.coverage[0];
     expect(entry.itemIds).toEqual([]);
-    expect(entry.likelyItemIds).toEqual([bagels.id]);
-  });
-
-  it('needs more than one item from the aisle before it claims one', () => {
-    const catalog = [bagels, rye, baguette, apples].map(i => ({ ...i, onList: i.id === bagels.id }));
-    // Three items on record, but only one of them from Bakery.
-    const thin = [link(rye.id, union.id, 1), link(apples.id, union.id, 1), link(milk.id, union.id, 1)];
-    const plan = planTrip([...catalog, milk], thin, [union]);
-    expect(plan.coverage[0].likelyItemIds).toEqual([]);
-    expect(AISLE_EVIDENCE_MIN).toBe(2);
-  });
-
-  it('stays quiet about a store the app has barely seen', () => {
-    const catalog = [bagels, rye, baguette].map(i => ({ ...i, onList: i.id === bagels.id }));
-    const plan = planTrip(catalog, bakeryRecord(union, SHOP_RECORD_MIN - 1), [union]);
-    expect(plan.coverage[0].likelyItemIds).toEqual([]);
-  });
-
-  it('never guesses from Other, which is the bucket every unknown name lands in', () => {
-    const odds = [makeItem('a'), makeItem('b'), makeItem('c')];
-    const target = makeItem('something odd');
-    const catalog = [...odds.map(i => ({ ...i, onList: false })), target];
-    const plan = planTrip(
-      catalog,
-      odds.map(i => link(i.id, union.id, 1)),
-      [union]
-    );
-    expect(plan.coverage[0].likelyItemIds).toEqual([]);
-  });
-
-  it('never folds the guess into what was seen', () => {
-    const catalog = [bagels, rye, baguette, apples].map(i => ({ ...i, onList: true }));
-    const plan = planTrip(catalog, bakeryRecord(union, 3), [union]);
-    const entry = plan.coverage[0];
-    expect(entry.itemIds).toEqual([rye.id, baguette.id, apples.id]);
-    expect(entry.likelyItemIds).toEqual([bagels.id]);
-  });
-
-  it('never guesses an item the user said the store does not have', () => {
-    const catalog = [bagels, rye, baguette, apples].map(i => ({ ...i, onList: i.id === bagels.id }));
-    const plan = planTrip(
-      catalog,
-      [...bakeryRecord(union, 3), notAt(bagels.id, union.id)],
-      [union]
-    );
-    const entry = plan.coverage[0];
-    expect(entry.likelyItemIds).toEqual([]);
     expect(entry.unavailableItemIds).toEqual([bagels.id]);
+    // Knowing a shop lacks something is not knowing its range.
+    expect(entry.recordedItems).toBe(3);
   });
 
-  it('does not let negatives alone earn a store the right to guess', () => {
+  it('gives a store with nothing but negatives no record at all', () => {
     const catalog = [bagels, rye, baguette, apples].map(i => ({ ...i, onList: i.id === bagels.id }));
-    // Three Bakery items on record, all of them "they don't have it" — which is
-    // knowledge about the shop but not about its range.
     const plan = planTrip(
       catalog,
       [rye, baguette, apples].map(i => notAt(i.id, union.id)),
       [union]
     );
     expect(plan.coverage[0].recordedItems).toBe(0);
-    expect(plan.coverage[0].likelyItemIds).toEqual([]);
+    expect(plan.coverage[0].itemIds).toEqual([]);
   });
 
-  it('ranks a known item over a guessed one', () => {
-    const guesser = makeShop('Big Market', 1);
-    const knower = makeShop('Corner Shop', 2);
-    const catalog = [bagels, rye, baguette, apples].map(i => ({ ...i, onList: i.id === bagels.id }));
-    const plan = planTrip(
-      catalog,
-      [...bakeryRecord(guesser, 3), link(bagels.id, knower.id, 1)],
-      [guesser, knower]
-    );
-    expect(plan.coverage.map(c => c.shop.name)).toEqual(['Corner Shop', 'Big Market']);
-  });
-
-  it('lets the aisle guess break a tie between two stores with nothing seen', () => {
-    const stocks = makeShop('Bakery-ish', 1);
-    const doesnt = makeShop('Hardware-ish', 2);
-    const catalog = [bagels, rye, baguette, apples].map(i => ({ ...i, onList: i.id === bagels.id }));
-    const plan = planTrip(
-      catalog,
-      [...bakeryRecord(stocks, 3), ...[rye, apples, milk].map(i => link(i.id, doesnt.id, 1))],
-      [stocks, doesnt]
-    );
-    // Neither has ever sold the user a bagel; only one of them sells bakery.
-    expect(plan.coverage[0].shop.name).toBe('Bakery-ish');
+  it('ignores a link naming an item that is no longer in the catalog', () => {
+    const plan = planTrip(LIST, [...LINKS, link('item-gone', tj.id, 3)], SHOPS);
+    expect(plan.coverage[0].recordedItems).toBe(3);
   });
 });
 
@@ -348,19 +304,19 @@ describe('summarizeTrip', () => {
     expect(summary.suggestion.map(s => s.shop.name)).toEqual(['Ballard Pharmacy']);
   });
 
-  it('prefers "probably" from one picked store over "not there" at another', () => {
+  it('lets one picked store’s "not there" stand when the others say nothing', () => {
     const bagels = makeItem('bagels', { aisle: 'Bakery' });
     const rye = makeItem('rye', { aisle: 'Bakery', onList: false });
-    const baguette = makeItem('baguette', { aisle: 'Bakery', onList: false });
-    const apples = makeItem('apples', { aisle: 'Produce', onList: false });
     const built = planTrip(
-      [bagels, rye, baguette, apples],
-      [...[rye, baguette, apples].map(i => link(i.id, union.id, 1)), notAt(bagels.id, tj.id)],
+      [bagels, rye],
+      [link(rye.id, union.id, 1), notAt(bagels.id, tj.id)],
       [union, tj]
     );
     const summary = summarizeTrip([union.id, tj.id], built);
-    expect(summary.likely).toEqual([bagels.id]);
-    expect(summary.missing).toEqual([]);
+    // Union Market has never been seen with bagels, so it has nothing to say;
+    // the one store that does have an answer said no.
+    expect(summary.missing).toEqual([bagels.id]);
+    expect(summary.covered).toEqual([]);
   });
 
   it('caps the whole trip at three stops', () => {
@@ -389,23 +345,7 @@ describe('summarizeTrip', () => {
     expect(summary.suggestion[0].shop.name).toBe("Trader Joe's");
   });
 
-  it('keeps a guessed item out of the covered count and in its own bucket', () => {
-    const bagels = makeItem('bagels', { aisle: 'Bakery' });
-    const rye = makeItem('rye', { aisle: 'Bakery', onList: false });
-    const baguette = makeItem('baguette', { aisle: 'Bakery', onList: false });
-    const apples = makeItem('apples', { aisle: 'Produce', onList: false });
-    const built = planTrip(
-      [bagels, rye, baguette, apples],
-      [rye, baguette, apples].map(i => link(i.id, union.id, 1)),
-      [union]
-    );
-    const summary = summarizeTrip([union.id], built);
-    expect(summary.covered).toEqual([]);
-    expect(summary.likely).toEqual([bagels.id]);
-    expect(summary.unknown).toEqual([]);
-  });
-
-  it('calls an item unknown only when nothing anywhere speaks to it', () => {
+  it('calls an item unknown whenever nothing has been bought anywhere', () => {
     const bagels = makeItem('bagels', { aisle: 'Bakery' });
     const rye = makeItem('rye', { aisle: 'Bakery', onList: false });
     const baguette = makeItem('baguette', { aisle: 'Bakery', onList: false });
@@ -416,11 +356,11 @@ describe('summarizeTrip', () => {
       [union, tj]
     );
     const summary = summarizeTrip([tj.id], built);
-    // The bakery-stocking store hasn't been picked, so bagels is a maybe
-    // rather than an unknown — the app has *something* to say about it.
-    expect(summary.maybe).toEqual([bagels.id]);
-    expect(summary.unknown).toEqual([saffron.id]);
-    expect(summary.suggestion.map(s => s.shop.name)).toEqual(['Union Market']);
+    // Union Market's bakery record used to make bagels a "maybe" and earn it a
+    // second stop. Nothing has ever been bought there *from the list*, so
+    // there's nothing to send you across town for.
+    expect(summary.unknown).toEqual([bagels.id, saffron.id]);
+    expect(summary.suggestion).toEqual([]);
   });
 
   it('has nothing to suggest when no store carries anything on the list', () => {
@@ -432,11 +372,10 @@ describe('summarizeTrip', () => {
 });
 
 describe('describeShopCoverage', () => {
-  function entry(known: number, likely = 0, recordedItems = 20, absent = 0): ShopCoverage {
+  function entry(known: number, recordedItems = 20, absent = 0): ShopCoverage {
     return {
       shop: tj,
       itemIds: Array.from({ length: known }, (_, i) => `k${i}`),
-      likelyItemIds: Array.from({ length: likely }, (_, i) => `l${i}`),
       unavailableItemIds: Array.from({ length: absent }, (_, i) => `n${i}`),
       assertedCount: 0,
       observedPurchases: 0,
@@ -456,29 +395,22 @@ describe('describeShopCoverage', () => {
     expect(describeShopCoverage(entry(9), 12)).toBe('9 of 12 seen here');
   });
 
-  it('keeps the guess in its own clause', () => {
-    expect(describeShopCoverage(entry(9, 2), 12)).toBe('9 of 12 seen here · 2 more likely');
-  });
-
   it('never claims a store lacks the list — only that nothing was seen', () => {
     expect(describeShopCoverage(entry(0), 12)).toBe('None of your list seen here');
   });
 
   it('distinguishes a store the app knows nothing about', () => {
-    expect(describeShopCoverage(entry(0, 0, 0), 12)).toBe('Nothing on record here yet');
+    expect(describeShopCoverage(entry(0, 0), 12)).toBe('Nothing on record here yet');
   });
 
   it('states the stated absences last, as their own clause', () => {
-    expect(describeShopCoverage(entry(9, 2, 20, 1), 12)).toBe(
-      '9 of 12 seen here · 2 more likely · 1 they don’t have'
-    );
-    expect(describeShopCoverage(entry(9, 0, 20, 3), 12)).toBe(
+    expect(describeShopCoverage(entry(9, 20, 3), 12)).toBe(
       '9 of 12 seen here · 3 they don’t have'
     );
   });
 
   it('does not say "nothing on record yet" about a store you have answered for', () => {
-    expect(describeShopCoverage(entry(0, 0, 0, 2), 12)).toBe(
+    expect(describeShopCoverage(entry(0, 0, 2), 12)).toBe(
       'Nothing on record here to go on · 2 they don’t have'
     );
   });
@@ -499,11 +431,12 @@ describe('joinNames', () => {
 });
 
 describe('describeTripSuggestion', () => {
-  function cover(shop: Shop, itemIds: string[], likelyItemIds: string[] = []): ShopCoverage {
+  const NAMES = new Map(LIST.map(i => [i.id, i.name]));
+
+  function cover(shop: Shop, itemIds: string[]): ShopCoverage {
     return {
       shop,
       itemIds,
-      likelyItemIds,
       unavailableItemIds: [],
       assertedCount: 0,
       observedPurchases: 0,
@@ -511,70 +444,72 @@ describe('describeTripSuggestion', () => {
     };
   }
 
-  it('names the stops in visit order and counts what is on record', () => {
+  it('names the stops in visit order, then the items they account for', () => {
     const copy = describeTripSuggestion(
       [cover(tj, [milk.id, bread.id, eggs.id]), cover(pharmacy, [shampoo.id])],
-      5
+      5,
+      NAMES
     );
     expect(copy).toEqual({
       stores: "Trader Joe's, then Ballard Pharmacy",
-      detail: 'Between them, you’ve got 4 of 5 items before',
+      detail: 'Likely have 4/5 items on your list: milk, bread, eggs and 1 more',
     });
   });
 
   it('reads as one stop when one store is enough', () => {
-    expect(describeTripSuggestion([cover(tj, [milk.id, bread.id])], 5)?.detail).toBe(
-      'You’ve got 2 of 5 items there before'
+    expect(describeTripSuggestion([cover(tj, [milk.id, bread.id])], 5, NAMES)?.detail).toBe(
+      'Likely has 2/5 items on your list: milk and bread'
     );
   });
 
-  it('names a full cover rather than counting it out', () => {
-    expect(describeTripSuggestion([cover(tj, [milk.id, bread.id])], 2)?.detail).toBe(
-      'You’ve got all 2 items there before'
+  it('names a full cover rather than listing it out', () => {
+    // Naming them would be reading the list back to someone looking at it.
+    expect(describeTripSuggestion([cover(tj, [milk.id, bread.id])], 2, NAMES)?.detail).toBe(
+      'Likely has all 2 items on your list'
     );
     expect(
-      describeTripSuggestion([cover(tj, [milk.id]), cover(pharmacy, [shampoo.id])], 2)?.detail
-    ).toBe('Between them, you’ve got all 2 items there before');
+      describeTripSuggestion([cover(tj, [milk.id]), cover(pharmacy, [shampoo.id])], 2, NAMES)
+        ?.detail
+    ).toBe('Likely have all 2 items on your list');
   });
 
-  it('keeps the guess in its own clause', () => {
-    expect(describeTripSuggestion([cover(tj, [milk.id], [bread.id, eggs.id])], 5)?.detail).toBe(
-      'You’ve got 1 of 5 items there before · 2 more likely'
+  it('says "the one item" rather than counting to one', () => {
+    expect(describeTripSuggestion([cover(tj, [milk.id])], 1, NAMES)?.detail).toBe(
+      'Likely has the one item on your list'
     );
   });
 
-  it('never counts a known item as another stop’s guess', () => {
-    // The pharmacy's aisles suggest bread, but Trader Joe's is known to have
-    // it — one item, and the known half is where it belongs.
+  it('counts an item covered by two stops once', () => {
     const copy = describeTripSuggestion(
-      [cover(tj, [milk.id, bread.id]), cover(pharmacy, [shampoo.id], [bread.id])],
-      5
+      [cover(tj, [milk.id, bread.id]), cover(pharmacy, [bread.id, shampoo.id])],
+      5,
+      NAMES
     );
-    expect(copy?.detail).toBe('Between them, you’ve got 3 of 5 items before');
+    expect(copy?.detail).toBe('Likely have 3/5 items on your list: milk, bread and shampoo');
   });
 
-  it('labels a suggestion resting entirely on the aisle guess', () => {
-    expect(describeTripSuggestion([cover(union, [], [milk.id, bread.id])], 5)).toEqual({
-      stores: 'Union Market',
-      detail: '2 of these 5 likely, on the aisles it stocks',
-    });
-    expect(
-      describeTripSuggestion([cover(union, [], [milk.id]), cover(tj, [], [bread.id])], 5)?.detail
-    ).toBe('2 of these 5 likely, on the aisles they stock');
+  it('falls back rather than dropping an item it has no name for', () => {
+    expect(describeTripSuggestion([cover(tj, [milk.id, 'item-gone'])], 5, NAMES)?.detail).toBe(
+      'Likely has 2/5 items on your list: milk and an item'
+    );
   });
 
   it('says nothing when there is nothing to say', () => {
-    expect(describeTripSuggestion([cover(tj, [milk.id])], 0)).toBeNull();
-    expect(describeTripSuggestion([], 5)).toBeNull();
-    expect(describeTripSuggestion([cover(tj, [])], 5)).toBeNull();
+    expect(describeTripSuggestion([cover(tj, [milk.id])], 0, NAMES)).toBeNull();
+    expect(describeTripSuggestion([], 5, NAMES)).toBeNull();
+    expect(describeTripSuggestion([cover(tj, [])], 5, NAMES)).toBeNull();
   });
 
   it('describes the plan the trip sheet would suggest', () => {
     const plan = planTrip(LIST, LINKS, SHOPS);
-    const copy = describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length);
+    const copy = describeTripSuggestion(
+      summarizeTrip([], plan).suggestion,
+      plan.itemIds.length,
+      NAMES
+    );
     expect(copy).toEqual({
       stores: "Trader Joe's, then Ballard Pharmacy",
-      detail: 'Between them, you’ve got 4 of 5 items before',
+      detail: 'Likely have 4/5 items on your list: milk, bread, eggs and 1 more',
     });
   });
 });
