@@ -29,10 +29,14 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   // A row sitting directly on top of its own pill row: the pills carry the
   // bottom padding, so the label mustn't double it.
   rowTight: { paddingBottom: spacing.xs },
+  /** …unless it also carries a hint — see SettingsRow. */
+  rowTightHinted: { paddingBottom: spacing.sm },
   rowStacked: { alignItems: 'flex-start', paddingVertical: spacing.md },
   rowContent: { flex: 1 },
   rowLabel: { color: colors.text, fontSize: font.md },
   rowHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  /** Only when the row has its own control under the hint rather than beside it. */
+  rowHintSpaced: { marginBottom: spacing.sm },
   rowValue: disclosureValue(colors),
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
 

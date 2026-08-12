@@ -71,7 +71,7 @@ export function SettingsRow({
       />
       <View style={styles.rowContent}>
         <Text style={[styles.rowLabel, !!labelColor && { color: labelColor }]}>{label}</Text>
-        {!!hint && <Text style={styles.rowHint}>{hint}</Text>}
+        {!!hint && <Text style={[styles.rowHint, !!children && styles.rowHintSpaced]}>{hint}</Text>}
         {children}
       </View>
       {!!value && <Text style={styles.rowValue}>{value}</Text>}
@@ -93,7 +93,15 @@ export function SettingsRow({
     </>
   );
 
-  const style = [styles.row, !!tight && styles.rowTight, !!children && styles.rowStacked];
+  // `tight` hands the bottom padding to the pill row below, which is right for
+  // a bare label — but a hint needs separating from those pills, and the pill
+  // row is a sibling, so it can't do it from there.
+  const style = [
+    styles.row,
+    !!tight && styles.rowTight,
+    !!tight && !!hint && styles.rowTightHinted,
+    !!children && styles.rowStacked,
+  ];
 
   // A row with nothing to press is a status line, not a control — it must not
   // announce itself as a button.
