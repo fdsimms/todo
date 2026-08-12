@@ -263,6 +263,17 @@ export interface ClassifiedIngredient {
   /** Every "Tue ragù"-style source this row came from, for the row's expandable breakdown. */
   sources: string[];
   category: PlanCategory;
+  /**
+   * Whether a catalog row already exists under this key — i.e. whether the app
+   * has ever seen this item before, as opposed to reading it off a recipe for
+   * the first time.
+   *
+   * It only says something useful on a `needToBuy` row, and there it says the
+   * one thing that separates "you buy this and you're out" from "this recipe
+   * mentions a thing we know nothing about": `needToBuy` deliberately conflates
+   * the two (see the table above), and `restockRows` is what splits them.
+   */
+  known: boolean;
   /** Set only for `probablyHave` — grocerySuggest.probablyHaveReason's "bought 6× · last on 12 Jul". */
   reason: string | null;
   /**
@@ -343,9 +354,31 @@ export function classifyPlanned(
       category = 'needToBuy';
     }
 
-    rows.push({ nameKey: key, name, aisle, quantity, sources, category, reason, sourceRecipeId, sourceRecipeTitle });
+    rows.push({ nameKey: key, name, aisle, quantity, sources, category, known: !!match, reason, sourceRecipeId, sourceRecipeTitle });
   }
   return rows;
+}
+
+/**
+ * The lines a *restock* can honestly be offered for: known items the app
+ * doesn't currently think you have.
+ *
+ * `needToBuy` is the wrong set to offer after cooking something, and the
+ * reason is in its own definition — "no catalog row, **or** known but off the
+ * list". The first half is ignorance. A recipe naming an item the app has
+ * never seen tells you nothing about whether the cook needs to buy it; on a
+ * dish cooked for the first time it is *every* line, which is how a restock
+ * offer ends up asking for 1/4 tsp of black pepper. The second half is the
+ * real signal, and it's already narrow: anything bought recently enough to
+ * still be around has been taken by `probablyHave`, and a standing "always
+ * have it" by `staple`, before `needToBuy` sees it.
+ *
+ * Same restraint as `tripMarkerFor` and `shoppingTrip.ts` — the app says
+ * something only where the user's own record backs it, and stays quiet rather
+ * than hedging.
+ */
+export function restockRows(classified: readonly ClassifiedIngredient[]): ClassifiedIngredient[] {
+  return classified.filter(r => r.category === 'needToBuy' && r.known);
 }
 
 function shortestName(names: readonly string[]): string {

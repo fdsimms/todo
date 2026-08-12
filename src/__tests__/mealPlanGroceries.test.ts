@@ -7,6 +7,7 @@ import {
   mergeQuantities,
   describeQuantities,
   classifyPlanned,
+  restockRows,
 } from '../utils/mealPlanGroceries';
 
 // mealPlanGroceries reaches mealPlan.ts for isKeyInRange, which reaches
@@ -445,7 +446,7 @@ describe('classifyPlanned', () => {
     const planned = [{ name: 'Saffron', nameKey: 'saffron', quantity: '1 pinch', aisle: null, source: 'Tue Paella' }];
     const rows = classifyPlanned(planned, [], now);
     expect(rows).toEqual([
-      { nameKey: 'saffron', name: 'Saffron', aisle: null, quantity: '1 pinch', sources: ['Tue Paella'], category: 'needToBuy', reason: null, sourceRecipeId: null, sourceRecipeTitle: null },
+      { nameKey: 'saffron', name: 'Saffron', aisle: null, quantity: '1 pinch', sources: ['Tue Paella'], category: 'needToBuy', known: false, reason: null, sourceRecipeId: null, sourceRecipeTitle: null },
     ]);
   });
 
@@ -499,6 +500,17 @@ describe('classifyPlanned', () => {
     const items = [item({ name: 'Eggs', onList: true, checked: true })];
     const planned = [{ name: 'Eggs', nameKey: 'eggs', quantity: '12', aisle: null, source: 'Fri Omelette' }];
     expect(classifyPlanned(planned, items, now)[0].category).toBe('inTrolley');
+  });
+
+  it('marks a row with a catalog row known, and one without unknown', () => {
+    const items = [item({ name: 'Flour', onList: false, inCatalog: true })];
+    const planned = [
+      { name: 'Flour', nameKey: 'flour', quantity: '', aisle: null, source: 'Wed Bread' },
+      { name: 'Saffron', nameKey: 'saffron', quantity: '', aisle: null, source: 'Wed Bread' },
+    ];
+    const rows = classifyPlanned(planned, items, now);
+    expect(rows.find(r => r.nameKey === 'flour')!.known).toBe(true);
+    expect(rows.find(r => r.nameKey === 'saffron')!.known).toBe(false);
   });
 
   it('groups every source sharing a key into one row, merging quantities and collecting sources', () => {
@@ -565,5 +577,63 @@ describe('classifyPlanned', () => {
       { name: 'Salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Sat Soup' },
     ];
     expect(classifyPlanned(planned, [], now)[0].quantity).toBe('×3');
+  });
+});
+
+describe('restockRows', () => {
+  const now = new Date(2026, 7, 12);
+
+  const planned = (name: string) => ({
+    name, nameKey: groceryNameKey(name), quantity: '', aisle: null, source: 'Tue Mash',
+  });
+
+  it('keeps a known item that is off the list', () => {
+    const items = [item({ name: 'Yukon Gold potatoes', onList: false, inCatalog: true })];
+    const rows = restockRows(classifyPlanned([planned('Yukon Gold potatoes')], items, now));
+    expect(rows.map(r => r.name)).toEqual(['Yukon Gold potatoes']);
+  });
+
+  it('drops a name the app has never seen — the whole reason it exists', () => {
+    // Every line of a dish cooked for the first time is needToBuy. Offering to
+    // restock 1/4 tsp of black pepper on the strength of that is the bug.
+    const rows = restockRows(classifyPlanned(
+      [planned('ground black pepper'), planned('sea salt')],
+      [],
+      now
+    ));
+    expect(rows).toEqual([]);
+  });
+
+  it('drops anything already handled — on the list, in the trolley, a staple, or probably still around', () => {
+    const items = [
+      item({ name: 'Milk', onList: true, checked: false }),
+      item({ name: 'Eggs', onList: true, checked: true }),
+      item({ name: 'Salt', onList: false, isStaple: true }),
+      item({
+        name: 'Butter', onList: false, purchaseCount: 3,
+        createdAt: new Date(2026, 4, 14).toISOString(),
+        lastPurchasedAt: new Date(2026, 7, 2).toISOString(),
+      }),
+    ];
+    const rows = restockRows(classifyPlanned(
+      [planned('Milk'), planned('Eggs'), planned('Salt'), planned('Butter')],
+      items,
+      now
+    ));
+    expect(rows).toEqual([]);
+  });
+
+  it('names only the defensible lines out of a mixed recipe', () => {
+    const items = [
+      item({ name: 'Yukon Gold potatoes', onList: false, inCatalog: true }),
+      item({ name: 'vegan butter', onList: false, inCatalog: true }),
+      item({ name: 'sea salt', onList: false, isStaple: true }),
+    ];
+    const rows = restockRows(classifyPlanned(
+      [planned('Yukon Gold potatoes'), planned('vegan butter'), planned('sea salt'), planned('garlic powder')],
+      items,
+      now
+    ));
+    expect(rows.map(r => r.name).sort()).toEqual(['Yukon Gold potatoes', 'vegan butter']);
   });
 });
