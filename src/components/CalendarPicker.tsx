@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
+  Animated,
   Modal,
   View,
   Text,
@@ -18,7 +19,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { isToday } from 'date-fns/isToday';
 import { format } from 'date-fns/format';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
@@ -44,8 +45,15 @@ interface Props {
   onConfirmMultiple?: (dates: Date[]) => void;
 }
 
+// Same floating-card geometry as WhenPicker (the row reschedule / group
+// reschedule picker) — this used to be a full-screen slide-up pageSheet with
+// its own hand-picked spacing, which is why the two read as two different
+// pickers despite doing the same job. Keep these in step with WhenPicker's
+// constants if either changes.
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2 - spacing.xs * 6) / 7);
+const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 380);
+const CAL_PADDING = 10;
+const CELL_SIZE = Math.floor((CARD_WIDTH - CAL_PADDING * 2) / 7);
 
 export function CalendarPicker({
   visible, value, mode, title, onConfirm, onCancel, nlEnabled,
@@ -66,9 +74,14 @@ export function CalendarPicker({
   const [pickerReady, setPickerReady] = useState(false);
   const [selectedDates, setSelectedDates] = useState<Date[]>(values ?? []);
 
+  const cardScale = useRef(new Animated.Value(0.92)).current;
+  const enterAnim = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     if (!visible) {
       setPickerReady(false);
+      cardScale.setValue(0.92);
+      enterAnim.setValue(0);
       return;
     }
     const seed = multiple ? (values && values.length > 0 ? values[0] : null) : value;
@@ -80,6 +93,12 @@ export function CalendarPicker({
     if (!seed) t.setHours(9, 0, 0, 0);
     setTimeDate(t);
     setNlText('');
+    cardScale.setValue(0.92);
+    enterAnim.setValue(0);
+    Animated.parallel([
+      Animated.timing(enterAnim, { toValue: 1, duration: animation.duration.fast, useNativeDriver: true }),
+      Animated.spring(cardScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+    ]).start();
   }, [visible]);
 
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
@@ -139,299 +158,334 @@ export function CalendarPicker({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
+      animationType="none"
+      transparent
       onRequestClose={onCancel}
       onShow={() => setPickerReady(true)}
     >
-      <View style={styles.root}>
-        {/* Header */}
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onCancel} />
-          <Text style={styles.headerTitle}>{title}</Text>
-          <SheetHeaderButton label="Done" onPress={confirm} disabled={!canConfirm} />
-        </View>
+      <View style={styles.backdrop}>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, styles.dim, { opacity: enterAnim }]}
+          pointerEvents="none"
+        />
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} />
+        <Animated.View style={[styles.card, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
+          {/* Header */}
+          <View style={styles.header}>
+            <SheetHeaderButton label="Cancel" role="cancel" onPress={onCancel} minWidth={28} />
+            <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+            <SheetHeaderButton label="Done" onPress={confirm} disabled={!canConfirm} style={styles.headerDoneText} minWidth={28} />
+          </View>
 
-        {/* Natural language input */}
-        {nlEnabled && (
-          <TextInput
-            style={styles.nlInput}
-            value={nlText}
-            onChangeText={onNlChange}
-            onSubmitEditing={confirm}
-            placeholder='Type a date — "next monday", "in 3 days"…'
-            placeholderTextColor={colors.textTertiary}
-            returnKeyType="done"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        )}
-
-        {/* Month navigation */}
-        <View style={styles.monthNav}>
-          <TouchableOpacity
-            style={styles.navBtn}
-            onPress={() => setDisplayMonth(m => subMonths(m, 1))}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Previous month"
-          >
-            <Ionicons name="chevron-back" size={20} color={colors.accent} />
-          </TouchableOpacity>
-          <Text style={styles.monthLabel}>
-            {format(displayMonth, 'MMMM yyyy')}
-          </Text>
-          <TouchableOpacity
-            style={styles.navBtn}
-            onPress={() => setDisplayMonth(m => addMonths(m, 1))}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Next month"
-          >
-            <Ionicons name="chevron-forward" size={20} color={colors.accent} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Day-of-week headers */}
-        <View style={styles.dayHeaders}>
-          {dayHeaders.map((d, i) => (
-            <View key={i} style={styles.dayHeaderCell}>
-              <Text style={styles.dayHeaderText}>{d}</Text>
+          {/* Natural language input */}
+          {nlEnabled && (
+            <View style={styles.nlSection}>
+              <TextInput
+                style={styles.nlInput}
+                value={nlText}
+                onChangeText={onNlChange}
+                onSubmitEditing={confirm}
+                placeholder='Type a date — "next monday", "in 3 days"…'
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
             </View>
-          ))}
-        </View>
+          )}
 
-        {/* Calendar grid */}
-        <View style={styles.grid}>
-          {calendarDays.map((day, idx) => {
-            const inMonth = isSameMonth(day, displayMonth);
-            const isSelected = multiple
-              ? selectedDates.some(d => isSameDay(day, d))
-              : selectedDate ? isSameDay(day, selectedDate) : false;
-            const todayDay = isToday(day);
+          {nlEnabled && <View style={styles.sectionGap} />}
 
-            return (
+          {/* Calendar section */}
+          <View style={styles.calSection}>
+            <View style={styles.monthNav}>
               <TouchableOpacity
-                key={idx}
-                style={styles.dayCell}
-                onPress={() => onDayPress(day)}
-                activeOpacity={interaction.activeOpacity}
+                onPress={() => setDisplayMonth(m => subMonths(m, 1))}
+                hitSlop={8}
+                style={styles.navBtn}
                 accessibilityRole="button"
-                accessibilityLabel={todayDay ? `Today, ${format(day, 'EEEE, MMMM d')}` : format(day, 'EEEE, MMMM d')}
-                accessibilityState={{ selected: isSelected }}
+                accessibilityLabel="Previous month"
               >
-                <View style={[
-                  styles.dayCircle,
-                  isSelected && styles.dayCircleSelected,
-                ]}>
-                  <Text style={[
-                    styles.dayText,
-                    !inMonth && styles.dayTextOtherMonth,
-                    isSelected && styles.dayTextSelected,
-                    !isSelected && todayDay && styles.dayTextToday,
-                  ]}>
-                    {format(day, 'd')}
-                  </Text>
-                  {todayDay && (
-                    <View style={[
-                      styles.todayDot,
-                      isSelected && styles.todayDotSelected,
-                    ]} />
-                  )}
-                </View>
+                <Ionicons name="chevron-back" size={16} color={colors.accent} />
               </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Picked-set summary — the grid only shows one month at a time, so
-            without this a date picked in another month looks like it was lost. */}
-        {multiple && (
-          <View style={styles.multiSummary}>
-            <Text style={styles.multiSummaryText} numberOfLines={2}>
-              {selectedDates.length === 0
-                ? 'Tap each day this task falls on'
-                : selectedDates.map(d => format(d, 'MMM d')).join('  ·  ')}
-            </Text>
-          </View>
-        )}
-
-        {/* Time picker (datetime mode only) */}
-        {mode === 'datetime' && pickerReady && (
-          <View style={styles.timePicker}>
-            <View style={styles.timePickerHeader}>
-              <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
-              <Text style={styles.timePickerLabel}>Time</Text>
+              <Text style={styles.monthLabel}>{format(displayMonth, 'MMMM yyyy')}</Text>
+              <TouchableOpacity
+                onPress={() => setDisplayMonth(m => addMonths(m, 1))}
+                hitSlop={8}
+                style={styles.navBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Next month"
+              >
+                <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+              </TouchableOpacity>
             </View>
-            <DateTimePicker
-              value={timeDate}
-              mode="time"
-              display="spinner"
-              onChange={(_e, d) => {
-                if (d) {
-                  setTimeDate(d);
-                  if (selectedDate) {
-                    const merged = new Date(selectedDate);
-                    merged.setHours(d.getHours(), d.getMinutes(), 0, 0);
-                    setSelectedDate(merged);
-                  }
-                }
-              }}
-              themeVariant={isDark ? 'dark' : 'light'}
-              style={styles.timePickerWidget}
-            />
+
+            <View style={styles.dayHeaders}>
+              {dayHeaders.map((d, i) => (
+                <View key={i} style={styles.dayHeaderCell}>
+                  <Text style={styles.dayHeaderText}>{d}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.grid}>
+              {calendarDays.map((day, idx) => {
+                const inMonth = isSameMonth(day, displayMonth);
+                const isSelected = multiple
+                  ? selectedDates.some(d => isSameDay(day, d))
+                  : selectedDate ? isSameDay(day, selectedDate) : false;
+                const todayDay = isToday(day);
+
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    style={styles.dayCell}
+                    onPress={() => onDayPress(day)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={todayDay ? `Today, ${format(day, 'EEEE, MMMM d')}` : format(day, 'EEEE, MMMM d')}
+                    accessibilityState={{ selected: isSelected }}
+                  >
+                    <View style={[
+                      styles.dayCircle,
+                      isSelected && styles.dayCircleSelected,
+                      !isSelected && todayDay && styles.dayCircleToday,
+                    ]}>
+                      <Text style={[
+                        styles.dayText,
+                        !inMonth && styles.dayTextOtherMonth,
+                        isSelected && styles.dayTextSelected,
+                        !isSelected && todayDay && styles.dayTextToday,
+                      ]}>
+                        {format(day, 'd')}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
-        )}
+
+          {/* Picked-set summary — the grid only shows one month at a time, so
+              without this a date picked in another month looks like it was lost. */}
+          {multiple && (
+            <>
+              <View style={styles.sectionGap} />
+              <View style={styles.multiSummary}>
+                <Text style={styles.multiSummaryText} numberOfLines={2}>
+                  {selectedDates.length === 0
+                    ? 'Tap each day this task falls on'
+                    : selectedDates.map(d => format(d, 'MMM d')).join('  ·  ')}
+                </Text>
+              </View>
+            </>
+          )}
+
+          {/* Time picker (datetime mode only) */}
+          {mode === 'datetime' && pickerReady && (
+            <>
+              <View style={styles.sectionGap} />
+              <View style={styles.timeSection}>
+                <View style={styles.timePickerHeader}>
+                  <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.sectionLabel}>Time</Text>
+                </View>
+                <DateTimePicker
+                  value={timeDate}
+                  mode="time"
+                  display="spinner"
+                  onChange={(_e, d) => {
+                    if (d) {
+                      setTimeDate(d);
+                      if (selectedDate) {
+                        const merged = new Date(selectedDate);
+                        merged.setHours(d.getHours(), d.getMinutes(), 0, 0);
+                        setSelectedDate(merged);
+                      }
+                    }
+                  }}
+                  themeVariant={isDark ? 'dark' : 'light'}
+                  style={styles.timePickerWidget}
+                />
+              </View>
+            </>
+          )}
+
+          <View style={styles.bottomSpacer} />
+        </Animated.View>
       </View>
     </Modal>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  root: {
+  backdrop: {
     flex: 1,
-    backgroundColor: colors.bg,
-  },
-  multiSummary: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 16,
   },
-  multiSummaryText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    textAlign: 'center',
+  dim: {
+    backgroundColor: colors.backdrop,
+  },
+  card: {
+    width: CARD_WIDTH,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 12,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
   },
   headerTitle: {
+    flex: 1,
+    textAlign: 'center',
     color: colors.text,
     fontSize: font.md,
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
-  disabled: { opacity: 0.4 },
+  headerDoneText: {
+    minWidth: 28,
+    textAlign: 'right',
+  },
+  sectionLabel: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sectionGap: {
+    height: spacing.sm,
+  },
+  nlSection: {
+    marginHorizontal: spacing.md,
+  },
   nlInput: {
     color: colors.text,
     fontSize: font.md,
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 11,
-    margin: spacing.md,
-    marginBottom: spacing.sm,
+  },
+  calSection: {
+    paddingHorizontal: CAL_PADDING,
   },
   monthNav: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
   },
   navBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.bgSecondary,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
   monthLabel: {
     color: colors.text,
-    fontSize: font.lg,
-    fontWeight: '600',
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
   },
   dayHeaders: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.xs,
+    marginBottom: 2,
   },
   dayHeaderCell: {
     width: CELL_SIZE,
     alignItems: 'center',
-    paddingVertical: spacing.xs,
+    paddingVertical: 4,
   },
   dayHeaderText: {
     color: colors.textTertiary,
     fontSize: font.xs,
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: spacing.md,
+    height: CELL_SIZE * 6,
   },
   dayCell: {
     width: CELL_SIZE,
     height: CELL_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xs,
   },
   dayCircle: {
-    width: CELL_SIZE - 4,
-    height: CELL_SIZE - 4,
-    borderRadius: (CELL_SIZE - 4) / 2,
+    width: CELL_SIZE - 6,
+    height: CELL_SIZE - 6,
+    borderRadius: (CELL_SIZE - 6) / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
   dayCircleSelected: {
     backgroundColor: colors.accent,
   },
+  dayCircleToday: {
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+  },
   dayText: {
     color: colors.text,
-    fontSize: font.sm,
-    fontWeight: '400',
-  },
-  todayDot: {
-    position: 'absolute',
-    bottom: 5,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.accent,
-  },
-  todayDotSelected: {
-    backgroundColor: colors.onAccent,
+    fontSize: font.xs + 1,
+    fontWeight: fontWeight.regular,
   },
   dayTextOtherMonth: {
     color: colors.textTertiary,
   },
   dayTextSelected: {
-    color: colors.bg,
-    fontWeight: '600',
+    color: colors.onAccent,
+    fontWeight: fontWeight.semibold,
   },
   dayTextToday: {
     color: colors.accent,
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
-  timePicker: {
-    marginTop: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
+  multiSummary: {
+    marginHorizontal: spacing.md,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.sm,
+  },
+  multiSummaryText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    textAlign: 'center',
+  },
+  timeSection: {
+    marginHorizontal: spacing.md,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm + 2,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   timePickerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-  },
-  timePickerLabel: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    gap: 6,
+    marginBottom: spacing.xs,
   },
   timePickerWidget: {
     height: 150,
+  },
+  bottomSpacer: {
+    height: spacing.md,
   },
 });

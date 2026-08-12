@@ -24,7 +24,7 @@ import {
 } from '../utils/deliverables';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import { CalendarPicker } from './CalendarPicker';
+import { WhenPicker } from './WhenPicker';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -247,13 +247,13 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
           this sheet's own controller to present a second one while it's up.
           Same reason PantrySheet nests GroceryItemSheet. */}
       {pickerOpen && (
-        <CalendarPicker
+        <WhenPicker
           visible
           value={normalized ? new Date(normalized) : null}
-          mode="date"
           title={task.title}
-          nlEnabled
-          onConfirm={pickDate}
+          showTimeOfDay={false}
+          showSuggest={false}
+          onConfirm={date => { if (date) pickDate(date); else setPickerOpen(false); }}
           onCancel={() => setPickerOpen(false)}
         />
       )}

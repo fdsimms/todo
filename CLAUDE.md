@@ -952,6 +952,19 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   a unit, pair it with a row of unit pills rather than multiplying the presets out — the nudge
   cadence stores days and converts in `src/utils/nudgeCadence.ts`, so switching Weeks→Months keeps
   the count and only the stored day total changes.
+- `WhenPicker` (`src/components/WhenPicker.tsx`) — **the date picker.** Today/Tomorrow quick
+  buttons, a month grid, and (optionally) time-of-day segments and the AI "Suggest" button. This is
+  the one users actually see most, from the row's own reschedule action, so it's the one to reach
+  for **any time a new feature needs to ask "what date?"** — a settings screen, an editor field, a
+  bulk action, a sheet. Set `showTimeOfDay`/`showSuggest` to `false` when the date being picked
+  isn't a task's own schedule (an end date, a range bound, a decision-task answer). Don't reach for
+  `CalendarPicker` out of habit, or because it's what an older screen nearby already does — it's a
+  plainer, older component kept alive only for the two things `WhenPicker` doesn't do: `datetime`
+  mode (a completion timestamp, not just a day) and `multiple`-date selection (a task's `seriesId`
+  set). If neither applies, it's the wrong component, however many other call sites still use it —
+  this has already shipped wrong (`CalendarPicker` under a decision task's date question, #1502)
+  more than once, and each fix means finding and swapping a call site after the fact instead of
+  writing it right the first time.
 - `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount.
 - `PinIcon` (`src/components/PinIcon.tsx`) — the pin glyph everywhere pinning is shown or toggled
   (task row, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header),
