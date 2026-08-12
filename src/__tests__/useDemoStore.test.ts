@@ -31,7 +31,7 @@ import { isUsingDemoDatabase } from '../db/database';
 import { RECIPE_MEAL_TYPES } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
 import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
-import { cheapestShopFor } from '../utils/groceryPrice';
+import { cheapestShopFor, describeShopPrices, shopPricesFor } from '../utils/groceryPrice';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor } from '../utils/activeTrip';
 
@@ -483,6 +483,15 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // at two stores, "cheapest at X" is a feature the demo can't show.
     const compared = items.filter(i => cheapestShopFor(i.id, itemShops, shops) !== null);
     expect(compared.length).toBeGreaterThan(0);
+
+    // The per-unit half needs more than that: two prices for *different*
+    // quantities, where the bigger number is the better deal. Seeded on Rice —
+    // $7.99 for 5 lb at Costco against $2.49 for 1 lb at Trader Joe's.
+    const rice = items.find(i => i.nameKey === 'rice')!;
+    const ricePrices = shopPricesFor(rice.id, itemShops, shops);
+    expect(ricePrices.map(p => p.quantity)).toEqual(['1 lb', '5 lb']);
+    expect(cheapestShopFor(rice.id, itemShops, shops)?.shop.name).toBe('Costco');
+    expect(describeShopPrices(ricePrices, '$', 'x')).toContain('≈$1.60/lb');
   });
 
   it('seeds a trip in progress, with rows that have something to say about it', () => {

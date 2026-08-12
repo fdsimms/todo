@@ -35,6 +35,7 @@ import {
   cheapestShopFor,
   describePriceContext,
   describeShopPrices,
+  lastPriceFor,
   parsePriceInput,
   priceToInput,
   shopPricesFor,
@@ -53,6 +54,12 @@ import {
 
 /** "10000.00" — the widest thing GROCERY_PRICE_MINOR_MAX allows. */
 const PRICE_INPUT_MAX_LENGTH = 8;
+
+/**
+ * The price field edits one target at a time — the item's own price, or one
+ * store's. This keys the first; a store keys itself by id.
+ */
+const ITEM_PRICE_KEY = 'item';
 
 interface Props {
   visible: boolean;
@@ -111,6 +118,7 @@ export function GroceryItemSheet({
   const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
   const setUseUpTask = useGroceryStore(s => s.setUseUpTask);
   const setItemPrice = useGroceryStore(s => s.setItemPrice);
+  const clearItemShopPrice = useGroceryStore(s => s.clearItemShopPrice);
   const useUpTasksEnabled = useSettingsStore(s => s.groceryUseUpTasks);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const removeFromList = useGroceryStore(s => s.removeFromList);
@@ -126,10 +134,16 @@ export function GroceryItemSheet({
   const [name, setName] = useState('');
   const [quantity, setQuantityText] = useState('');
   const [note, setNoteText] = useState('');
-  // Seeded from the stored price so the field shows what's on the row, and
-  // emptying it is how a price is taken back — the same shape every other
-  // correction on this sheet has.
-  const [price, setPriceText] = useState('');
+  // Which price the field is editing: null is the item's own ("any store"),
+  // else the store's id. The stores are the item's linked ones — see
+  // priceTargetOptions.
+  const [priceTarget, setPriceTarget] = useState<string | null>(null);
+  // What's been typed, per target, buffered until Save. A map rather than one
+  // string because switching stores mid-edit must neither commit what was
+  // typed (Cancel has to mean cancel) nor throw it away. A key absent means
+  // untouched and the stored price shows through; '' means the user emptied
+  // it, which is how a price is taken back.
+  const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
   const [nameError, setNameError] = useState<string | null>(null);
   // One picker open at a time, like every other editor in the app — see the
   // progressive-disclosure note in CLAUDE.md.
@@ -140,7 +154,8 @@ export function GroceryItemSheet({
       setName(item.name);
       setQuantityText(item.quantity ?? '');
       setNoteText(item.note);
-      setPriceText(item.lastPriceMinor === null ? '' : priceToInput(item.lastPriceMinor));
+      setPriceTarget(null);
+      setPriceEdits({});
       setNameError(null);
       setOpenField(initialField ?? null);
     }
@@ -156,6 +171,9 @@ export function GroceryItemSheet({
   if (!item) {
     return <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose} />;
   }
+
+  const linkFor = (shopId: string) =>
+    itemShops.find(l => l.itemId === item.id && l.shopId === shopId) ?? null;
 
   const handleSave = () => {
     const trimmed = name.trim();
@@ -177,15 +195,35 @@ export function GroceryItemSheet({
     //
     // An emptied field clears the price; anything that doesn't parse is left
     // alone rather than clearing it, since "4.9.9" is a typo mid-correction and
-    // throwing the old price away over it is the one outcome nobody wants. No
-    // store is passed: a correction made here is about what the item costs, not
-    // about what one shop charges.
-    const trimmedPrice = price.trim();
-    const parsed = parsePriceInput(trimmedPrice);
-    if (!trimmedPrice) {
-      if (item.lastPriceMinor !== null) setItemPrice(item.id, null);
-    } else if (parsed !== null && parsed !== item.lastPriceMinor) {
-      setItemPrice(item.id, parsed);
+    // throwing the old price away over it is the one outcome nobody wants.
+    //
+    // Every target that was typed into, not just the one on screen — the buffer
+    // outlives switching stores, so Save is where all of it lands. The item's
+    // own price goes last: a store write updates it as a side effect (see
+    // setItemPrice), and an explicit "Any store" edit is the more direct
+    // statement of the two, so it has to win.
+    const edits = Object.entries(priceEdits).sort(
+      ([a], [b]) => Number(a === ITEM_PRICE_KEY) - Number(b === ITEM_PRICE_KEY)
+    );
+    for (const [key, raw] of edits) {
+      const shopId = key === ITEM_PRICE_KEY ? null : key;
+      const link = shopId ? linkFor(shopId) : null;
+      // A store unlinked in this same sheet since the price was typed has
+      // nowhere to put it, and it isn't an item-level price either — the user
+      // said which store it was.
+      if (shopId && !link) continue;
+      const stored = shopId ? link!.lastPriceMinor : item.lastPriceMinor;
+      const trimmedPrice = raw.trim();
+      const parsed = parsePriceInput(trimmedPrice);
+      if (!trimmedPrice) {
+        if (stored === null) continue;
+        // Clearing one store's number says nothing about the item — that's the
+        // whole reason clearItemShopPrice exists next to setItemPrice.
+        if (shopId) clearItemShopPrice(item.id, shopId);
+        else setItemPrice(item.id, null);
+      } else if (parsed !== null && parsed !== stored) {
+        setItemPrice(item.id, parsed, shopId);
+      }
     }
     haptics.success();
     onClose();
@@ -223,9 +261,8 @@ export function GroceryItemSheet({
     // No closeField: stores are multi-select, so you're probably not done.
   };
 
-  const linkedCounts = new Map(
-    shopsForItem(item.id, itemShops, shops).map(s => [s.shop.id, s.purchaseCount])
-  );
+  const linkedShops = shopsForItem(item.id, itemShops, shops);
+  const linkedCounts = new Map(linkedShops.map(s => [s.shop.id, s.purchaseCount]));
   // Stores the user has said don't stock this — the third pill state, and the
   // only place in the app those claims can be seen and taken back.
   const notStocked = new Set(unavailableShopsFor(item.id, itemShops, shops).map(s => s.id));
@@ -241,6 +278,56 @@ export function GroceryItemSheet({
   const shopPrices = shopPricesFor(item.id, itemShops, shops);
   const cheapest = cheapestShopFor(item.id, itemShops, shops);
   const shopPriceLine = describeShopPrices(shopPrices, currencySymbol, cheapest?.shop.id ?? null);
+
+  /**
+   * Which stores the price field can be pointed at: the ones this item is
+   * linked to, and no others. setItemPrice writes onto an *existing* link and
+   * deliberately won't mint one — a price is not a claim that the shop stocks
+   * it — so an unlinked store here would be a pill that silently did nothing.
+   * Linking is one section down, which is where that claim belongs.
+   *
+   * A store marked as not stocking this is already dropped by shopsForItem, and
+   * so is every price read: pricing a shelf you've said is empty has no answer
+   * to show.
+   */
+  const activeTarget =
+    priceTarget && linkedShops.some(s => s.shop.id === priceTarget) ? priceTarget : null;
+  const priceKey = activeTarget ?? ITEM_PRICE_KEY;
+  const targetShopName = linkedShops.find(s => s.shop.id === activeTarget)?.shop.name ?? null;
+  // The target's *own* price, never a fallback: a field about to be written has
+  // to show what's actually stored for what it's about to write (the same call
+  // the unit-conversion note makes about editable fields). What it cost
+  // elsewhere is the placeholder instead — a starting point that asserts
+  // nothing until it's typed over, exactly as FinishShoppingSheet seeds its rows.
+  const storedPrice = activeTarget ? linkFor(activeTarget)?.lastPriceMinor ?? null : item.lastPriceMinor;
+  const price = priceEdits[priceKey] ?? (storedPrice === null ? '' : priceToInput(storedPrice));
+  const priceHint = lastPriceFor(item, activeTarget, itemShops);
+
+  const priceTargetOptions: PillGroupOption[] = [
+    {
+      key: ITEM_PRICE_KEY,
+      label: 'Any store',
+      // Never buried behind "N more" — it's the option meaning "I'm not saying
+      // where", and the one the field defaults to.
+      pinned: true,
+      selected: activeTarget === null,
+      accessibilityLabel: 'Price paid, without saying which store',
+      onPress: () => {
+        haptics.tap();
+        setPriceTarget(null);
+      },
+    },
+    ...linkedShops.map(({ shop }) => ({
+      key: shop.id,
+      label: shop.name,
+      selected: activeTarget === shop.id,
+      accessibilityLabel: `Price at ${shop.name}`,
+      onPress: () => {
+        haptics.tap();
+        setPriceTarget(shop.id);
+      },
+    })),
+  ];
 
   // A future onHandUntil is an active "Got it"; a past one (always
   // OUT_OF_IT_UNTIL in practice) is an active "Out of it"; null leaves the
@@ -527,23 +614,45 @@ export function GroceryItemSheet({
             accessibilityLabel="Quantity"
           />
 
-          <Text style={styles.label}>PRICE</Text>
+          {/* The pills qualify the label and sit above the field, so the field
+              always reads as the price of whatever is selected. Below it they'd
+              be indistinguishable from the Stores grid further down, which
+              *links* a store rather than pointing this field at one — and a
+              third grey caption under the field is what the note below is
+              already guarding against. With no linked stores there's nothing to
+              choose between, so the row doesn't render at all. */}
+          <Text style={styles.label}>{linkedShops.length > 0 ? 'PRICE AT' : 'PRICE'}</Text>
+          {linkedShops.length > 0 && (
+            <View style={styles.priceTargets}>
+              <PillGroup options={priceTargetOptions} noun="store" />
+            </View>
+          )}
           <View style={styles.priceField}>
             <Text style={styles.priceSymbol}>{currencySymbol}</Text>
             <TextInput
               style={styles.priceInput}
               value={price}
-              onChangeText={setPriceText}
-              placeholder="0.00"
+              onChangeText={text => setPriceEdits(prev => ({ ...prev, [priceKey]: text }))}
+              placeholder={priceHint === null ? '0.00' : priceToInput(priceHint)}
               placeholderTextColor={colors.textTertiary}
               keyboardType="decimal-pad"
               maxLength={PRICE_INPUT_MAX_LENGTH}
-              accessibilityLabel="Price"
+              accessibilityLabel={targetShopName ? `Price at ${targetShopName}` : 'Price'}
             />
           </View>
           {/* What the number is *for* and how old it is — never the number
-              itself, which the field above is already showing. */}
-          {!!priceContext && <Text style={styles.hint}>{priceContext}</Text>}
+              itself, which the field above is already showing.
+
+              Item-level, so it's dropped while the field is pointed at a store:
+              sitting under a field reading Costco's $3.19, "Last paid for 2 L"
+              reads as describing that, when it's the last paid anywhere. The
+              store line below already names the selected store and its price,
+              which is the context that belongs there — and rewording this one
+              per target would be a second phrasing of the same fact to keep
+              true. */}
+          {!!priceContext && activeTarget === null && (
+            <Text style={styles.hint}>{priceContext}</Text>
+          )}
           {!!shopPriceLine && <Text style={styles.hint}>{shopPriceLine}</Text>}
 
           <Text style={styles.label}>NOTE</Text>
@@ -786,6 +895,7 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       height: 44,
     },
+    priceTargets: { marginBottom: spacing.sm },
     priceSymbol: { color: colors.textSecondary, fontSize: font.md },
     // No lineHeight, same as `input` — see the note there.
     priceInput: { flex: 1, fontSize: font.md, color: colors.text, padding: 0 },

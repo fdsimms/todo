@@ -53,7 +53,7 @@ export type UnitSystem = 'asWritten' | 'metric' | 'us';
 
 export const UNIT_SYSTEMS: UnitSystem[] = ['asWritten', 'metric', 'us'];
 
-type Dimension = 'mass' | 'volume';
+export type Dimension = 'mass' | 'volume';
 
 interface KnownUnit {
   dimension: Dimension;
@@ -304,6 +304,74 @@ function convertOne(part: string, target: 'metric' | 'us'): ConvertedQuantity {
   // Whatever followed the unit is prose — a size clause ("1 cup, packed"), a
   // prep note — and carries through untouched, exactly as scaling carries it.
   return { text: `${rendered}${rest.slice(word[0].length)}`, converted: true };
+}
+
+export interface MeasuredQuantity {
+  /** How much, in the dimension's base unit: grams for mass, millilitres for volume. */
+  base: number;
+  dimension: Dimension;
+  /** Which system it was written in, so a reader can be answered in their own units. */
+  system: 'metric' | 'us';
+}
+
+/**
+ * How much of something a quantity string names — "2 lb" as 907 g, "500 ml" as
+ * 500 ml — or null when it isn't a measurement off the table above.
+ *
+ * This is the measuring half of the module rather than the rendering half, and
+ * it's what lets a price be compared per unit (see groceryPrice). It writes
+ * nothing back either; the rule that keeps conversion honest is unchanged.
+ *
+ * **A sized container is measured here, where convertOne refuses it**, and the
+ * two are consistent: rendering "14 oz can" as "≈400 g can" invents a product
+ * nobody sells, which is why that path passes it through whole — but fourteen
+ * ounces is genuinely how much is in the tin, so dividing a price by it renames
+ * nothing. A container line that names a *count* of sized tins ("2 14 oz cans")
+ * has no unit word after its leading amount and falls out as null, which is the
+ * refusal that matters: two of them is not fourteen ounces.
+ */
+export function measureQuantity(quantity: string): MeasuredQuantity | null {
+  const text = quantity.trim();
+  if (!text) return null;
+
+  const amount = splitLeadingAmount(text);
+  if (!amount || amount.value <= 0) return null;
+  const rest = amount.rest;
+  // "2%" — part of the product, never an amount. Same guard convertOne carries.
+  if (rest.startsWith('%')) return null;
+
+  const container = BARE_CONTAINER.exec(rest);
+  const sized =
+    !!container
+    && SIZE_UNITS.has(container[1].toLowerCase())
+    && CONTAINER_UNITS.has(container[2].toLowerCase());
+  // Only a *sized* container takes its unit from the first word; "2 cups flour"
+  // matches the same two-word shape and must take "cups".
+  const word = sized ? container![1] : LEADING_WORD.exec(rest)?.[0];
+  if (!word) return null;
+
+  const known = KNOWN_UNITS[unitKey(word)];
+  if (!known) return null;
+  return { base: amount.value * known.base, dimension: known.dimension, system: known.system };
+}
+
+/**
+ * The unit a per-unit price is worth quoting in — what a shelf label uses. Per
+ * kilo or per pound for mass, per litre or per quart for volume, picked by the
+ * system the quantity was written in so the reader gets their own units back.
+ *
+ * One unit per (dimension, system) rather than a ladder like renderUs's: all
+ * four are big enough that a real grocery price never rounds away to nothing in
+ * them, which is the only thing a ladder would be here to prevent.
+ */
+export function shelfUnit(
+  dimension: Dimension,
+  system: 'metric' | 'us'
+): { unit: string; base: number } {
+  if (dimension === 'mass') {
+    return system === 'metric' ? { unit: 'kg', base: 1000 } : { unit: 'lb', base: GRAMS_PER_POUND };
+  }
+  return system === 'metric' ? { unit: 'L', base: 1000 } : { unit: 'qt', base: ML_PER_QUART };
 }
 
 /**

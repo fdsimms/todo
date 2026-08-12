@@ -1407,6 +1407,104 @@ describe('shops', () => {
   });
 });
 
+describe('prices by hand', () => {
+  const link = (itemId: string, shopId: string, overrides: Partial<ItemShopLink> = {}): ItemShopLink => ({
+    itemId,
+    shopId,
+    purchaseCount: 1,
+    lastPurchasedAt: null,
+    unavailableAt: null,
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
+    ...overrides,
+  });
+
+  it('setItemPrice with a store writes both that store and the item', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', quantity: '2 L' });
+    seed([milk], { shops: [costco], itemShops: [link(milk.id, costco.id)] });
+
+    useGroceryStore.getState().setItemPrice(milk.id, 319, costco.id);
+
+    const state = useGroceryStore.getState();
+    expect(state.items[0].lastPriceMinor).toBe(319);
+    // The quantity it's a price for is paired on both, or the number describes
+    // nothing.
+    expect(state.items[0].lastPriceQuantity).toBe('2 L');
+    expect(state.itemShops[0].lastPriceMinor).toBe(319);
+    expect(state.itemShops[0].lastPriceQuantity).toBe('2 L');
+  });
+
+  it('setItemPrice with a store the item has no link to leaves the link alone', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    seed([milk], { shops: [costco], itemShops: [] });
+
+    useGroceryStore.getState().setItemPrice(milk.id, 319, costco.id);
+
+    // A price is not an assertion that the store stocks it, so nothing is minted.
+    expect(useGroceryStore.getState().itemShops).toEqual([]);
+    expect(useGroceryStore.getState().items[0].lastPriceMinor).toBe(319);
+  });
+
+  it('clearItemShopPrice forgets one store and leaves the item price standing', () => {
+    const costco = makeShop('Costco');
+    const safeway = makeShop('Safeway');
+    const milk = makeItem({
+      name: 'Milk',
+      lastPriceMinor: 429,
+      lastPricedAt: '2026-08-01T00:00:00.000Z',
+      lastPriceQuantity: '2 L',
+    });
+    seed([milk], {
+      shops: [costco, safeway],
+      itemShops: [
+        link(milk.id, costco.id, { lastPriceMinor: 319, lastPricedAt: '2026-07-01T00:00:00.000Z', lastPriceQuantity: '2 L' }),
+        link(milk.id, safeway.id, { lastPriceMinor: 429, lastPricedAt: '2026-08-01T00:00:00.000Z', lastPriceQuantity: '2 L' }),
+      ],
+    });
+
+    useGroceryStore.getState().clearItemShopPrice(milk.id, costco.id);
+
+    const state = useGroceryStore.getState();
+    // "I don't know what Costco charges" is not "I've never paid for milk".
+    expect(state.items[0].lastPriceMinor).toBe(429);
+    expect(state.itemShops[0].lastPriceMinor).toBeNull();
+    // The stamp and the quantity go with the number rather than outliving it.
+    expect(state.itemShops[0].lastPricedAt).toBeNull();
+    expect(state.itemShops[0].lastPriceQuantity).toBeNull();
+    expect(state.itemShops[1].lastPriceMinor).toBe(429);
+  });
+
+  it('clearItemShopPrice keeps the purchases the link is really for', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    seed([milk], {
+      shops: [costco],
+      itemShops: [link(milk.id, costco.id, { purchaseCount: 6, lastPurchasedAt: '2026-08-01T00:00:00.000Z', lastPriceMinor: 319 })],
+    });
+
+    useGroceryStore.getState().clearItemShopPrice(milk.id, costco.id);
+
+    expect(useGroceryStore.getState().itemShops[0]).toMatchObject({
+      purchaseCount: 6,
+      lastPurchasedAt: '2026-08-01T00:00:00.000Z',
+      lastPriceMinor: null,
+    });
+  });
+
+  it('clearItemShopPrice on a link with no price writes nothing', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    seed([milk], { shops: [costco], itemShops: [link(milk.id, costco.id)] });
+
+    useGroceryStore.getState().clearItemShopPrice(milk.id, costco.id);
+
+    expect(dbSetItemShopLink).not.toHaveBeenCalled();
+  });
+});
+
 describe('finishShopping with a store', () => {
   it('creates a link on the first trip and remembers the store', () => {
     const costco = makeShop('Costco');
