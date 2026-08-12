@@ -74,6 +74,9 @@ jest.mock('../db/database', () => ({
   dbBulkSetTimeSegments: jest.fn(),
   dbBulkSetPinned: jest.fn(),
   dbBulkAddTags: jest.fn(),
+  dbAddToTagRegistry: jest.fn(),
+  dbRemoveFromTagRegistry: jest.fn(),
+  dbRemoveTagFromAllTasks: jest.fn(),
   dbMarkTaskSeen: jest.fn(),
   dbTransaction: jest.fn((fn: () => void) => fn()),
   dbGetAllTemplates: jest.fn().mockReturnValue([]),
@@ -5130,6 +5133,46 @@ describe('deleteCategory', () => {
   it('does not queue an undo when the category is unknown', () => {
     useTaskStore.getState().deleteCategory('Ghost');
     expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+// ─── deleteTag ──────────────────────────────────────────────────────────────
+
+describe('deleteTag', () => {
+  it('strips the tag from every task and the registry', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', tags: ['urgent', 'home'] }), makeTask({ id: 'b', tags: ['urgent'] })],
+      tagRegistry: ['urgent', 'home'],
+    });
+    useTaskStore.getState().deleteTag('urgent');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.tags).toEqual(['home']);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'b')?.tags).toEqual([]);
+    expect(useTaskStore.getState().tagRegistry).toEqual(['home']);
+  });
+
+  it('queues an undo that restores the tag on affected tasks and the registry', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', tags: ['urgent'] }), makeTask({ id: 'b', tags: [] })],
+      tagRegistry: ['urgent'],
+      lastAction: null,
+    });
+    useTaskStore.getState().deleteTag('urgent');
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.tags).toEqual(['urgent']);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'b')?.tags).toEqual([]);
+    expect(useTaskStore.getState().tagRegistry).toEqual(['urgent']);
+  });
+
+  it('registers an undo even for a tag that only lives on tasks, not the registry', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', tags: ['adhoc'] })],
+      tagRegistry: [],
+      lastAction: null,
+    });
+    useTaskStore.getState().deleteTag('adhoc');
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.tags).toEqual(['adhoc']);
+    expect(useTaskStore.getState().tagRegistry).toEqual([]);
   });
 });
 
