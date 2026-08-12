@@ -216,17 +216,29 @@ export const interaction = {
   pressScale: 0.96,
   delayLongPress: 350,
   /**
-   * Smallest a control may be before it needs `hitSlop` to make up the
-   * difference — Apple's 44pt minimum.
+   * Smallest a control's *touch* area may be — Apple's 44pt minimum.
    *
-   * Reach for it as a `minHeight` on anything tappable rather than picking
-   * vertical padding and hoping: padding sizes the box off whatever's inside
-   * it, so a row of pills holding icons, coloured dots and text ends up at
-   * three different heights, all of them short. A control that's deliberately
-   * smaller (a clear ×, a drag handle) is fine, but it owes the user a
-   * `hitSlop` that brings its *touch* area back to this.
+   * A control may be drawn smaller than this (see `pillHeight`), but then it
+   * owes the user a `hitSlop` that brings the touch area back up to it.
+   * Isolated controls with room around them — an add button, a stepper's
+   * ± — should just be this size outright.
    */
   minTouchTarget: 44,
+  /**
+   * Visual height of a pill-shaped control in a dense sheet: quick add's
+   * attribute chips, the editor's option pills.
+   *
+   * Deliberately under `minTouchTarget`. A wrapping toolbar of 44pt pills
+   * stands three or four rows tall above the keyboard and pushes the field it
+   * exists to serve off the screen — the pills stop being a toolbar and
+   * become the form. 36 is the compromise: half again the ~25pt these used to
+   * be, without the bulk.
+   *
+   * Set it as a `minHeight` rather than reaching for vertical padding, which
+   * sizes a box off whatever's inside it — a row mixing icons, coloured dots
+   * and text otherwise lands at three different heights, all of them short.
+   */
+  pillHeight: 36,
   // Max finger travel (px) for a raw touchEnd to still count as a tap rather
   // than a scroll/drag release.
   tapMoveThreshold: 10,

@@ -3282,7 +3282,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 12, minHeight: interaction.minTouchTarget,
+    paddingHorizontal: 12, minHeight: interaction.pillHeight,
     borderRadius: radius.full,
   },
   tagDot: { width: 6, height: 6, borderRadius: 3 },
@@ -3296,14 +3296,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   addBtnSpacing: { marginTop: spacing.sm, alignSelf: 'flex-start' },
   tagSuggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
   tagSuggestion: {
-    paddingHorizontal: 12, minHeight: interaction.minTouchTarget,
+    paddingHorizontal: 12, minHeight: interaction.pillHeight,
     justifyContent: 'center',
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
   tagSuggestionText: { color: colors.textSecondary, fontSize: font.sm },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   pill: {
-    paddingHorizontal: 14, minHeight: interaction.minTouchTarget,
+    paddingHorizontal: 14, minHeight: interaction.pillHeight,
     justifyContent: 'center',
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
     alignItems: 'center',
@@ -3559,7 +3559,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chainModeRow: { flexDirection: 'row', gap: spacing.xs },
   chainModePill: {
-    flex: 1, minHeight: interaction.minTouchTarget, justifyContent: 'center',
+    flex: 1, minHeight: interaction.pillHeight, justifyContent: 'center',
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary, alignItems: 'center',
   },

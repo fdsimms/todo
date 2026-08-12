@@ -120,12 +120,6 @@ interface ToolChipDescriptor {
 }
 
 /** The type row's labels and icons. Order is fixed: plain first, then the modes. */
-const TYPE_META: { key: QuickAddType; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
-  { key: 'task', label: 'Task', icon: 'checkbox-outline' },
-  { key: 'timed', label: 'Timed', icon: 'timer-outline' },
-  { key: 'target', label: 'Target', icon: 'speedometer-outline' },
-  { key: 'chain', label: 'Chain', icon: 'git-commit-outline' },
-];
 
 /** Known app name for a link scheme, else the raw URL. */
 function linkLabel(url: string): string {
@@ -156,7 +150,6 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
   monthly: ['month', 'months'],
   yearly: ['year', 'years'],
 };
-
 
 export function QuickAddModal({
   visible, onClose, onOpenFull, context, onCreated, onResumed, seed, seedLabel,
@@ -597,33 +590,6 @@ export function QuickAddModal({
   const blocked = blockedReason(type, typeValues);
 
 
-  /**
-   * Switching type seeds the new mode's defining value and drops the previous
-   * one's — a duration left over from Timed must not ride along invisibly into
-   * a plain task (bakedFields enforces the same rule at save time).
-   */
-  const selectType = (next: QuickAddType) => {
-    if (next === type) return;
-    haptics.tap();
-    animateLayout();
-    setType(next);
-    setActivePanel(null);
-    setTimedMinutes(next === 'timed' ? (timedMinutes ?? DEFAULT_TIMED_MINUTES) : null);
-    if (next !== 'timed') setCustomTimedText('');
-    setTargetCount(next === 'target' ? (targetCount ?? DEFAULT_TARGET_COUNT) : null);
-    if (next !== 'target') setTargetUnit('');
-    if (next !== 'chain') {
-      setChainItems([]);
-      setNewStepTitle('');
-    }
-    // Target's repeat is baked in; leaving Target takes back only the repeat
-    // it set for you, never one that was already there.
-    if (next === 'target' && recurrenceType === 'none') setRecurrenceType('daily');
-    if (type === 'target' && next !== 'target' && recurrenceType === 'daily' && recurrenceInterval === 1) {
-      setRecurrenceType('none');
-    }
-  };
-
   const applyCustomTimed = (text: string) => {
     setCustomTimedText(text);
     const n = parseInt(text, 10);
@@ -993,37 +959,6 @@ export function QuickAddModal({
               </View>
             </View>
           ) : null}
-
-          {/* Task type. Sits above the field rather than behind a chip
-              because these modes were the app's least-discovered feature —
-              you can't choose a shape you've never been shown. Picking one
-              bakes its defining fields in and drops the chips it just
-              answered (see utils/quickAddTypes). */}
-          <View style={styles.typeRow}>
-            {TYPE_META.map(t => {
-              const active = type === t.key;
-              return (
-                <TouchableOpacity
-                  key={t.key}
-                  style={[styles.typeChip, active && styles.typeChipActive]}
-                  onPress={() => selectType(t.key)}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={`${t.label} task`}
-                >
-                  <Ionicons
-                    name={t.icon}
-                    size={iconSize.sm}
-                    color={active ? colors.accent : colors.textSecondary}
-                  />
-                  <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
-                    {t.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
 
           {/* Title input row */}
           <View style={styles.row}>
@@ -2035,9 +1970,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
   },
   addBtn: {
-    width: interaction.minTouchTarget,
-    height: interaction.minTouchTarget,
-    borderRadius: interaction.minTouchTarget / 2,
+    width: interaction.pillHeight,
+    height: interaction.pillHeight,
+    borderRadius: interaction.pillHeight / 2,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2050,33 +1985,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
     marginBottom: spacing.sm,
     flexWrap: 'wrap',
-  },
-  typeRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  typeChip: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 5,
-    minHeight: interaction.minTouchTarget,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-  },
-  typeChipActive: {
-    backgroundColor: colors.accentSubtle,
-  },
-  typeChipText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
-  },
-  typeChipTextActive: {
-    color: colors.accent,
-    fontWeight: fontWeight.semibold,
   },
   typeSummaryRow: {
     marginBottom: spacing.sm,
@@ -2103,7 +2011,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 12,
     // Matches presetChip's box so the custom field sits level with the pills.
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
-    height: interaction.minTouchTarget,
+    height: interaction.pillHeight,
     minWidth: 72,
   },
   // Room for roughly four steps before the list scrolls, so a long chain
@@ -2158,7 +2066,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // text, which don't share a natural line box, and a toolbar of pills at
     // three different heights reads as broken. 44 is the HIG touch minimum,
     // which none of these chips previously met (they stood about 25pt).
-    minHeight: interaction.minTouchTarget,
+    minHeight: interaction.pillHeight,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },
@@ -2240,9 +2148,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
   },
   intervalBtn: {
-    width: interaction.minTouchTarget,
-    height: interaction.minTouchTarget,
-    borderRadius: interaction.minTouchTarget / 2,
+    width: interaction.pillHeight,
+    height: interaction.pillHeight,
+    borderRadius: interaction.pillHeight / 2,
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2264,7 +2172,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   schedulePill: {
     paddingHorizontal: 14,
-    minHeight: interaction.minTouchTarget,
+    minHeight: interaction.pillHeight,
     justifyContent: 'center',
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
@@ -2305,7 +2213,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 12,
     // Matches inlineCustomInput / presetChip so it sits level with the stepper.
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
-    height: interaction.minTouchTarget,
+    height: interaction.pillHeight,
   },
   targetStepperCaption: {
     color: colors.textSecondary,
@@ -2313,7 +2221,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   presetChip: {
     paddingHorizontal: 14,
-    minHeight: interaction.minTouchTarget,
+    minHeight: interaction.pillHeight,
     justifyContent: 'center',
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
@@ -2383,7 +2291,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: 14,
-    minHeight: interaction.minTouchTarget,
+    minHeight: interaction.pillHeight,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
     borderWidth: 1,
