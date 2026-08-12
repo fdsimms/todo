@@ -103,7 +103,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       sortOrder: maxOrder + 1,
       category: null,
-      applyContainer: 'stack',
+      applyContainer: 'none',
     };
     dbInsertTemplate(template);
     set(s => ({ templates: [...s.templates, template] }));
