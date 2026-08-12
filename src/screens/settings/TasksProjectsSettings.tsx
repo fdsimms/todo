@@ -199,10 +199,10 @@ export function TasksProjectsSettings() {
         <SettingsRow
           icon="repeat-outline"
           iconColor={postponeCheckEnabled ? colors.accent : undefined}
-          label="Say something when I keep pushing"
+          label="Suggest an action after repeated reschedules"
           hint={postponeCheckEnabled
-            ? `The date picker speaks up once you've moved a task ${postponeCheckThreshold} times`
-            : 'Off — a task can be pushed as often as you like without a word'}
+            ? `Shows a suggestion once you've moved a task ${postponeCheckThreshold} times`
+            : 'Off — reschedule a task as many times as you like with no prompt'}
           toggle={postponeCheckEnabled}
           onPress={() => setPostponeCheckEnabled(!postponeCheckEnabled)}
         />
@@ -211,8 +211,8 @@ export function TasksProjectsSettings() {
             <View style={styles.sep} />
             <SettingsRow
               icon="hand-left-outline"
-              label="After this many pushes"
-              hint="How much rope a task gets before the picker offers you a way out"
+              label="Reschedule threshold"
+              hint="Number of times a task can be moved before the suggestion appears"
               tight
             />
             <View style={styles.cadenceRow}>
@@ -221,8 +221,8 @@ export function TasksProjectsSettings() {
                 onChange={next => setPostponeCheckThreshold(next ?? DEFAULT_POSTPONE_THRESHOLD)}
                 min={MIN_POSTPONE_THRESHOLD}
                 max={MAX_POSTPONE_THRESHOLD}
-                label="After this many pushes"
-                describeValue={n => `${n} pushes`}
+                label="Reschedule threshold"
+                describeValue={n => `${n} reschedules`}
               />
             </View>
           </>
