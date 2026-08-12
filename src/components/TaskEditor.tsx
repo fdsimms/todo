@@ -3525,7 +3525,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  fieldSearch: { marginHorizontal: spacing.md, marginTop: spacing.md },
+  fieldSearch: { marginHorizontal: spacing.md, marginTop: spacing.md, marginBottom: spacing.md },
   searchEmpty: {
     color: colors.textTertiary, fontSize: font.sm,
     marginHorizontal: spacing.md + spacing.xs, marginTop: spacing.lg,
