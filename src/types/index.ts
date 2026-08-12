@@ -421,6 +421,33 @@ export interface Task {
   // ten times through the chain, not ten steps.
   chainStepOnSchedule: boolean;
 
+  // "Extra task" — every Nth completion of this task adds a separate one-off
+  // task ("rosin the bow every 4th violin practice").
+  //
+  // A third spawn mechanism alongside chains and quotas, because neither
+  // fits: a chain spawns its next step on *every* completion (1:1), and a
+  // quota counts sub-units logged within one occurrence and resets each day.
+  // This counts whole completions and never resets on its own.
+  //
+  // The tally has to be stored. `recurrenceCount` counts occurrences
+  // *remaining*, and past occurrences are separate completed rows that
+  // `completedRetentionDays` eventually purges — so there is nothing to count
+  // after the fact. Like `streakCount`, it rides onto the row spawned by the
+  // completion, since every occurrence is a fresh id.
+  //
+  // The rule is live only with both a count and a title: an extra task with
+  // no name is a row nobody could act on, so `extraTaskRule()` is what every
+  // reader asks rather than testing the fields apart.
+  extraTaskEveryN: number | null; // null = off; >= 2 (every 1st is every time)
+  extraTaskTitle: string | null;  // title of the task to add
+  extraTaskTally: number;         // completions since the last one was added
+  // Snapshot of extraTaskTally from just before the current completion, so
+  // uncompleting restores it — the same device previousStreakCount uses, and
+  // for the same reason. It can't be derived after the fact: a tally of 0
+  // reads identically whether the completion fired the rule and reset it or
+  // never advanced it at all (a miss, or a mid-chain step).
+  previousExtraTaskTally: number;
+
   vacationPause: boolean;    // hide and protect streak while vacation mode is on
 
   // Hides the task from every list (Today, Later, etc.) indefinitely, unlike
@@ -447,6 +474,13 @@ export interface Task {
   // complete; it never blocks completion (see isTimerReady in utils/timer.ts).
   // Readiness is derived from these two plus timerStartedAt, never stored, so
   // it stays correct across backgrounding and app restarts.
+  //
+  // On a *subtask* the same field means that subtask's stretch of its parent's
+  // run ("5 min scales, 10 min known pieces") — see utils/timerSegments.ts. It
+  // is the same kind of number, so it reuses the same column; what a subtask
+  // never gets is a timer of its own, since the run it belongs to is the
+  // parent's. Once any subtask carries a stretch the parent's own value is the
+  // sum of them, written by whatever changed a stretch rather than typed.
   timedMinutes: number | null;   // the target duration; null = not a timed task
   timerElapsedSeconds: number;   // banked from finished run segments; 0 when never run or reset
 
@@ -511,7 +545,9 @@ export interface Task {
 // same reason: they're derived state the app maintains, not something a draft
 // gets to assert. That makes newTaskFromDraft's hard-coded 0/false the only
 // source, so a series row or a template application can't inherit a count.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted'>;
+// extraTaskTally is the same kind of thing — the rule (extraTaskEveryN,
+// extraTaskTitle) is the draft's to set, the progress toward it is not.
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'extraTaskTally' | 'previousExtraTaskTally'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"

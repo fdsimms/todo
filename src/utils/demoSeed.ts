@@ -174,7 +174,7 @@ export function seedDemoData(): void {
 
   // The other two kinds the editor's Kind picker offers. Without a row apiece
   // the picker names two features demo mode can't show you.
-  addTask({
+  const piano = addTask({
     title: 'Practise the piano',
     notes: 'A timed task: the row counts down once you start it.',
     category: 'Health',
@@ -182,6 +182,13 @@ export function seedDemoData(): void {
     timedMinutes: 25,
     estimatedMinutes: 25,
     effort: 2,
+  });
+  // The countdown split across its subtasks — the 25 minutes above is the sum
+  // of these, and the row names whichever stretch the clock is in. Without a
+  // task carrying one, apportioning reads as a feature the app hasn't got.
+  ([['Scales', 5], ['Pieces I know', 10], ['The new one', 10]] as const).forEach(([title, minutes]) => {
+    const step = addSubtask(piano.id, title);
+    updateTask(step.id, { timedMinutes: minutes });
   });
 
   const water = addTask({
@@ -197,6 +204,22 @@ export function seedDemoData(): void {
   });
   // Part-done, so the meter on the row reads as a meter rather than an empty bar.
   updateTask(water.id, { progressCount: 2 });
+
+  // An extra-task rule. Invisible until it fires, so the seed carries a tally
+  // partway through the cycle: the editor's caption then reads as a rule in
+  // progress rather than one nobody has started.
+  const violin = addTask({
+    title: 'Practise the violin',
+    notes: 'Every fourth session adds a one-off task to rosin the bow.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    extraTaskEveryN: 4,
+    extraTaskTitle: 'Rosin the bow',
+    effort: 2,
+  });
+  updateTask(violin.id, { extraTaskTally: 2 });
 
   // --- A stack (three independently-scheduled tasks under one label) --------
   const supplements = createGroup('Supplements', 'Health');

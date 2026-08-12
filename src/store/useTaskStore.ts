@@ -50,9 +50,11 @@ import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOff
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { postponeOutcome, nextPostponeCount } from '../utils/postpone';
+import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { isTimedTask, timerElapsed } from '../utils/timer';
+import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
 
 interface UndoableAction {
   label: string;
@@ -199,6 +201,8 @@ function newTaskFromDraft(
     chainIndex: draft.chainIndex ?? 0,
     chainItems: draft.chainItems ?? [],
     chainStepOnSchedule: draft.chainStepOnSchedule ?? false,
+    extraTaskEveryN: draft.extraTaskEveryN ?? null,
+    extraTaskTitle: draft.extraTaskTitle ?? null,
     vacationPause: draft.vacationPause ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,
     actualMinutes: draft.actualMinutes ?? null,
@@ -222,6 +226,8 @@ function newTaskFromDraft(
     // series row or a template application can't inherit someone else's count.
     postponeCount: 0,
     postponeMuted: false,
+    extraTaskTally: 0,
+    previousExtraTaskTally: 0,
   };
 }
 
@@ -1532,6 +1538,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Both write through the same previous* snapshot, so uncompleteTask undoes
     // either one without needing to know which happened.
     const streakBreaks = missed && recurs && datesBySchedule;
+
+    // "Extra task" — every Nth completion adds a separate one-off task (see
+    // Task.extraTaskEveryN). The tally is advanced here, not derived from the
+    // completed rows, which completedRetentionDays eventually purges.
+    //
+    // Gated on advancesBySchedule for the same reason the streak is: mid-chain
+    // a completion is one *step* of the task rather than a completion of it,
+    // so a three-step chain would otherwise reach "every 4th" in a day and a
+    // bit. A miss doesn't count either — the rule counts completions, and
+    // markMissed comes through here too.
+    const extraRule = extraTaskRule(task);
+    const extraAdvance = extraRule && !missed && advancesBySchedule
+      ? advanceExtraTaskTally(task.extraTaskTally, extraRule.everyN)
+      : null;
+    const nextExtraTally = extraAdvance ? extraAdvance.tally : task.extraTaskTally;
+
     const completed: Task = {
       ...task,
       completed: true,
@@ -1557,6 +1579,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // can land over, at, or under target, so clamping it here would erase
       // the overshoot the sweep exists to preserve (see sweepOvershootQuotas).
       progressCount: isQuotaTask(task) && !missed && !task.allowOvershoot ? task.targetCount! : task.progressCount,
+      extraTaskTally: nextExtraTally,
+      previousExtraTaskTally: task.extraTaskTally,
     };
     if (task.pinned) pendingUnpinIds.push(id);
     dbUpdateTask(completed);
@@ -1661,6 +1685,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           streakDate: streakBreaks ? null : streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
           previousStreakCount: task.streakCount,
           previousStreakDate: task.streakDate,
+          // Rides onto the successor like the streak does, and for the same
+          // reason: every occurrence is a fresh id, so a tally left on the
+          // completed row would restart the count from zero every time.
+          extraTaskTally: nextExtraTally,
+          previousExtraTaskTally: task.extraTaskTally,
           reminderTime: nextReminderTime,
           chainIndex: nextChainIndex,
           recurrenceCount:
@@ -1720,6 +1749,37 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     }
 
+    // The extra task is due on the *next* occurrence's day rather than piling
+    // onto the completion that earned it — you rosin the bow at the bench, and
+    // the practice that just finished is over. With no next occurrence (a
+    // one-off, or a series that has run out) there's nothing to ride, so it
+    // lands today.
+    //
+    // A top-level row rather than a subtask of the occurrence: every top-level
+    // selector filters `!t.parentId`, so a subtask would only ever be visible
+    // inside the practice row, couldn't be moved to another day on its own,
+    // and would disappear the moment its parent was ticked.
+    let extraTask: Task | null = null;
+    if (extraRule && extraAdvance?.spawns) {
+      const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+      extraTask = newTaskFromDraft({
+        title: extraRule.title,
+        dueDate: nextTask?.dueDate ?? getCurrentDayStart().toISOString(),
+        // Filed where the task that spawned it lives, so it doesn't sit loose
+        // above the categories. Deliberately not the stack, tags, priority or
+        // effort — those describe the task that spawned it, and this is a
+        // different piece of work.
+        category: task.category,
+        projectId: task.projectId,
+        // Undo comes free: uncompleteTask deletes every uncompleted row
+        // pointing back at the completion being undone, which is exactly the
+        // scope wanted here — undoing the 4th practice takes the rosin task
+        // with it, and the tally goes back with the restored row.
+        previousOccurrenceId: task.id,
+      }, now.toISOString(), maxOrder + 1);
+      dbInsertTask(extraTask);
+    }
+
     // A repeating dated series rolls over as a whole set, not row by row:
     // the next month's dates appear only once every date in the current set
     // is done, so ticking off the 10th doesn't conjure a third row while the
@@ -1768,6 +1828,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(nextTask ? [nextTask] : []),
         ...nextSubtasks,
         ...rolledOver,
+        ...(extraTask ? [extraTask] : []),
       ],
       completionHoldIds: [...s.completionHoldIds, id],
       // A daily target that completes mid-hold hands over to the completion
@@ -1883,6 +1944,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // real one and pulling it down to target-1 would invent progress.
       progressCount:
         isQuotaTask(task) && !isMissed(task) ? Math.max(0, task.targetCount! - 1) : task.progressCount,
+      // Same restore as the streak, and it has to be a snapshot rather than a
+      // decrement: a completion that fired the rule reset the tally to 0, so
+      // subtracting one would leave it at 0 and the next completion would fire
+      // again immediately. The extra task itself is deleted below, as an
+      // uncompleted row pointing back at this one.
+      extraTaskTally: task.previousExtraTaskTally,
     };
     dbUpdateTask(updated);
 
@@ -2603,6 +2670,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       chainIndex: 0,
       chainItems: [],
       chainStepOnSchedule: false,
+      extraTaskEveryN: null,
+      extraTaskTitle: null,
+      extraTaskTally: 0,
+      previousExtraTaskTally: 0,
       vacationPause: false,
       timerStartedAt: null,
       actualMinutes: null,
@@ -2645,15 +2716,30 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   deleteSubtask(id) {
     const subtask = get().tasks.find(t => t.id === id);
     if (!subtask) return;
+    // A subtask carrying a stretch of its parent's timer is part of that
+    // timer's length (see utils/timerSegments.ts), so deleting it has to
+    // re-total the parent — the editor is not the only place a subtask can go.
+    // Deleting the *last* stretch leaves the total where it was rather than
+    // clearing it: the split is gone, but the task is still a timed task of
+    // that length, and a null here would quietly demote it to a plain one.
+    const parent = subtask.parentId ? get().tasks.find(t => t.id === subtask.parentId) : undefined;
+    const retotal = parent != null && parent.timedMinutes != null && segmentMinutesOf(subtask) !== null;
+    const previousTotal = parent?.timedMinutes ?? null;
 
     dbDeleteTask(id);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id) }));
+
+    if (retotal) {
+      const total = apportionedMinutes(get().subtasksOf(parent!.id));
+      if (total !== null) get().updateTask(parent!.id, { timedMinutes: total });
+    }
 
     get().setLastAction({
       label: 'Subtask deleted',
       undo: () => {
         dbInsertTask(subtask);
         set(s => ({ tasks: [...s.tasks, subtask] }));
+        if (retotal) get().updateTask(parent!.id, { timedMinutes: previousTotal });
       },
     });
   },
@@ -2739,6 +2825,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       chainIndex: 0,
       chainItems: [],
       chainStepOnSchedule: false,
+      extraTaskEveryN: null,
+      extraTaskTitle: null,
+      extraTaskTally: 0,
+      previousExtraTaskTally: 0,
       vacationPause: false,
       timerStartedAt: null,
       actualMinutes: null,

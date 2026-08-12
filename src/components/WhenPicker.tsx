@@ -49,6 +49,7 @@ const BLANK_SNOOZE_TASK: Task = {
   streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, showStreak: false,
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false,
+  extraTaskEveryN: null, extraTaskTitle: null, extraTaskTally: 0, previousExtraTaskTally: 0,
   archived: false, archivedAt: null, timerStartedAt: null, actualMinutes: null,
   timedMinutes: null, timerElapsedSeconds: 0,
   previousOccurrenceId: null,

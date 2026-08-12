@@ -205,6 +205,10 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainIndex: 0,
   chainItems: [],
   chainStepOnSchedule: false,
+  extraTaskEveryN: null,
+  extraTaskTitle: null,
+  extraTaskTally: 0,
+  previousExtraTaskTally: 0,
   vacationPause: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -3197,6 +3201,65 @@ describe('deleteSubtask', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'sub', parentId: 'p' })] });
     useTaskStore.getState().deleteSubtask('sub');
     expect(dbDeleteTask).toHaveBeenCalledWith('sub');
+  });
+
+  // A timed task's duration is the sum of the stretches its subtasks carry, and
+  // a subtask can be deleted from the task row as well as the editor.
+  const apportioned = () => ({
+    tasks: [
+      makeTask({ id: 'p', timedMinutes: 25 }),
+      makeTask({ id: 's1', parentId: 'p', sortOrder: 1, timedMinutes: 5 }),
+      makeTask({ id: 's2', parentId: 'p', sortOrder: 2, timedMinutes: 10 }),
+      makeTask({ id: 's3', parentId: 'p', sortOrder: 3, timedMinutes: 10 }),
+    ],
+  });
+
+  it("re-totals the parent's countdown when a stretch is deleted", () => {
+    useTaskStore.setState(apportioned());
+    useTaskStore.getState().deleteSubtask('s3');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'p')!.timedMinutes).toBe(15);
+  });
+
+  it('puts the old total back when the delete is undone', () => {
+    useTaskStore.setState(apportioned());
+    useTaskStore.getState().deleteSubtask('s3');
+    useTaskStore.getState().lastAction!.undo();
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'p')!.timedMinutes).toBe(25);
+    expect(useTaskStore.getState().tasks.some(t => t.id === 's3')).toBe(true);
+  });
+
+  it('leaves the duration alone when the last stretch goes — the task is still timed', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'p', timedMinutes: 5 }),
+        makeTask({ id: 's1', parentId: 'p', sortOrder: 1, timedMinutes: 5 }),
+      ],
+    });
+    useTaskStore.getState().deleteSubtask('s1');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'p')!.timedMinutes).toBe(5);
+  });
+
+  it("doesn't touch a parent whose subtasks never carried a stretch", () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'p', timedMinutes: 25 }),
+        makeTask({ id: 's1', parentId: 'p', sortOrder: 1 }),
+      ],
+    });
+    useTaskStore.getState().deleteSubtask('s1');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'p')!.timedMinutes).toBe(25);
+  });
+
+  it('never promotes an untimed parent to a timed one', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'p', timedMinutes: null }),
+        makeTask({ id: 's1', parentId: 'p', sortOrder: 1, timedMinutes: 5 }),
+        makeTask({ id: 's2', parentId: 'p', sortOrder: 2, timedMinutes: 10 }),
+      ],
+    });
+    useTaskStore.getState().deleteSubtask('s2');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'p')!.timedMinutes).toBeNull();
   });
 });
 
@@ -6642,5 +6705,161 @@ describe('deleting a use-up task', () => {
     useTaskStore.getState().deleteTask(task.id);
 
     expect(useGroceryStore.getState().items[0].useUpTask).toBeNull();
+  });
+});
+
+// ─── Extra task (every Nth completion) ───────────────────────────────────────
+
+describe('completeTask: extra task every Nth completion', () => {
+  const practice = (overrides: Partial<Task> = {}) => makeTask({
+    id: 'practice',
+    title: 'Practice violin',
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+    extraTaskEveryN: 4,
+    extraTaskTitle: 'Rosin the bow',
+    ...overrides,
+  });
+
+  /** Completes the live occurrence and returns the one it spawned. */
+  const completeOccurrence = (id: string) => {
+    useTaskStore.getState().completeTask(id);
+    return useTaskStore.getState().tasks.find(
+      t => !t.completed && t.title === 'Practice violin'
+    )!;
+  };
+
+  const extras = () =>
+    useTaskStore.getState().tasks.filter(t => t.title === 'Rosin the bow');
+
+  it('counts completions up without adding anything before the Nth', () => {
+    useTaskStore.setState({ tasks: [practice()] });
+
+    let live = completeOccurrence('practice');
+    expect(live.extraTaskTally).toBe(1);
+    expect(extras()).toHaveLength(0);
+
+    live = completeOccurrence(live.id);
+    expect(live.extraTaskTally).toBe(2);
+    expect(extras()).toHaveLength(0);
+  });
+
+  it('adds the task on the Nth completion and starts the count again', () => {
+    useTaskStore.setState({ tasks: [practice({ extraTaskTally: 3 })] });
+
+    const live = completeOccurrence('practice');
+    expect(extras()).toHaveLength(1);
+    expect(live.extraTaskTally).toBe(0);
+  });
+
+  it('carries the tally across occurrences, since each one is a fresh id', () => {
+    useTaskStore.setState({ tasks: [practice()] });
+
+    let live = practice();
+    let id = 'practice';
+    for (let i = 0; i < 4; i++) {
+      live = completeOccurrence(id);
+      id = live.id;
+    }
+    expect(extras()).toHaveLength(1);
+    expect(live.id).not.toBe('practice');
+  });
+
+  it('dates it with the next occurrence rather than the completion that earned it', () => {
+    useTaskStore.setState({ tasks: [practice({ extraTaskTally: 3 })] });
+
+    const live = completeOccurrence('practice');
+    expect(extras()[0].dueDate).toBe(live.dueDate);
+  });
+
+  it('makes a top-level task filed where the one that spawned it lives', () => {
+    useTaskStore.setState({
+      tasks: [practice({ extraTaskTally: 3, category: 'Music', projectId: 'p1' })],
+    });
+
+    useTaskStore.getState().completeTask('practice');
+    const extra = extras()[0];
+    expect(extra.parentId).toBeNull();
+    expect(extra.category).toBe('Music');
+    expect(extra.projectId).toBe('p1');
+    expect(extra.recurrenceType).toBe('none');
+    expect(extra.completed).toBe(false);
+  });
+
+  // Both halves are needed for the rule to be live, so a half-filled one is
+  // inert rather than half-applied: the count is left exactly where it was,
+  // and naming the task later picks up from there.
+  it('adds nothing and does not count without a title', () => {
+    useTaskStore.setState({
+      tasks: [practice({ extraTaskTally: 3, extraTaskTitle: null })],
+    });
+
+    const live = completeOccurrence('practice');
+    expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(1);
+    expect(live.extraTaskTally).toBe(3);
+  });
+
+  it('does not count a miss — the rule counts completions', () => {
+    useTaskStore.setState({ tasks: [practice({ extraTaskTally: 3 })] });
+
+    useTaskStore.getState().markMissed('practice');
+    expect(extras()).toHaveLength(0);
+    const live = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(live.extraTaskTally).toBe(3);
+  });
+
+  it('counts a run through a chain once, not once per step', () => {
+    useTaskStore.setState({
+      tasks: [practice({
+        extraTaskTally: 3,
+        chainEnabled: true,
+        chainIndex: 0,
+        chainItems: [
+          { id: 'c1', title: 'Scales', estimatedMinutes: null },
+          { id: 'c2', title: 'Etude', estimatedMinutes: null },
+        ],
+      })],
+    });
+
+    // First step: mid-chain, so the task hasn't been completed yet.
+    const midChain = completeOccurrence('practice');
+    expect(extras()).toHaveLength(0);
+    expect(midChain.extraTaskTally).toBe(3);
+
+    // Last step finishes the run, which is the completion the rule counts.
+    completeOccurrence(midChain.id);
+    expect(extras()).toHaveLength(1);
+  });
+
+  it('takes the task back and restores the tally when the completion is undone', () => {
+    useTaskStore.setState({ tasks: [practice({ extraTaskTally: 3 })] });
+
+    useTaskStore.getState().completeTask('practice');
+    expect(extras()).toHaveLength(1);
+
+    useTaskStore.getState().uncompleteTask('practice');
+    expect(extras()).toHaveLength(0);
+    const restored = useTaskStore.getState().tasks.find(t => t.id === 'practice')!;
+    expect(restored.extraTaskTally).toBe(3);
+    expect(restored.completed).toBe(false);
+  });
+
+  it('restores a mid-cycle tally too, rather than leaving it incremented', () => {
+    useTaskStore.setState({ tasks: [practice({ extraTaskTally: 1 })] });
+
+    useTaskStore.getState().completeTask('practice');
+    useTaskStore.getState().uncompleteTask('practice');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'practice')!.extraTaskTally).toBe(1);
+  });
+
+  it('leaves a task with no rule completely alone', () => {
+    useTaskStore.setState({
+      tasks: [practice({ extraTaskEveryN: null, extraTaskTitle: null })],
+    });
+
+    const live = completeOccurrence('practice');
+    expect(live.extraTaskTally).toBe(0);
+    expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(1);
   });
 });

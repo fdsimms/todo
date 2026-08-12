@@ -18,7 +18,7 @@ import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
 import { PressableScale } from './PressableScale';
-import { ChainStepMinutes } from './ChainStepMinutes';
+import { StepMinutes } from './StepMinutes';
 import { format } from 'date-fns/format';
 import { addMonths } from 'date-fns/addMonths';
 import { addDays } from 'date-fns/addDays';
@@ -38,6 +38,11 @@ import {
   type TaskKind,
 } from '../utils/taskKinds';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
+import {
+  MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N,
+  describeExtraTaskRule, extraTaskSummary,
+} from '../utils/extraTask';
+import { ordinal } from '../utils/ordinal';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -52,6 +57,7 @@ import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/parseTaskInput';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
+import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
 import { SearchField } from './SearchField';
@@ -63,7 +69,7 @@ import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { BlockerPickerSheet } from './BlockerPickerSheet';
 import { displayTitleFor } from '../utils/visibilityUtils';
-import { RecurrencePicker, ordinal } from './RecurrencePicker';
+import { RecurrencePicker } from './RecurrencePicker';
 import { recurrenceUnitLabel } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 
@@ -113,7 +119,7 @@ interface Props {
 type PickerMode = 'none' | 'reminder';
 
 /** A subtask typed in before the parent task itself has been saved. */
-type DraftSubtask = { id: string; title: string; completed: boolean };
+type DraftSubtask = { id: string; title: string; completed: boolean; timedMinutes: number | null };
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps';
@@ -188,7 +194,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const notesVisible = !searching
     || matchesEditorQuery({ key: 'notes', label: 'Notes', keywords: ['description', 'details', 'memo'] }, searchTerms);
   const subtasksVisible = !searching
-    || matchesEditorQuery({ key: 'subtasks', label: 'Subtasks', keywords: ['steps', 'checklist', 'list', 'children'] }, searchTerms);
+    || matchesEditorQuery({ key: 'subtasks', label: 'Subtasks', keywords: ['steps', 'checklist', 'list', 'children', 'split', 'stretch'] }, searchTerms);
   // Only ever on screen for a saved task, so the `task` check belongs here
   // rather than only at the render site — otherwise a new task's search tally
   // counts a card that isn't there and "nothing matched" never shows.
@@ -285,6 +291,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [blockedById, setBlockedById] = useState<string | null>(null);
   const [showBlockerPicker, setShowBlockerPicker] = useState(false);
+  const [extraTaskEveryN, setExtraTaskEveryN] = useState<number | null>(null);
+  const [extraTaskTitle, setExtraTaskTitle] = useState('');
+  const [showExtraTask, setShowExtraTask] = useState(false);
   // Just the blocker's title, for the row's value. Selecting the one task
   // rather than the whole list keeps unrelated task changes from re-rendering
   // the editor.
@@ -424,6 +433,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setBlockedById(task.blockedById ?? null);
+      setExtraTaskEveryN(task.extraTaskEveryN ?? null);
+      setExtraTaskTitle(task.extraTaskTitle ?? '');
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
@@ -445,7 +456,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setBlockedById(null);
+      setExtraTaskEveryN(null);
+      setExtraTaskTitle('');
     }
+    setShowExtraTask(false);
     setShowBlockerPicker(false);
     setShowLinkPicker(false); setCustomLinkText('');
     setShowPhoneField(false); setPhoneText(task?.phoneNumber ?? initialDraft?.phoneNumber ?? '');
@@ -507,6 +521,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       blockedById: task?.blockedById ?? null,
+      extraTaskEveryN: task?.extraTaskEveryN ?? null,
+      extraTaskTitle: task?.extraTaskTitle ?? '',
     });
   }, [visible, task]);
 
@@ -627,6 +643,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   };
 
   const proceedWithSave = (effectiveChainItems: ChainItem[] = chainItems, effectiveDraftSubtasks: DraftSubtask[] = draftSubtasks) => {
+    const resolvedExtraTaskTitle = extraTaskTitle.trim() || null;
     const data = {
       title: title.trim(), notes, category, projectId: project, tags,
       dueDate: dueDate?.toISOString() ?? null,
@@ -679,6 +696,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       blockedById,
+      // Both halves or neither: a count with no name would be a rule that can
+      // never fire, and a name with no count is a leftover from clearing one.
+      // extraTaskRule() is what reads them, and this is what keeps a saved row
+      // from disagreeing with it.
+      extraTaskEveryN: resolvedExtraTaskTitle ? extraTaskEveryN : null,
+      extraTaskTitle: extraTaskEveryN !== null ? resolvedExtraTaskTitle : null,
     };
 
     // The whole set of dates this task falls on, earliest first. A single
@@ -729,6 +752,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           effectiveDraftSubtasks.forEach(d => {
             const row = addSubtask(created.id, d.title);
             if (d.completed) toggleSubtask(row.id);
+            // The stretch of the countdown this subtask was given while the
+            // parent was still a draft. addSubtask takes a title and nothing
+            // else, so it lands as a follow-up write.
+            if (d.timedMinutes != null) updateTask(row.id, { timedMinutes: d.timedMinutes });
           });
         }
       }
@@ -845,7 +872,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       effort,
       estimatedMinutes,
     });
-    setTimedMinutes(baked.timedMinutes);
+    // Coming back to Timed with the subtasks still carrying stretches: the
+    // apportionment *is* the duration, so it outranks the remembered flat one.
+    const apportioned = next === 'timed'
+      ? apportionedMinutes(task ? subtasksOf(task.id) : draftSubtasks)
+      : null;
+    setTimedMinutes(apportioned ?? baked.timedMinutes);
     setTargetCount(baked.targetCount);
     setTargetUnit(baked.targetUnit ?? '');
     setChainEnabled(baked.chainEnabled);
@@ -1058,6 +1090,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber,
       emailAddress,
       blockedById,
+      extraTaskEveryN,
+      extraTaskTitle,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -1221,6 +1255,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     ? formatDuration(estimatedMinutes)
     : effort > 0 ? EFFORT_LABELS[effort] : undefined;
   const subtasks: (Task | DraftSubtask)[] = task ? subtasksOf(task.id) : draftSubtasks;
+  // The stretches of the countdown the subtasks have been given, in their own
+  // order. Empty unless at least one subtask carries minutes, which is what
+  // keeps every timed task that never apportioned anything looking exactly as
+  // it did.
+  const durationSegments = kind === 'timed' ? timerSegments(subtasks) : [];
 
   /**
    * Adds a subtask at the seam the add button was dropped on, or at the end if
@@ -1259,7 +1298,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     // once Save creates the task (see proceedWithSave). Returned as well as
     // set, since save() reads this synchronously in the same tick a still-
     // focused field is committed — the setState here wouldn't be visible yet.
-    const created: DraftSubtask = { id: generateId(), title: trimmed, completed: false };
+    const created: DraftSubtask = { id: generateId(), title: trimmed, completed: false, timedMinutes: null };
     const next = index === null || index >= draftSubtasks.length
       ? [...draftSubtasks, created]
       : (() => { const n = [...draftSubtasks]; n.splice(Math.max(0, index), 0, created); return n; })();
@@ -1290,9 +1329,57 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setDraftSubtasks(draftSubtasks.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
   };
 
+  /**
+   * A timed task's duration is the sum of its subtasks' stretches (see
+   * utils/timerSegments.ts), so anything that changes a stretch re-totals it
+   * here rather than leaving the two for the user to keep in step by hand.
+   *
+   * Only while there *is* an apportionment: taking the last stretch off leaves
+   * the duration where it was, because losing the split doesn't make the task
+   * untimed — it makes it a flat countdown of the length it already had. And
+   * only on a task that already counts down, so a stretch left on a subtask by
+   * a kind switch can't quietly promote a plain task back to a timed one.
+   */
+  const retotalDuration = (nextSubtasks: (Task | DraftSubtask)[]) => {
+    if (timedMinutes === null) return;
+    const total = apportionedMinutes(nextSubtasks);
+    if (total === null || total === timedMinutes) return;
+    setTimedMinutes(total);
+    setDurationUnit('min');
+    setDurationText(String(total));
+    // Subtask edits in this sheet already write straight through (a title, a
+    // tick, a delete all do), so the total they imply has to as well — holding
+    // it back until Save would leave a cancelled edit with stretches that don't
+    // add up to the task's own duration.
+    //
+    // Which is also why the unsaved-changes baseline moves with it: the write
+    // has happened, so Cancel offering to discard it would be offering
+    // something it can't do.
+    if (task) {
+      updateTask(task.id, { timedMinutes: total });
+      if (initialStateRef.current) {
+        initialStateRef.current = JSON.stringify({
+          ...JSON.parse(initialStateRef.current) as Record<string, unknown>,
+          timedMinutes: total,
+        });
+      }
+    }
+  };
+
+  const setSubtaskMinutes = (id: string, minutes: number | null) => {
+    const next = subtasks.map(s => (s.id === id ? { ...s, timedMinutes: minutes } : s));
+    if (task) updateTask(id, { timedMinutes: minutes });
+    else setDraftSubtasks(next as DraftSubtask[]);
+    retotalDuration(next);
+  };
+
   const deleteDraftSubtask = (id: string) => {
-    if (task) { deleteSubtask(id); return; }
-    setDraftSubtasks(draftSubtasks.filter(s => s.id !== id));
+    const next = subtasks.filter(s => s.id !== id);
+    // deleteSubtask re-totals the stored task itself — this keeps the sheet's
+    // own copy of the duration in step, so Save doesn't write the old one back.
+    if (task) deleteSubtask(id);
+    else setDraftSubtasks(draftSubtasks.filter(s => s.id !== id));
+    retotalDuration(next);
   };
 
   const reorderDraftSubtasks = (ids: string[]) => {
@@ -1614,16 +1701,48 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // you just picked and can't then configure is worse than no picker.
           ...(kind === 'timed' ? [{
             key: 'duration', label: 'Duration', primary: true, set: true,
-            keywords: ['timer', 'countdown', 'minutes', 'how long', 'stopwatch'],
+            keywords: ['timer', 'countdown', 'minutes', 'how long', 'stopwatch', 'split', 'apportion'],
             node: (<>
             <CollapsibleField
               label="Duration"
-              summary={timedMinutes != null ? formatDuration(timedMinutes) : undefined}
+              summary={
+                timedMinutes == null
+                  ? undefined
+                  : durationSegments.length > 0
+                    ? `${formatDuration(timedMinutes)} across ${durationSegments.length} subtask${durationSegments.length === 1 ? '' : 's'}`
+                    : formatDuration(timedMinutes)
+              }
               emptySummary="Untimed"
-              hint="Counts down on the task's row while you work. When it runs out the task is marked ready to complete."
+              hint={
+                durationSegments.length > 0
+                  ? "Counts down on the task's row while you work, passing through each subtask's minutes in turn."
+                  : "Counts down on the task's row while you work. When it runs out the task is marked ready to complete."
+              }
               expanded={fieldOpen('duration')}
               onToggle={toggleDuration}
             >
+              {/* Once the subtasks carry minutes they *are* the duration, so the
+                  presets would be a second control setting the same number and
+                  losing. The split is shown read-only here and edited on the
+                  subtask rows, which is where the minutes are typed. */}
+              {durationSegments.length > 0 ? (
+                <View style={styles.splitList}>
+                  {durationSegments.map((seg, i) => (
+                    <View key={seg.id} style={styles.splitRow}>
+                      <Text style={styles.splitIndex}>{i + 1}</Text>
+                      <Text style={styles.splitTitle} numberOfLines={1}>{seg.title}</Text>
+                      <Text style={styles.splitMinutes}>{formatDuration(seg.minutes)}</Text>
+                    </View>
+                  ))}
+                  <View style={[styles.splitRow, styles.splitTotalRow]}>
+                    <Text style={styles.splitTotalLabel}>Total</Text>
+                    <Text style={styles.splitTotalValue}>{formatDuration(timedMinutes ?? 0)}</Text>
+                  </View>
+                  <Text style={styles.splitNote}>
+                    Set each stretch on the subtask rows below. Clear all of them to set one duration here instead.
+                  </Text>
+                </View>
+              ) : (<>
               <View style={styles.pillRow}>
                 {DURATION_PRESETS.map(m => (
                   <TouchableOpacity
@@ -1667,6 +1786,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   ))}
                 </View>
               </View>
+              </>)}
             </CollapsibleField>
             </>),
           }] : []),
@@ -1835,7 +1955,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                                 </Text>
                               </TouchableOpacity>
                             )}
-                            <ChainStepMinutes
+                            <StepMinutes
                               value={item.estimatedMinutes}
                               label={item.title}
                               onChange={mins => setChainItems(prev => prev.map(
@@ -2359,26 +2479,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'waitingOn', label: 'Waiting on', set: !!blockedById,
-            keywords: ['blocked', 'blocker', 'depends on', 'after', 'until'],
-            node: (
-              <>
-            <EditorRow
-              icon="hourglass-outline"
-              label="Waiting on"
-              hint="Stay hidden until another task is done"
-              value={
-                blockerTask
-                  ? displayTitleFor(blockerTask)
-                  : blockedById ? 'Task no longer exists' : undefined
-              }
-              onPress={() => setShowBlockerPicker(true)}
-              onClear={blockedById ? () => setBlockedById(null) : undefined}
-            />
-              </>
-            ),
-          },
-          {
             key: 'repeat', label: 'Repeat', primary: true, set: recurrenceType !== 'none',
             keywords: ['recurring', 'recurrence', 'every', 'daily', 'weekly', 'monthly', 'schedule'],
             node: (
@@ -2419,6 +2519,103 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onOpenPicker: () => setShowEndDatePicker(true),
                 }}
               />
+            )}
+              </>
+            ),
+          },
+        ]}
+      />
+
+      {/* Relationships — the two fields that tie this task to another one: one
+          it waits for, and one it creates. "Waiting on" used to sit in
+          Schedule, which is where it was hardest to find: it's not primary, so
+          on a task that wasn't using it the row lived behind that group's
+          "N more" with five schedule fields. Neither row is primary here
+          either, so a task using neither shows one folded line — and setting
+          either one opens the group with the other beside it. */}
+      <EditorGroup
+        label="Relationships"
+        searchTerms={searchTerms}
+        onMatchCount={reportMatches}
+        rows={[
+          {
+            key: 'waitingOn', label: 'Waiting on', set: !!blockedById,
+            keywords: ['blocked', 'blocker', 'depends on', 'after', 'until'],
+            node: (
+              <>
+            <EditorRow
+              icon="hourglass-outline"
+              label="Waiting on"
+              hint="Stay hidden until another task is done"
+              value={
+                blockerTask
+                  ? displayTitleFor(blockerTask)
+                  : blockedById ? 'Task no longer exists' : undefined
+              }
+              onPress={() => setShowBlockerPicker(true)}
+              onClear={blockedById ? () => setBlockedById(null) : undefined}
+            />
+              </>
+            ),
+          },
+          {
+            key: 'extraTask', label: 'Extra task', set: extraTaskEveryN !== null,
+            keywords: ['every', 'nth', 'occasionally', 'periodic', 'follow-up', 'maintenance'],
+            node: (
+              <>
+            <EditorRow
+              icon="add-circle-outline"
+              label="Extra task"
+              hint="Add a one-off task every few times you complete this one"
+              // The count alone, not the count and the title: the pair
+              // truncates at this width, and the title is right underneath
+              // once the row is open. Same call Daily target makes.
+              value={extraTaskSummary(extraTaskEveryN)}
+              expanded={showExtraTask}
+              onPress={() => { animateLayout(); setShowExtraTask(v => !v); }}
+              onClear={extraTaskEveryN !== null
+                ? () => { setExtraTaskEveryN(null); setExtraTaskTitle(''); setShowExtraTask(false); }
+                : undefined}
+            />
+            {showExtraTask && (
+              // Deliberately the Daily target body's layout, styles and all:
+              // both are a small integer with a word beside it and a caption
+              // saying how it will read. A second set of styles for the same
+              // shape is how the two would drift apart.
+              <>
+                <View style={styles.targetStepperRow}>
+                  <CountStepper
+                    value={extraTaskEveryN}
+                    onChange={setExtraTaskEveryN}
+                    min={MIN_EXTRA_TASK_EVERY_N}
+                    max={MAX_EXTRA_TASK_EVERY_N}
+                    // The floor clears it, so the row's × isn't the only way
+                    // back out once this has been opened.
+                    allowNull
+                    emptyLabel="Off"
+                    format={n => ordinal(n)}
+                    label="Extra task frequency"
+                    describeValue={n => (n === null ? 'off' : `every ${ordinal(n)} completion`)}
+                  />
+                  {/* Hidden until there's a count, since on its own a title
+                      names a task nothing will ever create. */}
+                  {extraTaskEveryN !== null && (
+                    <TextInput
+                      style={styles.targetUnitInput}
+                      value={extraTaskTitle}
+                      onChangeText={setExtraTaskTitle}
+                      placeholder="Task to add"
+                      placeholderTextColor={colors.textSecondary}
+                      maxLength={TITLE_MAX_LENGTH}
+                      returnKeyType="done"
+                      accessibilityLabel="Title of the task to add"
+                    />
+                  )}
+                </View>
+                <Text style={styles.targetStepperCaption}>
+                  {describeExtraTaskRule(extraTaskEveryN, extraTaskTitle, recurrenceType !== 'none')}
+                </Text>
+              </>
             )}
               </>
             ),
@@ -2693,6 +2890,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         {sub.title}
                       </Text>
                     </TouchableOpacity>
+                  )}
+                  {/* A timed task's countdown runs through its subtasks in this
+                      order, so the minutes belong on the rows that carry the
+                      order — not in the Duration field, which only totals them. */}
+                  {kind === 'timed' && (
+                    <StepMinutes
+                      value={sub.timedMinutes ?? null}
+                      label={sub.title}
+                      what="Timer"
+                      onChange={mins => setSubtaskMinutes(sub.id, mins)}
+                    />
                   )}
                   <TouchableOpacity
                     onLongPress={drag}
@@ -3537,6 +3745,41 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
+  // The read-only breakdown shown in Duration once the subtasks carry the
+  // countdown between them. Numbered rather than bulleted because the order is
+  // the order the timer runs through them in.
+  splitList: { gap: 2 },
+  splitRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: 4,
+  },
+  splitIndex: {
+    width: 14,
+    color: colors.textTertiary, fontSize: font.xs,
+    fontVariant: ['tabular-nums'],
+  },
+  splitTitle: { flex: 1, color: colors.text, fontSize: font.sm },
+  splitMinutes: {
+    color: colors.textSecondary, fontSize: font.sm,
+    fontVariant: ['tabular-nums'],
+  },
+  splitTotalRow: {
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
+    marginTop: 2,
+  },
+  splitTotalLabel: {
+    flex: 1,
+    color: colors.textSecondary, fontSize: font.sm, fontWeight: '600',
+  },
+  splitTotalValue: {
+    color: colors.text, fontSize: font.sm, fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  splitNote: {
+    color: colors.textTertiary, fontSize: font.xs,
+    marginTop: spacing.xs,
+    lineHeight: 16,
+  },
   subtaskRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,

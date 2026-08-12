@@ -584,6 +584,15 @@ export function initDatabase(): void {
     // NULL on every task that already exists — a task nobody projected from a
     // grocery item isn't one. Same shape as meal_entry_id above.
     'ALTER TABLE tasks ADD COLUMN grocery_item_id TEXT',
+    // NULL on every existing row — nobody has a rule for a feature that didn't
+    // exist, and NULL is what "off" already means for this field.
+    'ALTER TABLE tasks ADD COLUMN extra_task_every_n INTEGER',
+    'ALTER TABLE tasks ADD COLUMN extra_task_title TEXT',
+    // 0, which is the only honest backfill: past completions were never
+    // counted, so no upgraded task can start part-way toward its first extra
+    // task. See Task.extraTaskTally.
+    'ALTER TABLE tasks ADD COLUMN extra_task_tally INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE tasks ADD COLUMN previous_extra_task_tally INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -870,6 +879,10 @@ function rowToTask(row: Record<string, unknown>): Task {
     chainIndex: (row.cycle_index as number) ?? 0,
     chainItems: parseChainItems(JSON.parse((row.cycle_items as string) ?? '[]')),
     chainStepOnSchedule: Boolean(row.chain_step_on_schedule),
+    extraTaskEveryN: (row.extra_task_every_n as number | null) ?? null,
+    extraTaskTitle: (row.extra_task_title as string | null) ?? null,
+    extraTaskTally: (row.extra_task_tally as number) ?? 0,
+    previousExtraTaskTally: (row.previous_extra_task_tally as number) ?? 0,
     vacationPause: Boolean(row.vacation_pause),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
@@ -916,8 +929,9 @@ export function dbInsertTask(task: Task): void {
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, meal_entry_id,
-      grocery_item_id, postpone_count, postpone_muted
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      grocery_item_id, postpone_count, postpone_muted,
+      extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -956,6 +970,10 @@ export function dbInsertTask(task: Task): void {
       task.groceryItemId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
+      task.extraTaskEveryN ?? null,
+      task.extraTaskTitle ?? null,
+      task.extraTaskTally,
+      task.previousExtraTaskTally,
     ]
   );
 }
@@ -974,7 +992,8 @@ export function dbUpdateTask(task: Task): void {
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, meal_entry_id=?,
-      grocery_item_id=?, postpone_count=?, postpone_muted=?
+      grocery_item_id=?, postpone_count=?, postpone_muted=?,
+      extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -1014,6 +1033,10 @@ export function dbUpdateTask(task: Task): void {
       task.groceryItemId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
+      task.extraTaskEveryN ?? null,
+      task.extraTaskTitle ?? null,
+      task.extraTaskTally,
+      task.previousExtraTaskTally,
       task.id,
     ]
   );
