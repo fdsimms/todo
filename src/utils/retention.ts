@@ -84,6 +84,15 @@ export function retentionCutoff(
  * they'd go looking for it; a retention window is about the tombstones
  * accumulating behind their back, not about the things they chose to keep.
  *
+ * **An answered decision task is exempt for exactly that reason.** Its
+ * `deliverableValue` is not a record that the task happened — it's a value the
+ * user typed and expects to be able to read back ("we're going on the 12th"),
+ * and on a one-off task this row is the only thing holding it. Deleting it
+ * would be the data-loss case the "defaults to forever" note above exists to
+ * avoid, arriving three months late and silently. The exemption is narrow on
+ * purpose: a decision task completed *without* an answer recorded nothing, so
+ * it's an ordinary tombstone and purges with the rest.
+ *
  * **Streaks survive this.** streakCount/streakDate and their previous* snapshot
  * live on the row that carries the streak — the live occurrence — and are never
  * summed back across the chain, so deleting old tombstones can't shorten a
@@ -100,6 +109,7 @@ export function selectPurgeableTaskIds(tasks: Task[], cutoff: Date): string[] {
         !t.parentId &&
         t.completed &&
         !t.archived &&
+        !(t.deliverableKind !== null && t.deliverableValue !== null) &&
         t.completedAt !== null &&
         new Date(t.completedAt).getTime() < cutoff.getTime()
     )

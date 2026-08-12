@@ -21,6 +21,7 @@ import type { Task } from '../types';
 import type { SearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { displayTitleFor } from '../utils/visibilityUtils';
+import { formatTaskDeliverable } from '../utils/deliverables';
 import { tagColor } from '../utils/tagColor';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, iconSize, interaction, checkboxRadius, type Colors } from '../theme';
@@ -54,12 +55,14 @@ function SearchResultItem({ result, onPress, styles, colors }: {
     : null;
 
   const displayTitle = displayTitleFor(task);
+  const answer = formatTaskDeliverable(task);
 
   const a11yLabel = [
     displayTitle,
     projectName ? `in ${projectName}` : null,
     task.archived ? 'archived' : null,
     isCompleted ? `completed${completedDate ? ` ${completedDate}` : ''}` : null,
+    answer !== null ? `answered ${answer}` : null,
     !isCompleted && task.dueDate ? `due ${format(new Date(task.dueDate), 'MMM d')}` : null,
   ].filter(Boolean).join(', ');
 
@@ -114,6 +117,17 @@ function SearchResultItem({ result, onPress, styles, colors }: {
           )}
           {isCompleted && completedDate && (
             <Text style={styles.completedLabel}>Done {completedDate}</Text>
+          )}
+          {/* What the task was completed with, for a decision task (see
+              Task.deliverableKind). Search is how anyone finds a task they
+              finished months ago, so without this the row you came for is
+              found and still doesn't tell you what you decided. Same glyph
+              the Logbook entry and the unticked checkbox use. */}
+          {answer !== null && (
+            <View style={styles.projectChip}>
+              <Ionicons name="help" size={iconSize.xs} color={colors.textSecondary} />
+              <Text style={styles.answerText} numberOfLines={1}>{answer}</Text>
+            </View>
           )}
           {!isCompleted && task.dueDate && (
             <Text style={styles.metaText}>Due {format(new Date(task.dueDate), 'MMM d')}</Text>
@@ -378,6 +392,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   tagDot: { width: 7, height: 7, borderRadius: 4 },
   metaText: { color: colors.textSecondary, fontSize: font.xs },
+  // A shade up from metaText, like the Logbook's — the answer is the one thing
+  // on the row that isn't bookkeeping about the task.
+  answerText: { color: colors.text, fontSize: font.xs, fontWeight: fontWeight.medium, flexShrink: 1 },
   completedLabel: { color: colors.green, fontSize: font.xs },
   archivedLabel: { color: colors.orange, fontSize: font.xs, fontWeight: fontWeight.semibold },
   notesPreview: {

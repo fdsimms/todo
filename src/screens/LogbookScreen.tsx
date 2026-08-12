@@ -42,7 +42,7 @@ import { formatTimeOfDay, getDayStart, getLogicalDayKey } from '../utils/dateUti
 import { isQuotaPartial, isMissed, displayTitleFor } from '../utils/visibilityUtils';
 import { quotaFraction } from '../components/TaskItem';
 import { formatQuotaProgress } from '../utils/quotaUnit';
-import { formatTaskDeliverable } from '../utils/deliverables';
+import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
@@ -595,7 +595,10 @@ const LogbookRow = React.memo(function LogbookRow({
                 : `completed ${formatTime(task.completedAt!)}`,
             task.category,
             task.actualMinutes != null ? `timed ${formatDuration(task.actualMinutes)}` : null,
-            answer !== null ? `answered ${answer}` : null,
+            // Both states out loud, same as the row shows them: "no answer" is
+            // what makes the ⋯ menu's "Add Answer" make sense to someone who
+            // can't see the glyph.
+            asksOnCompletion(task) ? (answer !== null ? `answered ${answer}` : 'no answer') : null,
           ].filter(Boolean).join(', ')}
         >
           <Text style={styles.taskTitle} numberOfLines={1}>{displayTitleFor(task)}</Text>
@@ -627,9 +630,26 @@ const LogbookRow = React.memo(function LogbookRow({
                 (see styles.answer): it's the only thing here that isn't
                 bookkeeping about the completion, and it's what someone opens
                 the Logbook to read back. It shrinks where the others don't, so
-                a long answer truncates instead of shoving them off the row. */}
-            {answer !== null && (
-              <Text style={styles.answer} numberOfLines={1}>· {answer}</Text>
+                a long answer truncates instead of shoving them off the row.
+
+                The "?" is what says this is an *answer* rather than one more
+                timestamp — "9:14 AM · Sat 12 Sep" alone reads as two times of
+                the same kind. It's the glyph the task's own checkbox carried
+                before it was ticked, so the row and its Logbook entry say the
+                same thing about it. Glyph and no bullet, exactly like the
+                category chip beside it: the glyph is the separator.
+
+                An asked-but-unanswered entry says so rather than showing
+                nothing. Otherwise it's indistinguishable from an ordinary
+                task, and the ⋯ menu's "Add Answer" appears with no visible
+                reason for being there. */}
+            {asksOnCompletion(task) && (
+              <View style={styles.answerChip}>
+                <Ionicons name="help" size={iconSize.xs} color={colors.textTertiary} />
+                {answer !== null
+                  ? <Text style={styles.answer} numberOfLines={1}>{answer}</Text>
+                  : <Text style={styles.noAnswer} numberOfLines={1}>No answer</Text>}
+              </View>
             )}
           </View>
         </TouchableOpacity>
@@ -816,11 +836,27 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: lineHeight.xs,
     flexShrink: 0,
   },
+  // Glyph + text, laid out exactly like categoryChip above it — the meta row's
+  // established shape for "a labelled thing" as opposed to "one more number".
+  answerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    flexShrink: 1,
+  },
   answer: {
     color: colors.textSecondary,
     fontSize: font.xs,
     lineHeight: lineHeight.xs,
     fontWeight: fontWeight.medium,
+    flexShrink: 1,
+  },
+  // Nothing was recorded, so this is bookkeeping again and drops back to the
+  // meta grey the rest of the line uses.
+  noAnswer: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    lineHeight: lineHeight.xs,
     flexShrink: 1,
   },
   // Same metrics as taskTime so it sits on the meta row's baseline; only the

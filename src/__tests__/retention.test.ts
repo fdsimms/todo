@@ -187,6 +187,24 @@ describe('selectPurgeableTaskIds', () => {
     expect(selectPurgeableTaskIds(tasks, cutoff)).toEqual([]);
   });
 
+  // An answered decision task holds a value the user typed and expects to read
+  // back, and on a one-off it's the only thing holding it — deleting that is
+  // the data-loss case the forever default exists to avoid, arriving months
+  // late and silently.
+  it('never takes a decision task that recorded an answer', () => {
+    const tasks = [
+      completedDaysAgo('trip-date', 400, { deliverableKind: 'date', deliverableValue: '2026-09-12T00:00:00.000Z' }),
+    ];
+    expect(selectPurgeableTaskIds(tasks, cutoff)).toEqual([]);
+  });
+
+  // Narrow on purpose: nothing was recorded, so the row is an ordinary
+  // tombstone and the window means what it says.
+  it('takes a decision task that was completed without an answer', () => {
+    const tasks = [completedDaysAgo('skipped', 400, { deliverableKind: 'text', deliverableValue: null })];
+    expect(selectPurgeableTaskIds(tasks, cutoff)).toEqual(['skipped']);
+  });
+
   // A completed subtask under a live parent is a checked-off step of something
   // still in progress, not history. Subtasks of a purged parent are deleted by
   // dbBulkDeleteTasks' parent_id cascade, so they're never named here.
