@@ -19,6 +19,7 @@ import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { useWidgetSync } from './src/utils/widgetSync';
 import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
+import { useCalendarSync } from './src/store/useCalendarStore';
 import { runStartupSequence } from './src/utils/startup';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { View } from 'react-native';
@@ -162,6 +163,12 @@ function AppRoot() {
   // ("Hey Siri, remind me to…"). Same ordering requirement as the deep links
   // above — the DB has to exist before an imported reminder is inserted.
   useRemindersImportSync();
+
+  // Keeps the in-memory window of device calendar events current. Inert until
+  // the calendar read is switched on and a calendar picked; there's no
+  // EKEventStoreChanged bridge, so this refreshes on foreground rather than
+  // subscribing to anything.
+  useCalendarSync();
 
   // Keeps the iOS Today widget's shared snapshot in sync with the task store.
   useWidgetSync();

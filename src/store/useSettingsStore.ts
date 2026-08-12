@@ -325,6 +325,21 @@ interface SettingsStore {
   // capture out of the Inbox and onto Today, and a voice note nobody has read
   // yet is exactly the thing that should not schedule itself.
   remindersImportReview: boolean;
+  // Reading the device calendar, so the app knows what else is on a day. Off by
+  // default and never inferred: turning it on prompts for calendar access,
+  // which nothing else in the app has ever asked for.
+  //
+  // "Google Calendar" is what most people mean by this, and a Google account
+  // added under iOS Settings › Calendar › Accounts is exactly what these ids
+  // point at — but they're plain EventKit calendars and the app never checks
+  // which service is behind one. See #1495.
+  //
+  // Read-only: nothing writes an event. The two fields are separate because
+  // they fail differently — a calendar that's been deleted from the device
+  // leaves its id here harmlessly, while the switch is the user's answer about
+  // the feature as a whole and shouldn't be flipped by a calendar going away.
+  calendarReadEnabled: boolean;
+  calendarIds: string[];
   // When the user last dismissed the quiet-projects banner. Read only through
   // isProjectNudgeDismissedToday, which compares it against today rather than
   // testing it for existence — so it expires at the day rollover on its own and
@@ -413,6 +428,8 @@ interface SettingsStore {
   setGroceryImportConfirmedListId: (id: string | null) => void;
   setGroceryImportDelete: (on: boolean) => void;
   setRemindersImportReview: (on: boolean) => void;
+  setCalendarReadEnabled: (on: boolean) => void;
+  setCalendarIds: (ids: string[]) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
@@ -463,6 +480,7 @@ const DEFAULT_SETTINGS = {
   groceryImportEnabled: false,
   groceryImportDelete: true,
   remindersImportReview: true,
+  calendarReadEnabled: false,
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
@@ -490,6 +508,12 @@ const DEFAULT_SETTINGS = {
 //   because there the danger runs the other way: turning the import off while
 //   leaving the confirmed-list id in place would let a later re-enable skip the
 //   confirmation that is the whole safeguard.
+// - calendarIds stays out on the mechanical rule (it's an array) and is *not*
+//   cleared by hand the way the two Reminders ids are: there is no confirmation
+//   to skip on the way back in, because reading a calendar destroys nothing.
+//   Turning the read off and leaving the chosen calendars means switching it
+//   back on picks up where it left off, which is what the Reminders import
+//   does with its own list when the groceries area is toggled.
 // - kitchenEnabled stays out, on the app lock's reasoning rather than a
 //   mechanical one: it would round-trip fine as a boolean, but "reset
 //   appearance and formatting" is not a request to put a whole feature area
@@ -530,6 +554,27 @@ function parseDefaultReminderLeadMinutes(raw: string | null): number | null {
  * a bad value here silently filters every task out of Today — so an unparseable
  * or out-of-range entry is discarded rather than trusted.
  */
+/**
+ * The chosen calendars. Anything unreadable reads as none picked, which turns
+ * the feature off rather than reading calendars the user didn't choose — the
+ * same direction of failure `parseDefaultReminderLeadMinutes` takes.
+ *
+ * Ids are not validated against the device here: a calendar can be absent this
+ * launch and back the next (an account still syncing, a phone that hasn't
+ * signed in yet), so dropping it would quietly un-pick calendars on a slow
+ * morning. `fetchEvents` validates against a live list at read time instead.
+ */
+function parseCalendarIds(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 function parseFilterArray<T extends number>(raw: string | null, max: number): T[] {
   if (!raw) return [];
   try {
@@ -639,6 +684,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   groceryImportConfirmedListId: null,
   groceryImportDelete: true,
   remindersImportReview: true,
+  calendarReadEnabled: false,
+  calendarIds: [],
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
@@ -758,6 +805,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const groceryImportListId = dbGetSetting('groceryImportListId') || null;
     const groceryImportConfirmedListId = dbGetSetting('groceryImportConfirmedListId') || null;
     const groceryImportDelete = dbGetSetting('groceryImportDelete') !== 'false';
+    const calendarReadEnabled = dbGetSetting('calendarReadEnabled') === 'true';
+    const calendarIds = parseCalendarIds(dbGetSetting('calendarIds'));
     const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
     // Same TEXT-column parse as every other numeric setting here: an
     // unparseable or missing row (a fresh install, or one that predates this
@@ -805,7 +854,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -1155,6 +1204,16 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setRemindersImportReview(on: boolean) {
     dbSetSetting('remindersImportReview', on ? 'true' : 'false');
     set({ remindersImportReview: on });
+  },
+
+  setCalendarReadEnabled(on: boolean) {
+    dbSetSetting('calendarReadEnabled', on ? 'true' : 'false');
+    set({ calendarReadEnabled: on });
+  },
+
+  setCalendarIds(ids: string[]) {
+    dbSetSetting('calendarIds', JSON.stringify(ids));
+    set({ calendarIds: ids });
   },
 
   setPatchNoteQaStatus(id: string, status: PatchNoteQaStatus | null) {

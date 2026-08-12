@@ -46,7 +46,11 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   { id: 'appearance', title: 'Appearance', icon: 'color-palette-outline', tint: 'accent' },
   { id: 'dayTime', title: 'Day & time', icon: 'sunny-outline', tint: 'orange' },
   { id: 'notifications', title: 'Notifications', icon: 'notifications-outline', tint: 'red' },
-  { id: 'capture', title: 'Capture from Reminders', icon: 'download-outline', tint: 'green', iosOnly: true },
+  // Both EventKit integrations live here rather than in two groups: they share
+  // a framework, a platform gate and the same caveat (no change notification,
+  // so both refresh on foreground), and there is no sixth tint to give a group
+  // of its own without repeating one next to it.
+  { id: 'capture', title: 'Reminders & Calendar', icon: 'download-outline', tint: 'green', iosOnly: true },
   { id: 'tasksProjects', title: 'Tasks & projects', icon: 'checkbox-outline', tint: 'purple' },
   // Neutral from here down: the five tinted groups are things you configure,
   // the grey ones are housekeeping. A second orange next to Day & time's read
@@ -137,6 +141,18 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['remove', 'keep', 'leave', 'duplicate', 'shopping', 'mirror'], kitchen: true },
   { id: 'importNow', groupId: 'capture', label: 'Import now', section: 'Apple Reminders',
     keywords: ['sync', 'refresh'] },
+
+  // Calendar (iOS). "Google" earns a keyword on every row: it's what people
+  // will search for, and it appears in none of the labels — the app reads
+  // EventKit calendars and never asks which service is behind one.
+  { id: 'calendarRead', groupId: 'capture', label: 'Read my calendar', section: 'Calendar',
+    keywords: ['google', 'gcal', 'ical', 'icloud', 'outlook', 'events', 'meetings', 'busy', 'schedule'] },
+  { id: 'calendarPermission', groupId: 'capture', label: 'Calendar access', section: 'Calendar',
+    keywords: ['permission', 'allow', 'google'] },
+  { id: 'calendarList', groupId: 'capture', label: 'Calendars', section: 'Calendar',
+    keywords: ['which calendar', 'google', 'work', 'shared', 'subscribed'] },
+  { id: 'calendarToday', groupId: 'capture', label: 'Today', section: 'Calendar',
+    keywords: ['events', 'booked', 'busy', 'free', 'google'] },
 
   // Tasks & projects
   { id: 'vacationMode', groupId: 'tasksProjects', label: 'Vacation mode', section: 'Vacation',

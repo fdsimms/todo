@@ -12,6 +12,8 @@ const defaults: SettingsSummaryInput = {
   remindersImportEnabled: false,
   groceryImportEnabled: false,
   kitchenEnabled: true,
+  calendarReadEnabled: false,
+  calendarIds: [],
   vacationMode: false,
   autoRemoveExpiredTasks: null,
   autoArchiveProjectsOnComplete: false,
@@ -132,5 +134,20 @@ describe('settingsSummaries', () => {
     });
     expect(off.capture).toContain('Importing from Apple Reminders');
     expect(off.capture).not.toContain('Groceries');
+  });
+
+  it('counts the calendars being read', () => {
+    expect(summarise({ calendarReadEnabled: true, calendarIds: ['a'] }).capture)
+      .toContain('Reading 1 calendar');
+    expect(summarise({ calendarReadEnabled: true, calendarIds: ['a', 'b'] }).capture)
+      .toContain('Reading 2 calendars');
+  });
+
+  it('says nothing about calendars when the switch is on but none is picked', () => {
+    // The two can disagree — an unreadable calendarIds row parses to none —
+    // and claiming a read that isn't happening is the failure to avoid.
+    const none = summarise({ calendarReadEnabled: true, calendarIds: [] });
+    expect(none.capture).not.toContain('Reading');
+    expect(none.capture).toBe('Off — say “Hey Siri, remind me to…”');
   });
 });

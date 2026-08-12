@@ -32,6 +32,15 @@ export interface SettingsSummaryInput {
    * `groceryImportEnabled` alone.
    */
   kitchenEnabled: boolean;
+  calendarReadEnabled: boolean;
+  /**
+   * Read alongside the switch rather than trusting it, and the count is the
+   * summary's whole content anyway. The two can disagree: an unreadable
+   * `calendarIds` row parses to none picked while the switch stays on, and a
+   * line claiming the app is reading calendars when it is reading nothing is
+   * the one thing this summary must not say.
+   */
+  calendarIds: string[];
   vacationMode: boolean;
   autoRemoveExpiredTasks: ExpiredTaskGraceDays;
   autoArchiveProjectsOnComplete: boolean;
@@ -88,6 +97,9 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
     capture: line(
       s.remindersImportEnabled && 'Importing from Apple Reminders',
       s.groceryImportEnabled && s.kitchenEnabled && 'Groceries from Apple Reminders',
+      s.calendarReadEnabled && s.calendarIds.length > 0 && (
+        s.calendarIds.length === 1 ? 'Reading 1 calendar' : `Reading ${s.calendarIds.length} calendars`
+      ),
     ) || 'Off — say “Hey Siri, remind me to…”',
 
     tasksProjects: line(
