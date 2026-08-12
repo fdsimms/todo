@@ -51,7 +51,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseCategoryAndTagsInput, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseCategoryAndTagsInput, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns/format';
@@ -95,7 +95,7 @@ interface Props {
   initialTitle?: string;
 }
 
-type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | 'link' | 'phone' | null;
+type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | 'link' | 'phone' | 'email' | null;
 
 /** The type row's labels and icons. Order is fixed: plain first, then the modes. */
 const TYPE_META: { key: QuickAddType; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
@@ -228,6 +228,7 @@ export function QuickAddModal({
   const [category, setCategory] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
+  const [emailAddress, setEmailAddress] = useState<string | null>(null);
   const [type, setType] = useState<QuickAddType>('task');
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
   const [customTimedText, setCustomTimedText] = useState('');
@@ -237,6 +238,7 @@ export function QuickAddModal({
   const [newStepTitle, setNewStepTitle] = useState('');
   const [customLinkText, setCustomLinkText] = useState('');
   const [phoneText, setPhoneText] = useState('');
+  const [emailText, setEmailText] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
@@ -287,6 +289,7 @@ export function QuickAddModal({
       setSeedActive(!!seedRef.current);
       setLinkUrl(null);
       setPhoneNumber(null);
+      setEmailAddress(null);
       setDeadline(null);
       setType(initialType);
       setTimedMinutes(initialType === 'timed' ? DEFAULT_TIMED_MINUTES : null);
@@ -296,6 +299,7 @@ export function QuickAddModal({
       setNewStepTitle('');
       setCustomLinkText('');
       setPhoneText('');
+      setEmailText('');
       setTagInput('');
       setActivePanel(null);
       // A quota resets by spawning its next occurrence, so opening straight
@@ -374,17 +378,26 @@ export function QuickAddModal({
     () => (!parsed && !categoryTagsParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
     [title, parsed, categoryTagsParsed, linkParsed]
   );
+  // "email jane@example.com about the invoice" — the same mechanism again,
+  // for an address rather than a number. Checked after phone so a title that
+  // happens to contain both keeps reading as whichever comes first in the
+  // priority chain, and email addresses don't collide with the phone pattern
+  // since "@" and letters aren't dial digits.
+  const emailParsed = useMemo(
+    () => (!parsed && !categoryTagsParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
+    [title, parsed, categoryTagsParsed, linkParsed, phoneParsed]
+  );
   // "play violin for 15 minutes" — a duration, not a schedule. Same single
-  // tooltip slot, checked last, so a schedule, category/tag token, or link
-  // phrase always wins.
+  // tooltip slot, checked last, so a schedule, category/tag token, link or
+  // contact phrase always wins.
   //
   // Only offered from the plain type, because accepting it switches the sheet
   // into Timed: it's how someone who has never picked a type discovers there
   // is one. Someone already part-way through a Chain or a Target has said what
   // they're making, and a tooltip shouldn't overrule it.
   const durationParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !linkParsed && !phoneParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, categoryTagsParsed, linkParsed, phoneParsed, type]
+    () => (!parsed && !categoryTagsParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, categoryTagsParsed, linkParsed, phoneParsed, emailParsed, type]
   );
   const activeMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
@@ -397,12 +410,14 @@ export function QuickAddModal({
         ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
         : phoneParsed
           ? { matchStart: phoneParsed.matchStart, matchedText: phoneParsed.number }
-          : durationParsed
-            ? {
-                matchStart: durationParsed.matchStart,
-                matchedText: title.slice(durationParsed.matchStart, durationParsed.matchEnd),
-              }
-            : null;
+          : emailParsed
+            ? { matchStart: emailParsed.matchStart, matchedText: emailParsed.address }
+            : durationParsed
+              ? {
+                  matchStart: durationParsed.matchStart,
+                  matchedText: title.slice(durationParsed.matchStart, durationParsed.matchEnd),
+                }
+              : null;
   const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
   // Suggest previously-used titles that match what's being typed. Suppressed
@@ -491,6 +506,15 @@ export function QuickAddModal({
     animateLayout();
     setTitle(phoneParsed.cleanTitle);
     setPhoneNumber(phoneParsed.number);
+  };
+
+  // Apply the detected email address and strip it from the title.
+  const applyEmail = () => {
+    if (!emailParsed) return;
+    haptics.success();
+    animateLayout();
+    setTitle(emailParsed.cleanTitle);
+    setEmailAddress(emailParsed.address);
   };
 
   // Apply the detected duration and strip the phrase from the title. Typing
@@ -590,6 +614,12 @@ export function QuickAddModal({
     setActivePanel(null);
   };
 
+  const commitEmail = () => {
+    const t = emailText.trim();
+    setEmailAddress(t || null);
+    setActivePanel(null);
+  };
+
   const createTask = (finalTitle: string) => {
     haptics.success();
     animateLayout();
@@ -605,6 +635,7 @@ export function QuickAddModal({
       category,
       linkUrl,
       phoneNumber,
+      emailAddress,
       // recurrenceType deliberately absent — it comes from `baked` above,
       // which is what turns a Target into a daily task.
       recurrenceInterval,
@@ -673,6 +704,7 @@ export function QuickAddModal({
       category,
       linkUrl,
       phoneNumber,
+      emailAddress,
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,
@@ -694,6 +726,9 @@ export function QuickAddModal({
     }
     if (panel === 'phone') {
       setPhoneText(phoneNumber ?? '');
+    }
+    if (panel === 'email') {
+      setEmailText(emailAddress ?? '');
     }
   };
 
@@ -966,7 +1001,7 @@ export function QuickAddModal({
                 <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
                 <PressableScale
                   style={styles.tooltipBubble}
-                  onPress={parsed ? applyParse : categoryTagsParsed ? applyCategoryTags : linkParsed ? applyLink : phoneParsed ? applyPhone : applyDuration}
+                  onPress={parsed ? applyParse : categoryTagsParsed ? applyCategoryTags : linkParsed ? applyLink : phoneParsed ? applyPhone : emailParsed ? applyEmail : applyDuration}
                   onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                 >
                   <Ionicons
@@ -981,7 +1016,9 @@ export function QuickAddModal({
                             ? 'link-outline'
                             : phoneParsed
                               ? 'call-outline'
-                              : 'timer-outline'
+                              : emailParsed
+                                ? 'mail-outline'
+                                : 'timer-outline'
                     }
                     size={14}
                     color={colors.onAccent}
@@ -995,7 +1032,9 @@ export function QuickAddModal({
                           ? linkLabel(linkParsed.url)
                           : phoneParsed
                             ? `Call ${phoneParsed.number}`
-                            : `Timer · ${formatDuration(durationParsed!.minutes)}`}
+                            : emailParsed
+                              ? `Email ${emailParsed.address}`
+                              : `Timer · ${formatDuration(durationParsed!.minutes)}`}
                   </Text>
                   <View style={styles.tooltipDot} />
                   <Text style={styles.tooltipHint}>Tap to set</Text>
@@ -1335,6 +1374,28 @@ export function QuickAddModal({
                 {phoneNumber !== null && (
                   <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
                     {phoneNumber}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {/* Email chip */}
+            {isChipVisible(type, 'email') && (
+              <TouchableOpacity
+                style={[styles.toolChip, activePanel === 'email' && styles.toolChipActive, emailAddress !== null && styles.toolChipSet]}
+                onPress={() => togglePanel('email')}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={emailAddress !== null ? `Email: ${emailAddress}` : 'Set email address'}
+              >
+                <Ionicons
+                  name="mail-outline"
+                  size={13}
+                  color={emailAddress ? colors.accent : colors.textTertiary}
+                />
+                {emailAddress !== null && (
+                  <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
+                    {emailAddress}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -1822,6 +1883,35 @@ export function QuickAddModal({
                 {phoneNumber !== null && (
                   <TouchableOpacity
                     onPress={() => { haptics.tap(); setPhoneNumber(null); setPhoneText(''); setActivePanel(null); }}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+
+          {activePanel === 'email' && (
+            <View style={styles.panel}>
+              <View style={styles.linkCustomRow}>
+                <Ionicons name="mail-outline" size={16} color={colors.textSecondary} />
+                <TextInput
+                  style={styles.linkCustomInput}
+                  value={emailText}
+                  onChangeText={setEmailText}
+                  onSubmitEditing={commitEmail}
+                  onBlur={commitEmail}
+                  placeholder="name@example.com"
+                  placeholderTextColor={colors.textTertiary}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                />
+                {emailAddress !== null && (
+                  <TouchableOpacity
+                    onPress={() => { haptics.tap(); setEmailAddress(null); setEmailText(''); setActivePanel(null); }}
                     hitSlop={8}
                   >
                     <Ionicons name="close-circle" size={18} color={colors.textTertiary} />

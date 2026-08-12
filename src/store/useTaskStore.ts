@@ -205,6 +205,7 @@ function newTaskFromDraft(
     timedMinutes: draft.timedMinutes ?? null,
     timerElapsedSeconds: draft.timerElapsedSeconds ?? 0,
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
+    mealEntryId: draft.mealEntryId ?? null,
     seriesId: draft.seriesId ?? null,
     seriesMonthDays: draft.seriesMonthDays ?? [],
     seriesRepeatMonths: draft.seriesRepeatMonths ?? 1,
@@ -1382,6 +1383,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (task.timerStartedAt !== null) cancelTimerAlarm(id);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id && t.parentId !== id) }));
 
+    // Deleting a cook task is the user saying this meal doesn't need one, and
+    // that has to be written down: the meal is still on the calendar, and the
+    // next edit to it would otherwise reconcile the task straight back. The
+    // one deliberate exception to "the meal plan is the master" — a delete
+    // here is an instruction to it, not drift from it. See
+    // MealPlanEntry.cookTask.
+    //
+    // Only this path, not bulkDeleteTasks: the sweeps and purges that route
+    // through the bulk form aren't the user saying anything, and a cook task
+    // they reach has been completed for months anyway.
+    const wasCookTaskFor = task.mealEntryId;
+    if (wasCookTaskFor) useMealPlanStore.getState().setCookTask(wasCookTaskFor, false);
+
     get().setLastAction({
       label: 'Task deleted',
       undo: () => {
@@ -1392,6 +1406,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           scheduleTaskReminder(sub);
         });
         set(s => ({ tasks: [...s.tasks, task, ...subtasks] }));
+        // Back to "the setting decides" rather than to whatever it was: the
+        // opt-out above is the only thing that could have written it, so this
+        // is its exact inverse.
+        if (wasCookTaskFor) useMealPlanStore.getState().setCookTask(wasCookTaskFor, null);
       },
     });
   },
@@ -1655,6 +1673,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           seriesId: null,
           seriesMonthDays: [],
           seriesRepeatMonths: 1,
+          // Carries via ...effective otherwise, and must not: the meal it
+          // points at has been cooked, so a spawned row would be a second task
+          // claiming the same entry — enough to make reconcileCookTask decline
+          // to create the real one later, and enough for a stray tick to
+          // un-cook a night that already happened. A cook task is a one-off by
+          // construction (nothing here ever gives it a recurrence rule); this
+          // is the defensive half of that, for a row the user made recurring
+          // by hand.
+          mealEntryId: null,
         };
         dbInsertTask(nextTask);
         scheduleTaskReminder(nextTask);
@@ -1757,6 +1784,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     }
 
+    // Ticking a "Cook X" task off marks its meal cooked, and bumps the recipe's
+    // counters exactly as ticking the meal itself would (#1402) — the cook task
+    // is a second control on one thing, so it can't be a lesser version of the
+    // control on the meal plan screen. Like the auto-archive above it, this
+    // rides on the completion's own undo rather than registering an action of
+    // its own: it wasn't a separate thing the user did.
+    //
+    // Placed after the set() so the task is already committed as completed,
+    // which is what makes the call back into this store from setCooked a no-op.
+    // Never on a miss — marking a task missed says the cooking didn't happen.
+    const undoMealCooked = !missed && task.mealEntryId
+      ? useMealPlanStore.getState().setCookedFromTask(task.mealEntryId, true)
+      : null;
+
     if (completionHoldTimer) clearTimeout(completionHoldTimer);
     completionHoldTimer = setTimeout(() => {
       completionHoldTimer = null;
@@ -1796,6 +1837,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         if (autoArchivedProjectId) {
           useProjectStore.getState().applyProjectArchived(autoArchivedProjectId, false);
         }
+        // Before uncompleteTask, which would otherwise un-cook the meal on its
+        // own and leave the recipe's counters bumped — this closure puts both
+        // back together, and by then the entry is no longer cooked so
+        // uncompleteTask's own sync finds nothing to do.
+        undoMealCooked?.();
         get().uncompleteTask(id);
       },
     });
@@ -1854,6 +1900,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completionHoldIds: s.completionHoldIds.filter(x => x !== id),
       completionCollapseIds: s.completionCollapseIds.filter(x => x !== id),
     }));
+
+    // Un-ticking a cook task un-cooks its meal — the plain "not cooked now"
+    // claim, so the recipe's counters are deliberately left alone (see
+    // MealPlanScreen's setCooked for why undo and un-tick differ here). Safe to
+    // call unconditionally: the entry is already un-cooked when this runs as
+    // part of a completion's undo, so setCooked returns early.
+    if (task.mealEntryId) useMealPlanStore.getState().setCooked(task.mealEntryId, false);
 
     // Un-completing a task (e.g. from the Logbook) is itself undoable via
     // shake-to-undo — this restores the exact prior completed state rather
@@ -2556,6 +2609,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       phoneNumber: null,
       emailAddress: null,
       blockedById: null,
+      mealEntryId: null,
       pendingImport: null,
       postponeCount: 0,
       postponeMuted: false,
@@ -2690,6 +2744,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       phoneNumber: null,
       emailAddress: null,
       blockedById: null,
+      mealEntryId: null,
       pendingImport: null,
       postponeCount: 0,
       postponeMuted: false,

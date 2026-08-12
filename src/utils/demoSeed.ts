@@ -398,6 +398,15 @@ function seedRecipes(): DemoRecipes {
   setServings(salad.id, 4);
   setEstimatedMinutes(salad.id, 10);
 
+  const salsaVerde = newRecipe('Salsa verde');
+  addIngredientsFromText(
+    salsaVerde.id,
+    ['6 tomatillos, husked', '1 jalapeno', '1/2 white onion', '1 bunch cilantro', '1 clove garlic'].join('\n')
+  );
+  setMealType(salsaVerde.id, 'condiment');
+  setRecipeYield(salsaVerde.id, '2 cups');
+  setEstimatedMinutes(salsaVerde.id, 15);
+
   // --- Breakfast, lunch, snack, dessert, beverage --------------------------
   const oats = newRecipe('Overnight oats');
   addIngredientsFromText(
@@ -765,7 +774,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   const plan = (
     dayOffset: number,
     slot: MealSlot,
-    entry: { title: string; recipeId?: string; leftoverId?: string }
+    entry: { title: string; recipeId?: string; leftoverId?: string; cookTask?: boolean | null }
   ) =>
     planMeal({
       date: dayKeyOf(addDays(today, dayOffset)),
@@ -773,18 +782,23 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
       title: entry.title,
       recipeId: entry.recipeId ?? null,
       leftoverId: entry.leftoverId ?? null,
+      cookTask: entry.cookTask ?? null,
     });
 
   // --- Nights already cooked ----------------------------------------------
   // cookedAt is the one thing an entry tracks about the past; the recipe's own
   // cookCount is bumped separately and never derived back from entries, which
   // is why both calls are here.
+  //
+  // These opt out of a cook task (#1402): a night eight days ago doesn't want
+  // a task spawned and instantly completed, which would date a cooking to
+  // right now and put five of them in today's Logbook and Stats.
   const cooked = (
     dayOffset: number,
     slot: MealSlot,
     entry: { title: string; recipeId?: string }
   ) => {
-    const planned = plan(dayOffset, slot, entry);
+    const planned = plan(dayOffset, slot, { ...entry, cookTask: false });
     if (planned) setCooked(planned.id, true);
     if (entry.recipeId) markCooked(entry.recipeId);
     return planned;
@@ -858,10 +872,17 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   if (tossed) finishLeftover(tossed.id, 'tossed');
 
   // --- The week ahead ------------------------------------------------------
+  // Cook tasks (#1402) are shown as a mixture on purpose, because both halves
+  // of the feature are invisible until something uses them. Today's oats and
+  // dinner each put a "Cook …" task on the day — segmented to their slot, so
+  // the dinner one stays hidden until evening — while the sandwich and the
+  // snack plate opt out, which is what the entry sheet's per-meal toggle
+  // writes. A day where every recipe became a chore is exactly the pile-up the
+  // toggle exists for.
   plan(0, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
-  plan(0, 'lunch', { title: 'Turkey and avocado sandwich', recipeId: recipes.sandwich });
+  plan(0, 'lunch', { title: 'Turkey and avocado sandwich', recipeId: recipes.sandwich, cookTask: false });
   plan(0, 'dinner', { title: 'Weeknight chicken stir-fry', recipeId: recipes.stirFry });
-  plan(0, 'snack', { title: 'Hummus snack plate', recipeId: recipes.snacks });
+  plan(0, 'snack', { title: 'Hummus snack plate', recipeId: recipes.snacks, cookTask: false });
 
   plan(1, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
   plan(1, 'dinner', { title: 'Lemon garlic salmon', recipeId: recipes.salmon });

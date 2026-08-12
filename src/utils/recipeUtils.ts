@@ -409,11 +409,11 @@ export function pantryCoverageForRecipe(
 }
 
 /**
- * "~60% likely on hand" / "No purchase history for these yet" — the one line
+ * "5/7 likely on hand" / "No purchase history for these yet" — the one line
  * a suggestion row renders next to a recipe. Null only when there's nothing
  * to say at all (no ingredients), same as `countLikelyInPantry`'s null.
  *
- * The no-catalog-match case is worded as a state, not a number: a bare "0%"
+ * The no-catalog-match case is worded as a state, not a number: a bare "0/7"
  * there would read as "you have none of this" when the honest answer is
  * "we've never seen these ingredients bought, so we can't guess" — the
  * graceful-degradation case #1103 asks for.
@@ -421,7 +421,7 @@ export function pantryCoverageForRecipe(
 export function describePantryCoverage(coverage: PantryCoverage): string | null {
   if (coverage.total === 0) return null;
   if (coverage.catalogMatches === 0) return 'No purchase history for these yet';
-  return `~${coverage.percent}% likely on hand`;
+  return `${coverage.probablyHave}/${coverage.total} likely on hand`;
 }
 
 /**

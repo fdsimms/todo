@@ -1088,6 +1088,7 @@ function item(name: string, overrides: Partial<GroceryItem> & { nameKey?: string
     onHandUntil: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
+    choiceGroup: null,
     ...overrides,
   } as GroceryItem;
 }
@@ -1325,9 +1326,9 @@ describe('describePantryCoverage', () => {
       .toBe('No purchase history for these yet');
   });
 
-  it('renders the real percentage, including a real 0%, once there is history to judge from', () => {
-    expect(describePantryCoverage({ total: 4, catalogMatches: 1, probablyHave: 1, percent: 25 })).toBe('~25% likely on hand');
-    expect(describePantryCoverage({ total: 1, catalogMatches: 1, probablyHave: 0, percent: 0 })).toBe('~0% likely on hand');
+  it('renders the fraction, including a real 0, once there is history to judge from', () => {
+    expect(describePantryCoverage({ total: 4, catalogMatches: 1, probablyHave: 1, percent: 25 })).toBe('1/4 likely on hand');
+    expect(describePantryCoverage({ total: 1, catalogMatches: 1, probablyHave: 0, percent: 0 })).toBe('0/1 likely on hand');
   });
 });
 

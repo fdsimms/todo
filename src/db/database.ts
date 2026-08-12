@@ -440,6 +440,7 @@ export function initDatabase(): void {
     // existing row, same as an item typed by hand always will be.
     'ALTER TABLE grocery_items ADD COLUMN source_recipe_id TEXT',
     'ALTER TABLE grocery_items ADD COLUMN source_recipe_title TEXT',
+    'ALTER TABLE grocery_items ADD COLUMN choice_group TEXT',
     // 0 for every existing store — nothing predating this feature was ever
     // meant to drop out of suggestions. Same naming convention as
     // categories' exclude_from_pin_suggestions.
@@ -533,6 +534,19 @@ export function initDatabase(): void {
     // pins in exactly the order it left them, and only a drag (or a fresh pin,
     // which stamps max+1) ever writes a non-zero rank. See Task.pinnedOrder.
     'ALTER TABLE tasks ADD COLUMN pinned_order INTEGER NOT NULL DEFAULT 0',
+    // NULL on every task that already exists, which is exactly right: a task
+    // nobody projected from a meal isn't one. Nullable TEXT with no constraint,
+    // like blocked_by_id and meal_plan_entries.leftover_id — foreign keys are
+    // off in expo-sqlite, and readers resolve-or-shrug anyway. See
+    // Task.mealEntryId.
+    'ALTER TABLE tasks ADD COLUMN meal_entry_id TEXT',
+    // Deliberately nullable with NO default, unlike every other boolean in this
+    // schema (INTEGER NOT NULL DEFAULT 0). NULL is a third state meaning "the
+    // user hasn't said, so the setting decides", and a DEFAULT 0 would instead
+    // record every meal ever planned as an explicit "no cook task" — which is
+    // the one value that suppresses the feature for ever after. See
+    // MealPlanEntry.cookTask.
+    'ALTER TABLE meal_plan_entries ADD COLUMN cook_task INTEGER',
     // 0 for every existing row, and there is no honest alternative: nothing
     // before this shipped recorded a reschedule, so no task can arrive already
     // accused of being ducked. It also means the picker stays silent on an
@@ -847,6 +861,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     phoneNumber: (row.phone_number as string) ?? null,
     emailAddress: (row.email_address as string) ?? null,
     blockedById: (row.blocked_by_id as string | null) ?? null,
+    mealEntryId: (row.meal_entry_id as string | null) ?? null,
     pendingImport: parsePendingImport(row.pending_import),
     postponeCount: (row.postpone_count as number) ?? 0,
     postponeMuted: Boolean(row.postpone_muted),
@@ -871,9 +886,9 @@ export function dbInsertTask(task: Task): void {
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
-      target_unit, phone_number, email_address, allow_overshoot, pinned_order,
+      target_unit, phone_number, email_address, allow_overshoot, pinned_order, meal_entry_id,
       postpone_count, postpone_muted
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -908,6 +923,7 @@ export function dbInsertTask(task: Task): void {
       task.emailAddress ?? null,
       task.allowOvershoot ? 1 : 0,
       task.pinnedOrder,
+      task.mealEntryId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
     ]
@@ -927,7 +943,7 @@ export function dbUpdateTask(task: Task): void {
       archived=?, archived_at=?, project_id=?, link_url=?,
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
-      target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?,
+      target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, meal_entry_id=?,
       postpone_count=?, postpone_muted=?
     WHERE id=?`,
     [
@@ -964,6 +980,7 @@ export function dbUpdateTask(task: Task): void {
       task.emailAddress ?? null,
       task.allowOvershoot ? 1 : 0,
       task.pinnedOrder,
+      task.mealEntryId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
       task.id,
@@ -1355,6 +1372,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     onHandUntil: (row.on_hand_until as string) ?? null,
     sourceRecipeId: (row.source_recipe_id as string) ?? null,
     sourceRecipeTitle: (row.source_recipe_title as string) ?? null,
+    choiceGroup: (row.choice_group as string) ?? null,
   };
 }
 
@@ -1370,8 +1388,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
        favorite, purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
-       source_recipe_id, source_recipe_title)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       source_recipe_id, source_recipe_title, choice_group)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -1379,6 +1397,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
+      item.choiceGroup ?? null,
     ]
   );
 }
@@ -1388,7 +1407,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
     `UPDATE grocery_items SET
        name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, favorite=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
-       on_hand_until=?, source_recipe_id=?, source_recipe_title=?
+       on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
@@ -1396,7 +1415,8 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.favorite ? 1 : 0, item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
       item.onHandUntil ?? null,
-      item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null, item.id,
+      item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
+      item.choiceGroup ?? null, item.id,
     ]
   );
 }
@@ -1769,7 +1789,30 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     // backup or a hand-edited row carrying 0 would otherwise render a meal with
     // no quantities at all.
     recipeScale: normalizeScale(row.recipe_scale as number | null),
+    // Three-state, so the null has to survive the read rather than collapsing
+    // to false the way every other boolean column here does — see
+    // MealPlanEntry.cookTask.
+    cookTask: row.cook_task === null || row.cook_task === undefined
+      ? null
+      : Boolean(row.cook_task),
   };
+}
+
+/**
+ * One entry by id, straight from SQLite.
+ *
+ * The by-id read the range-scoped store otherwise has no way to do. Completing
+ * a "Cook X" task has to stamp its meal cooked whatever week the meal plan
+ * screen happens to be showing — including never having been opened this
+ * launch, which is the common case for a task ticked off on Today — and
+ * `entries` holds only the loaded window. See cookTaskFor in useMealPlanStore.
+ */
+export function dbGetMealPlanEntry(id: string): MealPlanEntry | null {
+  const row = db.getFirstSync<Record<string, unknown>>(
+    'SELECT * FROM meal_plan_entries WHERE id = ?',
+    [id]
+  );
+  return row ? rowToMealPlanEntry(row) : null;
 }
 
 /**
@@ -1792,24 +1835,27 @@ export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlan
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
       entry.leftoverId ?? null, JSON.stringify(entry.recipeChoices ?? []),
       normalizeScale(entry.recipeScale),
+      entry.cookTask === null || entry.cookTask === undefined ? null : (entry.cookTask ? 1 : 0),
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
-      JSON.stringify(entry.recipeChoices ?? []), normalizeScale(entry.recipeScale), entry.id,
+      JSON.stringify(entry.recipeChoices ?? []), normalizeScale(entry.recipeScale),
+      entry.cookTask === null || entry.cookTask === undefined ? null : (entry.cookTask ? 1 : 0),
+      entry.id,
     ]
   );
 }

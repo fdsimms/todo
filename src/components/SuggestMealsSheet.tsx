@@ -5,7 +5,8 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import type { Recipe } from '../types';
+import type { Recipe, RecipeMealType } from '../types';
+import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
 import { dayKeyOf } from '../utils/dateUtils';
@@ -28,6 +29,15 @@ interface Props {
   /** Already ranked by suggestRecipesForEmptyNight — this sheet doesn't re-sort. */
   recipes: Recipe[];
   /**
+   * Recipes made often and made recently (rankRecipeSuggestions) — the
+   * comfort-food counterpart to `recipes` above, rendered in its own "Cook
+   * again" group rather than merged into the pantry ranking, since the two
+   * rank by opposite signals (this one rewards a recent cook, `recipes`
+   * discounts one). The caller dedupes against `recipes` before handing it
+   * over, so a recipe qualifying for both isn't shown twice.
+   */
+  cookAgainRecipes?: Recipe[];
+  /**
    * The visible half of #1103's pantry signal — a recipe missing from this
    * map (rather than present with `total: 0`) just renders with no badge, so
    * a caller that hasn't computed it yet degrades to the pre-#1103 row.
@@ -37,10 +47,10 @@ interface Props {
    * The nights an acceptance may land on, in the order they should be filled —
    * `daysWithoutMeal(entries, days, 'dinner')` at the moment the sheet opened.
    *
-   * Deliberately not "the week": this sheet lands each acceptance on the next
-   * day in this list without consulting the plan, so a list holding nights that
-   * are already spoken for would quietly double-book them. Captured at open by
-   * the caller, so accepting one suggestion can't renumber the rest mid-flow.
+   * Deliberately not "the week": Save lands each pick on the next day in this
+   * list without consulting the plan, so a list holding nights that are
+   * already spoken for would quietly double-book them. Captured at open by
+   * the caller, so a pick can't renumber the rest mid-flow.
    */
   openDays: Date[];
   /**
@@ -65,10 +75,27 @@ interface Props {
  * recently the recipe itself was last cooked — #1103), no API key involved.
  *
  * **The list it opens with is the list it keeps.** The caller captures both the
- * ranking and `openDays` at open time, because accepting a suggestion changes
+ * ranking and `openDays` at open time, because planning a suggestion changes
  * the week this sheet was derived from — a live-derived list re-ranked (or,
  * as it once did, emptied) itself under the finger that had just tapped it,
  * which took the row's own "Planned for Thursday" confirmation with it.
+ *
+ * **Tapping a row selects it, it doesn't plan it.** A tap toggles the row's
+ * pick state (and a picked row can be tapped again to drop it) — nothing
+ * touches the week until "Save" is pressed. That's deliberate: a suggestion
+ * list is for browsing, and a single tap silently rewriting the week gave the
+ * user no room to change their mind mid-scroll. Save walks the picks in list
+ * order and lands each on the next day in `openDays`, same assignment as
+ * before, just deferred to one commit instead of one tap.
+ *
+ * **A meal-type filter narrows the list, it never hides anything by default.**
+ * Every recipe (dinners, sides, condiments, desserts, …) is shown regardless
+ * of `Recipe.mealType` until the user taps a category chip — this sheet fills
+ * whatever's empty on the plan, and plenty of real plans want a side or a
+ * condiment alongside (or instead of) a dinner. AI ideas have no `mealType`
+ * of their own (they're always full dinner concepts), so narrowing to a
+ * specific category hides the "NEW IDEAS" section rather than showing
+ * ideas that don't belong to it.
  *
  * Since #1063 it has a second, optional half: **AI-invented** meal ideas, for
  * when the offline ranking has little or nothing to offer. The two never mix
@@ -86,17 +113,18 @@ interface Props {
  *   idea" tag and no pantry/cook-history signals, because it has none. The
  *   user has to be able to tell which is which before accepting.
  *
- * Accepting a *recipe* doesn't open a day picker — it lands on the next
- * still-empty dinner slot in week order and the row shows where it went, so
- * working down the list fills the week without a decision per recipe.
- * Accepting an *idea* does the same, after a second call that drafts its
- * shopping list and saves it as a real `Recipe` (`addRecipe` +
- * `addStructuredIngredients`) — so the meal enters the recipe box and is
- * rankable, cookable and shoppable from then on, rather than being a
- * one-off free-text entry that has to be invented again next month.
+ * Picking an *idea* and pressing Save does one extra step per idea: a call
+ * that drafts its shopping list and saves it as a real `Recipe` (`addRecipe`
+ * + `addStructuredIngredients`) before landing it on a day — so the meal
+ * enters the recipe box and is rankable, cookable and shoppable from then on,
+ * rather than being a one-off free-text entry that has to be invented again
+ * next month. A draft that fails (a flaky request, a name that didn't
+ * survive cleaning) leaves that idea picked with an error under it and
+ * doesn't spend a day on it — everything else picked alongside it still
+ * saves, and the row is retried the next time Save is pressed.
  */
 export function SuggestMealsSheet({
-  visible, recipes, pantryByRecipeId, openDays,
+  visible, recipes, cookAgainRecipes = [], pantryByRecipeId, openDays,
   aiIdeasEnabled = false, plannedTitles, recentTitles, slotsToFill,
   onPlan, onClose,
 }: Props) {
@@ -109,63 +137,111 @@ export function SuggestMealsSheet({
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
 
-  const [plannedCount, setPlannedCount] = useState(0);
+  const [filter, setFilter] = useState<RecipeMealType | 'all'>('all');
+
+  /** Picked but not yet saved — toggled by tapping a row, cleared by Save/close. */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  /** Successfully saved this session — the day it landed on, keyed the same as `selected`. */
   const [landedOn, setLandedOn] = useState<Map<string, Date>>(new Map());
+  const [saving, setSaving] = useState(false);
+  /** Which idea Save is drafting right now, for its row's spinner. */
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  /** Per-row failures from the last Save, keyed the same as `selected`. */
+  const [saveErrors, setSaveErrors] = useState<Map<string, string>>(new Map());
 
   // Ideas live only as long as the sheet does: they're a proposal, not data.
   const [ideas, setIdeas] = useState<MealIdea[]>([]);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [hints, setHints] = useState('');
-  /** The idea whose ingredients are being drafted — one at a time, by design. */
-  const [savingIdeaId, setSavingIdeaId] = useState<string | null>(null);
-  const [ideaError, setIdeaError] = useState<{ id: string; message: string } | null>(null);
 
   useEffect(() => {
     if (visible) return;
-    setPlannedCount(0);
+    setFilter('all');
+    setSelected(new Set());
     setLandedOn(new Map());
+    setSaving(false);
+    setSavingKey(null);
+    setSaveErrors(new Map());
     setIdeas([]);
     setGenerating(false);
     setGenerateError(null);
     setHints('');
-    setSavingIdeaId(null);
-    setIdeaError(null);
   }, [visible]);
 
-  /**
-   * The next free night, in order — undefined once they're all taken.
-   *
-   * Walks off the end rather than wrapping with a modulo. Wrapping was
-   * harmless while this was handed the whole week (you had to accept eight
-   * suggestions to see it), but `openDays` holds only the nights that were
-   * actually free, so a week with two of them would put the third acceptance
-   * back onto the first — silently double-booking a dinner the sheet had
-   * already filled.
-   */
-  const nextDay = (): Date | undefined => openDays[plannedCount];
+  const availableMealTypes = useMemo(
+    () => RECIPE_MEAL_TYPES.filter(type =>
+      recipes.some(r => r.mealType === type) || cookAgainRecipes.some(r => r.mealType === type)),
+    [recipes, cookAgainRecipes],
+  );
 
-  /** Every night this sheet was given is now spoken for. */
-  const nightsFull = plannedCount >= openDays.length;
+  const filteredRecipes = useMemo(
+    () => (filter === 'all' ? recipes : recipes.filter(r => r.mealType === filter)),
+    [recipes, filter],
+  );
+  const filteredCookAgain = useMemo(
+    () => (filter === 'all' ? cookAgainRecipes : cookAgainRecipes.filter(r => r.mealType === filter)),
+    [cookAgainRecipes, filter],
+  );
+  // Ideas carry no mealType of their own — narrowing to a category has
+  // nothing to match them against, so they drop out rather than showing up
+  // in every category.
+  const filteredIdeas = filter === 'all' ? ideas : [];
 
-  const markPlanned = (key: string, day: Date) => {
-    setLandedOn(prev => new Map(prev).set(key, day));
-    setPlannedCount(c => c + 1);
-  };
+  const suggestions = useMemo(
+    () => mergeMealSuggestions(filteredRecipes, filteredIdeas),
+    [filteredRecipes, filteredIdeas],
+  );
+  // Unfiltered, and in the same top-to-bottom order the sheet renders
+  // (Cook again, then the pantry ranking, then ideas), so a pick made under
+  // one category keeps its place — and its day assignment — if the filter
+  // changes before Save is pressed.
+  const allSuggestions = useMemo(
+    () => [
+      ...cookAgainRecipes.map(recipe => ({ kind: 'recipe' as const, key: `recipe:${recipe.id}`, recipe })),
+      ...mergeMealSuggestions(recipes, ideas),
+    ],
+    [cookAgainRecipes, recipes, ideas],
+  );
 
-  const acceptRecipe = (recipe: Recipe) => {
-    if (landedOn.has(recipe.id) || nightsFull) return;
-    const day = nextDay();
-    if (!day) return;
-    haptics.success();
-    onPlan(recipe, dayKeyOf(day));
-    markPlanned(recipe.id, day);
+  const noOpenNights = openDays.length === 0;
+  const capacityFull = landedOn.size + selected.size >= openDays.length;
+
+  /** The day each current pick would land on if Save were pressed now. */
+  const dayByKey = useMemo(() => {
+    const map = new Map<string, Date>();
+    const offset = landedOn.size;
+    const picked = allSuggestions.filter(s => selected.has(s.key));
+    picked.forEach((item, i) => {
+      const day = openDays[offset + i];
+      if (day) map.set(item.key, day);
+    });
+    return map;
+  }, [allSuggestions, selected, openDays, landedOn]);
+
+  const toggleSelect = (key: string) => {
+    if (saving || landedOn.has(key)) return;
+    haptics.tap();
+    setSelected(prev => {
+      if (prev.has(key)) {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      }
+      if (landedOn.size + prev.size >= openDays.length) return prev;
+      return new Set(prev).add(key);
+    });
+    setSaveErrors(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Map(prev);
+      next.delete(key);
+      return next;
+    });
   };
 
   const generate = useCallback(async () => {
     setGenerating(true);
     setGenerateError(null);
-    setIdeaError(null);
     try {
       const result = await suggestMealIdeas(
         [...(plannedTitles ?? [])],
@@ -189,87 +265,125 @@ export function SuggestMealsSheet({
 
   const dismissIdea = (idea: MealIdea) => {
     haptics.tap();
+    const key = `idea:${idea.id}`;
     setIdeas(prev => prev.filter(i => i.id !== idea.id));
-    setIdeaError(prev => (prev?.id === idea.id ? null : prev));
+    setSelected(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    setSaveErrors(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Map(prev);
+      next.delete(key);
+      return next;
+    });
   };
 
   /**
-   * Accepting an invention: draft its shopping list, save it as a real
-   * recipe, then plan it. Recipe first, plan second — a failed plan leaves a
-   * recipe the user can still use, whereas planning a recipe that was never
-   * saved would leave an entry pointing at nothing.
+   * Drafts an idea's shopping list and saves it as a real recipe. Doesn't
+   * plan it — Save does that once this resolves, so a failure here never
+   * leaves a planned entry pointing at nothing.
    */
-  const acceptIdea = async (idea: MealIdea) => {
-    if (savingIdeaId || landedOn.has(idea.id) || nightsFull) return;
-    setSavingIdeaId(idea.id);
-    setIdeaError(null);
-    try {
-      const items = await suggestMealIngredients(idea.title, [...aisleOrder], null);
-      const draft = mealIdeaRecipeDraft(idea, items);
-      if (!draft.name) {
-        setIdeaError({ id: idea.id, message: 'That name didn’t survive — try regenerating.' });
-        return;
+  const saveIdeaAsRecipe = useCallback(async (idea: MealIdea): Promise<Recipe> => {
+    const items = await suggestMealIngredients(idea.title, [...aisleOrder], null);
+    const draft = mealIdeaRecipeDraft(idea, items);
+    if (!draft.name) throw new Error('IDEA_NAME_EMPTY');
+    // addRecipe refuses a name already in the box (nameKey is UNIQUE); land
+    // on the existing recipe rather than telling the user no.
+    const recipe = addRecipe(draft.name)
+      ?? allRecipes.find(r => r.name.trim().toLowerCase() === draft.name.trim().toLowerCase())
+      ?? null;
+    if (!recipe) throw new Error('IDEA_SAVE_FAILED');
+    if (draft.ingredients.length > 0) addStructuredIngredients(recipe.id, draft.ingredients);
+    return recipe;
+  }, [aisleOrder, addRecipe, allRecipes, addStructuredIngredients]);
+
+  /**
+   * Commits every current pick: recipes plan straight away, ideas draft and
+   * save first. Walked in list order against `openDays` so the assignment
+   * matches the preview `dayByKey` was already showing. A failed idea keeps
+   * its pick (so Save can be pressed again to retry) and doesn't consume a
+   * day; the sheet only closes once nothing is left failing.
+   */
+  const handleSave = async () => {
+    if (selected.size === 0) { onClose(); return; }
+    setSaving(true);
+    const toSave = allSuggestions.filter(s => selected.has(s.key));
+    const errors = new Map<string, string>();
+    const newlyLanded = new Map<string, Date>();
+    let dayIndex = landedOn.size;
+    for (const item of toSave) {
+      const day = openDays[dayIndex];
+      if (!day) break;
+      if (item.kind === 'recipe') {
+        onPlan(item.recipe, dayKeyOf(day));
+        newlyLanded.set(item.key, day);
+        dayIndex += 1;
+      } else {
+        setSavingKey(item.key);
+        try {
+          const recipe = await saveIdeaAsRecipe(item.idea);
+          onPlan(recipe, dayKeyOf(day));
+          newlyLanded.set(item.key, day);
+          dayIndex += 1;
+        } catch (e) {
+          const message = e instanceof Error && e.message === 'IDEA_NAME_EMPTY'
+            ? 'That name didn’t survive — try regenerating.'
+            : e instanceof Error && e.message === 'IDEA_SAVE_FAILED'
+              ? 'Couldn’t save that to your recipe box.'
+              : describeAIError(e);
+          errors.set(item.key, message);
+        }
       }
-      // addRecipe refuses a name already in the box (nameKey is UNIQUE); land
-      // on the existing recipe rather than telling the user no.
-      const recipe = addRecipe(draft.name)
-        ?? allRecipes.find(r => r.name.trim().toLowerCase() === draft.name.trim().toLowerCase())
-        ?? null;
-      if (!recipe) {
-        setIdeaError({ id: idea.id, message: 'Couldn’t save that to your recipe box.' });
-        return;
-      }
-      if (draft.ingredients.length > 0) addStructuredIngredients(recipe.id, draft.ingredients);
-      // Re-checked after the await rather than trusting the guard at the top:
-      // the drafting call is slow enough for the user to have accepted another
-      // idea meanwhile, and the recipe is saved either way — an idea that
-      // arrives to find no night left is still in the box to plan by hand.
-      const day = nextDay();
-      if (!day) {
-        setIdeaError({ id: idea.id, message: 'Saved to your recipe box — no free dinner left this week.' });
-        return;
-      }
+    }
+    setSavingKey(null);
+    setSaving(false);
+    if (newlyLanded.size > 0) setLandedOn(prev => new Map([...prev, ...newlyLanded]));
+    if (errors.size > 0) {
       haptics.success();
-      onPlan(recipe, dayKeyOf(day));
-      markPlanned(idea.id, day);
-    } catch (e) {
-      setIdeaError({ id: idea.id, message: describeAIError(e) });
-    } finally {
-      setSavingIdeaId(null);
+      setSaveErrors(errors);
+      setSelected(new Set(errors.keys()));
+    } else {
+      haptics.success();
+      onClose();
     }
   };
 
-  const suggestions = useMemo(
-    () => mergeMealSuggestions(recipes, ideas),
-    [recipes, ideas],
-  );
-
   const renderRecipeRow = (recipe: Recipe) => {
-    const landedDay = landedOn.get(recipe.id);
+    const key = `recipe:${recipe.id}`;
+    const landedDay = landedOn.get(key);
+    const isSelected = selected.has(key);
+    const previewDay = dayByKey.get(key);
     const coverage = pantryByRecipeId?.get(recipe.id);
     const pantryLabel = coverage ? describePantryCoverage(coverage) : null;
     const pantryKnown = !!coverage && coverage.catalogMatches > 0;
     const cookHistory = describeCookHistory(recipe);
     const signalsLabel = [cookHistory, pantryLabel].filter(Boolean).join('. ');
-    // Unactionable once every night is filled, rather than a tap that quietly
-    // does nothing — the caption below the intro says why.
-    const spent = !!landedDay || nightsFull;
+    // Unpickable once every night has a pick, rather than a tap that quietly
+    // does nothing — the caption above the list says why.
+    const disabled = saving || !!landedDay || (!isSelected && capacityFull);
     return (
       <TouchableOpacity
-        style={[styles.row, !!landedDay && styles.rowDone]}
+        style={[styles.row, !!landedDay && styles.rowDone, isSelected && !landedDay && styles.rowSelected]}
         activeOpacity={interaction.activeOpacity}
-        onPress={() => acceptRecipe(recipe)}
-        disabled={spent}
+        onPress={() => toggleSelect(key)}
+        disabled={disabled}
         accessibilityRole="button"
-        accessibilityState={{ disabled: spent }}
+        accessibilityState={{ disabled, selected: isSelected }}
         accessibilityLabel={landedDay
           ? `${recipe.name}, planned for ${format(landedDay, 'EEEE')}`
-          : `Plan ${recipe.name}. ${describeRecipe(recipe)}${signalsLabel ? `. ${signalsLabel}` : ''}`}
+          : `${isSelected ? 'Deselect' : 'Select'} ${recipe.name}. ${describeRecipe(recipe)}${signalsLabel ? `. ${signalsLabel}` : ''}`}
       >
         <View style={styles.body}>
           <Text style={styles.name} numberOfLines={1}>{recipe.name}</Text>
           <Text style={styles.meta} numberOfLines={1}>
-            {landedDay ? `Planned for ${format(landedDay, 'EEEE')}` : describeRecipe(recipe)}
+            {landedDay
+              ? `Planned for ${format(landedDay, 'EEEE')}`
+              : isSelected && previewDay
+                ? `Selected — will land on ${format(previewDay, 'EEEE')}`
+                : describeRecipe(recipe)}
           </Text>
           {!landedDay && (pantryLabel || cookHistory) && (
             <View style={styles.signalRow}>
@@ -290,20 +404,34 @@ export function SuggestMealsSheet({
           )}
         </View>
         <Ionicons
-          name={landedDay ? 'checkmark-circle' : 'add-circle-outline'}
+          name={landedDay || isSelected ? 'checkmark-circle' : 'add-circle-outline'}
           size={iconSize.md}
-          color={landedDay ? colors.green : colors.accent}
+          color={landedDay ? colors.green : isSelected ? colors.accent : disabled ? colors.textTertiary : colors.accent}
         />
       </TouchableOpacity>
     );
   };
 
   const renderIdeaRow = (idea: MealIdea) => {
-    const landedDay = landedOn.get(idea.id);
-    const saving = savingIdeaId === idea.id;
-    const error = ideaError?.id === idea.id ? ideaError.message : null;
+    const key = `idea:${idea.id}`;
+    const landedDay = landedOn.get(key);
+    const isSelected = selected.has(key);
+    const previewDay = dayByKey.get(key);
+    const isSavingRow = saving && savingKey === key;
+    const error = saveErrors.get(key) ?? null;
+    const disabled = saving || !!landedDay || (!isSelected && capacityFull);
     return (
-      <View style={[styles.row, styles.ideaRow, !!landedDay && styles.rowDone]}>
+      <TouchableOpacity
+        style={[styles.row, styles.ideaRow, !!landedDay && styles.rowDone, isSelected && !landedDay && styles.rowSelected]}
+        activeOpacity={interaction.activeOpacity}
+        onPress={() => toggleSelect(key)}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityState={{ disabled, selected: isSelected }}
+        accessibilityLabel={landedDay
+          ? `${idea.title}, planned for ${format(landedDay, 'EEEE')}`
+          : `${isSelected ? 'Deselect' : 'Select'} ${idea.title} — saves it to your recipe box on Save`}
+      >
         <View style={styles.body}>
           <View style={styles.ideaTitleRow}>
             <Ionicons name="sparkles" size={iconSize.xs} color={colors.purple} />
@@ -312,7 +440,9 @@ export function SuggestMealsSheet({
           <Text style={styles.meta} numberOfLines={2}>
             {landedDay
               ? `Planned for ${format(landedDay, 'EEEE')} · saved to your recipe box`
-              : (idea.blurb || 'A new idea — accepting it adds it to your recipe box.')}
+              : isSelected && previewDay
+                ? `Selected — will land on ${format(previewDay, 'EEEE')} and save to your recipe box`
+                : (idea.blurb || 'A new idea — accepting it adds it to your recipe box.')}
           </Text>
           {!landedDay && (
             <View style={styles.signalRow}>
@@ -325,46 +455,36 @@ export function SuggestMealsSheet({
         </View>
         {landedDay ? (
           <Ionicons name="checkmark-circle" size={iconSize.md} color={colors.green} />
-        ) : saving ? (
+        ) : isSavingRow ? (
           <ActivityIndicator color={colors.purple} />
         ) : (
           <View style={styles.ideaActions}>
             <TouchableOpacity
               onPress={() => dismissIdea(idea)}
               activeOpacity={interaction.activeOpacity}
-              disabled={!!savingIdeaId}
+              disabled={saving}
               accessibilityRole="button"
               accessibilityLabel={`Dismiss ${idea.title}`}
               hitSlop={8}
             >
               <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => acceptIdea(idea)}
-              activeOpacity={interaction.activeOpacity}
-              disabled={!!savingIdeaId || nightsFull}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !!savingIdeaId || nightsFull }}
-              accessibilityLabel={`Plan ${idea.title} and add it to your recipe box`}
-              hitSlop={8}
-            >
-              <Ionicons
-                name="add-circle-outline"
-                size={iconSize.md}
-                color={nightsFull ? colors.textTertiary : colors.purple}
-              />
-            </TouchableOpacity>
+            <Ionicons
+              name={isSelected ? 'checkmark-circle' : 'add-circle-outline'}
+              size={iconSize.md}
+              color={isSelected ? colors.purple : disabled ? colors.textTertiary : colors.purple}
+            />
           </View>
         )}
-      </View>
+      </TouchableOpacity>
     );
   };
 
   // The generation half of the sheet: the ask, the wait, the failure, and the
   // regenerate — all of it below the offline list, and none of it rendered at
-  // all without a key.
+  // all without a key or while a category filter is narrowing the list.
   const renderIdeaSection = () => {
-    if (!aiIdeasEnabled) return null;
+    if (!aiIdeasEnabled || filter !== 'all') return null;
     return (
       <View style={styles.ideaSection}>
         <Text style={styles.sectionHeader}>NEW IDEAS</Text>
@@ -374,8 +494,8 @@ export function SuggestMealsSheet({
         {ideas.length === 0 && !generateError && (
           <Text style={styles.sectionHint}>
             {recipes.length === 0
-              ? 'Nothing in your recipe box fits this week — Claude can invent a few meals instead. Accepting one saves it as a real recipe.'
-              : 'Want something you haven’t made before? Claude can invent a few. Accepting one saves it as a real recipe.'}
+              ? 'Nothing in your recipe box fits this week — Claude can invent a few meals instead. Picking one saves it as a real recipe when you Save.'
+              : 'Want something you haven’t made before? Claude can invent a few. Picking one saves it as a real recipe when you Save.'}
           </Text>
         )}
 
@@ -425,16 +545,53 @@ export function SuggestMealsSheet({
     );
   };
 
-  const nothingAtAll = recipes.length === 0 && ideas.length === 0 && !aiIdeasEnabled;
+  const nothingAtAll = filter === 'all' && recipes.length === 0 && cookAgainRecipes.length === 0
+    && ideas.length === 0 && !aiIdeasEnabled;
+  const nothingForFilter = filter !== 'all'
+    && filteredRecipes.length === 0 && filteredCookAgain.length === 0 && filteredIdeas.length === 0;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <View style={styles.headerSpacer} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} disabled={saving} minWidth={72} />
           <Text style={styles.headerTitle}>Suggest meals</Text>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={72} />
+          <SheetHeaderButton
+            label={saving ? 'Saving…' : selected.size > 0 ? `Save (${selected.size})` : 'Save'}
+            role="confirm"
+            onPress={handleSave}
+            disabled={saving}
+            minWidth={72}
+            accessibilityLabel={selected.size > 0 ? `Save ${selected.size} selected meals` : 'Save'}
+          />
         </View>
+
+        {availableMealTypes.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            {(['all', ...availableMealTypes] as const).map(type => {
+              const active = filter === type;
+              const label = type === 'all' ? 'All' : RECIPE_MEAL_TYPE_LABELS[type];
+              return (
+                <TouchableOpacity
+                  key={type}
+                  style={[styles.filterChip, active && styles.filterChipActive]}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => { haptics.tap(); setFilter(type); }}
+                  disabled={saving}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Filter by ${label}`}
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
 
         {nothingAtAll ? (
           <View style={styles.centered}>
@@ -444,6 +601,14 @@ export function SuggestMealsSheet({
               subtitle="None of your recipes share enough with what's in your grocery catalog yet."
             />
           </View>
+        ) : nothingForFilter ? (
+          <View style={styles.centered}>
+            <EmptyState
+              icon="restaurant-outline"
+              title="Nothing in this category"
+              subtitle={`No ${RECIPE_MEAL_TYPE_LABELS[filter as RecipeMealType].toLowerCase()} recipes match your catalog yet — try All.`}
+            />
+          </View>
         ) : (
           <ScrollView
             ref={keyboardScroll.ref}
@@ -451,16 +616,29 @@ export function SuggestMealsSheet({
             keyboardShouldPersistTaps="handled"
             {...keyboardScroll.props}
           >
-            {nightsFull ? (
-              // Says why the rows have gone quiet. Reachable two ways: the
-              // sheet filled the last free night itself, or it was opened on a
-              // week that only had room for the ideas already accepted.
+            {/* Recipes made often and made recently — kept separate from the
+                pantry ranking below rather than merged into it, since the two
+                rank by opposite signals (see cookAgainRecipes' own doc). */}
+            {filteredCookAgain.length > 0 && (
+              <View style={styles.cookAgainSection}>
+                <Text style={[styles.sectionHeader, styles.cookAgainHeader]}>COOK AGAIN</Text>
+                {filteredCookAgain.map(recipe => (
+                  <React.Fragment key={`again:${recipe.id}`}>{renderRecipeRow(recipe)}</React.Fragment>
+                ))}
+              </View>
+            )}
+            {noOpenNights ? (
+              <Text style={styles.intro}>There's no open night left this week.</Text>
+            ) : capacityFull ? (
+              // Says why the rows have gone quiet. Reachable two ways: every
+              // open night already has a pick, or a partial Save landed the
+              // rest and left only a failed pick behind.
               <Text style={styles.intro}>
-                Every dinner this week is planned now. Take one off the week to make room for another.
+                Every open night has a pick now. Deselect one to swap it, or Save to add them.
               </Text>
-            ) : recipes.length > 0 && (
+            ) : filteredRecipes.length > 0 && (
               <Text style={styles.intro}>
-                Made from what's already in your grocery catalog — tap one to plan it.
+                Made from what's already in your grocery catalog — tap to pick, then Save to plan them.
               </Text>
             )}
             {suggestions.map((item: MealSuggestion) => (
@@ -487,8 +665,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: border.hairline,
     borderBottomColor: colors.separator,
   },
-  headerSpacer: { width: 72 },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  filterRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  filterChip: {
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    backgroundColor: colors.bgSecondary,
+  },
+  filterChipActive: { backgroundColor: colors.accent },
+  filterChipText: { fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.textSecondary },
+  filterChipTextActive: { color: colors.onAccent },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   intro: {
     color: colors.textTertiary,
@@ -510,6 +702,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   rowDone: { opacity: 0.6 },
+  // A picked-but-not-saved row, distinct from rowDone: still fully
+  // interactive (tapping it again drops the pick), just visibly chosen.
+  rowSelected: { backgroundColor: `${colors.accent}14` },
   body: { flex: 1, gap: 2 },
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   meta: { fontSize: font.xs, color: colors.textTertiary, lineHeight: lineHeight.xs },
@@ -551,6 +746,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   ideaError: { fontSize: font.xs, color: colors.red, marginTop: spacing.xs },
 
   ideaSection: { marginTop: spacing.lg, paddingHorizontal: spacing.md, gap: spacing.sm },
+  cookAgainSection: { paddingTop: spacing.md, gap: 2 },
+  cookAgainHeader: { paddingHorizontal: spacing.md, marginBottom: spacing.xs },
   sectionHeader: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,

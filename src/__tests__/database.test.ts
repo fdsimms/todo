@@ -188,6 +188,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   phoneNumber: null,
   emailAddress: null,
   blockedById: null,
+  mealEntryId: null,
   pendingImport: null,
   ...overrides,
 });
@@ -1501,6 +1502,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     onHandUntil: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
+    choiceGroup: null,
     ...overrides,
   };
 }
@@ -1778,6 +1780,7 @@ describe('meal plan entries', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       recipeChoices: [],
       recipeScale: 1,
+      cookTask: null,
       cookedAt: null,
       leftoverId: null,
       ...overrides,
@@ -1993,7 +1996,7 @@ describe('leftovers', () => {
     dbInsertMealPlanEntry({
       id: 'meal-x', date: '2026-08-11', slot: 'dinner', recipeId: null,
       title: 'Chilli (1 day old)', sortOrder: 1, createdAt: '2026-08-11T00:00:00.000Z',
-      cookedAt: null, leftoverId: 'lo-a', recipeChoices: [], recipeScale: 1,
+      cookedAt: null, leftoverId: 'lo-a', recipeChoices: [], recipeScale: 1, cookTask: null,
     });
 
     dbDeleteLeftover('lo-a');

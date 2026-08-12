@@ -11,7 +11,6 @@ import {
   Animated,
 } from 'react-native';
 import { SortableList } from './SortableList';
-import { MiniFabList } from './MiniFabList';
 import { EditorSheet } from './EditorSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
@@ -47,7 +46,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, getDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/parseTaskInput';
 import { suggestTaskAttributes, describeAIError } from '../services/aiSuggestions';
 import { estimateEffort } from '../utils/effortEstimator';
 import { suggestSegment } from '../utils/rhythms';
@@ -271,13 +270,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [pickerDate, setPickerDate] = useState(new Date());
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
-  const [addingSubtask, setAddingSubtask] = useState(false);
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
   const [subtaskTitleEdit, setSubtaskTitleEdit] = useState('');
-  // Where the add button was dropped, if it was dragged rather than tapped.
-  // Null means the end of the list, which is what a tap and `addSubtask` both
-  // mean anyway. Cleared whenever the field closes, or a later tap would
-  // silently insert at a slot chosen for a different session.
+  // A seam to insert the next typed subtask at, rather than the end.
+  // `commitSubtask` still knows how to honor one (see below), but nothing in
+  // this editor sets it past null anymore — the input is always visible now,
+  // with no drag surface left to name a mid-list seam. New subtasks always
+  // land at the end; drag the row afterward to move it.
   const [pendingSubtaskIndex, setPendingSubtaskIndex] = useState<number | null>(null);
   // Subtasks typed while creating a brand-new task, mirroring `chainItems`:
   // there's no parent id to hang a real row off until Save runs, so these
@@ -382,7 +381,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setShowPhoneField(false); setPhoneText(task?.phoneNumber ?? initialDraft?.phoneNumber ?? '');
     setShowEmailField(false); setEmailText(task?.emailAddress ?? initialDraft?.emailAddress ?? '');
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
-    setNewSubtaskTitle(''); setAddingSubtask(false); setPendingSubtaskIndex(null); setDraftSubtasks([]);
+    setNewSubtaskTitle(''); setPendingSubtaskIndex(null); setDraftSubtasks([]);
     setNewChainItemTitle(''); setAddingChainItem(false);
     setAiLoading(false);
     setOpenFields({}); setShowTimeOfDay(false); setShowTimeWindow(false);
@@ -466,6 +465,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     [title, dayResetTime]
   );
   const scheduleMatchEnd = parsedSchedule ? parsedSchedule.matchStart + parsedSchedule.matchedText.length : 0;
+
+  // "Call Kristen", "Text the plumber", "Email the landlord" — a title that
+  // implies a contact action with no data to power it. Purely a discoverability
+  // nudge toward the Phone/Email rows below (see #1152/#1153); never blocking,
+  // and it goes away the moment either field is set or its row is open.
+  const contactIntent = useMemo(() => detectContactIntent(title), [title]);
+  const showPhoneNudge = contactIntent === 'phone' && !phoneNumber && !showPhoneField;
+  const showEmailNudge = contactIntent === 'email' && !emailAddress && !showEmailField;
 
   // Pop the banner in when a phrase is first detected (not on every keystroke
   // that merely extends it).
@@ -1470,6 +1477,28 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         placeholderTextColor={colors.textTertiary}
         multiline
       />
+
+      {/* Contact nudge — "Call Kristen"/"Text the plumber"/"Email the
+          landlord" with no number/email on the task yet. Tap reveals the
+          matching row in "More" below rather than setting anything itself. */}
+      {(showPhoneNudge || showEmailNudge) && (
+        <View style={styles.contactNudgeRow}>
+          <InlineAction
+            icon={showPhoneNudge ? 'call-outline' : 'mail-outline'}
+            label={showPhoneNudge ? 'Add a phone number for this?' : 'Add an email address for this?'}
+            variant="neutral"
+            onPress={() => {
+              if (showPhoneNudge) {
+                setPhoneText(phoneNumber ?? '');
+                setShowPhoneField(true);
+              } else {
+                setEmailText(emailAddress ?? '');
+                setShowEmailField(true);
+              }
+            }}
+          />
+        </View>
+      )}
 
       {/* Schedule — when the task surfaces, and how it repeats */}
       <EditorGroup
@@ -2597,16 +2626,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               expanded={fieldOpen('subtasks', subtasks.length > 0)}
               onToggle={() => toggleField('subtasks', subtasks.length > 0)}
             >
-              <MiniFabList
+              <SortableList
                 onDragStateChange={setDraggingRow}
                 data={subtasks}
                 onReorder={(newData) => reorderDraftSubtasks(newData.map(s => s.id))}
-                accessibilityLabel="Add subtask"
-                fabHidden={addingSubtask}
-                onAdd={index => {
-                  setPendingSubtaskIndex(index);
-                  setAddingSubtask(true);
-                }}
                 renderItem={(sub, _i, drag) => (
                   <View style={styles.subtaskRow}>
                     <TouchableOpacity
@@ -2669,40 +2692,35 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     </TouchableOpacity>
                   </View>
                 )}
-                footer={addingSubtask ? (
-                  <View style={styles.subtaskInputRow}>
-                    {/* An empty copy of the row checkbox, so the field being typed
-                        into lines up with the subtasks above it. */}
-                    <View style={styles.subtaskCheck}>
-                      <View style={styles.subtaskBox} />
-                    </View>
-                    <TextInput
-                      autoFocus
-                      style={styles.subtaskInput}
-                      value={newSubtaskTitle}
-                      onChangeText={setNewSubtaskTitle}
-                      placeholder="Subtask title"
-                      placeholderTextColor={colors.textTertiary}
-                      maxLength={TITLE_MAX_LENGTH}
-                      returnKeyType="next"
-                      // Adding subtasks is a burst, not one edit: submitting keeps
-                      // the field focused so the keyboard never drops between them.
-                      // This used to blur on submit and refocus on a 50ms timer,
-                      // which dismissed and reopened the keyboard on every entry.
-                      blurOnSubmit={false}
-                      onSubmitEditing={() => {
-                        commitSubtask(newSubtaskTitle);
-                        setNewSubtaskTitle('');
-                      }}
-                      onBlur={() => {
-                        commitPendingSubtask();
-                        setAddingSubtask(false);
-                        setPendingSubtaskIndex(null);
-                      }}
-                    />
-                  </View>
-                ) : null}
               />
+              {/* Always here, pinned at the end of the list — adding a subtask is a
+                  burst, not a one-off edit gated behind a button tap. */}
+              <View style={styles.subtaskInputRow}>
+                {/* An empty copy of the row checkbox, so the field being typed
+                    into lines up with the subtasks above it. */}
+                <View style={styles.subtaskCheck}>
+                  <View style={styles.subtaskBox} />
+                </View>
+                <TextInput
+                  style={styles.subtaskInput}
+                  value={newSubtaskTitle}
+                  onChangeText={setNewSubtaskTitle}
+                  placeholder="Add subtask"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={TITLE_MAX_LENGTH}
+                  returnKeyType="next"
+                  // Adding subtasks is a burst, not one edit: submitting keeps
+                  // the field focused so the keyboard never drops between them.
+                  // This used to blur on submit and refocus on a 50ms timer,
+                  // which dismissed and reopened the keyboard on every entry.
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => {
+                    commitSubtask(newSubtaskTitle);
+                    setNewSubtaskTitle('');
+                  }}
+                  onBlur={() => commitPendingSubtask()}
+                />
+              </View>
             </CollapsibleField>
               </>
             ),
@@ -2810,6 +2828,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       {/* Everything else — rarely changed, so it sits last */}
       <EditorGroup
         label="More"
+        // Keeps the card open while a contact nudge (below) is steering the
+        // user at the Phone/Email row it's about to reveal — those rows
+        // aren't `set` yet, so the group would otherwise fold right past them.
+        forceOpen={showPhoneNudge || showEmailNudge || showPhoneField || showEmailField}
         rows={[
           {
             key: 'pin', label: 'Pin to Today', set: pinned,
@@ -3234,6 +3256,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: '500',
     opacity: 0.75,
+  },
+  contactNudgeRow: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    alignItems: 'flex-start',
   },
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,

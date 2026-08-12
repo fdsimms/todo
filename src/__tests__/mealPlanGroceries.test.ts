@@ -88,6 +88,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     leftoverId: null,
     recipeChoices: [],
     recipeScale: 1,
+    cookTask: null,
     ...overrides,
   };
 }
@@ -111,6 +112,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     onHandUntil: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
+    choiceGroup: null,
     ...overrides,
   };
 }

@@ -34,6 +34,21 @@ interface Props {
   selectionMode?: boolean;
   selected?: boolean;
   onSelect?: (id: string) => void;
+  /**
+   * Opens the recipe this item came from. Passed only when
+   * `item.sourceRecipeId` still resolves to a live recipe — the pointer is
+   * resolve-or-shrug like every other cross-row one here, and a button that
+   * navigates nowhere is worse than no button. Absent, the row just names the
+   * recipe in its caption as before.
+   */
+  onOpenRecipe?: (recipeId: string) => void;
+  /**
+   * "or pears" — this row's live either/or siblings, computed by the screen
+   * (only it has the whole list) and absent for an ordinary row. Its own line
+   * rather than folded into the note: at the shelf it's the difference between
+   * buying one of these and buying all of them.
+   */
+  alternatives?: string;
 }
 
 /**
@@ -64,6 +79,8 @@ export const GroceryRow = React.memo(function GroceryRow({
   selectionMode = false,
   selected = false,
   onSelect,
+  onOpenRecipe,
+  alternatives,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -183,11 +200,15 @@ export const GroceryRow = React.memo(function GroceryRow({
           )}
           {/* A note the user wrote themselves outranks this — it's their own
               word on the row, and the two together would be one caption too
-              many. */}
+              many. The recipe stays reachable either way: the button below is
+              what opens it, and it doesn't depend on this line rendering. */}
           {!item.note && !!item.sourceRecipeTitle && (
             <Text style={styles.note} numberOfLines={1}>
-              From: {item.sourceRecipeTitle}
+              recipe: {item.sourceRecipeTitle}
             </Text>
+          )}
+          {!!alternatives && (
+            <Text style={styles.alternatives} numberOfLines={1}>{alternatives}</Text>
           )}
         </View>
 
@@ -203,6 +224,28 @@ export const GroceryRow = React.memo(function GroceryRow({
           </View>
         )}
       </TouchableOpacity>
+
+      {/* The way back to what put this on the list. A trailing glyph rather
+          than a tappable caption, because the caption is inside the rename tap
+          zone and gives way to the user's own note the moment they write one —
+          this has to be reachable in both cases. Accent, unlike the tertiary
+          ellipsis beside it: one edits this row, the other leaves for another
+          screen. */}
+      {!selectionMode && !!item.sourceRecipeId && !!onOpenRecipe && (
+        <TouchableOpacity
+          onPress={() => onOpenRecipe(item.sourceRecipeId!)}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={
+            item.sourceRecipeTitle
+              ? `Open the recipe ${item.sourceRecipeTitle}`
+              : 'Open the recipe this came from'
+          }
+        >
+          <Ionicons name="restaurant-outline" size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
 
       {/* Long-press still opens the same sheet, but nothing on screen says so
           — and quantity and a wrong aisle are things people genuinely fix. A
@@ -298,6 +341,15 @@ function makeStyles(colors: Colors) {
       // Matches the Text row's box so swapping in the input doesn't nudge
       // the row's height — see the "never lineHeight on TextInput" rule.
       height: font.lg + 6,
+    },
+    // Upright and a step brighter than the note above it, same treatment the
+    // recipe screen gives an either/or ingredient — this is a fact about what
+    // to buy, not a remark about the row.
+    alternatives: {
+      fontSize: font.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.textSecondary,
+      marginTop: 1,
     },
     note: {
       fontSize: font.sm,

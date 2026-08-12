@@ -7,11 +7,13 @@ import {
   dbPurgeOldMealPlanEntries,
   dbGetMealPlanAddedToList,
   dbSetMealPlanAddedToList,
+  dbGetMealPlanEntry,
 } from '../db/database';
-import type { MealPlanEntry, MealSlot } from '../types';
+import type { MealPlanEntry, MealSlot, Task } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetMealPlanEntries: jest.fn().mockReturnValue([]),
+  dbGetMealPlanEntry: jest.fn().mockReturnValue(null),
   dbInsertMealPlanEntry: jest.fn(),
   dbUpdateMealPlanEntry: jest.fn(),
   dbDeleteMealPlanEntry: jest.fn(),
@@ -20,9 +22,60 @@ jest.mock('../db/database', () => ({
   dbSetMealPlanAddedToList: jest.fn(),
 }));
 
+// mealCookTasks defaults on, matching the real store — so every test here runs
+// with cook-task reconciliation live rather than only the ones that opt in.
+let mockMealCookTasks = true;
 jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
+  useSettingsStore: {
+    getState: () => ({ dayResetTime: '00:00', get mealCookTasks() { return mockMealCookTasks; } }),
+  },
 }));
+
+// The task store is mocked rather than driven for real: this suite is about
+// what the meal plan *asks* of it, and the real one drags expo-notifications
+// into a node environment. The other side of the link — a completion actually
+// stamping cookedAt — is covered against the real stores in
+// useTaskStore.test.ts.
+const mockTaskState = {
+  tasks: [] as Task[],
+  addTask: jest.fn((draft: Partial<Task>) => {
+    const task = { id: `t-${mockTaskState.tasks.length + 1}`, completed: false, archived: false, ...draft } as Task;
+    mockTaskState.tasks.push(task);
+    return task;
+  }),
+  // The options param is unused by the mock but declared, so a test can assert
+  // what was passed — reconcileCookTask has to opt out of postpone counting.
+  updateTask: jest.fn((
+    id: string,
+    updates: Partial<Task>,
+    _options?: { scope?: 'occurrence' | 'series'; skipPostponeCount?: boolean },
+  ) => {
+    mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, ...updates } : t));
+  }),
+  deleteTask: jest.fn((id: string) => {
+    mockTaskState.tasks = mockTaskState.tasks.filter(t => t.id !== id);
+  }),
+  setLastAction: jest.fn(),
+  completeTask: jest.fn((id: string) => {
+    mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, completed: true } : t));
+  }),
+  uncompleteTask: jest.fn((id: string) => {
+    mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, completed: false } : t));
+  }),
+};
+jest.mock('../store/useTaskStore', () => ({
+  useTaskStore: { getState: () => mockTaskState },
+}));
+
+jest.mock('../store/useRecipeStore', () => ({
+  useRecipeStore: {
+    getState: () => ({ recipes: [], markCooked: jest.fn(), restoreCookStats: jest.fn() }),
+  },
+}));
+
+/** The live cook task for an entry, as the store's own helpers find it. */
+const cookTaskFor = (entryId: string) =>
+  mockTaskState.tasks.find(t => t.mealEntryId === entryId && !t.completed);
 
 let seq = 0;
 function entry(
@@ -43,6 +96,7 @@ function entry(
     leftoverId: null,
     recipeChoices: [],
     recipeScale: 1,
+    cookTask: null,
     ...overrides,
   };
 }
@@ -59,7 +113,10 @@ function loadWeek(rows: MealPlanEntry[] = []) {
 beforeEach(() => {
   jest.clearAllMocks();
   seq = 0;
+  mockMealCookTasks = true;
+  mockTaskState.tasks = [];
   (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
+  (dbGetMealPlanEntry as jest.Mock).mockReturnValue(null);
   (dbPurgeOldMealPlanEntries as jest.Mock).mockReturnValue(0);
   (dbGetMealPlanAddedToList as jest.Mock).mockReturnValue({});
   useMealPlanStore.setState({
@@ -973,5 +1030,226 @@ describe('bulkSetCooked', () => {
     const byId = new Map(getEntries().map(e => [e.id, e]));
     expect(byId.get(a.id)!.cookedAt).toBe('2026-08-05T18:00:00.000Z');
     expect(byId.get(b.id)!.cookedAt).toBeNull();
+  });
+});
+
+
+// ─── Cook tasks (#1402) ─────────────────────────────────────────────────────
+
+describe('cook tasks', () => {
+  /**
+   * Plans a recipe-backed meal into the loaded week, which is what gives it a
+   * cook task. Note loadWeek alone never does: reconciliation runs on
+   * mutations, so an install upgrading into this feature grows no tasks until
+   * a meal is actually touched.
+   */
+  function planRecipeMeal(
+    date = '2026-08-05',
+    slot: MealSlot = 'dinner',
+    title = 'Frijoles de la olla'
+  ): MealPlanEntry {
+    return useMealPlanStore.getState().planMeal({ date, slot, recipeId: 'r1', title })!;
+  }
+
+  it('spawns one for a recipe-backed meal, carrying the back-pointer', () => {
+    loadWeek();
+    const planned = planRecipeMeal();
+
+    const task = cookTaskFor(planned.id)!;
+    expect(task.title).toBe('Cook Frijoles de la olla');
+    expect(task.mealEntryId).toBe(planned.id);
+    // Dinner hides until evening — the whole reason this doesn't crowd Today.
+    expect(task.timeSegments).toEqual(['evening']);
+    expect(task.dueDate!.startsWith('2026-08-05')).toBe(true);
+  });
+
+  it('re-dates the cook task when the meal moves, without counting it as a push', () => {
+    // The cook task's date is the meal's date, not a schedule the user picked
+    // for the task — dragging Tuesday's dinner to Friday must not read as
+    // ducking it. See utils/postpone.ts.
+    loadWeek();
+    const planned = planRecipeMeal('2026-08-05');
+    expect(cookTaskFor(planned.id)!.dueDate!.startsWith('2026-08-05')).toBe(true);
+
+    useMealPlanStore.getState().moveEntry(planned.id, { date: '2026-08-07' });
+
+    const moved = cookTaskFor(planned.id)!;
+    expect(moved.dueDate!.startsWith('2026-08-07')).toBe(true);
+    const dateWrite = mockTaskState.updateTask.mock.calls.find(call => 'dueDate' in call[1]);
+    expect(dateWrite?.[2]).toEqual({ skipPostponeCount: true });
+  });
+
+  it('spawns none for free text or for a leftover', () => {
+    loadWeek();
+    useMealPlanStore.getState().planMeal({ date: '2026-08-05', slot: 'dinner', title: 'Takeaway' });
+    useMealPlanStore.getState().planMeal({
+      date: '2026-08-06', slot: 'dinner', recipeId: 'r1', leftoverId: 'lo-1', title: 'Leftover chilli',
+    });
+    expect(mockTaskState.addTask).not.toHaveBeenCalled();
+  });
+
+  it('spawns none while the setting is off, but still honours an explicit yes', () => {
+    mockMealCookTasks = false;
+    loadWeek();
+    planRecipeMeal();
+    expect(mockTaskState.addTask).not.toHaveBeenCalled();
+
+    const asked = useMealPlanStore.getState().planMeal({
+      date: '2026-08-06', slot: 'lunch', title: 'Soup', cookTask: true,
+    })!;
+    expect(cookTaskFor(asked.id)).toBeDefined();
+  });
+
+  it('nothing is backfilled — loading a week of recipe meals creates no tasks', () => {
+    loadWeek([
+      entry('2026-08-05', 'dinner', { recipeId: 'r1' }),
+      entry('2026-08-06', 'lunch', { recipeId: 'r2' }),
+    ]);
+    expect(mockTaskState.addTask).not.toHaveBeenCalled();
+  });
+
+  it('moves the task when the meal moves, re-segmenting for the new slot', () => {
+    loadWeek();
+    const meal = planRecipeMeal();
+    useMealPlanStore.getState().moveEntry(meal.id, { date: '2026-08-07', slot: 'breakfast' });
+
+    const task = cookTaskFor(meal.id)!;
+    expect(task.timeSegments).toEqual(['morning']);
+    expect(task.dueDate!.startsWith('2026-08-07')).toBe(true);
+  });
+
+  it('retitles the task when the meal is renamed', () => {
+    loadWeek();
+    const meal = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', title: 'Beans', cookTask: true,
+    })!;
+    useMealPlanStore.getState().renameEntry(meal.id, 'Frijoles');
+    expect(cookTaskFor(meal.id)!.title).toBe('Cook Frijoles');
+  });
+
+  it('deletes the live task when the meal is removed', () => {
+    loadWeek();
+    const meal = planRecipeMeal();
+    const spawned = cookTaskFor(meal.id)!;
+
+    useMealPlanStore.getState().removeEntry(meal.id);
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith(spawned.id);
+  });
+
+  it('leaves a completed cook task behind when the meal is removed', () => {
+    loadWeek();
+    const meal = planRecipeMeal();
+    const spawned = cookTaskFor(meal.id)!;
+    mockTaskState.completeTask(spawned.id);
+    mockTaskState.deleteTask.mockClear();
+
+    useMealPlanStore.getState().removeEntry(meal.id);
+    // History, not schedule — the same call deleteGroup makes for a stack.
+    expect(mockTaskState.deleteTask).not.toHaveBeenCalled();
+    expect(mockTaskState.tasks.find(t => t.id === spawned.id)).toBeDefined();
+  });
+
+  it('never spawns a second task for one meal', () => {
+    loadWeek();
+    const meal = planRecipeMeal();
+    expect(mockTaskState.addTask).toHaveBeenCalledTimes(1);
+
+    useMealPlanStore.getState().moveEntry(meal.id, { date: '2026-08-06' });
+    useMealPlanStore.getState().setRecipeScale(meal.id, 2);
+    useMealPlanStore.getState().setCookTask(meal.id, true);
+    expect(mockTaskState.addTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a cooked meal alone rather than re-dating its task', () => {
+    loadWeek([entry('2026-08-05', 'dinner', { recipeId: 'r1', cookedAt: '2026-08-05T18:00:00.000Z' })]);
+    const cooked = getEntries()[0];
+
+    useMealPlanStore.getState().moveEntry(cooked.id, { date: '2026-08-07' });
+    expect(mockTaskState.addTask).not.toHaveBeenCalled();
+  });
+
+  it('completes the task when the meal is marked cooked, and un-completes it back', () => {
+    loadWeek();
+    const meal = planRecipeMeal();
+    const spawned = cookTaskFor(meal.id)!;
+
+    useMealPlanStore.getState().setCooked(meal.id, true);
+    expect(mockTaskState.completeTask).toHaveBeenCalledWith(spawned.id);
+
+    useMealPlanStore.getState().setCooked(meal.id, false);
+    expect(mockTaskState.uncompleteTask).toHaveBeenCalledWith(spawned.id);
+  });
+
+  it('setCookTask(false) removes the task and stops it coming back', () => {
+    loadWeek();
+    const meal = planRecipeMeal();
+    expect(cookTaskFor(meal.id)).toBeDefined();
+
+    useMealPlanStore.getState().setCookTask(meal.id, false);
+    expect(cookTaskFor(meal.id)).toBeUndefined();
+
+    // The tombstone's whole job: a later edit must not reconcile it back.
+    useMealPlanStore.getState().moveEntry(meal.id, { date: '2026-08-08' });
+    expect(cookTaskFor(meal.id)).toBeUndefined();
+  });
+
+  it('setCookedFromTask resolves an entry outside the loaded window', () => {
+    const offscreen = entry('2026-09-20', 'dinner', { recipeId: 'r1' });
+    (dbGetMealPlanEntry as jest.Mock).mockReturnValue(offscreen);
+    loadWeek();
+
+    const undo = useMealPlanStore.getState().setCookedFromTask(offscreen.id, true);
+    expect(undo).not.toBeNull();
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: offscreen.id, cookedAt: expect.any(String) })
+    );
+  });
+
+  it('setCookedFromTask returns null when there is nothing to do', () => {
+    loadWeek([entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' })]);
+    const cooked = getEntries()[0];
+    expect(useMealPlanStore.getState().setCookedFromTask(cooked.id, true)).toBeNull();
+    expect(useMealPlanStore.getState().setCookedFromTask('nope', true)).toBeNull();
+  });
+
+  it('copying a week re-spawns the cook tasks', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-05', 'dinner', { recipeId: 'r1' }),
+    ]);
+    useMealPlanStore.getState().loadRange('2026-08-10', '2026-08-16');
+    mockTaskState.addTask.mockClear();
+
+    useMealPlanStore.getState().copyWeek('2026-08-03', '2026-08-10');
+    expect(mockTaskState.addTask).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('cook tasks and the undo queue', () => {
+  it('arms no task-store undo when a meal delete takes its cook task', () => {
+    loadWeek();
+    const meal = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragu',
+    })!;
+
+    useMealPlanStore.getState().removeEntry(meal.id);
+
+    // The meal's own "Removed …" undo owns this; a competing "Task deleted"
+    // would be a second offer for one gesture.
+    expect(mockTaskState.setLastAction).toHaveBeenCalledWith(null);
+  });
+
+  it('leaves nothing armed after a bulk delete that promised it could not be undone', () => {
+    loadWeek();
+    const a = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragu',
+    })!;
+    const b = useMealPlanStore.getState().planMeal({
+      date: '2026-08-06', slot: 'dinner', recipeId: 'r2', title: 'Salmon',
+    })!;
+
+    useMealPlanStore.getState().bulkDeleteEntries([a.id, b.id]);
+
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+    expect(mockTaskState.setLastAction).toHaveBeenCalledWith(null);
   });
 });

@@ -308,6 +308,26 @@ export interface Task {
   // original. That's intended — "wait for trash day to happen once".
   blockedById: string | null;
 
+  // The MealPlanEntry this task was projected from — set only on a "Cook X"
+  // task the meal plan spawned, null on every task a person typed. See
+  // src/utils/mealTasks.ts for the projection rules.
+  //
+  // **The meal plan is the master and this task is the replica**, which is the
+  // one thing to keep straight. The entry owns the title, the day and the
+  // time-of-day segment, and reconciling rewrites exactly those three on the
+  // task; everything else the user sets on the row (category, notes, priority,
+  // subtasks) is theirs and is never touched. Nothing flows the other way
+  // except cooked-ness — completing this task stamps the entry's cookedAt, and
+  // marking the entry cooked completes this task, each guarded by the other's
+  // idempotence check so the two can't ping-pong.
+  //
+  // Deliberately NOT the inverse of a taskId on the entry: one pointer can't
+  // disagree with itself, and the lookup this direction is a scan of an array
+  // already in memory (see cookTaskFor in useMealPlanStore). Resolve-or-shrug
+  // like every other cross-row pointer here — an entry that has since been
+  // purged leaves this dangling, and a dangling cook task is just a task.
+  mealEntryId: string | null;
+
   // Streaks (recurring tasks only)
   streakCount: number;       // positive = N consecutive completions
   streakDate: string | null; // logical-day ISO string of last completion
@@ -627,6 +647,24 @@ export interface GroceryItem {
   // cross-row pointer here — a later recipe rename or delete doesn't touch it.
   sourceRecipeId: string | null;
   sourceRecipeTitle: string | null;
+  // "apples or pears" — two rows you'll pick between at the shelf, sharing this
+  // label. Same idea as RecipeIngredient.choiceGroup and resolved by the same
+  // rule (exactly one of a group is bought), with two differences that follow
+  // from where it lives:
+  //
+  // It is an **opaque id, not a name**. A recipe's group label is a heading on
+  // the ingredient list, so it has to mean something; a grocery list renders no
+  // heading for it — each row just names its siblings — so a label would be a
+  // second thing to keep in step with nothing to show for it, and two lines
+  // typed alike would silently merge into one group.
+  //
+  // And it is **resolved destructively**: picking one at the shelf takes the
+  // others off the list (see resolveChoice). A recipe's pick is a fact about a
+  // cooking that lives on MealPlanEntry and leaves the recipe alone, but a
+  // shopping list has nowhere to put "I chose apples" — an unresolved loser
+  // just sits there looking outstanding, and finishShopping would leave it on
+  // the list for ever.
+  choiceGroup: string | null;
 }
 
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task
@@ -827,17 +865,19 @@ export interface RecipeComponent {
 // A closed set for the same reason MealSlot is one: a user-defined string
 // list can't be grouped/sorted without a second ordering table (see #1086,
 // which builds that grouping on top of this field).
-export type RecipeMealType = 'breakfast' | 'lunch' | 'dinner' | 'side' | 'snack' | 'dessert' | 'beverage';
+export type RecipeMealType =
+  'breakfast' | 'lunch' | 'dinner' | 'side' | 'condiment' | 'snack' | 'dessert' | 'beverage';
 
 // Display order — also the sort key #1086 groups by.
 export const RECIPE_MEAL_TYPES: readonly RecipeMealType[] =
-  ['breakfast', 'lunch', 'dinner', 'side', 'snack', 'dessert', 'beverage'];
+  ['breakfast', 'lunch', 'dinner', 'side', 'condiment', 'snack', 'dessert', 'beverage'];
 
 export const RECIPE_MEAL_TYPE_LABELS: Record<RecipeMealType, string> = {
   breakfast: 'Breakfast',
   lunch: 'Lunch',
   dinner: 'Dinner',
   side: 'Side',
+  condiment: 'Condiment',
   snack: 'Snack',
   dessert: 'Dessert',
   beverage: 'Beverage',
@@ -1176,6 +1216,30 @@ export interface MealPlanEntry {
    * backup carrying 0 renders as-written rather than as nothing.
    */
   recipeScale: number;
+  /**
+   * Whether this meal gets a "Cook X" task on Today — `true`/`false` when the
+   * user has said so for this meal, `null` when they haven't and the
+   * `mealCookTasks` setting decides (see wantsCookTask in utils/mealTasks.ts).
+   *
+   * **Three states rather than a boolean, because "no" has to be sayable
+   * separately from "not yet asked".** Deleting the spawned task records
+   * `false` here, and that's the whole reason the field exists: without a
+   * tombstone the next edit to this meal reconciles the task straight back,
+   * and a row the user deleted reappearing is the one outcome that would make
+   * the feature intolerable. Same shape, and the same reasoning, as
+   * grocery `hiddenAisles` — a delete needs somewhere to be remembered when
+   * the thing deleted is derived from something else.
+   *
+   * `null` for every meal planned before this shipped, which reads as "follow
+   * the setting" and is what makes the rollout silent: nothing is backfilled,
+   * so no cook tasks appear for meals already on the calendar — only ones
+   * planned from here on.
+   *
+   * A fact about a cooking, not about the dish, exactly like recipeChoices and
+   * recipeScale above: "I need reminding to make this on Sunday" says nothing
+   * about the recipe, which may well be a component of something else.
+   */
+  cookTask: boolean | null;
 }
 
 /**

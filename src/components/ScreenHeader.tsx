@@ -12,6 +12,8 @@ export interface ScreenHeaderAction {
   active?: boolean;
   tint?: 'accent' | 'orange';
   badge?: number;
+  /** Badge fill color; defaults to colors.red. Use for badges that aren't reporting something dire. */
+  badgeColor?: string;
   /** Plain neutral dot instead of a numbered red badge — for a low-key "there's something here" signal. */
   badgeDot?: boolean;
   disabled?: boolean;
@@ -100,7 +102,7 @@ export function ScreenHeader({ title, subtitle, overline, actions, right }: Prop
                 (action.badge ?? 0) > 0 && <View style={styles.badgeDot} />
               ) : (
                 action.badge != null && action.badge > 0 && (
-                  <View style={styles.badge}>
+                  <View style={[styles.badge, action.badgeColor && { backgroundColor: action.badgeColor }]}>
                     <Text style={styles.badgeText}>{action.badge}</Text>
                   </View>
                 )
