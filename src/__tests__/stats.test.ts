@@ -1,4 +1,4 @@
-import { timeTrackedSummary, onTimeSummary } from '../utils/stats';
+import { onTimeSummary } from '../utils/stats';
 import type { Task } from '../types';
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
@@ -74,26 +74,6 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   mealEntryId: null,
   pendingImport: null,
   ...overrides,
-});
-
-describe('timeTrackedSummary', () => {
-  it('sums actualMinutes across completed timed tasks', () => {
-    const tasks = [
-      makeTask({ id: 'a', actualMinutes: 30 }),
-      makeTask({ id: 'b', actualMinutes: 45 }),
-      makeTask({ id: 'c', actualMinutes: null }),
-    ];
-    expect(timeTrackedSummary(tasks)).toEqual({ totalMinutes: 75, trackedCount: 2 });
-  });
-
-  it('excludes subtasks', () => {
-    const tasks = [makeTask({ id: 'a', parentId: 'parent', actualMinutes: 30 })];
-    expect(timeTrackedSummary(tasks)).toEqual({ totalMinutes: 0, trackedCount: 0 });
-  });
-
-  it('returns zeros when nothing is tracked', () => {
-    expect(timeTrackedSummary([])).toEqual({ totalMinutes: 0, trackedCount: 0 });
-  });
 });
 
 describe('onTimeSummary', () => {

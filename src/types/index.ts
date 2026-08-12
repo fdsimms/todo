@@ -410,9 +410,9 @@ export interface Task {
   // Measured duration, set by the stopwatch; null = never timed. Always equal
   // to estimatedMinutes once set — timing a task *is* how its estimate gets
   // corrected (see applyMeasuredTime), so this is not a second opinion about
-  // how long the task takes. It survives only to say the number was measured
-  // rather than guessed: Stats' "time tracked" sums it, and the task row and
-  // Logbook label it "Timed".
+  // how long the task takes. Its only remaining job is the "Timed" label on
+  // the expanded task row and in the Logbook, which says the number was
+  // measured rather than guessed.
   actualMinutes: number | null;
 
   // Timed tasks ("play violin for 15 minutes") — a duration the task counts

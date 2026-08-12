@@ -14,10 +14,9 @@ import { activeChainStep, type ChainCarrier } from './chain';
  * estimate by definition; there is nothing to protect it from.
  *
  * `actualMinutes` is kept, and after this it is always equal to the estimate.
- * It survives only as the marker that this task was *measured* rather than
- * guessed — the difference between Stats' "time tracked" being real and being
- * a sum of everyone's optimism, and what lets the task row and Logbook say
- * "Timed". Nothing shows it as a second number, and nothing compares the two.
+ * All it does now is let the expanded task row and the Logbook say "Timed"
+ * next to the number, i.e. that it was measured rather than guessed. Nothing
+ * shows it as a second number, and nothing compares the two.
  */
 export function applyMeasuredTime(minutes: number): {
   actualMinutes: number;

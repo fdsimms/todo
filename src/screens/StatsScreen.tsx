@@ -22,7 +22,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
-import { timeTrackedSummary, onTimeSummary } from '../utils/stats';
+import { onTimeSummary } from '../utils/stats';
 import { isRealCompletion, mostMissed } from '../utils/missed';
 import { formatDuration } from '../utils/effort';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -253,7 +253,6 @@ export function StatsScreen() {
 
   const missed = useMemo(() => mostMissed(tasks).slice(0, 10), [tasks]);
 
-  const timeTracked = useMemo(() => timeTrackedSummary(tasks), [tasks]);
   const onTime = useMemo(() => onTimeSummary(tasks), [tasks]);
 
   return (
@@ -402,29 +401,9 @@ export function StatsScreen() {
             </StaggerIn>
           )}
 
-          {/* Time tracked */}
-          {timeTracked.trackedCount > 0 && (
-            <StaggerIn index={4}>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>TIME TRACKED</Text>
-              <View style={styles.card}>
-                {/* Just the total. The "12% over estimate on average" line
-                    that used to sit under it compared a task's measured time
-                    against its own estimate — and timing a task now *sets*
-                    its estimate, so that comparison is 1.0 by construction. */}
-                <View style={styles.row}>
-                  <Text style={styles.rowText}>
-                    {formatDuration(timeTracked.totalMinutes)} across {timeTracked.trackedCount} task{timeTracked.trackedCount === 1 ? '' : 's'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-            </StaggerIn>
-          )}
-
           {/* On-time completion, for tasks that had a deadline */}
           {onTime.total > 0 && (
-            <StaggerIn index={5}>
+            <StaggerIn index={4}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>ON TIME</Text>
               <View style={styles.card}>
@@ -443,7 +422,7 @@ export function StatsScreen() {
 
           {/* Streak leaderboard */}
           {streaks.length > 0 && (
-            <StaggerIn index={6}>
+            <StaggerIn index={5}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>STREAK LEADERBOARD</Text>
               <View style={styles.card}>
@@ -464,7 +443,7 @@ export function StatsScreen() {
 
           {/* Habit completion rates */}
           {habits.length > 0 && (
-            <StaggerIn index={7}>
+            <StaggerIn index={6}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>HABIT COMPLETION (LAST 30 DAYS)</Text>
               <View style={styles.card}>
@@ -497,7 +476,7 @@ export function StatsScreen() {
 
           {/* Repeated non-recurring tasks — "instances" of the same task */}
           {repeated.length > 0 && (
-            <StaggerIn index={8}>
+            <StaggerIn index={7}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>REPEATED TASKS</Text>
               <View style={styles.card}>
@@ -522,7 +501,7 @@ export function StatsScreen() {
 
           {/* Recurring tasks most often marked missed rather than done */}
           {missed.length > 0 && (
-            <StaggerIn index={9}>
+            <StaggerIn index={8}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>MOST MISSED</Text>
               <View style={styles.card}>

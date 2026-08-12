@@ -12,11 +12,10 @@ import { isRealCompletion } from './missed';
  * completion stamps `completedAt` — and never once read it back for anything
  * but the deadline comparison in stats.ts. This module is that read.
  *
- * It learns *when* a kind of task gets done from the user's own history —
- * from `actualMinutes`, this one learns *when* they get done from `completedAt`.
- * Same discipline, deliberately — a shared MIN_SAMPLES floor, a plain-language
- * `reason` on every claim, and abstaining outright rather than reporting a
- * pattern two data points wide.
+ * It learns *when* a kind of task gets done, from `completedAt`. Disciplined
+ * deliberately — a MIN_SAMPLES floor, a plain-language `reason` on every
+ * claim, and abstaining outright rather than reporting a pattern two data
+ * points wide.
  *
  * It never reads the settings store, the way clockTime doesn't: every
  * preference it needs (segment boundaries, dayResetTime) is a parameter with a
