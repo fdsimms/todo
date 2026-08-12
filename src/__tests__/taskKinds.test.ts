@@ -3,13 +3,15 @@ import {
   blockedReason,
   canSaveType,
   isChipVisible,
+  taskKindOf,
   typeSummary,
+  TASK_KIND_META,
   QUICK_ADD_CHIP_LABELS,
   QUICK_ADD_CHIP_LIMIT,
   type QuickAddChip,
-  type QuickAddType,
+  type TaskKind,
   type TypeValues,
-} from '../utils/quickAddTypes';
+} from '../utils/taskKinds';
 import { resolvePillOverflow } from '../utils/pillOverflow';
 import type { ChainItem } from '../types';
 
@@ -119,7 +121,7 @@ describe('canSaveType', () => {
   });
 
   it('lets every other type save on a title alone', () => {
-    (['task', 'timed', 'target'] as QuickAddType[]).forEach(t => {
+    (['task', 'timed', 'target'] as TaskKind[]).forEach(t => {
       expect(canSaveType(t, values())).toBe(true);
       expect(blockedReason(t, values())).toBeNull();
     });
@@ -153,7 +155,7 @@ describe('typeSummary', () => {
   });
 
   it('still explains a mode that has no value yet', () => {
-    (['timed', 'target', 'chain'] as QuickAddType[]).forEach(t => {
+    (['timed', 'target', 'chain'] as TaskKind[]).forEach(t => {
       expect(typeSummary(t, values())).toBeTruthy();
     });
   });
@@ -194,5 +196,50 @@ describe('QUICK_ADD_CHIP_LABELS', () => {
     const { visible, hiddenCount } = resolvePillOverflow(pills, { limit: QUICK_ADD_CHIP_LIMIT, showAll: true });
     expect(visible).toHaveLength(ALL_CHIPS.length);
     expect(hiddenCount).toBe(0);
+  });
+});
+
+describe('taskKindOf', () => {
+  const shape = (over: Partial<Parameters<typeof taskKindOf>[0]> = {}) => ({
+    chainEnabled: false, targetCount: null, timedMinutes: null, ...over,
+  });
+
+  it('reads a plain task as standard', () => {
+    expect(taskKindOf(shape())).toBe('task');
+  });
+
+  it('reads each shape off its own field', () => {
+    expect(taskKindOf(shape({ timedMinutes: 15 }))).toBe('timed');
+    expect(taskKindOf(shape({ targetCount: 3 }))).toBe('target');
+    expect(taskKindOf(shape({ chainEnabled: true }))).toBe('chain');
+  });
+
+  // The >= 2 rule lives at save time, not here: a chain being built up to its
+  // second step must not stop reading as a chain mid-edit.
+  it('stays a chain while it is still one step long', () => {
+    expect(taskKindOf(shape({ chainEnabled: true }))).toBe('chain');
+  });
+
+  // The editor used to let both be set; those rows are out there.
+  it('picks one kind for a task that was saved as two', () => {
+    expect(taskKindOf(shape({ chainEnabled: true, targetCount: 3, timedMinutes: 15 }))).toBe('chain');
+    expect(taskKindOf(shape({ targetCount: 3, timedMinutes: 15 }))).toBe('target');
+  });
+
+  it('round-trips with bakedFields for every kind', () => {
+    TASK_KIND_META.forEach(({ key }) => {
+      const baked = bakedFields(key, values({
+        timedMinutes: 15, targetCount: 3, chainItems: [step('a'), step('b')],
+      }));
+      expect(taskKindOf(baked)).toBe(key);
+    });
+  });
+
+  it('names every kind', () => {
+    expect(TASK_KIND_META.map(m => m.key)).toEqual(['task', 'timed', 'target', 'chain']);
+    TASK_KIND_META.forEach(m => {
+      expect(m.label).toBeTruthy();
+      expect(m.hint).toBeTruthy();
+    });
   });
 });

@@ -3,16 +3,71 @@ import { formatDuration, minutesToEffort } from './effort';
 import { formatQuotaTarget, normalizeTargetUnit } from './quotaUnit';
 
 /**
- * The shapes a task can be created in from quick add.
+ * The shapes a task can take.
  *
- * These aren't new models — every one of them is an ordinary Task with a
- * couple of fields set. What the type buys is discovery: timed tasks, quotas
- * and chains were each reachable only from one row buried somewhere in the
- * editor, so most people never learned they existed. Naming them at the top of
- * the sheet, next to the field you were going to type into anyway, is the
- * cheapest place to say "this is a thing the app does".
+ * These aren't new models — every one is an ordinary Task with a couple of
+ * fields set. What the kind buys is discovery: timed tasks, quotas and chains
+ * are each just a field, so nothing in the app ever said they were a choice,
+ * and most people never learned they existed.
+ *
+ * **The kind is derived, never stored.** There is no `kind` column and there
+ * shouldn't be — `taskKindOf` reads it back off the fields themselves, so a
+ * task edited by any other path (a template, an import, a store action) can't
+ * end up with a label disagreeing with its own shape. `bakedFields` is the
+ * other half: it's the only way to *set* a kind, and it clears the fields of
+ * the other three, which is what makes them exclusive.
+ *
+ * They were briefly a picker at the top of quick add, which is the wrong place
+ * — a sheet that exists to capture a title in two taps shouldn't spend its
+ * first row on a choice that's "standard" almost every time. The editor is
+ * where you go when a task needs to be more than a line of text, so that's
+ * where the choice lives.
  */
-export type QuickAddType = 'task' | 'timed' | 'target' | 'chain';
+export type TaskKind = 'task' | 'timed' | 'target' | 'chain';
+
+/** Label, glyph and one-line explanation for each kind, in picker order. */
+export const TASK_KIND_META: {
+  key: TaskKind;
+  label: string;
+  icon: string;
+  /** What picking it does, in one line. See `typeSummary` for the set-up version. */
+  hint: string;
+}[] = [
+  { key: 'task', label: 'Standard', icon: 'checkbox-outline', hint: 'An ordinary task — tick it off once.' },
+  { key: 'timed', label: 'Timed', icon: 'timer-outline', hint: 'Counts down a set time once you start it.' },
+  { key: 'target', label: 'Daily target', icon: 'speedometer-outline', hint: 'Log it several times a day.' },
+  { key: 'chain', label: 'Chain', icon: 'git-commit-outline', hint: 'Steps through a list one at a time.' },
+];
+
+/**
+ * Which kind a task's fields add up to.
+ *
+ * Order is precedence, and it matters because nothing until now stopped a task
+ * being two shapes at once: quick add went through `bakedFields` and so could
+ * only ever produce one, but the editor held the three fields independently
+ * and would happily save a chain that was also a daily target. Rows like that
+ * exist in the wild, so this has to answer for them rather than assume they
+ * don't. Chain wins because it's the most structural — it changes what
+ * completing the task *does* — then target, which owns the repeat, then timed,
+ * which is the thinnest of the three.
+ *
+ * Deriving rather than storing also means this needs no migration: an existing
+ * task reads back as whatever it already was.
+ */
+export function taskKindOf(v: {
+  chainEnabled: boolean;
+  targetCount: number | null;
+  timedMinutes: number | null;
+}): TaskKind {
+  // `chainEnabled` alone, deliberately, even though a one-item chain doesn't
+  // *function* as one anywhere else in the app. That rule belongs at save,
+  // where TaskEditor already applies it — read it here and a task would stop
+  // being a chain the moment you opened the editor to add its second step.
+  if (v.chainEnabled) return 'chain';
+  if (v.targetCount !== null) return 'target';
+  if (v.timedMinutes !== null) return 'timed';
+  return 'task';
+}
 
 /** Every attribute chip the quick-add toolbar can offer. */
 export type QuickAddChip =
@@ -54,7 +109,7 @@ export const QUICK_ADD_CHIP_LABELS: Record<QuickAddChip, string> = {
  */
 export const QUICK_ADD_CHIP_LIMIT = 5;
 
-export const QUICK_ADD_TYPES: readonly QuickAddType[] = ['task', 'timed', 'target', 'chain'];
+export const TASK_KINDS: readonly TaskKind[] = ['task', 'timed', 'target', 'chain'];
 
 /** Duration a Timed task starts at, so the mode is never sitting there empty. */
 export const DEFAULT_TIMED_MINUTES = 15;
@@ -82,7 +137,7 @@ export const MAX_TARGET_COUNT = 99;
  * doesn't need isn't simplification, it's a missing feature — a chain still
  * wants a date, a quota still wants a category.
  */
-const HIDDEN_CHIPS: Record<QuickAddType, readonly QuickAddChip[]> = {
+const HIDDEN_CHIPS: Record<TaskKind, readonly QuickAddChip[]> = {
   task: [],
   // For a timed task the countdown *is* the estimate, and bakedFields derives
   // effort from it — two controls asking "how long?" is the confusion the
@@ -97,7 +152,7 @@ const HIDDEN_CHIPS: Record<QuickAddType, readonly QuickAddChip[]> = {
   chain: [],
 };
 
-export function isChipVisible(type: QuickAddType, chip: QuickAddChip): boolean {
+export function isChipVisible(type: TaskKind, chip: QuickAddChip): boolean {
   return !HIDDEN_CHIPS[type].includes(chip);
 }
 
@@ -117,7 +172,7 @@ export interface TypeValues {
  * you. This is the only in-app documentation these features have, so it says
  * what happens rather than naming the setting.
  */
-export function typeSummary(type: QuickAddType, v: TypeValues): string | null {
+export function typeSummary(type: TaskKind, v: TypeValues): string | null {
   switch (type) {
     case 'task':
       return null;
@@ -141,12 +196,12 @@ export function typeSummary(type: QuickAddType, v: TypeValues): string | null {
  * would save a task that advertises steps and has none, so it's the one mode
  * that needs more than a title.
  */
-export function canSaveType(type: QuickAddType, v: TypeValues): boolean {
+export function canSaveType(type: TaskKind, v: TypeValues): boolean {
   return type !== 'chain' || v.chainItems.length > 0;
 }
 
 /** Why the add button is disabled, for the prompt under the steps list. */
-export function blockedReason(type: QuickAddType, v: TypeValues): string | null {
+export function blockedReason(type: TaskKind, v: TypeValues): string | null {
   if (canSaveType(type, v)) return null;
   return 'Add at least one step.';
 }
@@ -173,7 +228,7 @@ export interface BakedFields {
  * quota: 'none' would leave nothing to reset the count each day, but a repeat
  * the user set deliberately is theirs to keep.
  */
-export function bakedFields(type: QuickAddType, v: TypeValues): BakedFields {
+export function bakedFields(type: TaskKind, v: TypeValues): BakedFields {
   const base: BakedFields = {
     timedMinutes: null,
     targetCount: null,

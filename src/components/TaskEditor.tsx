@@ -29,10 +29,14 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, RecurrenceType, ChainItem, TimeOfDay, ReminderKind } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, border, interaction, animation, checkboxRadius, type Colors } from '../theme';
+import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { MAX_TARGET_COUNT, MIN_TARGET_COUNT } from '../utils/quickAddTypes';
+import {
+  bakedFields, taskKindOf, DEFAULT_TARGET_COUNT, DEFAULT_TIMED_MINUTES,
+  MAX_TARGET_COUNT, MIN_TARGET_COUNT, TASK_KIND_META,
+  type TaskKind,
+} from '../utils/taskKinds';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
@@ -304,8 +308,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const subtaskTitleEditRef = useRef<TextInput>(null);
   const initialStateRef = useRef<string>('');
 
+  /**
+   * What each kind was last configured with, so switching between them is a
+   * look rather than a commitment.
+   *
+   * `bakedFields` clears the other three kinds' fields — that's what makes
+   * them exclusive, and it's right at save time. Applied straight to editor
+   * state it also means tapping Timed to read its hint and tapping Chain
+   * again comes back to an empty step list, having silently destroyed a chain
+   * that was on the task when the sheet opened. So the outgoing kind's values
+   * are stashed on the way past and seeded back on the way in; only Save
+   * commits any of it.
+   */
+  const kindMemory = useRef<{
+    timedMinutes: number | null; targetCount: number | null;
+    targetUnit: string; chainItems: ChainItem[];
+  }>({ timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [] });
+
   useEffect(() => {
     if (!visible) return;
+    // Belongs to the task being edited, not to the sheet.
+    kindMemory.current = { timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [] };
     if (task) {
       setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags);
       setGroupId(task.groupId ?? null);
@@ -745,6 +768,50 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         },
       ],
     );
+  };
+
+  /**
+   * Read back off the fields, never held as state of its own — so a task that
+   * arrived from a template, an import or an older build reads as whatever it
+   * already is, and there's nothing to migrate or keep in step.
+   */
+  const kind = taskKindOf({ chainEnabled, targetCount, timedMinutes });
+
+  /**
+   * The only way to change kind, and the reason they're exclusive: it takes
+   * the same `bakedFields` path quick add does, which returns a full set of
+   * shape fields with the other three kinds' cleared.
+   */
+  const applyKind = (next: TaskKind) => {
+    if (next === kind) return;
+    haptics.tap();
+    animateLayout();
+    // Whatever the outgoing kind held is worth keeping — see kindMemory.
+    if (timedMinutes !== null) kindMemory.current.timedMinutes = timedMinutes;
+    if (targetCount !== null) {
+      kindMemory.current.targetCount = targetCount;
+      kindMemory.current.targetUnit = targetUnit;
+    }
+    if (chainItems.length > 0) kindMemory.current.chainItems = chainItems;
+
+    const baked = bakedFields(next, {
+      timedMinutes: kindMemory.current.timedMinutes ?? DEFAULT_TIMED_MINUTES,
+      targetCount: kindMemory.current.targetCount ?? DEFAULT_TARGET_COUNT,
+      targetUnit: kindMemory.current.targetUnit,
+      chainItems: kindMemory.current.chainItems,
+      recurrenceType,
+      effort,
+      estimatedMinutes,
+    });
+    setTimedMinutes(baked.timedMinutes);
+    setTargetCount(baked.targetCount);
+    setTargetUnit(baked.targetUnit ?? '');
+    setChainEnabled(baked.chainEnabled);
+    setChainItems(baked.chainItems);
+    setChainIndex(baked.chainIndex);
+    setRecurrenceType(baked.recurrenceType);
+    setEffort(baked.effort);
+    setEstimatedMinutes(baked.estimatedMinutes);
   };
 
   const fieldOpen = (key: FieldKey, fallback = false) => openFields[key] ?? fallback;
@@ -1500,6 +1567,449 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         </View>
       )}
 
+      {/* Kind — what shape of task this is.
+          Not a disclosure: the whole reason this card exists is that a timed
+          task, a daily target and a chain were each one folded row in a
+          different section, so nothing ever said they were a choice. A choice
+          you have to find isn't one. Four pills cost a line and a half.
+
+          The kind is read back off the fields (`taskKindOf`) rather than
+          stored, and picking one goes through `bakedFields` — the same call
+          quick add makes — which clears the other three. Before this the
+          editor held them independently and would save a chain that was also
+          a daily target. */}
+      <EditorGroup
+        label="Kind"
+        divider="full"
+        startOpen
+        rows={[
+          {
+            key: 'kind', label: 'Kind', primary: true, set: kind !== 'task',
+            node: (
+              <View style={styles.kindBlock}>
+                <View style={styles.pillRow}>
+                  {TASK_KIND_META.map(meta => {
+                    const active = kind === meta.key;
+                    return (
+                      <TouchableOpacity
+                        key={meta.key}
+                        style={[styles.pill, styles.pillWithIcon, active && styles.pillActiveAccent]}
+                        onPress={() => applyKind(meta.key)}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        accessibilityLabel={`${meta.label}. ${meta.hint}`}
+                      >
+                        <Ionicons
+                          name={meta.icon as never}
+                          size={iconSize.sm}
+                          color={active ? colors.accent : colors.textSecondary}
+                        />
+                        <Text style={[styles.pillText, active && styles.pillTextActiveAccent]}>
+                          {meta.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={styles.kindHint}>
+                  {TASK_KIND_META.find(m => m.key === kind)!.hint}
+                </Text>
+              </View>
+            ),
+          },
+          // The chosen kind's own set-up, moved here verbatim from the three
+          // sections it used to be scattered across. `primary` because a kind
+          // you just picked and can't then configure is worse than no picker.
+          ...(kind === 'timed' ? [{
+            key: 'duration', label: 'Duration', primary: true, set: true,
+            node: (<>
+            <CollapsibleField
+              label="Duration"
+              summary={timedMinutes != null ? formatDuration(timedMinutes) : undefined}
+              emptySummary="Untimed"
+              hint="Counts down on the task's row while you work. When it runs out the task is marked ready to complete."
+              expanded={fieldOpen('duration')}
+              onToggle={toggleDuration}
+            >
+              <View style={styles.pillRow}>
+                {DURATION_PRESETS.map(m => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[styles.pill, timedMinutes === m && styles.pillActiveNeutral]}
+                    onPress={() => {
+                      haptics.tap();
+                      // Tapping the active preset clears it — the only way back
+                      // to untimed without emptying the input by hand.
+                      const next = timedMinutes === m ? null : m;
+                      setTimedMinutes(next);
+                      setDurationUnit('min');
+                      setDurationText(next != null ? String(next) : '');
+                    }}
+                  >
+                    <Text style={[styles.pillText, timedMinutes === m && styles.pillTextActive]}>
+                      {formatDuration(m)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.customEffortRow}>
+                <TextInput
+                  style={styles.customEffortInput}
+                  value={durationText}
+                  onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                />
+                <View style={styles.unitToggle}>
+                  {(['min', 'hr'] as const).map(u => (
+                    <TouchableOpacity
+                      key={u}
+                      style={[styles.unitChip, durationUnit === u && styles.unitChipActive]}
+                      onPress={() => { setDurationUnit(u); applyDuration(durationText, u); }}
+                    >
+                      <Text style={[styles.unitChipText, durationUnit === u && styles.unitChipTextActive]}>{u}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </CollapsibleField>
+            </>),
+          }] : []),
+          ...(kind === 'target' ? [{
+            key: 'dailyTarget', label: 'Daily target', primary: true, set: true,
+            node: (<>
+              <EditorRow
+                icon="speedometer-outline"
+                label="Daily target"
+                hint="Log it several times a day; only shows up when you fall behind"
+                value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
+                expanded={showTargetCount}
+                onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
+                onClear={targetCount !== null ? () => { setTargetCount(null); setTargetUnit(''); setShowTargetCount(false); } : undefined}
+              />
+              {showTargetCount && (
+                <>
+                  <View style={styles.targetStepperRow}>
+                    <CountStepper
+                      value={targetCount}
+                      onChange={next => {
+                        setTargetCount(next);
+                        // A quota only makes sense day to day: the count resets
+                        // because each new occurrence starts at zero, so without
+                        // a daily repeat there'd be nothing to reset it.
+                        if (next !== null) enableRecurrence();
+                      }}
+                      min={MIN_TARGET_COUNT}
+                      max={MAX_TARGET_COUNT}
+                      // The floor clears it, so the row's × isn't the only way out of
+                      // being a quota once you've opened this.
+                      allowNull
+                      emptyLabel="Off"
+                      format={n => `${n}×`}
+                      label="Daily target"
+                      describeValue={n => (n === null ? 'off' : `${n} ${normalizeTargetUnit(targetUnit) ?? 'times'} a day`)}
+                    />
+                    {/* The unit is only ever read next to the count, so it's typed
+                        next to it too — and it's hidden while there's no count,
+                        since on its own it labels nothing. */}
+                    {targetCount !== null && (
+                      <TextInput
+                        style={styles.targetUnitInput}
+                        value={targetUnit}
+                        onChangeText={setTargetUnit}
+                        placeholder="units"
+                        placeholderTextColor={colors.textSecondary}
+                        maxLength={MAX_TARGET_UNIT_LENGTH}
+                        autoCapitalize="none"
+                        returnKeyType="done"
+                        accessibilityLabel="Unit for the daily target, optional"
+                      />
+                    )}
+                  </View>
+                  {/* Says what the row will read as rather than what the field is
+                      for: the unit's whole job is how the meter comes out, and a
+                      preview answers "plural or singular?" without a rule to
+                      explain. */}
+                  <Text style={styles.targetStepperCaption}>
+                    {targetCount === null
+                      ? 'Not a daily target'
+                      : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a day`}
+                  </Text>
+                  {targetCount !== null && (
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setAllowOvershoot(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Allow going past target"
+                      accessibilityState={{ checked: allowOvershoot }}
+                    >
+                      <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Allow going past target</Text>
+                        <Text style={styles.optionHint}>Keep logging past {targetCount}× — it stays on Today and completes at day's end with whatever count you reached</Text>
+                      </View>
+                      <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
+            </>),
+          }] : []),
+          ...(kind === 'chain' ? [{
+            key: 'chain', label: 'Chain', primary: true, set: true,
+            node: (<>
+                <CollapsibleField
+                  label="Chain"
+                  summary={
+                    chainItems.length > 1
+                      ? `Step ${chainIndex + 1} of ${chainItems.length}`
+                      : chainItems.length === 1
+                        ? '1 step — add one more'
+                        : 'No steps yet'
+                  }
+                  // Shown whenever the field is open, on or off — the moment
+                  // someone taps in to look, that's the "worth explaining"
+                  // signal CollapsibleField's own doc comment describes. It used
+                  // to be tied to chainEnabled instead, which hid the only
+                  // explanation of what Chain does right as it was turned on
+                  // (#791), and gated the Repeat-interplay sentence on Chain
+                  // being *off*, so a chain with Repeat off never saw it either.
+                  hint={
+                    'Step through a list of items, one per completion — finishing one reveals the next.'
+                    + (recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : '')
+                  }
+                  expanded={fieldOpen('chainSteps', true)}
+                  onToggle={() => toggleField('chainSteps', true)}
+                >
+                {(
+                  <>
+                    <SortableList
+                      onDragStateChange={setDraggingRow}
+                      data={chainItems}
+                      onReorder={(newData) => {
+                        const activeItemId = chainItems[chainIndex]?.id;
+                        setChainItems(newData);
+                        const newIdx = newData.findIndex(item => item.id === activeItemId);
+                        if (newIdx !== -1) setChainIndex(newIdx);
+                      }}
+                      renderItem={(item, displayIndex, drag) => {
+                        const actualIdx = chainItems.findIndex(c => c.id === item.id);
+                        const isCurrentStep = actualIdx === chainIndex;
+                        return (
+                          <View style={styles.chainItemRow}>
+                            <TouchableOpacity
+                              onPress={() => setChainIndex(actualIdx)}
+                              hitSlop={6}
+                              style={styles.chainItemIndexBtn}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Set current step to ${item.title}`}
+                            >
+                              <View style={[styles.chainItemDot, isCurrentStep && styles.chainItemDotActive]}>
+                                <Text style={[styles.chainItemDotText, isCurrentStep && styles.chainItemDotTextActive]}>
+                                  {displayIndex + 1}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                            {editingChainItemId === item.id ? (
+                              <TextInput
+                                ref={chainItemTitleEditRef}
+                                style={styles.chainItemTitleInput}
+                                value={chainItemTitleEdit}
+                                onChangeText={setChainItemTitleEdit}
+                                onBlur={() => saveChainItemTitle(item)}
+                                onSubmitEditing={() => saveChainItemTitle(item)}
+                                returnKeyType="done"
+                                maxLength={TITLE_MAX_LENGTH}
+                                blurOnSubmit
+                                autoFocus
+                              />
+                            ) : (
+                              <TouchableOpacity
+                                style={styles.chainItemTitleWrapper}
+                                onPress={() => handleChainItemTitleTap(item)}
+                                activeOpacity={interaction.activeOpacity}
+                                hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
+                              >
+                                <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
+                                  {item.title}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                            <ChainStepMinutes
+                              value={item.estimatedMinutes}
+                              label={item.title}
+                              onChange={mins => setChainItems(prev => prev.map(
+                                c => (c.id === item.id ? { ...c, estimatedMinutes: mins } : c),
+                              ))}
+                            />
+                            <TouchableOpacity
+                              onLongPress={drag}
+                              delayLongPress={150}
+                              hitSlop={8}
+                              style={styles.dragHandle}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Reorder chain step ${item.title}`}
+                            >
+                              <Ionicons name="reorder-three" size={18} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                // Track the active step by id (like onReorder above) rather
+                                // than by index — deleting an earlier step shifts every later
+                                // index down, so re-clamping the old chainIndex against the
+                                // new length silently lands on the wrong step.
+                                const activeItemId = chainItems[chainIndex]?.id;
+                                const next = chainItems.filter((_, j) => j !== actualIdx);
+                                setChainItems(next);
+                                if (activeItemId === item.id) {
+                                  // The active step itself was deleted — land on whatever now
+                                  // occupies its old slot (i.e. the step after it).
+                                  setChainIndex(Math.min(actualIdx, Math.max(0, next.length - 1)));
+                                } else {
+                                  const newIdx = next.findIndex(c => c.id === activeItemId);
+                                  setChainIndex(newIdx !== -1 ? newIdx : Math.max(0, next.length - 1));
+                                }
+                              }}
+                              hitSlop={8}
+                              style={styles.chainItemDelete}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Remove chain step ${item.title}`}
+                            >
+                              <Ionicons name="close" size={14} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      }}
+                    />
+                    {addingChainItem ? (
+                      <View style={styles.chainInputRow}>
+                        <View style={styles.chainItemDot}>
+                          <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
+                        </View>
+                        <TextInput
+                          ref={chainInputRef}
+                          autoFocus
+                          style={styles.chainInput}
+                          value={newChainItemTitle}
+                          onChangeText={setNewChainItemTitle}
+                          placeholder="Item title"
+                          placeholderTextColor={colors.textSecondary}
+                          maxLength={TITLE_MAX_LENGTH}
+                          returnKeyType="done"
+                          onSubmitEditing={() => {
+                            chainItemSavedRef.current = true;
+                            const t = newChainItemTitle.trim();
+                            if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
+                            setNewChainItemTitle('');
+                            setTimeout(() => {
+                              chainItemSavedRef.current = false;
+                              chainInputRef.current?.focus();
+                            }, 50);
+                          }}
+                          onBlur={() => {
+                            if (chainItemSavedRef.current) return;
+                            commitPendingChainItem();
+                            setAddingChainItem(false);
+                          }}
+                        />
+                      </View>
+                    ) : (
+                      <InlineAction
+                        icon="add"
+                        label="Add item"
+                        onPress={() => setAddingChainItem(true)}
+                        style={styles.addBtnSpacing}
+                      />
+                    )}
+                    {chainItems.length === 1 && (
+                      <Text style={styles.chainCurrentHint}>
+                        Add a second step — a chain needs at least 2 steps to save.
+                      </Text>
+                    )}
+                    {chainItems.length > 0 && (
+                      <Text style={styles.chainCurrentHint}>
+                        Times are per step; a step left blank uses the task's own estimate.
+                      </Text>
+                    )}
+                    {chainItems.length > 1 && (
+                      <View style={styles.chainModeBlock}>
+                        <Text style={styles.chainModeLabel}>Next step</Text>
+                        <View style={styles.chainModeRow}>
+                          {([false, true] as const).map(onSchedule => {
+                            const active = chainStepOnSchedule === onSchedule;
+                            // "On the next repeat" needs a repeat to wait for. Shown
+                            // disabled rather than hidden so the choice — and the
+                            // fact that Repeat is what unlocks it — stays visible.
+                            const disabled = onSchedule && recurrenceType === 'none';
+                            return (
+                              <TouchableOpacity
+                                key={String(onSchedule)}
+                                style={[
+                                  styles.chainModePill,
+                                  active && styles.chainModePillActive,
+                                  disabled && styles.chainModePillDisabled,
+                                ]}
+                                disabled={disabled}
+                                onPress={() => { haptics.tap(); setChainStepOnSchedule(onSchedule); }}
+                                activeOpacity={interaction.activeOpacity}
+                                accessibilityRole="radio"
+                                accessibilityState={{ selected: active, disabled }}
+                                accessibilityLabel={onSchedule ? 'Next step on the next repeat' : 'Next step right away'}
+                              >
+                                <Text
+                                  style={[
+                                    styles.chainModePillText,
+                                    active && styles.chainModePillTextActive,
+                                    disabled && styles.chainModePillTextDisabled,
+                                  ]}
+                                >
+                                  {onSchedule ? 'On the next repeat' : 'Right away'}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                        <Text style={styles.chainCurrentHint}>
+                          {recurrenceType === 'none'
+                            ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
+                            : chainStepOnSchedule
+                              ? 'One step per repeat — the chain rotates through its steps rather than running straight through.'
+                              : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
+                        </Text>
+                      </View>
+                    )}
+                    {chainIndex < chainItems.length && chainItems.length > 1 && (
+                      <Text style={styles.chainCurrentHint}>
+                        {(() => {
+                          // Timing lives in the Next step block above, so this stays
+                          // about position — with one exception. In "Right away" mode
+                          // the wrap is the single step that *does* wait for the
+                          // repeat, which is exactly what that block doesn't say and
+                          // what makes step 1 look like it should have been today's.
+                          const prefix = 'Tap a number to set the current position.';
+                          if (chainIndex === chainItems.length - 1) {
+                            return recurrenceType === 'none'
+                              ? `${prefix} This is the last step — the chain ends here.`
+                              : `${prefix} Last step — the chain starts over on the next repeat.`;
+                          }
+                          return `${prefix} Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`;
+                        })()}
+                      </Text>
+                    )}
+                  </>
+                )}
+                </CollapsibleField>
+            </>),
+          }] : []),
+        ]}
+      />
+
       {/* Schedule — when the task surfaces, and how it repeats */}
       <EditorGroup
         label="Schedule"
@@ -1848,91 +2358,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'dailyTarget', label: 'Daily target', set: targetCount !== null,
-            node: (
-              <>
-            <EditorRow
-              icon="speedometer-outline"
-              label="Daily target"
-              hint="Log it several times a day; only shows up when you fall behind"
-              value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
-              expanded={showTargetCount}
-              onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
-              onClear={targetCount !== null ? () => { setTargetCount(null); setTargetUnit(''); setShowTargetCount(false); } : undefined}
-            />
-            {showTargetCount && (
-              <>
-                <View style={styles.targetStepperRow}>
-                  <CountStepper
-                    value={targetCount}
-                    onChange={next => {
-                      setTargetCount(next);
-                      // A quota only makes sense day to day: the count resets
-                      // because each new occurrence starts at zero, so without
-                      // a daily repeat there'd be nothing to reset it.
-                      if (next !== null) enableRecurrence();
-                    }}
-                    min={MIN_TARGET_COUNT}
-                    max={MAX_TARGET_COUNT}
-                    // The floor clears it, so the row's × isn't the only way out of
-                    // being a quota once you've opened this.
-                    allowNull
-                    emptyLabel="Off"
-                    format={n => `${n}×`}
-                    label="Daily target"
-                    describeValue={n => (n === null ? 'off' : `${n} ${normalizeTargetUnit(targetUnit) ?? 'times'} a day`)}
-                  />
-                  {/* The unit is only ever read next to the count, so it's typed
-                      next to it too — and it's hidden while there's no count,
-                      since on its own it labels nothing. */}
-                  {targetCount !== null && (
-                    <TextInput
-                      style={styles.targetUnitInput}
-                      value={targetUnit}
-                      onChangeText={setTargetUnit}
-                      placeholder="units"
-                      placeholderTextColor={colors.textSecondary}
-                      maxLength={MAX_TARGET_UNIT_LENGTH}
-                      autoCapitalize="none"
-                      returnKeyType="done"
-                      accessibilityLabel="Unit for the daily target, optional"
-                    />
-                  )}
-                </View>
-                {/* Says what the row will read as rather than what the field is
-                    for: the unit's whole job is how the meter comes out, and a
-                    preview answers "plural or singular?" without a rule to
-                    explain. */}
-                <Text style={styles.targetStepperCaption}>
-                  {targetCount === null
-                    ? 'Not a daily target'
-                    : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a day`}
-                </Text>
-                {targetCount !== null && (
-                  <TouchableOpacity
-                    style={styles.optionRow}
-                    onPress={() => { haptics.tap(); setAllowOvershoot(v => !v); }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="switch"
-                    accessibilityLabel="Allow going past target"
-                    accessibilityState={{ checked: allowOvershoot }}
-                  >
-                    <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
-                    <View style={styles.optionContent}>
-                      <Text style={styles.optionLabel}>Allow going past target</Text>
-                      <Text style={styles.optionHint}>Keep logging past {targetCount}× — it stays on Today and completes at day's end with whatever count you reached</Text>
-                    </View>
-                    <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
-                      <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
-                    </View>
-                  </TouchableOpacity>
-                )}
-              </>
-            )}
-              </>
-            ),
-          },
-          {
             key: 'remindMe', label: 'Remind me', primary: true, set: !!reminderTime,
             node: (
               <>
@@ -2007,268 +2432,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 }}
               />
             )}
-              </>
-            ),
-          },
-          {
-            key: 'chain', label: 'Chain', set: chainEnabled,
-            node: (
-              <>
-              <CollapsibleField
-                label="Chain"
-                summary={
-                  chainEnabled
-                    ? (chainItems.length > 1
-                        ? `Step ${chainIndex + 1} of ${chainItems.length}`
-                        : chainItems.length === 1
-                          ? '1 step — add one more'
-                          : 'No steps yet')
-                    : undefined
-                }
-                emptySummary="Off"
-                // Shown whenever the field is open, on or off — the moment
-                // someone taps in to look, that's the "worth explaining"
-                // signal CollapsibleField's own doc comment describes. It used
-                // to be tied to chainEnabled instead, which hid the only
-                // explanation of what Chain does right as it was turned on
-                // (#791), and gated the Repeat-interplay sentence on Chain
-                // being *off*, so a chain with Repeat off never saw it either.
-                hint={
-                  'Step through a list of items, one per completion — finishing one reveals the next.'
-                  + (recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : '')
-                }
-                expanded={fieldOpen('chainSteps', chainEnabled)}
-                onToggle={() => toggleField('chainSteps', chainEnabled)}
-                right={
-                  <TouchableOpacity
-                    style={[styles.chainToggle, chainEnabled && styles.chainToggleOn]}
-                    onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
-                    accessibilityRole="switch"
-                    accessibilityLabel="Chain"
-                    accessibilityState={{ checked: chainEnabled }}
-                  >
-                    <View style={[styles.chainToggleKnob, chainEnabled && styles.chainToggleKnobOn]} />
-                  </TouchableOpacity>
-                }
-              >
-              {chainEnabled && (
-                <>
-                  <SortableList
-                    onDragStateChange={setDraggingRow}
-                    data={chainItems}
-                    onReorder={(newData) => {
-                      const activeItemId = chainItems[chainIndex]?.id;
-                      setChainItems(newData);
-                      const newIdx = newData.findIndex(item => item.id === activeItemId);
-                      if (newIdx !== -1) setChainIndex(newIdx);
-                    }}
-                    renderItem={(item, displayIndex, drag) => {
-                      const actualIdx = chainItems.findIndex(c => c.id === item.id);
-                      const isCurrentStep = actualIdx === chainIndex;
-                      return (
-                        <View style={styles.chainItemRow}>
-                          <TouchableOpacity
-                            onPress={() => setChainIndex(actualIdx)}
-                            hitSlop={6}
-                            style={styles.chainItemIndexBtn}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Set current step to ${item.title}`}
-                          >
-                            <View style={[styles.chainItemDot, isCurrentStep && styles.chainItemDotActive]}>
-                              <Text style={[styles.chainItemDotText, isCurrentStep && styles.chainItemDotTextActive]}>
-                                {displayIndex + 1}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                          {editingChainItemId === item.id ? (
-                            <TextInput
-                              ref={chainItemTitleEditRef}
-                              style={styles.chainItemTitleInput}
-                              value={chainItemTitleEdit}
-                              onChangeText={setChainItemTitleEdit}
-                              onBlur={() => saveChainItemTitle(item)}
-                              onSubmitEditing={() => saveChainItemTitle(item)}
-                              returnKeyType="done"
-                              maxLength={TITLE_MAX_LENGTH}
-                              blurOnSubmit
-                              autoFocus
-                            />
-                          ) : (
-                            <TouchableOpacity
-                              style={styles.chainItemTitleWrapper}
-                              onPress={() => handleChainItemTitleTap(item)}
-                              activeOpacity={interaction.activeOpacity}
-                              hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
-                            >
-                              <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
-                                {item.title}
-                              </Text>
-                            </TouchableOpacity>
-                          )}
-                          <ChainStepMinutes
-                            value={item.estimatedMinutes}
-                            label={item.title}
-                            onChange={mins => setChainItems(prev => prev.map(
-                              c => (c.id === item.id ? { ...c, estimatedMinutes: mins } : c),
-                            ))}
-                          />
-                          <TouchableOpacity
-                            onLongPress={drag}
-                            delayLongPress={150}
-                            hitSlop={8}
-                            style={styles.dragHandle}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Reorder chain step ${item.title}`}
-                          >
-                            <Ionicons name="reorder-three" size={18} color={colors.textSecondary} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              // Track the active step by id (like onReorder above) rather
-                              // than by index — deleting an earlier step shifts every later
-                              // index down, so re-clamping the old chainIndex against the
-                              // new length silently lands on the wrong step.
-                              const activeItemId = chainItems[chainIndex]?.id;
-                              const next = chainItems.filter((_, j) => j !== actualIdx);
-                              setChainItems(next);
-                              if (activeItemId === item.id) {
-                                // The active step itself was deleted — land on whatever now
-                                // occupies its old slot (i.e. the step after it).
-                                setChainIndex(Math.min(actualIdx, Math.max(0, next.length - 1)));
-                              } else {
-                                const newIdx = next.findIndex(c => c.id === activeItemId);
-                                setChainIndex(newIdx !== -1 ? newIdx : Math.max(0, next.length - 1));
-                              }
-                            }}
-                            hitSlop={8}
-                            style={styles.chainItemDelete}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Remove chain step ${item.title}`}
-                          >
-                            <Ionicons name="close" size={14} color={colors.textSecondary} />
-                          </TouchableOpacity>
-                        </View>
-                      );
-                    }}
-                  />
-                  {addingChainItem ? (
-                    <View style={styles.chainInputRow}>
-                      <View style={styles.chainItemDot}>
-                        <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
-                      </View>
-                      <TextInput
-                        ref={chainInputRef}
-                        autoFocus
-                        style={styles.chainInput}
-                        value={newChainItemTitle}
-                        onChangeText={setNewChainItemTitle}
-                        placeholder="Item title"
-                        placeholderTextColor={colors.textSecondary}
-                        maxLength={TITLE_MAX_LENGTH}
-                        returnKeyType="done"
-                        onSubmitEditing={() => {
-                          chainItemSavedRef.current = true;
-                          const t = newChainItemTitle.trim();
-                          if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
-                          setNewChainItemTitle('');
-                          setTimeout(() => {
-                            chainItemSavedRef.current = false;
-                            chainInputRef.current?.focus();
-                          }, 50);
-                        }}
-                        onBlur={() => {
-                          if (chainItemSavedRef.current) return;
-                          commitPendingChainItem();
-                          setAddingChainItem(false);
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    <InlineAction
-                      icon="add"
-                      label="Add item"
-                      onPress={() => setAddingChainItem(true)}
-                      style={styles.addBtnSpacing}
-                    />
-                  )}
-                  {chainItems.length === 1 && (
-                    <Text style={styles.chainCurrentHint}>
-                      Add a second step — a chain needs at least 2 steps to save.
-                    </Text>
-                  )}
-                  {chainItems.length > 0 && (
-                    <Text style={styles.chainCurrentHint}>
-                      Times are per step; a step left blank uses the task's own estimate.
-                    </Text>
-                  )}
-                  {chainItems.length > 1 && (
-                    <View style={styles.chainModeBlock}>
-                      <Text style={styles.chainModeLabel}>Next step</Text>
-                      <View style={styles.chainModeRow}>
-                        {([false, true] as const).map(onSchedule => {
-                          const active = chainStepOnSchedule === onSchedule;
-                          // "On the next repeat" needs a repeat to wait for. Shown
-                          // disabled rather than hidden so the choice — and the
-                          // fact that Repeat is what unlocks it — stays visible.
-                          const disabled = onSchedule && recurrenceType === 'none';
-                          return (
-                            <TouchableOpacity
-                              key={String(onSchedule)}
-                              style={[
-                                styles.chainModePill,
-                                active && styles.chainModePillActive,
-                                disabled && styles.chainModePillDisabled,
-                              ]}
-                              disabled={disabled}
-                              onPress={() => { haptics.tap(); setChainStepOnSchedule(onSchedule); }}
-                              activeOpacity={interaction.activeOpacity}
-                              accessibilityRole="radio"
-                              accessibilityState={{ selected: active, disabled }}
-                              accessibilityLabel={onSchedule ? 'Next step on the next repeat' : 'Next step right away'}
-                            >
-                              <Text
-                                style={[
-                                  styles.chainModePillText,
-                                  active && styles.chainModePillTextActive,
-                                  disabled && styles.chainModePillTextDisabled,
-                                ]}
-                              >
-                                {onSchedule ? 'On the next repeat' : 'Right away'}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                      <Text style={styles.chainCurrentHint}>
-                        {recurrenceType === 'none'
-                          ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
-                          : chainStepOnSchedule
-                            ? 'One step per repeat — the chain rotates through its steps rather than running straight through.'
-                            : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
-                      </Text>
-                    </View>
-                  )}
-                  {chainIndex < chainItems.length && chainItems.length > 1 && (
-                    <Text style={styles.chainCurrentHint}>
-                      {(() => {
-                        // Timing lives in the Next step block above, so this stays
-                        // about position — with one exception. In "Right away" mode
-                        // the wrap is the single step that *does* wait for the
-                        // repeat, which is exactly what that block doesn't say and
-                        // what makes step 1 look like it should have been today's.
-                        const prefix = 'Tap a number to set the current position.';
-                        if (chainIndex === chainItems.length - 1) {
-                          return recurrenceType === 'none'
-                            ? `${prefix} This is the last step — the chain ends here.`
-                            : `${prefix} Last step — the chain starts over on the next repeat.`;
-                        }
-                        return `${prefix} Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`;
-                      })()}
-                    </Text>
-                  )}
-                </>
-              )}
-              </CollapsibleField>
               </>
             ),
           },
@@ -2726,66 +2889,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'duration', label: 'Duration', set: estimatedMinutes !== null,
-            node: (
-              <>
-          <CollapsibleField
-            label="Duration"
-            summary={timedMinutes != null ? formatDuration(timedMinutes) : undefined}
-            emptySummary="Untimed"
-            hint="Counts down on the task's row while you work. When it runs out the task is marked ready to complete."
-            expanded={fieldOpen('duration')}
-            onToggle={toggleDuration}
-          >
-            <View style={styles.pillRow}>
-              {DURATION_PRESETS.map(m => (
-                <TouchableOpacity
-                  key={m}
-                  style={[styles.pill, timedMinutes === m && styles.pillActiveNeutral]}
-                  onPress={() => {
-                    haptics.tap();
-                    // Tapping the active preset clears it — the only way back
-                    // to untimed without emptying the input by hand.
-                    const next = timedMinutes === m ? null : m;
-                    setTimedMinutes(next);
-                    setDurationUnit('min');
-                    setDurationText(next != null ? String(next) : '');
-                  }}
-                >
-                  <Text style={[styles.pillText, timedMinutes === m && styles.pillTextActive]}>
-                    {formatDuration(m)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <View style={styles.customEffortRow}>
-              <TextInput
-                style={styles.customEffortInput}
-                value={durationText}
-                onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
-                keyboardType="number-pad"
-                placeholder="0"
-                placeholderTextColor={colors.textSecondary}
-                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-              />
-              <View style={styles.unitToggle}>
-                {(['min', 'hr'] as const).map(u => (
-                  <TouchableOpacity
-                    key={u}
-                    style={[styles.unitChip, durationUnit === u && styles.unitChipActive]}
-                    onPress={() => { setDurationUnit(u); applyDuration(durationText, u); }}
-                  >
-                    <Text style={[styles.unitChipText, durationUnit === u && styles.unitChipTextActive]}>{u}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </CollapsibleField>
-              </>
-            ),
-          },
-          {
-            key: 'timeSpent', label: 'Time spent', set: timedMinutes !== null,
+            key: 'timeSpent', label: 'Time spent', set: actualMinutes !== null,
             node: (
               <>
           <CollapsibleField
@@ -3309,6 +3413,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
+  /** A pill that carries a glyph beside its label — the Kind picker's four. */
+  pillWithIcon: { flexDirection: 'row', gap: 6 },
+  /**
+   * A louder selected state than `pillActiveNeutral`, for Kind only.
+   *
+   * The neutral one is right where the pills are a list of equal options you
+   * pick from and forget (a category, a project). Kind isn't that: it's the
+   * card's whole subject, it changes what the rows below it are, and
+   * bgQuaternary against bgTertiary is a shade apart — a distinction that
+   * needs good eyes and a good screen. Same accent-tinted treatment quick
+   * add's chips use to say "this one is set".
+   */
+  pillActiveAccent: { backgroundColor: colors.accentSubtle },
+  pillTextActiveAccent: { color: colors.accent, fontWeight: '600' },
+  kindBlock: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  kindHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm, lineHeight: 16 },
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
   pillHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
@@ -3501,16 +3621,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     marginBottom: spacing.sm,
   },
-  chainToggle: {
-    width: 42, height: 25, borderRadius: 13,
-    backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
-  },
-  chainToggleOn: { backgroundColor: colors.accent },
-  chainToggleKnob: {
-    width: 19, height: 19, borderRadius: 10,
-    backgroundColor: colors.bg,
-  },
-  chainToggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
   chainItemRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,

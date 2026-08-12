@@ -42,9 +42,9 @@ import {
   QUICK_ADD_CHIP_LIMIT,
   TIMED_MINUTE_OPTIONS,
   type QuickAddChip,
-  type QuickAddType,
+  type TaskKind,
   type TypeValues,
-} from '../utils/quickAddTypes';
+} from '../utils/taskKinds';
 import { resolvePillOverflow } from '../utils/pillOverflow';
 import { MAX_TARGET_UNIT_LENGTH } from '../utils/quotaUnit';
 import { WhenPicker } from './WhenPicker';
@@ -94,7 +94,7 @@ interface Props {
   /** Names the seed on a removable chip, e.g. "Errands". No chip without one. */
   seedLabel?: string | null;
   /** Which task type the sheet opens in — the add menu's Chain entry lands here. */
-  initialType?: QuickAddType;
+  initialType?: TaskKind;
   /** Seeds the title field on open, e.g. handing a search query straight into a new task. */
   initialTitle?: string;
 }
@@ -244,7 +244,7 @@ export function QuickAddModal({
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [emailAddress, setEmailAddress] = useState<string | null>(null);
-  const [type, setType] = useState<QuickAddType>('task');
+  const [type, setType] = useState<TaskKind>('task');
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
   const [customTimedText, setCustomTimedText] = useState('');
   const [targetCount, setTargetCount] = useState<number | null>(null);
@@ -1229,7 +1229,7 @@ export function QuickAddModal({
           )}
 
           {/* Attribute toolbar. Every chip is gated on isChipVisible, so the
-              table in utils/quickAddTypes is the only place that decides what
+              table in utils/taskKinds is the only place that decides what
               a type takes off the toolbar — a chip left ungated here would
               silently ignore being listed there. */}
           <View style={styles.toolbar}>
