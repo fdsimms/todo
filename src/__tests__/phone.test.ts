@@ -1,4 +1,4 @@
-import { isDialable, looksLikePhoneNumber, phoneDigits, smsUrl, telUrl } from '../utils/phone';
+import { formatPhoneInput, isDialable, looksLikePhoneNumber, phoneDigits, smsUrl, telUrl } from '../utils/phone';
 
 describe('telUrl', () => {
   it('strips presentation characters', () => {
@@ -104,5 +104,64 @@ describe('looksLikePhoneNumber', () => {
   it('rejects anything carrying letters', () => {
     expect(looksLikePhoneNumber('call 555-123-4567')).toBe(false);
     expect(looksLikePhoneNumber('')).toBe(false);
+  });
+});
+
+describe('formatPhoneInput', () => {
+  it('punctuates a bare NANP number', () => {
+    expect(formatPhoneInput('5555555555')).toBe('(555) 555-5555');
+    expect(formatPhoneInput('2125551234')).toBe('(212) 555-1234');
+  });
+
+  it('keeps a leading country code', () => {
+    expect(formatPhoneInput('15555555555')).toBe('1 (555) 555-5555');
+  });
+
+  it('is idempotent, so it can run on every keystroke', () => {
+    const once = formatPhoneInput('5555555555');
+    expect(formatPhoneInput(once)).toBe(once);
+    expect(formatPhoneInput(formatPhoneInput('15555555555'))).toBe('1 (555) 555-5555');
+  });
+
+  it('re-punctuates a number the user spaced differently', () => {
+    expect(formatPhoneInput('555.555.5555')).toBe('(555) 555-5555');
+    expect(formatPhoneInput('555 555 5555')).toBe('(555) 555-5555');
+  });
+
+  it('leaves anything international alone', () => {
+    expect(formatPhoneInput('+44 20 7946 0018')).toBe('+44 20 7946 0018');
+    expect(formatPhoneInput('+15555555555')).toBe('+15555555555');
+  });
+
+  // Ten digits is not the same as NANP: 0400 123 456 is an Australian mobile,
+  // and "(040) 012-3456" would be confidently wrong.
+  it('leaves a trunk-prefixed number alone', () => {
+    expect(formatPhoneInput('0400123456')).toBe('0400123456');
+    expect(formatPhoneInput('0400 123 456')).toBe('0400 123 456');
+  });
+
+  it('refuses a 4th digit no NANP exchange starts with', () => {
+    expect(formatPhoneInput('5551555555')).toBe('5551555555');
+    expect(formatPhoneInput('5550555555')).toBe('5550555555');
+  });
+
+  it('leaves an extension or a note alone', () => {
+    expect(formatPhoneInput('5555555555,,123')).toBe('5555555555,,123');
+    expect(formatPhoneInput('555 555 5555 ext 4')).toBe('555 555 5555 ext 4');
+  });
+
+  it('leaves a part-typed number alone until it is whole', () => {
+    ['', '5', '55555', '555555555'].forEach(p => expect(formatPhoneInput(p)).toBe(p));
+    // …and backspacing out of a formatted one just stops being formatted.
+    expect(formatPhoneInput('(555) 555-555')).toBe('(555) 555-555');
+  });
+
+  it('leaves seven digits alone, like looksLikePhoneNumber does', () => {
+    expect(formatPhoneInput('5551234')).toBe('5551234');
+  });
+
+  it('produces something telUrl still understands', () => {
+    expect(telUrl(formatPhoneInput('5555555555'))).toBe('tel:5555555555');
+    expect(telUrl(formatPhoneInput('15555555555'))).toBe('tel:15555555555');
   });
 });

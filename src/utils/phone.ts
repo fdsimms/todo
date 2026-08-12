@@ -63,6 +63,50 @@ export function smsUrl(raw: string | null | undefined): string | null {
 }
 
 /**
+ * Punctuate a number as it's typed, but only where there's one right answer.
+ *
+ * This is the one place that rewrites what the user typed, so it's narrow on
+ * purpose — the module's whole premise is that "canonical" needs a country the
+ * app never asks for. It reformats exactly two shapes, both unmistakably NANP:
+ *
+ *   - 10 digits whose 1st and 4th are 2–9 → `(555) 123-4567`
+ *   - 11 digits starting with 1, same rule on the rest → `1 (555) 123-4567`
+ *
+ * Everything else passes through verbatim, and the refusals are the point:
+ *
+ *   - **Anything holding a `+`** is international and stays exactly as typed.
+ *   - **A leading 0** is a trunk prefix, not an area code. `0400 123 456` is a
+ *     ten-digit Australian mobile, and punctuating it as `(040) 012-3456` would
+ *     be confidently wrong — which is worse than leaving it alone. The 4th-digit
+ *     rule catches the same class from the other end.
+ *   - **Letters, or any character outside the dial alphabet**, mean this isn't a
+ *     bare number — an extension, a note, someone's own spacing — so it's left
+ *     to stand.
+ *   - **Seven digits** are deliberately not formatted, for the reason
+ *     `looksLikePhoneNumber` gives: too many plans write 7–8 local digits their
+ *     own way.
+ *
+ * Idempotent, because it always rebuilds from the digits and only ever emits
+ * characters it also accepts — so it can run on every keystroke without
+ * fighting the caret, and backspacing out of a formatted number simply drops
+ * below ten digits and stops being reformatted.
+ */
+export function formatPhoneInput(raw: string): string {
+  if (!raw || raw.includes('+')) return raw;
+  // Anything we wouldn't have produced ourselves is the user's own formatting.
+  if (/[^0-9()\-.\s]/.test(raw)) return raw;
+
+  const digits = phoneDigits(raw);
+  const national = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  if (national.length !== 10) return raw;
+  // NANP: area code and exchange both start 2–9. Nothing else is one.
+  if (national[0] < '2' || national[3] < '2') return raw;
+
+  const formatted = `(${national.slice(0, 3)}) ${national.slice(3, 6)}-${national.slice(6)}`;
+  return national === digits ? formatted : `1 ${formatted}`;
+}
+
+/**
  * What a phone number typed into a *sentence* looks like — deliberately
  * stricter than what the field itself accepts.
  *

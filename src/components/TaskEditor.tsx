@@ -32,6 +32,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { formatPhoneInput } from '../utils/phone';
 import {
   bakedFields, taskKindOf, DEFAULT_TARGET_COUNT, DEFAULT_TIMED_MINUTES,
   MAX_TARGET_COUNT, MIN_TARGET_COUNT, TASK_KIND_META,
@@ -3047,7 +3048,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <TextInput
                   style={styles.linkCustomInput}
                   value={phoneText}
-                  onChangeText={setPhoneText}
+                  onChangeText={t => setPhoneText(formatPhoneInput(t))}
                   onSubmitEditing={commitPhone}
                   onBlur={commitPhone}
                   placeholder="(555) 123-4567"

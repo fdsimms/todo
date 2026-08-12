@@ -58,6 +58,7 @@ import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseCategoryAndTagsInput, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
+import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
 import { getLogicalToday, getLogicalTomorrow, getLogicalNow } from '../utils/dateUtils';
 import { suggestTaskAttributes, describeAIError } from '../services/aiSuggestions';
@@ -870,6 +871,10 @@ export function QuickAddModal({
       tint: priority > 0 ? PRIORITY_COLORS[priority] : undefined,
     },
     {
+      key: 'category', icon: 'folder-outline', panel: 'category',
+      value: category !== null ? categoryLabel(category, categories) : null,
+    },
+    {
       key: 'effort', icon: 'barbell', panel: 'effort',
       value: effort > 0
         ? (estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort])
@@ -878,10 +883,6 @@ export function QuickAddModal({
     {
       key: 'tags', icon: 'pricetag-outline', panel: 'tags',
       value: tags.length > 0 ? tags.slice(0, 2).join(', ') : null,
-    },
-    {
-      key: 'category', icon: 'folder-outline', panel: 'category',
-      value: category !== null ? categoryLabel(category, categories) : null,
     },
     {
       key: 'link', icon: 'link-outline', panel: 'link',
@@ -1761,18 +1762,33 @@ export function QuickAddModal({
                 <TextInput
                   style={styles.linkCustomInput}
                   value={phoneText}
-                  onChangeText={setPhoneText}
+                  onChangeText={t => setPhoneText(formatPhoneInput(t))}
                   onSubmitEditing={commitPhone}
                   onBlur={commitPhone}
                   placeholder="(555) 123-4567"
                   placeholderTextColor={colors.textSecondary}
                   keyboardType="phone-pad"
                   autoCorrect={false}
+                  // No return key on the iOS phone pad, and the only other way
+                  // to blur this field is a tap outside — which in this sheet
+                  // dismisses the whole thing, taking the number with it. So
+                  // blur is still what saves, and the checkmark is what makes
+                  // that reachable. Same pairing the editor's phone row uses.
                 />
+                <TouchableOpacity
+                  onPress={commitPhone}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Confirm phone number"
+                >
+                  <Ionicons name="checkmark-circle" size={22} color={colors.accent} />
+                </TouchableOpacity>
                 {phoneNumber !== null && (
                   <TouchableOpacity
                     onPress={() => { haptics.tap(); setPhoneNumber(null); setPhoneText(''); setActivePanel(null); }}
                     hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear phone number"
                   >
                     <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>

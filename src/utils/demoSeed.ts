@@ -159,6 +159,18 @@ export function seedDemoData(): void {
   });
   updateTask(morningRoutine.id, { effort: 1 });
 
+  // A number on a task is what puts the call/text button on its row — with no
+  // row carrying one, that button and the Phone field both read as features
+  // the app doesn't have.
+  addTask({
+    title: 'Call the dentist about the crown',
+    notes: 'Ask whether the temporary needs replacing before the trip.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    phoneNumber: '(555) 123-4567',
+    effort: 1,
+  });
+
   // The other two kinds the editor's Kind picker offers. Without a row apiece
   // the picker names two features demo mode can't show you.
   addTask({
