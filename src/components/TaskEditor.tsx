@@ -66,7 +66,7 @@ import { BlockerPickerSheet } from './BlockerPickerSheet';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { RecurrencePicker, ordinal } from './RecurrencePicker';
 import { recurrenceUnitLabel } from '../utils/recurrenceLabels';
-import { KNOWN_LINK_APPS } from '../constants/linkApps';
+import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 
 /** Pre-filled values carried over from the quick add modal when creating a new task. */
 export interface TaskDraft {
@@ -341,6 +341,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const scheduleTooltipAnim = useRef(new Animated.Value(0)).current;
   const hadScheduleParse = useRef(false);
 
@@ -3028,7 +3029,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             {showLinkPicker && (
               <>
                 <View style={styles.linkPickerRow}>
-                  {KNOWN_LINK_APPS.map(app => (
+                  {linkAppsFor(kitchenEnabled).map(app => (
                     <TouchableOpacity
                       key={app.scheme}
                       style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
@@ -3281,8 +3282,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       />
 
       {/* Gated as a whole, not just its row: its only entry needs a saved
-          top-level task, and EditorGroup with no rows still draws its card. */}
-      {task && !task.parentId && (
+          top-level task, and EditorGroup with no rows still draws its card.
+          `kitchenEnabled` gates it for the same reason — the row's whole
+          effect is to move the task into a list that isn't in the menu. */}
+      {kitchenEnabled && task && !task.parentId && (
       <EditorGroup
         label="Convert"
         searchTerms={searchTerms}

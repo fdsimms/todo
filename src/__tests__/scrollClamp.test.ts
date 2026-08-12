@@ -1,4 +1,10 @@
-import { maxRestingOffset, strandedScrollOffset } from '../utils/scrollClamp';
+import {
+  NO_INSET,
+  NO_INSET_ALT,
+  maxRestingOffset,
+  pulseNoInset,
+  strandedScrollOffset,
+} from '../utils/scrollClamp';
 
 describe('maxRestingOffset', () => {
   it('is the content that does not fit in the viewport', () => {
@@ -79,5 +85,41 @@ describe('strandedScrollOffset', () => {
 
   it('never asks for a negative offset', () => {
     expect(strandedScrollOffset(-40, 600, 800)).toBeNull();
+  });
+});
+
+describe('pulseNoInset', () => {
+  it('always changes the value, which is the only reason it exists', () => {
+    // The native side reassigns contentInset only when the prop differs from
+    // the last one, so a clear that returned what it was given would leave the
+    // keyboard's leftover inset in place.
+    expect(pulseNoInset(NO_INSET)).not.toBe(NO_INSET);
+    expect(pulseNoInset(NO_INSET_ALT)).not.toBe(NO_INSET_ALT);
+  });
+
+  it('alternates, so repeated clears keep landing', () => {
+    const first = pulseNoInset(NO_INSET);
+    const second = pulseNoInset(first);
+    const third = pulseNoInset(second);
+    expect(first).toBe(NO_INSET_ALT);
+    expect(second).toBe(NO_INSET);
+    expect(third).toBe(NO_INSET_ALT);
+  });
+
+  it('settles from any inset the keyboard handler might have left', () => {
+    // Both sizes of leftover: the keyboard's own height, and the ~30,000 a
+    // screen parked off-window computes.
+    expect(pulseNoInset(336)).toBe(NO_INSET);
+    expect(pulseNoInset(29_156)).toBe(NO_INSET);
+    expect(pulseNoInset(NaN)).toBe(NO_INSET);
+  });
+
+  it('opens no range a person could see or the clamp could trip on', () => {
+    // Below one device pixel at 3x, and inside strandedScrollOffset's tolerance.
+    for (const value of [NO_INSET, NO_INSET_ALT]) {
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(1 / 3);
+    }
+    expect(strandedScrollOffset(NO_INSET_ALT, 600, 800)).toBeNull();
   });
 });

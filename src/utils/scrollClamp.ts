@@ -52,3 +52,30 @@ export function strandedScrollOffset(
   const max = maxRestingOffset(contentHeight, viewportHeight, insetBottom);
   return offset > max + tolerance ? max : null;
 }
+
+/**
+ * The two values a list alternates between to assert "I impose no bottom inset
+ * of my own".
+ *
+ * Both mean the same thing, and that is the point. `contentInset` is the only
+ * lever JS has over an inset the native side has already applied — it assigns
+ * the scroll view's inset wholesale — but it does so ONLY when the prop's value
+ * *changes* (`RCTScrollViewComponentView.mm`: `oldProps.contentInset !=
+ * newProps.contentInset`). So "set it back to zero" cannot be written as a
+ * constant: a list already reporting zero would go on carrying whatever the
+ * keyboard handler last left on it. Alternating is what makes the assignment
+ * happen at all.
+ *
+ * The alternate is far below one device pixel even at 3x (1/3 pt), so the
+ * scroll range it opens is invisible, and it sits well inside
+ * `strandedScrollOffset`'s tolerance so it can never read as an overshoot. The
+ * native keyboard handler takes the prop as a floor (`MAX(computed, prop)`),
+ * which neither value can raise.
+ */
+export const NO_INSET = 0;
+export const NO_INSET_ALT = 0.01;
+
+/** The other one — never the value passed in, whatever that was. */
+export function pulseNoInset(previous: number): number {
+  return previous === NO_INSET ? NO_INSET_ALT : NO_INSET;
+}

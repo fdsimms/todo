@@ -33,6 +33,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { hasRunningRecipeTimer } from '../utils/recipeTimer';
 
 const Tab = createBottomTabNavigator();
@@ -94,7 +95,12 @@ const MainTabs = React.memo(function MainTabs({
   // Recipes and meal plan live behind the drawer with no tab of their own, so
   // a cook/prep timer left running has nowhere to show once you've left the
   // recipe screen except here — see hasRunningRecipeTimer's doc comment.
-  const timerRunning = useRecipeStore(state => state.recipes.some(hasRunningRecipeTimer));
+  // Gated on kitchenEnabled: a timer can outlive the switch being turned off,
+  // and a dot on the menu button pointing at a screen the menu no longer lists
+  // is a notification with nowhere to go.
+  const kitchenEnabled = useSettingsStore(state => state.kitchenEnabled);
+  const anyTimerRunning = useRecipeStore(state => state.recipes.some(hasRunningRecipeTimer));
+  const timerRunning = kitchenEnabled && anyTimerRunning;
   return (
     <Tab.Navigator screenOptions={screenOptions}>
       <Tab.Screen

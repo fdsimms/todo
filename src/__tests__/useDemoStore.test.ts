@@ -15,6 +15,8 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useTemplateStore } from '../store/useTemplateStore';
+import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
 import { pantryEntries } from '../utils/grocerySuggest';
 import { taskKindOf } from '../utils/taskKinds';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
@@ -22,6 +24,7 @@ import { isDialable } from '../utils/phone';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD } from '../utils/postpone';
 import { isUsingDemoDatabase } from '../db/database';
 import { RECIPE_MEAL_TYPES } from '../types';
@@ -267,6 +270,21 @@ describe('demo mode', () => {
     expect(apportioned.task.timedMinutes).toBe(apportionedMinutes(apportioned.subtasks));
   });
 
+  // A blank is invisible until a template declares one, so a demo with no
+  // `{name}` in it says the app can't do this at all.
+  it('seeds a template whose items declare blanks, including the run one', () => {
+    useDemoStore.getState().enterDemoMode();
+    const templates = useTemplateStore.getState().templates;
+
+    expect(templates.length).toBeGreaterThan(0);
+    const withBlanks = templates.filter(t => extractPlaceholders(t.items).length > 0);
+    expect(withBlanks.length).toBeGreaterThan(0);
+    // One blank asked for once and used by several items is the point of them.
+    const shared = extractPlaceholders(withBlanks[0].items)[0];
+    expect(withBlanks[0].items.filter(i => i.title.includes(`{${shared}}`)).length).toBeGreaterThan(1);
+    expect(templates.some(t => declaresRunPlaceholder(t.items))).toBe(true);
+  });
+
   // No number on any task means no call/text button anywhere in the demo.
   it('seeds a task carrying a phone number', () => {
     useDemoStore.getState().enterDemoMode();
@@ -482,5 +500,38 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // "We ate it" and "it went off" are the two things the feature tells apart.
     expect(leftovers.some(l => l.outcome === 'eaten')).toBe(true);
     expect(leftovers.some(l => l.outcome === 'tossed')).toBe(true);
+  });
+});
+
+/**
+ * The seed follows the setting: someone who has put the groceries/recipes/meal
+ * plan area away shouldn't get a demo full of shops and dinners they can't
+ * open. It's the one branch in the seed, so it's checked from both sides.
+ */
+describe('demo seed — with the groceries area turned off', () => {
+  beforeEach(() => {
+    useSettingsStore.setState({ kitchenEnabled: false });
+    useDemoStore.getState().enterDemoMode();
+  });
+  afterEach(() => {
+    useDemoStore.getState().exitDemoMode();
+    useSettingsStore.setState({ kitchenEnabled: true });
+  });
+
+  it('seeds no groceries, recipes, meals or leftovers', () => {
+    expect(useGroceryStore.getState().items).toHaveLength(0);
+    expect(useRecipeStore.getState().recipes).toHaveLength(0);
+    expect(useMealPlanStore.getState().entries).toHaveLength(0);
+    expect(useLeftoverStore.getState().leftovers).toHaveLength(0);
+  });
+
+  it('still seeds the tasks, which are the rest of the demo', () => {
+    // The gate has to take the kitchen block and nothing else with it — a
+    // seed that bailed early would leave an empty app rather than a task app.
+    expect(useTaskStore.getState().tasks.length).toBeGreaterThan(0);
+  });
+
+  it('spawns no cook tasks, so Today has nothing pointing at a hidden screen', () => {
+    expect(useTaskStore.getState().tasks.some(t => t.mealEntryId)).toBe(false);
   });
 });

@@ -11,6 +11,7 @@ const defaults: SettingsSummaryInput = {
   dailyAgendaEnabled: false,
   remindersImportEnabled: false,
   groceryImportEnabled: false,
+  kitchenEnabled: true,
   vacationMode: false,
   autoRemoveExpiredTasks: null,
   autoArchiveProjectsOnComplete: false,
@@ -113,5 +114,23 @@ describe('settingsSummaries', () => {
     expect(summarise().notifications).toBe('Reminders only');
     expect(summarise({ dailyAgendaEnabled: true }).notifications).toBe('Daily agenda on');
     expect(summarise({ remindersImportEnabled: true }).capture).toContain('Importing');
+    expect(summarise({ groceryImportEnabled: true }).capture).toContain('Groceries');
+  });
+
+  it('stops claiming the grocery import once the groceries area is off', () => {
+    // groceryImportEnabled stays true underneath — the area being off is what
+    // stops the drain, and the import resumes untouched when it comes back.
+    // Reading the flag alone would advertise an import that isn't running.
+    const off = summarise({ groceryImportEnabled: true, kitchenEnabled: false });
+    expect(off.capture).not.toContain('Groceries');
+    expect(off.capture).toBe('Off — say “Hey Siri, remind me to…”');
+  });
+
+  it('leaves the Inbox half of the capture line alone', () => {
+    const off = summarise({
+      remindersImportEnabled: true, groceryImportEnabled: true, kitchenEnabled: false,
+    });
+    expect(off.capture).toContain('Importing from Apple Reminders');
+    expect(off.capture).not.toContain('Groceries');
   });
 });

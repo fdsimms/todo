@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a screen sometimes scrolling into empty space below its content, with no way to scroll back",
+  "date": "2026-08-12"
+}

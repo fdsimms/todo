@@ -465,6 +465,19 @@ export function expandSelectionWithAncestors(
  * for "Put in for PTO — for what?". They're for the titles that travel alone:
  * a notification, the widget, a Search hit, a Logbook row. Two or three per
  * template, not all of them.
+ *
+ * **They're called "blanks" everywhere the user meets one** — the item
+ * editor's Blanks field, the apply sheet's Blanks group — because "placeholder"
+ * is already the word for the grey text in an empty input, and half these
+ * surfaces have one of those sitting next to them. The code keeps
+ * `placeholder`; the copy never says it.
+ *
+ * The syntax has exactly one home: the hint on `TemplateItemEditor`'s Blanks
+ * field. That field is also the only thing that names the concept before it's
+ * been used, so the helpers under it — `itemPlaceholders`,
+ * `normalizePlaceholderName`, `withPlaceholder`, `withoutPlaceholder` — exist
+ * to let it list, add and take one back without the user having to know the
+ * braces are there.
  */
 
 /** Bound to the run name, so `{run}` never needs an input of its own. */
@@ -475,7 +488,7 @@ export const RUN_PLACEHOLDER = 'run';
 const PLACEHOLDER_PATTERN = /\{([a-zA-Z][a-zA-Z0-9 _-]*)\}/g;
 
 /** Placeholder names in `text`, lowercased, in order of first appearance (duplicates collapsed). */
-function placeholdersIn(text: string): string[] {
+function placeholderNamesIn(text: string): string[] {
   const found: string[] = [];
   for (const match of text.matchAll(PLACEHOLDER_PATTERN)) {
     const name = match[1].trim().toLowerCase();
@@ -493,7 +506,7 @@ function placeholdersIn(text: string): string[] {
 export function extractPlaceholders(items: TemplateItem[]): string[] {
   const found: string[] = [];
   const add = (text: string) => {
-    for (const name of placeholdersIn(text)) {
+    for (const name of placeholderNamesIn(text)) {
       if (name !== RUN_PLACEHOLDER && !found.includes(name)) found.push(name);
     }
   };
@@ -506,15 +519,88 @@ export function extractPlaceholders(items: TemplateItem[]): string[] {
   return found;
 }
 
+/**
+ * The blanks one item declares, across the same four fields
+ * `extractPlaceholders` reads — but `run` included, since the item editor is
+ * where a `{run}` gets written and hiding it there would make it look as if
+ * the text had nothing in it.
+ *
+ * Takes the four fields rather than a whole `TemplateItem` so the editor can
+ * ask it about the draft it's holding in state, which isn't an item yet.
+ */
+export function itemPlaceholders(
+  item: Pick<TemplateItem, 'title' | 'notes' | 'subtasks' | 'chainItems'>,
+): string[] {
+  const found: string[] = [];
+  const add = (text: string) => {
+    for (const name of placeholderNamesIn(text)) {
+      if (!found.includes(name)) found.push(name);
+    }
+  };
+  add(item.title);
+  add(item.notes);
+  item.subtasks.forEach(s => add(s.title));
+  item.chainItems.forEach(c => add(c.title));
+  return found;
+}
+
+/**
+ * A name typed into the "add a blank" field, reduced to what the pattern above
+ * will actually match again — lowercased, unbraced (someone will type the
+ * braces), inner runs of whitespace collapsed. Null when it isn't a name this
+ * engine can recognise, so the caller can refuse rather than write a `{2 nights}`
+ * that reads as a blank and never fills in.
+ */
+export function normalizePlaceholderName(raw: string): string | null {
+  const cleaned = raw.trim().replace(/^\{+|\}+$/g, '').trim().replace(/\s+/g, ' ').toLowerCase();
+  if (!cleaned) return null;
+  return /^[a-z][a-z0-9 _-]*$/.test(cleaned) ? cleaned : null;
+}
+
+/**
+ * `text` with `{name}` appended — how the editor's "Add blank" writes one into
+ * a title. Idempotent: a name the text already declares is left where the user
+ * put it rather than repeated at the end.
+ */
+export function withPlaceholder(text: string, name: string): string {
+  if (placeholderNamesIn(text).includes(name)) return text;
+  const token = `{${name}}`;
+  return text.trim() ? `${text.trimEnd()} ${token}` : token;
+}
+
+/**
+ * `text` with every `{name}` token removed, tidied the same way a substituted
+ * blank is — so removing a blank from "Book flights to {where}" leaves "Book
+ * flights to", not a trailing "to  ". Text that never declared it is returned
+ * byte for byte, so this can be run across an item's every field.
+ */
+export function withoutPlaceholder(text: string, name: string): string {
+  if (!placeholderNamesIn(text).includes(name)) return text;
+  PLACEHOLDER_PATTERN.lastIndex = 0;
+  const stripped = text.replace(PLACEHOLDER_PATTERN, (match, rawName: string) =>
+    rawName.trim().toLowerCase() === name ? '' : match
+  );
+  return tidySubstituted(stripped);
+}
+
 /** True if any of these items references `{run}` — i.e. wants the run name inlined into a title, not just used to name the container. */
 export function declaresRunPlaceholder(items: TemplateItem[]): boolean {
-  const hasRun = (text: string) => placeholdersIn(text).includes(RUN_PLACEHOLDER);
+  const hasRun = (text: string) => placeholderNamesIn(text).includes(RUN_PLACEHOLDER);
   return items.some(item =>
     hasRun(item.title) ||
     hasRun(item.notes) ||
     item.subtasks.some(s => hasRun(s.title)) ||
     item.chainItems.some(c => hasRun(c.title))
   );
+}
+
+/** The spacing repair a removed value leaves behind — shared so a blank deleted in the editor reads exactly as one left unfilled at apply time. */
+function tidySubstituted(text: string): string {
+  return text
+    .replace(/[ \t]{2,}/g, ' ')          // "PTO for  " once the value vanished
+    .replace(/[ \t]+([,.;:!?])/g, '$1')  // "Pack , then go"
+    .replace(/[\s\-–—:,·]+$/, '')        // "Put in for PTO for —"
+    .trim();
 }
 
 /**
@@ -535,11 +621,7 @@ export function substitutePlaceholders(text: string, values: Record<string, stri
   const substituted = text.replace(PLACEHOLDER_PATTERN, (_, rawName: string) =>
     (values[rawName.trim().toLowerCase()] ?? '').trim()
   );
-  return substituted
-    .replace(/[ \t]{2,}/g, ' ')          // "PTO for  " once the value vanished
-    .replace(/[ \t]+([,.;:!?])/g, '$1')  // "Pack , then go"
-    .replace(/[\s\-–—:,·]+$/, '')        // "Put in for PTO for —"
-    .trim();
+  return tidySubstituted(substituted);
 }
 
 /** Apply `substitutePlaceholders` to every user-visible string on a draft built from a template item. */

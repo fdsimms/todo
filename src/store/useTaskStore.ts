@@ -2230,6 +2230,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   checkMealPlanNudge() {
     const settings = useSettingsStore.getState();
+    // Checked alongside mealPlanNudgeEnabled rather than switching it off:
+    // this is the loudest thing the kitchen area does when nobody's looking —
+    // it creates a task, carrying a link to a screen the menu no longer lists.
+    // Skipping without recording weekKey, like the vacation gate below, so the
+    // nudge resumes properly if the area comes back mid-week.
+    if (!settings.kitchenEnabled) return;
     if (!settings.mealPlanNudgeEnabled) return;
     // Same reasoning as findProjectStalls' vacation gate: every route out of
     // this check creates a task unattended, and vacation is a deliberate
