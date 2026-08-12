@@ -77,6 +77,10 @@ interface UndoableAction {
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
   'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'linkUrl', 'phoneNumber', 'emailAddress',
+  // The question, not the answer — `deliverableValue` is per-occurrence data
+  // like progressCount and is deliberately absent, or a scope:'occurrence'
+  // edit would capture one date's answer as the default for every date after.
+  'deliverableKind',
   // Grouped with the other visibility gates (windowStart, timeSegments) rather
   // than the recurrence rule: "this occurrence waits on that one-off errand" is
   // a normal thing to want, and without this a scope:'occurrence' edit would
@@ -221,6 +225,11 @@ function newTaskFromDraft(
     phoneNumber: draft.phoneNumber ?? null,
     emailAddress: draft.emailAddress ?? null,
     blockedById: draft.blockedById ?? null,
+    deliverableKind: draft.deliverableKind ?? null,
+    // Never read off the draft: the question carries, the answer doesn't. A
+    // template or a duplicate that arrived holding someone else's answer would
+    // read as a decision already made.
+    deliverableValue: null,
     pendingImport: draft.pendingImport ?? null,
     // Not read off the draft — they're omitted from TaskDraft on purpose, so a
     // series row or a template application can't inherit someone else's count.
@@ -626,8 +635,21 @@ interface TaskStore {
   setLastAction: (action: UndoableAction | null) => void;
   undoLastAction: () => void;
   deleteTask: (id: string) => void;
-  completeTask: (id: string, options?: { missed?: boolean }) => void;
+  /**
+   * `deliverableValue` records the answer a decision task was completed with
+   * (see Task.deliverableKind). Omitting it completes with no answer, which
+   * every non-interactive caller does and is always allowed — bulk complete,
+   * the stack cascade, the widget queue and the overshoot sweep have nobody to
+   * ask, and a completion may never be blocked on an answer.
+   */
+  completeTask: (id: string, options?: { missed?: boolean; deliverableValue?: string | null }) => void;
   uncompleteTask: (id: string) => void;
+  /**
+   * Writes (or clears) the answer on an already-completed task — the Logbook's
+   * "Edit answer". Separate from updateTask only in that it's the one write
+   * that means "I'm correcting what I decided", so it registers its own undo.
+   */
+  setDeliverableValue: (id: string, value: string | null) => void;
   /**
    * Closes out a recurring occurrence as *not done* and moves to the next one.
    *
@@ -1139,6 +1161,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       actualMinutes: null,
       // The duplicate keeps the duration but starts its countdown fresh.
       timerElapsedSeconds: 0,
+      // Same split as actualMinutes above: the copy still asks the question,
+      // it just hasn't been answered yet.
+      deliverableValue: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],
@@ -1579,6 +1604,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // can land over, at, or under target, so clamping it here would erase
       // the overshoot the sweep exists to preserve (see sweepOvershootQuotas).
       progressCount: isQuotaTask(task) && !missed && !task.allowOvershoot ? task.targetCount! : task.progressCount,
+      // What was decided, where the caller had somewhere to ask. Omitted means
+      // "nobody asked" — every non-interactive path (bulk, cascade, widget,
+      // sweep) and every miss — which completes the row exactly as it did
+      // before this feature existed, keeping whatever was already there rather
+      // than nulling it. Explicit null is the user declining to answer.
+      deliverableValue: options?.deliverableValue !== undefined
+        ? options.deliverableValue
+        : task.deliverableValue,
       extraTaskTally: nextExtraTally,
       previousExtraTaskTally: task.extraTaskTally,
     };
@@ -1671,6 +1704,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           deferUntil: null,
           pinned: false, // pin resets on new occurrence
           progressCount: 0, // a quota starts the new day empty
+          // The question carries via ...effective, the answer doesn't: this
+          // occurrence hasn't been decided yet. Same split actualMinutes makes,
+          // and it's what turns a recurring decision task's Logbook into the
+          // log of its answers rather than one answer copied forward for ever.
+          deliverableValue: null,
           // The pushes belong to the occurrence that was pushed. postponeMuted
           // deliberately isn't reset here — it rides through on ...effective,
           // because "stop asking about this one" is a statement about the task,
@@ -2006,6 +2044,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           ],
         }));
       },
+    });
+  },
+
+  setDeliverableValue(id, value) {
+    const task = get().tasks.find(t => t.id === id);
+    // Guarded on the kind, not on `completed`: the answer belongs to a task
+    // that asks a question, and a row can be un-completed and re-completed
+    // without the answer needing to be retyped.
+    if (!task || task.deliverableKind === null) return;
+    const previous = task.deliverableValue;
+    if (previous === value) return;
+    const updated = { ...task, deliverableValue: value };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    get().setLastAction({
+      label: value === null ? 'Answer cleared' : 'Answer saved',
+      undo: () => get().setDeliverableValue(id, previous),
     });
   },
 
@@ -2690,6 +2745,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       phoneNumber: null,
       emailAddress: null,
       blockedById: null,
+      deliverableKind: null,
+      deliverableValue: null,
       mealEntryId: null,
       groceryItemId: null,
       pendingImport: null,
@@ -2845,6 +2902,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       phoneNumber: null,
       emailAddress: null,
       blockedById: null,
+      deliverableKind: null,
+      deliverableValue: null,
       mealEntryId: null,
       groceryItemId: null,
       pendingImport: null,

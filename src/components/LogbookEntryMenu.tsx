@@ -19,6 +19,14 @@ interface Props {
   value: Date | null;
   onMarkIncomplete: () => void;
   onChangeDate: (date: Date) => void;
+  /**
+   * Opens the answer prompt again for a decision task (see
+   * Task.deliverableKind). Omitted for every ordinary entry, which is what
+   * keeps this row off the menu for tasks that never asked anything.
+   */
+  onEditAnswer?: () => void;
+  /** Whether this entry was completed *with* an answer — the row's wording. */
+  hasAnswer?: boolean;
   /** Deletes the entry outright. The caller confirms — see LogbookScreen. */
   onDelete: () => void;
   onClose: () => void;
@@ -32,7 +40,9 @@ interface Props {
  * destructive option here, and grouping it with them would put it a stray tap
  * away from "Mark Incomplete".
  */
-export function LogbookEntryMenu({ visible, value, onMarkIncomplete, onChangeDate, onDelete, onClose }: Props) {
+export function LogbookEntryMenu({
+  visible, value, onMarkIncomplete, onChangeDate, onEditAnswer, hasAnswer = false, onDelete, onClose,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -108,6 +118,19 @@ export function LogbookEntryMenu({ visible, value, onMarkIncomplete, onChangeDat
             <Ionicons name="calendar-outline" size={18} color={colors.accent} />
             <Text style={styles.optionLabel}>Change Completion Date</Text>
           </TouchableOpacity>
+          {onEditAnswer && (
+            <>
+              <View style={styles.inlineSep} />
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => { haptics.tap(); closeThen(onEditAnswer); }}
+                activeOpacity={interaction.activeOpacity}
+              >
+                <Ionicons name="help" size={18} color={colors.accent} />
+                <Text style={styles.optionLabel}>{hasAnswer ? 'Edit Answer' : 'Add Answer'}</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         <View style={styles.optionsCard}>

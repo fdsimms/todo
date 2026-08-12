@@ -95,6 +95,8 @@ const BASE: Task = {
   phoneNumber: null,
   emailAddress: null,
   blockedById: null,
+  deliverableKind: null,
+  deliverableValue: null,
   pendingImport: null,
   mealEntryId: null,
   groceryItemId: null,

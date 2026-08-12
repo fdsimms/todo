@@ -25,7 +25,7 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, RecurrenceType, ChainItem, TimeOfDay, ReminderKind } from '../types';
+import type { Task, Priority, Effort, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
@@ -59,6 +59,7 @@ import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
+import { DELIVERABLE_META, deliverableMeta } from '../utils/deliverables';
 import { InlineAction } from './InlineAction';
 import { SearchField } from './SearchField';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -122,7 +123,7 @@ type PickerMode = 'none' | 'reminder';
 type DraftSubtask = { id: string; title: string; completed: boolean; timedMinutes: number | null };
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -290,6 +291,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [vacationPause, setVacationPause] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [blockedById, setBlockedById] = useState<string | null>(null);
+  const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
   const [showBlockerPicker, setShowBlockerPicker] = useState(false);
   const [extraTaskEveryN, setExtraTaskEveryN] = useState<number | null>(null);
   const [extraTaskTitle, setExtraTaskTitle] = useState('');
@@ -433,6 +435,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setBlockedById(task.blockedById ?? null);
+      setDeliverableKind(task.deliverableKind ?? null);
       setExtraTaskEveryN(task.extraTaskEveryN ?? null);
       setExtraTaskTitle(task.extraTaskTitle ?? '');
     } else {
@@ -456,6 +459,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setBlockedById(null);
+      setDeliverableKind(null);
       setExtraTaskEveryN(null);
       setExtraTaskTitle('');
     }
@@ -521,6 +525,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       blockedById: task?.blockedById ?? null,
+      deliverableKind: task?.deliverableKind ?? null,
       extraTaskEveryN: task?.extraTaskEveryN ?? null,
       extraTaskTitle: task?.extraTaskTitle ?? '',
     });
@@ -696,6 +701,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       blockedById,
+      deliverableKind,
       // Both halves or neither: a count with no name would be a rule that can
       // never fire, and a name with no count is a leftover from clearing one.
       // extraTaskRule() is what reads them, and this is what keeps a saved row
@@ -1090,6 +1096,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber,
       emailAddress,
       blockedById,
+      deliverableKind,
       extraTaskEveryN,
       extraTaskTitle,
     });
@@ -2121,6 +2128,58 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 </CollapsibleField>
             </>),
           }] : []),
+          // Not one of the four kinds, and deliberately a row of its own below
+          // them: the kinds are exclusive (bakedFields clears the other three)
+          // and this isn't — a chain step or a timed task can end in a
+          // decision too. It sits in this group because it answers the same
+          // question the kinds do, "what does completing this mean", which is
+          // what someone opens this group looking for.
+          {
+            key: 'deliverable', label: 'Ask on completion', set: deliverableKind !== null,
+            keywords: ['decision', 'decide', 'answer', 'value', 'capture', 'record', 'prompt', 'question'],
+            node: (
+              <CollapsibleField
+                label="Ask on completion"
+                summary={deliverableKind ? deliverableMeta(deliverableKind).label : undefined}
+                emptySummary="Nothing"
+                hint={
+                  deliverableKind
+                    ? deliverableMeta(deliverableKind).hint
+                    : 'Asks you to record an answer when you complete the task, and keeps it in the Logbook.'
+                }
+                expanded={fieldOpen('deliverable')}
+                onToggle={() => toggleField('deliverable')}
+              >
+                <View style={styles.pillRow}>
+                  <TouchableOpacity
+                    style={[styles.pill, !deliverableKind && styles.pillActiveNeutral]}
+                    onPress={() => { haptics.tap(); setDeliverableKind(null); closeField('deliverable'); }}
+                  >
+                    <Text style={[styles.pillText, !deliverableKind && styles.pillTextActive]}>Nothing</Text>
+                  </TouchableOpacity>
+                  {DELIVERABLE_META.map(meta => (
+                    <TouchableOpacity
+                      key={meta.key}
+                      style={[styles.pill, styles.pillWithIcon, deliverableKind === meta.key && styles.pillActiveNeutral]}
+                      onPress={() => { haptics.tap(); setDeliverableKind(meta.key); closeField('deliverable'); }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: deliverableKind === meta.key }}
+                      accessibilityLabel={`${meta.label}. ${meta.hint}`}
+                    >
+                      <Ionicons
+                        name={meta.icon as never}
+                        size={iconSize.sm}
+                        color={deliverableKind === meta.key ? colors.text : colors.textSecondary}
+                      />
+                      <Text style={[styles.pillText, deliverableKind === meta.key && styles.pillTextActive]}>
+                        {meta.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </CollapsibleField>
+            ),
+          },
         ]}
       />
 

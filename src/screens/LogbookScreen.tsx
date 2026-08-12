@@ -32,7 +32,7 @@ import { LogbookFilterSheet } from '../components/LogbookFilterSheet';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, lineHeight, radius, iconSize, border, checkboxRadius, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, iconSize, border, checkboxRadius, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { fuzzySearch } from '../utils/fuzzySearch';
@@ -42,6 +42,8 @@ import { formatTimeOfDay, getDayStart, getLogicalDayKey } from '../utils/dateUti
 import { isQuotaPartial, isMissed, displayTitleFor } from '../utils/visibilityUtils';
 import { quotaFraction } from '../components/TaskItem';
 import { formatQuotaProgress } from '../utils/quotaUnit';
+import { formatTaskDeliverable } from '../utils/deliverables';
+import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
 
@@ -102,6 +104,7 @@ export function LogbookScreen() {
   const bulkUncompleteTasks = useTaskStore(s => s.bulkUncompleteTasks);
   const deleteTask = useTaskStore(s => s.deleteTask);
   const updateTask = useTaskStore(s => s.updateTask);
+  const setDeliverableValue = useTaskStore(s => s.setDeliverableValue);
   const clearLogbook = useTaskStore(s => s.clearLogbook);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -109,6 +112,13 @@ export function LogbookScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [menuTask, setMenuTask] = useState<Task | null>(null);
+  // The entry whose answer is being corrected. Read back off the live list by
+  // id when rendering, so the sheet re-seeds from the store rather than from a
+  // snapshot taken when the menu was opened.
+  const [answerTaskId, setAnswerTaskId] = useState<string | null>(null);
+  const answerTask = answerTaskId !== null
+    ? completedTasks.find(t => t.id === answerTaskId) ?? null
+    : null;
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -416,6 +426,15 @@ export function LogbookScreen() {
           }
           setMenuTask(null);
         }}
+        onEditAnswer={menuTask?.deliverableKind ? () => {
+          const id = menuTask.id;
+          setMenuTask(null);
+          // Staggered for the same reason the calendar's confirm is: closing
+          // one native Modal and presenting another in the same tick can
+          // deadlock the iOS modal transition.
+          setTimeout(() => setAnswerTaskId(id), animation.duration.slow);
+        } : undefined}
+        hasAnswer={menuTask?.deliverableValue != null}
         onDelete={() => {
           const task = menuTask;
           setMenuTask(null);
@@ -423,6 +442,19 @@ export function LogbookScreen() {
         }}
         onClose={() => setMenuTask(null)}
       />
+
+      {answerTask && (
+        <DeliverablePromptSheet
+          visible
+          task={answerTask}
+          mode="edit"
+          onConfirm={value => {
+            setDeliverableValue(answerTask.id, value);
+            setAnswerTaskId(null);
+          }}
+          onCancel={() => setAnswerTaskId(null)}
+        />
+      )}
 
       <LogbookFilterSheet
         visible={filterVisible}
@@ -474,6 +506,7 @@ const LogbookRow = React.memo(function LogbookRow({
 }: RowProps) {
   const paintRef = usePaintSelectionRow(task.id);
   const partial = isQuotaPartial(task);
+  const answer = formatTaskDeliverable(task);
   // A miss outranks a partial in the glyph: a quota task marked missed is both,
   // and "you didn't do this" is the more important of the two things to say.
   const missed = isMissed(task);
@@ -562,6 +595,7 @@ const LogbookRow = React.memo(function LogbookRow({
                 : `completed ${formatTime(task.completedAt!)}`,
             task.category,
             task.actualMinutes != null ? `timed ${formatDuration(task.actualMinutes)}` : null,
+            answer !== null ? `answered ${answer}` : null,
           ].filter(Boolean).join(', ')}
         >
           <Text style={styles.taskTitle} numberOfLines={1}>{displayTitleFor(task)}</Text>
@@ -585,6 +619,17 @@ const LogbookRow = React.memo(function LogbookRow({
             )}
             {task.actualMinutes != null && (
               <Text style={styles.taskTime}>· {formatDuration(task.actualMinutes)}</Text>
+            )}
+            {/* What was decided, in the row's own meta line rather than a line
+                of its own — these rows are a fixed ROW_HEIGHT for
+                getItemLayout, which has no way to hear about a row that grew.
+                One step up from the rest of the line in colour and weight
+                (see styles.answer): it's the only thing here that isn't
+                bookkeeping about the completion, and it's what someone opens
+                the Logbook to read back. It shrinks where the others don't, so
+                a long answer truncates instead of shoving them off the row. */}
+            {answer !== null && (
+              <Text style={styles.answer} numberOfLines={1}>· {answer}</Text>
             )}
           </View>
         </TouchableOpacity>
@@ -770,6 +815,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     lineHeight: lineHeight.xs,
     flexShrink: 0,
+  },
+  answer: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    lineHeight: lineHeight.xs,
+    fontWeight: fontWeight.medium,
+    flexShrink: 1,
   },
   // Same metrics as taskTime so it sits on the meta row's baseline; only the
   // colour and weight lift it, matching the neutral × on the row's left.

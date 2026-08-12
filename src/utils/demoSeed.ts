@@ -221,6 +221,19 @@ export function seedDemoData(): void {
   });
   updateTask(violin.id, { extraTaskTally: 2 });
 
+  // A decision task — one that completes by recording an answer rather than
+  // just being ticked. Seeded live so its checkbox shows the "?" that says it
+  // will ask; the answered half is in the history below, since an answer only
+  // exists on a completed row.
+  addTask({
+    title: 'Pick a date for the trip',
+    notes: 'Ticking this asks for the date and keeps it with the task.',
+    category: 'Errands',
+    dueDate: today.toISOString(),
+    deliverableKind: 'date',
+    effort: 1,
+  });
+
   // --- A stack (three independently-scheduled tasks under one label) --------
   const supplements = createGroup('Supplements', 'Health');
   addNewGroupedTask(supplements.id, 'Vitamin D');
@@ -351,6 +364,18 @@ export function seedDemoData(): void {
     const at = subDays(today, daysAgo);
     updateTask(t.id, { completedAt: setHours(at, 17).toISOString() });
   });
+
+  // The other half of the decision task above: one already answered, so the
+  // Logbook shows what an answer actually looks like on the row. Completed
+  // through the real action with the value, exactly as the prompt does it.
+  const budget = addTask({
+    title: 'Decide on the trip budget',
+    category: 'Errands',
+    effort: 1,
+    deliverableKind: 'number',
+  });
+  completeTask(budget.id, { deliverableValue: '2400' });
+  updateTask(budget.id, { completedAt: setHours(subDays(today, 1), 9).toISOString() });
 
   // --- A template, and the blanks it fills in at apply time ----------------
   seedTemplates();
