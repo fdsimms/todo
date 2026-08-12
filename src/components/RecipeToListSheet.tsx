@@ -16,6 +16,7 @@ import {
   type Colors,
 } from '../theme';
 import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { defaultOnHandUntil } from '../utils/grocerySuggest';
 import {
   classifyPlanned,
@@ -25,6 +26,7 @@ import {
 } from '../utils/mealPlanGroceries';
 import { applyChoice, recipeChoiceGroups } from '../utils/recipeComponents';
 import { normalizeScale } from '../utils/recipeScale';
+import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
@@ -92,6 +94,8 @@ export function RecipeToListSheet({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const unitSystem = useSettingsStore(s => s.unitSystem);
 
   const items = useGroceryStore(useShallow(s => s.items));
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
@@ -325,6 +329,9 @@ export function RecipeToListSheet({
                         const on = interactive && ticked.has(row.nameKey);
                         const subtitle = row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null);
                         const canMarkHave = category === 'needToBuy' && itemsByKey.has(row.nameKey);
+                        // Shown in the reader's units; what gets written to the
+                        // list is still row.quantity, as the recipe wrote it.
+                        const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
                         return (
                           <React.Fragment key={row.nameKey}>
                             {i > 0 && <View style={styles.sep} />}
@@ -337,7 +344,7 @@ export function RecipeToListSheet({
                                 accessibilityRole="checkbox"
                                 accessibilityState={{ checked: on, disabled: !interactive }}
                                 accessibilityLabel={
-                                  [row.name, row.quantity, subtitle, !interactive ? 'already in your trolley' : null]
+                                  [row.name, shownQuantity, subtitle, !interactive ? 'already in your trolley' : null]
                                     .filter(Boolean)
                                     .join(', ')
                                 }
@@ -357,9 +364,9 @@ export function RecipeToListSheet({
                                     <Text style={styles.sources} numberOfLines={1}>{subtitle}</Text>
                                   )}
                                 </View>
-                                {!!row.quantity && (
+                                {!!shownQuantity && (
                                   <View style={styles.qtyPill}>
-                                    <Text style={styles.qtyText} numberOfLines={1}>{row.quantity}</Text>
+                                    <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
                                   </View>
                                 )}
                               </TouchableOpacity>

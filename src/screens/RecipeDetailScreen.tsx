@@ -45,6 +45,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, type RecipePhotoSource } from '../utils/recipePhoto';
 import { describeCookTime, describePrepTime, describeRecipe, totalMinutes } from '../utils/recipeUtils';
 import { describeUnscaled, scaleQuantity } from '../utils/recipeScale';
+import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
@@ -107,6 +108,7 @@ export function RecipeDetailScreen() {
   const addComponent = useRecipeStore(s => s.addComponent);
   const removeComponent = useRecipeStore(s => s.removeComponent);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const unitSystem = useSettingsStore(s => s.unitSystem);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const addAisle = useGroceryStore(s => s.addAisle);
 
@@ -465,10 +467,16 @@ export function RecipeDetailScreen() {
     const selected = selectedIds.has(ingredient.id);
     // Tinted only where the number on screen is genuinely not what the recipe
     // says, so the pills that did change are findable at a glance and the ones
-    // rule 3 passed through are visibly untouched.
+    // rule 3 passed through are visibly untouched. A converted pill earns the
+    // same tint for the same reason — scaled or converted, it's the app's
+    // number rather than the recipe's.
+    // Scaled first, then converted: the multiplication is exact and the
+    // conversion rounds, so rounding last is the only order that doesn't
+    // compound.
     const scaledResult = scaleQuantity(ingredient.quantity, scale);
-    const scaledQuantity = scaledResult.text;
-    const scaledHere = scaledResult.scaled;
+    const convertedResult = convertQuantity(scaledResult.text, unitSystem);
+    const scaledQuantity = convertedResult.text;
+    const scaledHere = scaledResult.scaled || convertedResult.converted;
     const sectionHeader = ingredientSectionHeaders.get(ingredient.id);
     // A line can open both: the section it belongs to, then the either/or slot
     // it fills within that section.

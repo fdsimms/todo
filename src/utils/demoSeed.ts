@@ -480,15 +480,19 @@ function seedRecipes(): DemoRecipes {
   const cake = newRecipe('Carrot cake with cream cheese frosting');
   addIngredientsFromText(
     cake.id,
+    // The one recipe written in metric, and it's the one copied out of a
+    // British cookbook — which is also how a real library ends up mixed. It's
+    // what the Units setting has to convert *from* when it's set to US; every
+    // other recipe here covers the other direction.
     [
-      '2 cups flour',
+      '250 g flour',
       '3 carrots, grated',
-      '1 cup brown sugar',
+      '200 g brown sugar',
       '3 eggs',
       '1 tsp cinnamon',
-      '8 oz cream cheese',
-      '1/2 cup butter',
-      '2 cups sugar',
+      '225 g cream cheese',
+      '115 g butter',
+      '400 g sugar',
     ].join('\n')
   );
   setMealType(cake.id, 'dessert');
