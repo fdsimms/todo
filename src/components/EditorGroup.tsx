@@ -100,7 +100,7 @@ export function EditorGroup({ label, rows, divider = 'icon', startOpen, forceOpe
         <Text style={styles.foldedSummary} numberOfLines={1}>
           {foldedSummary(rows.map(r => r.label))}
         </Text>
-        <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
+        <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
       </TouchableOpacity>
     );
   }
@@ -138,7 +138,7 @@ export function EditorGroup({ label, rows, divider = 'icon', startOpen, forceOpe
               <Ionicons
                 name="ellipsis-horizontal"
                 size={18}
-                color={colors.textTertiary}
+                color={colors.textSecondary}
                 style={styles.moreIcon}
               />
               <View style={styles.moreContent}>
@@ -182,7 +182,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.bold,
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
-  foldedSummary: { flex: 1, color: colors.textTertiary, fontSize: font.sm },
+  foldedSummary: { flex: 1, color: colors.textSecondary, fontSize: font.sm },
 
   moreRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
@@ -191,5 +191,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   moreIcon: { width: 18, textAlign: 'center' },
   moreContent: { flex: 1 },
   moreLabel: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium },
-  moreHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1, lineHeight: 15 },
+  moreHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1, lineHeight: 15 },
 });

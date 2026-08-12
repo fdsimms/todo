@@ -95,7 +95,7 @@ export function CollapsibleField({
         <Ionicons
           name={expanded ? 'chevron-up' : 'chevron-down'}
           size={14}
-          color={colors.textTertiary}
+          color={colors.textSecondary}
         />
       </TouchableOpacity>
       {expanded && (
@@ -127,7 +127,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // else in these editors.
   summaryLocked: { color: colors.textSecondary },
   hint: {
-    color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
+    color: colors.textSecondary, fontSize: font.xs, lineHeight: 16,
     marginTop: spacing.xs,
   },
   /**
