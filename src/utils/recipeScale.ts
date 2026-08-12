@@ -154,6 +154,21 @@ const UNIT_PLURALS: Record<string, string> = {
   link: 'links',
   pouch: 'pouches',
   package: 'packages',
+  deciliter: 'deciliters',
+  sprig: 'sprigs',
+  stalk: 'stalks',
+  rib: 'ribs',
+  stem: 'stems',
+  stick: 'sticks',
+  sheet: 'sheets',
+  fillet: 'fillets',
+  piece: 'pieces',
+  ear: 'ears',
+  wedge: 'wedges',
+  strip: 'strips',
+  pinch: 'pinches',
+  dash: 'dashes',
+  handful: 'handfuls',
 };
 
 const UNIT_SINGULARS: Record<string, string> = Object.fromEntries(
@@ -262,6 +277,28 @@ export function quantityAmount(quantity: string): { value: number; decimal: bool
   const amount = readLeadingAmount(quantity.trim());
   if (!amount) return null;
   return { value: toNumber(amount.value), decimal: amount.decimal };
+}
+
+/**
+ * The same read, plus whatever followed the amount — for a caller that has to
+ * look at the unit word itself rather than only at the number (unitConvert).
+ *
+ * Exported alongside `quantityAmount` rather than widening it, so the three
+ * notations stay defined in exactly one place: a second copy of the mixed-number
+ * ordering is how a converter and a scaler would come to disagree about what
+ * "1 1/2" means.
+ */
+export function splitLeadingAmount(
+  quantity: string,
+): { value: number; decimal: boolean; rest: string } | null {
+  const text = quantity.trim();
+  const amount = readLeadingAmount(text);
+  if (!amount) return null;
+  return {
+    value: toNumber(amount.value),
+    decimal: amount.decimal,
+    rest: text.slice(amount.length).trim(),
+  };
 }
 
 /**

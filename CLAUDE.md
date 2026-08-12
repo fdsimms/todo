@@ -109,6 +109,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see Grocery either/or below |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
 | halving or doubling a recipe | `src/utils/recipeScale.ts` — see Scaling below |
+| showing amounts in metric or US units | `src/utils/unitConvert.ts` — see Unit conversion below |
 
 **Read narrowly.** Seven files are over 1,000 lines — `useTaskStore.test.ts` (2.6k),
 `TaskEditor.tsx` (2.3k), `TodayScreen.tsx` (2.1k), `QuickAddModal.tsx` (1.6k),
@@ -548,8 +549,11 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
 
 1. **Only the leading amount is ever touched.** Unit, size clause and container word carry through
    verbatim, apart from pluralising off a closed table.
-2. **No unit conversion, ever.** "500 g" doubled is "1000 g", not "1 kg". Knowing those measure the
-   same thing is knowledge this app doesn't claim — and "1000 g" is unidiomatic, never wrong.
+2. **No unit conversion, ever.** "500 g" doubled is "1000 g", not "1 kg". Scaling multiplies a
+   number the user gave, so it has to hand back the same measurement they wrote — "1000 g" is
+   unidiomatic, never wrong. Converting is a *different request*, asked separately in Settings and
+   answered separately at render time — see Unit conversion below. Nothing in `recipeScale` may
+   convert.
 3. **A quantity whose amount doesn't parse passes through verbatim and flagged** (`scaled: false`).
    "a pinch" doubled is "a pinch", and the UI says so (`describeUnscaled`) rather than inventing
    "2 pinches". Coverage is ~95% of the quantity strings this app produces; the refusals are the
@@ -586,6 +590,45 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   "1/2 cup" and "2 cups" itself and a raw string comparison would list two measurements of one thing
   side by side. It still never collapses units that merely measure alike — "g" and "kg" stay two
   units, since merging those is rule 2 again.
+
+### Unit conversion (`unitConvert.ts`) — showing amounts in the reader's units
+
+The `unitSystem` setting (`asWritten` / `metric` / `us`, default `asWritten`) shows a quantity in
+the units the cook thinks in: "1 lb" read as "≈450 g". It is the second module allowed to do
+arithmetic on a `quantity`, and it does the one thing scaling's rule 2 forbids — which is the
+point. Scaling multiplies a number the user gave and owes them the same measurement back;
+converting is the user asking, in Settings, to be shown a *different* measurement of the same
+amount, and answering that in the unit they already had answers nothing.
+
+- **Display only, and that's the whole safety argument.** Nothing is written back. Every call site
+  renders `convertQuantity(...).text` over a stored string it doesn't touch, which is why the
+  **editable fields deliberately don't convert** (`RecipeIngredientSheet`, `GroceryItemSheet`) and
+  neither do the previews of text about to be *saved* (`RecipeExtractSheet`, `RecipeCreateSheet`,
+  `GroceryAISheet`, `GroceryAddField`'s live token). A field you're about to write has to show what
+  will be written. The read-only pills are the four that convert: the ingredient row on
+  `RecipeDetailScreen`, both add-to-list sheets, and `GroceryRow`.
+- **Converted text is always marked `≈`**, because every conversion here rounds (below). One
+  character at every render site, rather than a styling change at each one — and it's what stops a
+  converted number reading as the recipe's own words. On `RecipeDetailScreen` a converted pill also
+  takes the same tint a scaled one does, since both mean "the app's number, not the recipe's".
+- **Scale first, convert second.** The multiplication is exact and the conversion rounds, so
+  rounding last is the only order that doesn't compound.
+- **A closed table, never a guess** — mass and volume only, keyed by `unitKey` so both inflections
+  land on one entry. A count ("3", "x2", "4 cloves"), an unparseable amount ("a pinch") and a unit
+  not in the table all pass through verbatim and flagged, exactly as scaling's rule 3 does. **A
+  container's size never converts** either ("14 oz can" stays), recognised off the same
+  `SIZE_UNITS`/`CONTAINER_UNITS` the parser and the scaler share: "≈400 g can" is a product nobody
+  sells. `oz` is mass and only mass — the parser has no "fl oz", so there is no ambiguous ounce.
+- **Rounded to what a person would write**, which is the half that makes it useful and the half that
+  makes `≈` mandatory: 1 cup is 240 ml, not 236.59. Metric rounds to a step that widens with
+  magnitude; US snaps to a cooking fraction and **refuses to when none is close enough**, saying
+  "1.1 lbs" rather than claiming the "1 lb" it isn't. Thirds are a *volume* denominator only — a
+  measuring set has a 1/3 cup, and "3 1/3 lbs" is not a number anyone weighs to. The two tolerances
+  differ for the same reason (a cup is loose, a scale isn't), and that asymmetry is deliberate: at
+  the volume tolerance, 1.5 kg would render "3 1/2 lbs", nearly 90 g out.
+- **A merged quantity is converted part by part** (`' · '`, what `mergeQuantities` emits when it
+  won't add two measurements together), with one `≈` on the front. Converting only the leading
+  measurement would leave the rest of the string as a stray tail.
 
 ### Timed tasks, and apportioning one across its subtasks
 
@@ -859,6 +902,27 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 - **Accessibility on icon-only controls isn't a missing primitive, it's an adoption gap** — `PressableScale` already supplies `accessibilityRole="button"`, and every icon-only `TouchableOpacity` (drag handles, delete X's, calendar day cells, month-nav chevrons) needs an explicit `accessibilityLabel` alongside it, following `TaskItem`'s style (e.g. `` `Reorder subtask ${sub.title}` ``). Hand-rolled on/off controls (a `View` toggle knob inside a `Touchable`, not a real `Switch`) need `accessibilityRole="switch"` + `accessibilityState={{ checked }}` too — see the vacation-pause and archive toggles in `TaskEditor`/`ProjectEditor`.
 
 **Editors are progressive disclosure.** `TaskEditor`, `TemplateItemEditor`, `TaskGroupEditor`, `ProjectEditor` and `TemplateEditor` all follow the same shape: title/notes, then cards under uppercase `groupLabel` headers (Schedule → Organize → Priority & effort → Subtasks → More), rarely-changed rows last. Nothing renders its picker expanded by default — every pill grid lives inside a `CollapsibleField` that shows only its current value until tapped, and picking a single-choice value collapses the section again (`closeField`). Inline controls hung off an `EditorRow` (time-of-day pills, time window, link picker) render only while that row is expanded. When adding a field, give it a `hint` that says what it does in one line: that hint is the only in-app documentation these options have.
+
+**The task editor's fields are searchable, and the index is the JSX.** The magnifier in
+`TaskEditor`'s header opens a `SearchField` that filters the sheet down to matching rows
+(`src/utils/editorSearch.ts`, `searchTerms` on `EditorGroup`) — groups with no hit disappear,
+matching ones open regardless of the fold. Three decisions worth not re-deriving:
+
+- **An `EditorGroupRow` carries its own `keywords`**, so there is no `taskEditorIndex.ts` to keep in
+  step with the form the way `settingsIndex.ts` must. The rows already declare `label` and `set`
+  computed against the task being edited, which is exactly the index a search needs; a separate
+  file would be a second copy that goes stale, and #1229 correctly sized that as the expensive part.
+  **The keywords are the feature**, not a nicety — a tidier layout can't help someone looking for
+  *blocked*, *away*, *snooze* or *url*, and that gets worse with every field added.
+- **It filters in place; it does not scroll to a row.** `searchSettings` ranks and jumps because
+  Settings renders a *result list* over rows that live behind a navigation step. These rows are the
+  form, so the match is shown where it lives — which is also why `filterEditorRows` is deliberately
+  unranked (a form that re-sorts as you type is one you can't learn — the same call `foldRows` makes
+  about not hoisting set rows).
+- **It's behind the magnifier, not a permanent bar.** The sheet is dense, and a bar every task edit
+  pays for to serve the edits that need it is the trade that made the editor long in the first place.
+  Closing clears the query, and reopening the sheet resets it — handing someone back a filtered form
+  with no visible reason why is the one way this breaks.
 
 **List rows** use the iOS inset-grouped card treatment app-wide — match the styling in `TaskItem.itemWrapper` (Search/Logbook/Tags/Categories/Projects rows follow the same pattern). Section headers are uppercase `font.xs` semibold `textTertiary` with `letterSpacing: 0.8`. The one row that is deliberately *not* a card is `TaskGroupHeader` — a stack heads its tasks rather than sitting among them, so it's a transparent caption (see the note on its `band` style; every filled-card version of it read as a *selected* row, because a brighter card surface is what this app uses for pressed and dragged). What ties it to its tasks is enclosure, not resemblance: `TaskGroupTray` puts the header and the child cards in one `bgSunken` region, and the children drop their own margins to sit on its padding. Grouping a header with its rows by giving the header a card-like treatment is the move that keeps failing here — reach for the region instead.
 

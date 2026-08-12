@@ -275,6 +275,20 @@ describe('demo mode', () => {
     expect(withPhone.length).toBeGreaterThan(0);
   });
 
+  it('seeds a reference-list project excluded from every nudge', () => {
+    // A checklist project like Gift ideas has nothing but undated tasks —
+    // exactly what would otherwise read as "gone quiet" — so the seed only
+    // demonstrates the opt-out (Project.nudgeOptIn) if it's really off here.
+    useDemoStore.getState().enterDemoMode();
+
+    const giftIdeas = useProjectStore.getState().projects.find(p => p.title === 'Gift ideas');
+    expect(giftIdeas?.nudgeOptIn).toBe(false);
+
+    const members = useTaskStore.getState().tasks.filter(t => t.projectId === giftIdeas?.id);
+    expect(members.length).toBeGreaterThan(0);
+    expect(members.every(t => !t.dueDate)).toBe(true);
+  });
+
   it('seeds a task that has been pushed enough times to trip the postpone check', () => {
     // Invisible until something has a history: a fresh demo database has none,
     // so without a stamped count the date picker never shows the prompt and the

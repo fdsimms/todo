@@ -561,6 +561,16 @@ export function initDatabase(): void {
     // See ItemShopLink.unavailableAt for why this is a date rather than a flag
     // and why it can sit on a row that also has purchases.
     'ALTER TABLE grocery_item_shops ADD COLUMN unavailable_at TEXT',
+    // 0 for every existing project, deliberately — unlike every other nudge
+    // column here, this one is NOT a "changes nothing on upgrade" backfill.
+    // It gates every nudge surface (see Project.nudgeOptIn), including the
+    // ones nudge_cadence_days already opted a project into, so an install
+    // upgrading into this stops seeing the gone-quiet banner and the pull
+    // sheet for any project until it's re-opted-in by hand. That reversal is
+    // the point of the feature (#1427): the previous "0 = never ask" default
+    // still surfaced a stalled project the moment the Pull sheet was opened
+    // by hand, which is exactly what a reference list never wants.
+    'ALTER TABLE projects ADD COLUMN nudge_opt_in INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1502,12 +1512,16 @@ export function dbFinishGroceryShopping(
 export function dbClearGroceryList(): string[] {
   const rows = db.getAllSync<{ id: string }>('SELECT id FROM grocery_items WHERE on_list = 1');
   if (rows.length === 0) return [];
-  // in_catalog = 1 for the same reason the alert says nothing is deleted: a
-  // cleared trip parks its rows rather than forgetting them, so a name typed
-  // this week survives as catalog even though it was never bought. It also
-  // keeps the !onList ⇒ inCatalog invariant, without which a provisional row
-  // could sit off the list and then be deleted by a later Remove from list.
-  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0, in_catalog = 1 WHERE on_list = 1');
+  // Same split removeFromList makes: a row already in the catalog parks
+  // off-list, same as before. A provisional row — never in the catalog until
+  // this trip added it — has nothing to keep once the trip is abandoned, so
+  // it's deleted rather than minted into a catalog entry for something that
+  // was never bought.
+  const provisional = db.getAllSync<{ id: string }>(
+    'SELECT id FROM grocery_items WHERE on_list = 1 AND in_catalog = 0'
+  );
+  for (const row of provisional) dbDeleteGroceryItem(row.id);
+  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0 WHERE on_list = 1');
   return rows.map(r => r.id);
 }
 
@@ -2050,6 +2064,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     nudgeCadenceDays: (row.nudge_cadence_days as number | null) ?? DEFAULT_NUDGE_CADENCE_DAYS,
     autoSchedule: Boolean(row.auto_schedule),
     sequential: Boolean(row.sequential),
+    nudgeOptIn: Boolean(row.nudge_opt_in),
   };
 }
 
@@ -2060,22 +2075,22 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, created_at, nudge_cadence_days, auto_schedule, sequential) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.targetStartDate, project.targetEndDate,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt, project.createdAt,
-      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0,
+      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=? WHERE id=?',
     [
       project.title, project.notes, project.targetStartDate, project.targetEndDate,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
-      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.id,
+      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0, project.id,
     ]
   );
 }

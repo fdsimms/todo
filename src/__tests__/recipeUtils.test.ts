@@ -813,6 +813,44 @@ describe('rankRecipes', () => {
     expect(rankRecipes('lasagne', all)).toEqual([]);
   });
 
+  it('finds a recipe by its author', () => {
+    const cake = recipe('Chocolate cake', { nameKey: 'chocolate cake', author: 'Yotam Ottolenghi' });
+    expect(rankRecipes('ottolenghi', [cake, ragu]).map(r => r.name)).toEqual(['Chocolate cake']);
+  });
+
+  it('finds a recipe by its source', () => {
+    const salmon = recipe('Salmon', { nameKey: 'salmon', source: 'NYT Cooking' });
+    expect(rankRecipes('nyt', [salmon, ragu]).map(r => r.name)).toEqual(['Salmon']);
+  });
+
+  it('finds a recipe by the legacy sourceName, which nothing backfilled', () => {
+    const old = recipe('Short ribs', { nameKey: 'short ribs', sourceName: 'Alison Roman, Nothing Fancy' });
+    // Either half of the un-split legacy string finds it.
+    expect(rankRecipes('alison', [old]).map(r => r.name)).toEqual(['Short ribs']);
+    expect(rankRecipes('nothing fancy', [old]).map(r => r.name)).toEqual(['Short ribs']);
+  });
+
+  it('ranks attribution under an ingredient match', () => {
+    const byRoman = recipe('Pie', { nameKey: 'pie', author: 'Fennel Roman' });
+    const usesIt = recipe('Soup', { nameKey: 'soup', ingredients: [ing('Fennel', { nameKey: 'fennel' })] });
+    expect(rankRecipes('fennel', [byRoman, usesIt]).map(r => r.name)).toEqual(['Soup', 'Pie']);
+  });
+
+  it('finds a recipe by its notes, below every other kind of match', () => {
+    const mentioned = recipe('Pasta', { nameKey: 'pasta', notes: 'Good with leftover chicken.' });
+    const named = recipe('Chicken pie', { nameKey: 'chicken pie' });
+    expect(rankRecipes('chicken', [mentioned, named]).map(r => r.name)).toEqual(['Chicken pie', 'Pasta']);
+  });
+
+  it('does not match a sourceUrl, whose punctuation collapses into one word', () => {
+    const linked = recipe('Salmon', {
+      nameKey: 'salmon',
+      sourceUrl: 'https://cooking.nytimes.com/lemon-garlic-salmon',
+    });
+    expect(rankRecipes('https', [linked])).toEqual([]);
+    expect(rankRecipes('nytimes', [linked])).toEqual([]);
+  });
+
   it('finds a dish by an ingredient that lives on one of its components', () => {
     const mash = recipe('Mash', { nameKey: 'mash', ingredients: [ing('Potatoes', { nameKey: 'potatoes' })] });
     const steak = recipe('Steak dinner', {

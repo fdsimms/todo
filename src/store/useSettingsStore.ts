@@ -13,6 +13,7 @@ import {
 } from '../utils/aiFeatures';
 import { DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY } from '../utils/mealPlanNudge';
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
+import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
 
@@ -209,6 +210,12 @@ interface SettingsStore {
   // already had once this ships.
   timerLiveActivity: boolean;
   mealsOnToday: MealsOnToday;
+  // Which units recipe and grocery amounts are *shown* in — see
+  // src/utils/unitConvert.ts. Display only: the quantity stored on the recipe
+  // or the grocery row is never rewritten, and an editable field always shows
+  // what's stored. Defaults to 'asWritten', so an install upgrading into this
+  // reads exactly as it did.
+  unitSystem: UnitSystem;
   // Whether planning a meal also puts a "Cook X" task on the day it's planned
   // for. On by default, but deliberately with no backfill — only meals planned
   // from here on get one — so an install upgrading into this sees nothing
@@ -318,6 +325,7 @@ interface SettingsStore {
   setHapticsEnabled: (on: boolean) => void;
   setShakeToUndoEnabled: (on: boolean) => void;
   setMealsOnToday: (mode: MealsOnToday) => void;
+  setUnitSystem: (system: UnitSystem) => void;
   setMealCookTasks: (on: boolean) => void;
   setMealCookTaskCategory: (category: string | null) => void;
   setSortOption: (sort: SortOption) => void;
@@ -380,6 +388,7 @@ const DEFAULT_SETTINGS = {
   hideCategories: false,
   timerLiveActivity: true,
   mealsOnToday: 'strip' as MealsOnToday,
+  unitSystem: 'asWritten' as UnitSystem,
   mealCookTasks: true,
   mealCookTaskCategory: null,
   remindersImportEnabled: false,
@@ -541,6 +550,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   hideCategories: false,
   timerLiveActivity: true,
   mealsOnToday: 'strip',
+  unitSystem: 'asWritten',
   mealCookTasks: true,
   mealCookTaskCategory: null,
   remindersImportEnabled: false,
@@ -611,6 +621,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const storedMealsOnToday = dbGetSetting('mealsOnToday') as MealsOnToday | null;
     const mealsOnToday: MealsOnToday =
       storedMealsOnToday && MEALS_ON_TODAY.includes(storedMealsOnToday) ? storedMealsOnToday : 'strip';
+    const storedUnitSystem = dbGetSetting('unitSystem') as UnitSystem | null;
+    const unitSystem: UnitSystem =
+      storedUnitSystem && UNIT_SYSTEMS.includes(storedUnitSystem) ? storedUnitSystem : 'asWritten';
     // Defaults on, like hapticsEnabled — but unlike it, "on" here is a change
     // for an existing install rather than a preservation of what it had. It's
     // safe to default on anyway because nothing is backfilled: no cook task
@@ -684,7 +697,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, timerLiveActivity, mealsOnToday, mealCookTasks, mealCookTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, timerLiveActivity, mealsOnToday, unitSystem, mealCookTasks, mealCookTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -910,6 +923,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setMealsOnToday(mode: MealsOnToday) {
     dbSetSetting('mealsOnToday', mode);
     set({ mealsOnToday: mode });
+  },
+
+  setUnitSystem(system: UnitSystem) {
+    dbSetSetting('unitSystem', system);
+    set({ unitSystem: system });
   },
 
   // Turning this off deliberately leaves the cook tasks already spawned where

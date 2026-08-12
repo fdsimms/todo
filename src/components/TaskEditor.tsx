@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Alert,
   View,
@@ -55,9 +55,11 @@ import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
+import { SearchField } from './SearchField';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorGroup } from './EditorGroup';
+import { editorSearchTerms, matchesEditorQuery } from '../utils/editorSearch';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { BlockerPickerSheet } from './BlockerPickerSheet';
@@ -166,6 +168,58 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // nested *inside* a scroll view doesn't stop it from claiming the touch (see
   // SortableList's onDragStateChange).
   const [draggingRow, setDraggingRow] = useState(false);
+
+  // Field search — "where is Waiting on". Off by default and behind the
+  // header's magnifier, so an editor nobody is searching looks exactly as it
+  // did: the sheet is dense enough that a permanent bar would cost every task
+  // edit to serve the ones that need it.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchTerms = useMemo(
+    () => (searchOpen ? editorSearchTerms(searchQuery) : []),
+    [searchOpen, searchQuery]
+  );
+  const searching = searchTerms.length > 0;
+
+  // Title, notes and the Subtasks card sit outside the EditorGroups, so they
+  // carry their own descriptors rather than being unsearchable — "notes" and
+  // "checklist" are exactly the sort of word this is for.
+  const titleVisible = !searching
+    || matchesEditorQuery({ key: 'title', label: 'Title', keywords: ['name', 'what', 'rename'] }, searchTerms);
+  const notesVisible = !searching
+    || matchesEditorQuery({ key: 'notes', label: 'Notes', keywords: ['description', 'details', 'memo'] }, searchTerms);
+  const subtasksVisible = !searching
+    || matchesEditorQuery({ key: 'subtasks', label: 'Subtasks', keywords: ['steps', 'checklist', 'list', 'children', 'split', 'stretch'] }, searchTerms);
+  // Only ever on screen for a saved task, so the `task` check belongs here
+  // rather than only at the render site — otherwise a new task's search tally
+  // counts a card that isn't there and "nothing matched" never shows.
+  const dangerVisible = !!task && (!searching
+    || matchesEditorQuery({ key: 'archive', label: 'Archive', keywords: ['delete', 'remove', 'trash', 'unarchive', 'file away'] }, searchTerms));
+
+  // What each group has left after filtering, so the sheet can say that
+  // nothing matched rather than just emptying itself. Reported up from the
+  // groups because their rows are written inline in the JSX below — which is
+  // the same reason there's no separate index file to keep in step.
+  const [matchCounts, setMatchCounts] = useState<Record<string, number>>({});
+  const reportMatches = useCallback((groupKey: string, count: number) => {
+    setMatchCounts(prev => (prev[groupKey] === count ? prev : { ...prev, [groupKey]: count }));
+  }, []);
+
+  const totalMatches = useMemo(() => {
+    if (!searching) return 0;
+    const loose = [titleVisible, notesVisible, subtasksVisible, dangerVisible].filter(Boolean).length;
+    return Object.values(matchCounts).reduce((sum, n) => sum + n, 0) + loose;
+  }, [searching, titleVisible, notesVisible, subtasksVisible, dangerVisible, matchCounts]);
+
+  // Closing always clears the query — leaving one behind would hand the user
+  // back a form still missing most of its rows, with the field that explains
+  // why now hidden.
+  const toggleSearch = useCallback(() => {
+    haptics.tap();
+    animateLayout();
+    setSearchOpen(open => !open);
+    setSearchQuery('');
+  }, []);
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -316,6 +370,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   useEffect(() => {
     if (!visible) return;
+    // A search belongs to the trip you made to find one field, not to the
+    // sheet — reopening the editor on a filtered form would look broken.
+    setSearchOpen(false);
+    setSearchQuery('');
     // Belongs to the task being edited, not to the sheet.
     kindMemory.current = { timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [] };
     if (task) {
@@ -1332,11 +1390,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         <>
           <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />
           <Text style={styles.headerTitle}>{task ? 'Edit Task' : 'New Task'}</Text>
-          <SheetHeaderButton
-            label={task ? 'Save' : 'Add'}
-            onPress={save}
-            disabled={!title.trim()}
-          />
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={toggleSearch}
+              hitSlop={8}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={searchOpen ? 'Close field search' : 'Find a field'}
+              accessibilityState={{ expanded: searchOpen }}
+            >
+              <Ionicons
+                name={searchOpen ? 'close' : 'search'}
+                size={iconSize.sm}
+                color={searchOpen ? colors.accent : colors.textSecondary}
+              />
+            </TouchableOpacity>
+            <SheetHeaderButton
+              label={task ? 'Save' : 'Add'}
+              onPress={save}
+              disabled={!title.trim()}
+            />
+          </View>
         </>
       }
       footer={
@@ -1432,6 +1506,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         </>
       }
     >
+      {/* The field search bar. Its own row rather than in the header: the
+          header already holds Cancel, the title and Save, and a field squeezed
+          between them would be a third of the width — and Save has to stay
+          reachable, since finding a field is usually the first half of setting
+          it and then saving. */}
+      {searchOpen && (
+        <SearchField
+          style={styles.fieldSearch}
+          placeholder="Find a field"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoFocus
+          accessibilityLabel="Find a field"
+        />
+      )}
+
+      {searching && totalMatches === 0 && (
+        <Text style={styles.searchEmpty}>No fields match “{searchQuery.trim()}”.</Text>
+      )}
+
+      {titleVisible && (
       <View style={styles.titleWrap}>
         {parsedSchedule && (
           <Text style={[styles.titleInput, styles.titleOverlay]} pointerEvents="none">
@@ -1456,9 +1551,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           multiline blurOnSubmit
         />
       </View>
+      )}
 
       {/* Schedule banner — detected date/recurrence phrase; tap to apply */}
-      {parsedSchedule && (
+      {titleVisible && parsedSchedule && (
         <Animated.View
           style={[styles.scheduleBanner, {
             opacity: scheduleTooltipAnim,
@@ -1486,6 +1582,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           </PressableScale>
         </Animated.View>
       )}
+      {notesVisible && (
       <TextInput
         style={styles.notesInput}
         value={notes}
@@ -1494,11 +1591,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         placeholderTextColor={colors.textSecondary}
         multiline
       />
+      )}
 
       {/* Contact nudge — "Call Kristen"/"Text the plumber"/"Email the
           landlord" with no number/email on the task yet. Tap reveals the
-          matching row in "More" below rather than setting anything itself. */}
-      {(showPhoneNudge || showEmailNudge) && (
+          matching row in "More" below rather than setting anything itself.
+          Suppressed while searching: it's an unprompted suggestion, and a
+          search is the one moment the user has said what they're after. */}
+      {!searching && (showPhoneNudge || showEmailNudge) && (
         <View style={styles.contactNudgeRow}>
           <InlineAction
             icon={showPhoneNudge ? 'call-outline' : 'mail-outline'}
@@ -1532,9 +1632,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         label="Kind"
         divider="full"
         startOpen
+        searchTerms={searchTerms}
+        onMatchCount={reportMatches}
         rows={[
           {
             key: 'kind', label: 'Kind', primary: true, set: kind !== 'task',
+            keywords: ['type', 'shape', 'timed', 'timer', 'quota', 'chain'],
             node: (
               <View style={styles.kindBlock}>
                 <View style={styles.pillRow}>
@@ -1573,6 +1676,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // you just picked and can't then configure is worse than no picker.
           ...(kind === 'timed' ? [{
             key: 'duration', label: 'Duration', primary: true, set: true,
+            keywords: ['timer', 'countdown', 'minutes', 'how long', 'stopwatch', 'split', 'apportion'],
             node: (<>
             <CollapsibleField
               label="Duration"
@@ -1663,6 +1767,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           ...(kind === 'target' ? [{
             key: 'dailyTarget', label: 'Daily target', primary: true, set: true,
+            keywords: ['quota', 'goal', 'times a day', 'count'],
             node: (<>
               <EditorRow
                 icon="speedometer-outline"
@@ -1746,6 +1851,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           ...(kind === 'chain' ? [{
             key: 'chain', label: 'Chain', primary: true, set: true,
+            keywords: ['steps', 'sequence', 'routine', 'order', 'next'],
             node: (<>
                 <CollapsibleField
                   label="Chain"
@@ -1997,9 +2103,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       <EditorGroup
         label="Schedule"
         startOpen
+        searchTerms={searchTerms}
+        onMatchCount={reportMatches}
         rows={[
           {
             key: 'date', label: 'Date', primary: true, set: !!dueDate,
+            keywords: ['when', 'schedule', 'today', 'tomorrow', 'defer', 'start', 'do it'],
             node: (
               <>
             <EditorRow
@@ -2015,6 +2124,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'moreDates', label: 'More dates', set: extraDates.length > 0,
+            keywords: ['series', 'several days', 'multiple', 'extra dates'],
             node: (
               <>
             <EditorRow
@@ -2061,6 +2171,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'deadline', label: 'Deadline', primary: true, set: !!deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null,
+            keywords: ['due', 'by', 'cutoff', 'hard date', 'late', 'overdue'],
             node: (
               <>
             <EditorRow
@@ -2227,6 +2338,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'timeOfDay', label: 'Time of day', primary: true, set: timeSegments.length > 0,
+            keywords: ['morning', 'afternoon', 'evening', 'segment', 'hide until', 'snooze'],
             node: (
               <>
             <EditorRow
@@ -2266,6 +2378,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'timeWindow', label: 'Time window', set: !!windowStart || !!windowEnd,
+            keywords: ['from', 'until', 'between', 'hours', 'expires', 'window'],
             node: (
               <>
             <EditorRow
@@ -2326,6 +2439,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'remindMe', label: 'Remind me', primary: true, set: !!reminderTime,
+            keywords: ['notification', 'notify', 'alert', 'alarm', 'ping', 'time'],
             node: (
               <>
             <EditorRow
@@ -2341,6 +2455,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'waitingOn', label: 'Waiting on', set: !!blockedById,
+            keywords: ['blocked', 'blocker', 'depends on', 'after', 'until'],
             node: (
               <>
             <EditorRow
@@ -2360,6 +2475,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'repeat', label: 'Repeat', primary: true, set: recurrenceType !== 'none',
+            keywords: ['recurring', 'recurrence', 'every', 'daily', 'weekly', 'monthly', 'schedule'],
             node: (
               <>
             <EditorRow
@@ -2409,11 +2525,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       <EditorGroup
         label="Organize"
         divider="full"
+        searchTerms={searchTerms}
+        onMatchCount={reportMatches}
         rows={[
           // Only when there is something to pick. An empty picker would teach
           // nothing — stacks are created from the + menu on Today, not here.
           ...(allGroups.length > 0 ? [{
             key: 'stack', label: 'Stack', set: !!selectedGroup,
+            keywords: ['group', 'together', 'bundle'],
             node: (
               <>
               <CollapsibleField
@@ -2454,6 +2573,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           {
             key: 'category', label: 'Category', primary: true, set: !!category,
+            keywords: ['section', 'bucket', 'list'],
             node: (
               <>
           <CollapsibleField
@@ -2516,6 +2636,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           ...(projects.length > 0 ? [{
             key: 'project', label: 'Project', primary: true, set: !!project,
+            keywords: ['progress', 'goal'],
             node: (
               <>
               <CollapsibleField
@@ -2548,6 +2669,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           {
             key: 'tags', label: 'Tags', primary: true, set: tags.length > 0,
+            keywords: ['labels', 'hashtag', 'filter'],
             node: (
               <>
           <CollapsibleField
@@ -2613,6 +2735,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           SUBTASKS is the same name twice. The field's own label is the
           section heading, and its "2/5 done" summary is what a fold would
           otherwise cost. */}
+      {subtasksVisible && (
       <View style={styles.optionsCard}>
         <CollapsibleField
           label="Subtasks"
@@ -2729,13 +2852,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             </View>
           </CollapsibleField>
       </View>
+      )}
 
       <EditorGroup
         label="Priority & effort"
         divider="full"
+        searchTerms={searchTerms}
+        onMatchCount={reportMatches}
         rows={[
           {
             key: 'priority', label: 'Priority', primary: true, set: priority > 0,
+            keywords: ['important', 'urgent', 'rank', 'flag', 'high', 'low'],
             node: (
               <>
           <CollapsibleField
@@ -2768,6 +2895,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'effort', label: 'Effort', primary: true, set: !!effort,
+            keywords: ['estimate', 'how long', 'minutes', 'size', 'workload'],
             node: (
               <>
           <CollapsibleField
@@ -2838,6 +2966,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'pin', label: 'Pin to Today', set: pinned,
+            keywords: ['pinned', 'top', 'stick', 'favourite', 'favorite'],
             node: (
               <>
             <TouchableOpacity
@@ -2871,9 +3000,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         // Phone/Email row it's about to reveal — those rows aren't `set` yet,
         // so the group would otherwise fold right past them.
         forceOpen={showPhoneNudge || showEmailNudge || showPhoneField || showEmailField}
+        searchTerms={searchTerms}
+        onMatchCount={reportMatches}
         rows={[
           {
             key: 'link', label: 'Link', set: !!linkUrl,
+            keywords: ['url', 'website', 'open', 'app', 'address'],
             node: (
               <>
             <EditorRow
@@ -2936,6 +3068,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'phone', label: 'Phone', set: !!phoneNumber,
+            keywords: ['call', 'text', 'number', 'sms', 'contact'],
             node: (
               <>
             <EditorRow
@@ -2985,6 +3118,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'email', label: 'Email', set: !!emailAddress,
+            keywords: ['mail', 'contact', 'compose', 'address'],
             node: (
               <>
             <EditorRow
@@ -3031,9 +3165,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           it's for. */}
       <EditorGroup
         label="Streaks"
+        searchTerms={searchTerms}
+        onMatchCount={reportMatches}
         rows={[
           {
             key: 'vacation', label: 'Vacation pause', set: vacationPause,
+            keywords: ['away', 'holiday', 'skip', 'break', 'time off'],
             node: (
               <>
             <TouchableOpacity
@@ -3058,6 +3195,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           ...(task && task.recurrenceType !== 'none' ? [{
             key: 'streak', label: 'Streak', set: task.streakCount > 0,
+            keywords: ['run', 'days in a row', 'count'],
             node: (
               <>
                 <TouchableOpacity
@@ -3113,6 +3251,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           ...(recurrenceType !== 'none' ? [{
             key: 'showStreak', label: 'Show streak on row', set: showStreak,
+            keywords: ['badge', 'flame', 'display', 'hide'],
             node: (
               <>
                 <TouchableOpacity
@@ -3146,9 +3285,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       {task && !task.parentId && (
       <EditorGroup
         label="Convert"
+        searchTerms={searchTerms}
+        onMatchCount={reportMatches}
         rows={[
           ...(task && !task.parentId ? [{
             key: 'groceries', label: 'Convert to grocery item', set: false,
+            keywords: ['shopping', 'grocery list', 'buy'],
             node: (
               <>
                 <TouchableOpacity
@@ -3179,7 +3321,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           row with the streak editor, which genuinely is recurrence-only. Any
           saved task can be archived, and every other entry point already
           allowed it. */}
-      {task && (
+      {dangerVisible && (
         <View style={[styles.optionsCard, { marginTop: spacing.xl }]}>
                 <TouchableOpacity
                   style={styles.optionRow}
@@ -3232,6 +3374,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  fieldSearch: { marginHorizontal: spacing.md, marginTop: spacing.md },
+  searchEmpty: {
+    color: colors.textTertiary, fontSize: font.sm,
+    marginHorizontal: spacing.md + spacing.xs, marginTop: spacing.lg,
+  },
   disabled: { opacity: 0.4 },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 320 },

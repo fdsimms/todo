@@ -114,9 +114,14 @@ describe('scaleQuantity', () => {
   });
 
   it('leaves a unit it cannot inflect in the user\'s own words', () => {
-    // "2 bulb" is the deliberate trade — a naive +s would produce "2 pinchs".
+    // "2 bulb" is the deliberate trade — a naive +s would produce "2 bulbs" wrong.
     expect(text('1 bulb', 2)).toBe('2 bulb');
-    expect(text('1 pinch', 2)).toBe('2 pinch');
+  });
+
+  it('pluralizes newly added cooking units', () => {
+    expect(text('1 pinch', 2)).toBe('2 pinches');
+    expect(text('1 sprig', 3)).toBe('3 sprigs');
+    expect(text('1 stick', 2)).toBe('2 sticks');
   });
 
   it('never treats a percentage as an amount', () => {

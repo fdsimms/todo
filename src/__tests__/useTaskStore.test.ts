@@ -247,6 +247,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   nudgeCadenceDays: 14,
   autoSchedule: false,
   sequential: false,
+  nudgeOptIn: true,
   ...overrides,
 });
 
