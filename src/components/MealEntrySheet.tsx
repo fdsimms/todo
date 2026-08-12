@@ -20,6 +20,7 @@ import { spacing, radius, font, fontWeight, border, animation, interaction, icon
 import { haptics } from '../utils/haptics';
 import { SafeBlurView } from './SafeBlurView';
 import { InlineAction } from './InlineAction';
+import { SheetActionRow } from './SheetActionRow';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
 import type { ChoiceGroup } from '../utils/recipeComponents';
@@ -366,28 +367,17 @@ export function MealEntrySheet({
           {!!onSetCooked && (
             <>
               <View style={styles.sep} />
-              <TouchableOpacity
-                style={styles.action}
+              <SheetActionRow
+                icon={cooked ? 'close-circle-outline' : 'checkmark-circle-outline'}
+                color={colors.accent}
+                label={cooked ? 'Mark not cooked' : 'Mark cooked'}
                 onPress={() => {
                   const next = !cooked;
                   next ? haptics.success() : haptics.tap();
                   dismiss(() => onSetCooked(next));
                 }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
                 accessibilityLabel={cooked ? 'Mark this meal not cooked' : 'Mark this meal cooked'}
-              >
-                <View style={styles.actionIcon}>
-                  <Ionicons
-                    name={cooked ? 'close-circle-outline' : 'checkmark-circle-outline'}
-                    size={16}
-                    color={colors.accent}
-                  />
-                </View>
-                <Text style={[styles.actionText, { color: colors.accent }]}>
-                  {cooked ? 'Mark not cooked' : 'Mark cooked'}
-                </Text>
-              </TouchableOpacity>
+              />
             </>
           )}
 
@@ -403,36 +393,26 @@ export function MealEntrySheet({
           {!!onStartCooking && (
             <>
               <View style={styles.sep} />
-              <TouchableOpacity
-                style={styles.action}
+              <SheetActionRow
+                icon="flame-outline"
+                color={colors.accent}
+                label="Start cooking"
                 onPress={() => { haptics.impactMedium(); dismiss(onStartCooking); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
                 accessibilityLabel="Start cooking this meal, opening the recipe with its timer running"
-              >
-                <View style={styles.actionIcon}>
-                  <Ionicons name="flame-outline" size={16} color={colors.accent} />
-                </View>
-                <Text style={[styles.actionText, { color: colors.accent }]}>Start cooking</Text>
-              </TouchableOpacity>
+              />
             </>
           )}
 
           {!!onOpenRecipe && (
             <>
               <View style={styles.sep} />
-              <TouchableOpacity
-                style={styles.action}
+              <SheetActionRow
+                icon="restaurant-outline"
+                color={colors.accent}
+                label="Open recipe"
                 onPress={() => { haptics.tap(); dismiss(onOpenRecipe); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
                 accessibilityLabel="Open this recipe"
-              >
-                <View style={styles.actionIcon}>
-                  <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
-                </View>
-                <Text style={[styles.actionText, { color: colors.accent }]}>Open recipe</Text>
-              </TouchableOpacity>
+              />
             </>
           )}
 
@@ -447,98 +427,68 @@ export function MealEntrySheet({
           {!!onSetCookTask && (
             <>
               <View style={styles.sep} />
-              <TouchableOpacity
-                style={styles.action}
+              <SheetActionRow
+                icon={hasCookTask ? 'checkbox' : 'square-outline'}
+                color={colors.accent}
+                label={hasCookTask ? 'Remove cook task' : 'Add cook task'}
                 onPress={() => { haptics.tap(); onSetCookTask(!hasCookTask); }}
-                activeOpacity={interaction.activeOpacity}
                 accessibilityRole="switch"
                 accessibilityState={{ checked: hasCookTask }}
                 accessibilityLabel="Cook task on Today"
                 accessibilityHint={hasCookTask
                   ? 'Removes the task to cook this meal'
                   : 'Adds a task to cook this meal on the day it\'s planned for'}
-              >
-                <View style={styles.actionIcon}>
-                  <Ionicons
-                    name={hasCookTask ? 'checkbox' : 'square-outline'}
-                    size={16}
-                    color={colors.accent}
-                  />
-                </View>
-                <Text style={[styles.actionText, { color: colors.accent }]}>
-                  {hasCookTask ? 'Remove cook task' : 'Add cook task'}
-                </Text>
-              </TouchableOpacity>
+              />
             </>
           )}
 
           {!!onAddPrepTasks && (
             <>
               <View style={styles.sep} />
-              <TouchableOpacity
-                style={styles.action}
+              <SheetActionRow
+                icon="alarm-outline"
+                color={colors.accent}
+                label="Add prep tasks"
                 onPress={() => { haptics.tap(); dismiss(onAddPrepTasks); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
                 accessibilityLabel="Add prep tasks for this meal"
-              >
-                <View style={styles.actionIcon}>
-                  <Ionicons name="alarm-outline" size={16} color={colors.accent} />
-                </View>
-                <Text style={[styles.actionText, { color: colors.accent }]}>Add prep tasks</Text>
-              </TouchableOpacity>
+              />
             </>
           )}
 
           {!!onLogLeftovers && (
             <>
               <View style={styles.sep} />
-              <TouchableOpacity
-                style={styles.action}
+              <SheetActionRow
+                icon="snow-outline"
+                color={colors.accent}
+                label="Log leftovers"
                 onPress={() => { haptics.tap(); dismiss(onLogLeftovers); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
                 accessibilityLabel="Log leftovers from this meal"
-              >
-                <View style={styles.actionIcon}>
-                  <Ionicons name="snow-outline" size={16} color={colors.accent} />
-                </View>
-                <Text style={[styles.actionText, { color: colors.accent }]}>Log leftovers</Text>
-              </TouchableOpacity>
+              />
             </>
           )}
 
           {!!onFinishLeftover && (
             <>
               <View style={styles.sep} />
-              <TouchableOpacity
-                style={styles.action}
+              <SheetActionRow
+                icon="checkmark-done-outline"
+                color={colors.green}
+                label="Finished the leftovers"
                 onPress={() => { haptics.success(); dismiss(onFinishLeftover); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
                 accessibilityLabel="Mark the leftover this meal used as finished"
-              >
-                <View style={styles.actionIcon}>
-                  <Ionicons name="checkmark-done-outline" size={16} color={colors.green} />
-                </View>
-                <Text style={[styles.actionText, { color: colors.green }]}>Finished the leftovers</Text>
-              </TouchableOpacity>
+              />
             </>
           )}
 
           <View style={styles.sep} />
-          <TouchableOpacity
-            style={styles.action}
+          <SheetActionRow
+            icon="trash-outline"
+            color={colors.red}
+            label="Remove from plan"
             onPress={() => { haptics.warning(); dismiss(onRemove); }}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
             accessibilityLabel="Take this off the plan"
-          >
-            <View style={styles.actionIcon}>
-              <Ionicons name="trash-outline" size={16} color={colors.red} />
-            </View>
-            <Text style={[styles.actionText, { color: colors.red }]}>Remove from plan</Text>
-          </TouchableOpacity>
+          />
         </ScrollView>
 
         <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity}>
@@ -675,25 +625,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sep: {
     height: border.hairline,
     backgroundColor: colors.separator,
-  },
-  action: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-  },
-  // Fixed-width wrapper so the label starts at the same x regardless of the
-  // glyph's own optical width (checkmark-circle vs restaurant vs trash, all
-  // at size={16}) — same idea as SideMenuDrawer's iconWrap.
-  actionIcon: {
-    width: iconSize.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionText: {
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
   },
   cancelCard: {
     backgroundColor: colors.bgSecondary,

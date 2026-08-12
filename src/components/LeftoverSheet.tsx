@@ -28,6 +28,7 @@ import { haptics } from '../utils/haptics';
 import { SafeBlurView } from './SafeBlurView';
 import { CountStepper } from './CountStepper';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetActionRow } from './SheetActionRow';
 import {
   cleanLeftoverTitle,
   describeLeftover,
@@ -429,68 +430,48 @@ export function LeftoverSheet({
           {editing && live && (
             <>
               <View style={styles.sep} />
-              <TouchableOpacity
-                style={styles.action}
+              <SheetActionRow
+                icon="checkmark-circle-outline"
+                color={colors.green}
+                label="Finished it"
                 onPress={() => { haptics.success(); dismiss(() => onFinish('eaten')); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
                 accessibilityLabel="Mark this leftover finished"
-              >
-                <View style={styles.actionIcon}>
-                  <Ionicons name="checkmark-circle-outline" size={16} color={colors.green} />
-                </View>
-                <Text style={[styles.actionText, { color: colors.green }]}>Finished it</Text>
-              </TouchableOpacity>
+              />
 
               <View style={styles.sep} />
-              <TouchableOpacity
-                style={styles.action}
+              <SheetActionRow
+                icon="trash-bin-outline"
+                color={colors.orange}
+                label="Threw it out"
                 onPress={() => { haptics.warning(); dismiss(() => onFinish('tossed')); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
                 accessibilityLabel="Mark this leftover thrown out"
-              >
-                <View style={styles.actionIcon}>
-                  <Ionicons name="trash-bin-outline" size={16} color={colors.orange} />
-                </View>
-                <Text style={[styles.actionText, { color: colors.orange }]}>Threw it out</Text>
-              </TouchableOpacity>
+              />
             </>
           )}
 
           {editing && !live && (
             <>
               <View style={styles.sep} />
-              <TouchableOpacity
-                style={styles.action}
+              <SheetActionRow
+                icon="arrow-undo-outline"
+                color={colors.accent}
+                label="Back in the fridge"
                 onPress={() => { haptics.tap(); dismiss(onReopen); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
                 accessibilityLabel="Put this leftover back in the fridge"
-              >
-                <View style={styles.actionIcon}>
-                  <Ionicons name="arrow-undo-outline" size={16} color={colors.accent} />
-                </View>
-                <Text style={[styles.actionText, { color: colors.accent }]}>Back in the fridge</Text>
-              </TouchableOpacity>
+              />
             </>
           )}
 
           {editing && (
             <>
               <View style={styles.sep} />
-              <TouchableOpacity
-                style={styles.action}
+              <SheetActionRow
+                icon="close-circle-outline"
+                color={colors.red}
+                label="Delete"
                 onPress={confirmDelete}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
                 accessibilityLabel="Delete this leftover"
-              >
-                <View style={styles.actionIcon}>
-                  <Ionicons name="close-circle-outline" size={16} color={colors.red} />
-                </View>
-                <Text style={[styles.actionText, { color: colors.red }]}>Delete</Text>
-              </TouchableOpacity>
+              />
             </>
           )}
         </ScrollView>
@@ -657,6 +638,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
+    marginBottom: spacing.md,
   },
   keepText: { flex: 1, gap: 2 },
   keepLabel: {
@@ -671,23 +653,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sep: {
     height: border.hairline,
     backgroundColor: colors.separator,
-    marginTop: spacing.md,
-  },
-  action: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-  },
-  actionIcon: {
-    width: iconSize.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionText: {
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
   },
   cancelCard: {
     backgroundColor: colors.bgSecondary,
