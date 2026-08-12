@@ -606,6 +606,16 @@ export function initDatabase(): void {
     // inventing one from created_at would put a fabricated "drifting since" on
     // every task in the database. See Task.driftingSince.
     'ALTER TABLE tasks ADD COLUMN drifting_since TEXT',
+    // Nullable on every one of the six: null is "no price known", which is the
+    // honest state for every row that predates this and for most rows after it.
+    // Prices are additive — nothing reads a missing one as zero. See
+    // GroceryItem.lastPriceMinor.
+    'ALTER TABLE grocery_items ADD COLUMN last_price_minor INTEGER',
+    'ALTER TABLE grocery_items ADD COLUMN last_priced_at TEXT',
+    'ALTER TABLE grocery_items ADD COLUMN last_price_quantity TEXT',
+    'ALTER TABLE grocery_item_shops ADD COLUMN last_price_minor INTEGER',
+    'ALTER TABLE grocery_item_shops ADD COLUMN last_priced_at TEXT',
+    'ALTER TABLE grocery_item_shops ADD COLUMN last_price_quantity TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1462,6 +1472,9 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     choiceGroup: (row.choice_group as string) ?? null,
     isStaple: Boolean(row.is_staple),
     expiresAt: (row.expires_at as string) ?? null,
+    lastPriceMinor: (row.last_price_minor as number) ?? null,
+    lastPricedAt: (row.last_priced_at as string) ?? null,
+    lastPriceQuantity: (row.last_price_quantity as string) ?? null,
     // Nullable on purpose — see the column's migration note. `?? null` rather
     // than Boolean(), which would flatten the unanswered state into a refusal.
     useUpTask: row.use_up_task === null || row.use_up_task === undefined
@@ -1482,8 +1495,9 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
-       source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, use_up_task)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, use_up_task,
+       last_price_minor, last_priced_at, last_price_quantity)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -1494,6 +1508,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
       item.expiresAt ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
+      item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
     ]
   );
 }
@@ -1504,7 +1519,8 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
-       expires_at=?, use_up_task=?
+       expires_at=?, use_up_task=?,
+       last_price_minor=?, last_priced_at=?, last_price_quantity=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
@@ -1516,6 +1532,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
       item.expiresAt ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
+      item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.id,
     ]
   );
@@ -1544,15 +1561,25 @@ export function dbDeleteGroceryItem(id: string): void {
  * finished without naming a store bumps the item exactly as it always has and
  * writes no link. That's what keeps this additive — picking a store never
  * became a step you have to complete mid-supermarket.
+ *
+ * `priceById` is the same kind of optional: whatever prices the user bothered
+ * to type, in minor units, keyed by item id. An item that isn't in it keeps
+ * whatever price it already had — a trip you didn't price is not a trip that
+ * says the price has changed.
  */
 export function dbFinishGroceryShopping(
   purchasedAt: string,
   onHandUntilById: Readonly<Record<string, string>> = {},
   shopId: string | null = null,
-  expiresAtById: Readonly<Record<string, string>> = {}
+  expiresAtById: Readonly<Record<string, string>> = {},
+  priceById: Readonly<Record<string, number>> = {}
 ): string[] {
-  const rows = db.getAllSync<{ id: string }>(
-    'SELECT id FROM grocery_items WHERE checked = 1 AND on_list = 1'
+  // quantity comes back with the id because a price is only meaningful
+  // alongside what it bought (see GroceryItem.lastPriceQuantity), and the
+  // trolley's quantities are still on the rows at this point — the bulk UPDATE
+  // below doesn't touch that column.
+  const rows = db.getAllSync<{ id: string; quantity: string | null }>(
+    'SELECT id, quantity FROM grocery_items WHERE checked = 1 AND on_list = 1'
   );
   if (rows.length === 0) return [];
   db.runSync(
@@ -1576,6 +1603,16 @@ export function dbFinishGroceryShopping(
     // rice is in this trip too and has no day worth naming.
     const expires = expiresAtById[row.id];
     if (expires) db.runSync('UPDATE grocery_items SET expires_at = ? WHERE id = ?', [expires, row.id]);
+    // Only the rows the user actually priced. An absent price leaves the last
+    // one standing, stamp and all, rather than clearing it — silence on this
+    // trip is not a claim that the old price is wrong.
+    const price = priceById[row.id];
+    if (price !== undefined) {
+      db.runSync(
+        'UPDATE grocery_items SET last_price_minor = ?, last_priced_at = ?, last_price_quantity = ? WHERE id = ?',
+        [price, purchasedAt, row.quantity ?? null, row.id]
+      );
+    }
   }
   if (shopId) {
     for (const row of rows) {
@@ -1592,6 +1629,20 @@ export function dbFinishGroceryShopping(
                        unavailable_at = NULL`,
         [row.id, shopId, purchasedAt]
       );
+      // A second statement rather than more columns on the upsert above,
+      // because "leave the old price alone" and "write this one" can't share a
+      // COALESCE: an item with no quantity would pair its new price with the
+      // previous trip's quantity string, which is the one pairing this field
+      // exists to prevent.
+      const price = priceById[row.id];
+      if (price !== undefined) {
+        db.runSync(
+          `UPDATE grocery_item_shops
+              SET last_price_minor = ?, last_priced_at = ?, last_price_quantity = ?
+            WHERE item_id = ? AND shop_id = ?`,
+          [price, purchasedAt, row.quantity ?? null, row.id, shopId]
+        );
+      }
     }
   }
   return rows.map(r => r.id);
@@ -1743,6 +1794,9 @@ function rowToItemShopLink(row: Record<string, unknown>): ItemShopLink {
     purchaseCount: (row.purchase_count as number) ?? 0,
     lastPurchasedAt: (row.last_purchased_at as string) ?? null,
     unavailableAt: (row.unavailable_at as string) ?? null,
+    lastPriceMinor: (row.last_price_minor as number) ?? null,
+    lastPricedAt: (row.last_priced_at as string) ?? null,
+    lastPriceQuantity: (row.last_price_quantity as string) ?? null,
   };
 }
 
@@ -1760,18 +1814,26 @@ export function dbGetAllItemShopLinks(): ItemShopLink[] {
  */
 export function dbSetItemShopLink(link: ItemShopLink): void {
   db.runSync(
-    `INSERT INTO grocery_item_shops (item_id, shop_id, purchase_count, last_purchased_at, unavailable_at)
-     VALUES (?,?,?,?,?)
+    `INSERT INTO grocery_item_shops
+       (item_id, shop_id, purchase_count, last_purchased_at, unavailable_at,
+        last_price_minor, last_priced_at, last_price_quantity)
+     VALUES (?,?,?,?,?,?,?,?)
      ON CONFLICT(item_id, shop_id)
      DO UPDATE SET purchase_count = excluded.purchase_count,
                    last_purchased_at = excluded.last_purchased_at,
-                   unavailable_at = excluded.unavailable_at`,
+                   unavailable_at = excluded.unavailable_at,
+                   last_price_minor = excluded.last_price_minor,
+                   last_priced_at = excluded.last_priced_at,
+                   last_price_quantity = excluded.last_price_quantity`,
     [
       link.itemId,
       link.shopId,
       link.purchaseCount,
       link.lastPurchasedAt ?? null,
       link.unavailableAt ?? null,
+      link.lastPriceMinor ?? null,
+      link.lastPricedAt ?? null,
+      link.lastPriceQuantity ?? null,
     ]
   );
 }

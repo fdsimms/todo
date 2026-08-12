@@ -31,6 +31,14 @@ import { PillGroup, type PillGroupOption } from './PillGroup';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
+import {
+  cheapestShopFor,
+  describePriceContext,
+  describeShopPrices,
+  parsePriceInput,
+  priceToInput,
+  shopPricesFor,
+} from '../utils/groceryPrice';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { describeExpiry, expiryDaysFromNow, expiryKeyFor } from '../utils/groceryShelfLife';
 import { wantsUseUpTask } from '../utils/groceryExpiry';
@@ -42,6 +50,9 @@ import {
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
 } from '../types';
+
+/** "10000.00" — the widest thing GROCERY_PRICE_MINOR_MAX allows. */
+const PRICE_INPUT_MAX_LENGTH = 8;
 
 interface Props {
   visible: boolean;
@@ -88,7 +99,9 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   const setStaple = useGroceryStore(s => s.setStaple);
   const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
   const setUseUpTask = useGroceryStore(s => s.setUseUpTask);
+  const setItemPrice = useGroceryStore(s => s.setItemPrice);
   const useUpTasksEnabled = useSettingsStore(s => s.groceryUseUpTasks);
+  const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const removeFromList = useGroceryStore(s => s.removeFromList);
   const deleteItem = useGroceryStore(s => s.deleteItem);
   const shops = useGroceryStore(useShallow(s => s.shops));
@@ -102,6 +115,10 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   const [name, setName] = useState('');
   const [quantity, setQuantityText] = useState('');
   const [note, setNoteText] = useState('');
+  // Seeded from the stored price so the field shows what's on the row, and
+  // emptying it is how a price is taken back — the same shape every other
+  // correction on this sheet has.
+  const [price, setPriceText] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
   // One picker open at a time, like every other editor in the app — see the
   // progressive-disclosure note in CLAUDE.md.
@@ -112,6 +129,7 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
       setName(item.name);
       setQuantityText(item.quantity ?? '');
       setNoteText(item.note);
+      setPriceText(item.lastPriceMinor === null ? '' : priceToInput(item.lastPriceMinor));
       setNameError(null);
       setOpenField(null);
     }
@@ -141,6 +159,23 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
     }
     setQuantity(item.id, quantity);
     setNote(item.id, note);
+    // After setQuantity, so a price being *changed* here is paired with the
+    // quantity being saved alongside it. A price left alone keeps the quantity
+    // it was recorded against, which is the point: retyping the quantity
+    // doesn't retroactively make an old price a price for the new one.
+    //
+    // An emptied field clears the price; anything that doesn't parse is left
+    // alone rather than clearing it, since "4.9.9" is a typo mid-correction and
+    // throwing the old price away over it is the one outcome nobody wants. No
+    // store is passed: a correction made here is about what the item costs, not
+    // about what one shop charges.
+    const trimmedPrice = price.trim();
+    const parsed = parsePriceInput(trimmedPrice);
+    if (!trimmedPrice) {
+      if (item.lastPriceMinor !== null) setItemPrice(item.id, null);
+    } else if (parsed !== null && parsed !== item.lastPriceMinor) {
+      setItemPrice(item.id, parsed);
+    }
     haptics.success();
     onClose();
   };
@@ -184,6 +219,17 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   // only place in the app those claims can be seen and taken back.
   const notStocked = new Set(unavailableShopsFor(item.id, itemShops, shops).map(s => s.id));
   const summary = describeShops(item, itemShops, shops);
+
+  // Prices: two lines, never more. What the stored number was for, and the
+  // store-by-store list with the one comparison that's safe to state tagged
+  // inside it. cheapestShopFor refuses on a single priced store, a tie, or
+  // prices recorded for different quantities — in which case the list is shown
+  // untagged, which is the honest answer and shows the reader why.
+  const now = new Date();
+  const priceContext = describePriceContext(item, now);
+  const shopPrices = shopPricesFor(item.id, itemShops, shops);
+  const cheapest = cheapestShopFor(item.id, itemShops, shops);
+  const shopPriceLine = describeShopPrices(shopPrices, currencySymbol, cheapest?.shop.id ?? null);
 
   // A future onHandUntil is an active "Got it"; a past one (always
   // OUT_OF_IT_UNTIL in practice) is an active "Out of it"; null leaves the
@@ -470,6 +516,25 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
             accessibilityLabel="Quantity"
           />
 
+          <Text style={styles.label}>PRICE</Text>
+          <View style={styles.priceField}>
+            <Text style={styles.priceSymbol}>{currencySymbol}</Text>
+            <TextInput
+              style={styles.priceInput}
+              value={price}
+              onChangeText={setPriceText}
+              placeholder="0.00"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="decimal-pad"
+              maxLength={PRICE_INPUT_MAX_LENGTH}
+              accessibilityLabel="Price"
+            />
+          </View>
+          {/* What the number is *for* and how old it is — never the number
+              itself, which the field above is already showing. */}
+          {!!priceContext && <Text style={styles.hint}>{priceContext}</Text>}
+          {!!shopPriceLine && <Text style={styles.hint}>{shopPriceLine}</Text>}
+
           <Text style={styles.label}>NOTE</Text>
           <TextInput
             style={styles.input}
@@ -699,6 +764,20 @@ function makeStyles(colors: Colors) {
       height: 44,
     },
     inputError: { borderColor: colors.red },
+    // The same box as `input`, with the currency symbol living inside it so the
+    // field reads as money before anything is typed into it.
+    priceField: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      height: 44,
+    },
+    priceSymbol: { color: colors.textSecondary, fontSize: font.md },
+    // No lineHeight, same as `input` — see the note there.
+    priceInput: { flex: 1, fontSize: font.md, color: colors.text, padding: 0 },
     error: { fontSize: font.sm, color: colors.red, marginTop: spacing.xs },
     hint: { fontSize: font.sm, color: colors.textTertiary, marginBottom: spacing.sm },
     choiceBlock: { alignItems: 'flex-start', marginBottom: spacing.sm },

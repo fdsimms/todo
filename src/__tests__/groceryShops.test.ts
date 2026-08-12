@@ -47,6 +47,9 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     isStaple: false,
     expiresAt: null,
     useUpTask: null,
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
     ...overrides,
   };
 }
@@ -57,7 +60,10 @@ function link(
   purchaseCount: number,
   lastPurchasedAt: string | null = null
 ): ItemShopLink {
-  return { itemId, shopId, purchaseCount, lastPurchasedAt, unavailableAt: null };
+  return {
+    itemId, shopId, purchaseCount, lastPurchasedAt, unavailableAt: null,
+    lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null,
+  };
 }
 
 /** "They don't have it here", optionally on top of a purchase history. */
@@ -68,6 +74,9 @@ function notAt(itemId: string, shopId: string, purchaseCount = 0): ItemShopLink 
     purchaseCount,
     lastPurchasedAt: null,
     unavailableAt: '2026-03-04T00:00:00.000Z',
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
   };
 }
 

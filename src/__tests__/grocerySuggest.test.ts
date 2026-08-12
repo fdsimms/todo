@@ -42,6 +42,9 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     isStaple: false,
     expiresAt: null,
     useUpTask: null,
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
     ...overrides,
   };
 }

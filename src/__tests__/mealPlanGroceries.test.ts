@@ -115,6 +115,9 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     isStaple: false,
     expiresAt: null,
     useUpTask: null,
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
     ...overrides,
   };
 }

@@ -32,6 +32,9 @@ function link(
     purchaseCount,
     lastPurchasedAt: purchaseCount > 0 ? '2026-08-01T00:00:00.000Z' : null,
     unavailableAt: null,
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
     ...overrides,
   };
 }

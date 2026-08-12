@@ -37,6 +37,9 @@ function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
     isStaple: false,
     expiresAt: '2026-08-17',
     useUpTask: null,
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
     ...overrides,
   };
 }

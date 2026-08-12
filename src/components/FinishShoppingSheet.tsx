@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -15,14 +15,19 @@ import {
   type Colors,
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { PillGroup } from './PillGroup';
 import { haptics } from '../utils/haptics';
+import { lastPriceFor as lastPriceForItem, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { SHOP_NAME_MAX_LENGTH } from '../types';
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
 const CHECK_SIZE = 22;
+
+/** "10000.00" — the widest thing GROCERY_PRICE_MINOR_MAX allows. */
+const PRICE_INPUT_MAX_LENGTH = 8;
 
 interface Props {
   visible: boolean;
@@ -33,8 +38,14 @@ interface Props {
    * the only thing the "didn't they have it?" question can be asked about.
    */
   leftover: ReadonlyArray<{ id: string; name: string }>;
+  /** What's in the trolley, in list order — the rows a price can be put on. */
+  purchased: ReadonlyArray<{ id: string; name: string; quantity: string | null }>;
   onClose: () => void;
-  onFinished: (shopId: string | null, unavailableIds: string[]) => void;
+  onFinished: (
+    shopId: string | null,
+    unavailableIds: string[],
+    priceById: Record<string, number>
+  ) => void;
 }
 
 /**
@@ -64,11 +75,22 @@ interface Props {
  * only exists once a store is named (a claim needs somebody to be about), and
  * clearing that choice clears the ticks with it rather than quietly refiling
  * them against the next store. Finish works untouched, exactly as before.
+ *
+ * **Prices are the third question and follow the same rules**, with one
+ * difference: they're asked whether or not a store is named. "They didn't have
+ * it" needs somebody to be about, but what you paid is a fact on its own — a
+ * trip with no store still records the item's own price (see
+ * GroceryItem.lastPriceMinor). Every field starts empty with the last known
+ * price as its placeholder, so leaving the section alone changes nothing and
+ * an unpriced trip is not a claim that anything got cheaper. It sits last
+ * because it's the longest, and Finish lives in the header where a long
+ * section can't push it off the screen.
  */
 export function FinishShoppingSheet({
   visible,
   checkedCount,
   leftover,
+  purchased,
   onClose,
   onFinished,
 }: Props) {
@@ -80,11 +102,18 @@ export function FinishShoppingSheet({
   const tripShopId = useGroceryStore(s => s.tripShopId);
   const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
   const addShop = useGroceryStore(s => s.addShop);
+  const items = useGroceryStore(useShallow(s => s.items));
+  const itemShops = useGroceryStore(useShallow(s => s.itemShops));
+  const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
   const [selected, setSelected] = useState<string | null>(null);
   // Leftovers the store didn't have. Ids rather than an index set, so a list
   // that changes underneath the sheet can't shift the answers onto other rows.
   const [unavailable, setUnavailable] = useState<string[]>([]);
+  // Prices exactly as typed, keyed by item id — parsed on Finish rather than on
+  // every keystroke, so a half-typed "4." is a field mid-edit and not a
+  // rejected value flashing an error at someone holding a receipt.
+  const [priceText, setPriceText] = useState<Record<string, string>>({});
 
   // If a trip is running, the store is already known and this stops being a
   // question — you said where you were on the way in. Falling back to where you
@@ -103,7 +132,12 @@ export function FinishShoppingSheet({
   defaultShopRef.current = defaultShopId;
 
   useEffect(() => {
-    if (visible) setSelected(defaultShopRef.current);
+    if (visible) {
+      setSelected(defaultShopRef.current);
+      // Same reset and the same reason: last week's typed prices belong to last
+      // week's trolley.
+      setPriceText({});
+    }
   }, [visible]);
 
   // A "they didn't have it" is about one named store, so changing the store
@@ -122,7 +156,15 @@ export function FinishShoppingSheet({
   };
 
   const handleFinish = () => {
-    onFinished(selected, selected ? unavailable : []);
+    // Anything that doesn't parse is dropped rather than blocking the finish.
+    // The trip is the thing being recorded; a price is an aside, and refusing
+    // to end someone's shop over a typo in one would invert that.
+    const priceById: Record<string, number> = {};
+    for (const [id, text] of Object.entries(priceText)) {
+      const minor = parsePriceInput(text);
+      if (minor !== null) priceById[id] = minor;
+    }
+    onFinished(selected, selected ? unavailable : [], priceById);
   };
 
   const selectedShop = selected ? shops.find(s => s.id === selected) ?? null : null;
@@ -132,6 +174,17 @@ export function FinishShoppingSheet({
   };
 
   const countLabel = `${checkedCount} ${checkedCount === 1 ? 'item comes' : 'items come'} off the list`;
+
+  /**
+   * What to seed a row's placeholder with: this store's last price if the trip
+   * has named one and it has been priced there, else the last price anywhere.
+   * Recomputed as the store changes, which is the point — switching from
+   * Safeway to Costco should show Costco's numbers.
+   */
+  const lastPriceFor = (itemId: string): number | null => {
+    const item = items.find(i => i.id === itemId);
+    return item ? lastPriceForItem(item, selected, itemShops) : null;
+  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -245,6 +298,59 @@ export function FinishShoppingSheet({
               </Text>
             </>
           )}
+
+          {/* Last, and asked with or without a store — see the note on the
+              component. A row's placeholder is what it last cost, so the
+              common case is reading rather than typing. */}
+          {purchased.length > 0 && (
+            <>
+              <Text style={styles.label}>WHAT DID THEY COST?</Text>
+              <Text style={styles.hint}>
+                Optional. Fill in what you remember and it shows next time this is on your list
+                {selectedShop ? `, along with what ${selectedShop.name} charges` : ''}. Skip any
+                you don’t know — the last price stays.
+              </Text>
+
+              <View style={styles.card}>
+                {purchased.map((row, i) => {
+                  const known = lastPriceFor(row.id);
+                  return (
+                    <View key={row.id} style={[styles.row, i > 0 && styles.rowDivided]}>
+                      <View style={styles.priceName}>
+                        <Text style={styles.rowTitle} numberOfLines={1}>
+                          {row.name}
+                        </Text>
+                        {!!row.quantity && (
+                          <Text style={styles.rowQuantity} numberOfLines={1}>
+                            {row.quantity}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.priceField}>
+                        <Text style={styles.priceSymbol}>{currencySymbol}</Text>
+                        <TextInput
+                          style={styles.priceInput}
+                          value={priceText[row.id] ?? ''}
+                          onChangeText={text =>
+                            setPriceText(prev => ({ ...prev, [row.id]: text }))
+                          }
+                          // Not `numeric`: the decimal separator is on the
+                          // number pad on iOS but the plain one has no way to
+                          // type a price at all.
+                          keyboardType="decimal-pad"
+                          returnKeyType="done"
+                          placeholder={known !== null ? priceToInput(known) : '0.00'}
+                          placeholderTextColor={colors.textTertiary}
+                          maxLength={PRICE_INPUT_MAX_LENGTH}
+                          accessibilityLabel={`Price for ${row.name}`}
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          )}
         </ScrollView>
       </View>
     </Modal>
@@ -291,6 +397,26 @@ function makeStyles(colors: Colors) {
     },
     rowDivided: { borderTopWidth: border.hairline, borderTopColor: colors.separator },
     rowTitle: { flex: 1, color: colors.text, fontSize: font.md },
+    priceName: { flex: 1, gap: 2 },
+    rowQuantity: { color: colors.textTertiary, fontSize: font.sm },
+    // A bordered box rather than a bare input: it's the only thing on this
+    // sheet you type into, and an unmarked one reads as a label until tapped.
+    priceField: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      minWidth: 104,
+      borderWidth: border.hairline,
+      borderColor: colors.separator,
+      borderRadius: radius.sm,
+      backgroundColor: colors.bg,
+    },
+    priceSymbol: { color: colors.textSecondary, fontSize: font.md },
+    // No lineHeight — see the note in CLAUDE.md about what RN does with it on
+    // a TextInput.
+    priceInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
     // The app's checkbox shape (`checkboxRadius`, same as GroceryRow's), filled
     // red with an × rather than accent with a tick. Ticking this is the
     // opposite of ticking the item off, and it sits one sheet away from the row

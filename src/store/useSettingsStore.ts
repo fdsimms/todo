@@ -4,6 +4,8 @@ import type { ThemeMode } from '../theme';
 import { DEFAULT_APP_FONT, isAppFont, type AppFont } from '../theme/fonts';
 import type { SortOption, Priority, Effort, TimeOfDay } from '../types';
 import {
+  CURRENCY_SYMBOLS,
+  DEFAULT_CURRENCY_SYMBOL,
   GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   GROCERY_USE_UP_LEAD_DAYS_MAX,
   GROCERY_USE_UP_LEAD_DAYS_MIN,
@@ -248,6 +250,12 @@ interface SettingsStore {
   // what's stored. Defaults to 'asWritten', so an install upgrading into this
   // reads exactly as it did.
   unitSystem: UnitSystem;
+  // The symbol grocery prices are shown with. Cosmetic and nothing else: every
+  // price is stored as minor units of whatever the user shops in, and there is
+  // no second currency and no conversion — see src/utils/groceryPrice.ts. A
+  // fixed short list rather than free text or a locale lookup, because the
+  // point is to render a number correctly, not to know about money.
+  currencySymbol: string;
   // Whether planning a meal also puts a "Cook X" task on the day it's planned
   // for. On by default, but deliberately with no backfill — only meals planned
   // from here on get one — so an install upgrading into this sees nothing
@@ -374,6 +382,7 @@ interface SettingsStore {
   setShakeToUndoEnabled: (on: boolean) => void;
   setMealsOnToday: (mode: MealsOnToday) => void;
   setUnitSystem: (system: UnitSystem) => void;
+  setCurrencySymbol: (symbol: string) => void;
   setMealCookTasks: (on: boolean) => void;
   setMealCookTaskCategory: (category: string | null) => void;
   setSortOption: (sort: SortOption) => void;
@@ -443,6 +452,7 @@ const DEFAULT_SETTINGS = {
   timerLiveActivity: true,
   mealsOnToday: 'strip' as MealsOnToday,
   unitSystem: 'asWritten' as UnitSystem,
+  currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
   mealCookTaskCategory: null,
   groceryUseUpTasks: false,
@@ -614,6 +624,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   kitchenEnabled: true,
   mealsOnToday: 'strip',
   unitSystem: 'asWritten',
+  currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
   mealCookTaskCategory: null,
   groceryUseUpTasks: false,
@@ -694,6 +705,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const storedUnitSystem = dbGetSetting('unitSystem') as UnitSystem | null;
     const unitSystem: UnitSystem =
       storedUnitSystem && UNIT_SYSTEMS.includes(storedUnitSystem) ? storedUnitSystem : 'asWritten';
+    const storedCurrency = dbGetSetting('currencySymbol');
+    const currencySymbol =
+      storedCurrency && CURRENCY_SYMBOLS.includes(storedCurrency)
+        ? storedCurrency
+        : DEFAULT_CURRENCY_SYMBOL;
     // Defaults on, like hapticsEnabled — but unlike it, "on" here is a change
     // for an existing install rather than a preservation of what it had. It's
     // safe to default on anyway because nothing is backfilled: no cook task
@@ -789,7 +805,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -1037,6 +1053,15 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setUnitSystem(system: UnitSystem) {
     dbSetSetting('unitSystem', system);
     set({ unitSystem: system });
+  },
+
+  setCurrencySymbol(symbol: string) {
+    // Clamped to the known list: this string is concatenated straight into
+    // every price the app renders, so an arbitrary one is a way to make every
+    // total unreadable with no way back from inside the feature.
+    const next = CURRENCY_SYMBOLS.includes(symbol) ? symbol : DEFAULT_CURRENCY_SYMBOL;
+    dbSetSetting('currencySymbol', next);
+    set({ currencySymbol: next });
   },
 
   // Turning this off deliberately leaves the cook tasks already spawned where

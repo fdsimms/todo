@@ -49,6 +49,7 @@ import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { OTHER_AISLE } from '../utils/groceryAisles';
+import { describeListEstimate, estimateListTotal } from '../utils/groceryPrice';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -173,6 +174,7 @@ export function GroceryScreen() {
   // Every AI affordance is gated on this, so a user without a key never sees
   // an entry point — the offline lexicon carries the feature on its own.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
   const { sections, inCart, remaining } = useMemo(
     () => buildGrocerySections(items, aisleOrder, cartHoldIds),
@@ -220,6 +222,25 @@ export function GroceryScreen() {
         section.data.filter(i => !i.checked).map(i => ({ id: i.id, name: i.name }))
       ),
     [sections]
+  );
+  // The other half of the same read: what the trip is taking home, in the same
+  // walk order, for the finish sheet's price fields. Carries quantity because a
+  // price is only meaningful next to what it bought.
+  const purchased = useMemo(
+    () =>
+      sections.flatMap(section =>
+        section.data
+          .filter(i => i.checked)
+          .map(i => ({ id: i.id, name: i.name, quantity: i.quantity }))
+      ),
+    [sections]
+  );
+  // "≈ $47.30 · 9 of 14 priced", or null while nothing on the list has a price.
+  // describeListEstimate owns the wording, including the rule that a partial
+  // total may never be rendered without saying how partial it is.
+  const estimate = useMemo(
+    () => describeListEstimate(estimateListTotal(items), currencySymbol),
+    [items, currencySymbol]
   );
   const listCount = remaining + checkedCount;
   const catalogCount = items.length;
@@ -442,7 +463,7 @@ export function GroceryScreen() {
   // picker, and an Alert can't hold one. It's still a confirm: nothing is
   // recorded until Finish.
   const handleFinished = useCallback(
-    (shopId: string | null, unavailableIds: string[]) => {
+    (shopId: string | null, unavailableIds: string[], priceById: Record<string, number>) => {
       setFinishOpen(false);
       animateLayout();
       // Two writes rather than one, and they can't collide: finishShopping
@@ -450,7 +471,10 @@ export function GroceryScreen() {
       // what wasn't. The claim goes first so it's recorded even if the trip
       // itself finds nothing left to record.
       if (shopId && unavailableIds.length > 0) markItemsUnavailable(unavailableIds, shopId);
-      if (finishShopping(shopId) > 0) haptics.success();
+      // The prices ride with the trip rather than being a third write: they're
+      // about what it bought, so they have to land on the same rows in the same
+      // pass that takes them off the list.
+      if (finishShopping(shopId, priceById) > 0) haptics.success();
       // Unconditional, and deliberately not inside finishShopping: that
       // early-returns on an empty trolley, and finishing a shop you bought
       // nothing at still ends the trip you were on.
@@ -677,7 +701,15 @@ export function GroceryScreen() {
         title="Groceries"
         subtitle={
           listCount > 0
-            ? `${remaining} left${checkedCount > 0 ? ` · ${checkedCount} in cart` : ''}`
+            ? [
+                `${remaining} left`,
+                checkedCount > 0 ? `${checkedCount} in cart` : null,
+                // Absent until something on the list has ever been priced, so
+                // the header reads exactly as it did for anyone not using this.
+                estimate,
+              ]
+                .filter(Boolean)
+                .join(' · ')
             : undefined
         }
         actions={actions}
@@ -839,6 +871,7 @@ export function GroceryScreen() {
         visible={finishOpen}
         checkedCount={checkedCount}
         leftover={leftover}
+        purchased={purchased}
         onClose={() => setFinishOpen(false)}
         onFinished={handleFinished}
       />

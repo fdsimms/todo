@@ -181,6 +181,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',
     keywords: ['metric', 'imperial', 'convert', 'grams', 'ounces', 'pounds', 'cups', 'millilitres', 'measurement'],
     kitchen: true },
+  { id: 'currencySymbol', groupId: 'tasksProjects', label: 'Currency', section: 'Recipe & grocery amounts',
+    keywords: ['price', 'cost', 'money', 'symbol', 'dollar', 'pound', 'euro', 'yen', 'grocery'],
+    kitchen: true },
 
   // Privacy & AI
   { id: 'appLock', groupId: 'privacyAi', label: 'Require Face ID to open', section: 'App lock',

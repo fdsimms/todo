@@ -26,6 +26,7 @@ import {
   DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD,
 } from '../../utils/postpone';
 import {
+  CURRENCY_SYMBOLS,
   GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   GROCERY_USE_UP_LEAD_DAYS_MAX,
   GROCERY_USE_UP_LEAD_DAYS_MIN,
@@ -66,6 +67,12 @@ const UNIT_SYSTEM_PILLS: PillOption<UnitSystem>[] = [
   { value: 'metric', label: 'Metric' },
   { value: 'us', label: 'US' },
 ];
+// The symbol only. Prices are stored as plain numbers and nothing converts
+// between currencies — see src/utils/groceryPrice.ts.
+const CURRENCY_PILLS: PillOption<string>[] = CURRENCY_SYMBOLS.map(symbol => ({
+  value: symbol,
+  label: symbol,
+}));
 
 export function TasksProjectsSettings() {
   const vacationMode = useSettingsStore(s => s.vacationMode);
@@ -103,6 +110,8 @@ export function TasksProjectsSettings() {
   const setGroceryUseUpTaskCategory = useSettingsStore(s => s.setGroceryUseUpTaskCategory);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const setUnitSystem = useSettingsStore(s => s.setUnitSystem);
+  const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const setCurrencySymbol = useSettingsStore(s => s.setCurrencySymbol);
   const defaultProjectNudgeCadenceDays = useSettingsStore(s => s.defaultProjectNudgeCadenceDays);
   const setDefaultProjectNudgeCadenceDays = useSettingsStore(s => s.setDefaultProjectNudgeCadenceDays);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
@@ -429,6 +438,19 @@ export function TasksProjectsSettings() {
           selected={unitSystem}
           onSelect={system => { haptics.tap(); setUnitSystem(system); }}
           accessibilityLabelFor={o => `Units: ${o.label}`}
+        />
+        <SettingsRow
+          icon="pricetag-outline"
+          label="Currency"
+          hint="The symbol grocery prices are shown with"
+          tight
+        />
+        <SettingsPills
+          attached
+          options={CURRENCY_PILLS}
+          selected={currencySymbol}
+          onSelect={symbol => { haptics.tap(); setCurrencySymbol(symbol); }}
+          accessibilityLabelFor={o => `Currency: ${o.label}`}
         />
       </SettingsSection>
       </>
