@@ -38,6 +38,11 @@ import {
   type TaskKind,
 } from '../utils/taskKinds';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
+import {
+  MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N,
+  describeExtraTaskRule, extraTaskSummary,
+} from '../utils/extraTask';
+import { ordinal } from '../utils/ordinal';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -61,7 +66,7 @@ import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { BlockerPickerSheet } from './BlockerPickerSheet';
 import { displayTitleFor } from '../utils/visibilityUtils';
-import { RecurrencePicker, ordinal } from './RecurrencePicker';
+import { RecurrencePicker } from './RecurrencePicker';
 import { recurrenceUnitLabel } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 
@@ -231,6 +236,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [blockedById, setBlockedById] = useState<string | null>(null);
   const [showBlockerPicker, setShowBlockerPicker] = useState(false);
+  const [extraTaskEveryN, setExtraTaskEveryN] = useState<number | null>(null);
+  const [extraTaskTitle, setExtraTaskTitle] = useState('');
+  const [showExtraTask, setShowExtraTask] = useState(false);
   // Just the blocker's title, for the row's value. Selecting the one task
   // rather than the whole list keeps unrelated task changes from re-rendering
   // the editor.
@@ -365,6 +373,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setBlockedById(task.blockedById ?? null);
+      setExtraTaskEveryN(task.extraTaskEveryN ?? null);
+      setExtraTaskTitle(task.extraTaskTitle ?? '');
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
@@ -386,7 +396,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setBlockedById(null);
+      setExtraTaskEveryN(null);
+      setExtraTaskTitle('');
     }
+    setShowExtraTask(false);
     setShowBlockerPicker(false);
     setShowLinkPicker(false); setCustomLinkText('');
     setShowPhoneField(false); setPhoneText(task?.phoneNumber ?? initialDraft?.phoneNumber ?? '');
@@ -448,6 +461,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       blockedById: task?.blockedById ?? null,
+      extraTaskEveryN: task?.extraTaskEveryN ?? null,
+      extraTaskTitle: task?.extraTaskTitle ?? '',
     });
   }, [visible, task]);
 
@@ -568,6 +583,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   };
 
   const proceedWithSave = (effectiveChainItems: ChainItem[] = chainItems, effectiveDraftSubtasks: DraftSubtask[] = draftSubtasks) => {
+    const resolvedExtraTaskTitle = extraTaskTitle.trim() || null;
     const data = {
       title: title.trim(), notes, category, projectId: project, tags,
       dueDate: dueDate?.toISOString() ?? null,
@@ -620,6 +636,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       blockedById,
+      // Both halves or neither: a count with no name would be a rule that can
+      // never fire, and a name with no count is a leftover from clearing one.
+      // extraTaskRule() is what reads them, and this is what keeps a saved row
+      // from disagreeing with it.
+      extraTaskEveryN: resolvedExtraTaskTitle ? extraTaskEveryN : null,
+      extraTaskTitle: extraTaskEveryN !== null ? resolvedExtraTaskTitle : null,
     };
 
     // The whole set of dates this task falls on, earliest first. A single
@@ -999,6 +1021,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber,
       emailAddress,
       blockedById,
+      extraTaskEveryN,
+      extraTaskTitle,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -2244,25 +2268,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'waitingOn', label: 'Waiting on', set: !!blockedById,
-            node: (
-              <>
-            <EditorRow
-              icon="hourglass-outline"
-              label="Waiting on"
-              hint="Stay hidden until another task is done"
-              value={
-                blockerTask
-                  ? displayTitleFor(blockerTask)
-                  : blockedById ? 'Task no longer exists' : undefined
-              }
-              onPress={() => setShowBlockerPicker(true)}
-              onClear={blockedById ? () => setBlockedById(null) : undefined}
-            />
-              </>
-            ),
-          },
-          {
             key: 'repeat', label: 'Repeat', primary: true, set: recurrenceType !== 'none',
             node: (
               <>
@@ -2302,6 +2307,99 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onOpenPicker: () => setShowEndDatePicker(true),
                 }}
               />
+            )}
+              </>
+            ),
+          },
+        ]}
+      />
+
+      {/* Relationships — the two fields that tie this task to another one: one
+          it waits for, and one it creates. "Waiting on" used to sit in
+          Schedule, which is where it was hardest to find: it's not primary, so
+          on a task that wasn't using it the row lived behind that group's
+          "N more" with five schedule fields. Neither row is primary here
+          either, so a task using neither shows one folded line — and setting
+          either one opens the group with the other beside it. */}
+      <EditorGroup
+        label="Relationships"
+        rows={[
+          {
+            key: 'waitingOn', label: 'Waiting on', set: !!blockedById,
+            node: (
+              <>
+            <EditorRow
+              icon="hourglass-outline"
+              label="Waiting on"
+              hint="Stay hidden until another task is done"
+              value={
+                blockerTask
+                  ? displayTitleFor(blockerTask)
+                  : blockedById ? 'Task no longer exists' : undefined
+              }
+              onPress={() => setShowBlockerPicker(true)}
+              onClear={blockedById ? () => setBlockedById(null) : undefined}
+            />
+              </>
+            ),
+          },
+          {
+            key: 'extraTask', label: 'Extra task', set: extraTaskEveryN !== null,
+            node: (
+              <>
+            <EditorRow
+              icon="add-circle-outline"
+              label="Extra task"
+              hint="Add a one-off task every few times you complete this one"
+              // The count alone, not the count and the title: the pair
+              // truncates at this width, and the title is right underneath
+              // once the row is open. Same call Daily target makes.
+              value={extraTaskSummary(extraTaskEveryN)}
+              expanded={showExtraTask}
+              onPress={() => { animateLayout(); setShowExtraTask(v => !v); }}
+              onClear={extraTaskEveryN !== null
+                ? () => { setExtraTaskEveryN(null); setExtraTaskTitle(''); setShowExtraTask(false); }
+                : undefined}
+            />
+            {showExtraTask && (
+              // Deliberately the Daily target body's layout, styles and all:
+              // both are a small integer with a word beside it and a caption
+              // saying how it will read. A second set of styles for the same
+              // shape is how the two would drift apart.
+              <>
+                <View style={styles.targetStepperRow}>
+                  <CountStepper
+                    value={extraTaskEveryN}
+                    onChange={setExtraTaskEveryN}
+                    min={MIN_EXTRA_TASK_EVERY_N}
+                    max={MAX_EXTRA_TASK_EVERY_N}
+                    // The floor clears it, so the row's × isn't the only way
+                    // back out once this has been opened.
+                    allowNull
+                    emptyLabel="Off"
+                    format={n => ordinal(n)}
+                    label="Extra task frequency"
+                    describeValue={n => (n === null ? 'off' : `every ${ordinal(n)} completion`)}
+                  />
+                  {/* Hidden until there's a count, since on its own a title
+                      names a task nothing will ever create. */}
+                  {extraTaskEveryN !== null && (
+                    <TextInput
+                      style={styles.targetUnitInput}
+                      value={extraTaskTitle}
+                      onChangeText={setExtraTaskTitle}
+                      placeholder="Task to add"
+                      placeholderTextColor={colors.textSecondary}
+                      maxLength={TITLE_MAX_LENGTH}
+                      returnKeyType="done"
+                      accessibilityLabel="Title of the task to add"
+                    />
+                  )}
+                </View>
+                <Text style={styles.targetStepperCaption}>
+                  {describeExtraTaskRule(extraTaskEveryN, extraTaskTitle, recurrenceType !== 'none')}
+                </Text>
+              </>
             )}
               </>
             ),

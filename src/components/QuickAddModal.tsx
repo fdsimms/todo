@@ -62,7 +62,8 @@ import { format } from 'date-fns/format';
 import { getLogicalToday, getLogicalTomorrow, getLogicalNow } from '../utils/dateUtils';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
-import { ORDINAL_OPTIONS, RECURRENCE_LABELS, onlyNewestWeekday, ordinal } from './RecurrencePicker';
+import { ORDINAL_OPTIONS, RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
+import { ordinal } from '../utils/ordinal';
 
 interface Props {
   visible: boolean;
