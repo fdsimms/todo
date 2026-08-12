@@ -46,6 +46,8 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     sourceRecipeTitle: null,
     choiceGroup: null,
     isStaple: false,
+    expiresAt: null,
+    useUpTask: null,
     ...overrides,
   };
 }

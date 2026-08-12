@@ -1854,6 +1854,14 @@ export function TodayScreen() {
     // One zone for the whole block rather than one per row: the add button only
     // ever asks "did this land on the pinned section", and the answer doesn't
     // change per row. The rows aren't in `zoneByKey` at all now.
+    //
+    // The trailing spacer (outside the zone, so it isn't part of the drop
+    // target) is what stops the block visually fusing with an uncategorized
+    // task's row right below it — that section deliberately has no header
+    // (see makeCategoryGroups), so without it the pinned block's last card and
+    // the next task's card sit back to back with only the ordinary 2px
+    // inter-row gap, reading as one section.
+    <>
     <FabDropZone zone={PINNED_DROP_ZONE}>
       <Pressable style={styles.focusSectionHeader} onPress={() => setExpandedTaskId(null)}>
         <View style={styles.focusSectionTitleRow}>
@@ -1912,6 +1920,8 @@ export function TodayScreen() {
         }
       />
     </FabDropZone>
+    <View style={styles.pinnedBlockFooter} />
+    </>
   );
 
   // Footer shared by every list variant: the vacation-hidden reveal (when any)
@@ -3034,6 +3044,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   pinnedSectionActions: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+  },
+  // Gap between the pinned block and whatever renders below it — see the note
+  // on pinnedBlock. Page-background colored, same as categorySectionHeader's
+  // own paddingTop, so it reads as a break rather than more card.
+  pinnedBlockFooter: {
+    height: spacing.md,
+    backgroundColor: colors.bg,
   },
   emptyContainer: { flexGrow: 1 },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },

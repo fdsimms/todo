@@ -337,6 +337,24 @@ export interface Task {
   // purged leaves this dangling, and a dangling cook task is just a task.
   mealEntryId: string | null;
 
+  // The GroceryItem this task was projected from — set only on a "Use up X"
+  // task an expiry date spawned, null on every task a person typed. See
+  // src/utils/groceryExpiry.ts for the projection rules.
+  //
+  // Same master/replica split as mealEntryId, one notch quieter: the item owns
+  // the title and the day, and reconciling rewrites those two and nothing else
+  // — but unlike a meal, nothing flows back. Ticking "Use up spinach" off is
+  // not a claim about the catalog row, which still knows when it was bought and
+  // when it goes off; the item is not marked eaten, thrown away or out of
+  // stock, because none of those is what ticking a task means.
+  //
+  // Reconciling is also deliberately narrower: it runs on the transitions that
+  // change the expiry, not on every grocery mutation, since an expiry date is
+  // set at the till and then left alone. Resolve-or-shrug like every other
+  // cross-row pointer here — a forgotten item leaves this dangling, and a
+  // dangling use-up task is just a task.
+  groceryItemId: string | null;
+
   // Streaks (recurring tasks only)
   streakCount: number;       // positive = N consecutive completions
   streakDate: string | null; // logical-day ISO string of last completion
@@ -724,7 +742,55 @@ export interface GroceryItem {
   // list, so "salt" doesn't sit in Need to buy next to what the trip is
   // actually for.
   isStaple: boolean;
+  /**
+   * A `YYYY-MM-DD` local day key — the day this should be used up by, or null
+   * for anything that doesn't go off on a schedule worth naming.
+   *
+   * A date rather than a `perishable` flag, for the reason `Leftover.keepUntil`
+   * gives: a flag can only say *whether* to nudge, while a day can say *when*,
+   * which is the thing the user is actually trying to get ahead of. Stored as
+   * the resolved day rather than as "keeps for 5 days" so a later correction to
+   * the purchase history can't silently drag the deadline with it.
+   *
+   * Written by `finishShopping` from the shelf-life lexicon (see
+   * groceryShelfLife.ts) and by hand in `GroceryItemSheet`. Every purchase
+   * re-stamps it: buying spinach again is fresh spinach, not the old bag.
+   *
+   * **Distinct from `onHandUntil`, which is nearby and answers a different
+   * question.** That one is "do I still have this" — an availability guess that
+   * feeds the pantry and a week plan, and that self-expires into silence. This
+   * one is "is it about to be wasted", and it earns a real Task.
+   */
+  expiresAt: string | null;
+  /**
+   * Whether this item gets a "Use up X" task when it has an expiry — an
+   * explicit per-item answer, or null for "the groceryUseUpTasks setting
+   * decides". Exactly `MealPlanEntry.cookTask`'s tri-state, and for the same
+   * two reasons.
+   *
+   * `false` is what deleting the task records, so the next purchase doesn't
+   * hand back a task the user has already thrown away — a staple bought every
+   * week is precisely the row that would otherwise nag for ever. `true` is the
+   * opt-in for one item with the feature off, which is what makes the setting
+   * safe to default off.
+   */
+  useUpTask: boolean | null;
 }
+
+// How many days before an item's expiry its "Use up X" task falls due.
+//
+// One day rather than zero: the task exists to get the thing eaten, and a
+// reminder that arrives on the day it's already questionable has given up the
+// evening someone could have cooked with it — the same call needsAttention()
+// makes for a leftover. Zero is still sayable (use it on the day), and the
+// ceiling is generous for the same reason LEFTOVER_KEEP_DAYS_MAX is.
+export const GROCERY_USE_UP_LEAD_DAYS_DEFAULT = 1;
+export const GROCERY_USE_UP_LEAD_DAYS_MIN = 0;
+export const GROCERY_USE_UP_LEAD_DAYS_MAX = 14;
+
+// The furthest out a use-by date can be set by hand, in days. Long enough for a
+// freezer bag, short enough that the stepper can still reach the far end.
+export const GROCERY_EXPIRY_DAYS_MAX = 365;
 
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task
 // title, and a long one wrecks the row layout at the bigger grocery font size.

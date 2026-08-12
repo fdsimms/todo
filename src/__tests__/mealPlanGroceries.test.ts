@@ -113,6 +113,8 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     sourceRecipeTitle: null,
     choiceGroup: null,
     isStaple: false,
+    expiresAt: null,
+    useUpTask: null,
     ...overrides,
   };
 }

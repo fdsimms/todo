@@ -11,6 +11,8 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
 import { dayKeyOf } from '../utils/dateUtils';
 import { describeCookHistory, describePantryCoverage, describeRecipe, type PantryCoverage } from '../utils/recipeUtils';
+import { flattenRecipeIngredients, recipeMap, type FlatIngredient } from '../utils/recipeComponents';
+import { convertQuantity } from '../utils/unitConvert';
 import {
   mergeMealSuggestions, mealIdeaRecipeDraft, mealTitleKey,
   type MealIdea, type MealSuggestion,
@@ -18,6 +20,7 @@ import {
 import { suggestMealIdeas, suggestMealIngredients, describeAIError } from '../services/aiSuggestions';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
@@ -136,8 +139,12 @@ export function SuggestMealsSheet({
   const allRecipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
+  const unitSystem = useSettingsStore(s => s.unitSystem);
+  const recipesById = useMemo(() => recipeMap(allRecipes), [allRecipes]);
 
   const [filter, setFilter] = useState<RecipeMealType | 'all'>('all');
+  /** A recipe being previewed — read-only, doesn't touch `selected`. */
+  const [previewRecipe, setPreviewRecipe] = useState<Recipe | null>(null);
 
   /** Picked but not yet saved — toggled by tapping a row, cleared by Save/close. */
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -158,6 +165,7 @@ export function SuggestMealsSheet({
   useEffect(() => {
     if (visible) return;
     setFilter('all');
+    setPreviewRecipe(null);
     setSelected(new Set());
     setLandedOn(new Map());
     setSaving(false);
@@ -351,6 +359,25 @@ export function SuggestMealsSheet({
     }
   };
 
+  // Grouped by the recipe each line is actually written on — the root's own
+  // lines first, then each component's under its own name — same convention
+  // flattenRecipeIngredients' callers use elsewhere (RecipeToListSheet,
+  // AddWeekToListSheet). Resolved to the defaults: a preview isn't a shop, so
+  // there's nothing to pick an alternative for.
+  const previewGroups = useMemo(() => {
+    if (!previewRecipe) return [];
+    const flat = flattenRecipeIngredients(previewRecipe, recipesById);
+    const groups: { recipe: Recipe; items: FlatIngredient[] }[] = [];
+    for (const item of flat) {
+      let group = groups.find(g => g.recipe.id === item.recipe.id);
+      if (!group) { group = { recipe: item.recipe, items: [] }; groups.push(group); }
+      group.items.push(item);
+    }
+    return groups;
+  }, [previewRecipe, recipesById]);
+
+  const openPreview = (recipe: Recipe) => { haptics.tap(); setPreviewRecipe(recipe); };
+
   const renderRecipeRow = (recipe: Recipe) => {
     const key = `recipe:${recipe.id}`;
     const landedDay = landedOn.get(key);
@@ -403,11 +430,22 @@ export function SuggestMealsSheet({
             </View>
           )}
         </View>
-        <Ionicons
-          name={landedDay || isSelected ? 'checkmark-circle' : 'add-circle-outline'}
-          size={iconSize.md}
-          color={landedDay ? colors.green : isSelected ? colors.accent : disabled ? colors.textTertiary : colors.accent}
-        />
+        <View style={styles.rowActions}>
+          <TouchableOpacity
+            onPress={() => openPreview(recipe)}
+            activeOpacity={interaction.activeOpacity}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`See ingredients for ${recipe.name}`}
+          >
+            <Ionicons name="information-circle-outline" size={iconSize.md} color={colors.textTertiary} />
+          </TouchableOpacity>
+          <Ionicons
+            name={landedDay || isSelected ? 'checkmark-circle' : 'add-circle-outline'}
+            size={iconSize.md}
+            color={landedDay ? colors.green : isSelected ? colors.accent : disabled ? colors.textTertiary : colors.accent}
+          />
+        </View>
       </TouchableOpacity>
     );
   };
@@ -649,6 +687,64 @@ export function SuggestMealsSheet({
             {renderIdeaSection()}
           </ScrollView>
         )}
+
+        {/* Nested inside this sheet's own Modal, not a sibling — a sibling
+            Modal would ask the screen behind this one to present a second
+            sheet while this one is already up (same reasoning as
+            GroceryItemSheet inside PantrySheet, see CLAUDE.md). */}
+        <Modal
+          visible={!!previewRecipe}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setPreviewRecipe(null)}
+        >
+          {previewRecipe && (
+            <View style={styles.root}>
+              <View style={styles.header}>
+                <SheetHeaderButton label="Close" role="cancel" onPress={() => setPreviewRecipe(null)} minWidth={72} />
+                <Text style={styles.headerTitle} numberOfLines={1}>{previewRecipe.name}</Text>
+                <SheetHeaderButton
+                  label={selected.has(`recipe:${previewRecipe.id}`) ? 'Selected' : 'Select'}
+                  role="confirm"
+                  onPress={() => {
+                    const key = `recipe:${previewRecipe.id}`;
+                    if (!selected.has(key)) toggleSelect(key);
+                    setPreviewRecipe(null);
+                  }}
+                  disabled={saving || !!landedOn.get(`recipe:${previewRecipe.id}`)
+                    || (!selected.has(`recipe:${previewRecipe.id}`) && capacityFull)}
+                  minWidth={72}
+                />
+              </View>
+              <ScrollView contentContainerStyle={styles.previewList}>
+                <Text style={styles.previewMeta}>{describeRecipe(previewRecipe)}</Text>
+                {!!previewRecipe.notes && <Text style={styles.previewNotes}>{previewRecipe.notes}</Text>}
+                {previewGroups.length === 0 ? (
+                  <Text style={styles.previewNotes}>This recipe has no ingredients yet.</Text>
+                ) : previewGroups.map(group => (
+                  <View key={group.recipe.id} style={styles.previewGroup}>
+                    {group.recipe.id !== previewRecipe.id && (
+                      <Text style={styles.sectionHeader}>FROM {group.recipe.name.toUpperCase()}</Text>
+                    )}
+                    {group.items.map(({ ingredient }) => {
+                      const quantity = convertQuantity(ingredient.quantity, unitSystem).text;
+                      return (
+                        <View key={ingredient.id} style={styles.previewIngredientRow}>
+                          <Text style={styles.previewIngredientName}>
+                            {ingredient.name}{ingredient.prep ? `, ${ingredient.prep}` : ''}
+                          </Text>
+                          {!!quantity && (
+                            <Text style={styles.previewIngredientQty} numberOfLines={1}>{quantity}</Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </Modal>
       </View>
     </Modal>
   );
@@ -668,6 +764,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   filterRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -742,6 +839,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: `${colors.purple}26`,
   },
   ideaTagText: { fontSize: font.xs, fontWeight: fontWeight.medium, color: colors.purple },
+  rowActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   ideaActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   ideaError: { fontSize: font.xs, color: colors.red, marginTop: spacing.xs },
 
@@ -771,4 +869,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   generatingText: { fontSize: font.sm, color: colors.textSecondary },
   generateError: { gap: spacing.sm, alignItems: 'flex-start' },
   generateErrorText: { fontSize: font.sm, color: colors.red, lineHeight: lineHeight.sm },
+
+  previewList: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
+  previewMeta: { fontSize: font.sm, color: colors.textTertiary, lineHeight: lineHeight.sm },
+  previewNotes: { fontSize: font.sm, color: colors.textSecondary, lineHeight: lineHeight.sm },
+  previewGroup: { gap: spacing.xs },
+  previewIngredientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingVertical: 6,
+    borderBottomWidth: border.hairline,
+    borderBottomColor: colors.separator,
+  },
+  previewIngredientName: { flex: 1, fontSize: font.md, color: colors.text },
+  previewIngredientQty: { fontSize: font.sm, color: colors.textTertiary },
 });

@@ -571,6 +571,19 @@ export function initDatabase(): void {
     // still surfaced a stalled project the moment the Pull sheet was opened
     // by hand, which is exactly what a reference list never wants.
     'ALTER TABLE projects ADD COLUMN nudge_opt_in INTEGER NOT NULL DEFAULT 0',
+    // NULL on every existing row, and nothing backfills it: an item bought
+    // before this shipped has no purchase date the app can trust to be the
+    // *last* one, and inventing a use-by day for a catalog of hundreds is how
+    // this feature would announce itself with a screenful of tasks. The next
+    // trip stamps the rows it buys. See GroceryItem.expiresAt.
+    'ALTER TABLE grocery_items ADD COLUMN expires_at TEXT',
+    // Nullable with no default, for exactly the reason meal_plan_entries.
+    // cook_task is: NULL is the third state ("the setting decides"), and a
+    // DEFAULT 0 would record every item in the catalog as an explicit refusal.
+    'ALTER TABLE grocery_items ADD COLUMN use_up_task INTEGER',
+    // NULL on every task that already exists — a task nobody projected from a
+    // grocery item isn't one. Same shape as meal_entry_id above.
+    'ALTER TABLE tasks ADD COLUMN grocery_item_id TEXT',
     // NULL on every existing row — nobody has a rule for a feature that didn't
     // exist, and NULL is what "off" already means for this field.
     'ALTER TABLE tasks ADD COLUMN extra_task_every_n INTEGER',
@@ -893,6 +906,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     emailAddress: (row.email_address as string) ?? null,
     blockedById: (row.blocked_by_id as string | null) ?? null,
     mealEntryId: (row.meal_entry_id as string | null) ?? null,
+    groceryItemId: (row.grocery_item_id as string | null) ?? null,
     pendingImport: parsePendingImport(row.pending_import),
     postponeCount: (row.postpone_count as number) ?? 0,
     postponeMuted: Boolean(row.postpone_muted),
@@ -918,9 +932,9 @@ export function dbInsertTask(task: Task): void {
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, meal_entry_id,
-      postpone_count, postpone_muted,
+      grocery_item_id, postpone_count, postpone_muted,
       extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -956,6 +970,7 @@ export function dbInsertTask(task: Task): void {
       task.allowOvershoot ? 1 : 0,
       task.pinnedOrder,
       task.mealEntryId ?? null,
+      task.groceryItemId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
       task.extraTaskEveryN ?? null,
@@ -980,7 +995,7 @@ export function dbUpdateTask(task: Task): void {
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, meal_entry_id=?,
-      postpone_count=?, postpone_muted=?,
+      grocery_item_id=?, postpone_count=?, postpone_muted=?,
       extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?
     WHERE id=?`,
     [
@@ -1018,6 +1033,7 @@ export function dbUpdateTask(task: Task): void {
       task.allowOvershoot ? 1 : 0,
       task.pinnedOrder,
       task.mealEntryId ?? null,
+      task.groceryItemId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
       task.extraTaskEveryN ?? null,
@@ -1414,6 +1430,12 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     sourceRecipeTitle: (row.source_recipe_title as string) ?? null,
     choiceGroup: (row.choice_group as string) ?? null,
     isStaple: Boolean(row.is_staple),
+    expiresAt: (row.expires_at as string) ?? null,
+    // Nullable on purpose — see the column's migration note. `?? null` rather
+    // than Boolean(), which would flatten the unanswered state into a refusal.
+    useUpTask: row.use_up_task === null || row.use_up_task === undefined
+      ? null
+      : Boolean(row.use_up_task),
   };
 }
 
@@ -1429,8 +1451,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
-       source_recipe_id, source_recipe_title, choice_group, is_staple)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, use_up_task)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -1439,6 +1461,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
+      item.expiresAt ?? null,
+      item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
     ]
   );
 }
@@ -1448,7 +1472,8 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
     `UPDATE grocery_items SET
        name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
-       on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?
+       on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
+       expires_at=?, use_up_task=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
@@ -1457,7 +1482,10 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
-      item.choiceGroup ?? null, item.isStaple ? 1 : 0, item.id,
+      item.choiceGroup ?? null, item.isStaple ? 1 : 0,
+      item.expiresAt ?? null,
+      item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
+      item.id,
     ]
   );
 }
@@ -1489,7 +1517,8 @@ export function dbDeleteGroceryItem(id: string): void {
 export function dbFinishGroceryShopping(
   purchasedAt: string,
   onHandUntilById: Readonly<Record<string, string>> = {},
-  shopId: string | null = null
+  shopId: string | null = null,
+  expiresAtById: Readonly<Record<string, string>> = {}
 ): string[] {
   const rows = db.getAllSync<{ id: string }>(
     'SELECT id FROM grocery_items WHERE checked = 1 AND on_list = 1'
@@ -1510,6 +1539,12 @@ export function dbFinishGroceryShopping(
   for (const row of rows) {
     const until = onHandUntilById[row.id];
     if (until) db.runSync('UPDATE grocery_items SET on_hand_until = ? WHERE id = ?', [until, row.id]);
+    // Same per-item pass, and the same reason: a use-by day comes off the shelf
+    // life of *this* item (see groceryShelfLife.ts), so it can't ride the bulk
+    // UPDATE either. Only the rows the lexicon recognises get one — a bag of
+    // rice is in this trip too and has no day worth naming.
+    const expires = expiresAtById[row.id];
+    if (expires) db.runSync('UPDATE grocery_items SET expires_at = ? WHERE id = ?', [expires, row.id]);
   }
   if (shopId) {
     for (const row of rows) {
