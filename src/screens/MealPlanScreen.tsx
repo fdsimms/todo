@@ -18,6 +18,7 @@ import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
 import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
+import { CookedRestockBanner } from '../components/CookedRestockBanner';
 import { PrepTasksReviewSheet } from '../components/PrepTasksReviewSheet';
 import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
 import { CalendarPicker } from '../components/CalendarPicker';
@@ -67,7 +68,6 @@ import {
   applyChoice,
   describeChoices,
   recipeChoiceGroups,
-  flattenRecipeIngredients,
   flattenRecipePrepTasks,
   recipeMap,
   type FlatPrepTask,
@@ -82,6 +82,11 @@ import {
   recipeIndex,
   titleForEntry,
 } from '../utils/mealPlan';
+import {
+  classifyPlanned,
+  plannedIngredientsForRecipe,
+  restockRows,
+} from '../utils/mealPlanGroceries';
 
 /**
  * Tints a day section while a drag is aimed at it — the same "arm on the way
@@ -309,12 +314,42 @@ export function MealPlanScreen() {
     });
   };
 
-  // The recipe whose ingredients we're offering to re-add after mark-cooked —
-  // null closes RecipeToListSheet, same on/off pattern as `addingToList`.
+  // The recipe whose ingredients we're offering to re-add after mark-cooked.
   // Carries the entry's picks alongside the recipe: you cooked the roast
   // potatoes, so the re-shop offers the roast potatoes' lines.
-  const [cookedRecipeForList, setCookedRecipeForList] =
+  //
+  // This is the *banner's* subject, not the sheet's — marking something cooked
+  // used to open RecipeToListSheet outright, which is what made a tick about
+  // eating read as a question about shopping (see CookedRestockBanner).
+  // Session-only, and deliberately not persisted: it's an offer about a tap
+  // you just made, so there is nothing for it to mean on the next launch.
+  const [restockOffer, setRestockOffer] =
     useState<{ recipe: Recipe; choices: string[]; scale: number } | null>(null);
+  const [restockSheetVisible, setRestockSheetVisible] = useState(false);
+
+  // One count, used twice: whether to make the offer at all, and what the
+  // banner says. Computed against the live catalog rather than snapshotted at
+  // cook time, which is what retires the banner without needing a dismissal
+  // stamp — adding the items takes the set to 0 and it renders nothing, the
+  // same "hidden rather than hedged" call TripSuggestionCard makes.
+  const restockCountFor = useCallback(
+    (recipe: Recipe, choices: readonly string[], scale: number) =>
+      restockRows(
+        classifyPlanned(
+          plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices }, scale),
+          groceryItems,
+          new Date()
+        )
+      ).length,
+    [recipesById, groceryItems]
+  );
+
+  const restockCount = useMemo(
+    () => (restockOffer
+      ? restockCountFor(restockOffer.recipe, restockOffer.choices, restockOffer.scale)
+      : 0),
+    [restockOffer, restockCountFor]
+  );
 
   // The leftover sheet's two modes, held apart so opening one can't leave the
   // other's state behind: an id for editing a row, a seed for logging a new
@@ -585,12 +620,14 @@ export function MealPlanScreen() {
       }
     }
 
-    // A recipe with nothing to re-shop offers nothing — same restraint
-    // RecipeDetailScreen's own "Add ingredients to list" already keeps, and
-    // counted the same way: a dish whose ingredients all live on its
-    // components still has a shop.
-    if (!recipe || flattenRecipeIngredients(recipe, recipesById, { chosen: entry.recipeChoices }).length === 0) return;
-    setCookedRecipeForList({ recipe, choices: entry.recipeChoices, scale: entry.recipeScale });
+    // A recipe with nothing to restock offers nothing. The bar used to be
+    // "has any ingredient lines at all", which is no bar: on a dish cooked for
+    // the first time every line qualifies, so the offer arrived asking to buy
+    // the salt and pepper. restockRows is what the offer can actually defend —
+    // see its note, and CookedRestockBanner's.
+    if (!recipe) return;
+    if (restockCountFor(recipe, entry.recipeChoices, entry.recipeScale) === 0) return;
+    setRestockOffer({ recipe, choices: entry.recipeChoices, scale: entry.recipeScale });
   };
 
   // ——— Bulk selection actions (#1110) ——————————————————————————————————
@@ -990,6 +1027,21 @@ export function MealPlanScreen() {
       />
       <GroceriesHubPills active="MealPlan" />
 
+      {/* A sibling of the list rather than part of its header, like
+          ActiveTripBanner and unlike the cards inside ListHeaderComponent: the
+          tap it answers can happen on any day of the week, so an offer that
+          scrolls with the week is one you can miss entirely. Hidden while
+          selecting, for the reason the list header gives — nothing that opens
+          a sheet belongs over an in-progress selection. */}
+      {restockOffer && restockCount > 0 && !selectionMode && (
+        <CookedRestockBanner
+          recipeName={restockOffer.recipe.name}
+          count={restockCount}
+          onReview={() => setRestockSheetVisible(true)}
+          onDismiss={() => setRestockOffer(null)}
+        />
+      )}
+
       <FabDropZoneProvider
         ref={dropZonesRef}
         onIntentChange={fabIntentChannel.publish}
@@ -1327,13 +1379,15 @@ export function MealPlanScreen() {
         onClose={() => setSuggesting(null)}
       />
 
+      {/* Ticks stay scoped to what the banner claimed — see initialSelection. */}
       <RecipeToListSheet
-        visible={cookedRecipeForList !== null}
-        recipe={cookedRecipeForList?.recipe ?? null}
+        visible={restockSheetVisible}
+        recipe={restockOffer?.recipe ?? null}
         recipesById={recipesById}
-        initialChoices={cookedRecipeForList?.choices}
-        initialScale={cookedRecipeForList?.scale}
-        onClose={() => setCookedRecipeForList(null)}
+        initialChoices={restockOffer?.choices}
+        initialScale={restockOffer?.scale}
+        initialSelection="restock"
+        onClose={() => setRestockSheetVisible(false)}
       />
 
       <PrepTasksReviewSheet

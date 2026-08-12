@@ -21,6 +21,7 @@ import { defaultOnHandUntil } from '../utils/grocerySuggest';
 import {
   classifyPlanned,
   plannedIngredientsForRecipe,
+  restockRows,
   type ClassifiedIngredient,
   type PlanCategory,
 } from '../utils/mealPlanGroceries';
@@ -59,6 +60,19 @@ interface Props {
    * here is written back.
    */
   initialScale?: number;
+  /**
+   * Which rows start ticked. `'all'` — every `needToBuy` line — is right when
+   * the user asked for this sheet by name ("Add ingredients to list"): they
+   * said they want the shop, and making them tick it out again is busywork.
+   *
+   * `'restock'` narrows that to the lines `restockRows` will defend — known
+   * items that are off the list — and is what the meal plan's post-cook offer
+   * passes. There the ticks have to match the claim that got the sheet opened:
+   * the banner counted those rows and nothing else, so pre-ticking a line the
+   * app has never seen before would be the sheet quietly asking for more than
+   * the banner did. Those lines are still listed and still tickable by hand.
+   */
+  initialSelection?: 'all' | 'restock';
   onClose: () => void;
 }
 
@@ -91,6 +105,7 @@ export function RecipeToListSheet({
   recipesById,
   initialChoices,
   initialScale,
+  initialSelection = 'all',
   onClose,
 }: Props) {
   const colors = useColors();
@@ -160,10 +175,13 @@ export function RecipeToListSheet({
   // stay unticked when they double the batch.
   useEffect(() => {
     if (!visible) return;
-    setTicked(new Set(byCategory.needToBuy.map(r => r.nameKey)));
+    const rows = initialSelection === 'restock'
+      ? restockRows(byCategory.needToBuy)
+      : byCategory.needToBuy;
+    setTicked(new Set(rows.map(r => r.nameKey)));
     setExpandedSections(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, choiceKey]);
+  }, [visible, choiceKey, initialSelection]);
 
   const toggleSection = (category: PlanCategory) => {
     haptics.tap();
@@ -329,7 +347,7 @@ export function RecipeToListSheet({
                       {rows.map((row, i) => {
                         const on = interactive && ticked.has(row.nameKey);
                         const subtitle = row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null);
-                        const canMarkHave = category === 'needToBuy' && itemsByKey.has(row.nameKey);
+                        const canMarkHave = category === 'needToBuy' && row.known;
                         // Shown in the reader's units; what gets written to the
                         // list is still row.quantity, as the recipe wrote it.
                         const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
