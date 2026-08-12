@@ -1381,7 +1381,7 @@ export const TaskItem = React.memo(function TaskItem({
                 <Text style={styles.title} numberOfLines={2}>{displayTitle}</Text>
               </TouchableOpacity>
             ) : (
-              <Text style={[styles.title, styles.titleFlex, locked && styles.titleLocked]} numberOfLines={1} ellipsizeMode="tail">
+              <Text style={[styles.title, styles.titleFlex, locked && styles.titleLocked]} numberOfLines={2} ellipsizeMode="tail">
                 {displayTitle}
               </Text>
             )}
