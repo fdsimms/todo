@@ -730,15 +730,11 @@ function seedGroceries(recipes: DemoRecipes): void {
   setCheckedMany(idsNamed(CORNER_SHOP), true);
   finishShopping(null);
 
-  // Everything typed above is still sitting on the list, since only what a
-  // trip actually bought came off it. Clearing promotes the stragglers into
-  // the catalog without counting them as bought, so what's on the list below
-  // is the list someone chose rather than the leavings of the seed order.
-  clearList();
-
   // "I can get this here" with no trip behind it — an assertion, not an
   // observation. Almonds are linked to Costco alone, so they read as available
-  // at exactly one store.
+  // at exactly one store. Linking (like finishing a trip) promotes a
+  // provisional row into the catalog, so this runs before the clear below —
+  // otherwise these names, never bought, would have nothing left to promote.
   linkItemShop(itemNamed('Almonds').id, costco.id);
   linkItemShopMany(idsNamed(['Peanut butter', 'Ground beef']), costco.id);
   linkItemShopMany(idsNamed(['Dish soap', 'Toilet paper']), amazon.id);
@@ -747,8 +743,16 @@ function seedGroceries(recipes: DemoRecipes): void {
   // bought here" from "they don't stock it". Tortillas are marked absent at
   // Trader Joe's — a store with plenty else on record, so the trip planner has
   // to route round one item rather than write the shop off — and Almonds at
-  // Trader Joe's too, where Costco is the answer.
+  // Trader Joe's too, where Costco is the answer. Same promotion as above.
   markItemsUnavailable(idsNamed(['Tortillas', 'Almonds']), traderJoes.id);
+
+  // Everything else typed above is still sitting on the list, since only what
+  // a trip actually bought — or a link/unavailable claim above — came off it
+  // or promoted it. Clearing parks what's already catalog and drops the rest,
+  // same as removing an untouched name from the list by hand, so what's on
+  // the list below is the list someone chose rather than the leavings of the
+  // seed order.
+  clearList();
 
   // The pantry override, both directions. "Got it" parks an item as on hand
   // for a while; "Out of it" is the user overruling the purchase-history guess
@@ -771,9 +775,16 @@ function seedGroceries(recipes: DemoRecipes): void {
   setAisleOrder([...order.filter(a => a !== 'Frozen'), 'Frozen']);
 
   // What's on the list right now, with two things already in the trolley — the
-  // state the finish-shopping sheet is for.
-  const ON_LIST = ['Milk', 'Eggs', 'Bananas', 'Bread', 'Cheddar', 'Tortillas', 'Sparkling water', 'Ice cream'];
-  addExistingMany(idsNamed(ON_LIST));
+  // state the finish-shopping sheet is for. Milk, Eggs, Bananas, Bread and
+  // Tortillas are already catalog rows (bought or linked above) and go back
+  // on the list as themselves; Cheddar, Sparkling water and Ice cream were
+  // never bought or linked, so clearList dropped them — they're typed fresh,
+  // same as a name nobody has shopped for yet.
+  const ON_LIST_EXISTING = ['Milk', 'Eggs', 'Bananas', 'Bread', 'Tortillas'];
+  addExistingMany(idsNamed(ON_LIST_EXISTING));
+  ['Cheddar', 'Sparkling water', 'Ice cream'].forEach(name =>
+    addByName(name, undefined, undefined, { registerUndo: false })
+  );
   setCheckedMany(idsNamed(['Milk', 'Bananas']), true);
 
   // ...plus tonight's dinner, added off the recipe, so a few rows carry "from

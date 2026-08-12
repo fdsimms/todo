@@ -1672,12 +1672,22 @@ describe('grocery items', () => {
       expect(items.find(i => i.id === 'g1')!.purchaseCount).toBe(3);
     });
 
-    // Parking, not forgetting — which is what the confirm promises, and what
-    // keeps !onList ⇒ inCatalog true for the rows a provisional add left.
-    it('promotes what it parks into the catalog', () => {
+    // Same split removeFromList makes: a row already in the catalog parks
+    // off-list, but a provisional row never was, so clearing deletes it
+    // rather than minting a catalog entry for something never bought.
+    it('deletes a provisional row rather than parking it in the catalog', () => {
       dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', inCatalog: false }));
       dbClearGroceryList();
-      expect(dbGetAllGroceryItems()[0].inCatalog).toBe(true);
+      expect(dbGetAllGroceryItems()).toHaveLength(0);
+    });
+
+    it('parks a catalog row off-list instead of deleting it', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', inCatalog: true }));
+      dbClearGroceryList();
+      const items = dbGetAllGroceryItems();
+      expect(items).toHaveLength(1);
+      expect(items[0].onList).toBe(false);
+      expect(items[0].inCatalog).toBe(true);
     });
   });
 

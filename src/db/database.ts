@@ -1502,12 +1502,16 @@ export function dbFinishGroceryShopping(
 export function dbClearGroceryList(): string[] {
   const rows = db.getAllSync<{ id: string }>('SELECT id FROM grocery_items WHERE on_list = 1');
   if (rows.length === 0) return [];
-  // in_catalog = 1 for the same reason the alert says nothing is deleted: a
-  // cleared trip parks its rows rather than forgetting them, so a name typed
-  // this week survives as catalog even though it was never bought. It also
-  // keeps the !onList ⇒ inCatalog invariant, without which a provisional row
-  // could sit off the list and then be deleted by a later Remove from list.
-  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0, in_catalog = 1 WHERE on_list = 1');
+  // Same split removeFromList makes: a row already in the catalog parks
+  // off-list, same as before. A provisional row — never in the catalog until
+  // this trip added it — has nothing to keep once the trip is abandoned, so
+  // it's deleted rather than minted into a catalog entry for something that
+  // was never bought.
+  const provisional = db.getAllSync<{ id: string }>(
+    'SELECT id FROM grocery_items WHERE on_list = 1 AND in_catalog = 0'
+  );
+  for (const row of provisional) dbDeleteGroceryItem(row.id);
+  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0 WHERE on_list = 1');
   return rows.map(r => r.id);
 }
 

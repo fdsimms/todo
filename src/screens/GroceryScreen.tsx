@@ -420,7 +420,7 @@ export function GroceryScreen() {
   const confirmClear = useCallback(() => {
     Alert.alert(
       'Clear the list?',
-      'Everything comes off the list without being marked as bought. Nothing is deleted — it all stays in your catalog.',
+      'Everything comes off the list without being marked as bought. Items already in your catalog stay there; items typed just for this list are removed.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
