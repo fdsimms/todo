@@ -30,7 +30,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
 import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
-import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
+import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
+import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { chainPreview, isChainFinish } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
@@ -647,13 +648,29 @@ export const TaskItem = React.memo(function TaskItem({
   // is recomputed from the stored fields against nowTick rather than counted
   // down in state, so a row that mounts after the app was backgrounded — or
   // killed — shows the truth rather than a stale number.
-  const timed = isTimedTask(task);
+  //
+  // `parentId` gates it because a subtask carries `timedMinutes` to mean its
+  // stretch of its parent's run (see utils/timerSegments.ts), not a countdown
+  // of its own — and a subtask does surface as a row of its own in Search,
+  // where a second start button for the same session would be two timers on
+  // one task.
+  const timed = isTimedTask(task) && task.parentId === null;
   const remainingSeconds = timed ? timerRemaining(task, nowTick) : 0;
   const countdownProgress = timed ? timerProgress(task, nowTick) : 0;
   const timerReady = timed && remainingSeconds <= 0;
   // Part-way through but not running. The chip shows what's left rather than the
   // full target, so a task paused at 5 of 15 minutes doesn't read as untouched.
   const timerPaused = timed && !timerRunning && task.timerElapsedSeconds > 0;
+
+  // The stretches the subtasks split the countdown into, and which one the
+  // clock is in. Empty for a timed task nobody apportioned, which is what keeps
+  // every existing one rendering exactly as before.
+  const segments = useMemo(
+    () => (timed ? timerSegments(subtasks) : []),
+    [timed, subtasks],
+  );
+  const timerElapsedNow = segments.length > 0 ? timerElapsed(task, nowTick) : 0;
+  const liveSegment = segments.length > 0 ? activeSegment(segments, timerElapsedNow) : null;
 
   // Announce the finish once per run while the row is on screen. The scheduled
   // notification covers the backgrounded case; this is just the in-app nudge.
@@ -1435,10 +1452,10 @@ export const TaskItem = React.memo(function TaskItem({
                   timerReady
                     ? 'Timer done, ready to complete'
                     : timerRunning
-                      ? `${formatStopwatch(remainingSeconds)} left`
+                      ? `${formatStopwatch(remainingSeconds)} left${liveSegment ? `, on ${liveSegment.title}` : ''}`
                       : timerPaused
-                        ? `Timer paused, ${formatStopwatch(remainingSeconds)} left`
-                        : `Timed, ${formatDuration(task.timedMinutes!)}`
+                        ? `Timer paused, ${formatStopwatch(remainingSeconds)} left${liveSegment ? `, on ${liveSegment.title}` : ''}`
+                        : `Timed, ${formatDuration(task.timedMinutes!)}${liveSegment ? `, starting with ${liveSegment.title}` : ''}`
                 }
               >
                 <Ionicons
@@ -1460,6 +1477,15 @@ export const TaskItem = React.memo(function TaskItem({
                       ? formatStopwatch(remainingSeconds)
                       : formatDuration(task.timedMinutes!)}
                 </Text>
+                {/* Which stretch of the run you're on. It's on the collapsed row
+                    rather than only in the panel below because that's the whole
+                    use for apportioning one — knowing to move on to the new
+                    piece is no help if it takes a tap to find out. */}
+                {liveSegment && !timerReady && (
+                  <Text style={styles.countdownSegment} numberOfLines={1}>
+                    · {liveSegment.title}
+                  </Text>
+                )}
               </View>
             )}
             {windowActive && windowEnd && (
@@ -1723,7 +1749,13 @@ export const TaskItem = React.memo(function TaskItem({
                   onDragStateChange={onSubtaskDragStateChange}
                   data={subtasks}
                   onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
-                  renderItem={(sub, i, drag) => (
+                  renderItem={(sub, i, drag) => {
+                    // This subtask's stretch of the countdown, if it was given
+                    // one. The clock decides how it reads — the tick box beside
+                    // it stays a separate answer to a separate question.
+                    const segment = segments.find(s => s.id === sub.id) ?? null;
+                    const phase = segment ? segmentPhase(segment, timerElapsedNow) : null;
+                    return (
                     <View style={[
                       styles.subtaskRow,
                       i === subtasks.length - 1 && styles.subtaskRowLast,
@@ -1776,6 +1808,27 @@ export const TaskItem = React.memo(function TaskItem({
                           </Text>
                         </TouchableOpacity>
                       )}
+                      {segment && (
+                        <Text
+                          style={[
+                            styles.subtaskSegment,
+                            phase === 'active' && styles.subtaskSegmentActive,
+                            phase === 'done' && styles.subtaskSegmentDone,
+                          ]}
+                          numberOfLines={1}
+                          accessibilityLabel={
+                            phase === 'active'
+                              ? `${formatStopwatch(segmentRemaining(segment, timerElapsedNow))} left of ${formatDuration(segment.minutes)}`
+                              : phase === 'done'
+                                ? `${formatDuration(segment.minutes)}, timer past this`
+                                : `${formatDuration(segment.minutes)} of the timer`
+                          }
+                        >
+                          {phase === 'active'
+                            ? formatStopwatch(segmentRemaining(segment, timerElapsedNow))
+                            : formatDuration(segment.minutes)}
+                        </Text>
+                      )}
                       <TouchableOpacity
                         onLongPress={drag}
                         delayLongPress={interaction.delayLongPress}
@@ -1798,7 +1851,8 @@ export const TaskItem = React.memo(function TaskItem({
                         <Ionicons name="close" size={14} color={colors.textTertiary} />
                       </TouchableOpacity>
                     </View>
-                  )}
+                    );
+                  }}
                 />
               </View>
             )}
@@ -2726,6 +2780,27 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     margin: 0,
     includeFontPadding: false,
   },
+  // The subtask's stretch of a timed task's countdown. Right-aligned against
+  // the drag handle so the column of times lines up however long the titles
+  // are, and quiet by default — most subtasks of most tasks carry no stretch,
+  // and the ones that do are only worth reading while the timer is going.
+  subtaskSegment: {
+    color: colors.textTertiary,
+    fontSize: 11,
+    fontVariant: ['tabular-nums'],
+    flexShrink: 0,
+  },
+  subtaskSegmentActive: {
+    color: colors.accent,
+    fontWeight: fontWeight.semibold,
+  },
+  // Passed, so it reads as spent rather than as the next thing to do. The row's
+  // own tick box is untouched by this — the clock moving on isn't the user
+  // saying they're done.
+  subtaskSegmentDone: {
+    color: colors.textTertiary,
+    opacity: 0.5,
+  },
   subtaskDragHandle: {
     padding: 2,
   },
@@ -2833,6 +2908,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   countdownLabelReady: {
     color: colors.green,
+  },
+  // Trails the countdown in the chip, so the number stays the thing the eye
+  // lands on and a long subtask title truncates instead of pushing it out.
+  countdownSegment: {
+    color: colors.textTertiary,
+    fontSize: 11,
+    flexShrink: 1,
   },
   deadlineBadge: {
     flexDirection: 'row',

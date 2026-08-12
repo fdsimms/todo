@@ -3197,6 +3197,65 @@ describe('deleteSubtask', () => {
     useTaskStore.getState().deleteSubtask('sub');
     expect(dbDeleteTask).toHaveBeenCalledWith('sub');
   });
+
+  // A timed task's duration is the sum of the stretches its subtasks carry, and
+  // a subtask can be deleted from the task row as well as the editor.
+  const apportioned = () => ({
+    tasks: [
+      makeTask({ id: 'p', timedMinutes: 25 }),
+      makeTask({ id: 's1', parentId: 'p', sortOrder: 1, timedMinutes: 5 }),
+      makeTask({ id: 's2', parentId: 'p', sortOrder: 2, timedMinutes: 10 }),
+      makeTask({ id: 's3', parentId: 'p', sortOrder: 3, timedMinutes: 10 }),
+    ],
+  });
+
+  it("re-totals the parent's countdown when a stretch is deleted", () => {
+    useTaskStore.setState(apportioned());
+    useTaskStore.getState().deleteSubtask('s3');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'p')!.timedMinutes).toBe(15);
+  });
+
+  it('puts the old total back when the delete is undone', () => {
+    useTaskStore.setState(apportioned());
+    useTaskStore.getState().deleteSubtask('s3');
+    useTaskStore.getState().lastAction!.undo();
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'p')!.timedMinutes).toBe(25);
+    expect(useTaskStore.getState().tasks.some(t => t.id === 's3')).toBe(true);
+  });
+
+  it('leaves the duration alone when the last stretch goes — the task is still timed', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'p', timedMinutes: 5 }),
+        makeTask({ id: 's1', parentId: 'p', sortOrder: 1, timedMinutes: 5 }),
+      ],
+    });
+    useTaskStore.getState().deleteSubtask('s1');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'p')!.timedMinutes).toBe(5);
+  });
+
+  it("doesn't touch a parent whose subtasks never carried a stretch", () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'p', timedMinutes: 25 }),
+        makeTask({ id: 's1', parentId: 'p', sortOrder: 1 }),
+      ],
+    });
+    useTaskStore.getState().deleteSubtask('s1');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'p')!.timedMinutes).toBe(25);
+  });
+
+  it('never promotes an untimed parent to a timed one', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'p', timedMinutes: null }),
+        makeTask({ id: 's1', parentId: 'p', sortOrder: 1, timedMinutes: 5 }),
+        makeTask({ id: 's2', parentId: 'p', sortOrder: 2, timedMinutes: 10 }),
+      ],
+    });
+    useTaskStore.getState().deleteSubtask('s2');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'p')!.timedMinutes).toBeNull();
+  });
 });
 
 // ─── task groups ─────────────────────────────────────────────────────────────
