@@ -10,18 +10,21 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useRecipeStore } from '../store/useRecipeStore';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
-import type { Task } from '../types';
+import type { Recipe, Task } from '../types';
 import type { SearchResult } from '../utils/fuzzySearch';
-import { fuzzySearch } from '../utils/fuzzySearch';
+import { fuzzySearch, scoreSubstring } from '../utils/fuzzySearch';
+import { describeCookHistory, matchRecipes, type RecipeMatch, type RecipeMatchField } from '../utils/recipeUtils';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
+import { haptics } from '../utils/haptics';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, iconSize, interaction, checkboxRadius, type Colors } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -39,6 +42,126 @@ import { format } from 'date-fns/format';
 const SEARCH_DEBOUNCE_MS = 180;
 
 const CHECKBOX_SIZE = 20;
+
+/**
+ * Search is scoped, not merged, and the two reasons are structural rather than
+ * aesthetic.
+ *
+ * The rankers aren't comparable. fuzzySearch sums weighted per-word scores into
+ * the hundreds (a title match alone is worth up to 240); matchRecipes returns a
+ * single 3/2/1/0.75/0.5/0.4/0.25 rung. Interleaving them means inventing a
+ * conversion between those two number lines with nothing to check it against,
+ * and every wrong guess reads as the app burying what you asked for.
+ *
+ * And a tap means different things. A task opens TaskEditor *on this screen*; a
+ * recipe pushes RecipeDetail. One list whose rows silently do one or the other,
+ * with nothing promising which, is worse than two lists.
+ *
+ * There is deliberately **no "All" scope** — it would be the merged ranking
+ * again, wearing a hat. What stops a scope from being a dead end is the count on
+ * the other pill (and the empty state's offer to cross over), which tells you
+ * where the matches are *before* you conclude the app hasn't got them.
+ */
+type SearchScope = 'tasks' | 'recipes';
+const SCOPES: { key: SearchScope; label: string }[] = [
+  { key: 'tasks', label: 'Tasks' },
+  { key: 'recipes', label: 'Recipes' },
+];
+
+/**
+ * Why a recipe is in the results, when it isn't the obvious reason. Searching
+ * "fennel" and being handed "Roast chicken" is only obviously right if the row
+ * says "Fennel" underneath it — and now that attribution and notes match too
+ * (#1366), the share of results needing that explanation went up, not down.
+ */
+function matchCaption(
+  field: RecipeMatchField,
+  matchedText: string | null
+): { icon: React.ComponentProps<typeof Ionicons>['name']; text: string } | null {
+  // A name match needs no caption — the title is right there, highlighted.
+  if (field === 'name') return null;
+  // Notes carries no matchedText: any snippet short enough to sit on a row
+  // would cut the sentence in half, so the row says where to look instead.
+  if (field === 'notes') return { icon: 'document-text-outline', text: 'In notes' };
+  if (!matchedText) return null;
+  if (field === 'tag') return { icon: 'pricetag-outline', text: matchedText };
+  if (field === 'ingredient') return { icon: 'nutrition-outline', text: matchedText };
+  return { icon: 'book-outline', text: matchedText };
+}
+
+function RecipeResultItem({ match, query, onPress, styles, colors }: {
+  match: RecipeMatch;
+  query: string;
+  onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  const { recipe, field, matchedText } = match;
+
+  // Highlighted only when the *name* is what matched. scoreSubstring will
+  // happily find a subsequence in any name, so drawing it for a recipe that
+  // actually matched on its ingredient would underline letters scattered
+  // through the title and point at the wrong thing entirely.
+  const nameRanges = field === 'name' ? scoreSubstring(recipe.name, query).ranges : [];
+  const caption = matchCaption(field, matchedText);
+  // The answer to "when did we last have the ragù" — the question that opened
+  // #1366. It's read off the recipe's own cookCount/lastCookedAt rather than by
+  // scanning the plan, because plan entries purge at 180 days and the store
+  // only ever holds the week it was asked for.
+  const history = describeCookHistory(recipe);
+
+  const a11yLabel = [
+    recipe.name,
+    caption ? `matched ${caption.text}` : null,
+    history || null,
+  ].filter(Boolean).join(', ');
+
+  return (
+    <TouchableOpacity
+      style={styles.resultRow}
+      onPress={onPress}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      accessibilityHint="Double tap to open recipe"
+    >
+      <View style={styles.statusIcon}>
+        <View style={styles.recipeGlyph}>
+          <Ionicons name="restaurant-outline" size={12} color={colors.accent} />
+        </View>
+      </View>
+
+      <View style={styles.resultContent}>
+        <HighlightedText
+          text={recipe.name}
+          ranges={nameRanges}
+          style={styles.resultTitle}
+          highlightStyle={styles.highlight}
+          numberOfLines={2}
+        />
+
+        {(caption || history.length > 0) && (
+          <View style={styles.resultMeta}>
+            {caption && (
+              <View style={styles.projectChip}>
+                <Ionicons name={caption.icon} size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.metaText} numberOfLines={1}>{caption.text}</Text>
+              </View>
+            )}
+            {/* A step dimmer than the caption beside it. Both are grey text at
+                font.xs, so at the same colour "Salmon fillets" and "Cooked once
+                · last on 2 Aug" abut into one run-on string with only a gap
+                between them — the task rows avoid that by colour-coding their
+                meta (tag dots, green Done, orange Archived), and this row has
+                no such coding to lean on. Tertiary also ranks them correctly:
+                why it matched is why it's on screen, the history is context. */}
+            {history.length > 0 && <Text style={styles.historyText}>{history}</Text>}
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 function SearchResultItem({ result, onPress, styles, colors }: {
   result: SearchResult;
@@ -130,13 +253,16 @@ function SearchResultItem({ result, onPress, styles, colors }: {
 export function SearchScreen() {
   const insets = useSafeAreaInsets();
   const route = useRoute<any>();
+  const navigation = useNavigation<any>();
   const tabBarHeight = useBottomTabBarHeight();
   const tasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(s => s.projects);
+  const recipes = useRecipeStore(s => s.recipes);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [query, setQuery] = useState('');
+  const [scope, setScope] = useState<SearchScope>('tasks');
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
@@ -155,6 +281,10 @@ export function SearchScreen() {
   if (route.params?.at !== undefined && route.params.at !== handledQueryAt) {
     setHandledQueryAt(route.params.at);
     setQuery(route.params.query ?? '');
+    // Back to Tasks with the handoff. Quick search is tasks-only by design, so
+    // its "See all 12 results" names a task count — landing on Recipes would
+    // answer a different question than the one that was just asked.
+    setScope('tasks');
   }
 
   // Retyping a query you just typed would make the handoff a net loss, so the
@@ -177,14 +307,37 @@ export function SearchScreen() {
     [tasks, debouncedQuery, projectNamesById]
   );
 
+  // Both scopes are searched on every query regardless of which is showing —
+  // that's what pays for the counts on the pills, and the counts are the whole
+  // reason a scoped search doesn't dead-end at "No results" on a term the app
+  // does hold. Both rankers run over in-memory arrays behind the same debounce.
+  const recipeResults: RecipeMatch[] = useMemo(
+    () => matchRecipes(debouncedQuery, recipes),
+    [recipes, debouncedQuery]
+  );
+
+  const counts: Record<SearchScope, number> = {
+    tasks: results.length,
+    recipes: recipeResults.length,
+  };
+  const scopeCount = counts[scope];
+  const otherScope: SearchScope = scope === 'tasks' ? 'recipes' : 'tasks';
+  const otherCount = counts[otherScope];
+
   const activeResults = results.filter(r => !r.task.completed);
   const completedResults = results.filter(r => r.task.completed);
 
   type ListItem =
     | { type: 'sectionHeader'; label: string }
-    | { type: 'result'; result: SearchResult };
+    | { type: 'result'; result: SearchResult }
+    | { type: 'recipe'; match: RecipeMatch };
 
   const listData: ListItem[] = useMemo(() => {
+    // Recipes have no active/completed split to section on — a recipe is never
+    // "done" — so they render as one ranked run.
+    if (scope === 'recipes') {
+      return recipeResults.map(match => ({ type: 'recipe', match } as ListItem));
+    }
     if (results.length === 0) return [];
     const items: ListItem[] = [];
     if (activeResults.length > 0) {
@@ -196,11 +349,21 @@ export function SearchScreen() {
       completedResults.forEach(r => items.push({ type: 'result', result: r }));
     }
     return items;
-  }, [results]);
+  }, [results, recipeResults, scope]);
 
   const openTask = (task: Task) => {
     setEditingTask(task);
     setEditorVisible(true);
+  };
+
+  const openRecipe = (recipe: Recipe) => {
+    haptics.tap();
+    navigation.navigate('RecipeDetail', { recipeId: recipe.id });
+  };
+
+  const switchScope = (next: SearchScope) => {
+    haptics.tap();
+    setScope(next);
   };
 
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
@@ -218,6 +381,17 @@ export function SearchScreen() {
         </View>
       );
     }
+    if (item.type === 'recipe') {
+      return (
+        <RecipeResultItem
+          match={item.match}
+          query={debouncedQuery}
+          onPress={() => openRecipe(item.match.recipe)}
+          styles={styles}
+          colors={colors}
+        />
+      );
+    }
     return (
       <SearchResultItem
         result={item.result}
@@ -228,7 +402,7 @@ export function SearchScreen() {
     );
   };
 
-  const showEmpty = query.trim().length > 0 && results.length === 0;
+  const showEmpty = query.trim().length > 0 && scopeCount === 0;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -237,10 +411,42 @@ export function SearchScreen() {
       <SearchField
         ref={inputRef}
         style={styles.searchBar}
-        placeholder="Search todos…"
+        placeholder={scope === 'recipes' ? 'Search recipes…' : 'Search todos…'}
         value={query}
         onChangeText={setQuery}
       />
+
+      {/* Counts appear only once something's been typed — before that they'd
+          all read 0 and look like the app is empty rather than un-asked. */}
+      <View style={styles.scopePills}>
+        {SCOPES.map(({ key, label }) => {
+          const active = scope === key;
+          const count = counts[key];
+          const showCount = query.trim().length > 0;
+          return (
+            <TouchableOpacity
+              key={key}
+              style={[styles.scopePill, active && styles.scopePillActive]}
+              onPress={() => switchScope(key)}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={showCount ? `${label}, ${count} results` : label}
+            >
+              <Text style={[styles.scopePillText, active && styles.scopePillTextActive]}>
+                {label}
+              </Text>
+              {showCount && (
+                <View style={[styles.scopePillBadge, active && styles.scopePillBadgeActive]}>
+                  <Text style={[styles.scopePillBadgeText, active && styles.scopePillBadgeTextActive]}>
+                    {count}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       {/* EmptyState centers its "Create task" button vertically in whatever
           height it's given — on iOS that height doesn't shrink for the
@@ -254,22 +460,57 @@ export function SearchScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         {showEmpty ? (
+          /* The cross-over offer, and the reason scoping a search is safe: the
+             one failure mode of a scope is deciding the app hasn't got what you
+             asked for, when it's simply filed under the other pill. When the
+             other scope has hits, going there beats anything else this screen
+             could offer — including creating a task named after a recipe you
+             already own. Only with nothing anywhere does "Create task" win. */
           <EmptyState
             key="no-results"
             icon="search-outline"
             title="No results"
-            subtitle={`No todos match "${query}"`}
-            actionLabel="Create task"
-            onAction={() => setQuickAddVisible(true)}
+            subtitle={
+              scope === 'recipes'
+                ? `No recipes match "${query}"`
+                : `No todos match "${query}"`
+            }
+            actionLabel={
+              otherCount > 0
+                ? otherScope === 'recipes'
+                  ? `See ${otherCount} recipe${otherCount === 1 ? '' : 's'}`
+                  : `See ${otherCount} todo${otherCount === 1 ? '' : 's'}`
+                : scope === 'tasks' ? 'Create task' : undefined
+            }
+            onAction={
+              otherCount > 0
+                ? () => switchScope(otherScope)
+                : scope === 'tasks' ? () => setQuickAddVisible(true) : undefined
+            }
             bottomOffset={tabBarHeight}
           />
         ) : query.trim().length === 0 ? (
-          <EmptyState key="prompt" icon="search-outline" title="Find any todo" subtitle="Search active and completed todos" bottomOffset={tabBarHeight} />
+          /* The recipe subtitle lists the fields on purpose — searching a
+             recipe box by ingredient or author is the whole capability, and
+             this prompt is the only place in the app that says so. */
+          scope === 'recipes' ? (
+            <EmptyState
+              key="prompt-recipes"
+              icon="search-outline"
+              title="Find any recipe"
+              subtitle="Search by name, tag, ingredient, author or notes"
+              bottomOffset={tabBarHeight}
+            />
+          ) : (
+            <EmptyState key="prompt" icon="search-outline" title="Find any todo" subtitle="Search active and completed todos" bottomOffset={tabBarHeight} />
+          )
         ) : (
           <FlatList
             data={listData}
             keyExtractor={(item, i) =>
-              item.type === 'sectionHeader' ? `h-${item.label}` : item.result.task.id
+              item.type === 'sectionHeader' ? `h-${item.label}`
+                : item.type === 'recipe' ? `r-${item.match.recipe.id}`
+                : item.result.task.id
             }
             renderItem={renderItem}
             keyboardShouldPersistTaps="handled"
@@ -303,6 +544,43 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,
   },
+
+  // Same pill treatment as Today's view-mode switcher, which is the app's
+  // established "these are lenses over one screen" control. A plain row rather
+  // than that one's horizontal ScrollView: two or three scopes fit at any
+  // width, and a scroll view that never scrolls only costs a hidden option.
+  scopePills: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  scopePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgSecondary,
+  },
+  scopePillActive: { backgroundColor: colors.accent },
+  scopePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  scopePillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+  // The count carries the whole anti-dead-end job, so it has to stay legible on
+  // both pill surfaces — hence a second pair of tokens rather than one badge
+  // colour that only works on the accent fill.
+  scopePillBadge: {
+    minWidth: 18,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgQuaternary,
+    alignItems: 'center',
+  },
+  scopePillBadgeActive: { backgroundColor: colors.bgSecondary },
+  scopePillBadgeText: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold },
+  scopePillBadgeTextActive: { color: colors.accent },
 
   sectionHeader: {
     paddingHorizontal: spacing.md,
@@ -347,6 +625,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.green,
     borderColor: colors.green,
   },
+  // Sized and placed exactly like the checkbox it replaces, so the two scopes'
+  // rows share one text column — but round and filled rather than a square
+  // outline, because a recipe row has nothing to tick and a checkbox that does
+  // nothing is the kind of control people tap once and stop trusting.
+  recipeGlyph: {
+    width: CHECKBOX_SIZE,
+    height: CHECKBOX_SIZE,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bgTertiary,
+  },
   resultContent: { flex: 1, gap: 3 },
   resultTitle: {
     color: colors.text,
@@ -378,6 +668,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   tagDot: { width: 7, height: 7, borderRadius: 4 },
   metaText: { color: colors.textSecondary, fontSize: font.xs },
+  historyText: { color: colors.textTertiary, fontSize: font.xs },
   completedLabel: { color: colors.green, fontSize: font.xs },
   archivedLabel: { color: colors.orange, fontSize: font.xs, fontWeight: fontWeight.semibold },
   notesPreview: {

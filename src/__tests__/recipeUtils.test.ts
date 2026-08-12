@@ -8,6 +8,7 @@ import {
   remapIngredientKeyIn,
   describeRecipe,
   cleanRecipeName,
+  matchRecipes,
   rankRecipes,
   parsePrepTasks,
   normalizePrepTask,
@@ -860,6 +861,59 @@ describe('rankRecipes', () => {
     });
 
     expect(rankRecipes('potatoes', [steak, mash]).map(r => r.name)).toEqual(['Mash', 'Steak dinner']);
+  });
+});
+
+describe('matchRecipes', () => {
+  it('returns nothing for a blank query, where rankRecipes returns everything', () => {
+    const all = [recipe('Ragu', { nameKey: 'ragu' })];
+    expect(matchRecipes('', all)).toEqual([]);
+    expect(rankRecipes('', all)).toHaveLength(1);
+  });
+
+  it('reports a name match with nothing to caption — the title already shows it', () => {
+    const r = recipe('Ragu', { nameKey: 'ragu' });
+    expect(matchRecipes('ragu', [r])[0]).toMatchObject({ field: 'name', matchedText: null });
+  });
+
+  it('names the tag that matched', () => {
+    const r = recipe('Larb', { nameKey: 'larb', tags: ['thai'] });
+    expect(matchRecipes('thai', [r])[0]).toMatchObject({ field: 'tag', matchedText: 'thai' });
+  });
+
+  it('names the ingredient that matched, in its own spelling', () => {
+    const r = recipe('Soup', { nameKey: 'soup', ingredients: [ing('Fennel bulb', { nameKey: 'fennel bulb' })] });
+    expect(matchRecipes('fennel', [r])[0]).toMatchObject({ field: 'ingredient', matchedText: 'Fennel bulb' });
+  });
+
+  it('names an ingredient found on a component, not on the recipe itself', () => {
+    const mash = recipe('Mash', { nameKey: 'mash', ingredients: [ing('Potatoes', { nameKey: 'potatoes' })] });
+    const steak = recipe('Steak dinner', { nameKey: 'steak dinner', components: [component(mash.id, 'Mash')] });
+    const match = matchRecipes('potatoes', [steak, mash]).find(m => m.recipe.name === 'Steak dinner');
+    expect(match).toMatchObject({ field: 'ingredient', matchedText: 'Potatoes' });
+  });
+
+  it('names the attribution that matched', () => {
+    const r = recipe('Cake', { nameKey: 'cake', author: 'Yotam Ottolenghi' });
+    expect(matchRecipes('ottolenghi', [r])[0]).toMatchObject({
+      field: 'attribution',
+      matchedText: 'Yotam Ottolenghi',
+    });
+  });
+
+  it('reports a notes match without a snippet, which would cut the sentence in half', () => {
+    const r = recipe('Pasta', { nameKey: 'pasta', notes: 'Good with leftover chicken.' });
+    expect(matchRecipes('chicken', [r])[0]).toMatchObject({ field: 'notes', matchedText: null });
+  });
+
+  it('orders identically to rankRecipes', () => {
+    const named = recipe('Chicken pie', { nameKey: 'chicken pie' });
+    const tagged = recipe('Larb', { nameKey: 'larb', tags: ['chicken'] });
+    const noted = recipe('Pasta', { nameKey: 'pasta', notes: 'leftover chicken' });
+    const all = [noted, tagged, named];
+    expect(matchRecipes('chicken', all).map(m => m.recipe.name)).toEqual(
+      rankRecipes('chicken', all).map(r => r.name)
+    );
   });
 });
 
