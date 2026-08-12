@@ -14,8 +14,10 @@ import {
   type Colors,
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
 import { SwipeableRow } from './SwipeableRow';
+import { convertQuantity } from '../utils/unitConvert';
 
 const CHECKBOX_SIZE = 24;
 // Generous beyond the visual box, matching TaskItem's checkbox hitSlop —
@@ -94,6 +96,12 @@ export const GroceryRow = React.memo(function GroceryRow({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const renameItem = useGroceryStore(s => s.renameItem);
+  const unitSystem = useSettingsStore(s => s.unitSystem);
+
+  // The row is read-only text, so it shows the amount in the reader's units.
+  // The item sheet's field deliberately doesn't — that one is editable, and an
+  // editable field has to show what's stored.
+  const shownQuantity = convertQuantity(item.quantity ?? '', unitSystem).text;
 
   // Tapping the name/quantity/star area used to toggle checked, same as the
   // rest of the row. Issue #1222: that's the only way in, so it now swaps the
@@ -104,7 +112,7 @@ export const GroceryRow = React.memo(function GroceryRow({
 
   const label = [
     item.name,
-    item.quantity ? `, ${item.quantity}` : '',
+    shownQuantity ? `, ${shownQuantity}` : '',
     item.checked ? ', in cart' : '',
   ].join('');
 
@@ -223,10 +231,10 @@ export const GroceryRow = React.memo(function GroceryRow({
           <Ionicons name="star" size={iconSize.xs} color={colors.warning} style={styles.star} />
         )}
 
-        {!!item.quantity && (
+        {!!shownQuantity && (
           <View style={[styles.qtyPill, item.checked && styles.qtyPillChecked]}>
             <Text style={[styles.qtyText, item.checked && styles.qtyTextChecked]} numberOfLines={1}>
-              {item.quantity}
+              {shownQuantity}
             </Text>
           </View>
         )}

@@ -107,6 +107,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see Grocery either/or below |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
 | halving or doubling a recipe | `src/utils/recipeScale.ts` — see Scaling below |
+| showing amounts in metric or US units | `src/utils/unitConvert.ts` — see Unit conversion below |
 
 **Read narrowly.** Seven files are over 1,000 lines — `useTaskStore.test.ts` (2.6k),
 `TaskEditor.tsx` (2.3k), `TodayScreen.tsx` (2.1k), `QuickAddModal.tsx` (1.6k),
@@ -514,8 +515,11 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
 
 1. **Only the leading amount is ever touched.** Unit, size clause and container word carry through
    verbatim, apart from pluralising off a closed table.
-2. **No unit conversion, ever.** "500 g" doubled is "1000 g", not "1 kg". Knowing those measure the
-   same thing is knowledge this app doesn't claim — and "1000 g" is unidiomatic, never wrong.
+2. **No unit conversion, ever.** "500 g" doubled is "1000 g", not "1 kg". Scaling multiplies a
+   number the user gave, so it has to hand back the same measurement they wrote — "1000 g" is
+   unidiomatic, never wrong. Converting is a *different request*, asked separately in Settings and
+   answered separately at render time — see Unit conversion below. Nothing in `recipeScale` may
+   convert.
 3. **A quantity whose amount doesn't parse passes through verbatim and flagged** (`scaled: false`).
    "a pinch" doubled is "a pinch", and the UI says so (`describeUnscaled`) rather than inventing
    "2 pinches". Coverage is ~95% of the quantity strings this app produces; the refusals are the
@@ -552,6 +556,45 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   "1/2 cup" and "2 cups" itself and a raw string comparison would list two measurements of one thing
   side by side. It still never collapses units that merely measure alike — "g" and "kg" stay two
   units, since merging those is rule 2 again.
+
+### Unit conversion (`unitConvert.ts`) — showing amounts in the reader's units
+
+The `unitSystem` setting (`asWritten` / `metric` / `us`, default `asWritten`) shows a quantity in
+the units the cook thinks in: "1 lb" read as "≈450 g". It is the second module allowed to do
+arithmetic on a `quantity`, and it does the one thing scaling's rule 2 forbids — which is the
+point. Scaling multiplies a number the user gave and owes them the same measurement back;
+converting is the user asking, in Settings, to be shown a *different* measurement of the same
+amount, and answering that in the unit they already had answers nothing.
+
+- **Display only, and that's the whole safety argument.** Nothing is written back. Every call site
+  renders `convertQuantity(...).text` over a stored string it doesn't touch, which is why the
+  **editable fields deliberately don't convert** (`RecipeIngredientSheet`, `GroceryItemSheet`) and
+  neither do the previews of text about to be *saved* (`RecipeExtractSheet`, `RecipeCreateSheet`,
+  `GroceryAISheet`, `GroceryAddField`'s live token). A field you're about to write has to show what
+  will be written. The read-only pills are the four that convert: the ingredient row on
+  `RecipeDetailScreen`, both add-to-list sheets, and `GroceryRow`.
+- **Converted text is always marked `≈`**, because every conversion here rounds (below). One
+  character at every render site, rather than a styling change at each one — and it's what stops a
+  converted number reading as the recipe's own words. On `RecipeDetailScreen` a converted pill also
+  takes the same tint a scaled one does, since both mean "the app's number, not the recipe's".
+- **Scale first, convert second.** The multiplication is exact and the conversion rounds, so
+  rounding last is the only order that doesn't compound.
+- **A closed table, never a guess** — mass and volume only, keyed by `unitKey` so both inflections
+  land on one entry. A count ("3", "x2", "4 cloves"), an unparseable amount ("a pinch") and a unit
+  not in the table all pass through verbatim and flagged, exactly as scaling's rule 3 does. **A
+  container's size never converts** either ("14 oz can" stays), recognised off the same
+  `SIZE_UNITS`/`CONTAINER_UNITS` the parser and the scaler share: "≈400 g can" is a product nobody
+  sells. `oz` is mass and only mass — the parser has no "fl oz", so there is no ambiguous ounce.
+- **Rounded to what a person would write**, which is the half that makes it useful and the half that
+  makes `≈` mandatory: 1 cup is 240 ml, not 236.59. Metric rounds to a step that widens with
+  magnitude; US snaps to a cooking fraction and **refuses to when none is close enough**, saying
+  "1.1 lbs" rather than claiming the "1 lb" it isn't. Thirds are a *volume* denominator only — a
+  measuring set has a 1/3 cup, and "3 1/3 lbs" is not a number anyone weighs to. The two tolerances
+  differ for the same reason (a cup is loose, a scale isn't), and that asymmetry is deliberate: at
+  the volume tolerance, 1.5 kg would render "3 1/2 lbs", nearly 90 g out.
+- **A merged quantity is converted part by part** (`' · '`, what `mergeQuantities` emits when it
+  won't add two measurements together), with one `≈` on the front. Converting only the leading
+  measurement would leave the rest of the string as a stray tail.
 
 ### Chains
 

@@ -265,6 +265,28 @@ export function quantityAmount(quantity: string): { value: number; decimal: bool
 }
 
 /**
+ * The same read, plus whatever followed the amount — for a caller that has to
+ * look at the unit word itself rather than only at the number (unitConvert).
+ *
+ * Exported alongside `quantityAmount` rather than widening it, so the three
+ * notations stay defined in exactly one place: a second copy of the mixed-number
+ * ordering is how a converter and a scaler would come to disagree about what
+ * "1 1/2" means.
+ */
+export function splitLeadingAmount(
+  quantity: string,
+): { value: number; decimal: boolean; rest: string } | null {
+  const text = quantity.trim();
+  const amount = readLeadingAmount(text);
+  if (!amount) return null;
+  return {
+    value: toNumber(amount.value),
+    decimal: amount.decimal,
+    rest: text.slice(amount.length).trim(),
+  };
+}
+
+/**
  * Renders a summed amount back to text, matching how scaling renders one, so
  * "1/2 cup" + "1/4 cup" reads "3/4 cup" rather than "0.75 cup".
  */

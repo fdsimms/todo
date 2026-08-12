@@ -622,6 +622,31 @@ describe('use24HourTime', () => {
   });
 });
 
+describe('unitSystem', () => {
+  it('defaults to as-written, so an existing install reads exactly as it did', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().unitSystem).toBe('asWritten');
+  });
+
+  it('round-trips through the settings table', () => {
+    useSettingsStore.getState().setUnitSystem('metric');
+    expect(dbSetSetting).toHaveBeenCalledWith('unitSystem', 'metric');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'unitSystem' ? 'metric' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().unitSystem).toBe('metric');
+  });
+
+  it('falls back to as-written for a value that is not a system', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'unitSystem' ? 'imperial' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().unitSystem).toBe('asWritten');
+  });
+});
+
 describe('weekStartsOn', () => {
   it('defaults to Sunday', () => {
     useSettingsStore.getState().initialize();
