@@ -21,7 +21,14 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { quickSearch } from '../utils/quickSearch';
 import { haptics } from '../utils/haptics';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { Task } from '../types';
+
+// Keeps the field's own value/onChangeText bound to the raw, fast-updating
+// `query` state below — only the quickSearch recompute waits on this delay.
+// Same fix as SearchScreen's (#1210): an expensive useMemo on every keystroke
+// can make the JS thread fall behind, desyncing the controlled TextInput.
+const SEARCH_DEBOUNCE_MS = 180;
 
 interface Props {
   visible: boolean;
@@ -66,9 +73,11 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
     [projects]
   );
 
+  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+
   const { results, total } = useMemo(
-    () => quickSearch(tasks, query, projectNamesById),
-    [tasks, query, projectNamesById]
+    () => quickSearch(tasks, debouncedQuery, projectNamesById),
+    [tasks, debouncedQuery, projectNamesById]
   );
 
   useEffect(() => {
