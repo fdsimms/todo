@@ -44,7 +44,7 @@
         "expo-calendar",
         {
           "remindersPermission": "Lets dundundun move tasks out of the Reminders app and into your Inbox, so anything you dictate to Siri ends up here.",
-          "calendarPermission": "Never used. expo-calendar registers a calendar permission requester whether or not an app calls a calendar API, and the key has to exist for that to be legal — dundundun only ever reads the Reminders list you pick."
+          "calendarPermission": "Lets dundundun see what's already on a day — the calendars you pick, including a Google account added on this device — so it can tell how much of the day is free. It only reads; nothing is added, changed or deleted."
         }
       ],
       [

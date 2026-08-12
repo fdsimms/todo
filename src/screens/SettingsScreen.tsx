@@ -63,6 +63,8 @@ export function SettingsScreen() {
     remindersImportEnabled: settings.remindersImportEnabled,
     groceryImportEnabled: settings.groceryImportEnabled,
     kitchenEnabled: settings.kitchenEnabled,
+    calendarReadEnabled: settings.calendarReadEnabled,
+    calendarIds: settings.calendarIds,
     vacationMode: settings.vacationMode,
     autoRemoveExpiredTasks: settings.autoRemoveExpiredTasks,
     autoArchiveProjectsOnComplete: settings.autoArchiveProjectsOnComplete,

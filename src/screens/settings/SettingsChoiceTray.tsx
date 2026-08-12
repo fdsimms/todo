@@ -12,6 +12,14 @@ interface Option {
 interface Props<T extends Option> {
   options: T[];
   selectedId?: string | null;
+  /**
+   * Pass this instead of `selectedId` to pick several — the glyphs become
+   * checkboxes and the tray announces itself accordingly. It's a second prop
+   * rather than an array `selectedId` because the two differ in more than
+   * arity: a single-choice tray is a radio group whose caller usually closes it
+   * on the tap, a multiple-choice one stays open while a set is built.
+   */
+  selectedIds?: readonly string[];
   onSelect: (option: T) => void;
   /** The line above the choices saying what they are ("Import from"). */
   caption: string;
@@ -33,29 +41,34 @@ interface Props<T extends Option> {
  * where resemblance said the opposite.
  */
 export function SettingsChoiceTray<T extends Option>({
-  options, selectedId, onSelect, caption, emptyText, accessibilityLabelFor,
+  options, selectedId, selectedIds, onSelect, caption, emptyText, accessibilityLabelFor,
 }: Props<T>) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const multiple = selectedIds !== undefined;
 
   return (
     <View style={styles.tray}>
       <Text style={styles.caption}>{caption}</Text>
       {options.length === 0 && !!emptyText && <Text style={styles.empty}>{emptyText}</Text>}
       {options.map(option => {
-        const selected = option.id === selectedId;
+        const selected = multiple ? selectedIds!.includes(option.id) : option.id === selectedId;
         return (
           <TouchableOpacity
             key={option.id}
             style={styles.option}
             onPress={() => onSelect(option)}
             activeOpacity={interaction.activeOpacity}
-            accessibilityRole="radio"
-            accessibilityState={{ selected }}
+            accessibilityRole={multiple ? 'checkbox' : 'radio'}
+            accessibilityState={multiple ? { checked: selected } : { selected }}
             accessibilityLabel={accessibilityLabelFor?.(option) ?? option.title}
           >
             <Ionicons
-              name={selected ? 'radio-button-on' : 'radio-button-off'}
+              name={
+                multiple
+                  ? selected ? 'checkbox' : 'square-outline'
+                  : selected ? 'radio-button-on' : 'radio-button-off'
+              }
               size={iconSize.sm}
               color={selected ? colors.accent : colors.textTertiary}
             />
