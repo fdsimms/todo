@@ -49,7 +49,7 @@ const UNITS = [
   'lb', 'lbs', 'pound', 'pounds',
   'oz', 'ounce', 'ounces',
   'kg', 'g', 'gram', 'grams',
-  'l', 'ml', 'liter', 'liters', 'litre', 'litres',
+  'l', 'ml', 'liter', 'liters', 'litre', 'litres', 'dl', 'deciliter', 'deciliters',
   'gal', 'gallon', 'gallons', 'qt', 'quart', 'quarts', 'pt', 'pint', 'pints',
   'cup', 'cups', 'tbsp', 'tsp',
   'tablespoon', 'tablespoons', 'teaspoon', 'teaspoons',
@@ -57,6 +57,11 @@ const UNITS = [
   'jar', 'jars', 'bottle', 'bottles', 'bunch', 'bunches', 'head', 'heads',
   'clove', 'cloves', 'dozen', 'doz', 'loaf', 'loaves', 'x',
   'slice', 'slices', 'link', 'links',
+  'package', 'packages', 'pouch', 'pouches',
+  'sprig', 'sprigs', 'stalk', 'stalks', 'rib', 'ribs', 'stem', 'stems',
+  'stick', 'sticks', 'sheet', 'sheets', 'fillet', 'fillets', 'piece', 'pieces',
+  'ear', 'ears', 'wedge', 'wedges', 'strip', 'strips',
+  'pinch', 'pinches', 'dash', 'dashes', 'handful', 'handfuls',
 ];
 const UNIT_SET = new Set(UNITS);
 
