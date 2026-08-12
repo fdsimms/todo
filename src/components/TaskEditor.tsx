@@ -1316,6 +1316,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             visible={showWhenPicker}
             value={dueDate}
             timeSegments={timeSegments}
+            // Only the Date row opts in — the deadline and recurrence-end
+            // pickers below mount the same component and have nothing to do
+            // with pushing a task out.
+            postponeTaskId={task?.id}
             taskId={task?.id}
             taskTitle={title}
             taskNotes={notes}

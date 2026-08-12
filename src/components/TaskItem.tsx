@@ -2251,6 +2251,9 @@ export const TaskItem = React.memo(function TaskItem({
           visible
           value={task.dueDate ? new Date(task.dueDate) : null}
           timeSegments={task.timeSegments}
+          // The row's reschedule is the main way a task gets pushed, so this is
+          // the picker the postpone check most needs to be on.
+          postponeTaskId={task.id}
           taskTitle={task.title}
           taskNotes={task.notes}
           taskEffort={task.effort}
