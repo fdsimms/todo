@@ -776,7 +776,7 @@ export function MealPlanScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`Plan a meal on ${dayLabel}`}
                 >
-                  <Ionicons name="add" size={iconSize.md} color={colors.accent} />
+                  <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
                 </TouchableOpacity>
               )}
             </View>
@@ -1427,9 +1427,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'baseline',
     justifyContent: 'space-between',
   },
-  // Bare, like the other per-row controls this app added recently (the recipe
-  // rows', the fridge rows'): the day header is quiet type, and a filled pill
-  // here would outweigh the day it belongs to.
   dayAdd: {
     alignItems: 'center',
     justifyContent: 'center',
