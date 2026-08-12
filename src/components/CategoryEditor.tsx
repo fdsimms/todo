@@ -21,7 +21,7 @@ import { EmojiPickerSheet } from './EmojiPickerSheet';
 import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -550,8 +550,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: 10,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+    borderWidth: border.sm, borderColor: 'transparent',
   },
-  timePillActive: { backgroundColor: colors.accentSubtle },
+  // The label/value text never changes color here, so the border is the only
+  // cue that isn't hue alone once grayscale accessibility mode flattens
+  // accentSubtle against bgTertiary.
+  timePillActive: { backgroundColor: colors.accentSubtle, borderColor: colors.accent },
   timePillLabel: { color: colors.textTertiary, fontSize: font.xs },
   timePillValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   pickerButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },

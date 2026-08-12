@@ -14,7 +14,7 @@ import {
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -319,7 +319,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               accessibilityHint="Optional items start unticked when the template is applied"
             >
               <Ionicons
-                name="help-circle-outline"
+                name={optional ? 'help-circle' : 'help-circle-outline'}
                 size={13}
                 color={optional ? colors.accent : colors.textTertiary}
               />
@@ -535,12 +535,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
+    borderWidth: border.sm,
+    borderColor: 'transparent',
   },
   toolChipActive: {
     backgroundColor: colors.bgQuaternary,
   },
+  // Border is the cue that survives grayscale accessibility mode. The other
+  // chips (due date, priority, category, link) also swap their label text to
+  // the live value, but Optional's label never changes, so it leans on this
+  // border alone.
   toolChipSet: {
     backgroundColor: colors.accentSubtle,
+    borderColor: colors.accent,
   },
   toolChipText: {
     color: colors.textTertiary,

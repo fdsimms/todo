@@ -15,7 +15,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { EMOJI_GROUPS, searchEmoji } from '../utils/emojiCatalog';
 import { firstEmoji } from '../utils/emojiInput';
@@ -325,8 +325,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tab: {
     flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+    borderWidth: border.sm, borderColor: 'transparent',
   },
-  tabActive: { backgroundColor: colors.accentSubtle },
+  // The border is what still reads once grayscale accessibility mode flattens
+  // accentSubtle and bgTertiary to nearly the same shade — these tabs are
+  // icon-only, so there's no text/weight cue to fall back on.
+  tabActive: { backgroundColor: colors.accentSubtle, borderColor: colors.accent },
   groupName: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
@@ -340,8 +344,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   cell: {
     width: '12.5%', aspectRatio: 1,
     alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm,
+    borderWidth: border.sm, borderColor: 'transparent',
   },
-  cellSelected: { backgroundColor: colors.accentSubtle },
+  // An emoji glyph can't be recolored or reweighted to show state, so the
+  // border is the only cue available that isn't hue alone.
+  cellSelected: { backgroundColor: colors.accentSubtle, borderColor: colors.accent },
   // Emoji sit high in their line box; a little extra height keeps the descender
   // of the glyph from clipping the way it did on task rows.
   cellEmoji: { fontSize: 26, lineHeight: 34, textAlign: 'center' },
