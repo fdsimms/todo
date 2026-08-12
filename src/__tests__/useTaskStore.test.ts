@@ -6668,7 +6668,7 @@ describe('deleting a use-up task', () => {
     onList: false, checked: false, inCatalog: true, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
-    expiresAt: '2026-08-17', useUpTask: null,
+    isStaple: false, expiresAt: '2026-08-17', useUpTask: null,
   };
 
   const seedItem = () => {

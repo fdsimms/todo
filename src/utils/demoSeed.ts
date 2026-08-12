@@ -742,6 +742,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     setAisle,
     setAisleOrder,
     setOnHandUntil,
+    setStaple,
     setExpiresAt,
     setUseUpTask,
     finishShopping,
@@ -762,7 +763,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     // Meat & Seafood
     'Chicken breast', 'Ground beef',
     // Pantry / Canned
-    'Pasta', 'Rice', 'Olive oil', 'Peanut butter', 'Black beans',
+    'Pasta', 'Rice', 'Olive oil', 'Peanut butter', 'Black beans', 'Salt', 'Black pepper',
     // Bakery
     'Bread', 'Tortillas',
     // Beverages / Breakfast
@@ -813,6 +814,15 @@ function seedGroceries(recipes: DemoRecipes): void {
   setCheckedMany(idsNamed(CORNER_SHOP), true);
   finishShopping(null);
 
+  // Salt and pepper need a trip too — like every catalog row here, isStaple
+  // is a corrected-by-hand flag on an item, not something a provisional row
+  // can carry, so they have to earn their catalog place the same way Greek
+  // yogurt and Butter just did before setStaple below has anything to mark.
+  const STAPLES = ['Salt', 'Black pepper'];
+  addExistingMany(idsNamed(STAPLES));
+  setCheckedMany(idsNamed(STAPLES), true);
+  finishShopping(null);
+
   // "I can get this here" with no trip behind it — an assertion, not an
   // observation. Almonds are linked to Costco alone, so they read as available
   // at exactly one store. Linking (like finishing a trip) promotes a
@@ -843,6 +853,11 @@ function seedGroceries(recipes: DemoRecipes): void {
   const rice = itemById(itemNamed('Rice').id);
   if (rice) setOnHandUntil(rice.id, defaultOnHandUntil(rice, new Date()));
   setOnHandUntil(itemNamed('Olive oil').id, OUT_OF_IT_UNTIL);
+
+  // The staples — always on hand, so they sort into their own group rather
+  // than "Need to buy" when a recipe's ingredients get added to the list.
+  setStaple(itemNamed('Salt').id, true);
+  setStaple(itemNamed('Black pepper').id, true);
 
   // The use-by half. The three finished trips above already stamped a date on
   // everything the shelf-life lexicon recognises, so most of that is here for

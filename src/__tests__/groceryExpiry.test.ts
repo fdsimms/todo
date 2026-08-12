@@ -34,6 +34,7 @@ function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
     sourceRecipeId: null,
     sourceRecipeTitle: null,
     choiceGroup: null,
+    isStaple: false,
     expiresAt: '2026-08-17',
     useUpTask: null,
     ...overrides,

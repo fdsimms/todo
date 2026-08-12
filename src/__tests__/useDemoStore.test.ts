@@ -374,6 +374,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const now = Date.now();
     expect(items.some(i => i.onHandUntil && Date.parse(i.onHandUntil) > now)).toBe(true);
     expect(items.some(i => i.onHandUntil && Date.parse(i.onHandUntil) < now)).toBe(true);
+    // Salt and pepper — always on hand, grouped away from "Need to buy" when
+    // a recipe's ingredients get added to the list.
+    expect(items.some(i => i.isStaple)).toBe(true);
     // …and so the Pantry view has a pantry to browse. Every row in it is an
     // assertion (finishing a trip stamps one on what it bought): the cadence
     // guess needs a row older than its purchases, and a seeded row is created
