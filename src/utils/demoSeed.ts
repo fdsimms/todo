@@ -11,7 +11,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTemplateStore } from '../store/useTemplateStore';
-import type { GroceryItem, MealSlot, Recipe, Shop, TemplateItem } from '../types';
+import type { DeliverableKind, GroceryItem, MealSlot, Recipe, Shop, TemplateItem } from '../types';
 import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
 import { groceryNameKey } from './groceryParse';
@@ -334,16 +334,27 @@ export function seedDemoData(): void {
     today.toISOString(),
     addDays(today, 45).toISOString(),
   );
-  const projectTasks = [
-    { title: 'Measure the counters', effort: 1 as const, done: true },
-    { title: 'Pick a tile', effort: 2 as const, done: true },
-    { title: 'Get three quotes', effort: 3 as const, done: false },
-    { title: 'Book the installer', effort: 2 as const, done: false },
+  // Two of these are decisions — they completed by recording an answer, and
+  // the project's Decisions block reads those answers back above the tasks.
+  // Without a project holding one, that block never appears in demo mode and
+  // the feature reads as one the app doesn't have.
+  const projectTasks: Array<{
+    title: string;
+    effort: 1 | 2 | 3;
+    done: boolean;
+    deliverableKind?: DeliverableKind;
+    answer?: string;
+  }> = [
+    { title: 'Measure the counters', effort: 1, done: true },
+    { title: 'Pick a tile', effort: 2, done: true, deliverableKind: 'text', answer: 'Matte white 4x12' },
+    { title: 'Set the budget', effort: 1, done: true, deliverableKind: 'number', answer: '6500' },
+    { title: 'Get three quotes', effort: 3, done: false },
+    { title: 'Book the installer', effort: 2, done: false },
   ];
-  projectTasks.forEach(({ title, effort, done }) => {
-    const t = addTask({ title, category: 'Home', effort });
+  projectTasks.forEach(({ title, effort, done, deliverableKind, answer }) => {
+    const t = addTask({ title, category: 'Home', effort, deliverableKind: deliverableKind ?? null });
     addExistingToProject(t.id, kitchen.id);
-    if (done) completeTask(t.id);
+    if (done) completeTask(t.id, answer !== undefined ? { deliverableValue: answer } : undefined);
   });
 
   // A reference list, not a to-do list: nothing here ever gets a date, and
