@@ -510,6 +510,14 @@ export function cleanChoiceGroup(raw: string | null | undefined): string | null 
  * searching here behaves the way searching the catalog already does. Favorites
  * break ties; nothing else does, because Phase 1 has no cook history to rank on.
  *
+ * Below the name, the ladder runs tag (0.75) → ingredient (0.5) → attribution
+ * (0.4) → notes (0.25), ordered by how deliberate the match is: a tag is a label
+ * chosen for this recipe, an ingredient is what it's made of, attribution is
+ * where it came from, and notes is free text that can mention anything. Each
+ * tier only decides which of two *matching* recipes comes first, so the order
+ * matters far less than every tier existing — a recipe that can't be found at
+ * all is the actual failure.
+ *
  * The ingredient match runs over the *flattened* list, built from the same
  * `recipes` array rather than a second parameter — searching "potato" has to
  * find the dinner whose mash is where the potatoes are written down, or a
@@ -542,6 +550,31 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
     // it's sometimes made of. A result is an invitation to look, not a purchase.
     else if (flattenRecipeIngredients(recipe, byId, { allOptions: true })
       .some(f => f.ingredient.nameKey.includes(q))) weight = 0.5;
+    // Attribution — "ottolenghi", "nyt cooking". A person or a publication is a
+    // deliberate way to slice a box ("what else is out of Sweet"), so it's a
+    // real hit, but it names where a recipe came from rather than what it is,
+    // which is why it sits under the ingredient the recipe is made of.
+    //
+    // `sourceName` is matched alongside the two fields that superseded it
+    // precisely because nothing backfilled it (see the field's note in
+    // types/index.ts): an old recipe whose only attribution is "Alison Roman,
+    // Nothing Fancy" would otherwise be the one recipe in the box that can't be
+    // found by its own author. Matching it needs no split — a substring finds
+    // either half of that string, which is the whole reason the field was left
+    // alone rather than guessed apart.
+    //
+    // sourceUrl is deliberately *not* searched. groceryNameKey strips the
+    // punctuation out of it, so "https://cooking.nytimes.com/x" collapses to one
+    // long word — "nyt" would match it by accident, and "https" would match
+    // every recipe carrying a link at all.
+    else if ([recipe.author, recipe.source, recipe.sourceName]
+      .some(field => field !== null && groceryNameKey(field).includes(q))) weight = 0.4;
+    // Notes last, and last on purpose: it's the one free-text field, so it's
+    // where an incidental mention lives ("used up the chicken from Sunday").
+    // Ranked below every deliberate match, that noise lands under the real hits
+    // rather than displacing them — the same trade fuzzySearch makes weighting a
+    // task's notes at 0.5 against its title's 2.
+    else if (groceryNameKey(recipe.notes).includes(q)) weight = 0.25;
     if (weight > 0) scored.push({ recipe, weight });
   }
   return scored

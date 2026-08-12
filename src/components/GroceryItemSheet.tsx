@@ -75,7 +75,6 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   const setNote = useGroceryStore(s => s.setNote);
   const setAisle = useGroceryStore(s => s.setAisle);
   const addAisle = useGroceryStore(s => s.addAisle);
-  const toggleFavorite = useGroceryStore(s => s.toggleFavorite);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
   const removeFromList = useGroceryStore(s => s.removeFromList);
   const deleteItem = useGroceryStore(s => s.deleteItem);
@@ -498,28 +497,6 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
               <PillGroup options={pantryOptions} noun="state" />
             </CollapsibleField>
           </View>
-
-          <TouchableOpacity
-            style={styles.actionRow}
-            activeOpacity={interaction.activeOpacity}
-            onPress={() => {
-              haptics.tap();
-              toggleFavorite(item.id);
-            }}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: item.favorite }}
-            accessibilityLabel="Star this item"
-          >
-            <Ionicons
-              name={item.favorite ? 'star' : 'star-outline'}
-              size={iconSize.md}
-              color={item.favorite ? colors.warning : colors.textSecondary}
-            />
-            <View style={styles.actionBody}>
-              <Text style={styles.actionLabel}>Starred</Text>
-              <Text style={styles.actionHint}>Floats to the top of Buy again.</Text>
-            </View>
-          </TouchableOpacity>
 
           {item.onList && (
             <TouchableOpacity

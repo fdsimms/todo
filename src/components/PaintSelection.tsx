@@ -16,20 +16,20 @@ import { haptics } from '../utils/haptics';
 
 /**
  * "Paint" selection: while bulk editing, dragging a finger down the column of
- * checkboxes selects every row it passes over, instead of making the user tap
- * each one. Lifting and dragging back the other way is not an undo — the first
- * row the gesture touches decides the direction (select if it was unselected,
- * deselect if it was selected) and every row after it is set to match, which is
- * what makes a sloppy drag predictable.
+ * selection dots selects every row it passes over, instead of making the user
+ * tap each one. Lifting and dragging back the other way is not an undo — the
+ * first row the gesture touches decides the direction (select if it was
+ * unselected, deselect if it was selected) and every row after it is set to
+ * match, which is what makes a sloppy drag predictable.
  *
  * Scrolling is deliberately untouched everywhere except a narrow strip along
- * the leading edge (PAINT_GUTTER_WIDTH). A touch that lands there is claimed
- * on touch-down, in the capture phase, before anything below sees it. That
- * timing is the whole trick: a gesture can't be taken away from a native
- * UIScrollView once it has started dragging, so waiting to see which way the
- * finger moves would mean the list scrolls out from under the paint. The cost
- * is that you cannot scroll by starting a drag right on the checkboxes — which
- * is the same trade Things 3 makes.
+ * the trailing edge (PAINT_GUTTER_WIDTH), where the dots are. A touch that
+ * lands there is claimed on touch-down, in the capture phase, before anything
+ * below sees it. That timing is the whole trick: a gesture can't be taken away
+ * from a native UIScrollView once it has started dragging, so waiting to see
+ * which way the finger moves would mean the list scrolls out from under the
+ * paint. The cost is that you cannot scroll by starting a drag right on the
+ * dots — which is the same trade Things 3 makes.
  *
  * Rows register themselves through context (see usePaintSelectionRow, wired up
  * inside TaskItem), so a screen only has to wrap its list in the provider —
@@ -100,6 +100,7 @@ export function PaintSelectionProvider({
 }: Props) {
   const containerRef = useRef<View | null>(null);
   const containerXRef = useRef(0);
+  const containerWidthRef = useRef(0);
   const rowsRef = useRef<Map<string, MeasurableView>>(new Map());
   // Row bands, sorted top to bottom, snapshotted once per gesture.
   const rectsRef = useRef<PaintRowRect[]>([]);
@@ -202,7 +203,8 @@ export function PaintSelectionProvider({
 
     return PanResponder.create({
       onStartShouldSetPanResponderCapture: e =>
-        enabledRef.current && isInPaintGutter(e.nativeEvent.pageX - containerXRef.current),
+        enabledRef.current
+        && isInPaintGutter(e.nativeEvent.pageX - containerXRef.current, containerWidthRef.current),
       onMoveShouldSetPanResponderCapture: () => paintingRef.current,
       // The list must not be able to reclaim the touch part-way through a paint.
       onPanResponderTerminationRequest: () => false,
@@ -238,11 +240,12 @@ export function PaintSelectionProvider({
       <View
         ref={containerRef}
         style={[styles.container, style]}
-        // The gutter is measured from this container's leading edge, not the
+        // The gutter is measured against this container's own edges, not the
         // window's, so a list that is ever inset still lines up with its rows.
         onLayout={() => {
-          containerRef.current?.measureInWindow?.(x => {
+          containerRef.current?.measureInWindow?.((x, _y, width) => {
             if (Number.isFinite(x)) containerXRef.current = x;
+            if (Number.isFinite(width)) containerWidthRef.current = width;
           });
         }}
         {...panResponder.panHandlers}

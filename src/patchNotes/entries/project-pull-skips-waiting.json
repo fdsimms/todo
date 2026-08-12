@@ -1,0 +1,4 @@
+{
+  "message": "Pulling from a project no longer suggests a task that's waiting on another task, and auto-schedule no longer dates one",
+  "date": "2026-08-12"
+}

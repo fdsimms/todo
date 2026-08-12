@@ -51,8 +51,9 @@ import {
  *
  * `inCatalog` is the second axis, and it's what stops the catalog filling with
  * things that were never really yours: a name typed for the first time is
- * provisional, so taking it straight back off the list deletes it, while
- * finishing or clearing a trip promotes what was on it. A row that was already
+ * provisional, so taking it back off the list deletes it — whether that's a
+ * removal, a finished trip that bought it (which promotes it: you own it now),
+ * or a cleared trip that abandoned it (which doesn't). A row that was already
  * catalog before this stint on the list is never touched by that — "remove"
  * means remove from the list, exactly as it always did.
  *
@@ -184,7 +185,6 @@ interface GroceryStore {
   /** False when the new name collides with another catalog row. */
   renameItem: (id: string, name: string) => boolean;
   setNote: (id: string, note: string) => void;
-  toggleFavorite: (id: string) => void;
   /**
    * The pantry override — "Got it" / "Out of it" on GroceryItemSheet. A dumb
    * setter, same as setQuantity/setNote: the caller decides the value
@@ -490,11 +490,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       note: note ?? '',
       onList: true,
       checked: false,
-      // Provisional: a name nobody has bought, starred or finished a trip with
-      // is on the list, not in the catalog. removeFromList deletes it.
+      // Provisional: a name nobody has bought or finished a trip with is on
+      // the list, not in the catalog. removeFromList deletes it.
       inCatalog: false,
       sortOrder: nextSortOrder(get().items),
-      favorite: false,
       purchaseCount: 0,
       lastAddedAt: now,
       lastPurchasedAt: null,
@@ -767,21 +766,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
-  toggleFavorite(id) {
-    const item = get().items.find(i => i.id === id);
-    if (!item) return;
-    // Starring is the explicit "keep this one", so it promotes a provisional
-    // row. Unstarring doesn't demote: the row is in the catalog by then, and a
-    // mis-tap on a star shouldn't arm a delete.
-    const updated = {
-      ...item,
-      favorite: !item.favorite,
-      inCatalog: item.inCatalog || !item.favorite,
-    };
-    dbUpdateGroceryItem(updated);
-    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
-  },
-
   /**
    * Takes a row off the list. A catalog row stays behind — "not this week" —
    * but a provisional one goes altogether, because it only ever existed as this
@@ -789,8 +773,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    *
    * The delete is deliberately not behind the confirm every other delete has.
    * That confirm protects history, and a provisional row has none by
-   * definition: never bought, never starred, no purchase count to lose. The
-   * sheet says which of the two will happen before you tap.
+   * definition: never bought, no purchase count to lose. The sheet says which
+   * of the two will happen before you tap.
    */
   resolveChoice(id) {
     const item = get().items.find(i => i.id === id);
@@ -993,17 +977,22 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   },
 
   clearList() {
+    const before = get().items;
     const ids = dbClearGroceryList();
     if (ids.length === 0) return 0;
     const cleared = new Set(ids);
     // Deliberately no purchaseCount bump: nothing was bought, and inflating
-    // the ranking signal would teach autocomplete a lie. inCatalog *is* set —
-    // clearing parks the list rather than forgetting it, which is what the
-    // confirm promises, and it keeps !onList ⇒ inCatalog true.
+    // the ranking signal would teach autocomplete a lie. Same split
+    // removeFromList makes: a row already in the catalog parks off-list, a
+    // provisional row (never in the catalog before this trip) is gone —
+    // dbClearGroceryList already deleted it, so drop it here too rather than
+    // reviving it as a catalog entry.
+    const deleted = new Set(before.filter(i => cleared.has(i.id) && !i.inCatalog).map(i => i.id));
     set(s => ({
-      items: s.items.map(i =>
-        cleared.has(i.id) ? { ...i, onList: false, checked: false, inCatalog: true } : i
-      ),
+      items: s.items
+        .filter(i => !deleted.has(i.id))
+        .map(i => (cleared.has(i.id) ? { ...i, onList: false, checked: false } : i)),
+      itemShops: s.itemShops.filter(l => !deleted.has(l.itemId)),
       cartHoldIds: [],
     }));
     return ids.length;
@@ -1253,11 +1242,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       dbSetItemShopLink(link);
       links.push(link);
 
-      // ...and it promotes a provisional row, for the same reason starring
-      // does. Saying where you get something is a statement about the item,
-      // not about this week's list — but a provisional row is *deleted* when
-      // it comes off the list, so without this the assertion is thrown away by
-      // the next "Remove from list" and the store the user just named is gone.
+      // ...and it promotes a provisional row. Saying where you get something
+      // is a statement about the item, not about this week's list — but a
+      // provisional row is *deleted* when it comes off the list, so without
+      // this the assertion is thrown away by the next "Remove from list" and
+      // the store the user just named is gone.
       if (!item.inCatalog) {
         const next = { ...item, inCatalog: true };
         dbUpdateGroceryItem(next);

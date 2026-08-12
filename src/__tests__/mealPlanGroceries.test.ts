@@ -104,7 +104,6 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     checked: false,
     inCatalog: true,
     sortOrder: seq,
-    favorite: false,
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,

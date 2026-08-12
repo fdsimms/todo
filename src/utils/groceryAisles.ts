@@ -201,10 +201,10 @@ export function aisleForName(name: string): string | null {
  *
  * `aisleForName` is a guess about *groceries*; this is a fact about *your*
  * shop, so it wins. It's kept beside the row rather than on it because the row
- * is not guaranteed to survive: a provisional one (never bought, never
- * starred) is deleted outright by removeFromList, which is precisely the case
- * this exists for — file "protein powder" under Household, take it off the
- * list, and without this the next add puts it back in Other.
+ * is not guaranteed to survive: a provisional one (never bought) is deleted
+ * outright by removeFromList, which is precisely the case this exists for —
+ * file "protein powder" under Household, take it off the list, and without
+ * this the next add puts it back in Other.
  *
  * Keyed by name_key and not by id for the same reason: the id dies with the
  * row, the name is what gets typed again. That also makes it a *preference*,

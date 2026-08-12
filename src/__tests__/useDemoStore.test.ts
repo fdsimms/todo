@@ -15,6 +15,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { pantryEntries } from '../utils/grocerySuggest';
 import { taskKindOf } from '../utils/taskKinds';
 import { isDialable } from '../utils/phone';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -25,6 +26,7 @@ import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD } from '../utils/postpo
 import { isUsingDemoDatabase } from '../db/database';
 import { RECIPE_MEAL_TYPES } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
+import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockDbs: Map<string, any>;
@@ -296,7 +298,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(items.filter(i => !i.onList && i.inCatalog).length).toBeGreaterThan(0);
     // Mid-trip: something already in the trolley, so the finish sheet has work.
     expect(onList.some(i => i.checked)).toBe(true);
-    expect(items.some(i => i.favorite)).toBe(true);
     expect(items.some(i => i.quantity)).toBe(true);
     expect(items.some(i => i.note)).toBe(true);
     // Spread purchase counts, not a flat list of ones — the ranking signal.
@@ -307,6 +308,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const now = Date.now();
     expect(items.some(i => i.onHandUntil && Date.parse(i.onHandUntil) > now)).toBe(true);
     expect(items.some(i => i.onHandUntil && Date.parse(i.onHandUntil) < now)).toBe(true);
+    // …and so the Pantry view has a pantry to browse. Every row in it is an
+    // assertion (finishing a trip stamps one on what it bought): the cadence
+    // guess needs a row older than its purchases, and a seeded row is created
+    // this instant, so the guessed half of the list can't be seeded.
+    expect(pantryEntries(items, new Date()).length).toBeGreaterThan(5);
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {
@@ -327,6 +333,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(aisleOrder).not.toContain('Personal Care');
     expect(items.some(i => i.aisle === 'Bulk bins')).toBe(true);
     expect(aisleOrder.indexOf('Frozen')).toBeGreaterThan(aisleOrder.indexOf('Pantry'));
+
+    // …and enough of them on the seeded list for the card at the top of the
+    // Groceries screen to have something to say. It renders nothing when the
+    // suggestion is empty, so a seed that shopped its whole list clean would
+    // read as a feature the app hasn't got.
+    const plan = planTrip(items, itemShops, shops);
+    expect(plan.coverage.length).toBeGreaterThanOrEqual(2);
+    expect(
+      describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length)
+    ).not.toBeNull();
   });
 
   it('seeds a recipe of every meal type, with the composed ones composed', () => {

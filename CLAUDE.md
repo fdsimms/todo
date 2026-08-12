@@ -104,9 +104,11 @@ Start from this table instead of searching. Most work lands in one of these file
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) |
 | grocery autocomplete, Buy again ranking | `src/utils/grocerySuggest.ts` |
 | which store an item comes from | `src/utils/groceryShops.ts` — see Grocery stores below |
+| what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see The pantry below |
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see Grocery either/or below |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
 | halving or doubling a recipe | `src/utils/recipeScale.ts` — see Scaling below |
+| showing amounts in metric or US units | `src/utils/unitConvert.ts` — see Unit conversion below |
 
 **Read narrowly.** Seven files are over 1,000 lines — `useTaskStore.test.ts` (2.6k),
 `TaskEditor.tsx` (2.3k), `TodayScreen.tsx` (2.1k), `QuickAddModal.tsx` (1.6k),
@@ -374,6 +376,38 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   list rows** — the row is already dense, and while you're shopping you're standing in one store,
   so it's noise precisely when the list is in use.
 
+### The pantry — computed, corrected, and now browsable
+
+What the app treats as "have it" is one function, `probablyHaveReason` — an explicit
+`onHandUntil` assertion if there is one, otherwise a guess from this item's own purchase cadence.
+There is no inventory table and there must not be one: a maintained inventory is the feature that
+dies in week three, so it's computed first and corrected second ("Got it" / "Out of it" on
+`GroceryItemSheet`, and `finishShopping` stamping what a trip bought).
+
+**`PantrySheet` is a read, not a second model.** It lists exactly the set `probablyHaveReason`
+answers for (`pantryEntries`), cut into aisles by `buildPantrySections`, and it writes nothing —
+tapping a row opens `GroceryItemSheet`, whose Pantry pills are still the only way to say you're
+out of something. That's the distinction the aggregate view turns on: nobody should have to check
+items in and out, but a set the app has already derived per-item is worth being able to look at,
+and until this there was no way to answer "do I have flour" short of opening items one at a time.
+Don't grow quantities, expiry dates or a check-in gesture onto it — that's the inventory again.
+
+- **Rows on the list are deliberately in it.** An item can be both recently bought and back on the
+  list; dropping it would make an item marked "Got it" vanish from the pantry the moment it was
+  added to a list, which reads as the assertion having been forgotten. The row says "on the list"
+  instead.
+- **The row's caption is `probablyHaveReason`'s own words**, verbatim — the same line a week plan
+  and the item sheet already show. A second phrasing here is a second thing to keep true.
+- **The cadence half can't be seeded into demo mode.** A guess needs a row older than its purchases
+  (`estimatedPurchaseCadenceDays` divides the row's age by its count), and every seeded row is
+  created at seed time, so the demo's pantry is all assertions. That's the honest reason it shows
+  one kind of reason and not both.
+- **`GroceryItemSheet` is rendered *inside* `PantrySheet`'s `Modal`, not beside it.** A `Modal`
+  presents from the view controller its React parent belongs to, so a sibling would ask the
+  screen's controller to present a second sheet while the pantry is already up. Nesting is what
+  lets it stack — and keeping the pantry mounted underneath is the point, since correcting one
+  item should drop you back into the list you were reading.
+
 ### Grocery either/or — two rows you pick between at the shelf
 
 Typing "apples or pears" into the add field offers to put **both on the list under
@@ -514,8 +548,11 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
 
 1. **Only the leading amount is ever touched.** Unit, size clause and container word carry through
    verbatim, apart from pluralising off a closed table.
-2. **No unit conversion, ever.** "500 g" doubled is "1000 g", not "1 kg". Knowing those measure the
-   same thing is knowledge this app doesn't claim — and "1000 g" is unidiomatic, never wrong.
+2. **No unit conversion, ever.** "500 g" doubled is "1000 g", not "1 kg". Scaling multiplies a
+   number the user gave, so it has to hand back the same measurement they wrote — "1000 g" is
+   unidiomatic, never wrong. Converting is a *different request*, asked separately in Settings and
+   answered separately at render time — see Unit conversion below. Nothing in `recipeScale` may
+   convert.
 3. **A quantity whose amount doesn't parse passes through verbatim and flagged** (`scaled: false`).
    "a pinch" doubled is "a pinch", and the UI says so (`describeUnscaled`) rather than inventing
    "2 pinches". Coverage is ~95% of the quantity strings this app produces; the refusals are the
@@ -552,6 +589,45 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   "1/2 cup" and "2 cups" itself and a raw string comparison would list two measurements of one thing
   side by side. It still never collapses units that merely measure alike — "g" and "kg" stay two
   units, since merging those is rule 2 again.
+
+### Unit conversion (`unitConvert.ts`) — showing amounts in the reader's units
+
+The `unitSystem` setting (`asWritten` / `metric` / `us`, default `asWritten`) shows a quantity in
+the units the cook thinks in: "1 lb" read as "≈450 g". It is the second module allowed to do
+arithmetic on a `quantity`, and it does the one thing scaling's rule 2 forbids — which is the
+point. Scaling multiplies a number the user gave and owes them the same measurement back;
+converting is the user asking, in Settings, to be shown a *different* measurement of the same
+amount, and answering that in the unit they already had answers nothing.
+
+- **Display only, and that's the whole safety argument.** Nothing is written back. Every call site
+  renders `convertQuantity(...).text` over a stored string it doesn't touch, which is why the
+  **editable fields deliberately don't convert** (`RecipeIngredientSheet`, `GroceryItemSheet`) and
+  neither do the previews of text about to be *saved* (`RecipeExtractSheet`, `RecipeCreateSheet`,
+  `GroceryAISheet`, `GroceryAddField`'s live token). A field you're about to write has to show what
+  will be written. The read-only pills are the four that convert: the ingredient row on
+  `RecipeDetailScreen`, both add-to-list sheets, and `GroceryRow`.
+- **Converted text is always marked `≈`**, because every conversion here rounds (below). One
+  character at every render site, rather than a styling change at each one — and it's what stops a
+  converted number reading as the recipe's own words. On `RecipeDetailScreen` a converted pill also
+  takes the same tint a scaled one does, since both mean "the app's number, not the recipe's".
+- **Scale first, convert second.** The multiplication is exact and the conversion rounds, so
+  rounding last is the only order that doesn't compound.
+- **A closed table, never a guess** — mass and volume only, keyed by `unitKey` so both inflections
+  land on one entry. A count ("3", "x2", "4 cloves"), an unparseable amount ("a pinch") and a unit
+  not in the table all pass through verbatim and flagged, exactly as scaling's rule 3 does. **A
+  container's size never converts** either ("14 oz can" stays), recognised off the same
+  `SIZE_UNITS`/`CONTAINER_UNITS` the parser and the scaler share: "≈400 g can" is a product nobody
+  sells. `oz` is mass and only mass — the parser has no "fl oz", so there is no ambiguous ounce.
+- **Rounded to what a person would write**, which is the half that makes it useful and the half that
+  makes `≈` mandatory: 1 cup is 240 ml, not 236.59. Metric rounds to a step that widens with
+  magnitude; US snaps to a cooking fraction and **refuses to when none is close enough**, saying
+  "1.1 lbs" rather than claiming the "1 lb" it isn't. Thirds are a *volume* denominator only — a
+  measuring set has a 1/3 cup, and "3 1/3 lbs" is not a number anyone weighs to. The two tolerances
+  differ for the same reason (a cup is loose, a scale isn't), and that asymmetry is deliberate: at
+  the volume tolerance, 1.5 kg would render "3 1/2 lbs", nearly 90 g out.
+- **A merged quantity is converted part by part** (`' · '`, what `mergeQuantities` emits when it
+  won't add two measurements together), with one `≈` on the front. Converting only the leading
+  measurement would leave the rest of the string as a stray tail.
 
 ### Chains
 
@@ -774,12 +850,44 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 - `CollapsibleField` (`src/components/CollapsibleField.tsx`) — a picker section inside an editor card. Collapsed it is `LABEL … value ⌄`; expanded it shows a one-line `hint` explaining the field, then the pills. **Every editor picker (category, project, tags, priority, effort, …) uses this** — see the progressive disclosure note below.
 - `EditorRow` (`src/components/EditorRow.tsx`) — the `icon — label — value ›` row every editor sheet is built from (Date, Deadline, Remind me, Link, …). Pass `expanded` for rows whose controls unfold in place rather than opening a picker, and the chevron becomes up/down.
 - **Filtering by an open-ended set of options (tags, categories) is a bottom sheet with wrapping chips, never a horizontal scrolling chip row.** `LogbookFilterSheet` and `RecipeTagFilterSheet` are the two instances — both replaced a scroll row that had shipped first. A scroll row hides every option past what fits on screen behind a swipe nobody is prompted to make, and a vocabulary the user builds themselves (tags especially) has no ceiling a phone-width row can assume; wrapping puts the whole set on screen at once. The screen itself keeps only a small trigger row: a "Filter"/"Tags" button that opens the sheet, plus whatever's *currently selected* as removable pills (`ActiveFilterPill` in `LogbookScreen`, the `activePill` styles in `RecipesScreen`) — that set stays small by construction, so a scrolling row is still the right shape for it. Don't reach for a horizontal `ScrollView` of chips as the *filter control itself* again; that's the mistake both of these fixed.
-- `PaintSelectionProvider` (`src/components/PaintSelection.tsx`) — wraps a task list so that, while bulk selecting, a drag down the checkbox column "paints" a run of rows instead of needing a tap each. Screens get it by spreading `paintProps` from `useTaskSelection` and passing `scrollEnabled={!painting}` to the list; rows register themselves from inside `TaskItem`, so nothing else has to change. The touch is claimed **on touch-down in the capture phase** within `PAINT_GUTTER_WIDTH` of the leading edge — a native scroll can't be taken back once it starts dragging, so deciding later would let the list scroll out from under the paint. That's why a drag started right on the checkboxes can't scroll (the deliberate trade), and why every other pixel of the row scrolls exactly as before. Hit-testing math and its tests live in `src/utils/paintSelect.ts` / `paintSelect.test.ts`.
+- `SelectionDot` (`src/components/SelectionDot.tsx`) — the circle at a row's **trailing** edge that
+  says whether it's picked for a bulk edit: empty ring on every eligible row, accent fill + tick on
+  the selected ones. Selection used to be shown by filling in the row's own completion checkbox,
+  which made a picked task look ticked off and — worse — made a list with nothing yet picked look
+  identical to a list that wasn't selecting at all. The empty rings are the more important half.
+  It's a *circle* where completion checkboxes are rounded squares (`checkboxRadius`), it sits at the
+  opposite end from the checkbox, and it takes the slot the row's own action buttons vacate on
+  entering selection mode, so nothing has to move aside for it. It is not its own accessibility
+  element — the row already exposes a checkbox with the same state. Two rows use it (`TaskItem`,
+  `LogbookScreen`'s row); a third selectable row type should use it too rather than tinting its
+  checkbox.
+- `PaintSelectionProvider` (`src/components/PaintSelection.tsx`) — wraps a task list so that, while bulk selecting, a drag down the column of `SelectionDot`s "paints" a run of rows instead of needing a tap each. Screens get it by spreading `paintProps` from `useTaskSelection` and passing `scrollEnabled={!painting}` to the list; rows register themselves from inside `TaskItem`, so nothing else has to change. The touch is claimed **on touch-down in the capture phase** within `PAINT_GUTTER_WIDTH` of the **trailing** edge — a native scroll can't be taken back once it starts dragging, so deciding later would let the list scroll out from under the paint. That's why a drag started right on the dots can't scroll (the deliberate trade), and why every other pixel of the row scrolls exactly as before. The gutter follows the dots: it ran along the leading edge while the checkbox was the selection control, and a gesture that isn't over the thing it changes is the bug that pairing them avoids. Hit-testing math and its tests live in `src/utils/paintSelect.ts` / `paintSelect.test.ts`.
 - `src/utils/haptics.ts` — semantic haptics (`tap`, `success`, `warning`, `error`, `impactLight/Medium/Heavy`). Never import `expo-haptics` directly; pick by meaning so intensities stay consistent.
 - `src/utils/layoutAnimation.ts` — `animateLayout()` immediately before a state change that inserts/removes list rows (complete, delete, add, selection-mode toggle). **Never call it on a drag-reorder commit path** (`ReorderableList.onReorder`, `DraggableFlatList.onDragEnd`) — those drive their own row animations.
 - **Accessibility on icon-only controls isn't a missing primitive, it's an adoption gap** — `PressableScale` already supplies `accessibilityRole="button"`, and every icon-only `TouchableOpacity` (drag handles, delete X's, calendar day cells, month-nav chevrons) needs an explicit `accessibilityLabel` alongside it, following `TaskItem`'s style (e.g. `` `Reorder subtask ${sub.title}` ``). Hand-rolled on/off controls (a `View` toggle knob inside a `Touchable`, not a real `Switch`) need `accessibilityRole="switch"` + `accessibilityState={{ checked }}` too — see the vacation-pause and archive toggles in `TaskEditor`/`ProjectEditor`.
 
 **Editors are progressive disclosure.** `TaskEditor`, `TemplateItemEditor`, `TaskGroupEditor`, `ProjectEditor` and `TemplateEditor` all follow the same shape: title/notes, then cards under uppercase `groupLabel` headers (Schedule → Organize → Priority & effort → Subtasks → More), rarely-changed rows last. Nothing renders its picker expanded by default — every pill grid lives inside a `CollapsibleField` that shows only its current value until tapped, and picking a single-choice value collapses the section again (`closeField`). Inline controls hung off an `EditorRow` (time-of-day pills, time window, link picker) render only while that row is expanded. When adding a field, give it a `hint` that says what it does in one line: that hint is the only in-app documentation these options have.
+
+**The task editor's fields are searchable, and the index is the JSX.** The magnifier in
+`TaskEditor`'s header opens a `SearchField` that filters the sheet down to matching rows
+(`src/utils/editorSearch.ts`, `searchTerms` on `EditorGroup`) — groups with no hit disappear,
+matching ones open regardless of the fold. Three decisions worth not re-deriving:
+
+- **An `EditorGroupRow` carries its own `keywords`**, so there is no `taskEditorIndex.ts` to keep in
+  step with the form the way `settingsIndex.ts` must. The rows already declare `label` and `set`
+  computed against the task being edited, which is exactly the index a search needs; a separate
+  file would be a second copy that goes stale, and #1229 correctly sized that as the expensive part.
+  **The keywords are the feature**, not a nicety — a tidier layout can't help someone looking for
+  *blocked*, *away*, *snooze* or *url*, and that gets worse with every field added.
+- **It filters in place; it does not scroll to a row.** `searchSettings` ranks and jumps because
+  Settings renders a *result list* over rows that live behind a navigation step. These rows are the
+  form, so the match is shown where it lives — which is also why `filterEditorRows` is deliberately
+  unranked (a form that re-sorts as you type is one you can't learn — the same call `foldRows` makes
+  about not hoisting set rows).
+- **It's behind the magnifier, not a permanent bar.** The sheet is dense, and a bar every task edit
+  pays for to serve the edits that need it is the trade that made the editor long in the first place.
+  Closing clears the query, and reopening the sheet resets it — handing someone back a filtered form
+  with no visible reason why is the one way this breaks.
 
 **List rows** use the iOS inset-grouped card treatment app-wide — match the styling in `TaskItem.itemWrapper` (Search/Logbook/Tags/Categories/Projects rows follow the same pattern). Section headers are uppercase `font.xs` semibold `textTertiary` with `letterSpacing: 0.8`. The one row that is deliberately *not* a card is `TaskGroupHeader` — a stack heads its tasks rather than sitting among them, so it's a transparent caption (see the note on its `band` style; every filled-card version of it read as a *selected* row, because a brighter card surface is what this app uses for pressed and dragged). What ties it to its tasks is enclosure, not resemblance: `TaskGroupTray` puts the header and the child cards in one `bgSunken` region, and the children drop their own margins to sit on its padding. Grouping a header with its rows by giving the header a card-like treatment is the move that keeps failing here — reach for the region instead.
 

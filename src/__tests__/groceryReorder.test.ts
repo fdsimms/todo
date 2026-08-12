@@ -21,7 +21,6 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     checked: false,
     inCatalog: true,
     sortOrder: seq,
-    favorite: false,
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,

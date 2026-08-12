@@ -1164,7 +1164,6 @@ export function QuickAddModal({
                   maxLength={TITLE_MAX_LENGTH}
                   returnKeyType="next"
                   blurOnSubmit={false}
-                  autoCorrect={false}
                 />
                 {pendingStep.length > 0 && (
                   <TouchableOpacity

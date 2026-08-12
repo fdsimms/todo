@@ -11,8 +11,8 @@ import { animateLayout } from '../utils/layoutAnimation';
  *
  * A row enters selection mode with itself pre-selected (a swipe on the task
  * lists, the header's select button elsewhere); tapping other rows while
- * selectionMode is on toggles them, and dragging down the checkbox column
- * paints a run of them at once (see PaintSelectionProvider, fed by
+ * selectionMode is on toggles them, and dragging down the column of selection
+ * dots paints a run of them at once (see PaintSelectionProvider, fed by
  * `paintProps` below).
  */
 export function useRowSelection() {

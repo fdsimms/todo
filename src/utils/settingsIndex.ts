@@ -167,6 +167,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['meal plan', 'recipe', 'dinner', 'auto'], kitchen: true },
   { id: 'mealCookTaskCategory', groupId: 'tasksProjects', label: 'File cook tasks under', section: 'Meals on Today',
     keywords: ['category', 'meal plan', 'kitchen'], kitchen: true },
+  // Flagged too: it only ever restates a recipe's or a grocery row's amount, so
+  // with the area gone there is nothing left for it to convert.
+  { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',
+    keywords: ['metric', 'imperial', 'convert', 'grams', 'ounces', 'pounds', 'cups', 'millilitres', 'measurement'],
+    kitchen: true },
 
   // Privacy & AI
   { id: 'appLock', groupId: 'privacyAi', label: 'Require Face ID to open', section: 'App lock',

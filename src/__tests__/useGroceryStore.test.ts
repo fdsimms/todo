@@ -75,7 +75,6 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     checked: false,
     inCatalog: true,
     sortOrder: seq,
-    favorite: false,
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,
@@ -539,17 +538,21 @@ describe('clearList', () => {
     expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
   });
 
-  // The confirm says nothing is deleted, so clearing parks a provisional row
-  // rather than forgetting it — and that keeps !onList ⇒ inCatalog true.
-  it('parks a provisional row in the catalog rather than deleting it', () => {
+  // Same split removeFromList makes: a provisional row was never in the
+  // catalog, so clearing the list it's on has nothing to keep — it's gone,
+  // not minted into a catalog entry for something that was never bought.
+  it('deletes a provisional row rather than parking it in the catalog', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: true });
     const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
-    seed([nduja]);
-    (dbClearGroceryList as jest.Mock).mockReturnValue([nduja.id]);
+    seed([milk, nduja]);
+    (dbClearGroceryList as jest.Mock).mockReturnValue([milk.id, nduja.id]);
 
-    useGroceryStore.getState().clearList();
+    expect(useGroceryStore.getState().clearList()).toBe(2);
 
-    expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+    const items = useGroceryStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe(milk.id);
+    expect(items[0].onList).toBe(false);
   });
 });
 
@@ -603,7 +606,7 @@ describe('list membership', () => {
   });
 
   it('removeFromList deletes a provisional row instead of parking it', () => {
-    // Typed once, never bought, never starred: it only existed as this line of
+    // Typed once, never bought: it only existed as this line of
     // the list, so leaving it behind is what fills the catalog with typos.
     const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
     seed([nduja]);
@@ -624,19 +627,6 @@ describe('list membership', () => {
 
     expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
     expect(useGroceryStore.getState().items[0].purchaseCount).toBe(9);
-  });
-
-  it('starring promotes a provisional row, unstarring does not demote it', () => {
-    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
-    seed([nduja]);
-
-    useGroceryStore.getState().toggleFavorite(nduja.id);
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
-
-    // A mis-tap on a star must not arm a delete.
-    useGroceryStore.getState().toggleFavorite(nduja.id);
-    expect(useGroceryStore.getState().items[0].favorite).toBe(false);
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
   });
 
   it('addExistingMany only touches rows that are off the list', () => {
@@ -1066,7 +1056,7 @@ describe('shops', () => {
   // The seam between provisional rows and store links: a provisional row is
   // deleted when it comes off the list, so an assertion that didn't promote
   // would be silently discarded by the next "Remove from list".
-  it('linkItemShop promotes a provisional row, like starring does', () => {
+  it('linkItemShop promotes a provisional row to the catalog', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, inCatalog: false });
     seed([milk], { shops: [costco] });
@@ -1804,8 +1794,10 @@ describe('either/or items (choiceGroup)', () => {
   });
 
   it('unlists rather than deletes a loser that is in the catalog', () => {
+    const shop = makeShop('Costco');
+    useGroceryStore.setState(s => ({ shops: [...s.shops, shop] }));
     const { apples, pears } = pair();
-    useGroceryStore.getState().toggleFavorite(pears.id); // promotes to catalog
+    useGroceryStore.getState().linkItemShop(pears.id, shop.id); // promotes to catalog
     useGroceryStore.getState().toggleChecked(apples.id);
 
     const loser = useGroceryStore.getState().items.find(i => i.id === pears.id)!;

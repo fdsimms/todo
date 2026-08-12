@@ -212,7 +212,6 @@ export function initDatabase(): void {
       on_list INTEGER NOT NULL DEFAULT 1,
       checked INTEGER NOT NULL DEFAULT 0,
       sort_order REAL NOT NULL DEFAULT 0,
-      favorite INTEGER NOT NULL DEFAULT 0,
       purchase_count INTEGER NOT NULL DEFAULT 0,
       last_added_at TEXT,
       last_purchased_at TEXT,
@@ -1370,7 +1369,6 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     // already exists is a catalog member — same reading as the column default.
     inCatalog: row.in_catalog === undefined ? true : Boolean(row.in_catalog),
     sortOrder: (row.sort_order as number) ?? 0,
-    favorite: Boolean(row.favorite),
     purchaseCount: (row.purchase_count as number) ?? 0,
     lastAddedAt: (row.last_added_at as string) ?? null,
     lastPurchasedAt: (row.last_purchased_at as string) ?? null,
@@ -1393,13 +1391,13 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
   db.runSync(
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
-       favorite, purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
+       purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
-      item.favorite ? 1 : 0, item.purchaseCount,
+      item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
@@ -1412,13 +1410,13 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
   db.runSync(
     `UPDATE grocery_items SET
        name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?, in_catalog=?,
-       sort_order=?, favorite=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
+       sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
-      item.favorite ? 1 : 0, item.purchaseCount,
+      item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
@@ -1504,12 +1502,16 @@ export function dbFinishGroceryShopping(
 export function dbClearGroceryList(): string[] {
   const rows = db.getAllSync<{ id: string }>('SELECT id FROM grocery_items WHERE on_list = 1');
   if (rows.length === 0) return [];
-  // in_catalog = 1 for the same reason the alert says nothing is deleted: a
-  // cleared trip parks its rows rather than forgetting them, so a name typed
-  // this week survives as catalog even though it was never bought. It also
-  // keeps the !onList ⇒ inCatalog invariant, without which a provisional row
-  // could sit off the list and then be deleted by a later Remove from list.
-  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0, in_catalog = 1 WHERE on_list = 1');
+  // Same split removeFromList makes: a row already in the catalog parks
+  // off-list, same as before. A provisional row — never in the catalog until
+  // this trip added it — has nothing to keep once the trip is abandoned, so
+  // it's deleted rather than minted into a catalog entry for something that
+  // was never bought.
+  const provisional = db.getAllSync<{ id: string }>(
+    'SELECT id FROM grocery_items WHERE on_list = 1 AND in_catalog = 0'
+  );
+  for (const row of provisional) dbDeleteGroceryItem(row.id);
+  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0 WHERE on_list = 1');
   return rows.map(r => r.id);
 }
 

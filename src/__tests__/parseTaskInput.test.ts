@@ -734,6 +734,25 @@ describe('parseCategoryAndTagsInput', () => {
   it('does not match a "#" immediately preceded by a word character (e.g. "C#")', () => {
     expect(parseCategoryAndTagsInput('learn C#work basics', categories, tags)).toBeNull();
   });
+
+  it('resolves an unambiguous category prefix before the word is finished', () => {
+    const result = parseCategoryAndTagsInput('take out the trash #chor', ['Chores', 'Work'], []);
+    expect(result?.category).toBe('Chores');
+    expect(result?.cleanTitle).toBe('take out the trash');
+  });
+
+  it('does not resolve a prefix shared by more than one category', () => {
+    expect(parseCategoryAndTagsInput('plan the week #wor', ['Work', 'Worship'], [])).toBeNull();
+  });
+
+  it('does not resolve a category prefix shorter than the minimum length', () => {
+    expect(parseCategoryAndTagsInput('take out the trash #ch', ['Chores'], [])).toBeNull();
+  });
+
+  it('still requires an exact match for tags, even when a prefix is unambiguous', () => {
+    const result = parseCategoryAndTagsInput('buy milk #err', [], ['errand']);
+    expect(result).toBeNull();
+  });
 });
 
 describe('parseFromCompletionSuffix', () => {

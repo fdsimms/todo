@@ -6,6 +6,8 @@ import {
   estimatedPurchaseCadenceDays,
   probablyHaveReason,
   defaultOnHandUntil,
+  pantryEntries,
+  buildPantrySections,
 } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { GroceryItem } from '../types';
@@ -29,7 +31,6 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     checked: false,
     inCatalog: true,
     sortOrder: seq,
-    favorite: false,
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,
@@ -126,14 +127,6 @@ describe('buyAgainItems', () => {
     ];
     expect(buyAgainItems(items, NOW)[0].name).toBe('Milk');
   });
-
-  it('floats a favourite up', () => {
-    const items = [
-      makeItem({ name: 'Plain', purchaseCount: 3, lastPurchasedAt: daysAgo(5) }),
-      makeItem({ name: 'Starred', purchaseCount: 3, lastPurchasedAt: daysAgo(5), favorite: true }),
-    ];
-    expect(buyAgainItems(items, NOW)[0].name).toBe('Starred');
-  });
 });
 
 // ─── buildGrocerySections ────────────────────────────────────────────────────
@@ -210,9 +203,9 @@ describe('catalogPruneCandidates', () => {
     expect(catalogPruneCandidates(items, NOW)).toEqual([]);
   });
 
-  it('never names a favourite', () => {
-    const items = [makeItem({ name: 'Truffle oil', favorite: true, lastAddedAt: daysAgo(200) })];
-    expect(catalogPruneCandidates(items, NOW)).toEqual([]);
+  it('names a stale never-bought row even with a long-ago add date', () => {
+    const items = [makeItem({ name: 'Truffle oil', lastAddedAt: daysAgo(200) })];
+    expect(catalogPruneCandidates(items, NOW).map(i => i.name)).toEqual(['Truffle oil']);
   });
 
   it('never names something currently on the list', () => {
@@ -300,5 +293,79 @@ describe('defaultOnHandUntil', () => {
   it('falls back to a flat two weeks with no cadence to trust', () => {
     const item = makeItem({ name: 'Saffron', purchaseCount: 0 });
     expect(defaultOnHandUntil(item, NOW)).toBe(daysAgo(-14));
+  });
+});
+
+// ─── pantryEntries / buildPantrySections ─────────────────────────────────────
+
+describe('pantryEntries', () => {
+  it('is exactly what probablyHaveReason answers for, and carries its wording', () => {
+    const guessed = makeItem({
+      name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+    });
+    const marked = makeItem({ name: 'Rice', onHandUntil: daysAgo(-5) });
+    const overdue = makeItem({
+      name: 'Soy sauce', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(40),
+    });
+    const out = makeItem({ name: 'Olive oil', onHandUntil: daysAgo(1) });
+
+    const entries = pantryEntries([guessed, marked, overdue, out], NOW);
+    expect(entries.map(e => e.item.name)).toEqual(['Milk', 'Rice']);
+    expect(entries.map(e => e.reason)).toEqual(['bought 3× · last on 28 Jul', 'marked as on hand']);
+  });
+
+  it('separates the user\'s own assertion from the cadence guess', () => {
+    const guessed = makeItem({
+      name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+    });
+    const marked = makeItem({ name: 'Rice', onHandUntil: daysAgo(-5) });
+    const entries = pantryEntries([guessed, marked], NOW);
+    expect(entries.find(e => e.item.name === 'Milk')!.asserted).toBe(false);
+    expect(entries.find(e => e.item.name === 'Rice')!.asserted).toBe(true);
+  });
+
+  it('keeps an item that is also on the list — the assertion outlives the add', () => {
+    const item = makeItem({ name: 'Rice', onList: true, onHandUntil: daysAgo(-5) });
+    expect(pantryEntries([item], NOW).map(e => e.item.name)).toEqual(['Rice']);
+  });
+});
+
+describe('buildPantrySections', () => {
+  const marked = (name: string, aisle: string) =>
+    makeItem({ name, aisle, onHandUntil: daysAgo(-5) });
+
+  it('cuts the pantry into aisles in walk order', () => {
+    const items = [marked('Rice', 'Pantry'), marked('Milk', 'Dairy & Eggs')];
+    const sections = buildPantrySections(items, ['Dairy & Eggs', 'Pantry'], NOW);
+    expect(sections.map(s => s.aisle)).toEqual(['Dairy & Eggs', 'Pantry']);
+    expect(sections[0].data.map(e => e.item.name)).toEqual(['Milk']);
+  });
+
+  it('still renders an aisle the order has never heard of', () => {
+    const sections = buildPantrySections([marked('Steak', 'Butcher')], ['Produce'], NOW);
+    expect(sections.map(s => s.aisle)).toEqual(['Butcher']);
+  });
+
+  it('drops an aisle with nothing on hand in it', () => {
+    const items = [marked('Rice', 'Pantry')];
+    const sections = buildPantrySections(items, ['Produce', 'Pantry'], NOW);
+    expect(sections.map(s => s.aisle)).toEqual(['Pantry']);
+  });
+
+  it('sorts within an aisle by name', () => {
+    const items = [marked('Rice', 'Pantry'), marked('Flour', 'Pantry')];
+    const sections = buildPantrySections(items, ['Pantry'], NOW);
+    expect(sections[0].data.map(e => e.item.name)).toEqual(['Flour', 'Rice']);
+  });
+
+  it('filters by name, so "do I have flour" is one field away', () => {
+    const items = [marked('Rice', 'Pantry'), marked('Flour', 'Pantry')];
+    const sections = buildPantrySections(items, ['Pantry'], NOW, 'flo');
+    expect(sections[0].data.map(e => e.item.name)).toEqual(['Flour']);
+  });
+
+  it('is empty rather than unfiltered when nothing matches', () => {
+    const items = [marked('Rice', 'Pantry')];
+    expect(buildPantrySections(items, ['Pantry'], NOW, 'saffron')).toEqual([]);
   });
 });
