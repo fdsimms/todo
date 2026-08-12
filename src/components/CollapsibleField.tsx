@@ -100,7 +100,7 @@ export function CollapsibleField({
       </TouchableOpacity>
       {expanded && (
         <>
-          {!!hint && <Text style={styles.hint}>{hint}</Text>}
+          {!!hint && <Text style={[styles.hint, styles.hintSpaced]}>{hint}</Text>}
           {children}
         </>
       )}
@@ -130,4 +130,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
     marginTop: spacing.xs,
   },
+  /**
+   * Only when something follows it. An expanded field is always hint-then-
+   * controls, and with no gap the sentence explaining the field reads as a
+   * caption on the first pill instead of on the group. `lockedHint` is the
+   * last thing in its section, so it takes the bare style.
+   */
+  hintSpaced: { marginBottom: spacing.sm },
 });

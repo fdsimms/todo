@@ -15,6 +15,8 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { taskKindOf } from '../utils/taskKinds';
+import { isDialable } from '../utils/phone';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -224,6 +226,33 @@ describe('demo mode', () => {
     expect(s.tagRegistry.length).toBeGreaterThan(0);
 
     useDemoStore.getState().exitDemoMode();
+  });
+
+  // The editor's Kind picker offers four shapes; a picker naming a kind demo
+  // mode has no example of reads as a feature the app doesn't really have.
+  it('seeds one task of every kind the Kind picker offers', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    expect(tasks.map(t => taskKindOf(t)).filter(k => k === 'chain').length).toBeGreaterThan(0);
+    expect(tasks.map(t => taskKindOf(t)).filter(k => k === 'timed').length).toBeGreaterThan(0);
+    expect(tasks.map(t => taskKindOf(t)).filter(k => k === 'target').length).toBeGreaterThan(0);
+    expect(tasks.map(t => taskKindOf(t)).filter(k => k === 'task').length).toBeGreaterThan(0);
+
+    // Part-done, so the row's meter shows a meter rather than an empty bar.
+    const target = tasks.find(t => taskKindOf(t) === 'target')!;
+    expect(target.progressCount).toBeGreaterThan(0);
+    expect(target.progressCount).toBeLessThan(target.targetCount!);
+    // A target always repeats — it resets by spawning its next occurrence.
+    expect(target.recurrenceType).not.toBe('none');
+  });
+
+  // No number on any task means no call/text button anywhere in the demo.
+  it('seeds a task carrying a phone number', () => {
+    useDemoStore.getState().enterDemoMode();
+    const withPhone = useTaskStore.getState().tasks.filter(t => isDialable(t.phoneNumber));
+
+    expect(withPhone.length).toBeGreaterThan(0);
   });
 
   it('seeds a task that has been pushed enough times to trip the postpone check', () => {

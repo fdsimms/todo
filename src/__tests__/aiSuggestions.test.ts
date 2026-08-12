@@ -6,7 +6,6 @@
  */
 
 import {
-  suggestTaskAttributes,
   suggestTemplateItems,
   suggestGroceryAisles,
   suggestRecipeGroceries,
@@ -23,7 +22,6 @@ import type { Task } from '../types';
 // ---------------------------------------------------------------------------
 
 const TEST_AI_FEATURE_CONFIG = {
-  taskSuggestions: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   templateSuggestions: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   groceryAisles: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   recipeExtraction: { enabled: true, model: 'claude-haiku-4-5-20251001' },
@@ -143,198 +141,9 @@ afterEach(() => {
 });
 
 // ============================================================================
-// suggestTaskAttributes
+// suggestTemplateItems
 // ============================================================================
 
-describe('suggestTaskAttributes', () => {
-  it('throws when no API key is configured', async () => {
-    jest.spyOn(
-      require('../store/useSettingsStore').useSettingsStore,
-      'getState',
-    ).mockReturnValue({ anthropicApiKey: '' });
-
-    await expect(
-      suggestTaskAttributes('Buy milk', '', [], []),
-    ).rejects.toThrow('No API key');
-  });
-
-  it('throws without hitting the network when the feature is turned off', async () => {
-    jest.spyOn(
-      require('../store/useSettingsStore').useSettingsStore,
-      'getState',
-    ).mockReturnValue({
-      anthropicApiKey: 'test-key-does-not-hit-network',
-      aiFeatureConfig: { ...TEST_AI_FEATURE_CONFIG, taskSuggestions: { enabled: false, model: 'claude-haiku-4-5-20251001' } },
-    });
-    const spy = jest.spyOn(global, 'fetch');
-
-    await expect(
-      suggestTaskAttributes('Buy milk', '', [], []),
-    ).rejects.toThrow('AI feature disabled');
-    expect(spy).not.toHaveBeenCalled();
-  });
-
-  it('throws on a non-OK HTTP response', async () => {
-    mockFetchOnce({}, 429);
-    await expect(
-      suggestTaskAttributes('title', '', [], []),
-    ).rejects.toThrow('API error 429');
-  });
-
-  it('throws when the response contains no tool_use block', async () => {
-    mockFetchOnce({ content: [{ type: 'text', text: 'hello' }] });
-    await expect(
-      suggestTaskAttributes('title', '', [], []),
-    ).rejects.toThrow('No suggestion returned');
-  });
-
-  it('returns tags, effort and category from the tool_use response', async () => {
-    mockFetchOnce(
-      toolUseResponse('suggest', { tags: ['work', 'urgent'], effort: 3, category: 'Work' }),
-    );
-    const result = await suggestTaskAttributes(
-      'Finish quarterly report',
-      '',
-      ['work', 'urgent', 'home'],
-      ['Work', 'Personal'],
-    );
-    expect(result.tags).toEqual(['work', 'urgent']);
-    expect(result.effort).toBe(3);
-    expect(result.category).toBe('Work');
-  });
-
-  it('filters out tags not present in availableTags', async () => {
-    mockFetchOnce(
-      toolUseResponse('suggest', { tags: ['work', 'invented-tag'], effort: 1, category: '' }),
-    );
-    const result = await suggestTaskAttributes('task', '', ['work'], []);
-    expect(result.tags).toEqual(['work']);
-    expect(result.tags).not.toContain('invented-tag');
-  });
-
-  it('returns null category when the model returns one not in availableCategories', async () => {
-    mockFetchOnce(
-      toolUseResponse('suggest', { tags: [], effort: 0, category: 'Hallucinated' }),
-    );
-    const result = await suggestTaskAttributes('task', '', [], ['Work', 'Home']);
-    expect(result.category).toBeNull();
-  });
-
-  it('returns null category when the model returns an empty string', async () => {
-    mockFetchOnce(
-      toolUseResponse('suggest', { tags: [], effort: 0, category: '' }),
-    );
-    const result = await suggestTaskAttributes('task', '', [], ['Work']);
-    expect(result.category).toBeNull();
-  });
-
-  it('clamps effort below 0 to 0', async () => {
-    mockFetchOnce(toolUseResponse('suggest', { tags: [], effort: -5, category: '' }));
-    const result = await suggestTaskAttributes('task', '', [], []);
-    expect(result.effort).toBe(0);
-  });
-
-  it('clamps effort above 6 to 6', async () => {
-    mockFetchOnce(toolUseResponse('suggest', { tags: [], effort: 99, category: '' }));
-    const result = await suggestTaskAttributes('task', '', [], []);
-    expect(result.effort).toBe(6);
-  });
-
-  it('handles null/missing tags field gracefully', async () => {
-    mockFetchOnce(toolUseResponse('suggest', { tags: null, effort: 2, category: '' }));
-    const result = await suggestTaskAttributes('task', '', ['work'], []);
-    expect(result.tags).toEqual([]);
-  });
-
-  it('sends the task title and notes in the request body', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(toolUseResponse('suggest', { tags: [], effort: 0, category: '' })),
-    } as Response);
-
-    await suggestTaskAttributes('Write tests', 'Cover the happy path', ['work'], ['Work']);
-
-    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
-    const userMessage = body.messages[0].content as string;
-    expect(userMessage).toContain('Write tests');
-    expect(userMessage).toContain('Cover the happy path');
-  });
-
-  it('describes available tags and categories in the request', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(toolUseResponse('suggest', { tags: [], effort: 0, category: '' })),
-    } as Response);
-
-    await suggestTaskAttributes('task', '', ['work', 'home'], ['Work', 'Personal']);
-
-    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
-    const content = body.messages[0].content as string;
-    expect(content).toContain('work');
-    expect(content).toContain('Work');
-  });
-
-  it('returns newCategory when the model proposes a name not in availableCategories', async () => {
-    mockFetchOnce(
-      toolUseResponse('suggest', { tags: [], effort: 0, category: '', newCategory: 'Errands' }),
-    );
-    const result = await suggestTaskAttributes('Renew passport', '', [], ['Work', 'Home']);
-    expect(result.category).toBeNull();
-    expect(result.newCategory).toBe('Errands');
-  });
-
-  it('suppresses newCategory when an existing category was also chosen', async () => {
-    mockFetchOnce(
-      toolUseResponse('suggest', { tags: [], effort: 0, category: 'Work', newCategory: 'Errands' }),
-    );
-    const result = await suggestTaskAttributes('task', '', [], ['Work']);
-    expect(result.category).toBe('Work');
-    expect(result.newCategory).toBeNull();
-  });
-
-  it('promotes a case-insensitive collision to the existing category', async () => {
-    mockFetchOnce(
-      toolUseResponse('suggest', { tags: [], effort: 0, category: '', newCategory: 'work' }),
-    );
-    const result = await suggestTaskAttributes('task', '', [], ['Work']);
-    expect(result.category).toBe('Work');
-    expect(result.newCategory).toBeNull();
-  });
-
-  it('returns null newCategory for a whitespace-only proposal', async () => {
-    mockFetchOnce(
-      toolUseResponse('suggest', { tags: [], effort: 0, category: '', newCategory: '   ' }),
-    );
-    const result = await suggestTaskAttributes('task', '', [], ['Work']);
-    expect(result.category).toBeNull();
-    expect(result.newCategory).toBeNull();
-  });
-
-  it('returns null newCategory when the field is missing', async () => {
-    mockFetchOnce(
-      toolUseResponse('suggest', { tags: [], effort: 0, category: '' }),
-    );
-    const result = await suggestTaskAttributes('task', '', [], ['Work']);
-    expect(result.newCategory).toBeNull();
-  });
-
-  it('instructs the model to prefer existing categories over inventing one', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(toolUseResponse('suggest', { tags: [], effort: 0, category: '', newCategory: '' })),
-    } as Response);
-
-    await suggestTaskAttributes('task', '', [], ['Work']);
-
-    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
-    const content = body.messages[0].content as string;
-    expect(content).toContain('newCategory');
-    expect(content).toContain('Strongly prefer an existing category');
-  });
-});
 
 // ============================================================================
 // suggestTemplateItems
@@ -428,14 +237,14 @@ describe('shared Anthropic request handling', () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: () => Promise.resolve(toolUseResponse('suggest', { tags: [], effort: 0, category: '' })),
+      json: () => Promise.resolve(toolUseResponse('suggest_tasks', { tasks: [] })),
     } as Response);
 
-    await suggestTaskAttributes('task', '', [], []);
+    await suggestTemplateItems('Weekly reset', []);
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     expect(body.temperature).toBeUndefined();
-    expect(body.model).toBe(TEST_AI_FEATURE_CONFIG.taskSuggestions.model);
+    expect(body.model).toBe(TEST_AI_FEATURE_CONFIG.templateSuggestions.model);
   });
 
   it('aborts the request after 15s and reports a timeout', async () => {
@@ -450,17 +259,17 @@ describe('shared Anthropic request handling', () => {
       });
     });
 
-    const promise = suggestTaskAttributes('task', '', [], []);
+    const promise = suggestTemplateItems('Weekly reset', []);
     const assertion = expect(promise).rejects.toThrow('Request timed out');
     await jest.advanceTimersByTimeAsync(15_000);
     await assertion;
   });
 
   it('throws when the response was truncated at max_tokens', async () => {
-    mockFetchOnce({ stop_reason: 'max_tokens', content: [{ type: 'tool_use', input: { tags: [], effort: 0, category: '' } }] });
+    mockFetchOnce({ stop_reason: 'max_tokens', content: [{ type: 'tool_use', input: { tasks: [] } }] });
 
     await expect(
-      suggestTaskAttributes('task', '', [], []),
+      suggestTemplateItems('Weekly reset', []),
     ).rejects.toThrow('Response was truncated');
   });
 });

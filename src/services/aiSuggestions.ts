@@ -80,7 +80,7 @@ async function callAnthropic(
   return data;
 }
 
-/** Maps a suggestTaskAttributes/suggestTemplateItems failure to copy safe to show a user. */
+/** Maps an Anthropic request failure to copy safe to show a user. */
 export function describeAIError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
   if (message === 'No API key' || message.startsWith('No API key configured')) {
@@ -94,98 +94,6 @@ export function describeAIError(error: unknown): string {
   if (message.startsWith('API error')) return 'The request failed. Check your API key in Settings.';
   if (message === 'Response was truncated') return 'The response was cut off. Try again.';
   return 'Network request failed. Check your connection.';
-}
-
-export interface AISuggestions {
-  tags: string[];
-  effort: Effort;
-  category: string | null;
-  /** A brand-new category to propose when none of the existing ones fit; null otherwise. */
-  newCategory: string | null;
-}
-
-export async function suggestTaskAttributes(
-  title: string,
-  notes: string,
-  availableTags: string[],
-  availableCategories: string[],
-): Promise<AISuggestions> {
-  const { apiKey, model } = requireFeature('taskSuggestions');
-
-  const tagPart = availableTags.length > 0
-    ? `Available tags (only suggest from this list): ${availableTags.join(', ')}`
-    : 'No existing tags.';
-
-  const categoryPart = availableCategories.length > 0
-    ? `Available categories (pick one or leave blank): ${availableCategories.join(', ')}`
-    : 'No existing categories.';
-
-  const data = await callAnthropic({
-    max_tokens: 200,
-    tools: [{
-      name: 'suggest',
-      description: 'Return tag, effort, and category suggestions for a task',
-      input_schema: {
-        type: 'object',
-        properties: {
-          tags: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Relevant tags from the available list only. Empty array if none fit.',
-          },
-          effort: {
-            type: 'integer',
-            description: '0=unknown, 1=XXS ~1min, 2=XS ~15min, 3=S ~30min, 4=M ~1-2hr, 5=L ~4hr, 6=XL day+',
-            minimum: 0,
-            maximum: 6,
-          },
-          category: {
-            type: 'string',
-            description: 'The single most relevant category from the available list. Empty string if none fit — in that case consider proposing newCategory instead.',
-          },
-          newCategory: {
-            type: 'string',
-            description: 'A short (1-2 word) brand-new category to propose ONLY when no available category fits. Must NOT duplicate any available category. Empty string otherwise.',
-          },
-        },
-        required: ['tags', 'effort', 'category', 'newCategory'],
-      },
-    }],
-    tool_choice: { type: 'tool', name: 'suggest' },
-    messages: [{
-      role: 'user',
-      content: `Task: "${title}"${notes ? `\nNotes: ${notes}` : ''}\n${tagPart}\n${categoryPart}\nStrongly prefer an existing category. Only if none of the existing categories reasonably fit, propose one short new category (1-2 words) matching the user's existing naming style; otherwise leave newCategory blank. Never invent a new category when an existing one fits.`,
-    }],
-  }, apiKey, model);
-
-  const toolUse = data.content?.find(c => c.type === 'tool_use');
-  if (!toolUse?.input) throw new Error('No suggestion returned');
-
-  const { tags: rawTags, effort: rawEffort, category: rawCategory, newCategory: rawNewCategory } = toolUse.input as {
-    tags: string[]; effort: number; category: string; newCategory?: string;
-  };
-  const suggestedCategory = rawCategory && availableCategories.includes(rawCategory) ? rawCategory : null;
-
-  // A proposed new category only survives when it's genuinely new: trimmed,
-  // non-empty, and no existing category was already chosen. If it collides
-  // (case-insensitively) with an existing category, promote it to that existing
-  // category rather than dropping a real match to a casing mismatch.
-  const trimmedNew = (rawNewCategory ?? '').trim();
-  const existingMatch = trimmedNew
-    ? availableCategories.find(c => c.toLowerCase() === trimmedNew.toLowerCase()) ?? null
-    : null;
-  const category = suggestedCategory ?? existingMatch;
-  const newCategory =
-    category === null && trimmedNew.length > 0 && existingMatch === null
-      ? trimmedNew
-      : null;
-
-  return {
-    tags: (rawTags ?? []).filter(t => availableTags.includes(t)),
-    effort: Math.max(0, Math.min(6, rawEffort ?? 0)) as Effort,
-    category,
-    newCategory,
-  };
 }
 
 export interface TemplateItemSuggestion {

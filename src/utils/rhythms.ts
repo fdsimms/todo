@@ -12,11 +12,10 @@ import { isRealCompletion } from './missed';
  * completion stamps `completedAt` — and never once read it back for anything
  * but the deadline comparison in stats.ts. This module is that read.
  *
- * It's the sibling of effortEstimator: that one learns *how long* things take
- * from `actualMinutes`, this one learns *when* they get done from `completedAt`.
- * Same discipline, deliberately — a shared MIN_SAMPLES floor, a plain-language
- * `reason` on every claim, and abstaining outright rather than reporting a
- * pattern two data points wide.
+ * It learns *when* a kind of task gets done, from `completedAt`. Disciplined
+ * deliberately — a MIN_SAMPLES floor, a plain-language `reason` on every
+ * claim, and abstaining outright rather than reporting a pattern two data
+ * points wide.
  *
  * It never reads the settings store, the way clockTime doesn't: every
  * preference it needs (segment boundaries, dayResetTime) is a parameter with a
@@ -52,7 +51,7 @@ export interface RhythmOptions {
 }
 
 // One or two completions at the same hour is a coincidence, not a rhythm. Same
-// floor effortEstimator uses before it will quote a median.
+// floor below which a median is noise rather than a pattern.
 export const MIN_SAMPLES = 3;
 
 // How lopsided a cohort has to be before we'll call its real time-of-day
@@ -255,7 +254,7 @@ export interface SegmentMismatch {
   observedCount: number;
   /** Completions considered, all of which declared `declared`. */
   total: number;
-  /** Plain-language justification, in effortEstimator's voice. */
+  /** Plain-language justification — why this is being suggested, or why not. */
   reason: string;
 }
 
@@ -408,100 +407,8 @@ export function findSegmentMismatches(
   });
 }
 
-export interface SegmentSuggestion {
-  segment: TimeOfDay;
-  reason: string;
-}
-
-/**
- * When this kind of task actually gets done — the editor's "Suggest" answer for
- * the Time of day row.
- *
- * Tiered exactly like estimateEffort, first tier with enough samples wins, and
- * it abstains rather than guessing: series → this exact title → the strongest
- * shared title word → category and tags. There is deliberately no global tier.
- * Effort has one because "the median task takes 20 minutes" is a defensible
- * prior; "you finish most things in the morning, so do this in the morning" is
- * not — it would put a morning label on every task in the app.
- */
-export function suggestSegment(
-  title: string,
-  opts: { category?: string | null; tags?: string[]; seriesId?: string | null; excludeTaskId?: string | null },
-  tasks: readonly Task[],
-  options: RhythmOptions = {},
-): SegmentSuggestion | null {
-  const { boundaries = DEFAULT_BOUNDARIES } = options;
-  const trimmed = title.trim();
-
-  const pool = tasks.filter(t =>
-    !t.parentId &&
-    !t.archived &&
-    isRealCompletion(t) &&
-    t.completedAt &&
-    t.id !== opts.excludeTaskId,
-  );
-
-  const decide = (rows: Task[], reason: (segment: TimeOfDay, n: number) => string): SegmentSuggestion | null => {
-    if (rows.length < MIN_SAMPLES) return null;
-    const counts = emptySegmentCounts();
-    for (const t of rows) counts[segmentOf(new Date(t.completedAt!), boundaries)]++;
-    let best: TimeOfDay = SEGMENTS[0];
-    for (const segment of SEGMENTS) {
-      if (counts[segment] > counts[best]) best = segment;
-    }
-    if (counts[best] / rows.length < MAJORITY_RATIO) return null;
-    return { segment: best, reason: reason(best, counts[best]) };
-  };
-
-  if (opts.seriesId) {
-    const found = decide(
-      pool.filter(t => t.seriesId === opts.seriesId),
-      (segment, n) => `Done in the ${segment} ${n} times in this set.`,
-    );
-    if (found) return found;
-  }
-
-  const key = normalizeTitle(trimmed);
-  if (key) {
-    const found = decide(
-      pool.filter(t => normalizeTitle(t.title) === key),
-      (segment, n) => `Done in the ${segment} ${n} times before.`,
-    );
-    if (found) return found;
-  }
-
-  let bestToken: { token: string; rows: Task[] } | null = null;
-  for (const token of titleTokens(trimmed)) {
-    const rows = pool.filter(t => titleTokens(t.title).includes(token));
-    if (rows.length >= MIN_SAMPLES && (!bestToken || rows.length > bestToken.rows.length)) {
-      bestToken = { token, rows };
-    }
-  }
-  if (bestToken) {
-    const token = bestToken.token;
-    const found = decide(
-      bestToken.rows,
-      (segment, n) => `${n} past tasks containing "${token}" were done in the ${segment}.`,
-    );
-    if (found) return found;
-  }
-
-  const category = opts.category ?? null;
-  const tags = opts.tags ?? [];
-  if (category != null || tags.length > 0) {
-    const found = decide(
-      pool.filter(t => (category != null && t.category === category) || t.tags.some(tag => tags.includes(tag))),
-      (segment, n) => `${n} past tasks with a similar category or tag were done in the ${segment}.`,
-    );
-    if (found) return found;
-  }
-
-  return null;
-}
-
-// Mirrors effortEstimator's tokenizer — same stopwords, same length floor, so
-// the two tiers cohort a title the same way and one can't claim a match the
-// other wouldn't.
+// Stopwords and a length floor, so the title tier cohorts on words that
+// actually distinguish one kind of task from another.
 const STOPWORDS = new Set([
   'the', 'a', 'an', 'and', 'or', 'to', 'for', 'of', 'in', 'on', 'at', 'with',
   'my', 'your', 'this', 'that', 'from', 'up', 'out', 'about',

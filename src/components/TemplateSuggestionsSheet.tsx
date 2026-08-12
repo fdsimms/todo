@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Alert,
   Modal,
@@ -10,16 +10,13 @@ import {
   StyleSheet,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { EFFORT_HINTS } from '../types';
+import {  } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useTemplateStore } from '../store/useTemplateStore';
-import { useTaskStore } from '../store/useTaskStore';
 import { EmptyState } from './EmptyState';
 import { suggestTemplateItems, describeAIError, type TemplateItemSuggestion } from '../services/aiSuggestions';
-import { estimateEffort } from '../utils/effortEstimator';
-import { minutesToEffort } from '../utils/effort';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
@@ -48,13 +45,10 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
   // Indices of accepted suggestions; everything starts accepted.
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
 
-  // Effort isn't part of the AI suggestion anymore — it's estimated from the
-  // user's own timer history, same as a new task in the editor. Computed once
-  // per suggestion set rather than per render.
-  const estimates = useMemo(() => {
-    const tasks = useTaskStore.getState().tasks;
-    return suggestions.map(s => estimateEffort(s.title, { notes: s.notes }, tasks));
-  }, [suggestions]);
+  // A suggested item arrives with no effort on it. It used to be guessed from
+  // the user's own timer history, which is gone — and a guessed number sitting
+  // on a row you didn't write is worse than an empty one, since it reads as
+  // something the app knows.
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -102,12 +96,11 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
     let added = 0;
     suggestions.forEach((s, i) => {
       if (!accepted.has(i)) return;
-      const minutes = estimates[i]?.minutes ?? null;
       const created = addItem(templateId, {
         title: s.title,
         notes: s.notes,
-        effort: minutes != null ? minutesToEffort(minutes) : 0,
-        estimatedMinutes: minutes,
+        effort: 0,
+        estimatedMinutes: null,
       });
       if (created) added += 1;
     });
@@ -177,7 +170,6 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
             </Text>
             {suggestions.map((s, i) => {
               const isAccepted = accepted.has(i);
-              const estimatedEffort = estimates[i]?.minutes != null ? minutesToEffort(estimates[i].minutes!) : 0;
               return (
                 <TouchableOpacity
                   key={`${s.title}-${i}`}
@@ -200,11 +192,6 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
                       </Text>
                     )}
                   </View>
-                  {estimatedEffort > 0 && (
-                    <View style={styles.effortBadge}>
-                      <Text style={styles.effortBadgeText}>{EFFORT_HINTS[estimatedEffort]}</Text>
-                    </View>
-                  )}
                 </TouchableOpacity>
               );
             })}
@@ -248,11 +235,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowTitle: { color: colors.text, fontSize: font.md },
   rowNotes: { color: colors.textTertiary, fontSize: font.sm },
   rowTextRejected: { textDecorationLine: 'line-through' },
-  effortBadge: {
-    paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
-  },
-  effortBadgeText: { color: colors.textSecondary, fontSize: font.xs, fontWeight: '600' },
   regenerateBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
     marginTop: spacing.lg, paddingVertical: spacing.md,

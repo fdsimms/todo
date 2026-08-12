@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
   StyleSheet,
   Platform,
   Animated,
@@ -29,10 +28,15 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, RecurrenceType, ChainItem, TimeOfDay, ReminderKind } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, border, interaction, animation, checkboxRadius, type Colors } from '../theme';
+import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { MAX_TARGET_COUNT, MIN_TARGET_COUNT } from '../utils/quickAddTypes';
+import { formatPhoneInput } from '../utils/phone';
+import {
+  bakedFields, taskKindOf, DEFAULT_TARGET_COUNT, DEFAULT_TIMED_MINUTES,
+  MAX_TARGET_COUNT, MIN_TARGET_COUNT, TASK_KIND_META,
+  type TaskKind,
+} from '../utils/taskKinds';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
@@ -47,12 +51,7 @@ import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, h
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/parseTaskInput';
-import { suggestTaskAttributes, describeAIError } from '../services/aiSuggestions';
-import { estimateEffort } from '../utils/effortEstimator';
-import { suggestSegment } from '../utils/rhythms';
-import { rhythmOptionsFromSettings } from '../utils/rhythmsSettings';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
-import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -115,7 +114,7 @@ type PickerMode = 'none' | 'reminder';
 type DraftSubtask = { id: string; title: string; completed: boolean };
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'timeSpent' | 'subtasks' | 'chainSteps';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -157,18 +156,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const allGroups = useTaskGroupStore(useShallow(s => s.groups));
   const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived)));
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const [aiLoading, setAiLoading] = useState(false);
   // True while a subtask/chain row is mid-drag. The sheet's ScrollView has to
   // stand down for the drag to survive the first finger move — a JS responder
   // nested *inside* a scroll view doesn't stop it from claiming the touch (see
   // SortableList's onDragStateChange).
   const [draggingRow, setDraggingRow] = useState(false);
-  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -226,11 +222,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [customEffortOpen, setCustomEffortOpen] = useState(false);
   const [customEffortText, setCustomEffortText] = useState('');
   const [customEffortUnit, setCustomEffortUnit] = useState<'min' | 'hr'>('min');
-  const [effortNote, setEffortNote] = useState<string | null>(null);
-  const [segmentNote, setSegmentNote] = useState<string | null>(null);
   const [actualMinutes, setActualMinutes] = useState<number | null>(null);
-  const [logTimeText, setLogTimeText] = useState('');
-  const [logTimeUnit, setLogTimeUnit] = useState<'min' | 'hr'>('min');
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
   const [durationText, setDurationText] = useState('');
   const [durationUnit, setDurationUnit] = useState<'min' | 'hr'>('min');
@@ -304,8 +296,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const subtaskTitleEditRef = useRef<TextInput>(null);
   const initialStateRef = useRef<string>('');
 
+  /**
+   * What each kind was last configured with, so switching between them is a
+   * look rather than a commitment.
+   *
+   * `bakedFields` clears the other three kinds' fields — that's what makes
+   * them exclusive, and it's right at save time. Applied straight to editor
+   * state it also means tapping Timed to read its hint and tapping Chain
+   * again comes back to an empty step list, having silently destroyed a chain
+   * that was on the task when the sheet opened. So the outgoing kind's values
+   * are stashed on the way past and seeded back on the way in; only Save
+   * commits any of it.
+   */
+  const kindMemory = useRef<{
+    timedMinutes: number | null; targetCount: number | null;
+    targetUnit: string; chainItems: ChainItem[];
+  }>({ timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [] });
+
   useEffect(() => {
     if (!visible) return;
+    // Belongs to the task being edited, not to the sheet.
+    kindMemory.current = { timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [] };
     if (task) {
       setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags);
       setGroupId(task.groupId ?? null);
@@ -383,15 +394,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setPendingSubtaskIndex(null); setDraftSubtasks([]);
     setNewChainItemTitle(''); setAddingChainItem(false);
-    setAiLoading(false);
     setOpenFields({}); setShowTimeOfDay(false); setShowTimeWindow(false);
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
-    setLogTimeText(''); setLogTimeUnit('min');
     setDurationText(''); setDurationUnit('min');
-    setEffortNote(null);
-    setSegmentNote(null);
     setStreakEditorOpen(false); setStreakDraft(task?.streakCount ?? 0);
-    setPendingCategory(null);
     setTimeout(() => titleRef.current?.focus(), 100);
     initialStateRef.current = JSON.stringify({
       title: task ? task.title : (initialDraft?.title ?? ''),
@@ -747,6 +753,50 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     );
   };
 
+  /**
+   * Read back off the fields, never held as state of its own — so a task that
+   * arrived from a template, an import or an older build reads as whatever it
+   * already is, and there's nothing to migrate or keep in step.
+   */
+  const kind = taskKindOf({ chainEnabled, targetCount, timedMinutes });
+
+  /**
+   * The only way to change kind, and the reason they're exclusive: it takes
+   * the same `bakedFields` path quick add does, which returns a full set of
+   * shape fields with the other three kinds' cleared.
+   */
+  const applyKind = (next: TaskKind) => {
+    if (next === kind) return;
+    haptics.tap();
+    animateLayout();
+    // Whatever the outgoing kind held is worth keeping — see kindMemory.
+    if (timedMinutes !== null) kindMemory.current.timedMinutes = timedMinutes;
+    if (targetCount !== null) {
+      kindMemory.current.targetCount = targetCount;
+      kindMemory.current.targetUnit = targetUnit;
+    }
+    if (chainItems.length > 0) kindMemory.current.chainItems = chainItems;
+
+    const baked = bakedFields(next, {
+      timedMinutes: kindMemory.current.timedMinutes ?? DEFAULT_TIMED_MINUTES,
+      targetCount: kindMemory.current.targetCount ?? DEFAULT_TARGET_COUNT,
+      targetUnit: kindMemory.current.targetUnit,
+      chainItems: kindMemory.current.chainItems,
+      recurrenceType,
+      effort,
+      estimatedMinutes,
+    });
+    setTimedMinutes(baked.timedMinutes);
+    setTargetCount(baked.targetCount);
+    setTargetUnit(baked.targetUnit ?? '');
+    setChainEnabled(baked.chainEnabled);
+    setChainItems(baked.chainItems);
+    setChainIndex(baked.chainIndex);
+    setRecurrenceType(baked.recurrenceType);
+    setEffort(baked.effort);
+    setEstimatedMinutes(baked.estimatedMinutes);
+  };
+
   const fieldOpen = (key: FieldKey, fallback = false) => openFields[key] ?? fallback;
   const toggleField = (key: FieldKey, fallback = false) =>
     setOpenFields(prev => ({ ...prev, [key]: !(prev[key] ?? fallback) }));
@@ -759,18 +809,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   // Opening "Time spent" drops you straight into the input, so prefill it from
   // whatever is already logged before the section unfolds.
-  const toggleTimeSpent = () => {
-    if (!fieldOpen('timeSpent')) {
-      if (actualMinutes != null && actualMinutes % 60 === 0) {
-        setLogTimeUnit('hr');
-        setLogTimeText(String(actualMinutes / 60));
-      } else {
-        setLogTimeUnit('min');
-        setLogTimeText(actualMinutes != null ? String(actualMinutes) : '');
-      }
-    }
-    toggleField('timeSpent');
-  };
 
   // Same prefill dance for Duration — open it and the current target is already
   // in the input, ready to be edited rather than retyped.
@@ -875,12 +913,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     const raw = title.trim() || task.title;
     if (!raw) return;
     Alert.alert(
-      'Send to groceries?',
+      'Convert to grocery item?',
       `“${raw}” moves to your grocery list, and this task is deleted.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Send',
+          text: 'Convert',
           onPress: () => {
             useGroceryStore.getState().addByName(raw);
             deleteTask(task.id);
@@ -1056,32 +1094,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     );
   };
 
-  const handleSuggest = async () => {
-    setAiLoading(true);
-    try {
-      const result = await suggestTaskAttributes(title.trim(), notes, allTags, allCategories);
-      if (result.effort > 0) {
-        setEffort(prev => {
-          if (prev !== 0) return prev;
-          setEstimatedMinutes(EFFORT_MINUTES[result.effort]);
-          return result.effort;
-        });
-      }
-      if (result.tags.length > 0) {
-        setTags(prev => [...new Set([...prev, ...result.tags])]);
-      }
-      setCategory(prev => {
-        if (prev) return prev;
-        if (result.category) return result.category;
-        if (result.newCategory) setPendingCategory(result.newCategory);
-        return prev;
-      });
-    } catch (e) {
-      Alert.alert('AI suggestion failed', describeAIError(e));
-    } finally {
-      setAiLoading(false);
-    }
-  };
 
   // Whether the current estimate is a precise value that isn't one of the presets.
   const customEffortActive = estimatedMinutes != null && estimatedMinutes !== effortToMinutes(effort);
@@ -1090,7 +1102,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setEffort(e);
     setEstimatedMinutes(EFFORT_MINUTES[e]);
     setCustomEffortOpen(false);
-    setEffortNote(null);
   };
 
   const openCustomEffort = () => {
@@ -1107,7 +1118,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setCustomEffortText('');
       setCustomEffortUnit('min');
     }
-    setEffortNote(null);
     setCustomEffortOpen(true);
   };
 
@@ -1124,19 +1134,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setEffort(minutesToEffort(minutes));
   };
 
-  // Manually log how long the task actually took. The measured time becomes the
-  // recorded actual and also drives the estimate/effort, matching the stopwatch.
-  const applyLoggedTime = (text: string, unit: 'min' | 'hr') => {
-    const n = parseFloat(text);
-    if (!Number.isFinite(n) || n <= 0) {
-      setActualMinutes(null);
-      return;
-    }
-    const minutes = Math.max(1, Math.round(unit === 'hr' ? n * 60 : n));
-    setActualMinutes(minutes);
-    setEstimatedMinutes(minutes);
-    setEffort(minutesToEffort(minutes));
-  };
 
   // The countdown target. Unlike logged time this deliberately leaves the
   // estimate alone — how long you mean to sit with a task and how long the task
@@ -1150,39 +1147,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setTimedMinutes(Math.max(1, Math.round(unit === 'hr' ? n * 60 : n)));
   };
 
-  const handleEstimateEffort = () => {
-    const result = estimateEffort(
-      title.trim(),
-      { notes, category, tags, previousOccurrenceId: task?.previousOccurrenceId ?? null, excludeTaskId: task?.id ?? null },
-      useTaskStore.getState().tasks,
-    );
-    if (result.minutes != null) {
-      setEstimatedMinutes(result.minutes);
-      setEffort(minutesToEffort(result.minutes));
-      setCustomEffortOpen(false);
-    }
-    // Otherwise not enough timer history yet — the reason explains why, estimate untouched.
-    setEffortNote(result.reason);
-  };
 
-  // The time-of-day counterpart of handleEstimateEffort: same local-history
-  // lookup, same abstain-with-a-reason behaviour, reading completedAt instead
-  // of actualMinutes. See utils/rhythms.
-  const handleSuggestSegment = () => {
-    const result = suggestSegment(
-      title.trim(),
-      { category, tags, seriesId: task?.seriesId ?? null, excludeTaskId: task?.id ?? null },
-      useTaskStore.getState().tasks,
-      rhythmOptionsFromSettings(),
-    );
-    if (result) {
-      haptics.tap();
-      setTimeSegments([result.segment]);
-      setSegmentNote(result.reason);
-    } else {
-      setSegmentNote('Not enough history yet to tell when you do this.');
-    }
-  };
+  // Reads the user's own history for when this task usually gets done, and
+  // abstains with a reason when there isn't enough of it. See utils/rhythms.
 
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const timeOfDaySummary = timeSegments.length > 0
@@ -1391,19 +1358,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             onClear={() => { setDeadline(null); setShowDeadlinePicker(false); }}
             onCancel={() => setShowDeadlinePicker(false)}
           />
-          <SuggestedCategorySheet
-            visible={pendingCategory !== null}
-            categoryName={pendingCategory ?? ''}
-            onConfirm={() => {
-              if (pendingCategory) {
-                addCategory(pendingCategory);
-                setCategory(pendingCategory);
-                haptics.success();
-              }
-              setPendingCategory(null);
-            }}
-            onDismiss={() => setPendingCategory(null)}
-          />
           <BlockerPickerSheet
             visible={showBlockerPicker}
             taskId={task?.id ?? null}
@@ -1429,7 +1383,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           value={title}
           onChangeText={setTitle}
           placeholder="Task title"
-          placeholderTextColor={colors.textTertiary}
+          placeholderTextColor={colors.textSecondary}
           maxLength={TITLE_MAX_LENGTH}
           // iOS's own inline predictive-text completion draws its candidate
           // directly into the field, on top of (and misaligned with) the
@@ -1474,7 +1428,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         value={notes}
         onChangeText={setNotes}
         placeholder="Notes"
-        placeholderTextColor={colors.textTertiary}
+        placeholderTextColor={colors.textSecondary}
         multiline
       />
 
@@ -1499,6 +1453,449 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           />
         </View>
       )}
+
+      {/* Kind — what shape of task this is.
+          Not a disclosure: the whole reason this card exists is that a timed
+          task, a daily target and a chain were each one folded row in a
+          different section, so nothing ever said they were a choice. A choice
+          you have to find isn't one. Four pills cost a line and a half.
+
+          The kind is read back off the fields (`taskKindOf`) rather than
+          stored, and picking one goes through `bakedFields` — the same call
+          quick add makes — which clears the other three. Before this the
+          editor held them independently and would save a chain that was also
+          a daily target. */}
+      <EditorGroup
+        label="Kind"
+        divider="full"
+        startOpen
+        rows={[
+          {
+            key: 'kind', label: 'Kind', primary: true, set: kind !== 'task',
+            node: (
+              <View style={styles.kindBlock}>
+                <View style={styles.pillRow}>
+                  {TASK_KIND_META.map(meta => {
+                    const active = kind === meta.key;
+                    return (
+                      <TouchableOpacity
+                        key={meta.key}
+                        style={[styles.pill, styles.pillWithIcon, active && styles.pillActiveAccent]}
+                        onPress={() => applyKind(meta.key)}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        accessibilityLabel={`${meta.label}. ${meta.hint}`}
+                      >
+                        <Ionicons
+                          name={meta.icon as never}
+                          size={iconSize.sm}
+                          color={active ? colors.accent : colors.textSecondary}
+                        />
+                        <Text style={[styles.pillText, active && styles.pillTextActiveAccent]}>
+                          {meta.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={styles.kindHint}>
+                  {TASK_KIND_META.find(m => m.key === kind)!.hint}
+                </Text>
+              </View>
+            ),
+          },
+          // The chosen kind's own set-up, moved here verbatim from the three
+          // sections it used to be scattered across. `primary` because a kind
+          // you just picked and can't then configure is worse than no picker.
+          ...(kind === 'timed' ? [{
+            key: 'duration', label: 'Duration', primary: true, set: true,
+            node: (<>
+            <CollapsibleField
+              label="Duration"
+              summary={timedMinutes != null ? formatDuration(timedMinutes) : undefined}
+              emptySummary="Untimed"
+              hint="Counts down on the task's row while you work. When it runs out the task is marked ready to complete."
+              expanded={fieldOpen('duration')}
+              onToggle={toggleDuration}
+            >
+              <View style={styles.pillRow}>
+                {DURATION_PRESETS.map(m => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[styles.pill, timedMinutes === m && styles.pillActiveNeutral]}
+                    onPress={() => {
+                      haptics.tap();
+                      // Tapping the active preset clears it — the only way back
+                      // to untimed without emptying the input by hand.
+                      const next = timedMinutes === m ? null : m;
+                      setTimedMinutes(next);
+                      setDurationUnit('min');
+                      setDurationText(next != null ? String(next) : '');
+                    }}
+                  >
+                    <Text style={[styles.pillText, timedMinutes === m && styles.pillTextActive]}>
+                      {formatDuration(m)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.customEffortRow}>
+                <TextInput
+                  style={styles.customEffortInput}
+                  value={durationText}
+                  onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                />
+                <View style={styles.unitToggle}>
+                  {(['min', 'hr'] as const).map(u => (
+                    <TouchableOpacity
+                      key={u}
+                      style={[styles.unitChip, durationUnit === u && styles.unitChipActive]}
+                      onPress={() => { setDurationUnit(u); applyDuration(durationText, u); }}
+                    >
+                      <Text style={[styles.unitChipText, durationUnit === u && styles.unitChipTextActive]}>{u}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </CollapsibleField>
+            </>),
+          }] : []),
+          ...(kind === 'target' ? [{
+            key: 'dailyTarget', label: 'Daily target', primary: true, set: true,
+            node: (<>
+              <EditorRow
+                icon="speedometer-outline"
+                label="Daily target"
+                hint="Log it several times a day; only shows up when you fall behind"
+                value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
+                expanded={showTargetCount}
+                onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
+                onClear={targetCount !== null ? () => { setTargetCount(null); setTargetUnit(''); setShowTargetCount(false); } : undefined}
+              />
+              {showTargetCount && (
+                <>
+                  <View style={styles.targetStepperRow}>
+                    <CountStepper
+                      value={targetCount}
+                      onChange={next => {
+                        setTargetCount(next);
+                        // A quota only makes sense day to day: the count resets
+                        // because each new occurrence starts at zero, so without
+                        // a daily repeat there'd be nothing to reset it.
+                        if (next !== null) enableRecurrence();
+                      }}
+                      min={MIN_TARGET_COUNT}
+                      max={MAX_TARGET_COUNT}
+                      // The floor clears it, so the row's × isn't the only way out of
+                      // being a quota once you've opened this.
+                      allowNull
+                      emptyLabel="Off"
+                      format={n => `${n}×`}
+                      label="Daily target"
+                      describeValue={n => (n === null ? 'off' : `${n} ${normalizeTargetUnit(targetUnit) ?? 'times'} a day`)}
+                    />
+                    {/* The unit is only ever read next to the count, so it's typed
+                        next to it too — and it's hidden while there's no count,
+                        since on its own it labels nothing. */}
+                    {targetCount !== null && (
+                      <TextInput
+                        style={styles.targetUnitInput}
+                        value={targetUnit}
+                        onChangeText={setTargetUnit}
+                        placeholder="units"
+                        placeholderTextColor={colors.textSecondary}
+                        maxLength={MAX_TARGET_UNIT_LENGTH}
+                        autoCapitalize="none"
+                        returnKeyType="done"
+                        accessibilityLabel="Unit for the daily target, optional"
+                      />
+                    )}
+                  </View>
+                  {/* Says what the row will read as rather than what the field is
+                      for: the unit's whole job is how the meter comes out, and a
+                      preview answers "plural or singular?" without a rule to
+                      explain. */}
+                  <Text style={styles.targetStepperCaption}>
+                    {targetCount === null
+                      ? 'Not a daily target'
+                      : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a day`}
+                  </Text>
+                  {targetCount !== null && (
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setAllowOvershoot(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Allow going past target"
+                      accessibilityState={{ checked: allowOvershoot }}
+                    >
+                      <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Allow going past target</Text>
+                        <Text style={styles.optionHint}>Keep logging past {targetCount}× — it stays on Today and completes at day's end with whatever count you reached</Text>
+                      </View>
+                      <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
+            </>),
+          }] : []),
+          ...(kind === 'chain' ? [{
+            key: 'chain', label: 'Chain', primary: true, set: true,
+            node: (<>
+                <CollapsibleField
+                  label="Chain"
+                  summary={
+                    chainItems.length > 1
+                      ? `Step ${chainIndex + 1} of ${chainItems.length}`
+                      : chainItems.length === 1
+                        ? '1 step — add one more'
+                        : 'No steps yet'
+                  }
+                  // Shown whenever the field is open, on or off — the moment
+                  // someone taps in to look, that's the "worth explaining"
+                  // signal CollapsibleField's own doc comment describes. It used
+                  // to be tied to chainEnabled instead, which hid the only
+                  // explanation of what Chain does right as it was turned on
+                  // (#791), and gated the Repeat-interplay sentence on Chain
+                  // being *off*, so a chain with Repeat off never saw it either.
+                  hint={
+                    'Step through a list of items, one per completion — finishing one reveals the next.'
+                    + (recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : '')
+                  }
+                  expanded={fieldOpen('chainSteps', true)}
+                  onToggle={() => toggleField('chainSteps', true)}
+                >
+                {(
+                  <>
+                    <SortableList
+                      onDragStateChange={setDraggingRow}
+                      data={chainItems}
+                      onReorder={(newData) => {
+                        const activeItemId = chainItems[chainIndex]?.id;
+                        setChainItems(newData);
+                        const newIdx = newData.findIndex(item => item.id === activeItemId);
+                        if (newIdx !== -1) setChainIndex(newIdx);
+                      }}
+                      renderItem={(item, displayIndex, drag) => {
+                        const actualIdx = chainItems.findIndex(c => c.id === item.id);
+                        const isCurrentStep = actualIdx === chainIndex;
+                        return (
+                          <View style={styles.chainItemRow}>
+                            <TouchableOpacity
+                              onPress={() => setChainIndex(actualIdx)}
+                              hitSlop={6}
+                              style={styles.chainItemIndexBtn}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Set current step to ${item.title}`}
+                            >
+                              <View style={[styles.chainItemDot, isCurrentStep && styles.chainItemDotActive]}>
+                                <Text style={[styles.chainItemDotText, isCurrentStep && styles.chainItemDotTextActive]}>
+                                  {displayIndex + 1}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                            {editingChainItemId === item.id ? (
+                              <TextInput
+                                ref={chainItemTitleEditRef}
+                                style={styles.chainItemTitleInput}
+                                value={chainItemTitleEdit}
+                                onChangeText={setChainItemTitleEdit}
+                                onBlur={() => saveChainItemTitle(item)}
+                                onSubmitEditing={() => saveChainItemTitle(item)}
+                                returnKeyType="done"
+                                maxLength={TITLE_MAX_LENGTH}
+                                blurOnSubmit
+                                autoFocus
+                              />
+                            ) : (
+                              <TouchableOpacity
+                                style={styles.chainItemTitleWrapper}
+                                onPress={() => handleChainItemTitleTap(item)}
+                                activeOpacity={interaction.activeOpacity}
+                                hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
+                              >
+                                <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
+                                  {item.title}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                            <ChainStepMinutes
+                              value={item.estimatedMinutes}
+                              label={item.title}
+                              onChange={mins => setChainItems(prev => prev.map(
+                                c => (c.id === item.id ? { ...c, estimatedMinutes: mins } : c),
+                              ))}
+                            />
+                            <TouchableOpacity
+                              onLongPress={drag}
+                              delayLongPress={150}
+                              hitSlop={8}
+                              style={styles.dragHandle}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Reorder chain step ${item.title}`}
+                            >
+                              <Ionicons name="reorder-three" size={18} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                // Track the active step by id (like onReorder above) rather
+                                // than by index — deleting an earlier step shifts every later
+                                // index down, so re-clamping the old chainIndex against the
+                                // new length silently lands on the wrong step.
+                                const activeItemId = chainItems[chainIndex]?.id;
+                                const next = chainItems.filter((_, j) => j !== actualIdx);
+                                setChainItems(next);
+                                if (activeItemId === item.id) {
+                                  // The active step itself was deleted — land on whatever now
+                                  // occupies its old slot (i.e. the step after it).
+                                  setChainIndex(Math.min(actualIdx, Math.max(0, next.length - 1)));
+                                } else {
+                                  const newIdx = next.findIndex(c => c.id === activeItemId);
+                                  setChainIndex(newIdx !== -1 ? newIdx : Math.max(0, next.length - 1));
+                                }
+                              }}
+                              hitSlop={8}
+                              style={styles.chainItemDelete}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Remove chain step ${item.title}`}
+                            >
+                              <Ionicons name="close" size={14} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      }}
+                    />
+                    {addingChainItem ? (
+                      <View style={styles.chainInputRow}>
+                        <View style={styles.chainItemDot}>
+                          <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
+                        </View>
+                        <TextInput
+                          ref={chainInputRef}
+                          autoFocus
+                          style={styles.chainInput}
+                          value={newChainItemTitle}
+                          onChangeText={setNewChainItemTitle}
+                          placeholder="Item title"
+                          placeholderTextColor={colors.textSecondary}
+                          maxLength={TITLE_MAX_LENGTH}
+                          returnKeyType="done"
+                          onSubmitEditing={() => {
+                            chainItemSavedRef.current = true;
+                            const t = newChainItemTitle.trim();
+                            if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
+                            setNewChainItemTitle('');
+                            setTimeout(() => {
+                              chainItemSavedRef.current = false;
+                              chainInputRef.current?.focus();
+                            }, 50);
+                          }}
+                          onBlur={() => {
+                            if (chainItemSavedRef.current) return;
+                            commitPendingChainItem();
+                            setAddingChainItem(false);
+                          }}
+                        />
+                      </View>
+                    ) : (
+                      <InlineAction
+                        icon="add"
+                        label="Add item"
+                        onPress={() => setAddingChainItem(true)}
+                        style={styles.addBtnSpacing}
+                      />
+                    )}
+                    {chainItems.length === 1 && (
+                      <Text style={styles.chainCurrentHint}>
+                        Add a second step — a chain needs at least 2 steps to save.
+                      </Text>
+                    )}
+                    {chainItems.length > 0 && (
+                      <Text style={styles.chainCurrentHint}>
+                        Times are per step; a step left blank uses the task's own estimate.
+                      </Text>
+                    )}
+                    {chainItems.length > 1 && (
+                      <View style={styles.chainModeBlock}>
+                        <Text style={styles.chainModeLabel}>Next step</Text>
+                        <View style={styles.chainModeRow}>
+                          {([false, true] as const).map(onSchedule => {
+                            const active = chainStepOnSchedule === onSchedule;
+                            // "On the next repeat" needs a repeat to wait for. Shown
+                            // disabled rather than hidden so the choice — and the
+                            // fact that Repeat is what unlocks it — stays visible.
+                            const disabled = onSchedule && recurrenceType === 'none';
+                            return (
+                              <TouchableOpacity
+                                key={String(onSchedule)}
+                                style={[
+                                  styles.chainModePill,
+                                  active && styles.chainModePillActive,
+                                  disabled && styles.chainModePillDisabled,
+                                ]}
+                                disabled={disabled}
+                                onPress={() => { haptics.tap(); setChainStepOnSchedule(onSchedule); }}
+                                activeOpacity={interaction.activeOpacity}
+                                accessibilityRole="radio"
+                                accessibilityState={{ selected: active, disabled }}
+                                accessibilityLabel={onSchedule ? 'Next step on the next repeat' : 'Next step right away'}
+                              >
+                                <Text
+                                  style={[
+                                    styles.chainModePillText,
+                                    active && styles.chainModePillTextActive,
+                                    disabled && styles.chainModePillTextDisabled,
+                                  ]}
+                                >
+                                  {onSchedule ? 'On the next repeat' : 'Right away'}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                        <Text style={styles.chainCurrentHint}>
+                          {recurrenceType === 'none'
+                            ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
+                            : chainStepOnSchedule
+                              ? 'One step per repeat — the chain rotates through its steps rather than running straight through.'
+                              : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
+                        </Text>
+                      </View>
+                    )}
+                    {chainIndex < chainItems.length && chainItems.length > 1 && (
+                      <Text style={styles.chainCurrentHint}>
+                        {(() => {
+                          // Timing lives in the Next step block above, so this stays
+                          // about position — with one exception. In "Right away" mode
+                          // the wrap is the single step that *does* wait for the
+                          // repeat, which is exactly what that block doesn't say and
+                          // what makes step 1 look like it should have been today's.
+                          const prefix = 'Tap a number to set the current position.';
+                          if (chainIndex === chainItems.length - 1) {
+                            return recurrenceType === 'none'
+                              ? `${prefix} This is the last step — the chain ends here.`
+                              : `${prefix} Last step — the chain starts over on the next repeat.`;
+                          }
+                          return `${prefix} Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`;
+                        })()}
+                      </Text>
+                    )}
+                  </>
+                )}
+                </CollapsibleField>
+            </>),
+          }] : []),
+        ]}
+      />
 
       {/* Schedule — when the task surfaces, and how it repeats */}
       <EditorGroup
@@ -1766,22 +2163,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     );
                   })}
                 </View>
-                <View style={styles.segmentSuggestRow}>
-                  <TouchableOpacity
-                    style={styles.suggestBtn}
-                    onPress={handleSuggestSegment}
-                    disabled={!title.trim()}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Suggest a time of day from past completions"
-                  >
-                    <Ionicons name="analytics-outline" size={12} color={colors.purple} />
-                    <Text style={styles.suggestBtnText}>From history</Text>
-                  </TouchableOpacity>
-                  {segmentNote ? (
-                    <Text style={styles.segmentNote}>{segmentNote}</Text>
-                  ) : null}
-                </View>
               </>
             )}
               </>
@@ -1841,91 +2222,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       </TouchableOpacity>
                     </View>
                   </>
-                )}
-              </>
-            )}
-              </>
-            ),
-          },
-          {
-            key: 'dailyTarget', label: 'Daily target', set: targetCount !== null,
-            node: (
-              <>
-            <EditorRow
-              icon="speedometer-outline"
-              label="Daily target"
-              hint="Log it several times a day; only shows up when you fall behind"
-              value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
-              expanded={showTargetCount}
-              onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
-              onClear={targetCount !== null ? () => { setTargetCount(null); setTargetUnit(''); setShowTargetCount(false); } : undefined}
-            />
-            {showTargetCount && (
-              <>
-                <View style={styles.targetStepperRow}>
-                  <CountStepper
-                    value={targetCount}
-                    onChange={next => {
-                      setTargetCount(next);
-                      // A quota only makes sense day to day: the count resets
-                      // because each new occurrence starts at zero, so without
-                      // a daily repeat there'd be nothing to reset it.
-                      if (next !== null) enableRecurrence();
-                    }}
-                    min={MIN_TARGET_COUNT}
-                    max={MAX_TARGET_COUNT}
-                    // The floor clears it, so the row's × isn't the only way out of
-                    // being a quota once you've opened this.
-                    allowNull
-                    emptyLabel="Off"
-                    format={n => `${n}×`}
-                    label="Daily target"
-                    describeValue={n => (n === null ? 'off' : `${n} ${normalizeTargetUnit(targetUnit) ?? 'times'} a day`)}
-                  />
-                  {/* The unit is only ever read next to the count, so it's typed
-                      next to it too — and it's hidden while there's no count,
-                      since on its own it labels nothing. */}
-                  {targetCount !== null && (
-                    <TextInput
-                      style={styles.targetUnitInput}
-                      value={targetUnit}
-                      onChangeText={setTargetUnit}
-                      placeholder="units"
-                      placeholderTextColor={colors.textTertiary}
-                      maxLength={MAX_TARGET_UNIT_LENGTH}
-                      autoCapitalize="none"
-                      returnKeyType="done"
-                      accessibilityLabel="Unit for the daily target, optional"
-                    />
-                  )}
-                </View>
-                {/* Says what the row will read as rather than what the field is
-                    for: the unit's whole job is how the meter comes out, and a
-                    preview answers "plural or singular?" without a rule to
-                    explain. */}
-                <Text style={styles.targetStepperCaption}>
-                  {targetCount === null
-                    ? 'Not a daily target'
-                    : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a day`}
-                </Text>
-                {targetCount !== null && (
-                  <TouchableOpacity
-                    style={styles.optionRow}
-                    onPress={() => { haptics.tap(); setAllowOvershoot(v => !v); }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="switch"
-                    accessibilityLabel="Allow going past target"
-                    accessibilityState={{ checked: allowOvershoot }}
-                  >
-                    <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
-                    <View style={styles.optionContent}>
-                      <Text style={styles.optionLabel}>Allow going past target</Text>
-                      <Text style={styles.optionHint}>Keep logging past {targetCount}× — it stays on Today and completes at day's end with whatever count you reached</Text>
-                    </View>
-                    <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
-                      <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
-                    </View>
-                  </TouchableOpacity>
                 )}
               </>
             )}
@@ -2007,268 +2303,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 }}
               />
             )}
-              </>
-            ),
-          },
-          {
-            key: 'chain', label: 'Chain', set: chainEnabled,
-            node: (
-              <>
-              <CollapsibleField
-                label="Chain"
-                summary={
-                  chainEnabled
-                    ? (chainItems.length > 1
-                        ? `Step ${chainIndex + 1} of ${chainItems.length}`
-                        : chainItems.length === 1
-                          ? '1 step — add one more'
-                          : 'No steps yet')
-                    : undefined
-                }
-                emptySummary="Off"
-                // Shown whenever the field is open, on or off — the moment
-                // someone taps in to look, that's the "worth explaining"
-                // signal CollapsibleField's own doc comment describes. It used
-                // to be tied to chainEnabled instead, which hid the only
-                // explanation of what Chain does right as it was turned on
-                // (#791), and gated the Repeat-interplay sentence on Chain
-                // being *off*, so a chain with Repeat off never saw it either.
-                hint={
-                  'Step through a list of items, one per completion — finishing one reveals the next.'
-                  + (recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : '')
-                }
-                expanded={fieldOpen('chainSteps', chainEnabled)}
-                onToggle={() => toggleField('chainSteps', chainEnabled)}
-                right={
-                  <TouchableOpacity
-                    style={[styles.chainToggle, chainEnabled && styles.chainToggleOn]}
-                    onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
-                    accessibilityRole="switch"
-                    accessibilityLabel="Chain"
-                    accessibilityState={{ checked: chainEnabled }}
-                  >
-                    <View style={[styles.chainToggleKnob, chainEnabled && styles.chainToggleKnobOn]} />
-                  </TouchableOpacity>
-                }
-              >
-              {chainEnabled && (
-                <>
-                  <SortableList
-                    onDragStateChange={setDraggingRow}
-                    data={chainItems}
-                    onReorder={(newData) => {
-                      const activeItemId = chainItems[chainIndex]?.id;
-                      setChainItems(newData);
-                      const newIdx = newData.findIndex(item => item.id === activeItemId);
-                      if (newIdx !== -1) setChainIndex(newIdx);
-                    }}
-                    renderItem={(item, displayIndex, drag) => {
-                      const actualIdx = chainItems.findIndex(c => c.id === item.id);
-                      const isCurrentStep = actualIdx === chainIndex;
-                      return (
-                        <View style={styles.chainItemRow}>
-                          <TouchableOpacity
-                            onPress={() => setChainIndex(actualIdx)}
-                            hitSlop={6}
-                            style={styles.chainItemIndexBtn}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Set current step to ${item.title}`}
-                          >
-                            <View style={[styles.chainItemDot, isCurrentStep && styles.chainItemDotActive]}>
-                              <Text style={[styles.chainItemDotText, isCurrentStep && styles.chainItemDotTextActive]}>
-                                {displayIndex + 1}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                          {editingChainItemId === item.id ? (
-                            <TextInput
-                              ref={chainItemTitleEditRef}
-                              style={styles.chainItemTitleInput}
-                              value={chainItemTitleEdit}
-                              onChangeText={setChainItemTitleEdit}
-                              onBlur={() => saveChainItemTitle(item)}
-                              onSubmitEditing={() => saveChainItemTitle(item)}
-                              returnKeyType="done"
-                              maxLength={TITLE_MAX_LENGTH}
-                              blurOnSubmit
-                              autoFocus
-                            />
-                          ) : (
-                            <TouchableOpacity
-                              style={styles.chainItemTitleWrapper}
-                              onPress={() => handleChainItemTitleTap(item)}
-                              activeOpacity={interaction.activeOpacity}
-                              hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
-                            >
-                              <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
-                                {item.title}
-                              </Text>
-                            </TouchableOpacity>
-                          )}
-                          <ChainStepMinutes
-                            value={item.estimatedMinutes}
-                            label={item.title}
-                            onChange={mins => setChainItems(prev => prev.map(
-                              c => (c.id === item.id ? { ...c, estimatedMinutes: mins } : c),
-                            ))}
-                          />
-                          <TouchableOpacity
-                            onLongPress={drag}
-                            delayLongPress={150}
-                            hitSlop={8}
-                            style={styles.dragHandle}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Reorder chain step ${item.title}`}
-                          >
-                            <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              // Track the active step by id (like onReorder above) rather
-                              // than by index — deleting an earlier step shifts every later
-                              // index down, so re-clamping the old chainIndex against the
-                              // new length silently lands on the wrong step.
-                              const activeItemId = chainItems[chainIndex]?.id;
-                              const next = chainItems.filter((_, j) => j !== actualIdx);
-                              setChainItems(next);
-                              if (activeItemId === item.id) {
-                                // The active step itself was deleted — land on whatever now
-                                // occupies its old slot (i.e. the step after it).
-                                setChainIndex(Math.min(actualIdx, Math.max(0, next.length - 1)));
-                              } else {
-                                const newIdx = next.findIndex(c => c.id === activeItemId);
-                                setChainIndex(newIdx !== -1 ? newIdx : Math.max(0, next.length - 1));
-                              }
-                            }}
-                            hitSlop={8}
-                            style={styles.chainItemDelete}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Remove chain step ${item.title}`}
-                          >
-                            <Ionicons name="close" size={14} color={colors.textTertiary} />
-                          </TouchableOpacity>
-                        </View>
-                      );
-                    }}
-                  />
-                  {addingChainItem ? (
-                    <View style={styles.chainInputRow}>
-                      <View style={styles.chainItemDot}>
-                        <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
-                      </View>
-                      <TextInput
-                        ref={chainInputRef}
-                        autoFocus
-                        style={styles.chainInput}
-                        value={newChainItemTitle}
-                        onChangeText={setNewChainItemTitle}
-                        placeholder="Item title"
-                        placeholderTextColor={colors.textTertiary}
-                        maxLength={TITLE_MAX_LENGTH}
-                        returnKeyType="done"
-                        onSubmitEditing={() => {
-                          chainItemSavedRef.current = true;
-                          const t = newChainItemTitle.trim();
-                          if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
-                          setNewChainItemTitle('');
-                          setTimeout(() => {
-                            chainItemSavedRef.current = false;
-                            chainInputRef.current?.focus();
-                          }, 50);
-                        }}
-                        onBlur={() => {
-                          if (chainItemSavedRef.current) return;
-                          commitPendingChainItem();
-                          setAddingChainItem(false);
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    <InlineAction
-                      icon="add"
-                      label="Add item"
-                      onPress={() => setAddingChainItem(true)}
-                      style={styles.addBtnSpacing}
-                    />
-                  )}
-                  {chainItems.length === 1 && (
-                    <Text style={styles.chainCurrentHint}>
-                      Add a second step — a chain needs at least 2 steps to save.
-                    </Text>
-                  )}
-                  {chainItems.length > 0 && (
-                    <Text style={styles.chainCurrentHint}>
-                      Times are per step; a step left blank uses the task's own estimate.
-                    </Text>
-                  )}
-                  {chainItems.length > 1 && (
-                    <View style={styles.chainModeBlock}>
-                      <Text style={styles.chainModeLabel}>Next step</Text>
-                      <View style={styles.chainModeRow}>
-                        {([false, true] as const).map(onSchedule => {
-                          const active = chainStepOnSchedule === onSchedule;
-                          // "On the next repeat" needs a repeat to wait for. Shown
-                          // disabled rather than hidden so the choice — and the
-                          // fact that Repeat is what unlocks it — stays visible.
-                          const disabled = onSchedule && recurrenceType === 'none';
-                          return (
-                            <TouchableOpacity
-                              key={String(onSchedule)}
-                              style={[
-                                styles.chainModePill,
-                                active && styles.chainModePillActive,
-                                disabled && styles.chainModePillDisabled,
-                              ]}
-                              disabled={disabled}
-                              onPress={() => { haptics.tap(); setChainStepOnSchedule(onSchedule); }}
-                              activeOpacity={interaction.activeOpacity}
-                              accessibilityRole="radio"
-                              accessibilityState={{ selected: active, disabled }}
-                              accessibilityLabel={onSchedule ? 'Next step on the next repeat' : 'Next step right away'}
-                            >
-                              <Text
-                                style={[
-                                  styles.chainModePillText,
-                                  active && styles.chainModePillTextActive,
-                                  disabled && styles.chainModePillTextDisabled,
-                                ]}
-                              >
-                                {onSchedule ? 'On the next repeat' : 'Right away'}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                      <Text style={styles.chainCurrentHint}>
-                        {recurrenceType === 'none'
-                          ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
-                          : chainStepOnSchedule
-                            ? 'One step per repeat — the chain rotates through its steps rather than running straight through.'
-                            : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
-                      </Text>
-                    </View>
-                  )}
-                  {chainIndex < chainItems.length && chainItems.length > 1 && (
-                    <Text style={styles.chainCurrentHint}>
-                      {(() => {
-                        // Timing lives in the Next step block above, so this stays
-                        // about position — with one exception. In "Right away" mode
-                        // the wrap is the single step that *does* wait for the
-                        // repeat, which is exactly what that block doesn't say and
-                        // what makes step 1 look like it should have been today's.
-                        const prefix = 'Tap a number to set the current position.';
-                        if (chainIndex === chainItems.length - 1) {
-                          return recurrenceType === 'none'
-                            ? `${prefix} This is the last step — the chain ends here.`
-                            : `${prefix} Last step — the chain starts over on the next repeat.`;
-                        }
-                        return `${prefix} Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`;
-                      })()}
-                    </Text>
-                  )}
-                </>
-              )}
-              </CollapsibleField>
               </>
             ),
           },
@@ -2372,7 +2406,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     setNewCategory(''); setAddingCategory(false);
                   }}
                   placeholder="category name"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   returnKeyType="done"
                   autoCapitalize="words"
                 />
@@ -2426,24 +2460,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             hint="Free-form labels. A task can carry several, and you can filter or search by them."
             expanded={fieldOpen('tags')}
             onToggle={() => toggleField('tags')}
-            right={!!anthropicApiKey && (
-              <TouchableOpacity
-                style={styles.suggestBtn}
-                onPress={handleSuggest}
-                disabled={aiLoading || !title.trim()}
-                hitSlop={8}
-              >
-                {aiLoading
-                  ? <ActivityIndicator size="small" color={colors.purple} />
-                  : (
-                    <>
-                      <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
-                      <Text style={styles.suggestBtnText}>Suggest</Text>
-                    </>
-                  )
-                }
-              </TouchableOpacity>
-            )}
           >
             <View style={styles.tagRow}>
               {tags.map(tag => (
@@ -2466,7 +2482,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onSubmitEditing={addTagFromInput}
                   onBlur={addTagFromInput}
                   placeholder="tag name"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   returnKeyType="done"
                   autoCapitalize="none"
                 />
@@ -2495,6 +2511,118 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       />
 
       {/* Priority + Effort */}
+      {/* Subtasks — its own card rather than a row inside "Priority & effort", which it
+          was never about — and a plain card rather than an EditorGroup,
+          because a group caption reading SUBTASKS above a field also reading
+          SUBTASKS is the same name twice. The field's own label is the
+          section heading, and its "2/5 done" summary is what a fold would
+          otherwise cost. */}
+      <View style={styles.optionsCard}>
+        <CollapsibleField
+          label="Subtasks"
+          summary={subtasks.length > 0 ? `${subtasks.filter(s => s.completed).length}/${subtasks.length} done` : undefined}
+          emptySummary="None"
+          expanded={fieldOpen('subtasks', subtasks.length > 0)}
+          onToggle={() => toggleField('subtasks', subtasks.length > 0)}
+        >
+          <SortableList
+            onDragStateChange={setDraggingRow}
+            data={subtasks}
+            onReorder={(newData) => reorderDraftSubtasks(newData.map(s => s.id))}
+            renderItem={(sub, _i, drag) => (
+              <View style={styles.subtaskRow}>
+                <TouchableOpacity
+                  onPress={() => toggleDraftSubtask(sub.id)}
+                  hitSlop={6}
+                  style={styles.subtaskCheck}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={sub.title}
+                  accessibilityState={{ checked: sub.completed }}
+                >
+                  <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
+                    {sub.completed && (
+                      <Ionicons name="checkmark" size={11} color={colors.onAccent} />
+                    )}
+                  </View>
+                  </TouchableOpacity>
+                  {editingSubtaskId === sub.id ? (
+                    <TextInput
+                      ref={subtaskTitleEditRef}
+                      style={styles.subtaskTitleInput}
+                      value={subtaskTitleEdit}
+                      onChangeText={setSubtaskTitleEdit}
+                      onBlur={() => saveSubtaskTitle(sub)}
+                      onSubmitEditing={() => saveSubtaskTitle(sub)}
+                      returnKeyType="done"
+                      maxLength={TITLE_MAX_LENGTH}
+                      blurOnSubmit
+                      autoFocus
+                    />
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.subtaskTitleWrapper}
+                      onPress={() => handleSubtaskTitleTap(sub)}
+                      activeOpacity={interaction.activeOpacity}
+                      hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
+                    >
+                      <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
+                        {sub.title}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    onLongPress={drag}
+                    delayLongPress={150}
+                    hitSlop={8}
+                    style={styles.dragHandle}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Reorder subtask ${sub.title}`}
+                  >
+                    <Ionicons name="reorder-three" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => deleteDraftSubtask(sub.id)}
+                    hitSlop={8}
+                    style={styles.subtaskDelete}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete subtask ${sub.title}`}
+                  >
+                    <Ionicons name="close" size={14} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            />
+            {/* Always here, pinned at the end of the list — adding a subtask is a
+                burst, not a one-off edit gated behind a button tap. */}
+            <View style={styles.subtaskInputRow}>
+              {/* An empty copy of the row checkbox, so the field being typed
+                  into lines up with the subtasks above it. */}
+              <View style={styles.subtaskCheck}>
+                <View style={styles.subtaskBox} />
+              </View>
+              <TextInput
+                style={styles.subtaskInput}
+                value={newSubtaskTitle}
+                onChangeText={setNewSubtaskTitle}
+                placeholder="Add subtask"
+                placeholderTextColor={colors.textSecondary}
+                maxLength={TITLE_MAX_LENGTH}
+                returnKeyType="next"
+                // Adding subtasks is a burst, not one edit: submitting keeps
+                // the field focused so the keyboard never drops between them.
+                // This used to blur on submit and refocus on a 50ms timer,
+                // which dismissed and reopened the keyboard on every entry.
+                blurOnSubmit={false}
+                onSubmitEditing={() => {
+                  commitSubtask(newSubtaskTitle);
+                  setNewSubtaskTitle('');
+                }}
+                onBlur={() => commitPendingSubtask()}
+              />
+            </View>
+          </CollapsibleField>
+      </View>
+
       <EditorGroup
         label="Priority & effort"
         divider="full"
@@ -2542,17 +2670,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             hint="Roughly how long this takes, so a day's list can be sized realistically."
             expanded={fieldOpen('effort')}
             onToggle={() => toggleField('effort')}
-            right={(
-              <TouchableOpacity
-                style={styles.suggestBtn}
-                onPress={handleEstimateEffort}
-                disabled={!title.trim()}
-                hitSlop={8}
-              >
-                <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
-                <Text style={styles.suggestBtnText}>Estimate</Text>
-              </TouchableOpacity>
-            )}
           >
             <View style={styles.pillRow}>
               {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
@@ -2591,7 +2708,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
                   keyboardType="number-pad"
                   placeholder="0"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   autoFocus
                 />
@@ -2608,231 +2725,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 </View>
               </View>
             )}
-            {effortNote ? (
-              <Text style={styles.effortNote}>{effortNote}</Text>
-            ) : null}
           </CollapsibleField>
               </>
             ),
           },
-          {
-            key: 'subtasks', label: 'Subtasks', primary: true, set: subtasks.length > 0,
-            node: (
-              <>
-            <CollapsibleField
-              label="Subtasks"
-              summary={subtasks.length > 0 ? `${subtasks.filter(s => s.completed).length}/${subtasks.length} done` : undefined}
-              emptySummary="None"
-              expanded={fieldOpen('subtasks', subtasks.length > 0)}
-              onToggle={() => toggleField('subtasks', subtasks.length > 0)}
-            >
-              <SortableList
-                onDragStateChange={setDraggingRow}
-                data={subtasks}
-                onReorder={(newData) => reorderDraftSubtasks(newData.map(s => s.id))}
-                renderItem={(sub, _i, drag) => (
-                  <View style={styles.subtaskRow}>
-                    <TouchableOpacity
-                      onPress={() => toggleDraftSubtask(sub.id)}
-                      hitSlop={6}
-                      style={styles.subtaskCheck}
-                      accessibilityRole="checkbox"
-                      accessibilityLabel={sub.title}
-                      accessibilityState={{ checked: sub.completed }}
-                    >
-                      <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
-                        {sub.completed && (
-                          <Ionicons name="checkmark" size={11} color={colors.onAccent} />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                    {editingSubtaskId === sub.id ? (
-                      <TextInput
-                        ref={subtaskTitleEditRef}
-                        style={styles.subtaskTitleInput}
-                        value={subtaskTitleEdit}
-                        onChangeText={setSubtaskTitleEdit}
-                        onBlur={() => saveSubtaskTitle(sub)}
-                        onSubmitEditing={() => saveSubtaskTitle(sub)}
-                        returnKeyType="done"
-                        maxLength={TITLE_MAX_LENGTH}
-                        blurOnSubmit
-                        autoFocus
-                      />
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.subtaskTitleWrapper}
-                        onPress={() => handleSubtaskTitleTap(sub)}
-                        activeOpacity={interaction.activeOpacity}
-                        hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
-                      >
-                        <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
-                          {sub.title}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                    <TouchableOpacity
-                      onLongPress={drag}
-                      delayLongPress={150}
-                      hitSlop={8}
-                      style={styles.dragHandle}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Reorder subtask ${sub.title}`}
-                    >
-                      <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => deleteDraftSubtask(sub.id)}
-                      hitSlop={8}
-                      style={styles.subtaskDelete}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Delete subtask ${sub.title}`}
-                    >
-                      <Ionicons name="close" size={14} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              />
-              {/* Always here, pinned at the end of the list — adding a subtask is a
-                  burst, not a one-off edit gated behind a button tap. */}
-              <View style={styles.subtaskInputRow}>
-                {/* An empty copy of the row checkbox, so the field being typed
-                    into lines up with the subtasks above it. */}
-                <View style={styles.subtaskCheck}>
-                  <View style={styles.subtaskBox} />
-                </View>
-                <TextInput
-                  style={styles.subtaskInput}
-                  value={newSubtaskTitle}
-                  onChangeText={setNewSubtaskTitle}
-                  placeholder="Add subtask"
-                  placeholderTextColor={colors.textTertiary}
-                  maxLength={TITLE_MAX_LENGTH}
-                  returnKeyType="next"
-                  // Adding subtasks is a burst, not one edit: submitting keeps
-                  // the field focused so the keyboard never drops between them.
-                  // This used to blur on submit and refocus on a 50ms timer,
-                  // which dismissed and reopened the keyboard on every entry.
-                  blurOnSubmit={false}
-                  onSubmitEditing={() => {
-                    commitSubtask(newSubtaskTitle);
-                    setNewSubtaskTitle('');
-                  }}
-                  onBlur={() => commitPendingSubtask()}
-                />
-              </View>
-            </CollapsibleField>
-              </>
-            ),
-          },
-          {
-            key: 'duration', label: 'Duration', set: estimatedMinutes !== null,
-            node: (
-              <>
-          <CollapsibleField
-            label="Duration"
-            summary={timedMinutes != null ? formatDuration(timedMinutes) : undefined}
-            emptySummary="Untimed"
-            hint="Counts down on the task's row while you work. When it runs out the task is marked ready to complete."
-            expanded={fieldOpen('duration')}
-            onToggle={toggleDuration}
-          >
-            <View style={styles.pillRow}>
-              {DURATION_PRESETS.map(m => (
-                <TouchableOpacity
-                  key={m}
-                  style={[styles.pill, timedMinutes === m && styles.pillActiveNeutral]}
-                  onPress={() => {
-                    haptics.tap();
-                    // Tapping the active preset clears it — the only way back
-                    // to untimed without emptying the input by hand.
-                    const next = timedMinutes === m ? null : m;
-                    setTimedMinutes(next);
-                    setDurationUnit('min');
-                    setDurationText(next != null ? String(next) : '');
-                  }}
-                >
-                  <Text style={[styles.pillText, timedMinutes === m && styles.pillTextActive]}>
-                    {formatDuration(m)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <View style={styles.customEffortRow}>
-              <TextInput
-                style={styles.customEffortInput}
-                value={durationText}
-                onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
-                keyboardType="number-pad"
-                placeholder="0"
-                placeholderTextColor={colors.textTertiary}
-                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-              />
-              <View style={styles.unitToggle}>
-                {(['min', 'hr'] as const).map(u => (
-                  <TouchableOpacity
-                    key={u}
-                    style={[styles.unitChip, durationUnit === u && styles.unitChipActive]}
-                    onPress={() => { setDurationUnit(u); applyDuration(durationText, u); }}
-                  >
-                    <Text style={[styles.unitChipText, durationUnit === u && styles.unitChipTextActive]}>{u}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </CollapsibleField>
-              </>
-            ),
-          },
-          {
-            key: 'timeSpent', label: 'Time spent', set: timedMinutes !== null,
-            node: (
-              <>
-          <CollapsibleField
-            label="Time spent"
-            summary={actualMinutes != null ? formatDuration(actualMinutes) : undefined}
-            emptySummary="Not logged"
-            hint="How long it actually took. Time it with the stopwatch on the task's row, or log it here — either way it also sets the estimate."
-            expanded={fieldOpen('timeSpent')}
-            onToggle={toggleTimeSpent}
-          >
-            <View style={styles.customEffortRow}>
-              <TextInput
-                style={styles.customEffortInput}
-                value={logTimeText}
-                onChangeText={t => { setLogTimeText(t); applyLoggedTime(t, logTimeUnit); }}
-                keyboardType="number-pad"
-                placeholder="0"
-                placeholderTextColor={colors.textTertiary}
-                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                autoFocus
-              />
-              <View style={styles.unitToggle}>
-                {(['min', 'hr'] as const).map(u => (
-                  <TouchableOpacity
-                    key={u}
-                    style={[styles.unitChip, logTimeUnit === u && styles.unitChipActive]}
-                    onPress={() => { setLogTimeUnit(u); applyLoggedTime(logTimeText, u); }}
-                  >
-                    <Text style={[styles.unitChipText, logTimeUnit === u && styles.unitChipTextActive]}>{u}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </CollapsibleField>
-              </>
-            ),
-          },
-        ]}
-      />
-      {/* Everything else — rarely changed, so it sits last */}
-      <EditorGroup
-        label="More"
-        // Keeps the card open while a contact nudge (below) is steering the
-        // user at the Phone/Email row it's about to reveal — those rows
-        // aren't `set` yet, so the group would otherwise fold right past them.
-        forceOpen={showPhoneNudge || showEmailNudge || showPhoneField || showEmailField}
-        rows={[
           {
             key: 'pin', label: 'Pin to Today', set: pinned,
             node: (
@@ -2857,6 +2753,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+        ]}
+      />
+      {/* Ways to act on the task from its row, rather than things about the
+          task itself — the one group here whose rows produce a button on the
+          list rather than changing how the task behaves. */}
+      <EditorGroup
+        label="Task actions"
+        // Keeps the card open while a contact nudge is steering the user at the
+        // Phone/Email row it's about to reveal — those rows aren't `set` yet,
+        // so the group would otherwise fold right past them.
+        forceOpen={showPhoneNudge || showEmailNudge || showPhoneField || showEmailField}
+        rows={[
           {
             key: 'link', label: 'Link', set: !!linkUrl,
             node: (
@@ -2907,7 +2815,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     onSubmitEditing={commitCustomLink}
                     onBlur={commitCustomLink}
                     placeholder="https://... or app://"
-                    placeholderTextColor={colors.textTertiary}
+                    placeholderTextColor={colors.textSecondary}
                     keyboardType="url"
                     autoCapitalize="none"
                     autoCorrect={false}
@@ -2943,11 +2851,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <TextInput
                   style={styles.linkCustomInput}
                   value={phoneText}
-                  onChangeText={setPhoneText}
+                  onChangeText={t => setPhoneText(formatPhoneInput(t))}
                   onSubmitEditing={commitPhone}
                   onBlur={commitPhone}
                   placeholder="(555) 123-4567"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   // No return key on the iOS phone pad, so blur is still the
                   // path that saves — the checkmark below is what makes that
                   // visible instead of implicit.
@@ -2996,7 +2904,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onSubmitEditing={commitEmail}
                   onBlur={commitEmail}
                   placeholder="name@example.com"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.textSecondary}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -3008,6 +2916,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+        ]}
+      />
+
+      {/* Vacation pause sits with the streak rather than under a general
+          "More", because keeping a streak alive through a week away is what
+          it's for. */}
+      <EditorGroup
+        label="Streaks"
+        rows={[
           {
             key: 'vacation', label: 'Vacation pause', set: vacationPause,
             node: (
@@ -3032,67 +2949,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
-          // These carry their own guards, so they contribute no row at all
-          // unless the task is the kind that has them.
-          ...(task && !task.parentId ? [{
-            key: 'groceries', label: 'Send to groceries', set: false,
-            node: (
-              <>
-                <TouchableOpacity
-                  style={styles.optionRow}
-                  onPress={handleSendToGroceries}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel="Send to groceries"
-                >
-                  <Ionicons name="cart-outline" size={18} color={colors.textSecondary} />
-                  <View style={styles.optionContent}>
-                    <Text style={styles.optionLabel}>Send to groceries</Text>
-                    <Text style={styles.optionHint}>
-                      Move this to the grocery list — for a &ldquo;buy milk&rdquo; captured as a task
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              </>
-            ),
-          }] : []),
-          // One row for two controls: the archive toggle and the streak-count
-          // editor shared a guard, and both exist only for a saved repeating task.
           ...(task && task.recurrenceType !== 'none' ? [{
-            key: 'archive', label: 'Archive & streak', set: !!task.archived || task.streakCount > 0,
+            key: 'streak', label: 'Streak', set: task.streakCount > 0,
             node: (
               <>
-                <TouchableOpacity
-                  style={styles.optionRow}
-                  onPress={() => {
-                    if (task.archived) {
-                      unarchiveTask(task.id);
-                    } else {
-                      haptics.success();
-                      archiveTask(task.id);
-                      onClose();
-                    }
-                  }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="switch"
-                  accessibilityLabel="Archive"
-                  accessibilityState={{ checked: task.archived }}
-                >
-                  <Ionicons name="archive-outline" size={18} color={task.archived ? colors.accent : colors.textSecondary} />
-                  <View style={styles.optionContent}>
-                    <Text style={styles.optionLabel}>Archive</Text>
-                    <Text style={styles.optionHint}>
-                      {task.archived
-                        ? 'Hidden from every list — resuming resets your streak'
-                        : 'Hide indefinitely, keeping history — find it later in Archived'}
-                    </Text>
-                  </View>
-                  <View style={[styles.toggle, task.archived && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, task.archived && styles.toggleKnobOn]} />
-                  </View>
-                </TouchableOpacity>
-                <View style={styles.sep} />
                 <TouchableOpacity
                   style={styles.optionRow}
                   onPress={() => {
@@ -3108,7 +2968,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       {task.streakCount > 0 ? `${task.streakCount} day streak — tap to correct` : 'No streak yet'}
                     </Text>
                   </View>
-                  <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textTertiary} />
+                  <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
                 </TouchableOpacity>
                 {streakEditorOpen && (
                   <View style={styles.intervalRow}>
@@ -3174,8 +3034,76 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         ]}
       />
 
+      {/* Gated as a whole, not just its row: its only entry needs a saved
+          top-level task, and EditorGroup with no rows still draws its card. */}
+      {task && !task.parentId && (
+      <EditorGroup
+        label="Convert"
+        rows={[
+          ...(task && !task.parentId ? [{
+            key: 'groceries', label: 'Convert to grocery item', set: false,
+            node: (
+              <>
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={handleSendToGroceries}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel="Convert to grocery item"
+                >
+                  <Ionicons name="cart-outline" size={18} color={colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Convert to grocery item</Text>
+                    <Text style={styles.optionHint}>
+                      Deletes the task and adds it to the grocery list — for a &ldquo;buy milk&rdquo; captured as a task
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </>
+            ),
+          }] : []),
+        ]}
+      />
+      )}
+
+      {/* The two ways a task leaves the list, together and last. Archive was
+          previously gated on the task repeating — collateral from sharing a
+          row with the streak editor, which genuinely is recurrence-only. Any
+          saved task can be archived, and every other entry point already
+          allowed it. */}
       {task && (
         <View style={[styles.optionsCard, { marginTop: spacing.xl }]}>
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => {
+                    if (task.archived) {
+                      unarchiveTask(task.id);
+                    } else {
+                      haptics.success();
+                      archiveTask(task.id);
+                      onClose();
+                    }
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Archive"
+                  accessibilityState={{ checked: task.archived }}
+                >
+                  <Ionicons name="archive-outline" size={18} color={task.archived ? colors.accent : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Archive</Text>
+                    <Text style={styles.optionHint}>
+                      {task.archived
+                        ? 'Hidden from every list — resuming resets your streak'
+                        : 'Hide indefinitely, keeping history — find it later in Archived'}
+                    </Text>
+                  </View>
+                  <View style={[styles.toggle, task.archived && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, task.archived && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+          <View style={styles.sep} />
           <TouchableOpacity style={styles.optionRow} onPress={handleDelete} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="trash-outline" size={18} color={colors.red} />
             <View style={styles.optionContent}>
@@ -3272,17 +3200,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
   },
-  suggestBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: radius.full,
-    backgroundColor: colors.purple + '22',
-  },
-  suggestBtnText: { color: colors.purple, fontSize: font.xs, fontWeight: '600' },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full,
+    paddingHorizontal: 12, minHeight: interaction.pillHeight,
+    borderRadius: radius.full,
   },
   tagDot: { width: 6, height: 6, borderRadius: 3 },
   tagChipText: { fontSize: font.sm, fontWeight: '500' },
@@ -3295,20 +3217,38 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   addBtnSpacing: { marginTop: spacing.sm, alignSelf: 'flex-start' },
   tagSuggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
   tagSuggestion: {
-    paddingHorizontal: 8, paddingVertical: 3,
+    paddingHorizontal: 12, minHeight: interaction.pillHeight,
+    justifyContent: 'center',
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
-  tagSuggestionText: { color: colors.textSecondary, fontSize: font.xs },
+  tagSuggestionText: { color: colors.textSecondary, fontSize: font.sm },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   pill: {
-    paddingHorizontal: 14, paddingVertical: 8,
+    paddingHorizontal: 14, minHeight: interaction.pillHeight,
+    justifyContent: 'center',
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
     alignItems: 'center',
   },
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
+  /** A pill that carries a glyph beside its label — the Kind picker's four. */
+  pillWithIcon: { flexDirection: 'row', gap: 6 },
+  /**
+   * A louder selected state than `pillActiveNeutral`, for Kind only.
+   *
+   * The neutral one is right where the pills are a list of equal options you
+   * pick from and forget (a category, a project). Kind isn't that: it's the
+   * card's whole subject, it changes what the rows below it are, and
+   * bgQuaternary against bgTertiary is a shade apart — a distinction that
+   * needs good eyes and a good screen. Same accent-tinted treatment quick
+   * add's chips use to say "this one is set".
+   */
+  pillActiveAccent: { backgroundColor: colors.accentSubtle },
+  pillTextActiveAccent: { color: colors.accent, fontWeight: '600' },
+  kindBlock: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  kindHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm, lineHeight: 16 },
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
-  pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: 2 },
+  pillHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
   customEffortRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm,
   },
@@ -3325,12 +3265,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   unitChipActive: { backgroundColor: colors.bgQuaternary },
   unitChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   unitChipTextActive: { color: colors.text, fontWeight: '600' },
-  effortNote: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm },
-  segmentSuggestRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap',
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
-  },
-  segmentNote: { color: colors.textTertiary, fontSize: font.xs, flexShrink: 1 },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
@@ -3352,7 +3286,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingBottom: spacing.xs,
   },
   targetStepperCaption: {
-    color: colors.textTertiary, fontSize: font.sm,
+    color: colors.textSecondary, fontSize: font.sm,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
   },
   targetUnitInput: {
@@ -3403,7 +3337,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
-  optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
+  optionHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1 },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md + 18 + spacing.md },
   intervalRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
@@ -3498,16 +3432,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     marginBottom: spacing.sm,
   },
-  chainToggle: {
-    width: 42, height: 25, borderRadius: 13,
-    backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
-  },
-  chainToggleOn: { backgroundColor: colors.accent },
-  chainToggleKnob: {
-    width: 19, height: 19, borderRadius: 10,
-    backgroundColor: colors.bg,
-  },
-  chainToggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
   chainItemRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,
@@ -3522,7 +3446,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chainItemDotActive: { backgroundColor: colors.accent },
   chainItemDotText: {
-    color: colors.textSecondary, fontSize: 11, fontWeight: '700',
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
   },
   chainItemDotTextActive: { color: colors.bg },
   chainItemTitleWrapper: { flex: 1 },
@@ -3546,7 +3470,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 2,
   },
   chainCurrentHint: {
-    color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
+    color: colors.textSecondary, fontSize: font.xs, lineHeight: 16,
     marginTop: spacing.xs,
   },
   chainModeBlock: { marginTop: spacing.md },
@@ -3556,7 +3480,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chainModeRow: { flexDirection: 'row', gap: spacing.xs },
   chainModePill: {
-    flex: 1, paddingVertical: 7, borderRadius: radius.full,
+    flex: 1, minHeight: interaction.pillHeight, justifyContent: 'center',
+    borderRadius: radius.full,
     backgroundColor: colors.bgTertiary, alignItems: 'center',
   },
   chainModePillActive: { backgroundColor: colors.accent },

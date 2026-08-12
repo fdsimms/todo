@@ -2,23 +2,28 @@ import type { Effort } from '../types';
 import { activeChainStep, type ChainCarrier } from './chain';
 
 /**
- * Field updates to apply when a task's actual duration is measured (via the
- * stopwatch or a manual log). `actualMinutes` is always set. The estimate/effort
- * bucket is only backfilled when the task has no estimate of its own — so a
- * timed task with no typed estimate still powers effort-based sort and AI
- * scheduling, but a typed estimate is never silently overwritten by a
- * measurement. (The consumers that read estimatedMinutes already fall back to
- * actualMinutes-derived data at read time where it matters.)
+ * Field updates to apply when a task's duration is measured by the stopwatch.
+ *
+ * **The measurement becomes the estimate, always.** That's the whole point of
+ * timing something: next time this task comes round, the number attached to it
+ * should be what it actually took rather than what someone once guessed. It
+ * used to backfill the estimate only when there wasn't one, on the reasoning
+ * that a typed estimate shouldn't be silently overwritten — which sounds
+ * careful and means a task you estimated once keeps that guess for ever, no
+ * matter how many times you time it. A measurement is better evidence than an
+ * estimate by definition; there is nothing to protect it from.
+ *
+ * `actualMinutes` is kept, and after this it is always equal to the estimate.
+ * All it does now is let the expanded task row and the Logbook say "Timed"
+ * next to the number, i.e. that it was measured rather than guessed. Nothing
+ * shows it as a second number, and nothing compares the two.
  */
-export function applyMeasuredTime(minutes: number, existingEstimatedMinutes: number | null): {
+export function applyMeasuredTime(minutes: number): {
   actualMinutes: number;
-  estimatedMinutes?: number;
-  effort?: Effort;
+  estimatedMinutes: number;
+  effort: Effort;
 } {
   const rounded = Math.max(1, Math.round(minutes));
-  if (existingEstimatedMinutes != null) {
-    return { actualMinutes: rounded };
-  }
   return {
     actualMinutes: rounded,
     estimatedMinutes: rounded,

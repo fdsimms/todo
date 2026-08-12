@@ -317,6 +317,25 @@ export const TaskItem = React.memo(function TaskItem({
   };
   // Same sanitise-at-render, null-hides-the-button pattern as callUrl above.
   const emailUrl = mailtoUrl(task.emailAddress);
+  /**
+   * Both actions live behind one button, so the choice moves to a prompt.
+   * Titled with the number itself — it's the thing being acted on, and it's
+   * the last chance to notice it's the wrong one before a call starts.
+   */
+  const handleContact = () => {
+    if (!callUrl) return;
+    haptics.tap();
+    Alert.alert(
+      task.phoneNumber ?? '',
+      undefined,
+      [
+        { text: 'Call', onPress: handleCall },
+        ...(textUrl ? [{ text: 'Message', onPress: handleText }] : []),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
+  };
+
   const handleEmail = async () => {
     if (!emailUrl) return;
     haptics.tap();
@@ -1634,31 +1653,23 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
+      {/* One button for both, because they're one fact about the task — a
+          number you can reach someone on — and the row was spending two of its
+          few action slots on the same phone number. Which of call or text you
+          want is a per-tap decision, so it's asked per tap. */}
       {!selectionMode && showActions && callUrl && (
         <TouchableOpacity
-          onPress={handleCall}
+          onPress={handleContact}
           hitSlop={8}
           style={styles.callBtn}
           accessibilityRole="button"
-          accessibilityLabel={`Call ${task.phoneNumber} for ${task.title}`}
+          accessibilityLabel={`Call or text ${task.phoneNumber} for ${task.title}`}
         >
           {/* Accent, not the iOS phone-app green: in this row green already
               means done (the checkbox) or ready (the timer), and the link and
               timer buttons beside it are what "a control on this row" looks
               like here. The handset glyph is what separates it from the link. */}
           <Ionicons name="call" size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
-      )}
-
-      {!selectionMode && showActions && textUrl && (
-        <TouchableOpacity
-          onPress={handleText}
-          hitSlop={8}
-          style={styles.textBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`Text ${task.phoneNumber} for ${task.title}`}
-        >
-          <Ionicons name="chatbubble" size={iconSize.sm} color={colors.accent} />
         </TouchableOpacity>
       )}
 
@@ -2601,9 +2612,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: 4,
   },
   callBtn: {
-    padding: 4,
-  },
-  textBtn: {
     padding: 4,
   },
   emailBtn: {

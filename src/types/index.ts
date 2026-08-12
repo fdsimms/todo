@@ -407,7 +407,13 @@ export interface Task {
 
   // Time tracking — measure how long a task actually takes
   timerStartedAt: string | null; // ISO timestamp while a live timer runs; null when stopped
-  actualMinutes: number | null;  // measured duration once timed/logged; null = never timed
+  // Measured duration, set by the stopwatch; null = never timed. Always equal
+  // to estimatedMinutes once set — timing a task *is* how its estimate gets
+  // corrected (see applyMeasuredTime), so this is not a second opinion about
+  // how long the task takes. Its only remaining job is the "Timed" label on
+  // the expanded task row and in the Logbook, which says the number was
+  // measured rather than guessed.
+  actualMinutes: number | null;
 
   // Timed tasks ("play violin for 15 minutes") — a duration the task counts
   // down against. Once the countdown runs out the task reads as ready to

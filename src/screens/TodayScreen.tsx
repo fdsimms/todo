@@ -81,7 +81,7 @@ import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { QuickSearchModal } from '../components/QuickSearchModal';
-import type { QuickAddType } from '../utils/quickAddTypes';
+import type { TaskKind } from '../utils/taskKinds';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { SortFilterSheet } from '../components/SortFilterSheet';
@@ -475,7 +475,7 @@ export function TodayScreen() {
 
   const [viewMode, setViewMode] = useState<ViewMode>('today');
   const [quickAddVisible, setQuickAddVisible] = useState(false);
-  const [quickAddType, setQuickAddType] = useState<QuickAddType>('task');
+  const [quickAddType, setQuickAddType] = useState<TaskKind>('task');
   const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A row a jump is on its way to, held as state rather than scrolled straight
