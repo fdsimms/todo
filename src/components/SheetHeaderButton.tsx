@@ -58,7 +58,7 @@ export function SheetHeaderButton({
         style={[
           styles.label,
           role === 'confirm' && styles.confirm,
-          minWidth !== undefined && { minWidth },
+          minWidth !== undefined && { minWidth, textAlign: role === 'confirm' ? 'right' : 'left' },
           disabled && styles.disabled,
           style,
         ]}
