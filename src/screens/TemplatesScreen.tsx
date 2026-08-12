@@ -33,6 +33,7 @@ import {
   type FabDropIntent,
 } from '../utils/fabDrop';
 import { ReorderableList } from '../components/ReorderableList';
+import { SwipeableRow } from '../components/SwipeableRow';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateEditor } from '../components/TemplateEditor';
 import { ListBulkBar } from '../components/ListBulkBar';
@@ -241,17 +242,7 @@ export function TemplatesScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader
-        title="Templates"
-        actions={templates.length > 0 ? [
-          {
-            icon: 'checkmark-circle-outline',
-            onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
-            active: selectionMode,
-            accessibilityLabel: selectionMode ? 'Done selecting' : 'Select templates',
-          },
-        ] : undefined}
-      />
+      <ScreenHeader title="Templates" />
 
       <FabDropZoneProvider
         ref={dropZonesRef}
@@ -327,6 +318,7 @@ export function TemplatesScreen() {
                     : (navigation as any).navigate('TemplateDetail', { templateId: tpl.id })
                 }
                 onEdit={() => setEditingTemplate(tpl)}
+                onSwipeSelect={() => enterSelectionMode(tpl.id)}
                 onApply={() => {
                   if (tpl.items.length === 0) {
                     (navigation as any).navigate('TemplateDetail', { templateId: tpl.id });
@@ -403,14 +395,16 @@ export function TemplatesScreen() {
 }
 
 /**
- * Template list row. No swipe: bulk mode is entered from the header here (both
- * of the row's gestures are taken — tap opens, long press reorders), and
- * there's nothing to reschedule. Deleting used to be a swipe *right* — the
- * direction that reschedules everywhere else — and now lives in
+ * Template list row. Swipe left enters bulk selection (#1378), same contract
+ * as every other list in the app; long press still reorders, and the two
+ * coexist the way TaskItem's row already proves they can (SwipeableRow's
+ * ~10pt horizontal-travel threshold never fires for a stationary long-press).
+ * Nothing to reschedule, so no `whenAction`. Deleting used to be a swipe
+ * *right* — the direction that reschedules everywhere else — and now lives in
  * TemplateEditor behind the ⋯ button, or in the bulk bar.
  */
 function TemplateRow({
-  template, broken, missingRefs, colors, styles, drag, selectionMode, selected, onPress, onEdit, onApply,
+  template, broken, missingRefs, colors, styles, drag, selectionMode, selected, onPress, onEdit, onApply, onSwipeSelect,
 }: {
   template: TaskTemplate;
   /** True if a template this one nests (at any depth) was deleted or is itself broken. */
@@ -426,8 +420,9 @@ function TemplateRow({
   onPress: () => void;
   onEdit: () => void;
   onApply: () => void;
+  onSwipeSelect: () => void;
 }) {
-  return (
+  const rowBody = (
     <TouchableOpacity
       style={[styles.tplRow, selectionMode && selected && styles.tplRowSelected]}
       onPress={onPress}
@@ -510,6 +505,17 @@ function TemplateRow({
       )}
     </TouchableOpacity>
   );
+  return (
+    <View style={styles.tplItemWrapper}>
+      {selectionMode ? rowBody : (
+        <SwipeableRow
+          selectAction={{ onSelect: onSwipeSelect, accessibilityLabel: `Select ${template.name}` }}
+        >
+          {rowBody}
+        </SwipeableRow>
+      )}
+    </View>
+  );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
@@ -538,14 +544,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
-  // Same inset-grouped card footprint as TaskItem rows.
-  tplRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // The card: margin, radius and resting background, split from `tplRow`
+  // below so a SwipeableRow's child renders flush — see the matching split
+  // in GroceryRow.tsx (#1378).
+  tplItemWrapper: {
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
     marginVertical: 2,
     borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  // Same inset-grouped card footprint as TaskItem rows.
+  tplRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     gap: spacing.md,

@@ -813,6 +813,7 @@ export function MealPlanScreen() {
                         }
                         selectionMode={selectionMode}
                         selected={selectedIds.has(entry.id)}
+                        onSwipeSelect={id => enterSelectionMode(id)}
                       />
                     </React.Fragment>
                   ))}
@@ -829,7 +830,7 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, leftovers, describeEntryChoices]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
@@ -941,14 +942,8 @@ export function MealPlanScreen() {
         accessibilityLabel: 'Back to this week',
       });
     }
-    actions.push({
-      icon: 'checkmark-circle-outline',
-      onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
-      active: selectionMode,
-      accessibilityLabel: selectionMode ? 'Done selecting' : 'Select meals',
-    });
     return actions;
-  }, [onThisWeek, selectionMode, page, enterSelectionMode, exitSelection]);
+  }, [onThisWeek, selectionMode, page, exitSelection]);
 
   /**
    * The week a "copy" would take from, and only while this one is empty.

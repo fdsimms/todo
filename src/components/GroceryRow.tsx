@@ -15,6 +15,7 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
+import { SwipeableRow } from './SwipeableRow';
 
 const CHECKBOX_SIZE = 24;
 // Generous beyond the visual box, matching TaskItem's checkbox hitSlop —
@@ -34,6 +35,12 @@ interface Props {
   selectionMode?: boolean;
   selected?: boolean;
   onSelect?: (id: string) => void;
+  /**
+   * Swipe left to enter bulk selection with this row pre-selected — the same
+   * entry point tasks use (#1378). No `whenAction`: rescheduling has no
+   * meaning for a shopping-list line.
+   */
+  onSwipeSelect?: (id: string) => void;
   /**
    * Opens the recipe this item came from. Passed only when
    * `item.sourceRecipeId` still resolves to a live recipe — the pointer is
@@ -66,9 +73,10 @@ interface Props {
  *
  * Deliberately TouchableOpacity rather than PressableScale: this is a
  * full-width list row, and scaling one of those looks wrong (same rule
- * TaskItem follows). And deliberately no SwipeableRow — its contract is
- * swipe-left = bulk select and swipe-right = "when", neither of which exists
- * here, so it would reveal panels that no-op.
+ * TaskItem follows). SwipeableRow now wraps it with only a select action
+ * (#1378) — no `whenAction`, since there's nothing time-shaped to reschedule
+ * on a shopping-list line, and the panel this component used to worry about
+ * revealing as a no-op is simply never rendered when `whenAction` is omitted.
  */
 export const GroceryRow = React.memo(function GroceryRow({
   item,
@@ -79,6 +87,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   selectionMode = false,
   selected = false,
   onSelect,
+  onSwipeSelect,
   onOpenRecipe,
   alternatives,
 }: Props) {
@@ -121,12 +130,10 @@ export const GroceryRow = React.memo(function GroceryRow({
     renameItem(item.id, trimmed);
   };
 
-  return (
+  const rowBody = (
     <View
       style={[
         styles.row,
-        item.checked && styles.rowChecked,
-        isActive && styles.rowActive,
         selectionMode && selected && styles.rowSelected,
       ]}
     >
@@ -264,36 +271,71 @@ export const GroceryRow = React.memo(function GroceryRow({
       )}
     </View>
   );
+
+  return (
+    <View
+      style={[
+        styles.itemWrapper,
+        item.checked && styles.itemWrapperChecked,
+        isActive && styles.itemWrapperActive,
+      ]}
+    >
+      {selectionMode ? rowBody : (
+        <SwipeableRow
+          enabled={!isActive}
+          selectAction={onSwipeSelect ? {
+            onSelect: () => onSwipeSelect(item.id),
+            accessibilityLabel: `Select ${item.name}`,
+          } : undefined}
+        >
+          {rowBody}
+        </SwipeableRow>
+      )}
+    </View>
+  );
 });
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
+    // The card: margin, radius and resting background. Split from `row`
+    // (below) the same way TaskItem splits itemWrapper from its row — a
+    // SwipeableRow's child must render flush, with no radius or margin of its
+    // own, or the swipe panel it reveals shows through the gaps around a
+    // rounded, inset child instead of filling the card. No separate clip
+    // layer is needed here the way TaskItem needs one: this row carries no
+    // shadow, so putting overflow:hidden directly on this same wrapper (below)
+    // costs nothing.
+    itemWrapper: {
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,
       marginVertical: 2,
       borderRadius: radius.md,
-      paddingVertical: 14,
-      paddingHorizontal: spacing.md,
-      gap: spacing.md,
-      minHeight: 52,
+      overflow: 'hidden',
     },
-    rowActive: {
+    itemWrapperActive: {
       // The lifted card, one surface brighter — the same "picked up" treatment
       // a dragged aisle gets in GroceryAislesSheet.
       backgroundColor: colors.bgTertiary,
     },
-    rowChecked: {
+    itemWrapperChecked: {
       // The card keeps its full surface and only its *contents* mute. An
       // opacity on the whole row reads fine in dark (#1C1C1E over #000) but
       // dissolves in light, where a white card at 55% just fades into the
       // #F2F2F7 page and the row stops looking like a row.
       backgroundColor: colors.bgSunken,
     },
-    // Takes precedence over rowChecked in the style array — a selected row
-    // reads as selected even inside the cart section.
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 14,
+      paddingHorizontal: spacing.md,
+      gap: spacing.md,
+      minHeight: 52,
+    },
+    // Takes precedence over the checked background — a selected row reads as
+    // selected even inside the cart section. Applied on the inner row (not
+    // itemWrapper) since it has to win over itemWrapperChecked in the same
+    // array position SwipeableRow's child renders at.
     rowSelected: {
       backgroundColor: colors.accent + '1A',
     },
