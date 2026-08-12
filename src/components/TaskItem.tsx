@@ -1207,7 +1207,6 @@ export const TaskItem = React.memo(function TaskItem({
     if (selectionMode) { onSelect?.(task.id); return; }
     setTitleEdit(task.title);
     setIsEditingTitle(true);
-    setTimeout(() => titleInputRef.current?.focus(), 50);
   };
 
   const saveTitle = () => {
@@ -1221,7 +1220,6 @@ export const TaskItem = React.memo(function TaskItem({
   const handleSubtaskTitleTap = (sub: Task) => {
     setSubtaskTitleEdit(sub.title);
     setEditingSubtaskId(sub.id);
-    setTimeout(() => subtaskTitleInputRef.current?.focus(), 50);
   };
 
   const saveSubtaskTitle = (sub: Task) => {

@@ -12,6 +12,11 @@ import {
 interface Props {
   visible: boolean;
   onRequestClose: () => void;
+  // Fires once the Modal's own present animation finishes — the reliable
+  // signal for imperatively focusing a field that stays mounted across
+  // visibility toggles (autoFocus only fires on mount, not on becoming
+  // visible again), instead of guessing how long the animation takes.
+  onShow?: () => void;
   // Kept per-file rather than folded into this component — root/scroll/
   // scrollContent (and the header row's own style) genuinely differ between
   // editors (e.g. scrollContent's bottom padding), so each caller passes its
@@ -42,6 +47,7 @@ interface Props {
 export function EditorSheet({
   visible,
   onRequestClose,
+  onShow,
   rootStyle,
   headerStyle,
   scrollStyle,
@@ -57,6 +63,7 @@ export function EditorSheet({
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onRequestClose}
+      onShow={onShow}
     >
       <KeyboardAvoidingView style={rootStyle} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={headerStyle}>{header}</View>
