@@ -23,8 +23,10 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { buildPantrySections, pantryEntries, type PantryEntry } from '../utils/grocerySuggest';
+import { groceryNameKey } from '../utils/groceryParse';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
+import { InlineAction } from './InlineAction';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { haptics } from '../utils/haptics';
 
@@ -36,11 +38,20 @@ interface Props {
 /**
  * Everything the app currently thinks you already have, in one place.
  *
- * It reads and never writes: the set is `probablyHaveReason`'s, the rows show
- * that function's own wording, and correcting one goes through the Pantry
- * pills on GroceryItemSheet rather than a second way to say the same thing.
+ * The set is `probablyHaveReason`'s and the rows show that function's own
+ * wording. The one thing it writes is the assertion the item sheet's "Got it"
+ * pill already writes — `addToPantry`, off the field at the top — because
+ * that correction was unreachable for anything with no row yet: you can only
+ * open an item's sheet from the list or from Buy again, so "I have flour" was
+ * unsayable until flour had been bought through the app at least once. Taking
+ * it back still goes through the Pantry pills on GroceryItemSheet, which is
+ * why a row here opens that sheet with them already showing (`initialField`).
+ *
  * That keeps the model the one #1040 settled on — computed from what you buy,
- * corrected when it's wrong, never an inventory anybody has to keep up.
+ * corrected when it's wrong, never an inventory anybody has to keep up. The
+ * add field says *that you have something*, which is the same one-bit fact the
+ * pills say; quantities, expiry dates and checking things back in are the
+ * inventory, and stay out.
  */
 export function PantrySheet({ visible, onClose }: Props) {
   const colors = useColors();
@@ -48,6 +59,7 @@ export function PantrySheet({ visible, onClose }: Props) {
 
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  const addToPantry = useGroceryStore(s => s.addToPantry);
 
   const [query, setQuery] = useState('');
   const [openItemId, setOpenItemId] = useState<string | null>(null);
@@ -69,6 +81,31 @@ export function PantrySheet({ visible, onClose }: Props) {
     [items, aisleOrder, now, query]
   );
   const total = useMemo(() => pantryEntries(items, now).length, [items, now]);
+
+  // The field does both jobs, the way PillGroup's filter does: it narrows the
+  // list, and what it can't find is what you're offered the chance to add. One
+  // field rather than two because the question is the same one either way —
+  // "do I have flour" is exactly the moment you find out you never told it.
+  const typed = query.trim();
+  const typedKey = groceryNameKey(typed);
+  // Hidden once the typed name *is* one of these rows, so the add can't be
+  // pressed to re-assert something the list is already showing.
+  const canAdd =
+    !!typed &&
+    !sections.some(section =>
+      section.data.some(e => e.item.nameKey === (typedKey || typed.toLowerCase()))
+    );
+
+  const handleAdd = () => {
+    if (!addToPantry(typed)) {
+      haptics.error();
+      return;
+    }
+    haptics.success();
+    // Cleared like every other add field in the app, so the next name can be
+    // typed straight in; the row it just made is in the list behind it.
+    setQuery('');
+  };
 
   const renderItem = ({ item: entry }: { item: PantryEntry }) => (
     <TouchableOpacity
@@ -110,21 +147,33 @@ export function PantrySheet({ visible, onClose }: Props) {
             style={styles.search}
             value={query}
             onChangeText={setQuery}
-            placeholder="Do I have…"
+            placeholder="Find or add an item…"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
             autoCapitalize="none"
-            returnKeyType="search"
-            accessibilityLabel="Search what you have"
+            returnKeyType={canAdd ? 'done' : 'search'}
+            onSubmitEditing={canAdd ? handleAdd : undefined}
+            accessibilityLabel="Find something in the pantry, or type a name to add it"
           />
         </View>
 
+        {canAdd && (
+          <View style={styles.addWrap}>
+            <InlineAction
+              label={`Add “${typed}”`}
+              icon="add"
+              onPress={handleAdd}
+              accessibilityLabel={`Add ${typed} to the pantry`}
+            />
+          </View>
+        )}
+
         {/* The only in-app explanation of where this list comes from, so it
             says the mechanism rather than describing the feature. */}
-        {total > 0 && !query.trim() && (
+        {total > 0 && !typed && (
           <Text style={styles.caption}>
             {total} {total === 1 ? 'thing' : 'things'} you probably have, worked out from what you
-            buy and how often. Tap one to say you&apos;re out of it.
+            buy and what you&apos;ve marked. Tap one to say you&apos;re out of it.
           </Text>
         )}
 
@@ -146,11 +195,11 @@ export function PantrySheet({ visible, onClose }: Props) {
           ListEmptyComponent={
             <EmptyState
               icon="file-tray-stacked-outline"
-              title={query.trim() ? 'Nothing matches' : 'Nothing in the pantry yet'}
+              title={typed ? 'Nothing matches' : 'Nothing in the pantry yet'}
               subtitle={
-                query.trim()
-                  ? 'Nothing you probably have goes by that name.'
-                  : 'Finish a shop and what you bought turns up here. You can also mark anything as on hand from its own sheet.'
+                typed
+                  ? 'Nothing you probably have goes by that name. Add it above to say you do.'
+                  : 'Finish a shop and what you bought turns up here. Type a name above to add something you already have.'
               }
             />
           }
@@ -167,6 +216,10 @@ export function PantrySheet({ visible, onClose }: Props) {
         visible={openItemId !== null}
         itemId={openItemId}
         onClose={() => setOpenItemId(null)}
+        // Opened on the Pantry pills, since that's what a row here is: the
+        // sheet is dense enough that a collapsed "Pantry" field halfway down
+        // it was, in practice, no way to say you're out of something at all.
+        initialField="pantry"
       />
     </Modal>
   );
@@ -204,6 +257,13 @@ function makeStyles(colors: Colors) {
       // with no baseline compensation, so the glyphs sit low in the box.
       height: 40,
       padding: 0,
+    },
+    // Left-aligned under the field it belongs to, and only as wide as its
+    // label — the pill is one option, not a submit button spanning the sheet.
+    addWrap: {
+      flexDirection: 'row',
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
     },
     caption: {
       fontSize: font.sm,

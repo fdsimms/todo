@@ -66,6 +66,15 @@ interface Props {
    * plain caption it always was rather than becoming a button to nowhere.
    */
   recipeExists?: (recipeId: string) => boolean;
+  /**
+   * Which picker is already open when the sheet appears. Only for callers whose
+   * whole reason for opening the sheet is that field — PantrySheet, where the
+   * row you tapped is a pantry row and "Out of it" is what you came to say.
+   * Left closed by default: a long-press from the list has no such subject, and
+   * a sheet that opens with a section unfolded for no reason is the progressive
+   * disclosure these editors exist to avoid.
+   */
+  initialField?: 'aisle' | 'stores' | 'pantry' | 'useBy';
 }
 
 /**
@@ -74,7 +83,9 @@ interface Props {
  * anywhere in groceries, so deleting a catalog row is behind a confirm rather
  * than on a swipe.
  */
-export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recipeExists }: Props) {
+export function GroceryItemSheet({
+  visible, itemId, onClose, onOpenRecipe, recipeExists, initialField,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -131,7 +142,7 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
       setNoteText(item.note);
       setPriceText(item.lastPriceMinor === null ? '' : priceToInput(item.lastPriceMinor));
       setNameError(null);
-      setOpenField(null);
+      setOpenField(initialField ?? null);
     }
   }, [visible, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
