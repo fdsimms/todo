@@ -74,6 +74,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [nudgeCadenceDays, setNudgeCadenceDays] = useState(DEFAULT_NUDGE_CADENCE_DAYS);
   const [autoSchedule, setAutoSchedule] = useState(false);
   const [sequential, setSequential] = useState(false);
+  const [nudgeOptIn, setNudgeOptIn] = useState(false);
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
   useEffect(() => {
@@ -86,6 +87,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setNudgeCadenceDays(project.nudgeCadenceDays);
     setAutoSchedule(project.autoSchedule);
     setSequential(project.sequential);
+    setNudgeOptIn(project.nudgeOptIn);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [project]);
@@ -106,10 +108,12 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         targetStartDate: targetStartDate ? targetStartDate.toISOString() : null,
         targetEndDate: targetEndDate ? targetEndDate.toISOString() : null,
         nudgeCadenceDays,
-        // A cadence of "never" leaves nothing for auto-scheduling to trigger
-        // on, so the two can't disagree about whether this project is managed.
-        autoSchedule: nudgeCadenceDays > 0 && autoSchedule,
+        // A cadence of "never", or being excluded outright, leaves nothing for
+        // auto-scheduling to trigger on, so the three can't disagree about
+        // whether this project is managed.
+        autoSchedule: nudgeOptIn && nudgeCadenceDays > 0 && autoSchedule,
         sequential,
+        nudgeOptIn,
       });
     }
     onClose();
@@ -264,80 +268,109 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         Optional. If the target date passes before the project's done, nothing happens automatically — it's just flagged so you can decide what to do.
       </Text>
 
-      <View style={[styles.sectionCard, { marginTop: spacing.lg }]}>
-        <CollapsibleField
-          label="Nudge me"
-          summary={describeCadence(nudgeCadenceDays)}
-          hint="How long this project can sit with nothing scheduled before it offers you the next thing. Take it to zero for Never."
-          expanded={cadenceOpen}
-          onToggle={() => setCadenceOpen(v => !v)}
+      <View style={[styles.card, { marginTop: spacing.lg }]}>
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); animateLayout(); setNudgeOptIn(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Include in nudges"
+          accessibilityState={{ checked: nudgeOptIn }}
         >
-          <View style={styles.cadenceRow}>
-            <CountStepper
-              value={cadence.count}
-              onChange={next => setNudgeCadenceDays(fromCadenceParts({ ...cadence, count: next }))}
-              min={1}
-              max={CADENCE_UNIT_MAX[cadence.unit]}
-              allowNull
-              emptyLabel="Never"
-              label="Nudge cadence"
-              describeValue={n => describeCadence(fromCadenceParts({ ...cadence, count: n }))}
-            />
-            <View style={styles.pillRow}>
-              {CADENCE_UNITS.map(unit => {
-                // Never has no unit — leaving all three unlit is what says so.
-                const active = cadence.count !== null && cadence.unit === unit;
-                return (
-                  <TouchableOpacity
-                    key={unit}
-                    style={[styles.pill, active && styles.pillActiveNeutral]}
-                    onPress={() => {
-                      haptics.tap();
-                      setNudgeCadenceDays(fromCadenceParts(withCadenceUnit(cadence, unit)));
-                    }}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                  >
-                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                      {cadenceUnitLabel(unit)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+          <Ionicons name="notifications-outline" size={18} color={nudgeOptIn ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Include in nudges</Text>
+            <Text style={styles.optionHint}>
+              {nudgeOptIn
+                ? 'Can appear in the gone-quiet nudge and "Pull from projects"'
+                : 'Never appears in the gone-quiet nudge or "Pull from projects" — off by default for a list you\'re not scheduling from'}
+            </Text>
           </View>
-        </CollapsibleField>
+          <View style={[styles.toggle, nudgeOptIn && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, nudgeOptIn && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
       </View>
-
-      {nudgeCadenceDays > 0 && (
-        <View style={[styles.card, { marginTop: spacing.lg }]}>
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => { haptics.tap(); setAutoSchedule(v => !v); }}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="switch"
-            accessibilityLabel="Keep it moving"
-            accessibilityState={{ checked: autoSchedule }}
-          >
-            <Ionicons name="play-forward-outline" size={18} color={autoSchedule ? colors.accent : colors.textSecondary} />
-            <View style={styles.optionContent}>
-              <Text style={styles.optionLabel}>Keep it moving</Text>
-              <Text style={styles.optionHint}>
-                {autoSchedule
-                  ? 'Dates the next task for you instead of asking'
-                  : 'Ask before scheduling anything from this project'}
-              </Text>
-            </View>
-            <View style={[styles.toggle, autoSchedule && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, autoSchedule && styles.toggleKnobOn]} />
-            </View>
-          </TouchableOpacity>
-        </View>
-      )}
       <Text style={styles.sectionFooter}>
         A project's tasks only show up on Today once they have a date, so a project with nothing
-        scheduled goes quiet. This is how it gets your attention again.
+        scheduled goes quiet. This decides whether that gets your attention or stays quiet on
+        purpose, like a running list of gift ideas.
       </Text>
+
+      {nudgeOptIn && (
+        <>
+          <View style={[styles.sectionCard, { marginTop: spacing.lg }]}>
+            <CollapsibleField
+              label="Nudge me"
+              summary={describeCadence(nudgeCadenceDays)}
+              hint="How long this project can sit with nothing scheduled before it offers you the next thing. Take it to zero for Never."
+              expanded={cadenceOpen}
+              onToggle={() => setCadenceOpen(v => !v)}
+            >
+              <View style={styles.cadenceRow}>
+                <CountStepper
+                  value={cadence.count}
+                  onChange={next => setNudgeCadenceDays(fromCadenceParts({ ...cadence, count: next }))}
+                  min={1}
+                  max={CADENCE_UNIT_MAX[cadence.unit]}
+                  allowNull
+                  emptyLabel="Never"
+                  label="Nudge cadence"
+                  describeValue={n => describeCadence(fromCadenceParts({ ...cadence, count: n }))}
+                />
+                <View style={styles.pillRow}>
+                  {CADENCE_UNITS.map(unit => {
+                    // Never has no unit — leaving all three unlit is what says so.
+                    const active = cadence.count !== null && cadence.unit === unit;
+                    return (
+                      <TouchableOpacity
+                        key={unit}
+                        style={[styles.pill, active && styles.pillActiveNeutral]}
+                        onPress={() => {
+                          haptics.tap();
+                          setNudgeCadenceDays(fromCadenceParts(withCadenceUnit(cadence, unit)));
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                          {cadenceUnitLabel(unit)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </CollapsibleField>
+          </View>
+
+          {nudgeCadenceDays > 0 && (
+            <View style={[styles.card, { marginTop: spacing.lg }]}>
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => { haptics.tap(); setAutoSchedule(v => !v); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityLabel="Keep it moving"
+                accessibilityState={{ checked: autoSchedule }}
+              >
+                <Ionicons name="play-forward-outline" size={18} color={autoSchedule ? colors.accent : colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Keep it moving</Text>
+                  <Text style={styles.optionHint}>
+                    {autoSchedule
+                      ? 'Dates the next task for you instead of asking'
+                      : 'Ask before scheduling anything from this project'}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, autoSchedule && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, autoSchedule && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            </View>
+          )}
+        </>
+      )}
 
       <View style={[styles.card, { marginTop: spacing.xl }]}>
         <TouchableOpacity

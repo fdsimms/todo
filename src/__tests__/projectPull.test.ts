@@ -123,6 +123,7 @@ const PROJECT_BASE: Project = {
   nudgeCadenceDays: 14,
   autoSchedule: false,
   sequential: false,
+  nudgeOptIn: true,
 };
 
 const makeProject = (overrides: Partial<Project> = {}): Project => ({ ...PROJECT_BASE, ...overrides });
@@ -221,6 +222,16 @@ describe('findProjectStalls', () => {
 
   it('treats cadence 0 as never ask', () => {
     expect(findProjectStalls([makeProject({ nudgeCadenceDays: 0 })], [makeTask({ id: 'a' })])).toHaveLength(0);
+  });
+
+  it('excludes a project with nudgeOptIn false, even with a real cadence', () => {
+    expect(findProjectStalls([makeProject({ nudgeOptIn: false })], [makeTask({ id: 'a' })])).toHaveLength(0);
+  });
+
+  it('excludes a nudgeOptIn: false project in "ask" mode too, unlike cadence 0', () => {
+    expect(
+      findProjectStalls([makeProject({ nudgeOptIn: false })], [makeTask({ id: 'a' })], 'ask')
+    ).toHaveLength(0);
   });
 
   it('goes silent entirely in vacation mode', () => {
@@ -580,6 +591,25 @@ describe('diagnosePullEmpty', () => {
     expect(describePullEmpty(state!)).toContain('Nudge me');
   });
 
+  // Unlike cadence-off, nudgeOptIn is a hard exclusion — it reports in both
+  // modes, because the manually-opened sheet is excluded too (see classifyProject).
+  it('names nudgeOptIn: false in both modes', () => {
+    const projects = [
+      makeProject({ id: 'p1', nudgeOptIn: false }),
+      makeProject({ id: 'p2', nudgeOptIn: false }),
+    ];
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1' }),
+      makeTask({ id: 'b', projectId: 'p2' }),
+    ];
+
+    for (const mode of ['ask', 'nudge'] as const) {
+      const state = diagnosePullEmpty(projects, tasks, mode);
+      expect(state).toEqual({ reason: 'nudge-excluded', count: 2, total: 2 });
+      expect(describePullEmpty(state!)).toContain('Include in nudges');
+    }
+  });
+
   it('reports vacation mode before looking at anything else', () => {
     settingsState.vacationMode = true;
 
@@ -686,6 +716,7 @@ describe('describePullEmpty', () => {
     const reasons: PullEmptyReason[] = [
       'vacation',
       'no-projects',
+      'nudge-excluded',
       'cadence-off',
       'auto-scheduled',
       'too-soon',

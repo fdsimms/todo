@@ -286,6 +286,16 @@ export function seedDemoData(): void {
     if (done) completeTask(t.id);
   });
 
+  // A reference list, not a to-do list: nothing here ever gets a date, and
+  // nudgeOptIn defaults to false, so it never trips the gone-quiet nudge or
+  // shows up in "Pull from projects" the way an ordinary undated project
+  // would. See Project.nudgeOptIn.
+  const giftIdeas = createProject('Gift ideas', null, null);
+  ['Something for Mom\'s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
+    const t = addTask({ title });
+    addExistingToProject(t.id, giftIdeas.id);
+  });
+
   // --- Subtasks ------------------------------------------------------------
   const trip = addTask({
     title: 'Plan the Japan trip',

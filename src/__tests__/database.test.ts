@@ -1186,6 +1186,7 @@ describe('Projects', () => {
     nudgeCadenceDays: 14,
     autoSchedule: false,
     sequential: false,
+    nudgeOptIn: true,
     ...overrides,
   });
 
@@ -1217,6 +1218,14 @@ describe('Projects', () => {
     const [p] = dbGetAllProjects();
     expect(p.nudgeCadenceDays).toBe(0);
     expect(p.autoSchedule).toBe(false);
+  });
+
+  it('round-trips nudgeOptIn, defaulting existing rows to false', () => {
+    dbInsertProject(makeProject({ nudgeOptIn: true }));
+    expect(dbGetAllProjects()[0].nudgeOptIn).toBe(true);
+
+    dbUpdateProject(makeProject({ nudgeOptIn: false }));
+    expect(dbGetAllProjects()[0].nudgeOptIn).toBe(false);
   });
 
   it('updates fields in place', () => {
@@ -1351,6 +1360,7 @@ describe('backup and restore', () => {
       id: 'p1', title: 'Summer list', notes: '', targetStartDate: null, targetEndDate: null,
       category: null, sortOrder: 1, archived: false, archivedAt: null,
       createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false, sequential: false,
+      nudgeOptIn: true,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');

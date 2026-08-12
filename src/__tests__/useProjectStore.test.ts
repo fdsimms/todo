@@ -110,6 +110,7 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   nudgeCadenceDays: 14,
   autoSchedule: false,
   sequential: false,
+  nudgeOptIn: true,
   ...overrides,
 });
 
@@ -312,6 +313,7 @@ describe('createProject / updateProject / getProjectById', () => {
     const project = useProjectStore.getState().createProject('Kitchen remodel', null, null);
     expect(project.nudgeCadenceDays).toBe(DEFAULT_NUDGE_CADENCE_DAYS);
     expect(project.autoSchedule).toBe(false);
+    expect(project.nudgeOptIn).toBe(false);
   });
 
   // Regression test for the narrow patch whitelist: these two are only
@@ -325,6 +327,15 @@ describe('createProject / updateProject / getProjectById', () => {
     expect(updated?.nudgeCadenceDays).toBe(3);
     expect(updated?.autoSchedule).toBe(true);
     expect(dbUpdateProject).toHaveBeenCalledWith(expect.objectContaining({ nudgeCadenceDays: 3, autoSchedule: true }));
+  });
+
+  it('writes nudgeOptIn through updateProject', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', nudgeOptIn: false })] });
+
+    useProjectStore.getState().updateProject('p1', { nudgeOptIn: true });
+
+    expect(useProjectStore.getState().getProjectById('p1')?.nudgeOptIn).toBe(true);
+    expect(dbUpdateProject).toHaveBeenCalledWith(expect.objectContaining({ nudgeOptIn: true }));
   });
 });
 
