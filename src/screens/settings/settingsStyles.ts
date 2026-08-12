@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { spacing, radius, font, fontWeight, type Colors } from '../../theme';
+import { spacing, radius, font, fontWeight, border, type Colors } from '../../theme';
 import { disclosureValue } from '../../theme/textStyles';
 
 /**
@@ -60,8 +60,11 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 10, borderRadius: radius.sm,
     backgroundColor: colors.bgTertiary,
+    borderWidth: border.sm, borderColor: 'transparent',
   },
-  pillActive: { backgroundColor: colors.accent + '22' },
+  // Border is the cue that survives grayscale accessibility mode — the tinted
+  // background alone is barely distinguishable from bgTertiary once hue drops out.
+  pillActive: { backgroundColor: colors.accent + '22', borderColor: colors.accent },
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   pillTextActive: { color: colors.accent, fontWeight: fontWeight.semibold },
 

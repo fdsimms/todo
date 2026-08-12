@@ -3382,7 +3382,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
   /** A pill that carries a glyph beside its label — the Kind picker's four. */
-  pillWithIcon: { flexDirection: 'row', gap: 6 },
+  pillWithIcon: { flexDirection: 'row', gap: 6, borderWidth: border.sm, borderColor: 'transparent' },
   /**
    * A louder selected state than `pillActiveNeutral`, for Kind only.
    *
@@ -3391,9 +3391,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
    * card's whole subject, it changes what the rows below it are, and
    * bgQuaternary against bgTertiary is a shade apart — a distinction that
    * needs good eyes and a good screen. Same accent-tinted treatment quick
-   * add's chips use to say "this one is set".
+   * add's chips use to say "this one is set". The border is the part that
+   * survives grayscale accessibility mode, where accentSubtle and bgTertiary
+   * collapse to nearly the same shade.
    */
-  pillActiveAccent: { backgroundColor: colors.accentSubtle },
+  pillActiveAccent: { backgroundColor: colors.accentSubtle, borderColor: colors.accent },
   pillTextActiveAccent: { color: colors.accent, fontWeight: '600' },
   kindBlock: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   kindHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm, lineHeight: 16 },
