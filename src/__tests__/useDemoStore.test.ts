@@ -269,9 +269,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(shops.length).toBeGreaterThanOrEqual(3);
     // "It has everything, but don't send me there".
     expect(shops.some(s => s.excludeFromSuggestions)).toBe(true);
-    // Both link kinds: observed on a trip, and asserted by hand.
+    // All three link kinds: observed on a trip, asserted by hand, and the
+    // negative claim — "they don't stock it", which is invisible in the app
+    // until something carries it.
     expect(itemShops.some(l => l.purchaseCount > 0)).toBe(true);
-    expect(itemShops.some(l => l.purchaseCount === 0)).toBe(true);
+    expect(itemShops.some(l => l.purchaseCount === 0 && !l.unavailableAt)).toBe(true);
+    expect(itemShops.some(l => l.unavailableAt)).toBe(true);
     // A section the user added, one they deleted, and a moved built-in.
     expect(aisleOrder).toContain('Bulk bins');
     expect(hiddenAisles).toContain('Personal Care');

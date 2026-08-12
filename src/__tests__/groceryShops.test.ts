@@ -1,6 +1,8 @@
 import {
   isAsserted,
+  isUnavailable,
   shopsForItem,
+  unavailableShopsFor,
   primaryShopFor,
   exclusiveShopFor,
   itemIdsForShop,
@@ -53,7 +55,18 @@ function link(
   purchaseCount: number,
   lastPurchasedAt: string | null = null
 ): ItemShopLink {
-  return { itemId, shopId, purchaseCount, lastPurchasedAt };
+  return { itemId, shopId, purchaseCount, lastPurchasedAt, unavailableAt: null };
+}
+
+/** "They don't have it here", optionally on top of a purchase history. */
+function notAt(itemId: string, shopId: string, purchaseCount = 0): ItemShopLink {
+  return {
+    itemId,
+    shopId,
+    purchaseCount,
+    lastPurchasedAt: null,
+    unavailableAt: '2026-03-04T00:00:00.000Z',
+  };
 }
 
 const costco = makeShop('Costco', 1);
@@ -65,6 +78,27 @@ describe('isAsserted', () => {
   it('is true only for a link no purchase is behind', () => {
     expect(isAsserted(link('i', costco.id, 0))).toBe(true);
     expect(isAsserted(link('i', costco.id, 1))).toBe(false);
+  });
+
+  it('is false for a negative link, which also has no purchase behind it', () => {
+    expect(isAsserted(notAt('i', costco.id))).toBe(false);
+    expect(isUnavailable(notAt('i', costco.id))).toBe(true);
+    expect(isUnavailable(link('i', costco.id, 0))).toBe(false);
+  });
+});
+
+describe('unavailableShopsFor', () => {
+  it('names the stores marked as not stocking it, and only those', () => {
+    const links = [link('milk', costco.id, 3), notAt('milk', safeway.id), notAt('eggs', traderJoes.id)];
+    expect(unavailableShopsFor('milk', links, SHOPS)).toEqual([safeway]);
+  });
+
+  it('includes a store with purchase history that has since stopped stocking it', () => {
+    expect(unavailableShopsFor('milk', [notAt('milk', costco.id, 11)], SHOPS)).toEqual([costco]);
+  });
+
+  it('drops a link whose shop is gone, same as every other reader', () => {
+    expect(unavailableShopsFor('milk', [notAt('milk', 'shop-deleted')], SHOPS)).toEqual([]);
   });
 });
 
@@ -106,6 +140,15 @@ describe('shopsForItem', () => {
       { shop: costco, purchaseCount: 4, lastPurchasedAt: '2026-05-05T00:00:00.000Z' },
     ]);
   });
+
+  it('drops a store marked as not stocking it — this is the "where can I get it" read', () => {
+    const links = [link('milk', costco.id, 2), notAt('milk', safeway.id)];
+    expect(shopsForItem('milk', links, SHOPS).map(s => s.shop.name)).toEqual(['Costco']);
+  });
+
+  it('drops it however many purchases it has behind it — the claim is about now', () => {
+    expect(shopsForItem('milk', [notAt('milk', costco.id, 11)], SHOPS)).toEqual([]);
+  });
 });
 
 describe('primaryShopFor', () => {
@@ -145,6 +188,11 @@ describe('exclusiveShopFor', () => {
   it('is null with none', () => {
     expect(exclusiveShopFor('milk', [], SHOPS)).toBeNull();
   });
+
+  it('does not count a store marked as not stocking it', () => {
+    const links = [link('milk', costco.id, 3), notAt('milk', safeway.id)];
+    expect(exclusiveShopFor('milk', links, SHOPS)).toEqual(costco);
+  });
 });
 
 describe('itemIdsForShop', () => {
@@ -159,6 +207,11 @@ describe('itemIdsForShop', () => {
 
   it('is empty for a store with nothing linked', () => {
     expect(itemIdsForShop(traderJoes.id, [link('milk', costco.id, 1)])).toEqual(new Set());
+  });
+
+  it('leaves out what the store was marked as not stocking', () => {
+    const links = [link('milk', costco.id, 2), notAt('eggs', costco.id)];
+    expect(itemIdsForShop(costco.id, links)).toEqual(new Set(['milk']));
   });
 });
 
@@ -179,6 +232,12 @@ describe('itemCountsByShop', () => {
   it('skips a link whose item is gone, so a chip cannot over-promise', () => {
     const items = [makeItem('Milk')];
     const links = [link(items[0].id, costco.id, 1), link('item-deleted', costco.id, 4)];
+    expect(itemCountsByShop(items, links).get(costco.id)).toBe(1);
+  });
+
+  it('skips a negative link, so the chip agrees with what the filter shows', () => {
+    const items = [makeItem('Milk'), makeItem('Eggs')];
+    const links = [link(items[0].id, costco.id, 1), notAt(items[1].id, costco.id)];
     expect(itemCountsByShop(items, links).get(costco.id)).toBe(1);
   });
 });
@@ -240,5 +299,28 @@ describe('describeShops', () => {
     expect(describeShops(milk, [link('milk', costco.id, 0)], SHOPS)).toBe(
       'Bought 7 times · you get it at Costco'
     );
+  });
+
+  it('adds where it is not stocked as its own trailing clause', () => {
+    const links = [link('milk', costco.id, 7), notAt('milk', safeway.id)];
+    expect(describeShops(milk, links, SHOPS)).toBe(
+      'Bought 7 times · only at Costco · not at Safeway'
+    );
+  });
+
+  it('says only that, when a negative is all there is to say', () => {
+    const fresh = makeItem('Milk', { id: 'milk' });
+    expect(describeShops(fresh, [notAt('milk', safeway.id)], SHOPS)).toBe('Not at Safeway');
+  });
+
+  it('keeps the count when the only store on record has stopped stocking it', () => {
+    expect(describeShops(milk, [notAt('milk', costco.id, 7)], SHOPS)).toBe(
+      'Bought 7 times · not at Costco'
+    );
+  });
+
+  it('lists several, in store order', () => {
+    const links = [notAt('milk', safeway.id), notAt('milk', costco.id)];
+    expect(describeShops(milk, links, SHOPS)).toBe('Bought 7 times · not at Costco, Safeway');
   });
 });

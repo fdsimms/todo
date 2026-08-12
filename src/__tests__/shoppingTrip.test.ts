@@ -50,7 +50,18 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
 }
 
 function link(itemId: string, shopId: string, purchaseCount = 1): ItemShopLink {
-  return { itemId, shopId, purchaseCount, lastPurchasedAt: null };
+  return { itemId, shopId, purchaseCount, lastPurchasedAt: null, unavailableAt: null };
+}
+
+/** The user's own "they don't have it", which no aisle guess may overrule. */
+function notAt(itemId: string, shopId: string, purchaseCount = 0): ItemShopLink {
+  return {
+    itemId,
+    shopId,
+    purchaseCount,
+    lastPurchasedAt: null,
+    unavailableAt: '2026-03-04T00:00:00.000Z',
+  };
 }
 
 const tj = makeShop("Trader Joe's", 1);
@@ -206,6 +217,31 @@ describe('planTrip — the aisle guess', () => {
     expect(entry.likelyItemIds).toEqual([bagels.id]);
   });
 
+  it('never guesses an item the user said the store does not have', () => {
+    const catalog = [bagels, rye, baguette, apples].map(i => ({ ...i, onList: i.id === bagels.id }));
+    const plan = planTrip(
+      catalog,
+      [...bakeryRecord(union, 3), notAt(bagels.id, union.id)],
+      [union]
+    );
+    const entry = plan.coverage[0];
+    expect(entry.likelyItemIds).toEqual([]);
+    expect(entry.unavailableItemIds).toEqual([bagels.id]);
+  });
+
+  it('does not let negatives alone earn a store the right to guess', () => {
+    const catalog = [bagels, rye, baguette, apples].map(i => ({ ...i, onList: i.id === bagels.id }));
+    // Three Bakery items on record, all of them "they don't have it" — which is
+    // knowledge about the shop but not about its range.
+    const plan = planTrip(
+      catalog,
+      [rye, baguette, apples].map(i => notAt(i.id, union.id)),
+      [union]
+    );
+    expect(plan.coverage[0].recordedItems).toBe(0);
+    expect(plan.coverage[0].likelyItemIds).toEqual([]);
+  });
+
   it('ranks a known item over a guessed one', () => {
     const guesser = makeShop('Big Market', 1);
     const knower = makeShop('Corner Shop', 2);
@@ -271,6 +307,48 @@ describe('summarizeTrip', () => {
     // Union Market's milk is already covered, so it is not worth a stop.
     const summary = summarizeTrip([tj.id, pharmacy.id], plan);
     expect(summary.suggestion).toEqual([]);
+  });
+
+  it('puts what the picked store was said not to stock in its own bucket', () => {
+    // Trader Joe's carries milk/bread/eggs; the user has said it doesn't have
+    // saffron, which nothing else carries either.
+    const built = planTrip(LIST, [...LINKS, notAt(saffron.id, tj.id)], SHOPS);
+    const summary = summarizeTrip([tj.id], built);
+    expect(summary.covered).toEqual([milk.id, bread.id, eggs.id]);
+    expect(summary.missing).toEqual([saffron.id]);
+    expect(summary.gap).toEqual([shampoo.id]);
+    expect(summary.unknown).toEqual([]);
+  });
+
+  it('leaves an unpicked store’s negatives out of it', () => {
+    const built = planTrip(LIST, [...LINKS, notAt(saffron.id, union.id)], SHOPS);
+    const summary = summarizeTrip([tj.id], built);
+    expect(summary.missing).toEqual([]);
+    expect(summary.unknown).toEqual([saffron.id]);
+  });
+
+  it('sends you to a second stop for something the first was said not to have', () => {
+    // Shampoo is at the pharmacy, and the user has said Trader Joe's lacks it —
+    // which is a stronger reason for the second stop, not a weaker one.
+    const built = planTrip(LIST, [...LINKS, notAt(shampoo.id, tj.id)], SHOPS);
+    const summary = summarizeTrip([tj.id], built);
+    expect(summary.missing).toEqual([shampoo.id]);
+    expect(summary.suggestion.map(s => s.shop.name)).toEqual(['Ballard Pharmacy']);
+  });
+
+  it('prefers "probably" from one picked store over "not there" at another', () => {
+    const bagels = makeItem('bagels', { aisle: 'Bakery' });
+    const rye = makeItem('rye', { aisle: 'Bakery', onList: false });
+    const baguette = makeItem('baguette', { aisle: 'Bakery', onList: false });
+    const apples = makeItem('apples', { aisle: 'Produce', onList: false });
+    const built = planTrip(
+      [bagels, rye, baguette, apples],
+      [...[rye, baguette, apples].map(i => link(i.id, union.id, 1)), notAt(bagels.id, tj.id)],
+      [union, tj]
+    );
+    const summary = summarizeTrip([union.id, tj.id], built);
+    expect(summary.likely).toEqual([bagels.id]);
+    expect(summary.missing).toEqual([]);
   });
 
   it('caps the whole trip at three stops', () => {
@@ -342,11 +420,12 @@ describe('summarizeTrip', () => {
 });
 
 describe('describeShopCoverage', () => {
-  function entry(known: number, likely = 0, recordedItems = 20): ShopCoverage {
+  function entry(known: number, likely = 0, recordedItems = 20, absent = 0): ShopCoverage {
     return {
       shop: tj,
       itemIds: Array.from({ length: known }, (_, i) => `k${i}`),
       likelyItemIds: Array.from({ length: likely }, (_, i) => `l${i}`),
+      unavailableItemIds: Array.from({ length: absent }, (_, i) => `n${i}`),
       assertedCount: 0,
       observedPurchases: 0,
       recordedItems,
@@ -375,6 +454,21 @@ describe('describeShopCoverage', () => {
 
   it('distinguishes a store the app knows nothing about', () => {
     expect(describeShopCoverage(entry(0, 0, 0), 12)).toBe('Nothing on record here yet');
+  });
+
+  it('states the stated absences last, as their own clause', () => {
+    expect(describeShopCoverage(entry(9, 2, 20, 1), 12)).toBe(
+      '9 of 12 seen here · 2 more likely · 1 they don’t have'
+    );
+    expect(describeShopCoverage(entry(9, 0, 20, 3), 12)).toBe(
+      '9 of 12 seen here · 3 they don’t have'
+    );
+  });
+
+  it('does not say "nothing on record yet" about a store you have answered for', () => {
+    expect(describeShopCoverage(entry(0, 0, 0, 2), 12)).toBe(
+      'Nothing on record here to go on · 2 they don’t have'
+    );
   });
 });
 

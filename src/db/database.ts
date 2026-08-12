@@ -235,6 +235,7 @@ export function initDatabase(): void {
       shop_id TEXT NOT NULL,
       purchase_count INTEGER NOT NULL DEFAULT 0,
       last_purchased_at TEXT,
+      unavailable_at TEXT,
       PRIMARY KEY (item_id, shop_id)
     );
 
@@ -547,6 +548,11 @@ export function initDatabase(): void {
     // the one value that suppresses the feature for ever after. See
     // MealPlanEntry.cookTask.
     'ALTER TABLE meal_plan_entries ADD COLUMN cook_task INTEGER',
+    // NULL on every existing link, which is the only correct backfill: a store
+    // the app has a purchase record for has never been said to lack the item.
+    // See ItemShopLink.unavailableAt for why this is a date rather than a flag
+    // and why it can sit on a row that also has purchases.
+    'ALTER TABLE grocery_item_shops ADD COLUMN unavailable_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1439,12 +1445,17 @@ export function dbFinishGroceryShopping(
   }
   if (shopId) {
     for (const row of rows) {
+      // Buying it here clears any "they don't have it" on the same row: a
+      // purchase refutes the claim outright, and it's the one correction the
+      // user should never have to make by hand. The count is left alone — the
+      // store did stock it, then didn't, and now does.
       db.runSync(
         `INSERT INTO grocery_item_shops (item_id, shop_id, purchase_count, last_purchased_at)
          VALUES (?, ?, 1, ?)
          ON CONFLICT(item_id, shop_id)
          DO UPDATE SET purchase_count = purchase_count + 1,
-                       last_purchased_at = excluded.last_purchased_at`,
+                       last_purchased_at = excluded.last_purchased_at,
+                       unavailable_at = NULL`,
         [row.id, shopId, purchasedAt]
       );
     }
@@ -1593,6 +1604,7 @@ function rowToItemShopLink(row: Record<string, unknown>): ItemShopLink {
     shopId: row.shop_id as string,
     purchaseCount: (row.purchase_count as number) ?? 0,
     lastPurchasedAt: (row.last_purchased_at as string) ?? null,
+    unavailableAt: (row.unavailable_at as string) ?? null,
   };
 }
 
@@ -1601,15 +1613,28 @@ export function dbGetAllItemShopLinks(): ItemShopLink[] {
   return rows.map(rowToItemShopLink);
 }
 
-/** Upsert, so the manual "I get this here" and a finished trip share one path. */
+/**
+ * Upsert, so the manual "I get this here", the manual "they don't have it" and
+ * a finished trip share one path. The whole row is written, `unavailable_at`
+ * included — callers pass the link they want to exist, not a patch — so a
+ * caller flipping a negative back off does it by passing null, not by hoping
+ * the column is left alone.
+ */
 export function dbSetItemShopLink(link: ItemShopLink): void {
   db.runSync(
-    `INSERT INTO grocery_item_shops (item_id, shop_id, purchase_count, last_purchased_at)
-     VALUES (?,?,?,?)
+    `INSERT INTO grocery_item_shops (item_id, shop_id, purchase_count, last_purchased_at, unavailable_at)
+     VALUES (?,?,?,?,?)
      ON CONFLICT(item_id, shop_id)
      DO UPDATE SET purchase_count = excluded.purchase_count,
-                   last_purchased_at = excluded.last_purchased_at`,
-    [link.itemId, link.shopId, link.purchaseCount, link.lastPurchasedAt ?? null]
+                   last_purchased_at = excluded.last_purchased_at,
+                   unavailable_at = excluded.unavailable_at`,
+    [
+      link.itemId,
+      link.shopId,
+      link.purchaseCount,
+      link.lastPurchasedAt ?? null,
+      link.unavailableAt ?? null,
+    ]
   );
 }
 

@@ -314,6 +314,28 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   link. So the item's count is the total and the per-store ones are partial: **never sum links to
   get a total, and never render "6 of 7 trips"**. `describeShops()` owns the wording so no caller
   re-derives it — "Bought 7 times · usually Costco" is true whether or not 6+1 happens to be 7.
+- **A store can be told it doesn't have something** (`ItemShopLink.unavailableAt`), and that's the
+  only negative in the feature. An *absent* link means "never seen here", which is ignorance; a
+  stamped one means the user looked and it wasn't there, which is an answer — so it's a third link
+  state, not the absence of one. **A date, not a flag**, and it sits happily on a row that also has
+  purchases: a shop that stocked it eleven times and stopped is exactly the case, and zeroing the
+  count to say so would destroy the record. Every "where can I get this" read drops a stamped link
+  (`shopsForItem`, and so `primaryShopFor`/`exclusiveShopFor`; `itemIdsForShop`, `itemCountsByShop`,
+  `planTrip`); only the item sheet's own picker reads it, because that's where it's shown and undone.
+  **A purchase clears it automatically** — buying it there refutes the claim, and that's the one
+  correction nobody should have to make by hand (`dbFinishGroceryShopping`, mirrored in the store's
+  in-memory patch). Taking it back by hand deletes a row that was *only* the claim rather than
+  clearing the stamp in place, since a bare `purchaseCount: 0` row is the opposite assertion.
+- **It's captured where the trip ends, not in a settings screen.** `FinishShoppingSheet` lists what
+  the trip left on the list and asks, once, which of it the store didn't have — the only moment
+  anyone knows. Nothing is ticked by default (the usual reason a thing is left is that you didn't
+  get to it, so silence has to mean that), the section only exists once a store is named, and
+  changing the store clears the ticks rather than refiling them.
+- **It's the one thing in `shoppingTrip.ts` allowed to assert an absence**, because it isn't the app
+  asserting it. A marked item never enters `likelyItemIds` — an explicit no outranks an aisle
+  inference — and lands in `TripSummary.missing`, which the sheet states flatly where every other
+  line is hedged. It stays out of `recordedItems` too: knowing what a shop *lacks* is not knowing
+  its range, and counting it would license aisle guesses off the back of it.
 - **A link with `purchaseCount: 0` is an assertion**, not an observation — the user tapped a store
   in the item sheet to say "I can get this here". That's the whole distinction and it needs no
   second flag: `primaryShopFor` refuses to call an assertion "usually" (the app would be inventing

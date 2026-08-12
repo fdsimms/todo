@@ -958,7 +958,7 @@ describe('shops', () => {
   it('renameShop leaves every link alone — they point at the id', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
-    const links = [{ itemId: milk.id, shopId: costco.id, purchaseCount: 3, lastPurchasedAt: null }];
+    const links = [{ itemId: milk.id, shopId: costco.id, purchaseCount: 3, lastPurchasedAt: null, unavailableAt: null }];
     seed([milk], { shops: [costco], itemShops: links });
 
     expect(useGroceryStore.getState().renameShop(costco.id, 'Costco Wholesale')).toBe(true);
@@ -1013,8 +1013,8 @@ describe('shops', () => {
     seed([milk], {
       shops: [costco, safeway],
       itemShops: [
-        { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null },
-        { itemId: milk.id, shopId: safeway.id, purchaseCount: 1, lastPurchasedAt: null },
+        { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: null },
+        { itemId: milk.id, shopId: safeway.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null },
       ],
     });
 
@@ -1045,7 +1045,7 @@ describe('shops', () => {
     useGroceryStore.getState().linkItemShop(milk.id, costco.id);
 
     expect(useGroceryStore.getState().itemShops).toEqual([
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null },
     ]);
     expect(dbSetItemShopLink).toHaveBeenCalledTimes(1);
   });
@@ -1054,7 +1054,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null, unavailableAt: null },
     ] });
 
     useGroceryStore.getState().linkItemShop(milk.id, costco.id);
@@ -1109,8 +1109,8 @@ describe('shops', () => {
     useGroceryStore.getState().linkItemShopMany([milk.id, bread.id], costco.id);
 
     expect(useGroceryStore.getState().itemShops).toEqual([
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null },
-      { itemId: bread.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null },
+      { itemId: bread.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null },
     ]);
   });
 
@@ -1119,7 +1119,7 @@ describe('shops', () => {
     const milk = makeItem({ name: 'Milk' });
     const bread = makeItem({ name: 'Bread' });
     seed([milk, bread], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null, unavailableAt: null },
     ] });
 
     useGroceryStore.getState().linkItemShopMany([milk.id, bread.id], costco.id);
@@ -1157,7 +1157,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null },
     ] });
     const before = useGroceryStore.getState().itemShops;
 
@@ -1167,13 +1167,115 @@ describe('shops', () => {
     expect(dbSetItemShopLink).not.toHaveBeenCalled();
   });
 
+  // "They didn't have it" — the negative claim. Written by the finish sheet for
+  // what a trip left behind, and by the item sheet's store picker.
+  it('markItemsUnavailable stamps a claim on a store with no link yet', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    seed([milk], { shops: [costco] });
+
+    useGroceryStore.getState().markItemsUnavailable([milk.id], costco.id);
+
+    const link = useGroceryStore.getState().itemShops[0];
+    expect(link.itemId).toBe(milk.id);
+    expect(link.purchaseCount).toBe(0);
+    expect(link.unavailableAt).not.toBeNull();
+    expect(dbSetItemShopLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('markItemsUnavailable keeps the purchase history on the row it marks', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    seed([milk], { shops: [costco], itemShops: [
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 6, lastPurchasedAt: '2026-05-01T00:00:00.000Z', unavailableAt: null },
+    ] });
+
+    useGroceryStore.getState().markItemsUnavailable([milk.id], costco.id);
+
+    const links = useGroceryStore.getState().itemShops;
+    // Replaced in place, not appended — the table holds one row per pair.
+    expect(links).toHaveLength(1);
+    expect(links[0].purchaseCount).toBe(6);
+    expect(links[0].lastPurchasedAt).toBe('2026-05-01T00:00:00.000Z');
+    expect(links[0].unavailableAt).not.toBeNull();
+  });
+
+  it('markItemsUnavailable promotes a provisional row, like the positive claim does', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: false });
+    seed([milk], { shops: [costco] });
+
+    useGroceryStore.getState().markItemsUnavailable([milk.id], costco.id);
+
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+  });
+
+  it('markItemsUnavailable ignores an unknown store, and re-marking writes nothing', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    seed([milk], { shops: [costco], itemShops: [
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z' },
+    ] });
+    const before = useGroceryStore.getState().itemShops;
+
+    useGroceryStore.getState().markItemsUnavailable([milk.id], 'nope');
+    useGroceryStore.getState().markItemsUnavailable([milk.id], costco.id);
+
+    expect(useGroceryStore.getState().itemShops).toBe(before);
+    expect(dbSetItemShopLink).not.toHaveBeenCalled();
+  });
+
+  it('clearItemUnavailable deletes a row that was only ever the claim', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    seed([milk], { shops: [costco], itemShops: [
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z' },
+    ] });
+
+    useGroceryStore.getState().clearItemUnavailable(milk.id, costco.id);
+
+    // Not left behind as purchaseCount 0, which would read as the opposite
+    // claim ("I get it here").
+    expect(useGroceryStore.getState().itemShops).toEqual([]);
+    expect(dbDeleteItemShopLink).toHaveBeenCalledWith(milk.id, costco.id);
+  });
+
+  it('clearItemUnavailable keeps a row that has purchases behind it', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    seed([milk], { shops: [costco], itemShops: [
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z' },
+    ] });
+
+    useGroceryStore.getState().clearItemUnavailable(milk.id, costco.id);
+
+    expect(useGroceryStore.getState().itemShops).toEqual([
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null },
+    ]);
+    expect(dbDeleteItemShopLink).not.toHaveBeenCalled();
+  });
+
+  it('linkItemShopMany flips a negative link rather than skipping it', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk' });
+    seed([milk], { shops: [costco], itemShops: [
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z' },
+    ] });
+
+    useGroceryStore.getState().linkItemShopMany([milk.id], costco.id);
+
+    expect(useGroceryStore.getState().itemShops).toEqual([
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: null },
+    ]);
+  });
+
   it('unlinkItemShop removes just that pair', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     const eggs = makeItem({ name: 'Eggs' });
     seed([milk, eggs], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null },
-      { itemId: eggs.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null },
+      { itemId: eggs.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null },
     ] });
 
     useGroceryStore.getState().unlinkItemShop(milk.id, costco.id);
@@ -1185,7 +1287,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null },
     ] });
 
     useGroceryStore.getState().deleteItem(milk.id);
@@ -1234,7 +1336,7 @@ describe('finishShopping with a store', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true, purchaseCount: 2 });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: '2026-01-01T00:00:00.000Z' },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: '2026-01-01T00:00:00.000Z', unavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
@@ -1246,11 +1348,28 @@ describe('finishShopping with a store', () => {
     expect(links[0].lastPurchasedAt).not.toBe('2026-01-01T00:00:00.000Z');
   });
 
+  it('clears a "they don’t have it" when you buy it there after all', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true });
+    seed([milk], { shops: [costco], itemShops: [
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 3, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z' },
+    ] });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
+
+    useGroceryStore.getState().finishShopping(costco.id);
+
+    const links = useGroceryStore.getState().itemShops;
+    expect(links).toHaveLength(1);
+    expect(links[0].purchaseCount).toBe(4);
+    // A purchase refutes the claim outright — nobody should have to undo it.
+    expect(links[0].unavailableAt).toBeNull();
+  });
+
   it('turns a hand-asserted link into an observed one', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
@@ -1264,7 +1383,7 @@ describe('finishShopping with a store', () => {
     const safeway = makeShop('Safeway');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
     seed([milk], { shops: [costco, safeway], itemShops: [
-      { itemId: milk.id, shopId: safeway.id, purchaseCount: 4, lastPurchasedAt: null },
+      { itemId: milk.id, shopId: safeway.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 

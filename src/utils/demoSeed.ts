@@ -608,6 +608,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     deleteAisle,
     linkItemShop,
     linkItemShopMany,
+    markItemsUnavailable,
     setShopExcludedFromSuggestions,
     itemById,
   } = useGroceryStore.getState();
@@ -686,6 +687,13 @@ function seedGroceries(recipes: DemoRecipes): void {
   linkItemShop(itemNamed('Almonds').id, costco.id);
   linkItemShopMany(idsNamed(['Peanut butter', 'Ground beef']), costco.id);
   linkItemShopMany(idsNamed(['Dish soap', 'Toilet paper']), amazon.id);
+
+  // And the opposite claim, which is the only thing that can tell "never
+  // bought here" from "they don't stock it". Tortillas are marked absent at
+  // Trader Joe's — a store with plenty else on record, so the trip planner has
+  // to route round one item rather than write the shop off — and Almonds at
+  // Trader Joe's too, where Costco is the answer.
+  markItemsUnavailable(idsNamed(['Tortillas', 'Almonds']), traderJoes.id);
 
   // The pantry override, both directions. "Got it" parks an item as on hand
   // for a while; "Out of it" is the user overruling the purchase-history guess
