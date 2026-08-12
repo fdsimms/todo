@@ -101,7 +101,7 @@ export function RecipesScreen() {
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
-  const [groupByMealType, setGroupByMealType] = useState(false);
+  const [groupByMealType, setGroupByMealType] = useState(true);
 
   // Recipes are deliberately flat (no categories — see the note at the top of
   // this file), so there's nothing to reuse useTaskSelection's recurrence-aware
@@ -635,7 +635,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
-    marginBottom: spacing.xs,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     // A box height rather than a lineHeight — RN maps lineHeight straight onto
@@ -715,7 +716,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   list: {
-    paddingTop: spacing.xs,
+    paddingTop: spacing.sm,
   },
   // A bare glyph, not a tinted tile. The row already opens with an
   // accentSubtle tile carrying the recipe's own icon, and a second one at the
