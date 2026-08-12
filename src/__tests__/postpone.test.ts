@@ -1,6 +1,8 @@
 import {
   postponeOutcome, nextPostponeCount, shouldNudgePostpone, parsePostponeThreshold,
+  nextDriftingSince, driftingTasks,
 } from '../utils/postpone';
+import type { Task } from '../types';
 
 // Stored dates are anchors, not moments — the pickers write noon — so these
 // fixtures use noon too. `now` is injected everywhere rather than mocked, which
@@ -173,5 +175,107 @@ describe('parsePostponeThreshold', () => {
     expect(parsePostponeThreshold('1')).toBe(2);
     expect(parsePostponeThreshold('999')).toBe(15);
     expect(parsePostponeThreshold('6')).toBe(6);
+  });
+});
+
+describe('nextDriftingSince', () => {
+  // The day anchor of a noon fixture, which is what the stamp stores: a date to
+  // render, not the instant the task happened to hold.
+  const dayOf = (iso: string) => new Date(`${iso}T00:00:00`).toISOString();
+
+  it('stamps the day the task was leaving on the first push', () => {
+    expect(
+      nextDriftingSince(null, 0, 'pushed', dated(at('2026-08-11')), RESET),
+    ).toBe(dayOf('2026-08-11'));
+  });
+
+  it('leaves the start where it is as the count climbs', () => {
+    const first = dayOf('2026-03-03');
+    // Pushed again three weeks later: the run still started in March, which is
+    // the whole point of storing it rather than the most recent move.
+    expect(
+      nextDriftingSince(first, 4, 'pushed', dated(at('2026-03-24')), RESET),
+    ).toBe(first);
+  });
+
+  it('clears when the task is pulled back', () => {
+    expect(
+      nextDriftingSince(dayOf('2026-03-03'), 6, 'resolved', dated(at('2026-08-11')), RESET),
+    ).toBeNull();
+  });
+
+  it('leaves a stamp alone when nothing moved', () => {
+    const first = dayOf('2026-03-03');
+    expect(nextDriftingSince(first, 2, 'unchanged', dated(null), RESET)).toBe(first);
+  });
+
+  it('dates a second run from its own start, not the first run\'s', () => {
+    // Count back at 0 means the previous run resolved; a stale stamp must not
+    // be inherited, or a task dealt with in March and pushed once in August
+    // would claim five months of drift.
+    expect(
+      nextDriftingSince(dayOf('2026-03-03'), 0, 'pushed', dated(at('2026-08-11')), RESET),
+    ).toBe(dayOf('2026-08-11'));
+  });
+
+  it('dates a run that predates the stamp shipping at its next push', () => {
+    // An upgraded install has counts with no stamp. Rather than staying null
+    // for ever, the next push dates it — later than the truth, but the only
+    // day the app can honestly point at.
+    expect(
+      nextDriftingSince(null, 5, 'pushed', dated(at('2026-08-11')), RESET),
+    ).toBe(dayOf('2026-08-11'));
+  });
+});
+
+describe('driftingTasks', () => {
+  // Only the fields the ranking reads — it never touches the rest of Task, and
+  // a full literal here would be one more fixture to keep in step.
+  const make = (o: Partial<Task>): Task => ({
+    id: 'a', title: 'A', postponeCount: 0, postponeMuted: false, driftingSince: null,
+    completed: false, archived: false, parentId: null,
+    ...o,
+  } as Task);
+
+  it('lists only tasks at or past the threshold, worst first', () => {
+    const result = driftingTasks([
+      make({ id: 'low', postponeCount: 2 }),
+      make({ id: 'at', postponeCount: 3 }),
+      make({ id: 'worst', postponeCount: 9 }),
+    ], 3);
+    expect(result.map(e => e.task.id)).toEqual(['worst', 'at']);
+  });
+
+  it('excludes a muted task rather than ranking it last', () => {
+    // "Stop asking about this one" is an answer to the question this list asks.
+    const result = driftingTasks([make({ id: 'muted', postponeCount: 9, postponeMuted: true })], 3);
+    expect(result).toEqual([]);
+  });
+
+  it('excludes completed, archived and subtask rows', () => {
+    const result = driftingTasks([
+      make({ id: 'done', postponeCount: 9, completed: true }),
+      make({ id: 'filed', postponeCount: 9, archived: true }),
+      make({ id: 'sub', postponeCount: 9, parentId: 'p' }),
+    ], 3);
+    expect(result).toEqual([]);
+  });
+
+  it('breaks a tie on count with the longer-running drift', () => {
+    const result = driftingTasks([
+      make({ id: 'recent', postponeCount: 4, driftingSince: '2026-08-01T00:00:00.000Z' }),
+      make({ id: 'old', postponeCount: 4, driftingSince: '2026-03-03T00:00:00.000Z' }),
+    ], 3);
+    expect(result.map(e => e.task.id)).toEqual(['old', 'recent']);
+  });
+
+  it('sorts an undated run last within its count', () => {
+    // Null is a run the app can't date, not the worst one — otherwise every
+    // pre-upgrade task would head the screen for weeks.
+    const result = driftingTasks([
+      make({ id: 'undated', postponeCount: 4, driftingSince: null }),
+      make({ id: 'dated', postponeCount: 4, driftingSince: '2026-08-01T00:00:00.000Z' }),
+    ], 3);
+    expect(result.map(e => e.task.id)).toEqual(['dated', 'undated']);
   });
 });

@@ -26,7 +26,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD } from '../utils/postpone';
+import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
 import { isUsingDemoDatabase } from '../db/database';
 import { RECIPE_MEAL_TYPES } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
@@ -335,6 +335,24 @@ describe('demo mode', () => {
     expect(
       pushed.some(t => shouldNudgePostpone(t, true, DEFAULT_POSTPONE_THRESHOLD)),
     ).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds enough drift for the Drift screen to be a list, dated', () => {
+    // Same reasoning one step on: a screen with one row doesn't show that it
+    // ranks, and a row with no driftingSince doesn't show the "first put off"
+    // line that is half of what the screen adds over the count alone.
+    useDemoStore.getState().enterDemoMode();
+
+    const drifting = driftingTasks(
+      useTaskStore.getState().tasks,
+      DEFAULT_POSTPONE_THRESHOLD,
+    );
+    expect(drifting.length).toBeGreaterThan(1);
+    expect(drifting.every(e => e.since !== null)).toBe(true);
+    // Worst first.
+    expect(drifting[0].count).toBeGreaterThanOrEqual(drifting[1].count);
 
     useDemoStore.getState().exitDemoMode();
   });

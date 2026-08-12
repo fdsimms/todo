@@ -596,6 +596,11 @@ export function initDatabase(): void {
     // 0 for every existing row — nothing predating this feature was ever
     // marked a standing staple. See GroceryItem.isStaple.
     'ALTER TABLE grocery_items ADD COLUMN is_staple INTEGER NOT NULL DEFAULT 0',
+    // NULL on every existing row, for the same reason postpone_count is 0: a
+    // task whose pushes were never counted has no first push to date, and
+    // inventing one from created_at would put a fabricated "drifting since" on
+    // every task in the database. See Task.driftingSince.
+    'ALTER TABLE tasks ADD COLUMN drifting_since TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -910,6 +915,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     pendingImport: parsePendingImport(row.pending_import),
     postponeCount: (row.postpone_count as number) ?? 0,
     postponeMuted: Boolean(row.postpone_muted),
+    driftingSince: (row.drifting_since as string | null) ?? null,
   };
 }
 
@@ -932,9 +938,9 @@ export function dbInsertTask(task: Task): void {
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, meal_entry_id,
-      grocery_item_id, postpone_count, postpone_muted,
+      grocery_item_id, postpone_count, postpone_muted, drifting_since,
       extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -973,6 +979,7 @@ export function dbInsertTask(task: Task): void {
       task.groceryItemId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
+      task.driftingSince ?? null,
       task.extraTaskEveryN ?? null,
       task.extraTaskTitle ?? null,
       task.extraTaskTally,
@@ -995,7 +1002,7 @@ export function dbUpdateTask(task: Task): void {
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, meal_entry_id=?,
-      grocery_item_id=?, postpone_count=?, postpone_muted=?,
+      grocery_item_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
       extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?
     WHERE id=?`,
     [
@@ -1036,6 +1043,7 @@ export function dbUpdateTask(task: Task): void {
       task.groceryItemId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
+      task.driftingSince ?? null,
       task.extraTaskEveryN ?? null,
       task.extraTaskTitle ?? null,
       task.extraTaskTally,
@@ -1073,10 +1081,20 @@ export function dbBatchUpdatePinnedOrders(updates: { id: string; pinnedOrder: nu
  * ride along on those setters. Same split dbBatchUpdatePinnedOrders makes
  * beside bulkTogglePin.
  */
-export function dbBatchUpdatePostponeCounts(updates: { id: string; postponeCount: number }[]): void {
+export function dbBatchUpdatePostponeCounts(
+  updates: { id: string; postponeCount: number; driftingSince: string | null }[],
+): void {
   db.withTransactionSync(() => {
-    for (const { id, postponeCount } of updates) {
-      db.runSync('UPDATE tasks SET postpone_count = ? WHERE id = ?', [postponeCount, id]);
+    for (const { id, postponeCount, driftingSince } of updates) {
+      // Written together, never separately: the count and the day it started
+      // from describe one run of pushes, and a batch that set one without the
+      // other would leave a row claiming pushes with no start (or a start with
+      // no pushes) until the next single-task write happened to repair it.
+      db.runSync('UPDATE tasks SET postpone_count = ?, drifting_since = ? WHERE id = ?', [
+        postponeCount,
+        driftingSince,
+        id,
+      ]);
     }
   });
 }
