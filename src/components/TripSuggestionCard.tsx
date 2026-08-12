@@ -26,6 +26,17 @@ interface Props {
  * tasks. Deliberately not a second place to *change* anything: two controls
  * for one plan is how the two would come to disagree.
  *
+ * **It's kept short, because it sits on top of the list it describes** — every
+ * row it pushes off the screen is a row of the actual list. The itinerary is
+ * clamped to one line (a fourth stop is capped at three anyway, and the detail
+ * gives the count), and the padding is `sm` rather than `md` vertically.
+ *
+ * **The detail gets two lines, though, and that's deliberate.** It names the
+ * items rather than only counting them, because "1/4" is a score and which
+ * items it means is the actual question — and at 390pt a store's worth of item
+ * names doesn't fit on one line, so clamping it to one would truncate exactly
+ * the half worth reading. Two lines of names beats one line ending in "coff…".
+ *
  * **Hidden rather than hedged when there's nothing to say.** No items, one
  * suggestable store, or a suggestion with no known and no likely item, and the
  * card doesn't render — a card reading "no idea, sorry" at the top of every
@@ -44,6 +55,7 @@ export function TripSuggestionCard({ onPress }: Props) {
   const shops = useGroceryStore(useShallow(s => s.shops));
 
   const plan = useMemo(() => planTrip(items, itemShops, shops), [items, itemShops, shops]);
+  const nameOf = useMemo(() => new Map(items.map(i => [i.id, i.name])), [items]);
   const copy = useMemo(() => {
     // Two suggestable stores is the floor. With one, "the fewest stores that
     // cover your list" has exactly one possible answer, and the card would be
@@ -52,8 +64,8 @@ export function TripSuggestionCard({ onPress }: Props) {
     if (plan.coverage.length < 2) return null;
     // An empty selection *is* the recommendation, same call the sheet makes to
     // pick its default — one code path for "where should I go".
-    return describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length);
-  }, [plan]);
+    return describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length, nameOf);
+  }, [plan, nameOf]);
 
   if (!copy) return null;
 
@@ -68,7 +80,7 @@ export function TripSuggestionCard({ onPress }: Props) {
     >
       <Ionicons name="storefront-outline" size={iconSize.sm} color={colors.accent} />
       <View style={styles.text}>
-        <Text style={styles.title} numberOfLines={2}>
+        <Text style={styles.title} numberOfLines={1}>
           {copy.stores}
         </Text>
         <Text style={styles.detail} numberOfLines={2}>
@@ -94,10 +106,10 @@ function makeStyles(colors: Colors) {
       marginTop: spacing.xs,
       marginBottom: spacing.sm,
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
+      paddingVertical: spacing.sm,
     },
     text: { flex: 1 },
     title: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-    detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: 2, lineHeight: 18 },
+    detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: 1, lineHeight: 17 },
   });
 }

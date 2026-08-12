@@ -361,10 +361,17 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   get to it, so silence has to mean that), the section only exists once a store is named, and
   changing the store clears the ticks rather than refiling them.
 - **It's the one thing in `shoppingTrip.ts` allowed to assert an absence**, because it isn't the app
-  asserting it. A marked item never enters `likelyItemIds` — an explicit no outranks an aisle
-  inference — and lands in `TripSummary.missing`, which the sheet states flatly where every other
-  line is hedged. It stays out of `recordedItems` too: knowing what a shop *lacks* is not knowing
-  its range, and counting it would license aisle guesses off the back of it.
+  asserting it. A marked item is dropped from the store's coverage and lands in
+  `TripSummary.missing`, which the sheet states flatly where every other line is hedged. It stays
+  out of `recordedItems` too: knowing what a shop *lacks* is not knowing its range, so it must
+  never read as the app having learned something about the store.
+- **A store is only ever credited with what it's been seen with** — a purchase or a hand-assertion.
+  There used to be a third, softer bucket (`likelyItemIds`): a store with a couple of items on
+  record from an aisle got credited with the rest of your list from that aisle, rendered as its own
+  faded clause in every count, bar and sentence. It's gone, and the reasons are in
+  `shoppingTrip.ts`'s header — unfalsifiable, twice the copy, and a number nobody can act on. The
+  answer to a coverage that looks too low is the correction flow ("Actually, it has more"), which
+  turns a guess into a fact the user owns. Don't reintroduce the guess.
 - **A link with `purchaseCount: 0` is an assertion**, not an observation — the user tapped a store
   in the item sheet to say "I can get this here". That's the whole distinction and it needs no
   second flag: `primaryShopFor` refuses to call an assertion "usually" (the app would be inventing

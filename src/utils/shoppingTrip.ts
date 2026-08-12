@@ -1,5 +1,4 @@
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
-import { OTHER_AISLE } from './groceryAisles';
 
 /**
  * Which store to shop the list you're actually holding.
@@ -22,25 +21,37 @@ import { OTHER_AISLE } from './groceryAisles';
  * twice ranks below one you've recorded four hundred times for reasons that
  * have nothing to do with either shop. Hence:
  *
- * - Nothing here ever *infers* "this store does not have this item". The
- *   buckets are *seen here*, *likely*, and *no idea* — `unknownFor` is named
- *   for the app's ignorance rather than the store's stock, and every string in
- *   `describe*` is worded as a fact about the record.
+ * - Nothing here ever *infers* anything about a store's stock, in either
+ *   direction. The buckets are *seen here* and *no idea* — the second is named
+ *   for the app's ignorance rather than the store's shelves, and every string
+ *   in `describe*` is worded as a fact about the record.
  * - The rank is by what's *known*, because a lower bound is still the best
- *   estimate available — but it's reported as a lower bound ("at least"), and
- *   a store the app knows little about says so rather than reading as empty.
+ *   estimate available — but it's reported as a lower bound ("at least",
+ *   "likely has"), and a store the app knows little about says so rather than
+ *   reading as empty.
+ *
+ * **There used to be a third bucket, and it's gone on purpose.** A store with
+ * a couple of items on record from an aisle got credited with everything else
+ * on the list from that aisle — "likely", rendered as its own faded half of
+ * every count, bar and sentence. It was unfalsifiable (nothing the user does
+ * confirms or denies an aisle guess, so it never got better or went away), it
+ * doubled the width of every string in this module, and the number it produced
+ * couldn't be acted on: knowing a store "probably" has 2 more of your list
+ * tells you nothing you'd change a trip over. Ranking on what's actually been
+ * bought or asserted is the whole feature. Don't reintroduce it — if a store's
+ * count looks low, the fix is the correction flow ("Actually, it has more"),
+ * which turns a guess into a fact the user owns.
  *
  * **The one exception is a claim the user made themselves.** A link carrying
  * `unavailableAt` is the user saying they looked and it wasn't there
  * (`ItemShopLink.unavailableAt`), and that is the only thing in this module
  * allowed to assert an absence — because it isn't the app asserting it. So a
- * marked item is dropped from `itemIds`, is never guessed into `likelyItemIds`
- * (an explicit no outranks an aisle inference, always), and lands in its own
+ * marked item is dropped from `itemIds` and lands in its own
  * `unavailableItemIds` / `TripSummary.missing` so the sheet can say plainly
  * that the second stop is the one that closes it. It stays out of
  * `recordedItems` too: knowing a shop *lacks* three things is not knowing its
- * range, and letting it clear `SHOP_RECORD_MIN` would license aisle guesses off
- * the back of what the store doesn't stock.
+ * range, so it must never read as the app having learned something about the
+ * store.
  *
  * Two rules carried over from ItemShopLink, because they decide the numbers:
  *
@@ -67,40 +78,13 @@ import { OTHER_AISLE } from './groceryAisles';
  */
 export const MAX_TRIP_STOPS = 3;
 
-/**
- * The aisle guess, and the two numbers that keep it from being a fiction.
- *
- * A store with items on record in the Bakery aisle is a store that sells
- * bakery, and that is a real answer to "does it have bread?" — a much better
- * one than the silence a missing link otherwise leaves. It's the only way a
- * store can ever be credited with something you've never bought there, so
- * without it a shop you've used twice can never climb the ranking however
- * broad its range.
- *
- * It stays a guess, and it's fenced accordingly. A store makes no aisle claim
- * at all until the app has seen a few different things there
- * (`SHOP_RECORD_MIN`) — one purchase is a fact about a trip, not a range — and
- * then claims an aisle only once it's seen more than one item from it
- * (`AISLE_EVIDENCE_MIN`), so the cheese shop you once bought a stray tub of
- * yoghurt at doesn't claim the whole dairy aisle. It never merges into the
- * seen-here count, and it never outranks it.
- */
-export const SHOP_RECORD_MIN = 3;
-export const AISLE_EVIDENCE_MIN = 2;
-
 export interface ShopCoverage {
   shop: Shop;
   /** On-list items seen at this store — bought or asserted — in list order. */
   itemIds: string[];
   /**
-   * On-list items never seen here, in an aisle this store demonstrably
-   * stocks. A guess, kept apart from `itemIds` everywhere.
-   */
-  likelyItemIds: string[];
-  /**
    * On-list items the user has said this store doesn't stock, in list order.
-   * The only hard negative in the module, and the only thing that overrides
-   * the aisle guess.
+   * The only hard negative in the module.
    */
   unavailableItemIds: string[];
   /** How many of `itemIds` are hand-assertions rather than observed purchases. */
@@ -109,9 +93,9 @@ export interface ShopCoverage {
   observedPurchases: number;
   /**
    * Distinct catalog items on record here, the whole catalog over — how much
-   * the app knows about this store, as opposed to what the store sells. Under
-   * `SHOP_RECORD_MIN` the sheet says so, because a low count is a fact about
-   * the record and rendering it as coverage would be a slur on the shop.
+   * the app knows about this store, as opposed to what the store sells. At
+   * zero the sheet says so, because an empty record is a fact about the app
+   * and rendering it as coverage would be a slur on the shop.
    */
   recordedItems: number;
 }
@@ -126,8 +110,6 @@ export interface TripPlan {
 export interface TripSummary {
   /** On-list items the selected stores are known to carry. */
   covered: string[];
-  /** On-list items a selected store probably carries, on aisle evidence. */
-  likely: string[];
   /**
    * On-list items a selected store is known *not* to carry, because the user
    * said so — and that no selected store covers or probably covers. Split out
@@ -137,15 +119,13 @@ export interface TripSummary {
   missing: string[];
   /** On-list items some *other* store is known to carry — a second stop closes them. */
   gap: string[];
-  /** On-list items no store is known to carry, but some other store probably does. */
-  maybe: string[];
   /**
-   * On-list items nothing is known or guessed about. Named for the app's
+   * On-list items nothing is known about at any store. Named for the app's
    * ignorance, not the shops': any of them might be at every store on the list.
    */
   unknown: string[];
   /**
-   * The stores to add, greedily, to close as much of `gap` (then `maybe`) as
+   * The stores to add, greedily, to close as much of `missing` and `gap` as
    * three stops allow. Empty when the selection already covers everything the
    * app has anything to say about.
    */
@@ -159,8 +139,8 @@ export interface TripSummary {
  * this is planning a trip that hasn't happened yet — the alternative would
  * quietly re-rank the stores as you tick things off mid-shop.
  *
- * `items` is the whole catalog rather than just the list, because the aisle
- * evidence comes from everything ever recorded at a store, not from the twelve
+ * `items` is the whole catalog rather than just the list, because
+ * `recordedItems` counts everything ever recorded at a store, not the twelve
  * things you happen to need today.
  */
 export function planTrip(
@@ -168,7 +148,7 @@ export function planTrip(
   links: readonly ItemShopLink[],
   shops: readonly Shop[]
 ): TripPlan {
-  const itemById = new Map(items.map(i => [i.id, i]));
+  const itemIdsInCatalog = new Set(items.map(i => i.id));
   const onList = items.filter(i => i.onList);
   const rank = new Map(onList.map((item, i) => [item.id, i]));
 
@@ -180,7 +160,6 @@ export function planTrip(
         {
           shop,
           itemIds: [],
-          likelyItemIds: [],
           unavailableItemIds: [],
           assertedCount: 0,
           observedPurchases: 0,
@@ -189,44 +168,21 @@ export function planTrip(
       ])
   );
 
-  // shopId → aisle → how many distinct catalog items are on record from it.
-  const aisleEvidence = new Map<string, Map<string, number>>();
-  const seen = new Map<string, Set<string>>();
-  // shopId → items the user has said aren't there. Held apart from `seen`
-  // because the two do opposite jobs downstream: `seen` suppresses a guess it
-  // already knows the answer to, this one forbids the guess outright.
-  const absent = new Map<string, Set<string>>();
-
   for (const link of links) {
     const entry = byShop.get(link.shopId);
     // Resolve-or-shrug, like every cross-row pointer here: a link naming a
     // deleted (or excluded) store is skipped rather than counted blind.
     if (!entry) continue;
-    const item = itemById.get(link.itemId);
-    if (!item) continue;
+    if (!itemIdsInCatalog.has(link.itemId)) continue;
 
     if (link.unavailableAt !== null) {
-      let marked = absent.get(link.shopId);
-      if (!marked) absent.set(link.shopId, (marked = new Set()));
-      marked.add(link.itemId);
       if (rank.has(link.itemId)) entry.unavailableItemIds.push(link.itemId);
-      // No recordedItems, no aisle evidence, no coverage: a store that lacks
-      // something is not thereby a store the app knows the range of.
+      // No recordedItems, no coverage: a store that lacks something is not
+      // thereby a store the app knows the range of.
       continue;
     }
 
     entry.recordedItems++;
-    let shopSeen = seen.get(link.shopId);
-    if (!shopSeen) seen.set(link.shopId, (shopSeen = new Set()));
-    shopSeen.add(link.itemId);
-
-    // `Other` is the fallback bucket every unrecognised name lands in, so it
-    // isn't a section of a shop and can't be evidence of one.
-    if (item.aisle !== OTHER_AISLE) {
-      let aisles = aisleEvidence.get(link.shopId);
-      if (!aisles) aisleEvidence.set(link.shopId, (aisles = new Map()));
-      aisles.set(item.aisle, (aisles.get(item.aisle) ?? 0) + 1);
-    }
 
     if (!rank.has(link.itemId)) continue;
     entry.itemIds.push(link.itemId);
@@ -237,32 +193,11 @@ export function planTrip(
   for (const entry of byShop.values()) {
     entry.itemIds.sort((a, b) => rank.get(a)! - rank.get(b)!);
     entry.unavailableItemIds.sort((a, b) => rank.get(a)! - rank.get(b)!);
-    if (entry.recordedItems < SHOP_RECORD_MIN) continue;
-    const aisles = aisleEvidence.get(entry.shop.id);
-    if (!aisles) continue;
-    const shopSeen = seen.get(entry.shop.id) ?? new Set<string>();
-    const shopAbsent = absent.get(entry.shop.id) ?? new Set<string>();
-    for (const item of onList) {
-      if (shopSeen.has(item.id)) continue;
-      // The aisle guess is the app inferring; this is the user reporting. It
-      // never gets to overrule them, however well the aisle fits.
-      if (shopAbsent.has(item.id)) continue;
-      if (item.aisle === OTHER_AISLE) continue;
-      if ((aisles.get(item.aisle) ?? 0) < AISLE_EVIDENCE_MIN) continue;
-      entry.likelyItemIds.push(item.id);
-    }
   }
 
   const coverage = [...byShop.values()];
   coverage.sort((a, b) => {
     if (b.itemIds.length !== a.itemIds.length) return b.itemIds.length - a.itemIds.length;
-    // What's known outranks what's guessed, always — but between two stores
-    // the app knows equally little about, the one whose aisles fit the list is
-    // the better guess, and saying so is the only way a thinly-recorded store
-    // ever surfaces at all.
-    if (b.likelyItemIds.length !== a.likelyItemIds.length) {
-      return b.likelyItemIds.length - a.likelyItemIds.length;
-    }
     if (b.observedPurchases !== a.observedPurchases) return b.observedPurchases - a.observedPurchases;
     return a.shop.sortOrder - b.shop.sortOrder;
   });
@@ -281,20 +216,14 @@ export function planTrip(
 export function summarizeTrip(selectedShopIds: readonly string[], plan: TripPlan): TripSummary {
   const selected = new Set(selectedShopIds);
   const covered = new Set<string>();
-  const likelyHere = new Set<string>();
   const absentHere = new Set<string>();
   const knownSomewhere = new Set<string>();
-  const likelySomewhere = new Set<string>();
 
   for (const entry of plan.coverage) {
     const isSelected = selected.has(entry.shop.id);
     for (const id of entry.itemIds) {
       knownSomewhere.add(id);
       if (isSelected) covered.add(id);
-    }
-    for (const id of entry.likelyItemIds) {
-      likelySomewhere.add(id);
-      if (isSelected) likelyHere.add(id);
     }
     // Only the selected stores' negatives matter: "Safeway doesn't have it" is
     // no reason to change a trip to Costco, and it's already why Safeway isn't
@@ -303,52 +232,40 @@ export function summarizeTrip(selectedShopIds: readonly string[], plan: TripPlan
   }
 
   const rest = plan.itemIds.filter(id => !covered.has(id));
-  // `likely` first: with two stores picked, one saying no and the other's
-  // aisles saying probably, "probably" is the more useful answer and the
-  // negative has already done its job by keeping that store out of the count.
-  const likely = rest.filter(id => likelyHere.has(id));
-  const missing = rest.filter(id => !likelyHere.has(id) && absentHere.has(id));
-  const open = rest.filter(id => !likelyHere.has(id) && !absentHere.has(id));
+  const missing = rest.filter(id => absentHere.has(id));
+  const open = rest.filter(id => !absentHere.has(id));
   const gap = open.filter(id => knownSomewhere.has(id));
-  const maybe = open.filter(id => !knownSomewhere.has(id) && likelySomewhere.has(id));
-  const unknown = open.filter(id => !knownSomewhere.has(id) && !likelySomewhere.has(id));
+  const unknown = open.filter(id => !knownSomewhere.has(id));
 
   const suggestion: ShopCoverage[] = [];
   // A missing item is the strongest possible reason for a second stop — it's
   // the one thing on the list the trip definitely won't come back with — so it
-  // joins the greedy walk's target set alongside the softer two.
-  const openSet = new Set([...missing, ...gap, ...maybe]);
+  // joins the greedy walk's target set alongside the gap.
+  const openSet = new Set([...missing, ...gap]);
   const taken = new Set(selected);
   while (openSet.size > 0 && selected.size + suggestion.length < MAX_TRIP_STOPS) {
     let best: ShopCoverage | null = null;
     let bestKnown = 0;
-    let bestLikely = 0;
     for (const entry of plan.coverage) {
       if (taken.has(entry.shop.id)) continue;
+      // Strictly greater, so a tie falls to the better-ranked store — the
+      // coverage list is already sorted, so the walk inherits that order.
       const known = countIn(entry.itemIds, openSet);
-      const guessed = countIn(entry.likelyItemIds, openSet);
-      // Lexicographic: a store that definitely has two beats one that probably
-      // has five. Strictly greater, so a tie falls to the better-ranked store —
-      // the coverage list is already sorted, so the walk inherits that order.
-      if (known > bestKnown || (known === bestKnown && guessed > bestLikely)) {
+      if (known > bestKnown) {
         best = entry;
         bestKnown = known;
-        bestLikely = guessed;
       }
     }
-    if (!best || (bestKnown === 0 && bestLikely === 0)) break;
+    if (!best) break;
     suggestion.push(best);
     taken.add(best.shop.id);
     for (const id of best.itemIds) openSet.delete(id);
-    for (const id of best.likelyItemIds) openSet.delete(id);
   }
 
   return {
     covered: plan.itemIds.filter(id => covered.has(id)),
-    likely,
     missing,
     gap,
-    maybe,
     unknown,
     suggestion,
   };
@@ -366,19 +283,16 @@ function countIn(ids: readonly string[], within: ReadonlySet<string>): number {
  *
  * Every phrasing here is about the record rather than the shop: "none seen
  * here" is a true statement that leaves the store its dignity, where "nothing
- * on your list" would be the app announcing a stock check it never ran. The
- * likely clause is always a separate, softer half — the two numbers must never
- * add up into one.
+ * on your list" would be the app announcing a stock check it never ran.
  *
  * The exception, again, is the user's own claim: "2 they don't have" is the one
  * clause here that states an absence, and it can say so flatly because it's
- * quoting the person reading it. It comes last and stays its own clause for the
- * same reason the likely one does — three counts of three different kinds.
+ * quoting the person reading it. It comes last and stays its own clause —
+ * two counts of two different kinds.
  */
 export function describeShopCoverage(entry: ShopCoverage, total: number): string | null {
   if (total === 0) return null;
   const known = entry.itemIds.length;
-  const likely = entry.likelyItemIds.length;
   const absent = entry.unavailableItemIds.length;
 
   const head =
@@ -393,7 +307,6 @@ export function describeShopCoverage(entry: ShopCoverage, total: number): string
         : `${known} of ${total} seen here`;
 
   const parts = [head];
-  if (likely > 0) parts.push(`${likely} more likely`);
   if (absent > 0) parts.push(`${absent} they don’t have`);
   return parts.join(' · ');
 }
@@ -401,7 +314,7 @@ export function describeShopCoverage(entry: ShopCoverage, total: number): string
 export interface TripSuggestionCopy {
   /** The stores to visit, best first — "Costco, then Trader Joe's". */
   stores: string;
-  /** What the record says they account for between them. */
+  /** What the record says they account for, and which items those are. */
   detail: string;
 }
 
@@ -412,59 +325,60 @@ export interface TripSuggestionCopy {
  * place that turns it into a sentence, so the list screen and anywhere else
  * that surfaces it can't word it two ways.
  *
- * The same rule as everywhere else in this module: the numbers are a floor and
- * the copy says so. "You've got 8 of 12 items there before" is a fact about
- * what you've bought, not a stock check — and the likely half stays its own
- * clause rather than being added into the count.
+ * The same rule as everywhere else in this module: the number is a floor and
+ * the copy says so. "Likely has 1/4 items on your list" is a fact about what
+ * you've bought there, hedged because a shop's shelves are not something this
+ * app has ever seen — "has 1/4" would be a stock check it never ran.
  *
- * Null when there's nothing to say, which is the card's own "don't render":
- * an empty list, no suggestion, or a suggestion carrying neither a known nor a
- * likely item.
+ * **It names the items, and that's the half worth keeping.** "3/5" is a score,
+ * not an answer: whether that trip is worth making depends entirely on whether
+ * the 3 includes the thing you actually need, and a count can't say. So the
+ * covered items are listed — capped by `joinNames`, in list order, from the
+ * `names` map the caller already has — and the number is there to say how much
+ * the naming leaves out.
+ *
+ * Null when there's nothing to say, which is the card's own "don't render": an
+ * empty list, no suggestion, or a suggestion covering nothing on record.
  */
 export function describeTripSuggestion(
   suggestion: readonly ShopCoverage[],
-  total: number
+  total: number,
+  names: ReadonlyMap<string, string>
 ): TripSuggestionCopy | null {
   if (total === 0 || suggestion.length === 0) return null;
 
-  const known = new Set<string>();
-  for (const entry of suggestion) for (const id of entry.itemIds) known.add(id);
-  // Second pass, not folded into the first: an item one suggested store is
-  // known to carry must not also be counted as another's guess, whichever
-  // order the two happen to sit in.
-  const likely = new Set<string>();
+  const seen = new Set<string>();
+  const covered: string[] = [];
   for (const entry of suggestion) {
-    for (const id of entry.likelyItemIds) if (!known.has(id)) likely.add(id);
+    for (const id of entry.itemIds) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      covered.push(id);
+    }
   }
-  if (known.size === 0 && likely.size === 0) return null;
+  if (covered.length === 0) return null;
 
-  const names = suggestion.map(s => s.shop.name);
+  const shopNames = suggestion.map(s => s.shop.name);
   const stores =
-    names.length === 1
-      ? names[0]
-      : `${names.slice(0, -1).join(', ')}, then ${names[names.length - 1]}`;
+    shopNames.length === 1
+      ? shopNames[0]
+      : `${shopNames.slice(0, -1).join(', ')}, then ${shopNames[shopNames.length - 1]}`;
 
-  const one = suggestion.length === 1;
-  if (known.size === 0) {
-    // Nothing on record, so the aisle guess is the whole answer and has to be
-    // labelled as one — it's the only claim here the app made up itself.
+  // Agrees with `stores`, which is the line directly above it.
+  const verb = suggestion.length === 1 ? 'has' : 'have';
+  if (covered.length === total) {
     return {
       stores,
-      detail: `${likely.size} of these ${total} likely, on the aisles ${
-        one ? 'it stocks' : 'they stock'
-      }`,
+      detail:
+        total === 1
+          ? `Likely ${verb} the one item on your list`
+          : `Likely ${verb} all ${total} items on your list`,
     };
   }
 
-  const head = one
-    ? known.size === total
-      ? `You’ve got all ${total} items there before`
-      : `You’ve got ${known.size} of ${total} items there before`
-    : known.size === total
-      ? `Between them, you’ve got all ${total} items there before`
-      : `Between them, you’ve got ${known.size} of ${total} items before`;
-
-  return { stores, detail: likely.size > 0 ? `${head} · ${likely.size} more likely` : head };
+  const named = joinNames(covered.map(id => names.get(id) ?? 'an item'));
+  const head = `Likely ${verb} ${covered.length}/${total} items on your list`;
+  return { stores, detail: named ? `${head}: ${named}` : head };
 }
 
 /**
