@@ -15,6 +15,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { pantryEntries } from '../utils/grocerySuggest';
 import { taskKindOf } from '../utils/taskKinds';
 import { isDialable } from '../utils/phone';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -305,6 +306,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const now = Date.now();
     expect(items.some(i => i.onHandUntil && Date.parse(i.onHandUntil) > now)).toBe(true);
     expect(items.some(i => i.onHandUntil && Date.parse(i.onHandUntil) < now)).toBe(true);
+    // …and so the Pantry view has a pantry to browse. Every row in it is an
+    // assertion (finishing a trip stamps one on what it bought): the cadence
+    // guess needs a row older than its purchases, and a seeded row is created
+    // this instant, so the guessed half of the list can't be seeded.
+    expect(pantryEntries(items, new Date()).length).toBeGreaterThan(5);
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {

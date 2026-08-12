@@ -104,6 +104,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) |
 | grocery autocomplete, Buy again ranking | `src/utils/grocerySuggest.ts` |
 | which store an item comes from | `src/utils/groceryShops.ts` — see Grocery stores below |
+| what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see The pantry below |
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see Grocery either/or below |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
 | halving or doubling a recipe | `src/utils/recipeScale.ts` — see Scaling below |
@@ -373,6 +374,38 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   when you're deciding what to buy where. **There is deliberately no store chip on the shopping
   list rows** — the row is already dense, and while you're shopping you're standing in one store,
   so it's noise precisely when the list is in use.
+
+### The pantry — computed, corrected, and now browsable
+
+What the app treats as "have it" is one function, `probablyHaveReason` — an explicit
+`onHandUntil` assertion if there is one, otherwise a guess from this item's own purchase cadence.
+There is no inventory table and there must not be one: a maintained inventory is the feature that
+dies in week three, so it's computed first and corrected second ("Got it" / "Out of it" on
+`GroceryItemSheet`, and `finishShopping` stamping what a trip bought).
+
+**`PantrySheet` is a read, not a second model.** It lists exactly the set `probablyHaveReason`
+answers for (`pantryEntries`), cut into aisles by `buildPantrySections`, and it writes nothing —
+tapping a row opens `GroceryItemSheet`, whose Pantry pills are still the only way to say you're
+out of something. That's the distinction the aggregate view turns on: nobody should have to check
+items in and out, but a set the app has already derived per-item is worth being able to look at,
+and until this there was no way to answer "do I have flour" short of opening items one at a time.
+Don't grow quantities, expiry dates or a check-in gesture onto it — that's the inventory again.
+
+- **Rows on the list are deliberately in it.** An item can be both recently bought and back on the
+  list; dropping it would make an item marked "Got it" vanish from the pantry the moment it was
+  added to a list, which reads as the assertion having been forgotten. The row says "on the list"
+  instead.
+- **The row's caption is `probablyHaveReason`'s own words**, verbatim — the same line a week plan
+  and the item sheet already show. A second phrasing here is a second thing to keep true.
+- **The cadence half can't be seeded into demo mode.** A guess needs a row older than its purchases
+  (`estimatedPurchaseCadenceDays` divides the row's age by its count), and every seeded row is
+  created at seed time, so the demo's pantry is all assertions. That's the honest reason it shows
+  one kind of reason and not both.
+- **`GroceryItemSheet` is rendered *inside* `PantrySheet`'s `Modal`, not beside it.** A `Modal`
+  presents from the view controller its React parent belongs to, so a sibling would ask the
+  screen's controller to present a second sheet while the pantry is already up. Nesting is what
+  lets it stack — and keeping the pantry mounted underneath is the point, since correcting one
+  item should drop you back into the list you were reading.
 
 ### Grocery either/or — two rows you pick between at the shelf
 
