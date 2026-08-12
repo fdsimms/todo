@@ -18,6 +18,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD } from '../utils/postpone';
 import { isUsingDemoDatabase } from '../db/database';
 import { RECIPE_MEAL_TYPES } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
@@ -221,6 +222,21 @@ describe('demo mode', () => {
     expect(useTaskGroupStore.getState().groups.length).toBeGreaterThan(0);
     expect(useCategoryStore.getState().categories.length).toBeGreaterThan(0);
     expect(s.tagRegistry.length).toBeGreaterThan(0);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a task that has been pushed enough times to trip the postpone check', () => {
+    // Invisible until something has a history: a fresh demo database has none,
+    // so without a stamped count the date picker never shows the prompt and the
+    // feature reads as one the app doesn't have.
+    useDemoStore.getState().enterDemoMode();
+
+    const pushed = useTaskStore.getState().tasks.filter(t => t.postponeCount > 0);
+    expect(pushed.length).toBeGreaterThan(0);
+    expect(
+      pushed.some(t => shouldNudgePostpone(t, true, DEFAULT_POSTPONE_THRESHOLD)),
+    ).toBe(true);
 
     useDemoStore.getState().exitDemoMode();
   });

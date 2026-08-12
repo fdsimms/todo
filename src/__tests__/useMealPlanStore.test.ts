@@ -43,7 +43,13 @@ const mockTaskState = {
     mockTaskState.tasks.push(task);
     return task;
   }),
-  updateTask: jest.fn((id: string, updates: Partial<Task>) => {
+  // The options param is unused by the mock but declared, so a test can assert
+  // what was passed — reconcileCookTask has to opt out of postpone counting.
+  updateTask: jest.fn((
+    id: string,
+    updates: Partial<Task>,
+    _options?: { scope?: 'occurrence' | 'series'; skipPostponeCount?: boolean },
+  ) => {
     mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, ...updates } : t));
   }),
   deleteTask: jest.fn((id: string) => {
@@ -1055,6 +1061,22 @@ describe('cook tasks', () => {
     // Dinner hides until evening — the whole reason this doesn't crowd Today.
     expect(task.timeSegments).toEqual(['evening']);
     expect(task.dueDate!.startsWith('2026-08-05')).toBe(true);
+  });
+
+  it('re-dates the cook task when the meal moves, without counting it as a push', () => {
+    // The cook task's date is the meal's date, not a schedule the user picked
+    // for the task — dragging Tuesday's dinner to Friday must not read as
+    // ducking it. See utils/postpone.ts.
+    loadWeek();
+    const planned = planRecipeMeal('2026-08-05');
+    expect(cookTaskFor(planned.id)!.dueDate!.startsWith('2026-08-05')).toBe(true);
+
+    useMealPlanStore.getState().moveEntry(planned.id, { date: '2026-08-07' });
+
+    const moved = cookTaskFor(planned.id)!;
+    expect(moved.dueDate!.startsWith('2026-08-07')).toBe(true);
+    const dateWrite = mockTaskState.updateTask.mock.calls.find(call => 'dueDate' in call[1]);
+    expect(dateWrite?.[2]).toEqual({ skipPostponeCount: true });
   });
 
   it('spawns none for free text or for a leftover', () => {

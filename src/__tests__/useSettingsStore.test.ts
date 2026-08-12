@@ -803,3 +803,65 @@ describe('persisted filters', () => {
     expect(useSettingsStore.getState().filterEfforts).toEqual([]);
   });
 });
+
+// ─── postpone check ───
+
+describe('postpone check settings', () => {
+  it('defaults to on, at a threshold of 3', () => {
+    expect(useSettingsStore.getState().postponeCheckEnabled).toBe(true);
+    expect(useSettingsStore.getState().postponeCheckThreshold).toBe(3);
+  });
+
+  it('stays on for an install that predates the setting', () => {
+    // Nothing stored: the read is `!== 'false'`, so an upgrade arrives with the
+    // prompt available rather than silently off.
+    (dbGetSetting as jest.Mock).mockReturnValue(null);
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().postponeCheckEnabled).toBe(true);
+  });
+
+  it('only turns off for an explicitly stored "false"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'postponeCheckEnabled' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().postponeCheckEnabled).toBe(false);
+  });
+
+  it('stores and persists postponeCheckEnabled', () => {
+    useSettingsStore.getState().setPostponeCheckEnabled(false);
+    expect(useSettingsStore.getState().postponeCheckEnabled).toBe(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('postponeCheckEnabled', 'false');
+  });
+
+  it('stores and persists postponeCheckThreshold', () => {
+    useSettingsStore.getState().setPostponeCheckThreshold(6);
+    expect(useSettingsStore.getState().postponeCheckThreshold).toBe(6);
+    expect(dbSetSetting).toHaveBeenCalledWith('postponeCheckThreshold', '6');
+  });
+
+  it('clamps a threshold that would put the prompt out of reach', () => {
+    useSettingsStore.getState().setPostponeCheckThreshold(999);
+    expect(useSettingsStore.getState().postponeCheckThreshold).toBe(15);
+    useSettingsStore.getState().setPostponeCheckThreshold(0);
+    expect(useSettingsStore.getState().postponeCheckThreshold).toBe(2);
+  });
+
+  it('reads an unparseable stored threshold back as the default', () => {
+    // NaN would compare false against every count and silently disable the
+    // prompt, which is the failure mode worth guarding.
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'postponeCheckThreshold' ? 'null' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().postponeCheckThreshold).toBe(3);
+  });
+
+  it('resetToDefaults restores both', () => {
+    useSettingsStore.getState().setPostponeCheckEnabled(false);
+    useSettingsStore.getState().setPostponeCheckThreshold(9);
+    useSettingsStore.getState().resetToDefaults();
+    expect(useSettingsStore.getState().postponeCheckEnabled).toBe(true);
+    expect(useSettingsStore.getState().postponeCheckThreshold).toBe(3);
+  });
+});

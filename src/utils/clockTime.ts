@@ -36,6 +36,25 @@ export function logicalDayStart(date: Date, dayResetTime: string): Date {
 }
 
 /**
+ * The logical-day-start instant for a *stored* date like a task's dueDate or
+ * deferUntil, as opposed to a real moment. Never rolls the result back a day —
+ * see dateUtils' getTaskDayStart, which wraps this one and supplies the
+ * setting, for why the two differ.
+ *
+ * The store-free core, here for the same reason logicalDayStart is: postpone.ts
+ * compares stored task dates and is tested in the `node` environment, where
+ * importing dateUtils pulls in useSettingsStore and blows up on expo-sqlite.
+ */
+export function taskDayStart(date: Date, dayResetTime: string): Date {
+  const [h, m] = dayResetTime.split(':').map(Number);
+  const result = new Date(date);
+  // setHours writes h/m/s/ms in one call, so this lands on the same instant the
+  // old startOfDay-then-setHours pair did.
+  result.setHours(h || 0, m || 0, 0, 0);
+  return result;
+}
+
+/**
  * Formats an "HH:MM" clock time for display, e.g. "8:00 AM" — or "08:00" with
  * `use24Hour`.
  *

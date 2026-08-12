@@ -118,6 +118,23 @@ export function seedDemoData(): void {
     effort: 2,
   });
 
+  // The postpone check has nothing to show until a task has actually been
+  // ducked a few times, and a fresh demo database has no history — so the count
+  // is stamped on directly. Opening this one's date picker is the whole feature:
+  // it's the classic put-off-able errand, and the banner offers a way out.
+  // (updateTask honours an explicit postponeCount instead of re-deriving one,
+  // which is the same door every undo goes through.)
+  const dentist = addTask({
+    title: 'Book the dentist',
+    notes: 'Been meaning to do this since the reminder card arrived.',
+    category: 'Errands',
+    dueDate: today.toISOString(),
+    priority: 2,
+    effort: 1,
+    tags: ['admin'],
+  });
+  updateTask(dentist.id, { postponeCount: 5 });
+
   addTask({
     title: 'Swing by the farmers market',
     notes: 'Only worth doing between 8 and 1 — after that the good stalls are gone.',

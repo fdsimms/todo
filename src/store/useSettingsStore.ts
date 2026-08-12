@@ -12,6 +12,7 @@ import {
   type AiFeatureConfig, type AiFeatureConfigMap, type AiFeatureId,
 } from '../utils/aiFeatures';
 import { DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY } from '../utils/mealPlanNudge';
+import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
 
@@ -175,6 +176,19 @@ interface SettingsStore {
   // legacy 'true'/'false' values migrate on read rather than needing a new one.
   autoRemoveExpiredTasks: ExpiredTaskGraceDays;
   autoArchiveProjectsOnComplete: boolean;
+  /**
+   * Whether the date picker speaks up when you go to push a task you've already
+   * pushed postponeCheckThreshold times. See src/utils/postpone.ts.
+   *
+   * Defaults ON, unlike most opt-in features here, and the `!== 'false'` read
+   * below is what makes an install that predates it start switched on. It earns
+   * that: it can't say anything until the user has pushed the same task three
+   * times, it only ever appears in a sheet they opened deliberately, and it
+   * never blocks the reschedule. Defaulting it off would mean nobody met it.
+   */
+  postponeCheckEnabled: boolean;
+  /** How many pushes before it says something. */
+  postponeCheckThreshold: number;
   // How long completed tasks are kept before a startup purge deletes them.
   // null = forever, and forever is the default: nothing about an existing
   // install changes until the user picks a window in Settings. See
@@ -311,6 +325,8 @@ interface SettingsStore {
   setFilterEfforts: (efforts: Effort[]) => void;
   setAnthropicApiKey: (key: string) => void;
   setAiFeatureConfig: (id: AiFeatureId, patch: Partial<AiFeatureConfig>) => void;
+  setPostponeCheckEnabled: (on: boolean) => void;
+  setPostponeCheckThreshold: (count: number) => void;
   setAppLockEnabled: (on: boolean) => void;
   setAppLockGraceSeconds: (seconds: number) => void;
   setVacationMode: (on: boolean, endDate?: string | null) => void;
@@ -359,6 +375,8 @@ const DEFAULT_SETTINGS = {
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
   autoArchiveProjectsOnComplete: false,
+  postponeCheckEnabled: true,
+  postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
   hideCategories: false,
   timerLiveActivity: true,
   mealsOnToday: 'strip' as MealsOnToday,
@@ -516,6 +534,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   vacationEnd: null,
   autoRemoveExpiredTasks: null,
   autoArchiveProjectsOnComplete: false,
+  postponeCheckEnabled: true,
+  postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
   completedRetentionDays: null,
   defaultReminderLeadMinutes: null,
   hideCategories: false,
@@ -573,6 +593,10 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const dailyAgendaTime = dbGetSetting('dailyAgendaTime') ?? '08:00';
     const appLockEnabled = dbGetSetting('appLockEnabled') === 'true';
     const appLockGraceSeconds = parseGraceSeconds(dbGetSetting('appLockGraceSeconds'));
+    // `!== 'false'` rather than `=== 'true'`: this defaults on, so an install
+    // that predates the setting starts with it rather than without it.
+    const postponeCheckEnabled = dbGetSetting('postponeCheckEnabled') !== 'false';
+    const postponeCheckThreshold = parsePostponeThreshold(dbGetSetting('postponeCheckThreshold'));
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
@@ -660,7 +684,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, timerLiveActivity, mealsOnToday, mealCookTasks, mealCookTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, timerLiveActivity, mealsOnToday, mealCookTasks, mealCookTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -843,6 +867,19 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setAutoArchiveProjectsOnComplete(on: boolean) {
     dbSetSetting('autoArchiveProjectsOnComplete', on ? 'true' : 'false');
     set({ autoArchiveProjectsOnComplete: on });
+  },
+
+  setPostponeCheckEnabled(on: boolean) {
+    dbSetSetting('postponeCheckEnabled', on ? 'true' : 'false');
+    set({ postponeCheckEnabled: on });
+  },
+
+  setPostponeCheckThreshold(count: number) {
+    // Clamped on the way in as well as in the stepper, so a value that somehow
+    // got past the UI can't leave the prompt permanently unreachable.
+    const clamped = parsePostponeThreshold(String(count));
+    dbSetSetting('postponeCheckThreshold', String(clamped));
+    set({ postponeCheckThreshold: clamped });
   },
 
   // Stored as '' for forever, matching vacationEnd/projectNudgeDismissedAt —

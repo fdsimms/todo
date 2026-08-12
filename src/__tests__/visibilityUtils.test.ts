@@ -107,6 +107,8 @@ const baseTask: Task = {
   sortOrder: 0,
   pinned: false,
   pinnedOrder: 0,
+  postponeCount: 0,
+  postponeMuted: false,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
