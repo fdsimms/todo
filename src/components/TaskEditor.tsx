@@ -2598,7 +2598,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'waitingOn', label: 'Waiting on', set: !!blockedById,
+            key: 'waitingOn', label: 'Waiting on', set: !!blockedById, primary: true,
             keywords: ['blocked', 'blocker', 'depends on', 'after', 'until'],
             node: (
               <>
@@ -3165,7 +3165,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'link', label: 'Link', set: !!linkUrl,
+            key: 'link', label: 'Link', set: !!linkUrl, primary: true,
             keywords: ['url', 'website', 'open', 'app', 'address'],
             node: (
               <>
@@ -3330,7 +3330,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'vacation', label: 'Vacation pause', set: vacationPause,
+            key: 'vacation', label: 'Vacation pause', set: vacationPause, primary: true,
             keywords: ['away', 'holiday', 'skip', 'break', 'time off'],
             node: (
               <>
