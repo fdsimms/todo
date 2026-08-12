@@ -1,4 +1,4 @@
 {
-  "message": "Centered the icon and label in the fridge sheet's action buttons (Finished it, Threw it out, Delete) and trimmed their padding",
+  "message": "Fixed the fridge sheet's action buttons (Finished it, Threw it out, Delete) sitting too high, with too much space underneath",
   "date": "2026-08-12"
 }

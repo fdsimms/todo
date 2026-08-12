@@ -18,9 +18,8 @@ interface Props {
 
 /**
  * One icon + label row in a bottom-sheet action list (LeftoverSheet,
- * MealEntrySheet) — icon and label centered as a pair, the way a native
- * action sheet row reads. The two callers had drifted into byte-identical
- * copies of this row's styles; this is the one definition.
+ * MealEntrySheet). The two callers had drifted into byte-identical copies of
+ * this row's styles; this is the one definition.
  *
  * Callers still render their own leading `sep` divider — its spacing differs
  * slightly between sheets depending on what's above it.
@@ -51,7 +50,6 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
