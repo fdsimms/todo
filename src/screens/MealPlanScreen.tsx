@@ -1078,6 +1078,7 @@ export function MealPlanScreen() {
                         label="Suggest meals"
                         icon="restaurant-outline"
                         variant="neutral"
+                        surface="page"
                         onPress={() => {
                           haptics.tap();
                           setSuggesting({
@@ -1409,7 +1410,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   list: {
-    paddingTop: spacing.xs,
+    paddingTop: spacing.md,
   },
   section: {
     paddingHorizontal: spacing.md,
