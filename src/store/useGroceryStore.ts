@@ -252,8 +252,22 @@ interface GroceryStore {
    * Ends the trip: everything checked comes off the list and counts as bought.
    * Returns how many. `shopId` is optional — null records the purchase without
    * a place, exactly as every trip did before stores existed.
+   *
+   * `priceById` is optional in the same way and for the same reason: whatever
+   * the user typed at the checkout, in minor units, and nothing for the rest.
+   * An unpriced item keeps the price it had.
    */
-  finishShopping: (shopId?: string | null) => number;
+  finishShopping: (shopId?: string | null, priceById?: Readonly<Record<string, number>>) => number;
+  /**
+   * Records what one item cost, by hand. Writes the item's own price and — with
+   * a store named — that store's, so a correction made while looking at a
+   * store's price doesn't leave the two disagreeing.
+   *
+   * `null` clears it: a price you know to be wrong is worse than none, and the
+   * pantry pills set the precedent that every automatic assertion here can be
+   * taken back by hand.
+   */
+  setItemPrice: (id: string, minor: number | null, shopId?: string | null) => void;
   /** Abandons the trip: everything comes off the list, nothing counts as bought. */
   clearList: () => number;
 
@@ -623,6 +637,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // finishShopping is what stamps this — see defaultExpiresAt.
       expiresAt: null,
       useUpTask: null,
+      // Same reasoning as expiresAt: a name typed onto the list is a plan to
+      // buy something, and nothing has been paid for it yet. finishShopping and
+      // the item sheet are the two things that ever set a price.
+      lastPriceMinor: null,
+      lastPricedAt: null,
+      lastPriceQuantity: null,
     };
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));
@@ -884,6 +904,44 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
+  setItemPrice(id, minor, shopId = null) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    const now = minor === null ? null : new Date().toISOString();
+    // The quantity it's a price *for* is this row's current one — the same
+    // pairing a finished trip records. Cleared with the price, so a stale
+    // quantity can never be left describing a number that's gone.
+    const updated: GroceryItem = {
+      ...item,
+      lastPriceMinor: minor,
+      lastPricedAt: now,
+      lastPriceQuantity: minor === null ? null : item.quantity,
+    };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+
+    // With a store in hand, the same answer goes on the link — a price
+    // corrected while looking at one store's number has to change that number,
+    // or the correction reads as having done nothing. Only an existing link is
+    // touched: a price is not an assertion that the store stocks it, so this
+    // must not mint the row linkItemShop exists to mint.
+    if (!shopId) return;
+    const link = get().itemShops.find(l => l.itemId === id && l.shopId === shopId);
+    if (!link) return;
+    const nextLink: ItemShopLink = {
+      ...link,
+      lastPriceMinor: minor,
+      lastPricedAt: now,
+      lastPriceQuantity: minor === null ? null : item.quantity,
+    };
+    dbSetItemShopLink(nextLink);
+    set(s => ({
+      itemShops: s.itemShops.map(l =>
+        l.itemId === id && l.shopId === shopId ? nextLink : l
+      ),
+    }));
+  },
+
   setStaple(id, isStaple) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
@@ -1052,7 +1110,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     for (const id of ids) dropUseUpTask(id);
   },
 
-  finishShopping(shopId = null) {
+  finishShopping(shopId = null, priceById = {}) {
     const purchasedAt = new Date().toISOString();
     const now = new Date(purchasedAt);
     // A shop deleted between opening the finish sheet and confirming it would
@@ -1079,7 +1137,21 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       const expires = defaultExpiresAt(i.name, now);
       if (expires) expiresAtById[i.id] = expires;
     }
-    const ids = dbFinishGroceryShopping(purchasedAt, onHandUntilById, shop?.id ?? null, expiresAtById);
+    // The quantity each price was for, captured before the trip clears the
+    // trolley — a price with no quantity beside it is the ambiguity
+    // GroceryItem.lastPriceQuantity exists to close. Read from state rather
+    // than handed back by the db so the in-memory patch below and the row it
+    // mirrors can't disagree.
+    const pricedQuantityById = new Map(
+      get().items.filter(i => priceById[i.id] !== undefined).map(i => [i.id, i.quantity])
+    );
+    const ids = dbFinishGroceryShopping(
+      purchasedAt,
+      onHandUntilById,
+      shop?.id ?? null,
+      expiresAtById,
+      priceById
+    );
     if (ids.length === 0) return 0;
     const done = new Set(ids);
 
@@ -1091,6 +1163,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         const bumped = new Set(
           s.itemShops.filter(l => l.shopId === shop.id && done.has(l.itemId)).map(l => l.itemId)
         );
+        // The price fields this trip writes on a link, or the ones already
+        // there — an unpriced item leaves the store's last price standing,
+        // same as dbFinishGroceryShopping does.
+        const pricePatch = (id: string, existing: ItemShopLink | null) => {
+          const minor = priceById[id];
+          if (minor === undefined) {
+            return {
+              lastPriceMinor: existing?.lastPriceMinor ?? null,
+              lastPricedAt: existing?.lastPricedAt ?? null,
+              lastPriceQuantity: existing?.lastPriceQuantity ?? null,
+            };
+          }
+          return {
+            lastPriceMinor: minor,
+            lastPricedAt: purchasedAt,
+            lastPriceQuantity: pricedQuantityById.get(id) ?? null,
+          };
+        };
         itemShops = [
           ...s.itemShops.map(l =>
             l.shopId === shop.id && done.has(l.itemId)
@@ -1102,6 +1192,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                   // "they don't have it" outright, so the trip clears it rather
                   // than leaving the user to.
                   unavailableAt: null,
+                  ...pricePatch(l.itemId, l),
                 }
               : l
           ),
@@ -1113,6 +1204,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
               purchaseCount: 1,
               lastPurchasedAt: purchasedAt,
               unavailableAt: null,
+              ...pricePatch(id, null),
             })),
         ];
       }
@@ -1130,6 +1222,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 lastPurchasedAt: purchasedAt,
                 onHandUntil: onHandUntilById[i.id] ?? i.onHandUntil,
                 expiresAt: expiresAtById[i.id] ?? i.expiresAt,
+                // Only the rows the user priced. Everything else keeps the
+                // price and the stamp it already had — see the db's own note.
+                ...(priceById[i.id] !== undefined
+                  ? {
+                      lastPriceMinor: priceById[i.id],
+                      lastPricedAt: purchasedAt,
+                      lastPriceQuantity: i.quantity,
+                    }
+                  : null),
               }
             : i
         ),
@@ -1412,6 +1513,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         purchaseCount: existing?.purchaseCount ?? 0,
         lastPurchasedAt: existing?.lastPurchasedAt ?? null,
         unavailableAt: null,
+        // Carried, not dropped: dbSetItemShopLink writes the whole row, and
+        // what this store last charged is untouched by the user saying they
+        // can get it here.
+        lastPriceMinor: existing?.lastPriceMinor ?? null,
+        lastPricedAt: existing?.lastPricedAt ?? null,
+        lastPriceQuantity: existing?.lastPriceQuantity ?? null,
       };
       dbSetItemShopLink(link);
       links.push(link);
@@ -1473,6 +1580,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         purchaseCount: existing?.purchaseCount ?? 0,
         lastPurchasedAt: existing?.lastPurchasedAt ?? null,
         unavailableAt: markedAt,
+        // Same carry as linkItemShopMany, and the same reasoning as the count
+        // above: what it cost when they did stock it is history, and the claim
+        // is about today's shelf. Every price read drops a negative link
+        // anyway, so this is kept for when the claim is taken back.
+        lastPriceMinor: existing?.lastPriceMinor ?? null,
+        lastPricedAt: existing?.lastPricedAt ?? null,
+        lastPriceQuantity: existing?.lastPriceQuantity ?? null,
       };
       dbSetItemShopLink(link);
       links.push(link);

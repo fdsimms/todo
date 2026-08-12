@@ -31,6 +31,7 @@ import { isUsingDemoDatabase } from '../db/database';
 import { RECIPE_MEAL_TYPES } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
 import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
+import { cheapestShopFor } from '../utils/groceryPrice';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockDbs: Map<string, any>;
@@ -412,6 +413,30 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(
       describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length)
     ).not.toBeNull();
+  });
+
+  it('seeds prices, including one item priced at two stores', () => {
+    const { items, itemShops, shops } = useGroceryStore.getState();
+
+    // Both halves of the split: a price on the item, and prices per store.
+    expect(items.some(i => i.lastPriceMinor !== null)).toBe(true);
+    expect(itemShops.some(l => l.lastPriceMinor !== null)).toBe(true);
+    // A price is never left without the quantity it was for.
+    for (const item of items.filter(i => i.lastPriceMinor !== null)) {
+      expect(item.lastPricedAt).not.toBeNull();
+    }
+
+    // A trip with no store named prices the item and no link — the same split
+    // purchaseCount already has, one field over.
+    const noStore = items.filter(
+      i => i.lastPriceMinor !== null && !itemShops.some(l => l.itemId === i.id && l.lastPriceMinor !== null)
+    );
+    expect(noStore.length).toBeGreaterThan(0);
+
+    // And the comparison the per-store half exists for. Without an item priced
+    // at two stores, "cheapest at X" is a feature the demo can't show.
+    const compared = items.filter(i => cheapestShopFor(i.id, itemShops, shops) !== null);
+    expect(compared.length).toBeGreaterThan(0);
   });
 
   it('seeds a recipe of every meal type, with the composed ones composed', () => {

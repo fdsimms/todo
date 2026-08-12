@@ -796,23 +796,43 @@ function seedGroceries(recipes: DemoRecipes): void {
   const WEEKLY_SHOP = ['Milk', 'Eggs', 'Spinach', 'Bananas', 'Bread', 'Chicken breast', 'Tomatoes', 'Coffee'];
   const BULK_RUN = ['Paper towels', 'Toilet paper', 'Olive oil', 'Rice', 'Frozen peas'];
 
+  // Prices, in minor units, keyed by the name the seed already uses. Recorded
+  // through a finished trip rather than written onto rows, like everything else
+  // here — which is also the only way they *can* be recorded, since a price is
+  // paired with the quantity the trip bought (see GroceryItem.lastPriceQuantity).
+  const priced = (byName: Record<string, number>): Record<string, number> =>
+    Object.fromEntries(Object.entries(byName).map(([name, minor]) => [itemNamed(name).id, minor]));
+
   setCheckedMany(idsNamed(WEEKLY_SHOP), true);
   finishShopping(traderJoes.id);
 
   addExistingMany(idsNamed(BULK_RUN));
   setCheckedMany(idsNamed(BULK_RUN), true);
-  finishShopping(costco.id);
+  finishShopping(costco.id, priced({ 'Olive oil': 1299, 'Paper towels': 1849, Rice: 799 }));
 
   addExistingMany(idsNamed(WEEKLY_SHOP));
   setCheckedMany(idsNamed(WEEKLY_SHOP), true);
-  finishShopping(traderJoes.id);
+  finishShopping(
+    traderJoes.id,
+    priced({ Milk: 429, Eggs: 599, Spinach: 349, Bread: 449, Coffee: 1099 })
+  );
+
+  // The same item bought at a second store for more — the whole point of
+  // keeping a price per (item, store), and the only shape "cheapest at Costco"
+  // can be said about. One item rather than several: a comparison needs two
+  // prices, not a priced catalog.
+  addExistingMany(idsNamed(['Olive oil']));
+  setCheckedMany(idsNamed(['Olive oil']), true);
+  finishShopping(traderJoes.id, priced({ 'Olive oil': 1599 }));
 
   // A trip with no store named — a first-class answer, and the reason an
-  // item's own purchaseCount runs ahead of the sum of its per-store links.
+  // item's own purchaseCount runs ahead of the sum of its per-store links. Its
+  // prices land on the items and on no link at all, which is that same split
+  // one field over.
   const CORNER_SHOP = ['Greek yogurt', 'Butter'];
   addExistingMany(idsNamed(CORNER_SHOP));
   setCheckedMany(idsNamed(CORNER_SHOP), true);
-  finishShopping(null);
+  finishShopping(null, priced({ 'Greek yogurt': 549, Butter: 479 }));
 
   // Salt and pepper need a trip too — like every catalog row here, isStaple
   // is a corrected-by-hand flag on an item, not something a provisional row

@@ -763,6 +763,40 @@ export interface GroceryItem {
    */
   expiresAt: string | null;
   /**
+   * What you last paid for this, in whole minor units of the one currency the
+   * app knows about (cents/pence) — `429`, never `4.29`. An integer because
+   * this is the number a trip estimate sums, and floats accumulate a tail.
+   *
+   * **Wherever you bought it.** `ItemShopLink` carries the same three fields
+   * per store, and the split is exactly the one `purchaseCount` already makes:
+   * a trip finished without naming a store writes this and no link, so this is
+   * the price and the link ones are partial. Never reconcile them, and never
+   * sum links to get an item's price.
+   *
+   * A price is a remembered observation, never a ledger the user maintains —
+   * the same principle the pantry is built on. Nothing expires it, but nothing
+   * renders it bare either: see `lastPricedAt`.
+   */
+  lastPriceMinor: number | null;
+  /**
+   * When that price was seen. A date rather than nothing, for the reason
+   * `ItemShopLink.unavailableAt` is one: a price ages, and "$3.19 (March)" is a
+   * fact you can weigh where a bare "$3.19" from eighteen months ago is the UI
+   * lying. Every read renders the age alongside the number.
+   */
+  lastPricedAt: string | null;
+  /**
+   * `quantity` as it stood when the price was recorded — a verbatim snapshot,
+   * never parsed and never divided into a per-unit price.
+   *
+   * Load-bearing: "milk $4.29" means nothing if last time was a gallon and this
+   * week it's a pint. Deriving "$0.21/oz" from it would need a normalised unit,
+   * which inherits every refusal `parseQuantityAmount` makes ("a bunch" has no
+   * per-unit price) — so the string is shown next to the price and the reader
+   * does the comparing.
+   */
+  lastPriceQuantity: string | null;
+  /**
    * Whether this item gets a "Use up X" task when it has an expiry — an
    * explicit per-item answer, or null for "the groceryUseUpTasks setting
    * decides". Exactly `MealPlanEntry.cookTask`'s tri-state, and for the same
@@ -856,7 +890,39 @@ export interface ItemShopLink {
   // there clears it automatically — a purchase refutes the claim outright, and
   // that's the one correction nobody should have to make by hand.
   unavailableAt: string | null;
+  /**
+   * What you last paid for this item *here*, same three fields and same rules
+   * as `GroceryItem`'s (minor units, stamped, with the quantity it was for).
+   *
+   * This is the half that answers "where is it cheaper" — see `cheapestShopFor`
+   * — and it's why prices live on the existing aggregate rather than in a log
+   * table: the comparison only ever needs the last number per store, which is
+   * bounded by (items × stores) exactly as the counters above already are.
+   *
+   * The negative claim outranks it, like everywhere else: a store the user has
+   * said doesn't stock the item is not a place to buy it cheaply, whatever
+   * price it last had.
+   */
+  lastPriceMinor: number | null;
+  lastPricedAt: string | null;
+  lastPriceQuantity: string | null;
 }
+
+/**
+ * The most a price can be, in minor units — £10,000. Not a validation rule
+ * anyone should hit, just the ceiling that stops a mistyped card number
+ * becoming a trip estimate.
+ */
+export const GROCERY_PRICE_MINOR_MAX = 1_000_000;
+
+/**
+ * The symbols a price can be shown with. A closed list rather than free text or
+ * a locale lookup: this string is concatenated into every rendered price, and
+ * the feature needs to render a number correctly, not to know about money.
+ * There is one currency at a time and nothing converts between them.
+ */
+export const CURRENCY_SYMBOLS: readonly string[] = ['$', '£', '€', '¥'];
+export const DEFAULT_CURRENCY_SYMBOL = '$';
 
 // Shorter than a grocery item's: this is a chip label that has to sit in a row
 // of other chips in a sheet, not a list row that owns its width.

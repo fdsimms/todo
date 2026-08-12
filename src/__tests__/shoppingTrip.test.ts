@@ -48,12 +48,18 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     isStaple: false,
     expiresAt: null,
     useUpTask: null,
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
     ...overrides,
   };
 }
 
 function link(itemId: string, shopId: string, purchaseCount = 1): ItemShopLink {
-  return { itemId, shopId, purchaseCount, lastPurchasedAt: null, unavailableAt: null };
+  return {
+    itemId, shopId, purchaseCount, lastPurchasedAt: null, unavailableAt: null,
+    lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null,
+  };
 }
 
 /** The user's own "they don't have it", which no aisle guess may overrule. */
@@ -64,6 +70,9 @@ function notAt(itemId: string, shopId: string, purchaseCount = 0): ItemShopLink 
     purchaseCount,
     lastPurchasedAt: null,
     unavailableAt: '2026-03-04T00:00:00.000Z',
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
   };
 }
 
