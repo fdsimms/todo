@@ -21,7 +21,7 @@ import type { Task } from '../types';
 import type { SearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { displayTitleFor } from '../utils/visibilityUtils';
-import { formatTaskDeliverable } from '../utils/deliverables';
+import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { tagColor } from '../utils/tagColor';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, iconSize, interaction, checkboxRadius, type Colors } from '../theme';
@@ -62,7 +62,7 @@ function SearchResultItem({ result, onPress, styles, colors }: {
     projectName ? `in ${projectName}` : null,
     task.archived ? 'archived' : null,
     isCompleted ? `completed${completedDate ? ` ${completedDate}` : ''}` : null,
-    answer !== null ? `answered ${answer}` : null,
+    isCompleted && asksOnCompletion(task) ? (answer !== null ? `answered ${answer}` : 'no answer') : null,
     !isCompleted && task.dueDate ? `due ${format(new Date(task.dueDate), 'MMM d')}` : null,
   ].filter(Boolean).join(', ');
 
@@ -122,12 +122,18 @@ function SearchResultItem({ result, onPress, styles, colors }: {
               Task.deliverableKind). Search is how anyone finds a task they
               finished months ago, so without this the row you came for is
               found and still doesn't tell you what you decided. Same glyph
-              the Logbook entry and the unticked checkbox use. */}
-          {answer !== null && (
-            <View style={styles.answerPill}>
-              <Ionicons name="help" size={iconSize.xs} color={colors.accent} />
-              <Text style={styles.answerText} numberOfLines={1}>{answer}</Text>
-            </View>
+              and pill the Logbook entry uses, including the "No answer"
+              fallback — gated on isCompleted, since an *outstanding* decision
+              task hasn't failed to answer anything, it just hasn't run yet. */}
+          {isCompleted && asksOnCompletion(task) && (
+            answer !== null ? (
+              <View style={styles.answerPill}>
+                <Ionicons name="help" size={iconSize.xs} color={colors.accent} />
+                <Text style={styles.answerText} numberOfLines={1}>{answer}</Text>
+              </View>
+            ) : (
+              <Text style={styles.metaText}>No answer</Text>
+            )
           )}
           {!isCompleted && task.dueDate && (
             <Text style={styles.metaText}>Due {format(new Date(task.dueDate), 'MMM d')}</Text>
