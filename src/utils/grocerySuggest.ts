@@ -22,7 +22,6 @@ export interface GrocerySection {
 const DAY_MS = 86_400_000;
 /** Score halves every this many days since last purchase. */
 const RECENCY_HALF_LIFE_DAYS = 30;
-const FAVORITE_BOOST = 2.5;
 
 function daysBetween(later: Date, earlierIso: string | null): number {
   if (!earlierIso) return Infinity;
@@ -59,7 +58,7 @@ function recencyScore(item: GroceryItem, now: Date): number {
 
 function familiarity(item: GroceryItem, now: Date): number {
   const frequency = 1 + Math.log1p(item.purchaseCount);
-  return frequency * recencyScore(item, now) * (item.favorite ? FAVORITE_BOOST : 1);
+  return frequency * recencyScore(item, now);
 }
 
 /**
@@ -180,7 +179,6 @@ export function catalogPruneCandidates(
   return items
     .filter(i =>
       !i.onList &&
-      !i.favorite &&
       i.purchaseCount === 0 &&
       daysBetween(now, i.lastAddedAt ?? i.createdAt) >= staleDays
     )

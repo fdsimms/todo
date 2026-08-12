@@ -657,7 +657,6 @@ function seedGroceries(recipes: DemoRecipes): void {
     setAisle,
     setAisleOrder,
     setOnHandUntil,
-    toggleFavorite,
     finishShopping,
     addAisle,
     deleteAisle,
@@ -694,9 +693,6 @@ function seedGroceries(recipes: DemoRecipes): void {
   setQuantity(itemNamed('Bananas').id, 'a bunch');
   setNote(itemNamed('Black beans').id, 'The low-sodium ones');
   setNote(itemNamed('Bread').id, 'Seeded, from the back shelf');
-
-  // Starred: kept in the catalog whether or not they're on the list right now.
-  ['Olive oil', 'Coffee', 'Milk'].forEach(name => toggleFavorite(itemNamed(name).id));
 
   const traderJoes = newShop("Trader Joe's");
   const costco = newShop('Costco');

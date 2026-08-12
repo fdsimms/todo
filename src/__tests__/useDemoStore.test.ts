@@ -295,7 +295,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(items.filter(i => !i.onList && i.inCatalog).length).toBeGreaterThan(0);
     // Mid-trip: something already in the trolley, so the finish sheet has work.
     expect(onList.some(i => i.checked)).toBe(true);
-    expect(items.some(i => i.favorite)).toBe(true);
     expect(items.some(i => i.quantity)).toBe(true);
     expect(items.some(i => i.note)).toBe(true);
     // Spread purchase counts, not a flat list of ones — the ranking signal.
