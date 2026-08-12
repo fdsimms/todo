@@ -472,6 +472,15 @@ export function TodayScreen() {
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const segmentColors: Record<string, string> = useMemo(
+    () => ({
+      morning: colors.timeMorning,
+      afternoon: colors.timeAfternoon,
+      evening: colors.timeEvening,
+      night: colors.timeNight,
+    }),
+    [colors],
+  );
 
   const [viewMode, setViewMode] = useState<ViewMode>('today');
   const [quickAddVisible, setQuickAddVisible] = useState(false);
@@ -2271,6 +2280,20 @@ export function TodayScreen() {
                   </Pressable>
                 );
               }
+              if (item.type === 'subheader') {
+                return (
+                  <Pressable style={styles.laterSubHeader} onPress={() => setExpandedTaskId(null)}>
+                    <View
+                      style={[
+                        styles.laterSubHeaderDot,
+                        { backgroundColor: item.segment ? segmentColors[item.segment] : colors.textTertiary },
+                      ]}
+                    />
+                    <Text style={styles.laterSubHeaderText}>{item.label}</Text>
+                    <SpotlightScrim />
+                  </Pressable>
+                );
+              }
               const subs = subtasksByParent.get(item.task.id) ?? NO_SUBTASKS;
               return (
                 <TaskItem
@@ -2883,6 +2906,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionHeaderText: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
+  },
+  // A lighter sub-grouping inside a Later day section (morning/afternoon/
+  // evening/night, or a time window) — no full section break, so same-day
+  // segments read as one day rather than several unrelated blocks (#1162).
+  laterSubHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: 2,
+    backgroundColor: colors.bg,
+  },
+  laterSubHeaderDot: {
+    width: 6, height: 6, borderRadius: 3,
+  },
+  laterSubHeaderText: {
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium,
   },
   categorySectionHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

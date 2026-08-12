@@ -230,31 +230,50 @@ export function resolveDrop(
 
 export type LaterListItem =
   | { type: 'header'; label: string; key: string }
+  | { type: 'subheader'; label: string; key: string; segment: string | null }
   | { type: 'task'; task: Task; key: string };
 
 /**
- * Flatten Later-view sections (grouped by visibility date/time-segment) into
- * a single header+task list for ReorderableList.
+ * Flatten Later-view day sections into a single header+task list for
+ * ReorderableList. Each day emits one 'header' row; a day with more than one
+ * time-segment/window sub-group emits a lighter 'subheader' row per group
+ * instead of a second full header — see laterSections for why the two are
+ * kept as one day section rather than N independent ones.
  *
- * A task with multiple timeSegments appears once per matching section, so the
- * same task id can occur more than once — each occurrence after the first
- * gets a suffixed key to keep list keys unique.
+ * A task with multiple timeSegments appears once per matching sub-group, so
+ * the same task id can occur more than once — each occurrence after the
+ * first gets a suffixed key to keep list keys unique.
  */
-export function flattenLaterSections(sections: { title: string; data: Task[] }[]): LaterListItem[] {
+export function flattenLaterSections(days: LaterDaySection[]): LaterListItem[] {
   const items: LaterListItem[] = [];
   const seen = new Map<string, number>();
-  sections.forEach(section => {
-    items.push({ type: 'header', label: section.title, key: `h-${section.title}` });
-    section.data.forEach(task => {
-      const count = (seen.get(task.id) ?? 0) + 1;
-      seen.set(task.id, count);
-      items.push({ type: 'task', task, key: count === 1 ? task.id : `${task.id}-${count}` });
+  days.forEach(day => {
+    items.push({ type: 'header', label: day.title, key: `h-${day.title}` });
+    const showSubheaders = day.segments.length > 1;
+    day.segments.forEach(segment => {
+      if (showSubheaders && segment.label) {
+        items.push({
+          type: 'subheader',
+          label: segment.label,
+          key: `sh-${day.title}-${segment.label}`,
+          segment: segment.segment,
+        });
+      }
+      segment.data.forEach(task => {
+        const count = (seen.get(task.id) ?? 0) + 1;
+        seen.set(task.id, count);
+        items.push({ type: 'task', task, key: count === 1 ? task.id : `${task.id}-${count}` });
+      });
     });
   });
   return items;
 }
 
-export const isLaterHeader = (item: LaterListItem): boolean => item.type === 'header';
+// Boundary predicate for drag confinement (see ReorderableList's dragRange):
+// a subheader confines a drag to its own sub-group exactly like a full header
+// used to, since each was previously its own independent section.
+export const isLaterHeader = (item: LaterListItem): boolean =>
+  item.type === 'header' || item.type === 'subheader';
 
 /** Task ids in flattened order, deduped (a multi-segment task keeps its first position). */
 export function laterTaskOrder(items: LaterListItem[]): string[] {
@@ -274,28 +293,53 @@ export const SEGMENT_LABELS: Record<string, string> = { morning: 'Morning', afte
 export const SEGMENT_ORDER = ['morning', 'afternoon', 'evening', 'night'] as const;
 
 /**
- * The Later-view section title(s) a task belongs under — a task with multiple
- * timeSegments belongs under more than one. `visibleAt` is accepted so a
- * caller that already computed it (laterSections does, to sort by it) doesn't
- * pay for a second getVisibleAt call per task.
+ * The Later-view sub-group(s) a task belongs under within its day — a task
+ * with multiple timeSegments belongs under more than one. `segment` is the
+ * raw time-segment key (for color-coding the sub-header), null for a
+ * window-label or unlabeled sub-group.
  */
-export function laterGroupKeys(task: Task, visibleAt: Date = getVisibleAt(task)): string[] {
-  const dayLabel = formatGroupHeader(visibleAt.toISOString());
+function laterSubGroups(task: Task): { label: string | null; segment: string | null }[] {
   if (task.timeSegments.length > 0) {
-    return task.timeSegments.map(seg => `${dayLabel} — ${SEGMENT_LABELS[seg]}`);
+    return task.timeSegments.map(seg => ({ label: SEGMENT_LABELS[seg], segment: seg }));
   }
   if (task.windowStart) {
     const windowLabel = task.windowEnd
       ? `${formatHHMM(task.windowStart)}–${formatHHMM(task.windowEnd)}`
       : formatHHMM(task.windowStart);
-    return [`${dayLabel} — ${windowLabel}`];
+    return [{ label: windowLabel, segment: null }];
   }
-  return [dayLabel];
+  return [{ label: null, segment: null }];
 }
 
-/** Group deferred tasks into Later-view sections, sorted by when each becomes visible. */
-export function laterSections(deferredTasks: Task[]): { title: string; data: Task[] }[] {
-  const grouped = new Map<string, Task[]>();
+/**
+ * The Later-view section title(s) a task belongs under — a task with multiple
+ * timeSegments belongs under more than one. `visibleAt` is accepted so a
+ * caller that already computed it (laterSections does, to sort by it) doesn't
+ * pay for a second getVisibleAt call per task.
+ *
+ * Kept for callers that want the old flat "day — sub-group" title (e.g. as a
+ * unique group identity); laterSections itself groups by day and sub-group
+ * separately so same-day sub-groups can render under one header.
+ */
+export function laterGroupKeys(task: Task, visibleAt: Date = getVisibleAt(task)): string[] {
+  const dayLabel = formatGroupHeader(visibleAt.toISOString());
+  return laterSubGroups(task).map(({ label }) => (label ? `${dayLabel} — ${label}` : dayLabel));
+}
+
+export interface LaterDaySection {
+  title: string;
+  segments: { label: string | null; segment: string | null; data: Task[] }[];
+}
+
+/**
+ * Group deferred tasks into Later-view day sections, sorted by when each
+ * becomes visible. A day with tasks spread across several time-segments (or
+ * windows) is still ONE section — see `segments` — so the screen renders one
+ * date header per day with lighter sub-headers inside it, rather than a
+ * fully separate section per segment (#1162).
+ */
+export function laterSections(deferredTasks: Task[]): LaterDaySection[] {
+  const days = new Map<string, Map<string, { label: string | null; segment: string | null; data: Task[] }>>();
   // getVisibleAt is the expensive call in this pass — date math, a settings
   // read and a category lookup every time — so compute it once per task and
   // carry it through, rather than calling it from inside the comparator
@@ -307,28 +351,32 @@ export function laterSections(deferredTasks: Task[]): { title: string; data: Tas
     .map(task => ({ task, visibleAt: getVisibleAt(task) }))
     .sort((a, b) => a.visibleAt.getTime() - b.visibleAt.getTime())
     .forEach(({ task, visibleAt }) => {
-      for (const key of laterGroupKeys(task, visibleAt)) {
-        if (!grouped.has(key)) grouped.set(key, []);
-        grouped.get(key)!.push(task);
+      const dayLabel = formatGroupHeader(visibleAt.toISOString());
+      if (!days.has(dayLabel)) days.set(dayLabel, new Map());
+      const segments = days.get(dayLabel)!;
+      for (const { label, segment } of laterSubGroups(task)) {
+        const key = label ?? '';
+        if (!segments.has(key)) segments.set(key, { label, segment, data: [] });
+        segments.get(key)!.data.push(task);
       }
     });
-  return Array.from(grouped.entries()).map(([title, data]) => ({ title, data }));
+  return Array.from(days.entries()).map(([title, segMap]) => ({
+    title,
+    segments: Array.from(segMap.values()),
+  }));
 }
 
 /**
- * Truncate Later-view sections to a task budget, whole sections at a time, so
- * a header never renders without at least one of its tasks. Used to keep the
- * initial mount of the (unvirtualized) Later ReorderableList cheap.
+ * Truncate Later-view sections to a task budget, whole day sections at a
+ * time, so a header never renders without at least one of its tasks. Used to
+ * keep the initial mount of the (unvirtualized) Later ReorderableList cheap.
  */
-export function visibleLaterSections(
-  sections: { title: string; data: Task[] }[],
-  taskLimit: number,
-): { title: string; data: Task[] }[] {
-  const result: typeof sections = [];
+export function visibleLaterSections(sections: LaterDaySection[], taskLimit: number): LaterDaySection[] {
+  const result: LaterDaySection[] = [];
   let count = 0;
-  for (const section of sections) {
-    result.push(section);
-    count += section.data.length;
+  for (const day of sections) {
+    result.push(day);
+    count += day.segments.reduce((n, s) => n + s.data.length, 0);
     if (count >= taskLimit) break;
   }
   return result;
