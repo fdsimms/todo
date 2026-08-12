@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -25,6 +26,8 @@ import type { TimeOfDay, Effort, Priority, Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
+import { shouldNudgePostpone } from '../utils/postpone';
+import { PostponeCheckBanner, type PostponeCheckAction } from './PostponeCheckBanner';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 // Placeholder fields the snooze engine doesn't consider — only the ones it
@@ -50,6 +53,7 @@ const BLANK_SNOOZE_TASK: Task = {
   timedMinutes: null, timerElapsedSeconds: 0,
   previousOccurrenceId: null,
   seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1, seriesDefaults: null,
+  postponeCount: 0, postponeMuted: false,
 };
 
 interface Props {
@@ -73,6 +77,23 @@ interface Props {
   // there's no single task to anchor them to, e.g. rescheduling a whole group.
   showTimeOfDay?: boolean;
   showSuggest?: boolean;
+  /**
+   * Opts this picker in to the postpone check (see PostponeCheckBanner).
+   *
+   * Deliberately its own prop rather than a gate on `taskId`, which would get
+   * the feature exactly backwards: the row's own reschedule — the main push
+   * path — passes no taskId today, while DeloadSheet and ProjectPullSheet both
+   * do and are the two places the prompt would be pure noise, since each
+   * already explains every move it's proposing. Only the two due-date pickers
+   * opt in.
+   */
+  postponeTaskId?: string;
+  /**
+   * "Break it up" — closes the picker and hands over to the host, which opens
+   * the AI breakdown sheet or the editor. The pill is hidden when this is
+   * absent, so a host with nowhere to send the user doesn't offer it.
+   */
+  onBreakUp?: () => void;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -102,6 +123,7 @@ export function WhenPicker({
   taskId, taskTitle, taskNotes, taskTags, taskCategory, taskPriority, taskEffort, taskEstimatedMinutes,
   onConfirm, onClear, onCancel,
   title = 'When?', showTimeOfDay = true, showSuggest = true,
+  postponeTaskId, onBreakUp,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -138,6 +160,7 @@ export function WhenPicker({
       setPendingKey(null);
       setSuggestion(null);
       setSuggestError(null);
+      setCheckDismissed(false);
       pendingRef.current = false;
       popAnim.setValue(1);
       cardScale.setValue(0.92);
@@ -229,6 +252,69 @@ export function WhenPicker({
       haptics.error();
     }
   };
+
+  // ── Postpone check ──────────────────────────────────────────────────────
+  const postponeCheckEnabled = useSettingsStore(s => s.postponeCheckEnabled);
+  const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
+  const updateTask = useTaskStore(s => s.updateTask);
+  const archiveTask = useTaskStore(s => s.archiveTask);
+  // Session-only: silencing the banner for the rest of *this* visit is what the
+  // three non-mute actions want (the task is being dealt with, so the prompt
+  // has done its job and shouldn't sit there restating the count).
+  const [checkDismissed, setCheckDismissed] = useState(false);
+
+  const postponeTask = postponeTaskId ? tasks.find(t => t.id === postponeTaskId) : undefined;
+  const showPostponeCheck =
+    !!postponeTask &&
+    !checkDismissed &&
+    shouldNudgePostpone(postponeTask, postponeCheckEnabled, postponeCheckThreshold);
+
+  const postponeActions = useMemo<PostponeCheckAction[]>(() => {
+    if (!postponeTask) return [];
+    const actions: PostponeCheckAction[] = [];
+    if (onBreakUp) {
+      actions.push({
+        key: 'break',
+        // The ellipsis is honest: this opens somewhere else to finish the job,
+        // the same promise the "Split into N…" pill on a recipe row makes.
+        label: 'Break it up…',
+        onPress: () => { haptics.tap(); setCheckDismissed(true); onBreakUp(); },
+      });
+    }
+    actions.push({
+      key: 'drop',
+      label: 'Drop it',
+      onPress: () => {
+        haptics.warning();
+        Alert.alert(
+          'Archive this task?',
+          `"${postponeTask.title}" moves to Archived. Nothing is deleted — you can restore it from there whenever you like.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Archive',
+              // Not destructive styling: archiving keeps the task, and dressing
+              // a filing away up as a deletion is how a real one stops being
+              // read (same call RemindersCaptureSettings makes).
+              onPress: () => { archiveTask(postponeTask.id); onCancel(); },
+            },
+          ],
+        );
+      },
+    });
+    actions.push({
+      key: 'mute',
+      label: 'Stop asking',
+      onPress: () => {
+        haptics.tap();
+        // Commits straight away in both hosts: a mute isn't a scheduling field,
+        // so it has no reason to wait for the editor's Save.
+        updateTask(postponeTask.id, { postponeMuted: true });
+        setCheckDismissed(true);
+      },
+    });
+    return actions;
+  }, [postponeTask, onBreakUp, archiveTask, updateTask, onCancel]);
 
   const suggestionLabel = suggestion
     ? `${format(new Date(`${suggestion.key}T12:00:00`), 'EEE, MMM d')} — ${suggestion.reason}`
@@ -334,6 +420,21 @@ export function WhenPicker({
                 </TouchableOpacity>
               )}
             </View>
+
+            {showPostponeCheck && postponeTask && (
+              <PostponeCheckBanner
+                count={postponeTask.postponeCount}
+                primary={{
+                  key: 'today',
+                  label: 'Do it today',
+                  // The existing quick button, so this commits through exactly
+                  // the same path the Today chip does — including the reset the
+                  // rule applies to a task pulled back to today.
+                  onPress: handleToday,
+                }}
+                secondary={postponeActions}
+              />
+            )}
 
             {(suggestionLabel || suggestError) && (
               <View style={styles.suggestBanner}>

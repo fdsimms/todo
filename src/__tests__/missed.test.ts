@@ -36,6 +36,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   sortOrder: 1,
   pinned: false,
   pinnedOrder: 0,
+  postponeCount: 0,
+  postponeMuted: false,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,

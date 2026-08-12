@@ -805,7 +805,13 @@ function reconcileCookTask(entry: MealPlanEntry): void {
   }
 
   if (existing) {
-    if (cookTaskNeedsUpdate(existing, entry)) updateTask(existing.id, cookTaskFields(entry));
+    // skipPostponeCount: a cook task's date is the meal's date, not a schedule
+    // the user picked for the task — dragging Tuesday's dinner to Friday moves
+    // this row along with it, and that isn't the user ducking anything. See
+    // utils/postpone.ts.
+    if (cookTaskNeedsUpdate(existing, entry)) {
+      updateTask(existing.id, cookTaskFields(entry), { skipPostponeCount: true });
+    }
     return;
   }
 

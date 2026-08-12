@@ -242,12 +242,6 @@ export function LogbookScreen() {
         subtitle={`${completedTasks.length} completed`}
         actions={completedTasks.length > 0 ? [
           {
-            icon: 'checkmark-circle-outline',
-            onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
-            active: selectionMode,
-            accessibilityLabel: selectionMode ? 'Done selecting' : 'Select entries',
-          },
-          {
             icon: 'trash-outline',
             onPress: handleClearLogbook,
             disabled: selectionMode,

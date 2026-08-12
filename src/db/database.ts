@@ -548,6 +548,15 @@ export function initDatabase(): void {
     // the one value that suppresses the feature for ever after. See
     // MealPlanEntry.cookTask.
     'ALTER TABLE meal_plan_entries ADD COLUMN cook_task INTEGER',
+    // 0 for every existing row, and there is no honest alternative: nothing
+    // before this shipped recorded a reschedule, so no task can arrive already
+    // accused of being ducked. It also means the picker stays silent on an
+    // upgraded install until the user actually pushes something. See
+    // Task.postponeCount and utils/postpone.ts.
+    'ALTER TABLE tasks ADD COLUMN postpone_count INTEGER NOT NULL DEFAULT 0',
+    // 0 for every existing row — nobody has asked to be left alone about a task
+    // whose prompt didn't exist yet. See Task.postponeMuted.
+    'ALTER TABLE tasks ADD COLUMN postpone_muted INTEGER NOT NULL DEFAULT 0',
     // NULL on every existing link, which is the only correct backfill: a store
     // the app has a purchase record for has never been said to lack the item.
     // See ItemShopLink.unavailableAt for why this is a date rather than a flag
@@ -860,6 +869,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     blockedById: (row.blocked_by_id as string | null) ?? null,
     mealEntryId: (row.meal_entry_id as string | null) ?? null,
     pendingImport: parsePendingImport(row.pending_import),
+    postponeCount: (row.postpone_count as number) ?? 0,
+    postponeMuted: Boolean(row.postpone_muted),
   };
 }
 
@@ -881,8 +892,9 @@ export function dbInsertTask(task: Task): void {
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
-      target_unit, phone_number, email_address, allow_overshoot, pinned_order, meal_entry_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      target_unit, phone_number, email_address, allow_overshoot, pinned_order, meal_entry_id,
+      postpone_count, postpone_muted
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -918,6 +930,8 @@ export function dbInsertTask(task: Task): void {
       task.allowOvershoot ? 1 : 0,
       task.pinnedOrder,
       task.mealEntryId ?? null,
+      task.postponeCount,
+      task.postponeMuted ? 1 : 0,
     ]
   );
 }
@@ -935,7 +949,8 @@ export function dbUpdateTask(task: Task): void {
       archived=?, archived_at=?, project_id=?, link_url=?,
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
-      target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, meal_entry_id=?
+      target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, meal_entry_id=?,
+      postpone_count=?, postpone_muted=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -972,6 +987,8 @@ export function dbUpdateTask(task: Task): void {
       task.allowOvershoot ? 1 : 0,
       task.pinnedOrder,
       task.mealEntryId ?? null,
+      task.postponeCount,
+      task.postponeMuted ? 1 : 0,
       task.id,
     ]
   );
@@ -993,6 +1010,22 @@ export function dbBatchUpdatePinnedOrders(updates: { id: string; pinnedOrder: nu
   db.withTransactionSync(() => {
     for (const { id, pinnedOrder } of updates) {
       db.runSync('UPDATE tasks SET pinned_order = ? WHERE id = ?', [pinnedOrder, id]);
+    }
+  });
+}
+
+/**
+ * The per-id companion to dbBulkSetWhen / dbBulkSetDefer, which stay
+ * single-purpose deliberately (see the note on dbBulkSetDefer). A bulk
+ * reschedule sets one date on every task but lands a *different* postpone count
+ * on each, since the rule depends on where each task was before — so it can't
+ * ride along on those setters. Same split dbBatchUpdatePinnedOrders makes
+ * beside bulkTogglePin.
+ */
+export function dbBatchUpdatePostponeCounts(updates: { id: string; postponeCount: number }[]): void {
+  db.withTransactionSync(() => {
+    for (const { id, postponeCount } of updates) {
+      db.runSync('UPDATE tasks SET postpone_count = ? WHERE id = ?', [postponeCount, id]);
     }
   });
 }
