@@ -4644,32 +4644,17 @@ describe('timers', () => {
     expect(task.timerStartedAt).toBeNull();
   });
 
-  it('logManualTime sets actual + estimate without needing a running timer', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
-    useTaskStore.getState().logManualTime('a', 90);
-    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
-    expect(task.actualMinutes).toBe(90);
-    expect(task.estimatedMinutes).toBe(90);
-    expect(task.effort).toBe(4); // ≤150min → M
-  });
-
-  it('stopTimer records actual minutes but leaves a typed estimate untouched', () => {
+  // Timing a task exists to correct its estimate, so a measurement replaces
+  // one rather than deferring to it — a task estimated once used to keep that
+  // guess however many times it was subsequently timed.
+  it('stopTimer overwrites a typed estimate with what it measured', () => {
     const started = new Date(Date.now() - 10 * 60000).toISOString(); // 10 minutes ago
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', timerStartedAt: started, estimatedMinutes: 30, effort: 3 })] });
     useTaskStore.getState().stopTimer('a');
     const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
     expect(task.actualMinutes).toBe(10);
-    expect(task.estimatedMinutes).toBe(30);
-    expect(task.effort).toBe(3);
-  });
-
-  it('logManualTime records actual minutes but leaves a typed estimate untouched', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 'a', estimatedMinutes: 60, effort: 4 })] });
-    useTaskStore.getState().logManualTime('a', 90);
-    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
-    expect(task.actualMinutes).toBe(90);
-    expect(task.estimatedMinutes).toBe(60);
-    expect(task.effort).toBe(4);
+    expect(task.estimatedMinutes).toBe(10);
+    expect(task.effort).toBe(2);
   });
 
   it('completing a task with a running timer saves the elapsed time first', () => {

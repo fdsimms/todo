@@ -1,4 +1,4 @@
-import { timeTrackedSummary, onTimeSummary, estimateAccuracy } from '../utils/stats';
+import { timeTrackedSummary, onTimeSummary } from '../utils/stats';
 import type { Task } from '../types';
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
@@ -131,43 +131,5 @@ describe('onTimeSummary', () => {
 
   it('rate is 0 when there are no deadlined completions', () => {
     expect(onTimeSummary([])).toEqual({ onTime: 0, total: 0, rate: 0 });
-  });
-});
-
-describe('estimateAccuracy', () => {
-  it('falls back to a one-off task\'s own estimate when there is no predecessor', () => {
-    const tasks = [makeTask({ id: 'a', estimatedMinutes: 30, actualMinutes: 45 })];
-    expect(estimateAccuracy(tasks)).toEqual({ count: 1, averageRatio: 1.5 });
-  });
-
-  it('compares this occurrence\'s actual against the previous occurrence\'s estimate', () => {
-    const tasks = [
-      makeTask({ id: 'a', estimatedMinutes: 20, actualMinutes: 20 }),
-      makeTask({ id: 'b', previousOccurrenceId: 'a', estimatedMinutes: 20, actualMinutes: 40 }),
-    ];
-    // b's own estimate (20) was backfilled from its own measurement and would
-    // make the comparison trivially 1 — the previous occurrence's estimate (a's, 20)
-    // against b's actual (40) is the meaningful ratio.
-    expect(estimateAccuracy(tasks)).toEqual({ count: 2, averageRatio: (20 / 20 + 40 / 20) / 2 });
-  });
-
-  it('skips a task whose previous occurrence has no estimate rather than falling back to its own', () => {
-    const tasks = [
-      makeTask({ id: 'a', estimatedMinutes: null, actualMinutes: 20 }),
-      makeTask({ id: 'b', previousOccurrenceId: 'a', estimatedMinutes: 40, actualMinutes: 40 }),
-    ];
-    expect(estimateAccuracy(tasks)).toEqual({ count: 0, averageRatio: 1 });
-  });
-
-  it('excludes untimed and incomplete tasks', () => {
-    const tasks = [
-      makeTask({ id: 'a', completed: false, completedAt: null, estimatedMinutes: 30, actualMinutes: null }),
-      makeTask({ id: 'b', estimatedMinutes: 30, actualMinutes: null }),
-    ];
-    expect(estimateAccuracy(tasks)).toEqual({ count: 0, averageRatio: 1 });
-  });
-
-  it('averageRatio is 1 with no comparisons', () => {
-    expect(estimateAccuracy([])).toEqual({ count: 0, averageRatio: 1 });
   });
 });

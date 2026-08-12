@@ -558,8 +558,12 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
  * counterpart of effort.ts's applyMeasuredTime. `lastCookMinutes` is always
  * set and `cookTimeCount`/`totalCookMinutes` always advance; `estimatedMinutes`
  * is only backfilled when the recipe has never had a duration of its own, so a
- * typed estimate is never silently overwritten by a single measurement —
- * exactly the rule applyMeasuredTime uses for a task's estimate/effort.
+ * typed estimate is never silently overwritten by a single measurement.
+ *
+ * Tasks deliberately no longer work this way — applyMeasuredTime overwrites,
+ * because timing a task exists to correct its estimate. A recipe differs in
+ * that its duration is part of the written recipe, shared by everyone who
+ * cooks it, and one slow evening shouldn't rewrite it.
  */
 /**
  * Prep + cook, whenever either is set — the number `describeRecipe` shows

@@ -179,18 +179,28 @@ describe('sumEstimatedMinutes with chains', () => {
 });
 
 describe('applyMeasuredTime', () => {
-  it('sets actual and estimate to the rounded minutes and derives effort when there is no existing estimate', () => {
-    expect(applyMeasuredTime(10, null)).toEqual({ actualMinutes: 10, estimatedMinutes: 10, effort: 2 });
-    expect(applyMeasuredTime(90, null)).toEqual({ actualMinutes: 90, estimatedMinutes: 90, effort: 4 });
+  it('sets actual and estimate to the rounded minutes and derives effort', () => {
+    expect(applyMeasuredTime(10)).toEqual({ actualMinutes: 10, estimatedMinutes: 10, effort: 2 });
+    expect(applyMeasuredTime(90)).toEqual({ actualMinutes: 90, estimatedMinutes: 90, effort: 4 });
   });
 
   it('rounds and floors to a minimum of one minute', () => {
-    expect(applyMeasuredTime(9.4, null)).toEqual({ actualMinutes: 9, estimatedMinutes: 9, effort: 2 });
-    expect(applyMeasuredTime(0.2, null)).toEqual({ actualMinutes: 1, estimatedMinutes: 1, effort: 1 });
+    expect(applyMeasuredTime(9.4)).toEqual({ actualMinutes: 9, estimatedMinutes: 9, effort: 2 });
+    expect(applyMeasuredTime(0.2)).toEqual({ actualMinutes: 1, estimatedMinutes: 1, effort: 1 });
   });
 
-  it('only sets actualMinutes, leaving a typed estimate untouched, when the task already has an estimate', () => {
-    expect(applyMeasuredTime(45, 30)).toEqual({ actualMinutes: 45 });
-    expect(applyMeasuredTime(9.4, 5)).toEqual({ actualMinutes: 9 });
+  // The old rule was "don't overwrite a typed estimate", which meant a task
+  // estimated once kept that guess however many times it was timed.
+  it('overwrites an existing estimate — the measurement is the better number', () => {
+    const timed = applyMeasuredTime(45);
+    expect(timed.estimatedMinutes).toBe(45);
+    expect(timed.actualMinutes).toBe(timed.estimatedMinutes);
+  });
+
+  it('never leaves the two disagreeing', () => {
+    [1, 9.4, 25, 90, 240].forEach(m => {
+      const r = applyMeasuredTime(m);
+      expect(r.actualMinutes).toBe(r.estimatedMinutes);
+    });
   });
 });

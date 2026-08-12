@@ -22,7 +22,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
-import { timeTrackedSummary, onTimeSummary, estimateAccuracy } from '../utils/stats';
+import { timeTrackedSummary, onTimeSummary } from '../utils/stats';
 import { isRealCompletion, mostMissed } from '../utils/missed';
 import { formatDuration } from '../utils/effort';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -254,7 +254,6 @@ export function StatsScreen() {
   const missed = useMemo(() => mostMissed(tasks).slice(0, 10), [tasks]);
 
   const timeTracked = useMemo(() => timeTrackedSummary(tasks), [tasks]);
-  const accuracy = useMemo(() => estimateAccuracy(tasks), [tasks]);
   const onTime = useMemo(() => onTimeSummary(tasks), [tasks]);
 
   return (
@@ -409,24 +408,15 @@ export function StatsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>TIME TRACKED</Text>
               <View style={styles.card}>
-                <View style={[styles.row, accuracy.count > 0 && styles.rowBorder]}>
+                {/* Just the total. The "12% over estimate on average" line
+                    that used to sit under it compared a task's measured time
+                    against its own estimate — and timing a task now *sets*
+                    its estimate, so that comparison is 1.0 by construction. */}
+                <View style={styles.row}>
                   <Text style={styles.rowText}>
                     {formatDuration(timeTracked.totalMinutes)} across {timeTracked.trackedCount} task{timeTracked.trackedCount === 1 ? '' : 's'}
                   </Text>
                 </View>
-                {accuracy.count > 0 && (() => {
-                  const diffPct = Math.round((accuracy.averageRatio - 1) * 100);
-                  const label = diffPct === 0
-                    ? 'On estimate on average'
-                    : diffPct > 0
-                      ? `${diffPct}% over estimate on average`
-                      : `${Math.abs(diffPct)}% under estimate on average`;
-                  return (
-                    <View style={styles.row}>
-                      <Text style={styles.rowText}>{label}</Text>
-                    </View>
-                  );
-                })()}
               </View>
             </View>
             </StaggerIn>

@@ -702,7 +702,6 @@ interface TaskStore {
   // the countdown can be resumed later; reset throws the banked time away.
   pauseTimer: (id: string) => void;
   resetTimer: (id: string) => void;
-  logManualTime: (id: string, minutes: number) => void;
   reorderTasks: (orderedIds: string[]) => void;
   // Explicit sortOrders rather than ids-in-order: the Today list's ranks are
   // shared with the stacks sitting in it (see resolveDrop), so the gaps a
@@ -2462,7 +2461,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(id, {
       timerStartedAt: null,
       timerElapsedSeconds: 0,
-      ...applyMeasuredTime(minutes, task.estimatedMinutes),
+      ...applyMeasuredTime(minutes),
     });
   },
 
@@ -2485,13 +2484,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!task) return;
     cancelTimerAlarm(id);
     get().updateTask(id, { timerStartedAt: null, timerElapsedSeconds: 0 });
-  },
-
-  logManualTime(id, minutes) {
-    if (!(minutes > 0)) return;
-    const task = get().tasks.find(t => t.id === id);
-    if (!task) return;
-    get().updateTask(id, { timerStartedAt: null, ...applyMeasuredTime(minutes, task.estimatedMinutes) });
   },
 
   reorderTasks(orderedIds) {
