@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the gap between the Pinned Tasks block and the rest of the list staying bright while a task is focused, instead of dimming with everything else",
+  "date": "2026-08-12"
+}
