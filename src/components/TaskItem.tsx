@@ -44,11 +44,13 @@ import { describePendingImport } from '../utils/remindersImport';
 import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { WhenPicker } from './WhenPicker';
+import { TaskBreakdownSheet } from './TaskBreakdownSheet';
 import { PressableScale } from './PressableScale';
 import { usePaintSelectionRow } from './PaintSelection';
 import { SwipeableRow } from './SwipeableRow';
@@ -330,6 +332,17 @@ export const TaskItem = React.memo(function TaskItem({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const reduceMotion = useReduceMotion();
   const [showWhenPicker, setShowWhenPicker] = useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  // The postpone prompt's "Break it up…" needs somewhere to send the user. With
+  // a key it's the AI sheet; without one it falls back to the editor, where the
+  // subtask field is. A row that can't do either (no onEdit) offers no pill.
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const canBreakUp = !!anthropicApiKey || !!onEdit;
+  const handleBreakUp = () => {
+    setShowWhenPicker(false);
+    if (anthropicApiKey) setShowBreakdown(true);
+    else onEdit?.(task.id);
+  };
   const [completing, setCompleting] = useState(false);
   // A completion that started from the daily-target meter rather than the
   // checkbox: the row keeps its meter for the animation instead of swapping in
@@ -2254,6 +2267,7 @@ export const TaskItem = React.memo(function TaskItem({
           // The row's reschedule is the main way a task gets pushed, so this is
           // the picker the postpone check most needs to be on.
           postponeTaskId={task.id}
+          onBreakUp={canBreakUp ? handleBreakUp : undefined}
           taskTitle={task.title}
           taskNotes={task.notes}
           taskEffort={task.effort}
@@ -2280,6 +2294,13 @@ export const TaskItem = React.memo(function TaskItem({
             setShowWhenPicker(false);
           }}
           onCancel={() => setShowWhenPicker(false)}
+        />
+      )}
+      {showBreakdown && (
+        <TaskBreakdownSheet
+          visible
+          taskId={task.id}
+          onClose={() => setShowBreakdown(false)}
         />
       )}
     </>

@@ -276,6 +276,99 @@ export async function suggestTemplateItems(
   return result.slice(0, MAX_TEMPLATE_SUGGESTIONS);
 }
 
+export interface SubtaskSuggestion {
+  title: string;
+}
+
+const MIN_SUBTASK_SUGGESTIONS = 3;
+const MAX_SUBTASK_SUGGESTIONS = 6;
+/** Characters of the task's own notes we'll send along for context. */
+const MAX_BREAKDOWN_NOTES_CHARS = 1_000;
+
+/**
+ * Break a task that keeps getting put off into the steps it's actually made of.
+ *
+ * Reached from the postpone prompt (see PostponeCheckBanner), so the framing in
+ * the prompt is deliberate: the user isn't planning, they're stuck, and the
+ * most useful answer is a first step small enough to start right now. Hence
+ * "the first step should be something you could do in a couple of minutes" —
+ * a breakdown whose first item is still daunting hasn't helped.
+ *
+ * Returns titles only. The template equivalent asks for notes as well, but a
+ * subtask row doesn't render them, so asking would spend tokens on something
+ * nothing displays.
+ */
+export async function suggestSubtasks(
+  taskTitle: string,
+  taskNotes: string,
+  existingTitles: string[],
+): Promise<SubtaskSuggestion[]> {
+  const { apiKey, model } = requireFeature('taskBreakdown');
+
+  const notes = taskNotes.trim().slice(0, MAX_BREAKDOWN_NOTES_CHARS);
+  const existingPart = existingTitles.length > 0
+    ? `It already has these steps — do NOT repeat or rephrase them:\n${existingTitles.map(t => `- ${t}`).join('\n')}`
+    : 'It has no steps yet.';
+
+  const data = await callAnthropic({
+    max_tokens: 600,
+    tools: [{
+      name: 'suggest_subtasks',
+      description: 'Return the concrete steps a task breaks down into',
+      input_schema: {
+        type: 'object',
+        properties: {
+          steps: {
+            type: 'array',
+            description: `Between ${MIN_SUBTASK_SUGGESTIONS} and ${MAX_SUBTASK_SUGGESTIONS} steps, in the order they'd be done.`,
+            items: {
+              type: 'object',
+              properties: {
+                title: {
+                  type: 'string',
+                  description: `A short, concrete step (under ${TITLE_MAX_LENGTH} characters).`,
+                },
+              },
+              required: ['title'],
+            },
+          },
+        },
+        required: ['steps'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'suggest_subtasks' },
+    messages: [{
+      role: 'user',
+      content: [
+        `Break this task into the concrete steps it's actually made of: "${taskTitle}".`,
+        notes ? `Notes on the task:\n${notes}` : null,
+        `The person asking has put this task off several times, which usually means it's vaguer or larger than it looks. The first step should be something they could finish in a couple of minutes — a phone number to find, a single email to send, one document to open. Keep every title short and concrete, skip vague filler like "plan" or "research", and aim for ${MIN_SUBTASK_SUGGESTIONS}–${MAX_SUBTASK_SUGGESTIONS} steps.`,
+        existingPart,
+      ].filter(Boolean).join('\n\n'),
+    }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { steps?: Array<{ title?: string }> } | undefined;
+  if (!input?.steps) throw new Error('No suggestions returned');
+
+  // Same de-duplication as suggestTemplateItems: drop blanks, and anything
+  // colliding case-insensitively with an existing subtask or an earlier
+  // suggestion.
+  const existingLower = new Set(existingTitles.map(t => t.trim().toLowerCase()));
+  const seen = new Set<string>();
+  const result: SubtaskSuggestion[] = [];
+  for (const step of input.steps) {
+    const title = (step.title ?? '').trim().slice(0, TITLE_MAX_LENGTH);
+    if (!title) continue;
+    const key = title.toLowerCase();
+    if (existingLower.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    result.push({ title });
+  }
+  return result.slice(0, MAX_SUBTASK_SUGGESTIONS);
+}
+
 // ─── Groceries ──────────────────────────────────────────────────────────────
 
 /** Names per aisle-sort call. A weekly list is well under this; the cap bounds a pathological one. */
