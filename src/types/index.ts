@@ -411,8 +411,8 @@ export interface Task {
   // to estimatedMinutes once set — timing a task *is* how its estimate gets
   // corrected (see applyMeasuredTime), so this is not a second opinion about
   // how long the task takes. It survives only to say the number was measured
-  // rather than guessed, which is what Stats' "time tracked" sums and what the
-  // effort estimator learns from.
+  // rather than guessed: Stats' "time tracked" sums it, and the task row and
+  // Logbook label it "Timed".
   actualMinutes: number | null;
 
   // Timed tasks ("play violin for 15 minutes") — a duration the task counts

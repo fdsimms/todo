@@ -15,10 +15,9 @@ import { activeChainStep, type ChainCarrier } from './chain';
  *
  * `actualMinutes` is kept, and after this it is always equal to the estimate.
  * It survives only as the marker that this task was *measured* rather than
- * guessed — which is the difference between Stats' "time tracked" being real
- * and being a sum of everyone's optimism, and the difference between the
- * effort estimator learning from evidence and learning from its own past
- * output. Nothing shows it as a second number, and nothing compares the two.
+ * guessed — the difference between Stats' "time tracked" being real and being
+ * a sum of everyone's optimism, and what lets the task row and Logbook say
+ * "Timed". Nothing shows it as a second number, and nothing compares the two.
  */
 export function applyMeasuredTime(minutes: number): {
   actualMinutes: number;

@@ -62,7 +62,6 @@ import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
 import { getLogicalToday, getLogicalTomorrow, getLogicalNow } from '../utils/dateUtils';
 import { suggestTaskAttributes, describeAIError } from '../services/aiSuggestions';
-import { estimateEffort } from '../utils/effortEstimator';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
@@ -236,7 +235,6 @@ export function QuickAddModal({
   const [effort, setEffort] = useState<Effort>(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [customEffortText, setCustomEffortText] = useState('');
-  const [effortNote, setEffortNote] = useState<string | null>(null);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
@@ -295,7 +293,6 @@ export function QuickAddModal({
       setEffort(newTaskDefaults.effort ?? 0);
       setEstimatedMinutes(null);
       setCustomEffortText('');
-      setEffortNote(null);
       setDueDate(
         effectiveContext === 'later' ? getLogicalTomorrow(dayResetTime)
         : effectiveContext === 'inbox' || effectiveContext === 'unscheduled' ? null
@@ -781,7 +778,6 @@ export function QuickAddModal({
 
   const applyEffortPreset = (e: Effort) => {
     haptics.tap();
-    setEffortNote(null);
     setCustomEffortText('');
     // Tapping the active preset clears the estimate.
     if (!customEffortActive && effort === e) {
@@ -795,7 +791,6 @@ export function QuickAddModal({
 
   const applyCustomEffort = (text: string) => {
     setCustomEffortText(text);
-    setEffortNote(null);
     const n = parseInt(text, 10);
     if (!Number.isFinite(n) || n <= 0) {
       setEstimatedMinutes(null);
@@ -806,16 +801,6 @@ export function QuickAddModal({
     setEffort(minutesToEffort(n));
   };
 
-  const handleEstimateEffort = () => {
-    if (!title.trim()) return;
-    const result = estimateEffort(title.trim(), { category, tags }, useTaskStore.getState().tasks);
-    if (result.minutes != null) {
-      setEstimatedMinutes(result.minutes);
-      setEffort(minutesToEffort(result.minutes));
-      setCustomEffortText('');
-    }
-    setEffortNote(result.reason);
-  };
 
   const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
 
@@ -1597,17 +1582,7 @@ export function QuickAddModal({
                   placeholderTextColor={colors.textSecondary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 />
-                <TouchableOpacity
-                  style={styles.effortAiBtn}
-                  onPress={handleEstimateEffort}
-                  disabled={!title.trim()}
-                  activeOpacity={interaction.activeOpacity}
-                >
-                  <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
-                  <Text style={styles.effortAiBtnText}>Estimate</Text>
-                </TouchableOpacity>
               </View>
-              {effortNote ? <Text style={styles.effortNote}>{effortNote}</Text> : null}
             </View>
           )}
 
@@ -2275,24 +2250,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     minWidth: 110,
-  },
-  effortAiBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radius.full,
-  },
-  effortAiBtnText: {
-    color: colors.purple,
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-  },
-  effortNote: {
-    color: colors.textSecondary,
-    fontSize: font.xs,
-    marginTop: spacing.sm,
   },
   clearChip: {
     width: 26,

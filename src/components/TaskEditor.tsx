@@ -53,7 +53,6 @@ import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/parseTaskInput';
 import { suggestTaskAttributes, describeAIError } from '../services/aiSuggestions';
-import { estimateEffort } from '../utils/effortEstimator';
 import { suggestSegment } from '../utils/rhythms';
 import { rhythmOptionsFromSettings } from '../utils/rhythmsSettings';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
@@ -231,7 +230,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [customEffortOpen, setCustomEffortOpen] = useState(false);
   const [customEffortText, setCustomEffortText] = useState('');
   const [customEffortUnit, setCustomEffortUnit] = useState<'min' | 'hr'>('min');
-  const [effortNote, setEffortNote] = useState<string | null>(null);
   const [segmentNote, setSegmentNote] = useState<string | null>(null);
   const [actualMinutes, setActualMinutes] = useState<number | null>(null);
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
@@ -409,7 +407,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setOpenFields({}); setShowTimeOfDay(false); setShowTimeWindow(false);
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
     setDurationText(''); setDurationUnit('min');
-    setEffortNote(null);
     setSegmentNote(null);
     setStreakEditorOpen(false); setStreakDraft(task?.streakCount ?? 0);
     setPendingCategory(null);
@@ -1143,7 +1140,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setEffort(e);
     setEstimatedMinutes(EFFORT_MINUTES[e]);
     setCustomEffortOpen(false);
-    setEffortNote(null);
   };
 
   const openCustomEffort = () => {
@@ -1160,7 +1156,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setCustomEffortText('');
       setCustomEffortUnit('min');
     }
-    setEffortNote(null);
     setCustomEffortOpen(true);
   };
 
@@ -1190,24 +1185,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setTimedMinutes(Math.max(1, Math.round(unit === 'hr' ? n * 60 : n)));
   };
 
-  const handleEstimateEffort = () => {
-    const result = estimateEffort(
-      title.trim(),
-      { notes, category, tags, previousOccurrenceId: task?.previousOccurrenceId ?? null, excludeTaskId: task?.id ?? null },
-      useTaskStore.getState().tasks,
-    );
-    if (result.minutes != null) {
-      setEstimatedMinutes(result.minutes);
-      setEffort(minutesToEffort(result.minutes));
-      setCustomEffortOpen(false);
-    }
-    // Otherwise not enough timer history yet — the reason explains why, estimate untouched.
-    setEffortNote(result.reason);
-  };
 
-  // The time-of-day counterpart of handleEstimateEffort: same local-history
-  // lookup, same abstain-with-a-reason behaviour, reading completedAt instead
-  // of actualMinutes. See utils/rhythms.
+  // Reads the user's own history for when this task usually gets done, and
+  // abstains with a reason when there isn't enough of it. See utils/rhythms.
   const handleSuggestSegment = () => {
     const result = suggestSegment(
       title.trim(),
@@ -2790,17 +2770,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             hint="Roughly how long this takes, so a day's list can be sized realistically."
             expanded={fieldOpen('effort')}
             onToggle={() => toggleField('effort')}
-            right={(
-              <TouchableOpacity
-                style={styles.suggestBtn}
-                onPress={handleEstimateEffort}
-                disabled={!title.trim()}
-                hitSlop={8}
-              >
-                <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
-                <Text style={styles.suggestBtnText}>Estimate</Text>
-              </TouchableOpacity>
-            )}
           >
             <View style={styles.pillRow}>
               {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
@@ -2856,9 +2825,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 </View>
               </View>
             )}
-            {effortNote ? (
-              <Text style={styles.effortNote}>{effortNote}</Text>
-            ) : null}
           </CollapsibleField>
               </>
             ),
@@ -3406,7 +3372,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   unitChipActive: { backgroundColor: colors.bgQuaternary },
   unitChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   unitChipTextActive: { color: colors.text, fontWeight: '600' },
-  effortNote: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm },
   segmentSuggestRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap',
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
