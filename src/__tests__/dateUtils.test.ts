@@ -101,6 +101,7 @@ const baseTask: Task = {
   emailAddress: null,
   blockedById: null,
   mealEntryId: null,
+  groceryItemId: null,
   pendingImport: null,
 };
 

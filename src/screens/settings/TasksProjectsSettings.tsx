@@ -25,6 +25,11 @@ import {
 import {
   DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD,
 } from '../../utils/postpone';
+import {
+  GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
+  GROCERY_USE_UP_LEAD_DAYS_MAX,
+  GROCERY_USE_UP_LEAD_DAYS_MIN,
+} from '../../types';
 
 const EXPIRED_TASK_GRACE_PILLS: PillOption<ExpiredTaskGraceDays>[] =
   EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
@@ -88,6 +93,12 @@ export function TasksProjectsSettings() {
   const setMealCookTasks = useSettingsStore(s => s.setMealCookTasks);
   const mealCookTaskCategory = useSettingsStore(s => s.mealCookTaskCategory);
   const setMealCookTaskCategory = useSettingsStore(s => s.setMealCookTaskCategory);
+  const groceryUseUpTasks = useSettingsStore(s => s.groceryUseUpTasks);
+  const setGroceryUseUpTasks = useSettingsStore(s => s.setGroceryUseUpTasks);
+  const groceryUseUpLeadDays = useSettingsStore(s => s.groceryUseUpLeadDays);
+  const setGroceryUseUpLeadDays = useSettingsStore(s => s.setGroceryUseUpLeadDays);
+  const groceryUseUpTaskCategory = useSettingsStore(s => s.groceryUseUpTaskCategory);
+  const setGroceryUseUpTaskCategory = useSettingsStore(s => s.setGroceryUseUpTaskCategory);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const setUnitSystem = useSettingsStore(s => s.setUnitSystem);
   const defaultProjectNudgeCadenceDays = useSettingsStore(s => s.defaultProjectNudgeCadenceDays);
@@ -325,6 +336,69 @@ export function TasksProjectsSettings() {
               selected={mealCookTaskCategory}
               onSelect={category => { haptics.tap(); setMealCookTaskCategory(category); }}
               accessibilityLabelFor={o => `Cook task category: ${o.label}`}
+            />
+          </>
+        )}
+      </SettingsSection>
+
+      <SettingsSection
+        label="Use-up reminders"
+        footer="A shop fills in a use-by date for the things it recognises as going off — fresh produce, dairy, meat, bread. Only items with a date get a task, and you can set or clear a date on any item from its Use by row. Delete a task and that item won't get another."
+      >
+        <SettingsRow
+          icon="alarm-outline"
+          iconColor={groceryUseUpTasks ? colors.accent : undefined}
+          label="Use-up tasks"
+          hint={
+            groceryUseUpTasks
+              ? 'Buying something with a use-by date adds a task to use it up'
+              : 'Buying something with a use-by date adds no task'
+          }
+          toggle={groceryUseUpTasks}
+          onPress={() => setGroceryUseUpTasks(!groceryUseUpTasks)}
+        />
+        {groceryUseUpTasks && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              icon="calendar-outline"
+              label="Show the task"
+              hint="How many days before the use-by date the task falls due"
+              value={
+                groceryUseUpLeadDays === 0
+                  ? 'On the day'
+                  : `${groceryUseUpLeadDays} ${groceryUseUpLeadDays === 1 ? 'day' : 'days'} before`
+              }
+              tight
+            />
+            <View style={styles.cadenceRow}>
+              <CountStepper
+                value={groceryUseUpLeadDays}
+                onChange={next => setGroceryUseUpLeadDays(next ?? GROCERY_USE_UP_LEAD_DAYS_DEFAULT)}
+                min={GROCERY_USE_UP_LEAD_DAYS_MIN}
+                max={GROCERY_USE_UP_LEAD_DAYS_MAX}
+                format={n => (n === 0 ? 'Day of' : `${n}d`)}
+                label="Days before the use-by date"
+                describeValue={n =>
+                  n === 0 ? 'On the use-by day' : `${n} ${n === 1 ? 'day' : 'days'} before`
+                }
+              />
+            </View>
+            <View style={styles.sep} />
+            <SettingsRow
+              icon="pricetag-outline"
+              label="File use-up tasks under"
+              hint="With none, they sit loose at the top of Today above your categories"
+              value={newTaskCategoryPills.find(o => o.value === groceryUseUpTaskCategory)?.label ?? 'None'}
+              tight
+            />
+            <SettingsPills
+              attached
+              wrap
+              options={newTaskCategoryPills}
+              selected={groceryUseUpTaskCategory}
+              onSelect={category => { haptics.tap(); setGroceryUseUpTaskCategory(category); }}
+              accessibilityLabelFor={o => `Use-up task category: ${o.label}`}
             />
           </>
         )}

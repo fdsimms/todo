@@ -32,7 +32,16 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
-import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
+import { describeExpiry, expiryDaysFromNow, expiryKeyFor } from '../utils/groceryShelfLife';
+import { wantsUseUpTask } from '../utils/groceryExpiry';
+import { dayKeyToDate } from '../utils/dateUtils';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { CountStepper } from './CountStepper';
+import {
+  GROCERY_EXPIRY_DAYS_MAX,
+  GROCERY_NAME_MAX_LENGTH,
+  GROCERY_QUANTITY_MAX_LENGTH,
+} from '../types';
 
 interface Props {
   visible: boolean;
@@ -76,6 +85,9 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   const setAisle = useGroceryStore(s => s.setAisle);
   const addAisle = useGroceryStore(s => s.addAisle);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
+  const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
+  const setUseUpTask = useGroceryStore(s => s.setUseUpTask);
+  const useUpTasksEnabled = useSettingsStore(s => s.groceryUseUpTasks);
   const removeFromList = useGroceryStore(s => s.removeFromList);
   const deleteItem = useGroceryStore(s => s.deleteItem);
   const shops = useGroceryStore(useShallow(s => s.shops));
@@ -92,7 +104,7 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
   const [nameError, setNameError] = useState<string | null>(null);
   // One picker open at a time, like every other editor in the app — see the
   // progressive-disclosure note in CLAUDE.md.
-  const [openField, setOpenField] = useState<'aisle' | 'stores' | 'pantry' | null>(null);
+  const [openField, setOpenField] = useState<'aisle' | 'stores' | 'pantry' | 'useBy' | null>(null);
 
   useEffect(() => {
     if (visible && item) {
@@ -104,7 +116,7 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
     }
   }, [visible, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggleField = (field: 'aisle' | 'stores' | 'pantry') =>
+  const toggleField = (field: 'aisle' | 'stores' | 'pantry' | 'useBy') =>
     setOpenField(current => (current === field ? null : field));
   const closeField = () => {
     animateLayout();
@@ -189,6 +201,20 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
     haptics.tap();
     setOnHandUntil(item.id, null);
   };
+
+  // The stepper talks in days from today and the row stores a day; a date
+  // survives the app being closed for a week, where "5 days" would quietly
+  // mean five days from whenever you next looked. Same conversion
+  // keepUntilKeyFor/keepDaysBetween do for a leftover.
+  const expiryDays = item.expiresAt ? expiryDaysFromNow(item.expiresAt, new Date()) : null;
+  const pickExpiryDays = (days: number | null) => {
+    haptics.tap();
+    setExpiresAt(item.id, days === null ? null : expiryKeyFor(new Date(), days));
+  };
+  // Whether this item gets a task, as the store will decide it — not whether
+  // one exists right now. A task completed this morning shouldn't make the row
+  // read as though the item had been opted out of.
+  const hasUseUpTask = wantsUseUpTask(item, useUpTasksEnabled);
 
   /**
    * One pill, three states, cycled by tapping: nothing → *you get it here* →
@@ -496,7 +522,75 @@ export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recip
             >
               <PillGroup options={pantryOptions} noun="state" />
             </CollapsibleField>
+
+            <View style={styles.separator} />
+
+            <CollapsibleField
+              label="Use by"
+              summary={
+                item.expiresAt
+                  ? `${format(dayKeyToDate(item.expiresAt), 'd MMM')} · ${describeExpiry(item.expiresAt)}`
+                  : undefined
+              }
+              emptySummary="None"
+              hint="The day this should be used up by. Finishing a shop fills it in for things that go off, and the use-up task is dated from it."
+              expanded={openField === 'useBy'}
+              onToggle={() => toggleField('useBy')}
+            >
+              <View style={styles.stepperRow}>
+                <Text style={styles.stepperHint}>Days from today</Text>
+                <CountStepper
+                  value={expiryDays}
+                  onChange={pickExpiryDays}
+                  min={0}
+                  max={GROCERY_EXPIRY_DAYS_MAX}
+                  allowNull
+                  emptyLabel="None"
+                  format={n => (n === 0 ? 'Today' : `${n}d`)}
+                  label="Use by"
+                  describeValue={n => (n === null ? 'No use-by date' : n === 0 ? 'Use by today' : `${n} days from today`)}
+                />
+              </View>
+            </CollapsibleField>
           </View>
+
+          {/* The per-item half of the setting, and the only place it can be
+              said. Shown whenever there's a date to hang a task off, with the
+              feature off as well as on: opting one item in is what makes a
+              default-off setting workable, and deleting the task the other way
+              records the same answer inverted (see GroceryItem.useUpTask). */}
+          {!!item.expiresAt && (
+            <TouchableOpacity
+              style={styles.actionRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => {
+                haptics.tap();
+                setUseUpTask(item.id, !hasUseUpTask);
+              }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: hasUseUpTask }}
+              accessibilityLabel="Use-up task"
+              accessibilityHint={
+                hasUseUpTask
+                  ? 'Removes the task to use this up'
+                  : 'Adds a task to use this up before its use-by date'
+              }
+            >
+              <Ionicons
+                name={hasUseUpTask ? 'checkbox' : 'square-outline'}
+                size={iconSize.md}
+                color={hasUseUpTask ? colors.accent : colors.textSecondary}
+              />
+              <View style={styles.actionBody}>
+                <Text style={styles.actionLabel}>Use-up task</Text>
+                <Text style={styles.actionHint}>
+                  {hasUseUpTask
+                    ? 'A task to use this up appears before the use-by date.'
+                    : 'No task for this item, whatever the setting says.'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
 
           {item.onList && (
             <TouchableOpacity
@@ -619,6 +713,13 @@ function makeStyles(colors: Colors) {
       padding: spacing.md,
       marginTop: spacing.md,
     },
+    stepperRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+    },
+    stepperHint: { flex: 1, fontSize: font.sm, color: colors.textTertiary },
     actionBody: { flex: 1 },
     actionLabel: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     actionHint: { fontSize: font.sm, color: colors.textTertiary, marginTop: 2 },

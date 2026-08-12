@@ -719,6 +719,8 @@ function seedGroceries(recipes: DemoRecipes): void {
     setAisle,
     setAisleOrder,
     setOnHandUntil,
+    setExpiresAt,
+    setUseUpTask,
     finishShopping,
     addAisle,
     deleteAisle,
@@ -818,6 +820,16 @@ function seedGroceries(recipes: DemoRecipes): void {
   const rice = itemById(itemNamed('Rice').id);
   if (rice) setOnHandUntil(rice.id, defaultOnHandUntil(rice, new Date()));
   setOnHandUntil(itemNamed('Olive oil').id, OUT_OF_IT_UNTIL);
+
+  // The use-by half. The three finished trips above already stamped a date on
+  // everything the shelf-life lexicon recognises, so most of that is here for
+  // free — this is the pair the seed has to say out loud: a date corrected by
+  // hand (the bag was already a few days old), and the per-item opt-in that
+  // turns one item's date into a real task with the setting still off. Without
+  // it the demo has use-by dates nothing ever acts on, which reads as the
+  // reminders not existing.
+  setExpiresAt(itemNamed('Spinach').id, dayKeyOf(addDays(new Date(), 1)));
+  setUseUpTask(itemNamed('Spinach').id, true);
 
   // A walk order the user has clearly edited: a custom section they file two
   // things into by hand, a built-in they never shop deleted (which leaves the

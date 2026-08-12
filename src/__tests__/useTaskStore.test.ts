@@ -4,6 +4,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import {
   initDatabase,
@@ -92,6 +93,9 @@ jest.mock('../db/database', () => ({
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
+  // Written when deleting a use-up task records the item's opt-out — the one
+  // place this file's subject writes to the grocery catalog.
+  dbUpdateGroceryItem: jest.fn(),
   // useTaskStore.initialize() fans out to the meal plan store too.
   dbGetMealPlanAddedToList: jest.fn().mockReturnValue({}),
   // Read directly by checkMealPlanNudge, not through useMealPlanStore.
@@ -218,6 +222,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   emailAddress: null,
   blockedById: null,
   mealEntryId: null,
+  groceryItemId: null,
   pendingImport: null,
   ...overrides,
 });
@@ -6586,5 +6591,56 @@ describe('postponeCount', () => {
     const created = useTaskStore.getState().addTask({ title: 'Fresh' });
     expect(created.postponeCount).toBe(0);
     expect(created.postponeMuted).toBe(false);
+  });
+});
+
+// ─── Use-up tasks, from the task side (#1106) ───────────────────────────────
+//
+// The grocery half is covered in useGroceryStore.test.ts against a mocked task
+// store; this is the other direction, against the real one.
+
+describe('deleting a use-up task', () => {
+  const item = {
+    id: 'g-1', name: 'Spinach', nameKey: 'spinach', aisle: 'Produce', quantity: null, note: '',
+    onList: false, checked: false, inCatalog: true, sortOrder: 1, purchaseCount: 3,
+    lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+    onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+    expiresAt: '2026-08-17', useUpTask: null,
+  };
+
+  const seedItem = () => {
+    useGroceryStore.setState({
+      items: [{ ...item }], aisleOrder: [], hiddenAisles: [], aisleOverrides: {},
+      shops: [], itemShops: [], lastShopId: null, cartHoldIds: [], initialized: true,
+    });
+  };
+
+  it('records the item\'s opt-out, so the next purchase doesn\'t hand it back', () => {
+    seedItem();
+    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', groceryItemId: 'g-1' });
+
+    useTaskStore.getState().deleteTask(task.id);
+
+    expect(useGroceryStore.getState().items[0].useUpTask).toBe(false);
+  });
+
+  it('undo clears the opt-out again, and leaves the restored task alone', () => {
+    seedItem();
+    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', groceryItemId: 'g-1' });
+    useTaskStore.getState().deleteTask(task.id);
+
+    useTaskStore.getState().lastAction!.undo();
+
+    expect(useGroceryStore.getState().items[0].useUpTask).toBeNull();
+    expect(useTaskStore.getState().tasks.find(t => t.id === task.id)).toBeDefined();
+  });
+
+  it('leaves an ordinary task\'s delete alone', () => {
+    seedItem();
+    const task = useTaskStore.getState().addTask({ title: 'Buy stamps' });
+
+    useTaskStore.getState().deleteTask(task.id);
+
+    expect(useGroceryStore.getState().items[0].useUpTask).toBeNull();
   });
 });

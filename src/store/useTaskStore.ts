@@ -206,6 +206,7 @@ function newTaskFromDraft(
     timerElapsedSeconds: draft.timerElapsedSeconds ?? 0,
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
     mealEntryId: draft.mealEntryId ?? null,
+    groceryItemId: draft.groceryItemId ?? null,
     seriesId: draft.seriesId ?? null,
     seriesMonthDays: draft.seriesMonthDays ?? [],
     seriesRepeatMonths: draft.seriesRepeatMonths ?? 1,
@@ -1395,6 +1396,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const wasCookTaskFor = task.mealEntryId;
     if (wasCookTaskFor) useMealPlanStore.getState().setCookTask(wasCookTaskFor, false);
 
+    // Same instruction, from the other feature that projects tasks: deleting a
+    // "Use up X" is the user saying this item doesn't need one, and it has to
+    // be written down or the next trip that buys it hands the task straight
+    // back — weekly for a staple. See GroceryItem.useUpTask.
+    const wasUseUpTaskFor = task.groceryItemId;
+    if (wasUseUpTaskFor) useGroceryStore.getState().setUseUpTask(wasUseUpTaskFor, false);
+
     get().setLastAction({
       label: 'Task deleted',
       undo: () => {
@@ -1409,6 +1417,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // opt-out above is the only thing that could have written it, so this
         // is its exact inverse.
         if (wasCookTaskFor) useMealPlanStore.getState().setCookTask(wasCookTaskFor, null);
+        if (wasUseUpTaskFor) {
+          useGroceryStore.getState().setUseUpTask(wasUseUpTaskFor, null, { reconcile: false });
+        }
       },
     });
   },
@@ -1681,6 +1692,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // is the defensive half of that, for a row the user made recurring
           // by hand.
           mealEntryId: null,
+      groceryItemId: null,
         };
         dbInsertTask(nextTask);
         scheduleTaskReminder(nextTask);
@@ -2608,6 +2620,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       emailAddress: null,
       blockedById: null,
       mealEntryId: null,
+      groceryItemId: null,
       pendingImport: null,
       postponeCount: 0,
       postponeMuted: false,
@@ -2743,6 +2756,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       emailAddress: null,
       blockedById: null,
       mealEntryId: null,
+      groceryItemId: null,
       pendingImport: null,
       postponeCount: 0,
       postponeMuted: false,

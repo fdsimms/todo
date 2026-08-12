@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroceryItem, ItemShopLink, Shop } from '../types';
+import type { GroceryItem, ItemShopLink, Shop, Task } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -26,9 +26,13 @@ import {
   dbTransaction,
 } from '../db/database';
 import { useRecipeStore } from './useRecipeStore';
+import { useTaskStore } from './useTaskStore';
+import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import { defaultOnHandUntil } from '../utils/grocerySuggest';
+import { defaultExpiresAt } from '../utils/groceryShelfLife';
+import { useUpTaskDraft, useUpTaskFields, useUpTaskNeedsUpdate, wantsUseUpTask } from '../utils/groceryExpiry';
 import {
   aisleForName,
   normalizeAisleOrder,
@@ -192,6 +196,27 @@ interface GroceryStore {
    * null to clear back to grocerySuggest.probablyHaveReason's own guess).
    */
   setOnHandUntil: (id: string, until: string | null) => void;
+  /**
+   * The day this should be used up by, as a `YYYY-MM-DD` key, or null for
+   * "doesn't go off on a schedule worth naming".
+   *
+   * Unlike setOnHandUntil this isn't a dumb setter: writing the date is what
+   * spawns, re-dates or drops the item's "Use up X" task, because the date is
+   * the only thing that decides any of the three.
+   */
+  setExpiresAt: (id: string, expiresAt: string | null) => void;
+  /**
+   * The per-item answer to "does this get a use-up task" — true, false, or
+   * null to hand the question back to the setting. Reconciles immediately, so
+   * the toggle in the item sheet is also what adds or removes the task.
+   *
+   * `reconcile: false` records the answer and stops there. Exactly one caller
+   * wants that: undoing a task deletion, which has already put the row back
+   * itself and is only clearing the opt-out that deletion wrote. Reconciling
+   * there would re-decide the question against the *setting* and, with the
+   * feature off, delete the task the user just asked to have back.
+   */
+  setUseUpTask: (id: string, value: boolean | null, options?: { reconcile?: boolean }) => void;
 
   /**
    * Picks this row at the shelf: it stays (no longer an either/or) and every
@@ -350,6 +375,87 @@ function commitAisleOrder(order: string[], used: readonly string[]) {
   return { aisleOrder: normalized, hiddenAisles: hidden };
 }
 
+// ─── Use-up tasks (#1106) ───────────────────────────────────────────────────
+//
+// The grocery item is the master and the task is the replica; these two
+// helpers are every write that crosses the line. The projection rules — which
+// items qualify, what the task says, which fields the item owns — are in
+// utils/groceryExpiry so jest can reach them.
+//
+// **Reconciling runs on the transitions that change the expiry**, not on every
+// grocery mutation the way a meal's cook task does. A meal moves nights, gets
+// re-titled and re-scaled; a use-by date is stamped at the till and then left
+// alone, so renaming an item or refiling its aisle has nothing to say to a
+// task the user may since have dated, filed and annotated.
+
+/** This item's live use-up task, if it has one. */
+function liveUseUpTaskFor(itemId: string): Task | undefined {
+  return useTaskStore
+    .getState()
+    .tasks.find(t => t.groceryItemId === itemId && !t.completed && !t.archived);
+}
+
+/**
+ * Brings this item's use-up task into line: creates it, updates it, or removes
+ * it, depending on what the item now says.
+ *
+ * **Only a *live* task blocks a new one, and this is where the analogy with
+ * cook tasks stops.** A meal is one event, so reconcileCookTask deliberately
+ * refuses to spawn a second task for it even when the first is completed. A
+ * grocery item is a forever-row that gets bought again and again: last month's
+ * ticked-off "Use up spinach" is history, and the bag bought this afternoon
+ * needs its own. Reading the wider set here would mean a staple got exactly
+ * one use-up task, ever.
+ */
+function reconcileUseUpTask(item: GroceryItem): void {
+  const { addTask, updateTask, deleteTask, setLastAction } = useTaskStore.getState();
+  const { groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory } =
+    useSettingsStore.getState();
+  const existing = liveUseUpTaskFor(item.id);
+  const wanted = item.expiresAt !== null && wantsUseUpTask(item, groceryUseUpTasks);
+
+  if (!wanted) {
+    // Only the live one goes. A completed use-up task records something that
+    // was done, and clearing a date is not a claim it wasn't.
+    if (existing) {
+      // deleteTask arms shake-to-undo, which is right when a user deletes a
+      // task and wrong here: this is a consequence of a grocery action, and
+      // there is no undo anywhere in groceries for it to belong to. Same
+      // reason deleteTaskQuietly exists in useMealPlanStore.
+      deleteTask(existing.id);
+      setLastAction(null);
+    }
+    return;
+  }
+
+  if (existing) {
+    // skipPostponeCount: this row's date is the food's date, not a schedule
+    // the user picked — a fresher bag moving it out is not them ducking it.
+    if (useUpTaskNeedsUpdate(existing, item, groceryUseUpLeadDays)) {
+      updateTask(existing.id, useUpTaskFields(item, groceryUseUpLeadDays), { skipPostponeCount: true });
+    }
+    return;
+  }
+
+  addTask(useUpTaskDraft(item, groceryUseUpLeadDays, groceryUseUpTaskCategory));
+}
+
+/**
+ * Drops this item's use-up task because the item itself is going.
+ *
+ * Deliberately not `reconcileUseUpTask` on a cleared date: that path is a
+ * correction to a row that still exists, while this one is a row that won't.
+ * Completed tasks stay either way — forgetting an item must not erase the
+ * Logbook, the same rule deleteGroup keeps for a stack's history.
+ */
+function dropUseUpTask(itemId: string): void {
+  const existing = liveUseUpTaskFor(itemId);
+  if (!existing) return;
+  const { deleteTask, setLastAction } = useTaskStore.getState();
+  deleteTask(existing.id);
+  setLastAction(null);
+}
+
 export const useGroceryStore = create<GroceryStore>((set, get) => ({
   items: [],
   aisleOrder: [],
@@ -505,6 +611,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       choiceGroup,
       sourceRecipeId: source?.recipeId ?? null,
       sourceRecipeTitle: source?.recipeTitle ?? null,
+      // Nothing on the *list* has a use-by date: adding a name is a plan to
+      // buy it, and the shelf life doesn't start until it's in the fridge.
+      // finishShopping is what stamps this — see defaultExpiresAt.
+      expiresAt: null,
+      useUpTask: null,
     };
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));
@@ -766,6 +877,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
+  setExpiresAt(id, expiresAt) {
+    const item = get().items.find(i => i.id === id);
+    if (!item || item.expiresAt === expiresAt) return;
+    const updated = { ...item, expiresAt };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+    reconcileUseUpTask(updated);
+  },
+
+  setUseUpTask(id, value, options) {
+    const item = get().items.find(i => i.id === id);
+    if (!item || item.useUpTask === value) return;
+    const updated = { ...item, useUpTask: value };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+    if (options?.reconcile !== false) reconcileUseUpTask(updated);
+  },
+
   /**
    * Takes a row off the list. A catalog row stays behind — "not this week" —
    * but a provisional one goes altogether, because it only ever existed as this
@@ -897,6 +1026,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       itemShops: s.itemShops.filter(l => !gone.has(l.itemId)),
       cartHoldIds: s.cartHoldIds.filter(x => !gone.has(x)),
     }));
+    // Not part of the SQL cascade: the task is in another table that knows
+    // nothing about groceries, and a live "Use up spinach" pointing at a row
+    // the user has just forgotten is a chore about nothing.
+    //
+    // **After the rows are gone, not before.** deleteTask records an opt-out
+    // on the task's item (see GroceryItem.useUpTask), which here would be an
+    // answer written on a row that no longer exists; with the item already out
+    // of state that write finds nothing and does nothing.
+    for (const id of ids) dropUseUpTask(id);
   },
 
   finishShopping(shopId = null) {
@@ -914,7 +1052,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         .filter(i => i.checked && i.onList)
         .map(i => [i.id, defaultOnHandUntil(i, now)])
     );
-    const ids = dbFinishGroceryShopping(purchasedAt, onHandUntilById, shop?.id ?? null);
+    // The use-by day for everything in the trolley the shelf-life lexicon
+    // recognises — which is a minority of any real list, and meant to be (see
+    // groceryShelfLife.ts). Every purchase re-stamps rather than keeping
+    // whatever was there: a second bag of spinach is fresh spinach, and
+    // inheriting the old bag's day would have the app nagging about food
+    // bought this afternoon.
+    const expiresAtById: Record<string, string> = {};
+    for (const i of get().items) {
+      if (!i.checked || !i.onList) continue;
+      const expires = defaultExpiresAt(i.name, now);
+      if (expires) expiresAtById[i.id] = expires;
+    }
+    const ids = dbFinishGroceryShopping(purchasedAt, onHandUntilById, shop?.id ?? null, expiresAtById);
     if (ids.length === 0) return 0;
     const done = new Set(ids);
 
@@ -964,6 +1114,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 purchaseCount: i.purchaseCount + 1,
                 lastPurchasedAt: purchasedAt,
                 onHandUntil: onHandUntilById[i.id] ?? i.onHandUntil,
+                expiresAt: expiresAtById[i.id] ?? i.expiresAt,
               }
             : i
         ),
@@ -973,6 +1124,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     });
 
     if (shop) get().setLastShopId(shop.id);
+    // After the set(), so each reconcile reads the row as it now stands. Only
+    // the rows this trip re-dated can have anything to say — an item bought
+    // with no shelf life in the lexicon keeps whatever date it had, and its
+    // task with it.
+    for (const id of Object.keys(expiresAtById)) {
+      const item = get().items.find(i => i.id === id);
+      if (item) reconcileUseUpTask(item);
+    }
     return ids.length;
   },
 
