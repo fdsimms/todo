@@ -816,14 +816,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   quotaFill: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: -border.md,
+    right: -border.md,
     bottom: 0,
     backgroundColor: colors.accent,
-    borderTopLeftRadius: Math.max(0, checkboxRadius(CHECKBOX_SIZE) - border.md),
-    borderTopRightRadius: Math.max(0, checkboxRadius(CHECKBOX_SIZE) - border.md),
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
+    borderRadius: 0,
   },
   // These rows are flat and separator-divided rather than cards, so a selected
   // one is marked by tinting the whole band instead of the card treatment
