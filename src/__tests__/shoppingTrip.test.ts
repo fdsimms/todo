@@ -2,6 +2,7 @@ import {
   planTrip,
   summarizeTrip,
   describeShopCoverage,
+  describeTripSuggestion,
   joinNames,
   MAX_TRIP_STOPS,
   SHOP_RECORD_MIN,
@@ -483,5 +484,86 @@ describe('joinNames', () => {
   it('counts the overflow', () => {
     expect(joinNames(['a', 'b', 'c', 'd', 'e'])).toBe('a, b, c and 2 more');
     expect(joinNames(['a', 'b', 'c', 'd'], 2)).toBe('a, b and 2 more');
+  });
+});
+
+describe('describeTripSuggestion', () => {
+  function cover(shop: Shop, itemIds: string[], likelyItemIds: string[] = []): ShopCoverage {
+    return {
+      shop,
+      itemIds,
+      likelyItemIds,
+      unavailableItemIds: [],
+      assertedCount: 0,
+      observedPurchases: 0,
+      recordedItems: itemIds.length,
+    };
+  }
+
+  it('names the stops in visit order and counts what is on record', () => {
+    const copy = describeTripSuggestion(
+      [cover(tj, [milk.id, bread.id, eggs.id]), cover(pharmacy, [shampoo.id])],
+      5
+    );
+    expect(copy).toEqual({
+      stores: "Trader Joe's, then Ballard Pharmacy",
+      detail: 'Between them, you’ve got 4 of these 5 before',
+    });
+  });
+
+  it('reads as one stop when one store is enough', () => {
+    expect(describeTripSuggestion([cover(tj, [milk.id, bread.id])], 5)?.detail).toBe(
+      'You’ve got 2 of these 5 there before'
+    );
+  });
+
+  it('names a full cover rather than counting it out', () => {
+    expect(describeTripSuggestion([cover(tj, [milk.id, bread.id])], 2)?.detail).toBe(
+      'You’ve got all 2 there before'
+    );
+    expect(
+      describeTripSuggestion([cover(tj, [milk.id]), cover(pharmacy, [shampoo.id])], 2)?.detail
+    ).toBe('Between them, you’ve got all 2 before');
+  });
+
+  it('keeps the guess in its own clause', () => {
+    expect(describeTripSuggestion([cover(tj, [milk.id], [bread.id, eggs.id])], 5)?.detail).toBe(
+      'You’ve got 1 of these 5 there before · 2 more likely'
+    );
+  });
+
+  it('never counts a known item as another stop’s guess', () => {
+    // The pharmacy's aisles suggest bread, but Trader Joe's is known to have
+    // it — one item, and the known half is where it belongs.
+    const copy = describeTripSuggestion(
+      [cover(tj, [milk.id, bread.id]), cover(pharmacy, [shampoo.id], [bread.id])],
+      5
+    );
+    expect(copy?.detail).toBe('Between them, you’ve got 3 of these 5 before');
+  });
+
+  it('labels a suggestion resting entirely on the aisle guess', () => {
+    expect(describeTripSuggestion([cover(union, [], [milk.id, bread.id])], 5)).toEqual({
+      stores: 'Union Market',
+      detail: '2 of these 5 likely, on the aisles it stocks',
+    });
+    expect(
+      describeTripSuggestion([cover(union, [], [milk.id]), cover(tj, [], [bread.id])], 5)?.detail
+    ).toBe('2 of these 5 likely, on the aisles they stock');
+  });
+
+  it('says nothing when there is nothing to say', () => {
+    expect(describeTripSuggestion([cover(tj, [milk.id])], 0)).toBeNull();
+    expect(describeTripSuggestion([], 5)).toBeNull();
+    expect(describeTripSuggestion([cover(tj, [])], 5)).toBeNull();
+  });
+
+  it('describes the plan the trip sheet would suggest', () => {
+    const plan = planTrip(LIST, LINKS, SHOPS);
+    const copy = describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length);
+    expect(copy).toEqual({
+      stores: "Trader Joe's, then Ballard Pharmacy",
+      detail: 'Between them, you’ve got 4 of these 5 before',
+    });
   });
 });

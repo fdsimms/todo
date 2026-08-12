@@ -398,6 +398,75 @@ export function describeShopCoverage(entry: ShopCoverage, total: number): string
   return parts.join(' · ');
 }
 
+export interface TripSuggestionCopy {
+  /** The stores to visit, best first — "Costco, then Trader Joe's". */
+  stores: string;
+  /** What the record says they account for between them. */
+  detail: string;
+}
+
+/**
+ * The recommendation in two lines, for somewhere that isn't the trip sheet —
+ * the card at the top of the shopping list. `summarizeTrip([], plan)` is the
+ * fewest stores the greedy walk can cover the list with, and this is the one
+ * place that turns it into a sentence, so the list screen and anywhere else
+ * that surfaces it can't word it two ways.
+ *
+ * The same rule as everywhere else in this module: the numbers are a floor and
+ * the copy says so. "You've got 8 of these 12 there before" is a fact about
+ * what you've bought, not a stock check — and the likely half stays its own
+ * clause rather than being added into the count.
+ *
+ * Null when there's nothing to say, which is the card's own "don't render":
+ * an empty list, no suggestion, or a suggestion carrying neither a known nor a
+ * likely item.
+ */
+export function describeTripSuggestion(
+  suggestion: readonly ShopCoverage[],
+  total: number
+): TripSuggestionCopy | null {
+  if (total === 0 || suggestion.length === 0) return null;
+
+  const known = new Set<string>();
+  for (const entry of suggestion) for (const id of entry.itemIds) known.add(id);
+  // Second pass, not folded into the first: an item one suggested store is
+  // known to carry must not also be counted as another's guess, whichever
+  // order the two happen to sit in.
+  const likely = new Set<string>();
+  for (const entry of suggestion) {
+    for (const id of entry.likelyItemIds) if (!known.has(id)) likely.add(id);
+  }
+  if (known.size === 0 && likely.size === 0) return null;
+
+  const names = suggestion.map(s => s.shop.name);
+  const stores =
+    names.length === 1
+      ? names[0]
+      : `${names.slice(0, -1).join(', ')}, then ${names[names.length - 1]}`;
+
+  const one = suggestion.length === 1;
+  if (known.size === 0) {
+    // Nothing on record, so the aisle guess is the whole answer and has to be
+    // labelled as one — it's the only claim here the app made up itself.
+    return {
+      stores,
+      detail: `${likely.size} of these ${total} likely, on the aisles ${
+        one ? 'it stocks' : 'they stock'
+      }`,
+    };
+  }
+
+  const head = one
+    ? known.size === total
+      ? `You’ve got all ${total} there before`
+      : `You’ve got ${known.size} of these ${total} there before`
+    : known.size === total
+      ? `Between them, you’ve got all ${total} before`
+      : `Between them, you’ve got ${known.size} of these ${total} before`;
+
+  return { stores, detail: likely.size > 0 ? `${head} · ${likely.size} more likely` : head };
+}
+
 /**
  * "bagels", "bagels and cilantro", "bagels, cilantro and tofu",
  * "bagels, cilantro, tofu and 2 more".
