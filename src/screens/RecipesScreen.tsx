@@ -437,9 +437,12 @@ export function RecipesScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              // flexGrow: 0 in the style, or this row stretches to share the
-              // column with the list below it — same reason the Logbook pins
-              // its own filter bar's height. Unlike the vocabulary itself
+              // flexGrow/flexShrink: 0 in the style, or this row stretches or
+              // gets squeezed sharing the column with the list below it —
+              // same reason the Logbook pins its own filter bar's height. A
+              // missing flexShrink left the button's pill background taller
+              // and wider than its own content once the list below pushed
+              // back. Unlike the vocabulary itself
               // (unbounded — see RecipeTagFilterSheet), what's *selected* is
               // small enough in practice to sit in a scrolling row: it's the
               // handful the cook is actively narrowing by, not the whole box.
@@ -655,6 +658,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // own filterButton/activePill.
   tagFilterScroll: {
     flexGrow: 0,
+    flexShrink: 0,
   },
   tagFilterRow: {
     flexDirection: 'row',
