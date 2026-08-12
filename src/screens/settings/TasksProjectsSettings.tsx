@@ -291,6 +291,7 @@ export function TasksProjectsSettings() {
             />
             <SettingsPills
               attached
+              wrap
               options={newTaskCategoryPills}
               selected={mealCookTaskCategory}
               onSelect={category => { haptics.tap(); setMealCookTaskCategory(category); }}
@@ -307,6 +308,7 @@ export function TasksProjectsSettings() {
         <SettingsRow icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own" value={newTaskCategoryPills.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
         <SettingsPills
           attached
+          wrap
           options={newTaskCategoryPills}
           selected={newTaskDefaults.category}
           onSelect={category => { haptics.tap(); setNewTaskDefaults({ category }); }}
