@@ -295,6 +295,27 @@ describe('resetToDefaults', () => {
     expect(state.appLockGraceSeconds).toBe(900);
     expect(dbSetSetting).not.toHaveBeenCalledWith('appLockEnabled', 'false');
   });
+
+  // DEFAULT_SETTINGS carries two null category defaults (mealCookTaskCategory,
+  // groceryUseUpTaskCategory). A bare String(value) over the whole object
+  // would write the literal text "null" for both, which every reader here
+  // treats as a category *named* "null" rather than "no category" — Today
+  // would grow a section header to match. '' is the stored form of "no
+  // category" everywhere else in this file.
+  it('resets every null category default to no category, not to the string "null"', () => {
+    useSettingsStore.getState().setMealCookTaskCategory('Home');
+    useSettingsStore.getState().setGroceryUseUpTaskCategory('Errands');
+
+    useSettingsStore.getState().resetToDefaults();
+
+    expect(dbSetSetting).toHaveBeenCalledWith('mealCookTaskCategory', '');
+    expect(dbSetSetting).toHaveBeenCalledWith('groceryUseUpTaskCategory', '');
+    expect(dbSetSetting).not.toHaveBeenCalledWith('mealCookTaskCategory', 'null');
+    expect(dbSetSetting).not.toHaveBeenCalledWith('groceryUseUpTaskCategory', 'null');
+    const state = useSettingsStore.getState();
+    expect(state.mealCookTaskCategory).toBeNull();
+    expect(state.groceryUseUpTaskCategory).toBeNull();
+  });
 });
 
 // ─── the API key ─────────────────────────────────────────────────────────────
@@ -708,14 +729,6 @@ describe('use-up task settings', () => {
     expect(dbSetSetting).toHaveBeenCalledWith('groceryUseUpTaskCategory', '');
     stored({ groceryUseUpTaskCategory: '' });
     useSettingsStore.getState().initialize();
-    expect(useSettingsStore.getState().groceryUseUpTaskCategory).toBeNull();
-  });
-
-  // The loop in resetToDefaults writes String(null) — a category literally
-  // named "null", which Today would grow a section header for.
-  it('resets the category to no category, not to the string "null"', () => {
-    useSettingsStore.getState().resetToDefaults();
-    expect(dbSetSetting).toHaveBeenCalledWith('groceryUseUpTaskCategory', '');
     expect(useSettingsStore.getState().groceryUseUpTaskCategory).toBeNull();
   });
 });

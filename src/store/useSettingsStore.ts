@@ -1165,22 +1165,24 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   },
 
   resetToDefaults() {
+    // `value === null ? ''` rather than a bare String(value): DEFAULT_SETTINGS
+    // holds two null category defaults (mealCookTaskCategory,
+    // groceryUseUpTaskCategory), and String(null) is the literal text "null" —
+    // which every reader here treats as a category *named* "null" rather than
+    // "no category", giving Today a section header to match. '' is the stored
+    // form of "no category" everywhere else in this file, and this is what
+    // keeps that true for any future null default too, not just today's two.
     Object.entries(DEFAULT_SETTINGS).forEach(([key, value]) => {
-      dbSetSetting(key, String(value));
+      dbSetSetting(key, value === null ? '' : String(value));
     });
-    // Not in DEFAULT_SETTINGS because String(null) doesn't round-trip — see the
-    // note above it. Clearing both matters: a reset that turned the import off
-    // but left the confirmed-list id in place would let re-enabling later skip
-    // the confirmation and swallow whatever had piled up meanwhile.
+    // Not in DEFAULT_SETTINGS because these two aren't reset to a fixed value
+    // at all — they're cleared. Clearing both matters: a reset that turned the
+    // import off but left the confirmed-list id in place would let re-enabling
+    // later skip the confirmation and swallow whatever had piled up meanwhile.
     dbSetSetting('remindersImportListId', '');
     dbSetSetting('remindersImportConfirmedListId', '');
     dbSetSetting('groceryImportListId', '');
     dbSetSetting('groceryImportConfirmedListId', '');
-    // Same String(null) problem, one step further along: the loop above writes
-    // the literal 'null', which reads back as a category *named* "null" and
-    // would give Today a section header to match. '' is the stored form of "no
-    // category" everywhere else here.
-    dbSetSetting('groceryUseUpTaskCategory', '');
     set({
       ...DEFAULT_SETTINGS,
       remindersImportListId: null,
