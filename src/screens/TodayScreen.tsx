@@ -251,18 +251,20 @@ function GroupDropTargetRow({
   channel,
   groupId,
   active,
+  elevated,
   children,
 }: {
   channel: FabIntentChannel;
   groupId: string;
   active: boolean;
+  elevated?: boolean;
   children: React.ReactNode;
 }) {
   const aimed = useFabIntentSelector(
     channel,
     intent => intent?.kind === 'joinGroup' && intent.groupId === groupId,
   );
-  return <GroupDropTarget active={active || aimed}>{children}</GroupDropTarget>;
+  return <GroupDropTarget active={active || aimed} elevated={elevated}>{children}</GroupDropTarget>;
 }
 
 // The add button, naming what a release right now would do.
@@ -1428,8 +1430,10 @@ export function TodayScreen() {
   // A stack's children are reordered by a nested SortableList, whose responder
   // sits *inside* this screen's list rather than around it — so the list has to
   // be told to stop scrolling for the drag to survive the first finger move
-  // (see SortableList's onDragStateChange).
-  const [draggingStackChild, setDraggingStackChild] = useState(false);
+  // (see SortableList's onDragStateChange). Keyed by group id, not a plain
+  // bool, so only the tray actually being dragged in gets lifted above its
+  // siblings below — see the `elevated` prop on GroupDropTargetRow.
+  const [draggingStackChildGroupId, setDraggingStackChildGroupId] = useState<string | null>(null);
   // Same deal for the pinned block's own SortableList, which sits in the list's
   // header — inside the scroll view, so the scroll has to stand down for it too.
   const [draggingPin, setDraggingPin] = useState(false);
@@ -1642,6 +1646,12 @@ export function TodayScreen() {
           channel={fabIntentChannel}
           groupId={item.group.id}
           active={joinGroupIntentId === item.group.id}
+          // Lifts this tray above the rows below it while one of its own
+          // children is being dragged, so the floating card (which is only
+          // painted above its own siblings inside the tray, not the whole
+          // screen — see SortableList) doesn't disappear under the next
+          // row down the moment it crosses the tray's edge.
+          elevated={draggingStackChildGroupId === item.group.id}
         >
           <TaskGroupTray>
             <TaskGroupHeader
@@ -1674,13 +1684,13 @@ export function TodayScreen() {
               hasChildren={item.children.length > 0}
               // Lets the dragged child's floating card cross the tray's edge
               // on its way out of the stack instead of being clipped there.
-              dragging={draggingStackChild}
+              dragging={draggingStackChildGroupId === item.group.id}
             >
               <SortableList
                 data={item.children}
                 onReorder={reordered => reorderGroupChildren(item.group.id, reordered.map(t => t.id))}
                 onDragOut={task => removeFromGroup(task.id)}
-                onDragStateChange={setDraggingStackChild}
+                onDragStateChange={dragging => setDraggingStackChildGroupId(dragging ? item.group.id : null)}
                 // The same drop slot the main list leaves behind — a stack's
                 // rows are the main list's rows, so the gap should read the same.
                 placeholderStyle={styles.stackDropSlot}
@@ -2494,7 +2504,7 @@ export function TodayScreen() {
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
             // this control.
-            scrollEnabled={!painting && !fabDragging && !draggingStackChild && !draggingSubtask && !draggingPin}
+            scrollEnabled={!painting && !fabDragging && !draggingStackChildGroupId && !draggingSubtask && !draggingPin}
             scrollControlRef={todayScrollControl}
             rowScrollerRef={todayRowScroller}
             data={draggableData}
