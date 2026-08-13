@@ -25,6 +25,8 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { Priority, TemplateAnchor, TemplateItem } from '../types';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
+import { SegmentedControl } from './SegmentedControl';
+import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 
 /** Same short labels the main quick add uses, so the two priority rows read alike. */
 const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
@@ -333,35 +335,24 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               <Text style={styles.panelHint}>
                 Template items have no fixed date — they're offset from a date you pick when applying the template.
               </Text>
-              <View style={styles.presetRow}>
-                <TouchableOpacity
-                  style={[styles.presetChip, dueOffsetDays === null && styles.presetChipActive]}
-                  onPress={() => { haptics.tap(); setDueOffsetDays(null); }}
-                  activeOpacity={interaction.activeOpacity}
-                >
-                  <Text style={[styles.presetChipText, dueOffsetDays === null && styles.presetChipTextActive]}>
-                    No date
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.presetChip, dueOffsetDays !== null && anchor === 'start' && styles.presetChipActive]}
-                  onPress={() => { haptics.tap(); setAnchor('start'); setDueOffsetDays(d => d ?? 0); }}
-                  activeOpacity={interaction.activeOpacity}
-                >
-                  <Text style={[styles.presetChipText, dueOffsetDays !== null && anchor === 'start' && styles.presetChipTextActive]}>
-                    From start date
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.presetChip, dueOffsetDays !== null && anchor === 'end' && styles.presetChipActive]}
-                  onPress={() => { haptics.tap(); setAnchor('end'); setDueOffsetDays(d => d ?? 0); }}
-                  activeOpacity={interaction.activeOpacity}
-                >
-                  <Text style={[styles.presetChipText, dueOffsetDays !== null && anchor === 'end' && styles.presetChipTextActive]}>
-                    From end date
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              {/* One question — what the offset counts from — even though it
+                  reads off two pieces of state, so it's one track. "No date"
+                  belongs in it: it's the third answer, not a way out of the
+                  other two. */}
+              <SegmentedControl
+                label="Count days from"
+                value={dueOffsetDays === null ? 'none' : anchor}
+                onChange={next => {
+                  if (next === 'none') { setDueOffsetDays(null); return; }
+                  setAnchor(next);
+                  setDueOffsetDays(d => d ?? 0);
+                }}
+                options={[
+                  { value: 'none' as const, label: 'No date' },
+                  { value: 'start' as const, label: 'From start', accessibilityLabel: 'Count days from the start date' },
+                  { value: 'end' as const, label: 'From end', accessibilityLabel: 'Count days from the end date' },
+                ]}
+              />
               {dueOffsetDays !== null && (
                 <View style={styles.intervalRow}>
                   <TouchableOpacity
@@ -388,29 +379,13 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
 
           {activePanel === 'priority' && (
             <View style={styles.panel}>
-              <View style={styles.presetRow}>
-                {([0, 1, 2, 3, 4] as Priority[]).map(p => (
-                  <TouchableOpacity
-                    key={p}
-                    style={[
-                      styles.priorityChip,
-                      priority === p && styles.priorityChipActive,
-                      priority === p && p > 0 && { borderColor: PRIORITY_COLORS[p], backgroundColor: PRIORITY_COLORS[p] + '22' },
-                    ]}
-                    onPress={() => { haptics.tap(); setPriority(p); }}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    {p > 0 && <View style={[styles.priorityChipDot, { backgroundColor: PRIORITY_COLORS[p] }]} />}
-                    <Text style={[
-                      styles.presetChipText,
-                      priority === p && styles.presetChipTextActive,
-                      priority === p && p > 0 && { color: PRIORITY_COLORS[p] },
-                    ]}>
-                      {PRIORITY_LABELS_SHORT[p]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <SegmentedControl
+                label="Priority"
+                value={priority}
+                onChange={setPriority}
+                columns={3}
+                options={PRIORITY_SEGMENTS}
+              />
             </View>
           )}
 
@@ -598,25 +573,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   presetChipTextActive: {
     color: colors.onAccent,
     fontWeight: fontWeight.semibold,
-  },
-  priorityChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  priorityChipActive: {
-    backgroundColor: colors.bgQuaternary,
-  },
-  priorityChipDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
   },
   intervalRow: {
     flexDirection: 'row',

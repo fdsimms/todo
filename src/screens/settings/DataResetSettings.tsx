@@ -18,7 +18,8 @@ import {
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
-import { SettingsPills, type PillOption } from './SettingsPills';
+import { SettingsSegments } from './SettingsSegments';
+import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 
 /**
@@ -33,7 +34,7 @@ function applyBackup(backup: Backup): void {
   useSettingsStore.getState().initialize();
 }
 
-const RETENTION_PILLS: PillOption<RetentionDays>[] =
+const RETENTION_SEGMENTS: SegmentOption<RetentionDays>[] =
   RETENTION_OPTIONS.map(o => ({ value: o.value, label: o.label }));
 
 export function DataResetSettings() {
@@ -250,9 +251,9 @@ export function DataResetSettings() {
             : `Completions older than ${retentionLabel(completedRetentionDays).toLowerCase()} are deleted at launch`}
           tight
         />
-        <SettingsPills
+        <SettingsSegments
           attached
-          options={RETENTION_PILLS}
+          options={RETENTION_SEGMENTS}
           selected={completedRetentionDays}
           onSelect={onPickRetention}
           accessibilityLabelFor={o => `Keep completed tasks for ${o.label}`}

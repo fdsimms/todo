@@ -8,7 +8,8 @@ import { authenticateForAppLock, getAppLockSupport, type AppLockSupport } from '
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
-import { SettingsPills, type PillOption } from './SettingsPills';
+import { SettingsSegments } from './SettingsSegments';
+import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { AI_MODEL_OPTIONS, aiFeaturesFor } from '../../utils/aiFeatures';
 
@@ -17,7 +18,7 @@ interface Props {
   scrollRef?: React.RefObject<ScrollView | null>;
 }
 
-const GRACE_OPTIONS: PillOption<number>[] =
+const GRACE_OPTIONS: SegmentOption<number>[] =
   APP_LOCK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
 
 export function PrivacyAiSettings({ scrollRef }: Props) {
@@ -130,8 +131,9 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                 : `Leaving for less than ${graceLabel(appLockGraceSeconds).toLowerCase()} comes straight back in`}
               tight
             />
-            <SettingsPills
+            <SettingsSegments
               attached
+              columns={2}
               options={GRACE_OPTIONS}
               selected={appLockGraceSeconds}
               onSelect={setAppLockGraceSeconds}
@@ -189,7 +191,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                 tight={config.enabled}
               />
               {config.enabled && (
-                <SettingsPills
+                <SettingsSegments
                   attached
                   options={AI_MODEL_OPTIONS}
                   selected={config.model}

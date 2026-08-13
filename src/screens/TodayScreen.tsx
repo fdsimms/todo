@@ -3159,17 +3159,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listFooterFixed: { flexGrow: 0, minHeight: 0 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
-  filterBar: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: spacing.md, paddingVertical: 2, gap: spacing.sm,
-  },
-  filterChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: spacing.md, paddingVertical: 7,
-    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
-  },
-  filterChipActive: { backgroundColor: colors.accent },
-  filterDot: { width: 6, height: 6, borderRadius: radius.full },
-  filterChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-  filterChipTextActive: { color: colors.text, fontWeight: fontWeight.semibold, letterSpacing: 0.1 },
 });
