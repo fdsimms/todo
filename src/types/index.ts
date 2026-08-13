@@ -1366,6 +1366,19 @@ export interface Recipe {
   // (a dough can have both: "serves 8" and "makes 2 loaves"). null means
   // nothing was given.
   recipeYield: string | null;
+  /**
+   * How many days this dish's leftovers keep, or null to fall back to
+   * LEFTOVER_KEEP_DAYS_DEFAULT. A fish pie is not a chilli, and the keep-for
+   * window is a fact about the dish rather than about one night's cooking —
+   * which is exactly why it lives here and `MealPlanEntry.recipeScale` doesn't.
+   *
+   * **A default the log sheet opens on, never a rule it enforces.** Logging is
+   * still the one place a `Leftover.keepUntil` is written, and the stepper there
+   * shows this number so what's about to be stored is what's on screen — the
+   * same reason the store keeps taking an explicit count rather than resolving
+   * the recipe itself. See leftoverKeepDaysFor.
+   */
+  leftoverKeepDays: number | null;
   // The user-attached photo — a file:// URI under the document directory
   // (src/utils/recipePhoto.ts `pickRecipeImage`), null until one's attached.
   // Deliberately not base64-in-the-row: a recipe photo is a picture the card

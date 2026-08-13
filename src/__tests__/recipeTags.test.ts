@@ -25,6 +25,7 @@ function recipe(name: string, tags: string[] = []): Recipe {
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    leftoverKeepDays: null,
     imagePath: null,
     mealType: null,
     tags,

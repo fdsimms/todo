@@ -122,6 +122,41 @@ export function clampKeepDays(days: number): number {
   return Math.max(LEFTOVER_KEEP_DAYS_MIN, Math.min(LEFTOVER_KEEP_DAYS_MAX, Math.round(days)));
 }
 
+/**
+ * How long this dish's leftovers keep — the recipe's own answer if it gave one,
+ * otherwise the standard window.
+ *
+ * The one reader of `Recipe.leftoverKeepDays`, so a recipe that carries a
+ * nonsense number (a restored backup, a hand-edited row) still opens the stepper
+ * on something it can hold — same clamp-on-read `keepDaysBetween` applies to a
+ * stored pair of dates.
+ *
+ * **It seeds; it never overrides.** What it feeds is the log sheet's stepper, so
+ * the number about to be written is the number on screen — which is also why
+ * `logLeftover` still takes an explicit count rather than resolving the recipe
+ * itself, and why editing a recipe leaves every container already in the fridge
+ * exactly where it was. A keep-until is a fact about one container, decided the
+ * day it went in.
+ */
+export function leftoverKeepDaysFor(recipe: Recipe | null | undefined): number {
+  const days = recipe?.leftoverKeepDays;
+  return days === null || days === undefined ? LEFTOVER_KEEP_DAYS_DEFAULT : clampKeepDays(days);
+}
+
+/**
+ * A keep-for count in words — "Same day", "1 day", "5 days".
+ *
+ * About a *window*, where describeKeepUntil is about a particular container's
+ * day ("Use by tomorrow"), so the two don't share a ladder: a recipe has no
+ * today to count from. "Same day" rather than "0 days" for the floor, which is
+ * the one value a bare number reads wrong.
+ */
+export function describeKeepDays(days: number): string {
+  const clamped = clampKeepDays(days);
+  if (clamped === 0) return 'Same day';
+  return `${clamped} ${clamped === 1 ? 'day' : 'days'}`;
+}
+
 /** The `keepUntil` day key for "put away at `storedAt`, keep it `days` days". */
 export function keepUntilKeyFor(storedAt: string, days: number): string {
   return dayKeyOf(addDays(new Date(storedAt), clampKeepDays(days)));

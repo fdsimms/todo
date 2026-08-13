@@ -8,6 +8,7 @@ import {
   describeFinishedWhen,
   describeFridge,
   describeFridgeHistory,
+  describeKeepDays,
   describeKeepUntil,
   describeLeftover,
   describeOutcome,
@@ -17,6 +18,7 @@ import {
   isPlannedPastKeepUntil,
   keepDaysBetween,
   keepUntilKeyFor,
+  leftoverKeepDaysFor,
   leftoverPurgeCutoff,
   liveLeftovers,
   leftoverPartsFor,
@@ -28,7 +30,7 @@ import {
 } from '../utils/leftovers';
 import { recipeMap } from '../utils/recipeComponents';
 import type { Leftover, Recipe, RecipeComponent } from '../types';
-import { LEFTOVER_KEEP_DAYS_MAX } from '../types';
+import { LEFTOVER_KEEP_DAYS_DEFAULT, LEFTOVER_KEEP_DAYS_MAX } from '../types';
 
 // leftovers reaches dateUtils for dayKeyOf, which reaches the settings store for
 // dayResetTime — which nothing here needs, since a day key is a calendar day and
@@ -74,6 +76,7 @@ function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): 
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    leftoverKeepDays: null,
     mealType: null,
     tags: [],
     ingredients: [],
@@ -147,6 +150,45 @@ describe('clampKeepDays', () => {
 
   it('rounds rather than truncating', () => {
     expect(clampKeepDays(2.6)).toBe(3);
+  });
+});
+
+describe('leftoverKeepDaysFor', () => {
+  it('uses the recipe\'s own window when it gave one', () => {
+    expect(leftoverKeepDaysFor(makeRecipe('r1', 'Mash', { leftoverKeepDays: 5 }))).toBe(5);
+  });
+
+  it('falls back to the standard window for a recipe that never said', () => {
+    expect(leftoverKeepDaysFor(makeRecipe('r1', 'Mash'))).toBe(LEFTOVER_KEEP_DAYS_DEFAULT);
+  });
+
+  it('falls back for a meal with no recipe behind it at all', () => {
+    expect(leftoverKeepDaysFor(null)).toBe(LEFTOVER_KEEP_DAYS_DEFAULT);
+    expect(leftoverKeepDaysFor(undefined)).toBe(LEFTOVER_KEEP_DAYS_DEFAULT);
+  });
+
+  it('keeps zero, which is a real answer rather than an unset one', () => {
+    expect(leftoverKeepDaysFor(makeRecipe('r1', 'Souffle', { leftoverKeepDays: 0 }))).toBe(0);
+  });
+
+  it('clamps a number a restored backup could carry', () => {
+    expect(leftoverKeepDaysFor(makeRecipe('r1', 'Mash', { leftoverKeepDays: 500 })))
+      .toBe(LEFTOVER_KEEP_DAYS_MAX);
+    expect(leftoverKeepDaysFor(makeRecipe('r1', 'Mash', { leftoverKeepDays: -2 }))).toBe(0);
+  });
+});
+
+describe('describeKeepDays', () => {
+  it('names the floor rather than saying "0 days"', () => {
+    expect(describeKeepDays(0)).toBe('Same day');
+  });
+
+  it('singularises one day', () => {
+    expect(describeKeepDays(1)).toBe('1 day');
+  });
+
+  it('counts the rest', () => {
+    expect(describeKeepDays(5)).toBe('5 days');
   });
 });
 

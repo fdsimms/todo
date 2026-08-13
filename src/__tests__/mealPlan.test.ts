@@ -68,6 +68,7 @@ function recipe(id: string, name: string): Recipe {
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    leftoverKeepDays: null,
     imagePath: null,
     mealType: null,
     tags: [],
