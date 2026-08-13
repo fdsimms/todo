@@ -28,6 +28,8 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     id: `item-${groceryNameKey(name).replace(/\s/g, '-')}`,
     name,
     nameKey: groceryNameKey(name),
+    brand: null,
+    brandStrict: false,
     aisle: OTHER_AISLE,
     quantity: null,
     note: '',
@@ -57,6 +59,7 @@ function link(itemId: string, shopId: string, purchaseCount = 1): ItemShopLink {
   return {
     itemId, shopId, purchaseCount, lastPurchasedAt: null, unavailableAt: null,
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null,
+    brand: null, brandUnavailableAt: null,
   };
 }
 
@@ -71,6 +74,8 @@ function notAt(itemId: string, shopId: string, purchaseCount = 0): ItemShopLink 
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null,
+    brand: null,
+    brandUnavailableAt: null,
   };
 }
 
@@ -371,12 +376,67 @@ describe('summarizeTrip', () => {
   });
 });
 
+describe('a brand rule', () => {
+  const STRICT = LIST.map(i =>
+    i.id === milk.id ? { ...i, brand: 'Good Culture', brandStrict: true } : i
+  );
+  const milkId = milk.id;
+  const noneHere = (l: ItemShopLink) => ({ ...l, brandUnavailableAt: '2026-03-04T00:00:00.000Z' });
+
+  it('does not credit a store the user has ruled out on brand', () => {
+    const links = [noneHere(link(milkId, tj.id, 3))];
+    const plan = planTrip(STRICT, links, SHOPS);
+    const entry = plan.coverage.find(c => c.shop.id === tj.id)!;
+
+    expect(entry.itemIds).not.toContain(milkId);
+    expect(entry.withoutBrandItemIds).toEqual([milkId]);
+    // The store still counts as one the app knows something about: it has the
+    // item, which is the opposite of the not-stocked case.
+    expect(entry.recordedItems).toBe(1);
+  });
+
+  // A store carries several brands, so one past purchase of another is not a
+  // reason to route around it.
+  it('still credits a store merely observed with a different brand', () => {
+    const links = [{ ...link(milkId, tj.id, 3), brand: 'Lucerne' }];
+    const entry = planTrip(STRICT, links, SHOPS).coverage.find(c => c.shop.id === tj.id)!;
+
+    expect(entry.itemIds).toContain(milkId);
+    expect(entry.withoutBrandItemIds).toEqual([]);
+  });
+
+  it('reports it as its own bucket, not as missing', () => {
+    const links = [noneHere(link(milkId, tj.id, 3))];
+    const summary = summarizeTrip([tj.id], planTrip(STRICT, links, SHOPS));
+
+    expect(summary.withoutBrand).toEqual([milkId]);
+    expect(summary.missing).not.toContain(milkId);
+    expect(summary.covered).not.toContain(milkId);
+  });
+
+  it('lets a not-stocked claim take precedence, so an item lands in one bucket', () => {
+    const links = [noneHere(notAt(milkId, tj.id))];
+    const summary = summarizeTrip([tj.id], planTrip(STRICT, links, SHOPS));
+
+    expect(summary.missing).toEqual([milkId]);
+    expect(summary.withoutBrand).toEqual([]);
+  });
+
+  it('sends you to a store you haven’t ruled out', () => {
+    const links = [noneHere(link(milkId, tj.id, 3)), link(milkId, union.id, 1)];
+    const summary = summarizeTrip([tj.id], planTrip(STRICT, links, SHOPS));
+
+    expect(summary.suggestion.map(s => s.shop.id)).toContain(union.id);
+  });
+});
+
 describe('describeShopCoverage', () => {
   function entry(known: number, recordedItems = 20, absent = 0): ShopCoverage {
     return {
       shop: tj,
       itemIds: Array.from({ length: known }, (_, i) => `k${i}`),
       unavailableItemIds: Array.from({ length: absent }, (_, i) => `n${i}`),
+      withoutBrandItemIds: [],
       assertedCount: 0,
       observedPurchases: 0,
       recordedItems,
@@ -438,6 +498,7 @@ describe('describeTripSuggestion', () => {
       shop,
       itemIds,
       unavailableItemIds: [],
+      withoutBrandItemIds: [],
       assertedCount: 0,
       observedPurchases: 0,
       recordedItems: itemIds.length,

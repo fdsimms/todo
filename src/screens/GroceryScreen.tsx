@@ -206,7 +206,7 @@ export function GroceryScreen() {
     if (!activeTripShop) return out;
     for (const item of items) {
       if (!item.onList) continue;
-      const marker = tripMarkerFor(item.id, itemShops, shops, activeTripShop);
+      const marker = tripMarkerFor(item, itemShops, shops, activeTripShop);
       if (marker) out.set(item.id, describeTripMarker(marker));
     }
     return out;

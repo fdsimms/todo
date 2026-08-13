@@ -124,6 +124,8 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
   return {
     id: `id-${++seq}`,
     nameKey: groceryNameKey(name),
+    brand: null,
+    brandStrict: false,
     aisle: OTHER_AISLE,
     quantity: null,
     note: '',
@@ -262,6 +264,26 @@ describe('addByName', () => {
     // not an instruction to blank what's already on the row.
     const again = useGroceryStore.getState().addByName('limes');
     expect(again.note).toBe('for margs');
+  });
+
+  // The whole point of keeping the brand out of the name: re-adding the item —
+  // by hand, from Buy again, or from a recipe that calls for the plain
+  // ingredient — must not lose which one the user actually wants.
+  it('keeps an established brand across a re-add', () => {
+    const item = useGroceryStore.getState().addByName('cottage cheese');
+    useGroceryStore.getState().setBrand(item.id, 'Good Culture');
+    useGroceryStore.getState().removeFromList(item.id);
+
+    const again = useGroceryStore.getState().addByName('cottage cheese');
+    expect(again.id).toBe(item.id);
+    expect(again.brand).toBe('Good Culture');
+  });
+
+  it('gives a genuinely new row no brand', () => {
+    // Nothing parses one out of typed text — "Good Culture cottage cheese"
+    // typed into the add field is a name, not a name plus a brand.
+    expect(useGroceryStore.getState().addByName('cottage cheese').brand).toBeNull();
+    expect(useGroceryStore.getState().addByName('Good Culture cottage cheese').brand).toBeNull();
   });
 
   it('inserts a genuinely new item, filed by the lexicon', () => {
@@ -1050,7 +1072,7 @@ describe('shops', () => {
   it('renameShop leaves every link alone — they point at the id', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
-    const links = [{ itemId: milk.id, shopId: costco.id, purchaseCount: 3, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null }];
+    const links = [{ itemId: milk.id, shopId: costco.id, purchaseCount: 3, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null, brandUnavailableAt: null }];
     seed([milk], { shops: [costco], itemShops: links });
 
     expect(useGroceryStore.getState().renameShop(costco.id, 'Costco Wholesale')).toBe(true);
@@ -1105,8 +1127,8 @@ describe('shops', () => {
     seed([milk], {
       shops: [costco, safeway],
       itemShops: [
-        { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
-        { itemId: milk.id, shopId: safeway.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+        { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+        { itemId: milk.id, shopId: safeway.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
       ],
     });
 
@@ -1137,7 +1159,7 @@ describe('shops', () => {
     useGroceryStore.getState().linkItemShop(milk.id, costco.id);
 
     expect(useGroceryStore.getState().itemShops).toEqual([
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ]);
     expect(dbSetItemShopLink).toHaveBeenCalledTimes(1);
   });
@@ -1146,7 +1168,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().linkItemShop(milk.id, costco.id);
@@ -1201,8 +1223,8 @@ describe('shops', () => {
     useGroceryStore.getState().linkItemShopMany([milk.id, bread.id], costco.id);
 
     expect(useGroceryStore.getState().itemShops).toEqual([
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
-      { itemId: bread.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: bread.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ]);
   });
 
@@ -1211,7 +1233,7 @@ describe('shops', () => {
     const milk = makeItem({ name: 'Milk' });
     const bread = makeItem({ name: 'Bread' });
     seed([milk, bread], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().linkItemShopMany([milk.id, bread.id], costco.id);
@@ -1249,7 +1271,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
     const before = useGroceryStore.getState().itemShops;
 
@@ -1279,7 +1301,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 6, lastPurchasedAt: '2026-05-01T00:00:00.000Z', unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 6, lastPurchasedAt: '2026-05-01T00:00:00.000Z', unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().markItemsUnavailable([milk.id], costco.id);
@@ -1306,7 +1328,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
     const before = useGroceryStore.getState().itemShops;
 
@@ -1321,7 +1343,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().clearItemUnavailable(milk.id, costco.id);
@@ -1336,13 +1358,13 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().clearItemUnavailable(milk.id, costco.id);
 
     expect(useGroceryStore.getState().itemShops).toEqual([
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ]);
     expect(dbDeleteItemShopLink).not.toHaveBeenCalled();
   });
@@ -1351,13 +1373,13 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().linkItemShopMany([milk.id], costco.id);
 
     expect(useGroceryStore.getState().itemShops).toEqual([
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ]);
   });
 
@@ -1366,8 +1388,8 @@ describe('shops', () => {
     const milk = makeItem({ name: 'Milk' });
     const eggs = makeItem({ name: 'Eggs' });
     seed([milk, eggs], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
-      { itemId: eggs.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: eggs.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().unlinkItemShop(milk.id, costco.id);
@@ -1379,7 +1401,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().deleteItem(milk.id);
@@ -1412,6 +1434,8 @@ describe('prices by hand', () => {
     itemId,
     shopId,
     purchaseCount: 1,
+    brand: null,
+    brandUnavailableAt: null,
     lastPurchasedAt: null,
     unavailableAt: null,
     lastPriceMinor: null,
@@ -1522,11 +1546,63 @@ describe('finishShopping with a store', () => {
     expect(useGroceryStore.getState().lastShopId).toBe(costco.id);
   });
 
+  // The automatic half of the capture. Sound *because* the item is strict:
+  // strict means the user would not have bought a substitute, so a purchase
+  // here really is evidence this store had their brand.
+  it('records the brand on the link when the item insists on one', () => {
+    const costco = makeShop('Costco');
+    const cc = makeItem({
+      name: 'Cottage cheese', onList: true, checked: true,
+      brand: 'Good Culture', brandStrict: true,
+    });
+    seed([cc], { shops: [costco] });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([cc.id]);
+
+    useGroceryStore.getState().finishShopping(costco.id);
+
+    expect(useGroceryStore.getState().itemShops[0].brand).toBe('Good Culture');
+  });
+
+  // On a row with no rule the same purchase says nothing about which one came
+  // home — stamping it would manufacture the evidence the feature waits for.
+  it('records nothing when the item merely names a brand', () => {
+    const costco = makeShop('Costco');
+    const cc = makeItem({
+      name: 'Cottage cheese', onList: true, checked: true,
+      brand: 'Good Culture', brandStrict: false,
+    });
+    seed([cc], { shops: [costco] });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([cc.id]);
+
+    useGroceryStore.getState().finishShopping(costco.id);
+
+    expect(useGroceryStore.getState().itemShops[0].brand).toBeNull();
+  });
+
+  it('clears "they haven’t got yours" — a purchase refutes it outright', () => {
+    const costco = makeShop('Costco');
+    const cc = makeItem({
+      name: 'Cottage cheese', onList: true, checked: true,
+      brand: 'Good Culture', brandStrict: true,
+    });
+    seed([cc], { shops: [costco], itemShops: [
+      { itemId: cc.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null,
+        unavailableAt: null, lastPriceMinor: null, lastPricedAt: null,
+        lastPriceQuantity: null, brand: 'Lucerne',
+        brandUnavailableAt: '2026-03-04T00:00:00.000Z' },
+    ] });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([cc.id]);
+
+    useGroceryStore.getState().finishShopping(costco.id);
+
+    expect(useGroceryStore.getState().itemShops[0].brand).toBe('Good Culture');
+  });
+
   it('bumps an existing link on a repeat trip instead of adding a second', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true, purchaseCount: 2 });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: '2026-01-01T00:00:00.000Z', unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: '2026-01-01T00:00:00.000Z', unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
@@ -1542,7 +1618,7 @@ describe('finishShopping with a store', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 3, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 3, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
@@ -1581,7 +1657,8 @@ describe('finishShopping with a store', () => {
     });
     seed([milk], { shops: [costco], itemShops: [
       { itemId: milk.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null,
-        lastPriceMinor: 399, lastPricedAt: '2026-01-01T00:00:00.000Z', lastPriceQuantity: '1 gal' },
+        lastPriceMinor: 399, lastPricedAt: '2026-01-01T00:00:00.000Z', lastPriceQuantity: '1 gal',
+        brand: null, brandUnavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
@@ -1609,7 +1686,7 @@ describe('finishShopping with a store', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
@@ -1623,7 +1700,7 @@ describe('finishShopping with a store', () => {
     const safeway = makeShop('Safeway');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
     seed([milk], { shops: [costco, safeway], itemShops: [
-      { itemId: milk.id, shopId: safeway.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null },
+      { itemId: milk.id, shopId: safeway.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
@@ -1981,6 +2058,181 @@ describe('renameItem keeps recipe ingredients in step', () => {
     useGroceryStore.getState().renameItem(item.id, 'Sourdough loaf');
 
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('setBrand', () => {
+  it('writes the brand and persists it, leaving the name key alone', () => {
+    const cc = makeItem({ name: 'Cottage cheese' });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrand(cc.id, 'Good Culture');
+
+    const [saved] = useGroceryStore.getState().items;
+    expect(saved.brand).toBe('Good Culture');
+    expect(saved.nameKey).toBe(cc.nameKey);
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: cc.id, brand: 'Good Culture' })
+    );
+  });
+
+  // An emptied field is how the preference is taken back, and it has to land as
+  // null: '' would render a blank caption line on the row and read to every
+  // `!!item.brand` check as no brand anyway — two spellings of one state.
+  it('clears an emptied or blank field back to null', () => {
+    const cc = makeItem({ name: 'Cottage cheese', brand: 'Good Culture' });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrand(cc.id, '   ');
+
+    expect(useGroceryStore.getState().items[0].brand).toBeNull();
+  });
+
+  it('trims what the user typed', () => {
+    const cc = makeItem({ name: 'Cottage cheese' });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrand(cc.id, '  Good Culture ');
+
+    expect(useGroceryStore.getState().items[0].brand).toBe('Good Culture');
+  });
+
+  it('shrugs off an id that no longer resolves', () => {
+    seed([makeItem({ name: 'Milk' })]);
+
+    expect(() => useGroceryStore.getState().setBrand('gone', 'Oatly')).not.toThrow();
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
+  // Same promotion linkItemShop and addToPantry perform: a preference has to
+  // outlive the list it was set from, and a provisional row is deleted when it
+  // leaves the list rather than parked.
+  it('promotes a provisional row so the preference survives leaving the list', () => {
+    const cc = makeItem({ name: 'Cottage cheese', onList: true, inCatalog: false });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrand(cc.id, 'Good Culture');
+
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+  });
+
+  it('does not promote a provisional row when the brand is being cleared', () => {
+    const cc = makeItem({ name: 'Cottage cheese', onList: true, inCatalog: false });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrand(cc.id, '');
+
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(false);
+  });
+});
+
+describe('setBrandStrict', () => {
+  it('writes the flag and persists it', () => {
+    const cc = makeItem({ name: 'Cottage cheese', brand: 'Good Culture' });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrandStrict(cc.id, true);
+
+    expect(useGroceryStore.getState().items[0].brandStrict).toBe(true);
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: cc.id, brandStrict: true })
+    );
+  });
+
+  it('promotes a provisional row when switching on, so the rule outlives the list', () => {
+    const cc = makeItem({ name: 'Cottage cheese', brand: 'Good Culture', onList: true, inCatalog: false });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrandStrict(cc.id, true);
+
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+  });
+
+  it('never demotes when switching off', () => {
+    const cc = makeItem({ name: 'Cottage cheese', brand: 'Good Culture', brandStrict: true });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrandStrict(cc.id, false);
+
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+  });
+});
+
+describe('setBrandUnavailable', () => {
+  it('creates the link when there is none — the claim is about a store that has it', () => {
+    const cc = makeItem({ name: 'Cottage cheese', brand: 'Good Culture', brandStrict: true });
+    const safeway = makeShop('Safeway');
+    seed([cc], { shops: [safeway] });
+
+    useGroceryStore.getState().setBrandUnavailable(cc.id, safeway.id, true);
+
+    const [linkRow] = useGroceryStore.getState().itemShops;
+    expect(linkRow).toMatchObject({ itemId: cc.id, shopId: safeway.id, purchaseCount: 0 });
+    expect(linkRow.brandUnavailableAt).not.toBeNull();
+    // Not the item-level negative — this store has the item.
+    expect(linkRow.unavailableAt).toBeNull();
+  });
+
+  it('marks an existing link without touching its history', () => {
+    const cc = makeItem({ name: 'Cottage cheese', brand: 'Good Culture', brandStrict: true });
+    const safeway = makeShop('Safeway');
+    seed([cc], {
+      shops: [safeway],
+      itemShops: [{
+        itemId: cc.id, shopId: safeway.id, purchaseCount: 6,
+        lastPurchasedAt: '2026-01-01T00:00:00.000Z', unavailableAt: null,
+        lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null,
+        brand: 'Lucerne', brandUnavailableAt: null,
+      }],
+    });
+
+    useGroceryStore.getState().setBrandUnavailable(cc.id, safeway.id, true);
+
+    expect(useGroceryStore.getState().itemShops[0]).toMatchObject({
+      purchaseCount: 6, lastPurchasedAt: '2026-01-01T00:00:00.000Z', brand: 'Lucerne',
+    });
+    expect(useGroceryStore.getState().itemShops[0].brandUnavailableAt).not.toBeNull();
+  });
+
+  // Taking it back must not leave a bare purchaseCount-0 row behind: that row
+  // asserts "I get this here", a different and stronger claim than the one
+  // being withdrawn. Same call clearItemUnavailable makes.
+  it('removes a link that was only ever the claim', () => {
+    const cc = makeItem({ name: 'Cottage cheese', brand: 'Good Culture', brandStrict: true });
+    const safeway = makeShop('Safeway');
+    seed([cc], { shops: [safeway] });
+    useGroceryStore.getState().setBrandUnavailable(cc.id, safeway.id, true);
+
+    useGroceryStore.getState().setBrandUnavailable(cc.id, safeway.id, false);
+
+    expect(useGroceryStore.getState().itemShops).toEqual([]);
+  });
+
+  it('keeps a link that carries purchases when the claim is withdrawn', () => {
+    const cc = makeItem({ name: 'Cottage cheese', brand: 'Good Culture', brandStrict: true });
+    const safeway = makeShop('Safeway');
+    seed([cc], {
+      shops: [safeway],
+      itemShops: [{
+        itemId: cc.id, shopId: safeway.id, purchaseCount: 3, lastPurchasedAt: null,
+        unavailableAt: null, lastPriceMinor: null, lastPricedAt: null,
+        lastPriceQuantity: null, brand: null,
+        brandUnavailableAt: '2026-03-04T00:00:00.000Z',
+      }],
+    });
+
+    useGroceryStore.getState().setBrandUnavailable(cc.id, safeway.id, false);
+
+    expect(useGroceryStore.getState().itemShops[0]).toMatchObject({ purchaseCount: 3 });
+    expect(useGroceryStore.getState().itemShops[0].brandUnavailableAt).toBeNull();
+  });
+
+  it('shrugs off an unknown item or shop', () => {
+    const cc = makeItem({ name: 'Cottage cheese' });
+    seed([cc], { shops: [] });
+
+    expect(() => useGroceryStore.getState().setBrandUnavailable(cc.id, 'gone', true)).not.toThrow();
+    expect(useGroceryStore.getState().itemShops).toEqual([]);
   });
 });
 

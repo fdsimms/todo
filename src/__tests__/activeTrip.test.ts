@@ -6,7 +6,7 @@ import {
   describeTripMarker,
 } from '../utils/activeTrip';
 import { groceryNameKey } from '../utils/groceryParse';
-import type { ItemShopLink, Shop } from '../types';
+import type { GroceryItem, ItemShopLink, Shop } from '../types';
 
 function makeShop(name: string, overrides: Partial<Shop> = {}): Shop {
   return {
@@ -32,6 +32,45 @@ function link(
     purchaseCount,
     lastPurchasedAt: purchaseCount > 0 ? '2026-08-01T00:00:00.000Z' : null,
     unavailableAt: null,
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
+    brand: null,
+    brandUnavailableAt: null,
+    ...overrides,
+  };
+}
+
+/**
+ * The marker rules are a fact about the item as well as the link — a brand rule
+ * lives on the row — so the reads take one. Plain and unbranded unless a test
+ * says otherwise, which is the shape every case here predating brands wants.
+ */
+function item(id: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
+  return {
+    id,
+    name: id,
+    nameKey: id,
+    brand: null,
+    brandStrict: false,
+    aisle: 'Other',
+    quantity: null,
+    note: '',
+    onList: true,
+    checked: false,
+    inCatalog: true,
+    sortOrder: 0,
+    purchaseCount: 0,
+    lastAddedAt: null,
+    lastPurchasedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    onHandUntil: null,
+    sourceRecipeId: null,
+    sourceRecipeTitle: null,
+    choiceGroup: null,
+    isStaple: false,
+    expiresAt: null,
+    useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null,
@@ -110,22 +149,22 @@ describe('tripMarkerFor', () => {
 
   it('says nothing about an item bought at this store', () => {
     const links = [link('milk', safeway.id, 4)];
-    expect(tripMarkerFor('milk', links, shops, safeway)).toBeNull();
+    expect(tripMarkerFor(item('milk'), links, shops, safeway)).toBeNull();
   });
 
   it('says nothing about an item merely asserted to be at this store', () => {
     const links = [link('milk', safeway.id, 0)];
-    expect(tripMarkerFor('milk', links, shops, safeway)).toBeNull();
+    expect(tripMarkerFor(item('milk'), links, shops, safeway)).toBeNull();
   });
 
   // Ignorance is not evidence — the reason most of a first-ever trip is silent.
   it('says nothing about an item nothing is known about', () => {
-    expect(tripMarkerFor('tahini', [], shops, safeway)).toBeNull();
+    expect(tripMarkerFor(item('tahini'), [], shops, safeway)).toBeNull();
   });
 
   it('reports a store the user marked as not stocking it', () => {
     const links = [link('tahini', safeway.id, 0, { unavailableAt: '2026-08-01T00:00:00.000Z' })];
-    expect(tripMarkerFor('tahini', links, shops, safeway)).toEqual({
+    expect(tripMarkerFor(item('tahini'), links, shops, safeway)).toEqual({
       kind: 'unavailable',
       shop: safeway,
     });
@@ -134,7 +173,7 @@ describe('tripMarkerFor', () => {
   // The negative is the current state and the count is history.
   it('reports unavailable even when it was bought here before', () => {
     const links = [link('tahini', safeway.id, 11, { unavailableAt: '2026-08-01T00:00:00.000Z' })];
-    expect(tripMarkerFor('tahini', links, shops, safeway)).toEqual({
+    expect(tripMarkerFor(item('tahini'), links, shops, safeway)).toEqual({
       kind: 'unavailable',
       shop: safeway,
     });
@@ -142,7 +181,7 @@ describe('tripMarkerFor', () => {
 
   it('reports the one other store on record', () => {
     const links = [link('tahini', traderJoes.id, 3)];
-    expect(tripMarkerFor('tahini', links, shops, safeway)).toEqual({
+    expect(tripMarkerFor(item('tahini'), links, shops, safeway)).toEqual({
       kind: 'only',
       shop: traderJoes,
     });
@@ -150,7 +189,7 @@ describe('tripMarkerFor', () => {
 
   it('counts a hand-assertion as "only"', () => {
     const links = [link('tahini', traderJoes.id, 0)];
-    expect(tripMarkerFor('tahini', links, shops, safeway)).toEqual({
+    expect(tripMarkerFor(item('tahini'), links, shops, safeway)).toEqual({
       kind: 'only',
       shop: traderJoes,
     });
@@ -158,7 +197,7 @@ describe('tripMarkerFor', () => {
 
   it('falls back to "usually" when several other stores are on record', () => {
     const links = [link('tahini', traderJoes.id, 5), link('tahini', costco.id, 1)];
-    expect(tripMarkerFor('tahini', links, shops, safeway)).toEqual({
+    expect(tripMarkerFor(item('tahini'), links, shops, safeway)).toEqual({
       kind: 'usually',
       shop: traderJoes,
     });
@@ -167,7 +206,7 @@ describe('tripMarkerFor', () => {
   // "usually" needs an observation; an assertion alone can't invent a habit.
   it('says nothing when the other stores are all assertions and there are several', () => {
     const links = [link('tahini', traderJoes.id, 0), link('tahini', costco.id, 0)];
-    expect(tripMarkerFor('tahini', links, shops, safeway)).toBeNull();
+    expect(tripMarkerFor(item('tahini'), links, shops, safeway)).toBeNull();
   });
 
   it('ignores a store marked unavailable when naming where else to go', () => {
@@ -175,7 +214,7 @@ describe('tripMarkerFor', () => {
       link('tahini', traderJoes.id, 3),
       link('tahini', costco.id, 9, { unavailableAt: '2026-08-01T00:00:00.000Z' }),
     ];
-    expect(tripMarkerFor('tahini', links, shops, safeway)).toEqual({
+    expect(tripMarkerFor(item('tahini'), links, shops, safeway)).toEqual({
       kind: 'only',
       shop: traderJoes,
     });
@@ -184,17 +223,67 @@ describe('tripMarkerFor', () => {
   it('never points at a store excluded from suggestions', () => {
     const amazon = makeShop('Amazon', { excludeFromSuggestions: true });
     const links = [link('tahini', amazon.id, 6)];
-    expect(tripMarkerFor('tahini', links, [...shops, amazon], safeway)).toBeNull();
+    expect(tripMarkerFor(item('tahini'), links, [...shops, amazon], safeway)).toBeNull();
   });
 
   it('drops a link whose shop no longer exists', () => {
     const links = [link('tahini', 'shop-gone', 3)];
-    expect(tripMarkerFor('tahini', links, shops, safeway)).toBeNull();
+    expect(tripMarkerFor(item('tahini'), links, shops, safeway)).toBeNull();
   });
 
   it('is silent about other items on the list', () => {
     const links = [link('tahini', traderJoes.id, 3)];
-    expect(tripMarkerFor('milk', links, shops, safeway)).toBeNull();
+    expect(tripMarkerFor(item('milk'), links, shops, safeway)).toBeNull();
+  });
+  describe('a brand rule', () => {
+    const strict = item('milk', { brand: 'Good Culture', brandStrict: true });
+    const NO_BRAND = { brandUnavailableAt: '2026-08-01T00:00:00.000Z' };
+
+    // The case the feature exists for: this store has a link, so before brands
+    // it said nothing at all — which is exactly the silence being complained
+    // about while standing in front of the wrong tub.
+    it('speaks up about a store the user has said hasn’t got their brand', () => {
+      const links = [link('milk', safeway.id, 3, NO_BRAND)];
+      expect(tripMarkerFor(strict, links, shops, safeway)).toEqual({
+        kind: 'withoutBrand',
+        shop: safeway,
+        wantedBrand: 'Good Culture',
+      });
+    });
+
+    // A shelf holds several brands, so getting Lucerne here once says nothing
+    // about whether Good Culture is beside it. Silence is the honest answer.
+    it('says nothing about a store merely observed with a different brand', () => {
+      const links = [link('milk', safeway.id, 3, { brand: 'Lucerne' })];
+      expect(tripMarkerFor(strict, links, shops, safeway)).toBeNull();
+    });
+
+    it('says nothing when this store’s brand was never recorded', () => {
+      expect(tripMarkerFor(strict, [link('milk', safeway.id, 3)], shops, safeway)).toBeNull();
+    });
+
+    it('says nothing at all when the item is not strict', () => {
+      const loose = item('milk', { brand: 'Good Culture', brandStrict: false });
+      const links = [link('milk', safeway.id, 3, NO_BRAND)];
+      expect(tripMarkerFor(loose, links, shops, safeway)).toBeNull();
+    });
+
+    it('lets "they do not stock it" outrank it — the stronger claim wins', () => {
+      const links = [
+        link('milk', safeway.id, 3, { ...NO_BRAND, unavailableAt: '2026-03-04T00:00:00.000Z' }),
+      ];
+      expect(tripMarkerFor(strict, links, shops, safeway)?.kind).toBe('unavailable');
+    });
+
+    // Marked stores are dropped from every "where can I get this" read, so
+    // "only at" now means "only at, of the places you haven't ruled out".
+    it('reads "only at" past a store that has been ruled out', () => {
+      const links = [
+        link('milk', costco.id, 2),
+        link('milk', traderJoes.id, 4, NO_BRAND),
+      ];
+      expect(tripMarkerFor(strict, links, shops, safeway)).toEqual({ kind: 'only', shop: costco });
+    });
   });
 });
 
@@ -203,5 +292,13 @@ describe('describeTripMarker', () => {
     expect(describeTripMarker({ kind: 'unavailable', shop: safeway })).toBe('Not at Safeway');
     expect(describeTripMarker({ kind: 'only', shop: traderJoes })).toBe("Only at Trader Joe's");
     expect(describeTripMarker({ kind: 'usually', shop: traderJoes })).toBe("Usually Trader Joe's");
+  });
+
+  // Names the brand and not the store: you're standing in the shop. And not
+  // what it *does* carry either — the app only knows one past purchase.
+  it('names the brand you wanted, not the shop you are in', () => {
+    expect(
+      describeTripMarker({ kind: 'withoutBrand', shop: safeway, wantedBrand: 'Good Culture' })
+    ).toBe('No Good Culture here');
   });
 });

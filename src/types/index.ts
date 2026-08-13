@@ -796,6 +796,42 @@ export interface GroceryItem {
   // Normalised identity, from groceryNameKey(). UNIQUE in SQLite, which is
   // where the no-duplicates guarantee actually lives.
   nameKey: string;
+  // Which one to reach for — "Good Culture", "Oatly". A clause *beside* the
+  // name and deliberately never part of it, exactly like RecipeIngredient's
+  // `prep` and `purpose`: nameKey is the bridge to recipes, Buy again, the
+  // pantry and the aisle lexicon, so folding a brand into the name mints a
+  // second catalog row that can never match "cottage cheese" the ingredient,
+  // and splits one item's purchase history, pantry state and expiry in two.
+  //
+  // **Nothing parses this out of typed text, and that's the decision, not a
+  // gap.** `prep` and `purpose` are split off marked-up clauses — a comma, a
+  // trailing "for X" — while a brand has no marker at all, so telling "Good
+  // Culture cottage cheese" from "sliced almonds" means knowing what the
+  // words mean. That's the guess splitPrep already refuses to make. It's set
+  // by hand on GroceryItemSheet, and null (the common case) means the user
+  // has no opinion about which one.
+  //
+  // On its own this says what to grab, not where to get it — see brandStrict
+  // below for the half that reaches store availability, and ItemShopLink.brand
+  // for the evidence it reads.
+  brand: string | null;
+  // "Only this brand" — whether a store has to be on record with *this* brand
+  // to count as having the item at all (shopsForItem and everything built on
+  // it, including trip coverage and the shelf captions).
+  //
+  // **Default false, and that's what makes this safe to ship.** A brand set
+  // before this existed, or set as a note to self, is a preference and not a
+  // rule; turning every one of them into a filter would silently rewrite which
+  // stores the app suggests. Nothing infers it — the user says so.
+  //
+  // It is deliberately a fact about the *item*, not about the occasion. The
+  // honest version of "the brand doesn't matter when it's for a recipe" needs
+  // to know why a row is on the list this week, and the only signal available
+  // (sourceRecipeId) is stamped solely on rows addFromPlan genuinely creates —
+  // so a catalog staple re-added for a recipe carries none, which is exactly
+  // the case it would have to get right. Guessing there would drop stores on
+  // evidence the app doesn't have; this is a switch instead.
+  brandStrict: boolean;
   // Never null, unlike Task.category: an unrecognised item is *in* the Other
   // aisle rather than aisle-less, which keeps the null branch out of every
   // grouping and sorting path.
@@ -956,6 +992,9 @@ export const GROCERY_EXPIRY_DAYS_MAX = 365;
 // title, and a long one wrecks the row layout at the bigger grocery font size.
 export const GROCERY_NAME_MAX_LENGTH = 80;
 export const GROCERY_QUANTITY_MAX_LENGTH = 24;
+// Shorter than a name on purpose: this is a brand, not a second name for the
+// thing. Matches SHOP_NAME_MAX_LENGTH, which is the same kind of proper noun.
+export const GROCERY_BRAND_MAX_LENGTH = 40;
 
 // A place you shop. "Store" everywhere the user can read; `Shop` in code,
 // because `store` is already Zustand's word here (useGroceryStore,
@@ -1032,6 +1071,47 @@ export interface ItemShopLink {
   lastPriceMinor: number | null;
   lastPricedAt: string | null;
   lastPriceQuantity: string | null;
+  /**
+   * The brand you last got here — "Good Culture" at Costco, "Lucerne" at
+   * Safeway. An **observation**, paired with lastPurchasedAt above, and
+   * deliberately not a claim about what the store stocks.
+   *
+   * **It must never filter anything, because a store carries several brands of
+   * a thing.** Having got Lucerne at Safeway once is not evidence that Safeway
+   * hasn't got Good Culture — it says nothing at all about the rest of the
+   * shelf. Reading a mismatch here as "they haven't got yours" is an absence
+   * inferred from something that isn't evidence of absence, which is the error
+   * shoppingTrip.ts removed `likelyItemIds` to be rid of. The only thing that
+   * drops a store is brandUnavailableAt below, which the user asserts.
+   *
+   * A *match* is the safe direction and is all this is read for: if the last
+   * thing you got here was your brand, this store demonstrably had it.
+   *
+   * Written by finishShopping, and only for a strict item — on a row with no
+   * brand rule there is nothing to record, since the app has no idea which one
+   * came home.
+   */
+  brand: string | null;
+  /**
+   * "They haven't got the brand I want" — stamped when the user says so.
+   *
+   * The brand-level twin of unavailableAt, and a genuinely different claim: the
+   * store stocks the item, it just hasn't got yours. Every "where can I get
+   * this" read drops such a link when the item is strict, and **this is the
+   * only thing that does** — see brand above for why an observed mismatch
+   * can't.
+   *
+   * A date rather than a flag, for exactly unavailableAt's reasons: stock
+   * changes, so the claim ages and says *when* you looked. Null is unknown, and
+   * unknown always counts — the app not having watched you check is ignorance.
+   * A purchase clears it automatically, since buying your brand here refutes it
+   * outright.
+   *
+   * Read only while the item is strict. A brand nobody has made a rule of is a
+   * preference, and dropping a store over a preference is not something the
+   * user asked for.
+   */
+  brandUnavailableAt: string | null;
 }
 
 /**

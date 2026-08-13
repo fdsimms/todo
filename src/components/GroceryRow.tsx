@@ -120,6 +120,10 @@ export const GroceryRow = React.memo(function GroceryRow({
 
   const label = [
     item.name,
+    // Before the quantity, matching the caption order on screen — and read out
+    // at all, since a row whose whole point is "this brand" would otherwise
+    // announce identically to one with no preference set.
+    item.brand ? `, ${item.brand}` : '',
     shownQuantity ? `, ${shownQuantity}` : '',
     item.checked ? ', in cart' : '',
   ].join('');
@@ -214,6 +218,17 @@ export const GroceryRow = React.memo(function GroceryRow({
               numberOfLines={1}
             >
               {item.name}
+            </Text>
+          )}
+          {/* First and never suppressed, because it is the one caption that
+              changes which box leaves the shelf. Deliberately its own line
+              rather than trailing the name: the name is numberOfLines={1} and
+              flexes against the quantity pill, so on anything longer than
+              "cottage cheese" an inline brand is the first thing truncated
+              away — losing exactly the word the row was captioned for. */}
+          {!!item.brand && (
+            <Text style={styles.brand} numberOfLines={1}>
+              {item.brand}
             </Text>
           )}
           {!!item.note && (
@@ -404,6 +419,22 @@ function makeStyles(colors: Colors) {
       // Matches the Text row's box so swapping in the input doesn't nudge
       // the row's height — see the "never lineHeight on TextInput" rule.
       height: font.lg + 6,
+    },
+    // The fourth caption treatment, and the loudest of them — semibold on
+    // textSecondary, where `alternatives` is medium on the same colour and both
+    // greys below are tertiary. The ranking is by how much the line changes
+    // what you pick up: the brand decides which tub, an either/or decides which
+    // of two items, the store marker sends you elsewhere, a note qualifies.
+    //
+    // Semibold at font.sm is not new here — it's what qtyText already uses on
+    // this row, so this reads as the row's existing emphasis weight rather than
+    // a fifth thing. No accent tint: a coloured caption on every branded row
+    // would make a list of preferences look like a list of warnings.
+    brand: {
+      fontSize: font.sm,
+      fontWeight: fontWeight.semibold,
+      color: colors.textSecondary,
+      marginTop: 1,
     },
     // Upright and a step brighter than the note above it, same treatment the
     // recipe screen gives an either/or ingredient — this is a fact about what

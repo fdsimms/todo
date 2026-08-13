@@ -207,6 +207,25 @@ interface GroceryStore {
   renameItem: (id: string, name: string) => boolean;
   setNote: (id: string, note: string) => void;
   /**
+   * Which one to reach for — "Good Culture". A dumb setter like setNote: the
+   * empty string clears it back to "no opinion" rather than storing a blank,
+   * so the field and the pill state can't disagree about what null means.
+   */
+  setBrand: (id: string, brand: string) => void;
+  /**
+   * "Only this brand" — whether the brand filters store availability or is just
+   * shown on the row. See GroceryItem.brandStrict.
+   */
+  setBrandStrict: (id: string, strict: boolean) => void;
+  /**
+   * "They haven't got the brand I want here", and taking it back. The only
+   * claim a brand rule filters on — see ItemShopLink.brandUnavailableAt.
+   *
+   * Creates the link if there isn't one: the claim is about a store that stocks
+   * the item, so it would be strange to require linking it first.
+   */
+  setBrandUnavailable: (itemId: string, shopId: string, unavailable: boolean) => void;
+  /**
    * The pantry override — "Got it" / "Out of it" on GroceryItemSheet. A dumb
    * setter, same as setQuantity/setNote: the caller decides the value
    * (defaultOnHandUntil for "Got it", a past timestamp for "Out of it", or
@@ -456,6 +475,14 @@ function newItemRow(fields: {
     id: generateId(),
     name: fields.name,
     nameKey: fields.nameKey,
+    // Never seeded from a typed line — nothing parses a brand out of text (see
+    // GroceryItem.brand). A fresh row has no opinion until the user sets one,
+    // and addByName's `existing` branch carries an established brand through on
+    // every later re-add because it spreads the row it found.
+    brand: null,
+    // A preference is not a rule — see GroceryItem.brandStrict. Nothing infers
+    // this, including from a brand being set.
+    brandStrict: false,
     aisle: fields.aisle,
     quantity: fields.quantity ?? null,
     note: fields.note ?? '',
@@ -1008,6 +1035,46 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
+  setBrand(id, brand) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    // Trimmed to null rather than '', unlike note above: note is a string
+    // whose empty value is "nothing written", while brand is nullable and
+    // every reader tests it for null. Storing '' would render an empty
+    // caption line and read as a brand nobody can see.
+    const next = brand.trim() || null;
+    // Promotes a provisional row, the same way linkItemShop and addToPantry do
+    // and for the same reason: which one you want is a standing fact about the
+    // item, not about this week's list. Without it the next "Remove from list"
+    // deletes the row outright and silently takes the preference with it —
+    // which is precisely the retyping this field exists to stop.
+    //
+    // Only on setting one. Clearing a brand is not a reason to promote a row
+    // that was never in the catalog, and demoting one that already is would
+    // throw away purchase history over an edit to a caption.
+    const updated = {
+      ...item,
+      brand: next,
+      inCatalog: next !== null ? true : item.inCatalog,
+    };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setBrandStrict(id, strict) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    // Promoted like setBrand, and only when switching on: the rule is a
+    // standing fact about the item, so it has to outlive this week's list.
+    const updated = {
+      ...item,
+      brandStrict: strict,
+      inCatalog: strict ? true : item.inCatalog,
+    };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
   setOnHandUntil(id, until) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
@@ -1406,6 +1473,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
             lastPriceQuantity: pricedQuantityById.get(id) ?? null,
           };
         };
+        // What this trip is entitled to record about which one they stock.
+        // **Only for a strict item**, and that restriction is the whole
+        // argument: strict means the user would not have bought a substitute,
+        // so a purchase here really is evidence this store had their brand. On
+        // an item with no rule, the same purchase says nothing about which one
+        // came home, and stamping it would manufacture the per-store evidence
+        // this feature is supposed to be waiting for. Mirrors
+        // dbFinishGroceryShopping.
+        const brandPatch = (id: string, existing: ItemShopLink | null) => {
+          const item = s.items.find(i => i.id === id);
+          if (item?.brandStrict && item.brand) return { brand: item.brand };
+          return { brand: existing?.brand ?? null };
+        };
         itemShops = [
           ...s.itemShops.map(l =>
             l.shopId === shop.id && done.has(l.itemId)
@@ -1417,7 +1497,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                   // "they don't have it" outright, so the trip clears it rather
                   // than leaving the user to.
                   unavailableAt: null,
+                  // Buying your brand here refutes "they haven't got it"
+                  // outright, exactly as the purchase refutes the item-level
+                  // negative above. Mirrors dbFinishGroceryShopping.
+                  brandUnavailableAt: null,
                   ...pricePatch(l.itemId, l),
+                  ...brandPatch(l.itemId, l),
                 }
               : l
           ),
@@ -1429,7 +1514,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
               purchaseCount: 1,
               lastPurchasedAt: purchasedAt,
               unavailableAt: null,
+              brandUnavailableAt: null,
               ...pricePatch(id, null),
+              ...brandPatch(id, null),
             })),
         ];
       }
@@ -1769,6 +1856,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // Carried, not dropped: dbSetItemShopLink writes the whole row, and
         // what this store last charged is untouched by the user saying they
         // can get it here.
+        // Carried for the same reason: saying you can get it here is not a
+        // statement about which one they stock. The brand is set in its own
+        // right by setItemShopBrand.
+        brand: existing?.brand ?? null,
+        // Carried, not cleared: saying you can get it here is not a statement
+        // about which brand, so it neither makes nor withdraws that claim.
+        brandUnavailableAt: existing?.brandUnavailableAt ?? null,
         lastPriceMinor: existing?.lastPriceMinor ?? null,
         lastPricedAt: existing?.lastPricedAt ?? null,
         lastPriceQuantity: existing?.lastPriceQuantity ?? null,
@@ -1833,6 +1927,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         purchaseCount: existing?.purchaseCount ?? 0,
         lastPurchasedAt: existing?.lastPurchasedAt ?? null,
         unavailableAt: markedAt,
+        brandUnavailableAt: existing?.brandUnavailableAt ?? null,
+        // Same carry again. "They don't stock it" supersedes the brand claim at
+        // read time (isUnavailable is checked first), so there's no need to
+        // erase it — and it comes back intact if the negative is undone.
+        brand: existing?.brand ?? null,
         // Same carry as linkItemShopMany, and the same reasoning as the count
         // above: what it cost when they did stock it is history, and the claim
         // is about today's shelf. Every price read drops a negative link
@@ -1885,6 +1984,55 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       itemShops: s.itemShops.map(l =>
         l.itemId === itemId && l.shopId === shopId ? link : l
       ),
+    }));
+  },
+
+  setBrandUnavailable(itemId, shopId, unavailable) {
+    const item = get().items.find(i => i.id === itemId);
+    if (!item) return;
+    if (!get().shops.some(s => s.id === shopId)) return;
+    const existing = get().itemShops.find(l => l.itemId === itemId && l.shopId === shopId);
+    const next = unavailable ? new Date().toISOString() : null;
+    if (!existing && !unavailable) return;
+    if (existing && (existing.brandUnavailableAt !== null) === unavailable) return;
+
+    // Taking the claim back off a row that was *only* the claim leaves a bare
+    // purchaseCount-0 link, which asserts "I get this here" — a different and
+    // stronger statement than the one being withdrawn. Same call
+    // clearItemUnavailable makes about a row that was only the negative.
+    if (existing && !unavailable && existing.purchaseCount === 0 && !existing.unavailableAt) {
+      get().unlinkItemShop(itemId, shopId);
+      return;
+    }
+
+    const link: ItemShopLink = existing
+      ? { ...existing, brandUnavailableAt: next }
+      : {
+          itemId,
+          shopId,
+          // History is history, and there is none here — but the claim is about
+          // a store that *has* the item, so this is not the item-level
+          // negative and purchaseCount 0 is just "no trip has confirmed it".
+          purchaseCount: 0,
+          lastPurchasedAt: null,
+          unavailableAt: null,
+          lastPriceMinor: null,
+          lastPricedAt: null,
+          lastPriceQuantity: null,
+          brand: null,
+          brandUnavailableAt: next,
+        };
+    dbSetItemShopLink(link);
+    // Promotes the row for the reason setBrand and linkItemShop both do: this
+    // is a standing fact about the item, and a provisional row is deleted when
+    // it leaves the list.
+    const promoted = item.inCatalog ? null : { ...item, inCatalog: true };
+    if (promoted) dbUpdateGroceryItem(promoted);
+    set(s => ({
+      itemShops: existing
+        ? s.itemShops.map(l => (l.itemId === itemId && l.shopId === shopId ? link : l))
+        : [...s.itemShops, link],
+      items: promoted ? s.items.map(i => (i.id === itemId ? promoted : i)) : s.items,
     }));
   },
 
