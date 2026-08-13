@@ -1458,7 +1458,17 @@ describe('backup and restore', () => {
 
     dbReplaceAllData(backup.tables);
 
-    expect(dbExportTables()).toEqual(before);
+    // Everything except updated_at, which a restore deliberately moves — see
+    // the note in dbReplaceAllData. Compared without it rather than not at
+    // all, so the rest of the round trip is still asserted exactly.
+    const withoutStamps = (tables: Record<string, Array<Record<string, unknown>>>) =>
+      Object.fromEntries(
+        Object.entries(tables).map(([t, rows]) => [
+          t,
+          rows.map(({ updated_at: _ignored, ...rest }) => rest),
+        ])
+      );
+    expect(withoutStamps(dbExportTables())).toEqual(withoutStamps(before));
     expect(dbGetAllTasks().map(t => t.id).sort()).toEqual(['t1', 't2']);
     expect(dbGetAllProjects()).toHaveLength(1);
     expect(dbGetAllCategories()).toHaveLength(1);
@@ -2372,10 +2382,27 @@ describe('sync change tracking', () => {
     expect(dbSyncChangesSince(null).deletions).toEqual([]);
   });
 
-  it('never reports the settings table', () => {
-    dbSetSetting('theme', 'dark');
+  it('reports an allowlisted setting', () => {
+    dbSetSetting('themeMode', 'dark');
 
-    expect(Object.keys(dbSyncChangesSince(null).tables)).not.toContain('settings');
+    const rows = dbSyncChangesSince(null).tables.settings;
+    expect(rows.map(r => r.key)).toContain('themeMode');
+  });
+
+  it('never reports a migration flag or a device-local setting', () => {
+    // The failure this prevents is silent and permanent: a device receiving
+    // "..._done = 1" skips that migration for good.
+    dbSetSetting('effort_xxs_migration_done', '1');
+    dbSetSetting('remindersImportListId', 'CAL-123');
+    dbGetDeviceId();
+    dbSetSyncCursor('cloudkit', '2026-01-01T00:00:00.000Z');
+
+    const keys = dbSyncChangesSince(null).tables.settings.map(r => r.key);
+
+    expect(keys).not.toContain('effort_xxs_migration_done');
+    expect(keys).not.toContain('remindersImportListId');
+    expect(keys).not.toContain('syncDeviceId');
+    expect(keys).not.toContain('syncCursor:cloudkit');
   });
 
   it('prunes only tombstones past the retention window', () => {
@@ -2593,14 +2620,41 @@ describe('dbApplySyncChanges', () => {
     expect(rowOf('p1')?.title).toBe('Kept');
   });
 
-  it('never applies the settings table even if a peer sends one', () => {
-    // Not tracked, so not applied — which is what stops a migration flag
-    // reaching a device that has not run that migration.
+  it('applies an allowlisted setting from a peer', () => {
     dbApplySyncChanges(payload({
-      tables: { settings: [{ key: 'effort_xxs_migration_done', value: '1', updated_at: '2030-01-01T00:00:00.000Z' }] },
+      tables: { settings: [{ key: 'themeMode', value: 'light', updated_at: '2030-01-01T00:00:00.000Z' }] },
+    }));
+
+    expect(dbGetSetting('themeMode')).toBe('light');
+  });
+
+  it('refuses a migration flag from a peer even though the table is tracked', () => {
+    // Checked on the way in as well as the way out: a peer on another build
+    // decides its own allowlist, and this device must not trust it with a
+    // flag that would make it skip a migration permanently.
+    dbApplySyncChanges(payload({
+      tables: {
+        settings: [
+          { key: 'effort_xxs_migration_done', value: '1', updated_at: '2030-01-01T00:00:00.000Z' },
+          { key: 'syncDeviceId', value: 'their-device', updated_at: '2030-01-01T00:00:00.000Z' },
+        ],
+      },
     }));
 
     expect(dbGetSetting('effort_xxs_migration_done')).toBeNull();
+    expect(dbGetSetting('syncDeviceId')).toBeNull();
+  });
+
+  it('restamps restored rows so a restore reaches the other device', () => {
+    dbInsertTask(makeTask({ id: 'r1', title: 'Restored' }));
+    const before = dbExportTables();
+    mockRawDb.exec('DELETE FROM tasks');
+
+    dbReplaceAllData(before);
+
+    const row = mockRawDb.prepare("SELECT updated_at FROM tasks WHERE id = 'r1'").get() as { updated_at: string };
+    const exported = before.tasks.find(r => r.id === 'r1') as { updated_at: string };
+    expect(row.updated_at).not.toBe(exported.updated_at);
   });
 });
 

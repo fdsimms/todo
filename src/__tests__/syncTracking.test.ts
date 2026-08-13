@@ -13,6 +13,8 @@ import {
   KEY_SEPARATOR,
   SYNC_DELETIONS_TABLE,
   SYNC_TRACKED_TABLES,
+  SYNCED_SETTING_KEYS,
+  isSyncedSettingKey,
   TOMBSTONE_RETENTION_DAYS,
   backfillStatements,
   changeTrackingStatements,
@@ -22,6 +24,7 @@ import {
   updatedAtMigrations,
   type SyncTable,
 } from '../db/syncTracking';
+import { REDACTED_SETTING_KEYS } from '../utils/backup';
 
 const SIMPLE: SyncTable = { name: 'widgets', key: ['id'] };
 const COMPOSITE: SyncTable = { name: 'links', key: ['item_id', 'shop_id'] };
@@ -65,11 +68,38 @@ const tombstones = (db: Db): Array<{ table_name: string; row_key: string; delete
   db.prepare(`SELECT * FROM ${SYNC_DELETIONS_TABLE} ORDER BY row_key`).all();
 
 describe('table definitions', () => {
-  it('never tracks the settings table', () => {
-    // Migration flags and device-local records live there; syncing a
-    // "..._done = 1" row makes the receiving device skip that migration
-    // permanently. See the note on SYNC_TRACKED_TABLES.
-    expect(SYNC_TRACKED_TABLES.map(t => t.name)).not.toContain('settings');
+  it('tracks the settings table but travels only allowlisted keys', () => {
+    // The table is tracked so preferences can sync; the allowlist is what
+    // stops a migration flag riding along and making the receiving device
+    // skip that migration permanently.
+    expect(SYNC_TRACKED_TABLES.map(t => t.name)).toContain('settings');
+    expect(isSyncedSettingKey('themeMode')).toBe(true);
+    expect(isSyncedSettingKey('effort_xxs_migration_done')).toBe(false);
+  });
+
+  it('keeps every migration flag and device-local record off the allowlist', () => {
+    for (const key of SYNCED_SETTING_KEYS) {
+      expect(key.endsWith('_done')).toBe(false);
+      expect(key.startsWith('syncCursor:')).toBe(false);
+    }
+    for (const key of [
+      'anthropicApiKey',      // a live billing credential
+      'syncDeviceId',         // two devices sharing one id ignore each other
+      'appLockEnabled',       // one device must not unlock another
+      'calendarIds',          // identifiers for calendars on one device
+      'remindersImportListId',
+      'dailyAgendaEnabled',   // shared, every reminder would fire twice
+      'hapticsEnabled',       // a Mac has no haptics
+      'grocery_trip_shop_id', // what one device is doing right now
+    ]) {
+      expect(isSyncedSettingKey(key)).toBe(false);
+    }
+  });
+
+  it('never lets a redacted setting travel', () => {
+    for (const key of REDACTED_SETTING_KEYS) {
+      expect(isSyncedSettingKey(key)).toBe(false);
+    }
   });
 
   it('gives every tracked table at least one key column', () => {

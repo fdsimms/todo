@@ -15,6 +15,7 @@ import {
   TOMBSTONE_RETENTION_DAYS,
   KEY_SEPARATOR,
   NOW_EXPR,
+  isSyncedSettingKey,
   backfillStatements,
   installStatements,
   updatedAtMigrations,
@@ -924,7 +925,20 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
     for (const table of BACKUP_TABLES) {
       const rows = tables[table];
       if (!rows || rows.length === 0) continue;
-      const allowed = dbTableColumns(table);
+      // updated_at is deliberately dropped, so every restored row is stamped
+      // as a change made here and now.
+      //
+      // A backup written since change tracking shipped carries the timestamps
+      // the rows had when it was taken, and keeping them would mean a peer
+      // holding newer copies wins — the restore would be silently undone a
+      // minute later, with nothing on screen explaining why. Restoring is an
+      // explicit choice about which data you want, so it has to travel.
+      //
+      // It is also the only coherent option: the DELETE above writes a
+      // tombstone per row, and those are stamped now regardless. Preserving
+      // the inserts' stamps would give a restore where the removals propagate
+      // and the restorations don't.
+      const allowed = dbTableColumns(table).filter(c => c !== 'updated_at');
 
       for (const raw of rows) {
         const row = projectRow(raw, allowed);
@@ -996,7 +1010,7 @@ export function dbSyncChangesSince(since: string | null): SyncChangeSet {
 
     const tables: Record<string, BackupRow[]> = {};
     for (const { name } of SYNC_TRACKED_TABLES) {
-      tables[name] = since === null
+      const rows = since === null
         ? db.getAllSync<BackupRow>(
             `SELECT * FROM "${name}" WHERE updated_at <= ?`,
             [until]
@@ -1005,6 +1019,12 @@ export function dbSyncChangesSince(since: string | null): SyncChangeSet {
             `SELECT * FROM "${name}" WHERE updated_at >= ? AND updated_at <= ?`,
             [since, until]
           );
+      // Only some settings rows travel; every other table sends all of them.
+      // Filtered here rather than in the trigger so the policy lives in one
+      // readable list — see SYNCED_SETTING_KEYS.
+      tables[name] = name === 'settings'
+        ? rows.filter(r => typeof r.key === 'string' && isSyncedSettingKey(r.key))
+        : rows;
     }
 
     // A first read needs no deletions: a peer that has never heard of a row
@@ -1023,11 +1043,13 @@ export function dbSyncChangesSince(since: string | null): SyncChangeSet {
       since,
       until,
       tables,
-      deletions: deletionRows.map(r => ({
-        table: r.table_name,
-        rowKey: r.row_key,
-        deletedAt: r.deleted_at,
-      })),
+      deletions: deletionRows
+        .filter(r => r.table_name !== 'settings' || isSyncedSettingKey(r.row_key))
+        .map(r => ({
+          table: r.table_name,
+          rowKey: r.row_key,
+          deletedAt: r.deleted_at,
+        })),
     };
   });
 
@@ -1135,6 +1157,14 @@ export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
           report.skipped++;
           continue;
         }
+        // Checked again on the way in, not just on the way out. A peer on an
+        // older or newer build decides its own allowlist, and a migration flag
+        // arriving here would make this device skip that migration for good —
+        // so this side refuses rather than trusting the sender's policy.
+        if (name === 'settings' && !isSyncedSettingKey(rowKey)) {
+          report.skipped++;
+          continue;
+        }
 
         const where = keyClause(table, rowKey);
         const local = db.getFirstSync<{ updated_at: string | null }>(
@@ -1167,6 +1197,7 @@ export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
     for (const deletion of payload.deletions) {
       const table = trackedTable(deletion.table);
       if (!table) continue;
+      if (deletion.table === 'settings' && !isSyncedSettingKey(deletion.rowKey)) continue;
 
       const where = keyClause(table, deletion.rowKey);
       const local = db.getFirstSync<{ updated_at: string | null }>(

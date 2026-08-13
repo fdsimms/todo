@@ -42,23 +42,16 @@ export interface SyncTable {
 export const KEY_SEPARATOR = '|';
 
 /**
- * The tables a peer needs to see. Thirteen of the fourteen — `settings` is
- * deliberately absent.
+ * The tables change tracking is installed on.
  *
- * That table is a key/value store holding three quite different kinds of row,
- * and only one of them should ever travel: real preferences (theme,
- * `dayResetTime`, retention window), **one-time migration flags**
- * (`effort_xxs_migration_done`, `pinned_backfill_from_focused_done`, …), and
- * device-local records (`remindersImportHandled`, which names reminders in one
- * device's Reminders list). Syncing the second kind is actively destructive —
- * a device that receives `..._done = 1` before running the migration skips it
- * permanently — and the third is meaningless off the device that wrote it.
- *
- * So which settings sync is a per-key allowlist, and building it is a
- * decision, not a default. It belongs with the transport work rather than
- * being smuggled in here as "all of them".
+ * `settings` is here, but unlike every other table only *some of its rows*
+ * travel — see SYNCED_SETTING_KEYS. Tracking the whole table and filtering on
+ * read is deliberate: the alternative is a trigger with the allowlist compiled
+ * into its WHEN clause, which would have to be rebuilt whenever a key is added
+ * and would be invisible from the TypeScript that decides the policy.
  */
 export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
+  { name: 'settings', key: ['key'] },
   { name: 'tasks', key: ['id'] },
   { name: 'task_groups', key: ['id'] },
   { name: 'projects', key: ['id'] },
@@ -73,6 +66,125 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'leftovers', key: ['id'] },
   { name: 'meal_plan_entries', key: ['id'] },
 ];
+
+/**
+ * The settings rows that travel between devices — an allowlist, never a
+ * denylist.
+ *
+ * The direction matters more than the contents. `settings` is a key/value
+ * table holding four quite different kinds of row, and only the first should
+ * ever leave the device:
+ *
+ * 1. **Preferences** — what the app looks like and how it behaves. These are
+ *    the reason to sync settings at all: without them a second device has to
+ *    be configured from scratch and the two drift apart for good.
+ * 2. **One-time migration flags** (`effort_xxs_migration_done`, …). Sending
+ *    one of these to a device that has not run that migration makes it skip
+ *    the migration **permanently**. Silent, unrecoverable, and it would be
+ *    nobody's first guess.
+ * 3. **Device-local records** — calendar and list identifiers, the imported-
+ *    reminder record, the sync cursors and this device's own id. Meaningless
+ *    or actively wrong on another device.
+ * 4. **Credentials** — the Anthropic API key. See REDACTED_SETTING_KEYS.
+ *
+ * A denylist would default a *new* key into syncing, so the day someone adds
+ * the next migration flag it ships itself to the other device and that
+ * migration never runs. An allowlist defaults to silence: the worst a
+ * forgotten key can do is fail to sync, which is visible and fixable.
+ */
+export const SYNCED_SETTING_KEYS: readonly string[] = [
+  // Appearance.
+  'theme',
+  'themeMode',
+  'appFont',
+
+  // The shape of a day. These decide what counts as due, so two devices
+  // disagreeing about them show genuinely different task lists.
+  'dayResetTime',
+  'morningStart',
+  'afternoonStart',
+  'eveningStart',
+  'nightStart',
+  'activeHoursStart',
+  'activeHoursEnd',
+  'quietHoursStart',
+  'quietHoursEnd',
+  'weekStartsOn',
+
+  // Behaviour.
+  'newTaskDefaults',
+  'defaultReminderLeadMinutes',
+  'defaultProjectNudgeCadenceDays',
+  'autoArchiveProjectsOnComplete',
+  'autoRemoveExpiredTasks',
+  'completedRetentionDays',
+  'postponeCheckEnabled',
+  'postponeCheckThreshold',
+  'simpleTaskForm',
+  'sortOption',
+  'hideCategories',
+  'mealsOnToday',
+  'kitchenEnabled',
+  'unitSystem',
+  'currencySymbol',
+
+  // Tasks the app adds. Per-generator, matching the settings keys themselves
+  // (see the note on GeneratedTasksSection — these were never merged).
+  'mealCookTasks',
+  'mealCookTaskCategory',
+  'groceryUseUpTasks',
+  'groceryUseUpTaskCategory',
+  'groceryUseUpLeadDays',
+  'leftoverUseUpTasks',
+  'leftoverUseUpTaskCategory',
+  'mealPlanNudgeEnabled',
+  'mealPlanNudgeTime',
+  'mealPlanNudgeWeekday',
+
+  // Vocabularies the user builds. These are data as much as preference — a
+  // tag that exists but is unused, and the walk round the shop — and a device
+  // missing them renders sections it has no order for.
+  'tag_registry',
+  'grocery_aisle_order',
+  'grocery_aisle_hidden',
+  'grocery_aisle_overrides',
+
+  // Vacation mode is a statement about the person, not the device.
+  'vacationMode',
+  'vacationStart',
+  'vacationEnd',
+];
+
+/**
+ * Deliberately absent, and why — kept as prose rather than a denylist so it
+ * can't be mistaken for something the code enforces:
+ *
+ * - `hapticsEnabled`, `shakeToUndoEnabled`, `timerLiveActivity`, `fabHand` —
+ *   capabilities and ergonomics of one device. A Mac has no haptics and no
+ *   thumb reach.
+ * - `appLockEnabled`, `appLockGraceSeconds` — syncing these would let a
+ *   device turn the lock off on another one. Security settings are per-device
+ *   by design.
+ * - `dailyAgendaEnabled`, `dailyAgendaTime`, `reminderMeetingNudgeEnabled` —
+ *   notification schedules. Shared, both devices would fire the same
+ *   notification and every reminder would arrive twice.
+ * - `calendarIds`, `calendarReadEnabled`, `deadlineCalendarId`,
+ *   `mealCalendarId`, `remindersImport*`, `groceryImport*` — identifiers for
+ *   calendars and lists that exist on one device. Wrong, not just useless,
+ *   on the other.
+ * - `aiFeatureConfig` — the API key it depends on is device-local by design,
+ *   so syncing the config turns features on for a device that cannot run them.
+ * - `grocery_trip_shop_id`, `grocery_trip_started_at`, `projectNudgeDismissedAt`,
+ *   `mealPlanNudgeLastFiredWeekKey`, `meal_plan_added_to_list`,
+ *   `patchNotesQaStatus`, `filterEfforts`, `filterPriorities` — transient
+ *   state about what one device is doing right now.
+ * - `syncDeviceId`, `syncCursor:*` — the sync machinery itself. Two devices
+ *   sharing a device id would each ignore the other's payloads as their own.
+ * - Anything ending `_done` — the migration flags above.
+ */
+export function isSyncedSettingKey(key: string): boolean {
+  return SYNCED_SETTING_KEYS.includes(key);
+}
 
 /** Where deletions go. A row here is the only evidence a row ever existed. */
 export const SYNC_DELETIONS_TABLE = 'sync_deletions';
