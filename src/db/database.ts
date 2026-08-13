@@ -860,6 +860,13 @@ export function initDatabase(): void {
  * from backups is a much worse failure than one quietly missing from this list,
  * because it only shows up when someone restores.
  *
+ * That "explicit decision" used to be enforced by nothing but habit.
+ * `database.test.ts`'s "every real table is accounted for" check now reads
+ * the live schema and fails if a table is in neither this list nor
+ * BACKUP_EXCLUDED_TABLES below — so forgetting one is a red test at the PR
+ * that added the table, not a support conversation after someone's restore
+ * came back missing a feature's worth of data.
+ *
  * Order matters on the way in: nothing here declares a foreign key, but rows
  * are inserted parents-first anyway so a future constraint doesn't turn this
  * into a debugging session.
@@ -880,6 +887,21 @@ export const BACKUP_TABLES = [
   'templates',
   'tasks',
   'settings',
+] as const;
+
+/**
+ * Real tables deliberately outside BACKUP_TABLES, with the reason attached —
+ * an exception has to be argued for here, not just missing from the list
+ * above, or the completeness check this exists for would have nothing to
+ * catch a genuine omission with.
+ */
+export const BACKUP_EXCLUDED_TABLES = [
+  // Tombstones for change tracking (#1550) — bookkeeping about the sync
+  // mechanism, not app data. Restoring already deletes and reinserts every
+  // backed-up table, which writes fresh tombstones through the ordinary
+  // triggers; carrying the old ones forward would restore stale deletion
+  // history rather than the task list the user actually asked for back.
+  'sync_deletions',
 ] as const;
 
 /** The live column names of a table, straight from the schema. */

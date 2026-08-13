@@ -48,6 +48,7 @@ import {
   dbExportTables,
   dbReplaceAllData,
   BACKUP_TABLES,
+  BACKUP_EXCLUDED_TABLES,
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
@@ -78,7 +79,12 @@ import {
   dbSetSyncCursor,
 } from '../db/database';
 import { SYNC_FORMAT, type SyncPayload } from '../utils/syncMerge';
-import { SYNC_TRACKED_TABLES, TOMBSTONE_RETENTION_DAYS } from '../db/syncTracking';
+import {
+  SYNC_TRACKED_TABLES,
+  SYNC_EXCLUDED_TABLES,
+  SYNC_DELETIONS_TABLE,
+  TOMBSTONE_RETENTION_DAYS,
+} from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, Leftover, MealPlanEntry, MealSlot } from '../types';
 
@@ -2708,5 +2714,82 @@ describe('sync identity', () => {
     expect(dbGetSyncCursor('relay')).toBe('2026-01-01T00:00:00.000Z');
     expect(dbGetSyncCursor('other')).toBe('2026-02-01T00:00:00.000Z');
     expect(dbGetSyncCursor('never-used')).toBeNull();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Schema completeness — every real table must be accounted for
+// ---------------------------------------------------------------------------
+
+/**
+ * What a table needs listing itself under is a decision, not a default. Both
+ * BACKUP_TABLES and SYNC_TRACKED_TABLES are hand-written for exactly that
+ * reason (see the comments on each) — but a hand-written list only protects
+ * what someone remembered to add to it. These tests are the backstop: they
+ * read the schema SQLite actually has, rather than the schema database.ts
+ * *says* it has, so a table that's real but unlisted fails here instead of
+ * surfacing as a support conversation after somebody's restore came back
+ * missing a feature's worth of data.
+ */
+describe('schema completeness', () => {
+  const realTableNames = (): string[] =>
+    (
+      mockRawDb
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        .all() as Array<{ name: string }>
+    ).map(r => r.name);
+
+  it('accounts for every real table in BACKUP_TABLES or its exclusion list', () => {
+    const accounted = new Set<string>([...BACKUP_TABLES, ...BACKUP_EXCLUDED_TABLES]);
+    const unaccounted = realTableNames().filter(name => !accounted.has(name));
+
+    expect(unaccounted).toEqual([]);
+  });
+
+  it('never lists a table as both backed up and deliberately excluded', () => {
+    const overlap = BACKUP_TABLES.filter(name =>
+      (BACKUP_EXCLUDED_TABLES as readonly string[]).includes(name)
+    );
+    expect(overlap).toEqual([]);
+  });
+
+  it('does not carry a stale entry for a table that no longer exists', () => {
+    // The opposite failure: a table renamed or dropped, with BACKUP_TABLES
+    // never updated to match. dbExportTables would throw on it immediately,
+    // but that's a worse way to find out than a test.
+    const real = new Set(realTableNames());
+    const stale = BACKUP_TABLES.filter(name => !real.has(name));
+    expect(stale).toEqual([]);
+  });
+
+  it('accounts for every real table in SYNC_TRACKED_TABLES or its exclusion list', () => {
+    const accounted = new Set<string>([
+      ...SYNC_TRACKED_TABLES.map(t => t.name),
+      ...SYNC_EXCLUDED_TABLES,
+    ]);
+    const unaccounted = realTableNames().filter(name => !accounted.has(name));
+
+    expect(unaccounted).toEqual([]);
+  });
+
+  it('never lists a table as both sync-tracked and deliberately excluded', () => {
+    const tracked = new Set(SYNC_TRACKED_TABLES.map(t => t.name));
+    const overlap = SYNC_EXCLUDED_TABLES.filter(name => tracked.has(name));
+    expect(overlap).toEqual([]);
+  });
+
+  it('does not carry a stale sync-tracked entry for a table that no longer exists', () => {
+    const real = new Set(realTableNames());
+    const stale = SYNC_TRACKED_TABLES.map(t => t.name).filter(name => !real.has(name));
+    expect(stale).toEqual([]);
+  });
+
+  it('excludes the tombstone table from sync tracking by its real name, not a stale copy', () => {
+    // SYNC_EXCLUDED_TABLES has to spell 'sync_deletions' as a literal — it's
+    // declared before SYNC_DELETIONS_TABLE in the same file, so it can't
+    // reference the constant directly. This is what catches the two ever
+    // drifting apart if the table is renamed and only one of them updated.
+    expect(SYNC_EXCLUDED_TABLES).toContain(SYNC_DELETIONS_TABLE);
   });
 });
