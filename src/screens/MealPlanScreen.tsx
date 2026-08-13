@@ -199,6 +199,24 @@ const COPY_LOOKBACK_WEEKS = 4;
 /** How far a lifted fridge row swells. Deliberately SortableList's LIFT_SCALE. */
 const DRAG_LIFT_SCALE = 1.03;
 
+/**
+ * The default `collapsedDays` set for a week: every day strictly before
+ * today, so what's done is out of the way but what's still ahead — today
+ * onward — stays open exactly as it always did. `dayKeyOf` sorts the same as
+ * the date it names (`yyyy-MM-dd`), so a plain string compare against
+ * today's own key is enough; no `Date` arithmetic needed. A future week pages
+ * in fully expanded (nothing in it is before today yet); a past week pages in
+ * fully collapsed (nothing in it is today or after).
+ */
+function collapsePastDays(weekDays: Date[]): Set<string> {
+  const todayKey = dayKeyOf(new Date());
+  const set = new Set<string>();
+  for (const day of weekDays) {
+    if (dayKeyOf(day) < todayKey) set.add(dayKeyOf(day));
+  }
+  return set;
+}
+
 export function MealPlanScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -217,6 +235,14 @@ export function MealPlanScreen() {
   const range = useMemo(() => dayKeyRange(days), [days]);
 
   const entries = useMealPlanStore(useShallow(s => s.entries));
+  // Undefined once the week on screen has paged away from today — the hero
+  // card below reads this to decide whether it has anything to be about.
+  const todayDay = days.find(d => isToday(d));
+  const todayKey = todayDay ? dayKeyOf(todayDay) : null;
+  const todayEntries = useMemo(
+    () => (todayKey ? entriesForDay(entries, todayKey) : []),
+    [entries, todayKey]
+  );
   const loadRange = useMealPlanStore(s => s.loadRange);
   const planMeal = useMealPlanStore(s => s.planMeal);
   const moveEntry = useMealPlanStore(s => s.moveEntry);
@@ -272,9 +298,12 @@ export function MealPlanScreen() {
   // the finger that just tapped it. Null closes it.
   const [suggesting, setSuggesting] =
     useState<{ recipes: Recipe[]; cookAgainRecipes: Recipe[]; days: Date[] } | null>(null);
-  // Per-day collapse, local-only — every day starts expanded, and folding one
-  // away is just less to scroll past, not a decision worth persisting.
-  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
+  // Per-day collapse, local-only — folding one away is just less to scroll
+  // past, not a decision worth persisting. Days before today start
+  // collapsed (already happened, nothing to plan there); today and every
+  // day after it start open, same as they always did. Explicit taps on
+  // `toggleDayCollapse` override this per key from then on.
+  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(() => collapsePastDays(days));
 
   // ——— Bulk selection (#1110) ————————————————————————————————————————
   //
@@ -978,12 +1007,18 @@ export function MealPlanScreen() {
     if (!onThisWeek) {
       actions.push({
         icon: 'today-outline',
-        onPress: () => { haptics.tap(); if (selectionMode) exitSelection(); setAnchor(new Date()); },
+        onPress: () => {
+          haptics.tap();
+          if (selectionMode) exitSelection();
+          animateLayout();
+          setAnchor(new Date());
+          setCollapsedDays(collapsePastDays(buildWeekDays(new Date(), weekStartsOn)));
+        },
         accessibilityLabel: 'Back to this week',
       });
     }
     return actions;
-  }, [onThisWeek, selectionMode, page, exitSelection]);
+  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn]);
 
   /**
    * The week a "copy" would take from, and only while this one is empty.
@@ -1073,6 +1108,71 @@ export function MealPlanScreen() {
           ListHeaderComponent={
             selectionMode ? null : (
               <>
+                {/*
+                  Today, first — a copy of its row(s) the same way Pinned
+                  Tasks puts a copy of a pinned task above Today's own
+                  category sections (both stay live; ticking either one does
+                  the same thing). The week always renders Sunday→Saturday
+                  below, so whichever day today happens to fall on, it would
+                  otherwise be wherever that leaves it — the last thing on
+                  the page on a Saturday, with nothing to scroll to once it
+                  gets there. This is the fix: today doesn't depend on where
+                  in the week it lands, or on how far there is left to scroll.
+                  Gone entirely once the week on screen isn't this one.
+                */}
+                {todayDay && (
+                  <View style={styles.todaySection}>
+                    <View style={styles.todayHeaderRow}>
+                      <View style={styles.todayHeaderLeft}>
+                        <Text style={styles.todayTitle}>
+                          Today · {format(todayDay, 'EEEE')}
+                        </Text>
+                        {todayEntries.length > 0 && (
+                          <Text style={styles.todayCount}>
+                            {todayEntries.length} planned
+                          </Text>
+                        )}
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => { haptics.tap(); setPlanningDay(todayKey); }}
+                        activeOpacity={interaction.activeOpacity}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Plan a meal for today"
+                      >
+                        <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
+                      </TouchableOpacity>
+                    </View>
+                    {todayEntries.length > 0 ? (
+                      <View style={styles.todayCard}>
+                        {todayEntries.map((entry, idx) => (
+                          <React.Fragment key={entry.id}>
+                            {idx > 0 && <View style={styles.sep} />}
+                            <MealSlotRow
+                              entry={entry}
+                              title={titleForEntry(entry, recipesById)}
+                              hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
+                              choices={describeEntryChoices(entry)}
+                              onPress={() => { haptics.tap(); setSelectedId(entry.id); }}
+                              onToggleCooked={() => setCooked(entry, !entry.cookedAt)}
+                            />
+                          </React.Fragment>
+                        ))}
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.todayEmpty}
+                        onPress={() => { haptics.tap(); setPlanningDay(todayKey); }}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel="Plan a meal for today"
+                      >
+                        <Text style={styles.todayEmptyText}>Nothing planned yet</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
                 {/* Above the week rather than beside it: the fridge is what should
                     be eaten before anything new is planned, and it renders nothing
                     at all when empty (see LeftoversCard). */}
@@ -1523,6 +1623,55 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: border.hairline,
     backgroundColor: colors.separator,
     marginLeft: spacing.md + 32 + spacing.md,
+  },
+  todaySection: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  todayHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  todayHeaderLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.xs,
+  },
+  todayTitle: {
+    color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  todayCount: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  todayCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    borderWidth: border.hairline,
+    borderColor: colors.accentSubtle,
+    overflow: 'hidden',
+  },
+  todayEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    borderWidth: border.hairline,
+    borderColor: colors.accentSubtle,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  todayEmptyText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
   },
   emptyWeekHint: {
     color: colors.textTertiary,
