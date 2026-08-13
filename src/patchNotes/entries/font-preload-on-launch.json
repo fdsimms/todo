@@ -1,0 +1,4 @@
+{
+  "message": "If you've picked a custom typeface, the app now waits to show its first screen until that font is loaded, instead of flashing the system font first",
+  "date": "2026-08-13"
+}
