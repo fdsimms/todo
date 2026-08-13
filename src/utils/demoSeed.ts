@@ -9,11 +9,14 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
-import { useSettingsStore } from '../store/useSettingsStore';
+import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import type { DeliverableKind, GroceryItem, MealSlot, Recipe, Shop, TemplateItem } from '../types';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { buildWeekDays } from './calendarGrid';
-import { getCurrentDayStart, dayKeyOf } from './dateUtils';
+import { getCurrentDayStart, dayKeyOf, dayKeyToDate } from './dateUtils';
+import { generatedBy } from './generatedTasks';
+import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
 import { generateId } from './id';
@@ -1113,6 +1116,65 @@ function seedGroceries(recipes: DemoRecipes): void {
  * planned-meals section is populated the moment demo mode starts, rather than
  * staying blank until the meal plan screen has been visited once.
  */
+/**
+ * The weekly "plan next week" nudge, as the stack of seven it fires as (#1585).
+ *
+ * Seeded rather than left to `checkMealPlanNudge`, which is off by default and
+ * fires once a week at a configured hour — a demo can't wait for Sunday. The
+ * days and the titles come from `dueMealPlanNudge` itself rather than being
+ * written out here, so the demo can't drift from what the generator actually
+ * produces; only the trigger is faked, by asking it about today.
+ *
+ * Three of next week's days get meals so the row counters have something to
+ * show, and one of them gets all three so the "ready to complete" state is on
+ * screen: it's the half of the feature that never appears on a fresh install
+ * until somebody has planned a full day, which is exactly the kind of thing
+ * CLAUDE.md's seed rule exists for. The remaining four sit at 0/3, which is
+ * what the nudge is for.
+ */
+function seedMealPlanNudgeStack(
+  today: Date,
+  weekStartsOn: WeekStart,
+  plan: (dayOffset: number, slot: MealSlot, entry: { title: string; recipeId?: string; cookTask?: boolean | null }) => unknown
+): void {
+  const { addTask, updateTask } = useTaskStore.getState();
+  const { createGroup, setGroupCollapsed } = useTaskGroupStore.getState();
+
+  // Fire it as though the trigger were now — midnight today, on today's own
+  // weekday, never fired before.
+  const due = dueMealPlanNudge(today, weekStartsOn, today.getDay(), '00:00', null);
+  if (!due) return;
+
+  // Where next week's first day falls relative to today, so the meals below can
+  // go through the same `plan` helper the rest of the week uses.
+  const firstOffset = differenceInCalendarDays(dayKeyToDate(due.days[0].dayKey), today);
+  // A day already planned end to end — the row that reads "3/3 planned" with a
+  // green checkbox. Cook tasks off: seven days out, they'd crowd Today with
+  // meals nobody is cooking yet.
+  plan(firstOffset, 'breakfast', { title: 'Overnight oats', recipeId: undefined, cookTask: false });
+  plan(firstOffset, 'lunch', { title: 'Leftover salmon salad', cookTask: false });
+  plan(firstOffset, 'dinner', { title: 'Sheet-pan chicken', cookTask: false });
+  // And two part-planned days, so the counter is visibly a range rather than a
+  // pair of states.
+  plan(firstOffset + 1, 'dinner', { title: 'Pasta night', cookTask: false });
+  plan(firstOffset + 3, 'breakfast', { title: 'Overnight oats', cookTask: false });
+  plan(firstOffset + 3, 'dinner', { title: 'Eating out', cookTask: false });
+
+  const group = createGroup(due.title, 'Meal Plan');
+  setGroupCollapsed(group.id, false);
+  due.days.forEach((day, index) => {
+    const task = addTask({
+      title: day.title,
+      dueDate: due.dueDate.toISOString(),
+      linkUrl: mealPlanNudgeLinkUrl(day.dayKey),
+      category: 'Meal Plan',
+      groupId: group.id,
+      ...generatedBy('mealPlanNudge', day.dayKey),
+    });
+    updateTask(task.id, { sortOrder: index + 1 }, { skipPostponeCount: true });
+  });
+}
+
 function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   const { loadRange, planMeal, setCooked, setRecipeScale, setRecipeChoices, stampAddedToList } =
     useMealPlanStore.getState();
@@ -1287,6 +1349,8 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     if (roasted) setRecipeChoices(sundayRoast.id, [roasted]);
   }
   plan(5, 'snack', { title: 'Carrot cake with cream cheese frosting', recipeId: recipes.cake });
+
+  seedMealPlanNudgeStack(today, weekStartsOn, plan);
 
   plan(6, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
   plan(6, 'dinner', { title: "Dinner at Sam's" });

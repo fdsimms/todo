@@ -37,6 +37,7 @@ import {
   sortMealEntries,
   weekCopyDrafts,
 } from '../utils/mealPlan';
+import { countPlannedSlots } from '../utils/mealPlanNudge';
 import { dayKeyToDate } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 
@@ -156,6 +157,49 @@ interface MealPlanStore {
 
   /** Loads an inclusive day-key window, replacing whatever was loaded before. */
   loadRange: (startKey: string, endKey: string) => void;
+
+  /**
+   * How many of each day's three meals are planned, keyed by day key — what the
+   * weekly nudge's per-day tasks show as "2/3 planned" (#1585). A day with no
+   * key here is one nothing has asked about, and its row shows no counter at
+   * all rather than a 0 it can't stand behind.
+   *
+   * **Deliberately outside the window contract**, and the second piece of state
+   * in this store that is (`addedToListAt` is the other). `entries` is a single
+   * shared window that MealPlanScreen owns; a nudge task sits on *Today*, in a
+   * week that screen usually hasn't loaded and often can't — the tasks fire on
+   * a Sunday for the week after, which is never the week on screen. Reading the
+   * window for them would report 0/3 across a fully planned week, and 0/3 is
+   * exactly the state the row is meant to draw attention to. Calling loadRange
+   * to fix that is the thing `selectTodayMealEntries` documents at length as
+   * not doing: it would clobber whichever week Meal plan has open, on a hidden
+   * tab that stays mounted and never reloads (see `enableScreens(false)`).
+   *
+   * So it's a separate, tiny read — seven integers, no rows retained — and it's
+   * a snapshot rather than a subscription, refreshed by `refreshPlannedSlotCounts`.
+   */
+  plannedSlotCounts: Record<string, number>;
+
+  /**
+   * Recounts the given days from SQLite, replacing the map wholesale.
+   *
+   * Callers pass exactly the days they want counted (the live nudge tasks'), so
+   * the map never grows past what something is rendering, and days that stop
+   * being asked about fall out on the next call rather than accumulating for
+   * the life of the install.
+   *
+   * **Pull, not push.** Every one of this store's ~15 mutators would otherwise
+   * need a line to keep this in step — the "four call sites and still missed
+   * one" shape that the stack's `completedAt` stamp was deleted for. Nothing
+   * writes it on the way past; the reader refreshes when it's about to be seen
+   * (see `useMealPlanNudgeProgress`), which also covers the writes this store
+   * never sees at all: a restored backup, a demo swap, another device's sync.
+   *
+   * Returns without a `set` when the counts are unchanged, so the refresh can
+   * be wired to something that fires often without re-rendering every nudge row
+   * each time an unrelated meal moves.
+   */
+  refreshPlannedSlotCounts: (dayKeys: readonly string[]) => void;
 
   /** Null when the title is empty and no recipe was named. */
   planMeal: (draft: MealPlanDraft) => MealPlanEntry | null;
@@ -368,6 +412,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   rangeStart: null,
   rangeEnd: null,
   addedToListAt: {},
+  plannedSlotCounts: {},
   initialized: false,
   lastAction: null,
   cookedOffer: null,
@@ -413,6 +458,33 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       rangeStart: startKey,
       rangeEnd: endKey,
     });
+  },
+
+  refreshPlannedSlotCounts(dayKeys) {
+    const current = get().plannedSlotCounts;
+    if (dayKeys.length === 0) {
+      // Nothing is asking any more — the last nudge task was completed or the
+      // generator turned off. Drop the map rather than leaving the final week's
+      // counts behind for whatever renders next.
+      if (Object.keys(current).length > 0) set({ plannedSlotCounts: {} });
+      return;
+    }
+
+    // One range read over the whole span rather than a query per day: the keys
+    // are a week, and `date` is what the table is indexed on.
+    const sorted = [...dayKeys].sort();
+    const rows = dbGetMealPlanEntries(sorted[0], sorted[sorted.length - 1]);
+
+    const next: Record<string, number> = {};
+    for (const dayKey of dayKeys) next[dayKey] = countPlannedSlots(rows, dayKey);
+
+    const keys = Object.keys(next);
+    const unchanged =
+      keys.length === Object.keys(current).length &&
+      keys.every(key => current[key] === next[key]);
+    if (unchanged) return;
+
+    set({ plannedSlotCounts: next });
   },
 
   planMeal(draft) {

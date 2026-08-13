@@ -434,6 +434,14 @@ interface SettingsStore {
   // at the next week boundary on its own (same idiom as
   // projectNudgeDismissedAt / TaskGroup.completedAt).
   mealPlanNudgeLastFiredWeekKey: string | null;
+  // The stack the weekly nudge lays its seven day-tasks into — state, not a
+  // preference, like the week key above it. One stack row is reused week after
+  // week and retitled ("Plan meals for 17 – 23 Aug"), rather than a new one per
+  // firing: a stack is a label, and a fresh one every Sunday would leave a
+  // year's worth of empty stacks behind it, each of them a row in the Stacks
+  // screen that nothing prunes. Resolve-or-shrug at the reader — a stack the
+  // user deleted reads as null and the next firing makes another.
+  mealPlanNudgeGroupId: string | null;
   // Which category the weekly "Plan meals for…" task files under, by name —
   // the fourth of these, added when the nudge stopped being the one generator
   // with nowhere to put its task. Same shape and same rules as
@@ -523,6 +531,7 @@ interface SettingsStore {
   setMealPlanNudgeWeekday: (weekday: number) => void;
   setMealPlanNudgeTime: (time: string) => void;
   setMealPlanNudgeLastFiredWeekKey: (weekKey: string | null) => void;
+  setMealPlanNudgeGroupId: (groupId: string | null) => void;
   setMealPlanNudgeTaskCategory: (category: string | null) => void;
   setGroceryUseUpTasks: (on: boolean) => void;
   setGroceryUseUpLeadDays: (days: number) => void;
@@ -815,6 +824,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
   mealPlanNudgeTaskCategory: null,
   mealPlanNudgeLastFiredWeekKey: null,
+  mealPlanNudgeGroupId: null,
   newTaskDefaults: DEFAULT_NEW_TASK_DEFAULTS,
   initialized: false,
 
@@ -965,6 +975,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         : DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY;
     const mealPlanNudgeTime = dbGetSetting('mealPlanNudgeTime') || DEFAULT_MEAL_PLAN_NUDGE_TIME;
     const mealPlanNudgeLastFiredWeekKey = dbGetSetting('mealPlanNudgeLastFiredWeekKey') || null;
+    const mealPlanNudgeGroupId = dbGetSetting('mealPlanNudgeGroupId') || null;
     // '' persists as "no category", matching mealCookTaskCategory.
     const mealPlanNudgeTaskCategory = dbGetSetting('mealPlanNudgeTaskCategory') || null;
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
@@ -999,7 +1010,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeTaskCategory, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -1448,6 +1459,12 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setMealPlanNudgeLastFiredWeekKey(weekKey: string | null) {
     dbSetSetting('mealPlanNudgeLastFiredWeekKey', weekKey ?? '');
     set({ mealPlanNudgeLastFiredWeekKey: weekKey });
+  },
+
+  // '' for "no stack yet", same as the week key above.
+  setMealPlanNudgeGroupId(groupId: string | null) {
+    dbSetSetting('mealPlanNudgeGroupId', groupId ?? '');
+    set({ mealPlanNudgeGroupId: groupId });
   },
 
   setNewTaskDefaults(patch: Partial<NewTaskDefaults>) {

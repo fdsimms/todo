@@ -3,7 +3,7 @@ import { Animated, View, Text, FlatList, StyleSheet, Alert, TouchableOpacity } f
 import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { addWeeks } from 'date-fns/addWeeks';
 import { format } from 'date-fns/format';
@@ -225,6 +225,7 @@ export function MealPlanScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
 
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   // #1063's gate. Without a key the suggestion sheet is exactly the offline
@@ -550,6 +551,52 @@ export function MealPlanScreen() {
   useEffect(() => {
     if (range) loadRange(range.startKey, range.endKey);
   }, [range?.startKey, range?.endKey, loadRange]);
+
+  // A `dundundun://mealplan?date=…` link asking for one particular day — what
+  // the weekly nudge's seven day-tasks carry, so tapping "Wednesday 19 Aug" on
+  // Today lands on that day rather than on whichever week this screen was last
+  // left showing.
+  //
+  // Stamped rather than watched for change, the same idiom TodayScreen's
+  // `resetToToday` param uses: the day is the payload and the stamp is the
+  // event, so tapping the same day twice still moves the screen. Split across
+  // two effects because the two halves need different timing — the anchor has
+  // to move before there is a row to scroll to.
+  const focusDay: string | undefined = route.params?.focusDay;
+  const focusStamp: number | undefined = route.params?.focusStamp;
+  const [handledFocus, setHandledFocus] = useState<number | null>(null);
+  const pendingFocusRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (focusStamp === undefined || focusStamp === handledFocus || !focusDay) return;
+    setHandledFocus(focusStamp);
+    setAnchor(dayKeyToDate(focusDay));
+    // A day the user (or `collapsePastDays`) folded away is one the link would
+    // otherwise arrive at showing nothing. Opening it is the whole point of
+    // naming a day.
+    setCollapsedDays(prev => {
+      if (!prev.has(focusDay)) return prev;
+      const next = new Set(prev);
+      next.delete(focusDay);
+      return next;
+    });
+    pendingFocusRef.current = focusDay;
+  }, [focusDay, focusStamp, handledFocus]);
+
+  // Runs after `days` has been rebuilt around the new anchor, which is what
+  // makes the index findable — scrolling in the effect above would search the
+  // week that was on screen when the link was tapped.
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (!pending) return;
+    const index = days.findIndex(d => dayKeyOf(d) === pending);
+    if (index === -1) return;
+    pendingFocusRef.current = null;
+    // viewPosition 0 puts the day at the top of the viewport rather than
+    // wherever it happens to fall; the day's own contents are what was asked
+    // for, and a day scrolled to the middle shows half of it.
+    flatListRef.current?.scrollToIndex({ index, viewPosition: 0, animated: true });
+  }, [days]);
 
   const onThisWeek = isSameWeek(anchor, new Date(), { weekStartsOn });
 
@@ -1135,6 +1182,20 @@ export function MealPlanScreen() {
           scrollEventThrottle={16}
           onLayout={e => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
           onContentSizeChange={(_w, h) => { contentHeightRef.current = h; }}
+          // The focus-a-day effect above calls scrollToIndex, which throws
+          // rather than no-ops when the row hasn't been laid out yet — a cold
+          // start straight onto a `?date=` link, where the list mounts and the
+          // effect fires in the same frame. Seven rows are inside
+          // initialNumToRender, so this is the layout race and not a
+          // virtualisation miss: one frame later the row exists. Deliberately
+          // not adding getItemLayout to avoid it — the days are different
+          // heights (a day with four meals against an empty one), so a fixed
+          // length would land every scroll somewhere approximate.
+          onScrollToIndexFailed={({ index }) => {
+            requestAnimationFrame(() => {
+              flatListRef.current?.scrollToIndex({ index, viewPosition: 0, animated: true });
+            });
+          }}
           // Hidden while selecting: both are shortcuts off the week (into the
           // leftover sheet, into the suggestion sheet) and opening one out
           // from under an in-progress selection would lose it — same restraint

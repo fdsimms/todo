@@ -163,6 +163,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'mealPlanNudgeEnabled',
   'mealPlanNudgeTime',
   'mealPlanNudgeWeekday',
+  'mealPlanNudgeTaskCategory',
 
   // Vocabularies the user builds. These are data as much as preference — a
   // tag that exists but is unused, and the walk round the shop — and a device
@@ -198,9 +199,14 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  * - `aiFeatureConfig` — the API key it depends on is device-local by design,
  *   so syncing the config turns features on for a device that cannot run them.
  * - `grocery_trip_shop_id`, `grocery_trip_started_at`, `projectNudgeDismissedAt`,
- *   `mealPlanNudgeLastFiredWeekKey`, `meal_plan_added_to_list`,
- *   `patchNotesQaStatus`, `filterEfforts`, `filterPriorities` — transient
- *   state about what one device is doing right now.
+ *   `mealPlanNudgeLastFiredWeekKey`, `mealPlanNudgeGroupId`,
+ *   `meal_plan_added_to_list`, `patchNotesQaStatus`, `filterEfforts`,
+ *   `filterPriorities` — transient state about what one device is doing right
+ *   now. `mealPlanNudgeGroupId` names the stack this device last laid the
+ *   weekly nudge into; the other device is kept from laying down a second one
+ *   by seeing the synced tasks themselves (`hasLiveMealPlanNudgeTask`), which
+ *   is the gate that already had to work cross-device, since
+ *   `mealPlanNudgeLastFiredWeekKey` has never synced either.
  * - `syncDeviceId`, `syncCursor:*` — the sync machinery itself. Two devices
  *   sharing a device id would each ignore the other's payloads as their own.
  * - Anything ending `_done` — the migration flags above.

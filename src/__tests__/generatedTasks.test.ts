@@ -6,6 +6,7 @@ import {
   generatedSourceOf,
   hasAnyGeneratedTask,
   liveGeneratedTask,
+  liveGeneratedTasksOfKind,
   wantsGeneratedTask,
 } from '../utils/generatedTasks';
 import type { GeneratedKind, Task } from '../types';
@@ -55,6 +56,44 @@ describe('wantsGeneratedTask', () => {
     // Rows written before a generator's column existed read back undefined.
     expect(wantsGeneratedTask(undefined, true, true)).toBe(true);
     expect(wantsGeneratedTask(undefined, false, true)).toBe(false);
+  });
+});
+
+describe('liveGeneratedTasksOfKind', () => {
+  it('finds every live task of the kind, whatever source each came from', () => {
+    // What the meal-plan nudge needs: it lays down a task per day of a week,
+    // so there is no single source id to ask about.
+    const monday = from('mealPlanNudge', '2026-08-10');
+    const tuesday = from('mealPlanNudge', '2026-08-11');
+    expect(liveGeneratedTasksOfKind([task(), monday, tuesday], 'mealPlanNudge')).toEqual([
+      monday,
+      tuesday,
+    ]);
+  });
+
+  it('finds one whose source id is null, which liveGeneratedTask would too', () => {
+    const legacy = from('mealPlanNudge', null);
+    expect(liveGeneratedTasksOfKind([legacy], 'mealPlanNudge')).toEqual([legacy]);
+  });
+
+  it('ignores completed and archived ones', () => {
+    const live = from('mealPlanNudge', '2026-08-10');
+    const tasks = [
+      live,
+      from('mealPlanNudge', '2026-08-11', { completed: true }),
+      from('mealPlanNudge', '2026-08-12', { archived: true }),
+    ];
+    expect(liveGeneratedTasksOfKind(tasks, 'mealPlanNudge')).toEqual([live]);
+  });
+
+  it("ignores another generator's tasks", () => {
+    expect(liveGeneratedTasksOfKind([from('mealCook', 'm-1')], 'mealPlanNudge')).toEqual([]);
+  });
+
+  it('returns them in the order given, which is the store\'s own', () => {
+    const a = from('mealPlanNudge', '2026-08-12');
+    const b = from('mealPlanNudge', '2026-08-10');
+    expect(liveGeneratedTasksOfKind([a, b], 'mealPlanNudge')).toEqual([a, b]);
   });
 });
 

@@ -47,6 +47,8 @@ import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import { MEAL_PLAN_NUDGE_SLOT_COUNT, mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -673,6 +675,24 @@ export const TaskItem = React.memo(function TaskItem({
   // full target, so a task paused at 5 of 15 minutes doesn't read as untouched.
   const timerPaused = timed && !timerRunning && task.timerElapsedSeconds > 0;
 
+  // One day of the weekly meal-plan nudge (#1585): how many of that day's three
+  // meals are planned, and whether that's all of them.
+  //
+  // `undefined` is a real third answer and is why this isn't `?? 0` — the count
+  // is a snapshot of days something has asked about (see `plannedSlotCounts`),
+  // so a nudge row rendered before the first refresh, or on a screen that
+  // doesn't run one, has no number rather than a zero. Showing 0/3 there would
+  // be the app claiming an empty week it hasn't looked at.
+  const nudgeDayKey = mealPlanNudgeDayKey(task);
+  const plannedMeals = useMealPlanStore(s =>
+    nudgeDayKey ? s.plannedSlotCounts[nudgeDayKey] : undefined
+  );
+  // Ready is a nudge, not a gate: the day being fully planned is the app's
+  // observation, and the tick box stays exactly as tappable at 0/3 as at 3/3
+  // (see mealPlanNudge.ts on why nothing here completes a task by itself).
+  const mealPlanReady =
+    plannedMeals !== undefined && plannedMeals >= MEAL_PLAN_NUDGE_SLOT_COUNT && !task.completed;
+
   // The stretches the subtasks split the countdown into, and which one the
   // clock is in. Empty for a timed task nobody apportioned, which is what keeps
   // every existing one rendering exactly as before.
@@ -1279,6 +1299,8 @@ export const TaskItem = React.memo(function TaskItem({
                   ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${quotaProgress} done, ${task.title}`
                   : timerReady
                     ? `${task.title}, timer done, complete`
+                    : mealPlanReady
+                      ? `${task.title}, all ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned, complete`
                     : asksOnComplete
                       ? `Complete ${task.title}, asks for an answer`
                       : `Complete ${task.title}`
@@ -1294,7 +1316,11 @@ export const TaskItem = React.memo(function TaskItem({
           completing && !quotaCompleting && styles.circleCompleting,
           completionLocked && styles.circleLocked,
           // Ready is a nudge, not a lock — the checkbox stays tappable either way.
-          !completing && !completionLocked && timerReady && styles.circleReady,
+          // The meal-plan nudge's full day borrows the same treatment on purpose:
+          // green already means done-or-ready on this row, and a second colour
+          // for a second kind of "you can tick this now" would be teaching the
+          // reader two vocabularies for one idea.
+          !completing && !completionLocked && (timerReady || mealPlanReady) && styles.circleReady,
           showQuotaMeter && styles.circleQuota,
           // The ring can only follow the fill once the fill has reached it —
           // swapped rather than animated because this node's transform is on
@@ -1445,7 +1471,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || timed || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || timed || plannedMeals !== undefined || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* What this task is holding back — the only place the queue is
                 visible from a list, since the waiters themselves are hidden. */}
@@ -1538,6 +1564,32 @@ export const TaskItem = React.memo(function TaskItem({
                     · {liveSegment.title}
                   </Text>
                 )}
+              </View>
+            )}
+            {/* One day of the weekly meal-plan nudge: how much of that day is
+                planned. Sits with the other counters rather than replacing the
+                title, because the day itself is the title and this is its
+                state. Green at 3/3 is the same "ready" the timer's chip uses. */}
+            {plannedMeals !== undefined && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={
+                  mealPlanReady
+                    ? `All ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned, ready to complete`
+                    : `${plannedMeals} of ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned`
+                }
+              >
+                <Ionicons
+                  name={mealPlanReady ? 'checkmark-circle' : 'restaurant-outline'}
+                  size={iconSize.xs}
+                  color={mealPlanReady ? colors.green : colors.textTertiary}
+                />
+                <Text
+                  style={[styles.plannedMealsLabel, mealPlanReady && styles.plannedMealsLabelReady]}
+                  numberOfLines={1}
+                >
+                  {plannedMeals}/{MEAL_PLAN_NUDGE_SLOT_COUNT} planned
+                </Text>
               </View>
             )}
             {windowActive && windowEnd && (
@@ -3037,6 +3089,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
   },
   countdownLabelReady: {
+    color: colors.green,
+  },
+  // "2/3 planned" on a meal-plan nudge day. Matches the countdown's weight and
+  // size rather than the subtask badge's, because it reads as this row's state
+  // rather than as one more count hung off it — and it takes the same green
+  // when the day is full, which is the only colour this row lets a chip use to
+  // mean ready.
+  plannedMealsLabel: {
+    color: colors.textTertiary,
+    fontSize: 11,
+    fontWeight: fontWeight.semibold,
+  },
+  plannedMealsLabelReady: {
     color: colors.green,
   },
   // Trails the countdown in the chip, so the number stays the thing the eye

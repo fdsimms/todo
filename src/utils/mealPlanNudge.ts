@@ -1,9 +1,10 @@
 import { addDays } from 'date-fns/addDays';
-import type { MealPlanEntry, Task } from '../types';
+import { format } from 'date-fns/format';
+import type { MealPlanEntry, MealSlot, Task } from '../types';
 import type { WeekStart } from '../store/useSettingsStore';
 import { buildWeekDays } from './calendarGrid';
 import { dayKeyOf } from './dateUtils';
-import { liveGeneratedTask } from './generatedTasks';
+import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import { describeWeekRange, isKeyInRange } from './mealPlan';
 
 /**
@@ -30,12 +31,41 @@ import { describeWeekRange, isKeyInRange } from './mealPlan';
  * (`mealPlanNudgeSuppressed`) — a reminder to plan a week you already planned
  * from the Meal Plan screen directly is noise, not help.
  *
- * Unlike a real recurring task, this is a fresh `addTask()` every week, not
- * one row that only spawns its successor on completion — so an unattended
- * weekly write with no further gate would pile up one "Plan meals for…" task
- * a week for as long as the user leaves the last one sitting there
- * (`hasLiveMealPlanNudgeTask`). One live nudge task at a time is the rule:
- * finishing or archiving last week's is what lets next week's appear.
+ * Unlike a real recurring task, this is a fresh write every week, not one row
+ * that only spawns its successor on completion — so an unattended weekly write
+ * with no further gate would pile up a "Plan meals for…" set a week for as long
+ * as the user leaves the last one sitting there (`hasLiveMealPlanNudgeTask`).
+ * One live nudge at a time is the rule: finishing or archiving last week's is
+ * what lets next week's appear.
+ *
+ * **It fires as a stack of seven, one task per day of the week it's asking
+ * about** (#1585), rather than the single "Plan meals for 17 – 23 Aug" task it
+ * used to be. A week is planned a day at a time — that's what the Meal Plan
+ * screen is, a column of days — so one task for the lot could only ever be
+ * ticked when the whole week was done, and told the user nothing about how far
+ * in they were. Seven rows under one stack header say it for free: the stack's
+ * own "3/7" tally (see `TaskGroupHeader`) is how much of the week is dealt
+ * with, and each row carries how much of its *day* is (`countPlannedSlots`).
+ *
+ * Three things follow from being a set rather than a task, and each is load-
+ * bearing somewhere else in the app:
+ *
+ * - **Each task's `generatedSourceId` is its day key**, so a row knows which
+ *   day it speaks for without parsing its own title or link. That's what every
+ *   per-row read goes through (`mealPlanNudgeDayKey`), and it's why
+ *   `hasLiveMealPlanNudgeTask` can't ask `liveGeneratedTask` any more — that
+ *   matches `sourceId === null`, which no nudge task has had since.
+ * - **They all share one `dueDate`, the day the nudge fires** — deliberately
+ *   *not* the day each is about. The whole point is to plan next week now; due
+ *   dates spread across next week would hide six of the seven behind
+ *   `isTaskVisible` until the week they're meant to have prepared for was
+ *   already underway.
+ * - **Nothing here ticks a task off.** A day reaching 3/3 planned makes the row
+ *   say so and no more — same call `timer.ts` makes about a countdown that has
+ *   run out, and for the same reason: the tick box is what the user decided
+ *   they're done with, the counter is where the plan actually is, and letting
+ *   either drive the other makes both wrong. Planning two meals and calling the
+ *   day finished is a legitimate thing to do.
  */
 
 /** date-fns `Date.getDay()` convention: 0 = Sunday .. 6 = Saturday. */
@@ -44,6 +74,73 @@ export const DEFAULT_MEAL_PLAN_NUDGE_TIME = '09:00';
 
 /** What a recurring "Plan meals" task carries in `linkUrl` — opens the Meal Plan screen. */
 export const MEAL_PLAN_NUDGE_LINK_URL = 'dundundun://mealplan';
+
+/**
+ * The link one day's nudge task carries: the Meal Plan screen, opened on that
+ * day rather than on whatever week it was left showing.
+ *
+ * A query string rather than a path segment (`…/mealplan/2026-08-17`) because
+ * `parseAddTaskUrl` already established the query form for this scheme and its
+ * decoder is the one that's tested. Falls back to the bare link for an empty
+ * key so a malformed call can't mint a URL that matches nothing.
+ */
+export function mealPlanNudgeLinkUrl(dayKey: string): string {
+  return dayKey ? `${MEAL_PLAN_NUDGE_LINK_URL}?date=${dayKey}` : MEAL_PLAN_NUDGE_LINK_URL;
+}
+
+/**
+ * The meals a day is counted out of — breakfast, lunch and dinner.
+ *
+ * Deliberately not `MEAL_SLOTS`, which has a fourth member (`snack`). A snack
+ * is something you add to a day, not something a day is incomplete without, so
+ * counting it would put 3/4 on a fully planned day and make the full state
+ * unreachable for anyone who doesn't plan snacks — which is nearly everyone.
+ * Planning one still works exactly as it did; it just isn't scored.
+ */
+export const MEAL_PLAN_NUDGE_SLOTS: readonly MealSlot[] = ['breakfast', 'lunch', 'dinner'];
+
+/** How many meals a nudge task's day is counted out of — the "3" in "2/3 planned". */
+export const MEAL_PLAN_NUDGE_SLOT_COUNT = MEAL_PLAN_NUDGE_SLOTS.length;
+
+/**
+ * How many of the day's three meals have something planned — the row's counter.
+ *
+ * Counts **distinct slots, not entries**: there is deliberately no
+ * `UNIQUE(date, slot)` on `meal_plan_entries` (two things on one dinner is a
+ * legal plan), so counting rows would report 4/3 for a day with two dinners and
+ * nothing else. A slot is planned or it isn't.
+ *
+ * Cooked-ness is not consulted. This asks whether the day has been *planned*,
+ * which is the job the nudge is nudging about; a meal already eaten is still a
+ * meal that was planned, and dropping it would walk the counter backwards
+ * through the week the user is being congratulated for finishing.
+ */
+export function countPlannedSlots(
+  entries: readonly Pick<MealPlanEntry, 'date' | 'slot'>[],
+  dayKey: string
+): number {
+  const planned = new Set<MealSlot>();
+  for (const entry of entries) {
+    if (entry.date !== dayKey) continue;
+    if (MEAL_PLAN_NUDGE_SLOTS.includes(entry.slot)) planned.add(entry.slot);
+  }
+  return planned.size;
+}
+
+/**
+ * The day a nudge task speaks for, or null for any other task.
+ *
+ * Thin, and deliberately just `generatedSourceOf` under a name that says what
+ * the string means here — the kind check is the whole point of that helper and
+ * restating it inline is how the two would come to disagree. One column holds
+ * four generators' source ids now, and a grocery item's id read as a day key
+ * would quietly count meals for a day that doesn't exist.
+ */
+export function mealPlanNudgeDayKey(
+  task: Pick<Task, 'generatedKind' | 'generatedSourceId'>
+): string | null {
+  return generatedSourceOf(task, 'mealPlanNudge');
+}
 
 export interface MealPlanNudgeDue {
   /**
@@ -58,10 +155,31 @@ export interface MealPlanNudgeDue {
   targetWeekStartKey: string;
   /** Day-key of the last day of that week, inclusive. */
   targetWeekEndKey: string;
+  /**
+   * The seven days the nudge is asking about, in week order — one task each,
+   * and the order they're laid down in the stack.
+   */
+  days: MealPlanNudgeDay[];
   /** "Plan meals for 17 – 23 Aug" — reuses mealPlan.ts's own week-range wording. */
   title: string;
   /** Noon on the day the nudge fires — where the created task's `dueDate` lands. */
   dueDate: Date;
+}
+
+/** One day of the week a nudge is asking about — one task in its stack. */
+export interface MealPlanNudgeDay {
+  /** `2026-08-17`. The task's `generatedSourceId`, and what its link opens on. */
+  dayKey: string;
+  /**
+   * "Monday 17 Aug" — the task's title.
+   *
+   * Doesn't repeat "Plan": the stack header above it already says "Plan meals
+   * for 17 – 23 Aug", and seven rows each opening with the same verb is a
+   * column of prefixes to read past. The weekday leads because that's what a
+   * person picks a day by; the date follows for the week that straddles a
+   * month, where three of the rows would otherwise be ambiguous.
+   */
+  title: string;
 }
 
 /**
@@ -103,6 +221,10 @@ export function dueMealPlanNudge(
     weekKey,
     targetWeekStartKey: dayKeyOf(targetDays[0]),
     targetWeekEndKey: dayKeyOf(targetDays[targetDays.length - 1]),
+    days: targetDays.map(day => ({
+      dayKey: dayKeyOf(day),
+      title: format(day, 'EEEE d MMM'),
+    })),
     title: `Plan meals for ${describeWeekRange(targetDays)}`,
     dueDate,
   };
@@ -136,17 +258,50 @@ export function mealPlanNudgeSuppressed(
  * doesn't change; what changes is that it can't be joined by a hand-written
  * task from here on.
  *
- * `generatedSourceId` is null and stays null: this is the one generator
- * projected from the calendar rather than from a row (see `sourced` in
- * `generatedTasks.ts`), so the kind alone identifies it.
+ * **The kind alone identifies them, and that's now the only thing that can.**
+ * This used to be one `liveGeneratedTask` call, which defaults to matching
+ * `generatedSourceId === null` — true of every nudge task back when the week
+ * got one. Each task carries its day key there now, so that call would match
+ * nothing and report "no live nudge" every week, handing out a second stack of
+ * seven on top of the one already sitting on Today. `liveGeneratedTasksOfKind`
+ * is the read that doesn't care which day each task speaks for.
  *
- * A completed task doesn't count (the user did the thing), and neither does
- * an archived one (archiving is this app's other explicit "I've dealt with
- * this, stop showing it to me" — see the note on `archiveTask` in
- * CLAUDE.md). Only "still sitting there, untouched" blocks the next one.
+ * **`current` blocks the next firing; `stale` gets deleted by it.** The split
+ * is the whole reason this returns two lists rather than a boolean, and it
+ * replaces a rule that stopped working when the nudge became a set. One task
+ * for the week meant "left it untouched? then no new one" cost the user one
+ * ignored row. Seven mean that a week where six days got planned and Saturday
+ * was left alone would block *every* future nudge on the strength of one row
+ * nobody minded — and that row is asking about a week which, by the time the
+ * next nudge is due, has already been and gone. So a live task whose day has
+ * fallen outside the week now being asked about is cleared rather than
+ * honoured, and only the week actually in question can suppress a re-fire.
+ *
+ * That does mean an unread nudge no longer survives the week it was written
+ * for. It shouldn't: "Plan Saturday 15 Aug" on the 17th is not a task anyone
+ * can do. Anything the user *did* act on is untouched either way — see below.
+ *
+ * A completed task is in neither list (the user did the thing, and the row
+ * stays as the record of it), and neither is an archived one (archiving is
+ * this app's other explicit "I've dealt with this, stop showing it to me" —
+ * see the note on `archiveTask` in CLAUDE.md). Only rows still sitting there
+ * untouched are anybody's business here.
  */
-export function hasLiveMealPlanNudgeTask(
-  tasks: readonly Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>[]
-): boolean {
-  return !!liveGeneratedTask(tasks, 'mealPlanNudge');
+export function partitionMealPlanNudgeTasks<
+  T extends Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>
+>(
+  tasks: readonly T[],
+  due: Pick<MealPlanNudgeDue, 'targetWeekStartKey' | 'targetWeekEndKey'>
+): { current: T[]; stale: T[] } {
+  const current: T[] = [];
+  const stale: T[] = [];
+  for (const task of liveGeneratedTasksOfKind(tasks, 'mealPlanNudge')) {
+    const dayKey = mealPlanNudgeDayKey(task);
+    // A task from before the day keys existed has no day to place, so it can
+    // only be last week's — the set being laid down now has one per day.
+    const inTargetWeek =
+      !!dayKey && isKeyInRange(dayKey, due.targetWeekStartKey, due.targetWeekEndKey);
+    (inTargetWeek ? current : stale).push(task);
+  }
+  return { current, stale };
 }
