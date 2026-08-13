@@ -879,12 +879,7 @@ export function RecipeDetailScreen() {
                 first list you'd check, not only several scrolls down in its
                 own Components section (which stays the place to remove one or
                 set a choice-group default). */}
-            {components.length > 0 && (
-              <>
-                <Text style={styles.ingredientSectionHeader}>Components</Text>
-                {components.map(resolved => renderComponent(resolved, true))}
-              </>
-            )}
+            {components.map(resolved => renderComponent(resolved, true))}
           </View>
         )}
 
