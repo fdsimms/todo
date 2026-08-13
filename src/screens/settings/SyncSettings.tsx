@@ -68,7 +68,6 @@ export function SyncSettings() {
           busy={phase === 'syncing'}
           onPress={() => void syncNow()}
           disabled={phase === 'syncing'}
-          tight
         />
       )}
 
@@ -78,7 +77,6 @@ export function SyncSettings() {
           iconColor={colors.red}
           label={problem}
           labelColor={colors.red}
-          tight
         />
       )}
     </SettingsSection>
