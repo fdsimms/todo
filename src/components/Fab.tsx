@@ -49,6 +49,8 @@ export function fabCircle(colors: Colors, size: number) {
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     shadowColor: colors.accent,
+    borderWidth: border.sm,
+    borderColor: colors.glassBorderTop,
   };
 }
 

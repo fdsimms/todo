@@ -16,7 +16,7 @@ import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, animation, interaction, iconSize, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
@@ -1852,8 +1852,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.xl,
   },
   sheet: {
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: colors.glassCardFill,
     borderRadius: 20,
+    borderWidth: border.thin,
+    borderColor: colors.glassBorder,
+    borderTopColor: colors.glassBorderTop,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
