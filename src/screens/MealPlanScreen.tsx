@@ -200,16 +200,19 @@ const COPY_LOOKBACK_WEEKS = 4;
 const DRAG_LIFT_SCALE = 1.03;
 
 /**
- * The default `collapsedDays` set for a week: every day but today, so today's
- * plan is the one card already open when the screen appears. A week with no
- * "today" in it (paged away from the current one) collapses nothing — there's
- * no day to make prominent, and folding one at random would just be surprising.
+ * The default `collapsedDays` set for a week: every day strictly before
+ * today, so what's done is out of the way but what's still ahead — today
+ * onward — stays open exactly as it always did. `dayKeyOf` sorts the same as
+ * the date it names (`yyyy-MM-dd`), so a plain string compare against
+ * today's own key is enough; no `Date` arithmetic needed. A future week pages
+ * in fully expanded (nothing in it is before today yet); a past week pages in
+ * fully collapsed (nothing in it is today or after).
  */
-function collapseAllButToday(weekDays: Date[]): Set<string> {
+function collapsePastDays(weekDays: Date[]): Set<string> {
+  const todayKey = dayKeyOf(new Date());
   const set = new Set<string>();
-  if (!weekDays.some(day => isToday(day))) return set;
   for (const day of weekDays) {
-    if (!isToday(day)) set.add(dayKeyOf(day));
+    if (dayKeyOf(day) < todayKey) set.add(dayKeyOf(day));
   }
   return set;
 }
@@ -296,13 +299,11 @@ export function MealPlanScreen() {
   const [suggesting, setSuggesting] =
     useState<{ recipes: Recipe[]; cookAgainRecipes: Recipe[]; days: Date[] } | null>(null);
   // Per-day collapse, local-only — folding one away is just less to scroll
-  // past, not a decision worth persisting. The current week starts with
-  // every day but today collapsed, so today's card is what's on screen
-  // without scrolling past Sunday through Thursday to reach a Friday or
-  // Saturday plan; a past or future week (nothing "today" about it) starts
-  // fully expanded as it always did. Explicit taps on `toggleDayCollapse`
-  // override this per key from then on.
-  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(() => collapseAllButToday(days));
+  // past, not a decision worth persisting. Days before today start
+  // collapsed (already happened, nothing to plan there); today and every
+  // day after it start open, same as they always did. Explicit taps on
+  // `toggleDayCollapse` override this per key from then on.
+  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(() => collapsePastDays(days));
 
   // ——— Bulk selection (#1110) ————————————————————————————————————————
   //
@@ -1008,7 +1009,7 @@ export function MealPlanScreen() {
           if (selectionMode) exitSelection();
           animateLayout();
           setAnchor(new Date());
-          setCollapsedDays(collapseAllButToday(buildWeekDays(new Date(), weekStartsOn)));
+          setCollapsedDays(collapsePastDays(buildWeekDays(new Date(), weekStartsOn)));
         },
         accessibilityLabel: 'Back to this week',
       });
