@@ -4,7 +4,9 @@ import {
   describeShopCoverage,
   describeTripSuggestion,
   joinNames,
+  extraStopThreshold,
   MAX_TRIP_STOPS,
+  MIN_EXTRA_STOP_ITEMS,
   type ShopCoverage,
 } from '../utils/shoppingTrip';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -506,22 +508,76 @@ describe('describeTripSuggestion', () => {
     };
   }
 
-  it('names the stops in visit order, then the items they account for', () => {
+  it('headlines one store and the items it alone accounts for', () => {
+    // The second stop is the walk's, but the count is the headline store's:
+    // a joint total is the one number that can't say what the detour buys.
     const copy = describeTripSuggestion(
-      [cover(tj, [milk.id, bread.id, eggs.id]), cover(pharmacy, [shampoo.id])],
+      [cover(tj, [milk.id, bread.id]), cover(pharmacy, [shampoo.id, saffron.id])],
       5,
       NAMES
     );
     expect(copy).toEqual({
-      stores: "Trader Joe's, then Ballard Pharmacy",
-      detail: 'Likely have 4/5 items on your list: milk, bread, eggs and 1 more',
+      store: "Trader Joe's",
+      detail: 'Likely has 2/5 items on your list: milk and bread',
+      offer: 'Add Ballard Pharmacy for shampoo and saffron',
     });
   });
 
-  it('reads as one stop when one store is enough', () => {
-    expect(describeTripSuggestion([cover(tj, [milk.id, bread.id])], 5, NAMES)?.detail).toBe(
-      'Likely has 2/5 items on your list: milk and bread'
+  it('offers no second stop when one store is the whole suggestion', () => {
+    expect(describeTripSuggestion([cover(tj, [milk.id, bread.id])], 5, NAMES)).toEqual({
+      store: "Trader Joe's",
+      detail: 'Likely has 2/5 items on your list: milk and bread',
+      offer: null,
+    });
+  });
+
+  it('declines to offer a stop that adds less than the threshold', () => {
+    // The case that started this: two stores, and the second is a trip across
+    // town for one tub of yoghurt.
+    expect(
+      describeTripSuggestion(
+        [cover(tj, [milk.id, bread.id]), cover(pharmacy, [shampoo.id])],
+        5,
+        NAMES
+      )?.offer
+    ).toBeNull();
+  });
+
+  it('prices a stop by what it adds, not by what it carries', () => {
+    // The pharmacy covers three, but two of them are already in the first
+    // trolley — so it's worth one item, and one item is not worth a stop.
+    expect(
+      describeTripSuggestion(
+        [cover(tj, [milk.id, bread.id]), cover(pharmacy, [milk.id, bread.id, shampoo.id])],
+        5,
+        NAMES
+      )?.offer
+    ).toBeNull();
+  });
+
+  it('raises the bar with the length of the list', () => {
+    const stops = [cover(tj, [milk.id]), cover(pharmacy, [shampoo.id, saffron.id])];
+    // Two of five clears a threshold of two…
+    expect(describeTripSuggestion(stops, 5, NAMES)?.offer).toBe(
+      'Add Ballard Pharmacy for shampoo and saffron'
     );
+    // …and two of thirty is noise.
+    expect(describeTripSuggestion(stops, 30, NAMES)?.offer).toBeNull();
+    expect(extraStopThreshold(5)).toBe(MIN_EXTRA_STOP_ITEMS);
+    expect(extraStopThreshold(30)).toBe(6);
+  });
+
+  it('names only the walk’s next stop, never a third', () => {
+    const copy = describeTripSuggestion(
+      [
+        cover(tj, [milk.id]),
+        cover(pharmacy, [shampoo.id, saffron.id]),
+        cover(union, [bread.id, eggs.id]),
+      ],
+      5,
+      NAMES
+    );
+    expect(copy?.offer).toBe('Add Ballard Pharmacy for shampoo and saffron');
   });
 
   it('names a full cover rather than listing it out', () => {
@@ -529,10 +585,6 @@ describe('describeTripSuggestion', () => {
     expect(describeTripSuggestion([cover(tj, [milk.id, bread.id])], 2, NAMES)?.detail).toBe(
       'Likely has all 2 items on your list'
     );
-    expect(
-      describeTripSuggestion([cover(tj, [milk.id]), cover(pharmacy, [shampoo.id])], 2, NAMES)
-        ?.detail
-    ).toBe('Likely have all 2 items on your list');
   });
 
   it('says "the one item" rather than counting to one', () => {
@@ -541,19 +593,17 @@ describe('describeTripSuggestion', () => {
     );
   });
 
-  it('counts an item covered by two stops once', () => {
-    const copy = describeTripSuggestion(
-      [cover(tj, [milk.id, bread.id]), cover(pharmacy, [bread.id, shampoo.id])],
-      5,
-      NAMES
-    );
-    expect(copy?.detail).toBe('Likely have 3/5 items on your list: milk, bread and shampoo');
-  });
-
   it('falls back rather than dropping an item it has no name for', () => {
     expect(describeTripSuggestion([cover(tj, [milk.id, 'item-gone'])], 5, NAMES)?.detail).toBe(
       'Likely has 2/5 items on your list: milk and an item'
     );
+    expect(
+      describeTripSuggestion(
+        [cover(tj, [milk.id]), cover(pharmacy, ['item-gone', 'item-also-gone'])],
+        5,
+        NAMES
+      )?.offer
+    ).toBe('Add Ballard Pharmacy for an item and an item');
   });
 
   it('says nothing when there is nothing to say', () => {
@@ -570,8 +620,9 @@ describe('describeTripSuggestion', () => {
       NAMES
     );
     expect(copy).toEqual({
-      stores: "Trader Joe's, then Ballard Pharmacy",
-      detail: 'Likely have 4/5 items on your list: milk, bread, eggs and 1 more',
+      store: "Trader Joe's",
+      detail: 'Likely has 3/5 items on your list: milk, bread and eggs',
+      offer: null,
     });
   });
 });

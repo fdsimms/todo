@@ -977,6 +977,15 @@ function seedGroceries(recipes: DemoRecipes): void {
   // Trader Joe's too, where Costco is the answer. Same promotion as above.
   markItemsUnavailable(idsNamed(['Tortillas', 'Almonds']), traderJoes.id);
 
+  // ...and the store that closes that gap, which is what makes the trip card's
+  // second line exist at all. With Peanut butter and Cottage cheese below,
+  // Costco ends up carrying three things Trader Joe's can't — over
+  // `extraStopThreshold` for a list this length, so the card offers it by name
+  // rather than staying quiet. One link short of that and the demo only ever
+  // shows the one-store case, which is the common one but reads as the app
+  // having nothing to say about a second stop.
+  linkItemShop(itemNamed('Tortillas').id, costco.id);
+
   // The third claim a store can carry: it stocks the thing, just not the one
   // you want. Cottage cheese already names a brand above; switching the rule on
   // is what makes that brand filter store coverage rather than merely caption
