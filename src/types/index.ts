@@ -811,13 +811,27 @@ export interface GroceryItem {
   // by hand on GroceryItemSheet, and null (the common case) means the user
   // has no opinion about which one.
   //
-  // Display-only for now: it says what to grab, not where to get it. It
-  // deliberately does **not** feed shopsForItem/planTrip — a store that has
-  // sold you cottage cheese is still credited with cottage cheese, because
-  // the app has no evidence about *which* one it stocked. Making availability
-  // answer at brand granularity needs per-store brand evidence on
-  // ItemShopLink, which is its own change (#1107).
+  // On its own this says what to grab, not where to get it — see brandStrict
+  // below for the half that reaches store availability, and ItemShopLink.brand
+  // for the evidence it reads.
   brand: string | null;
+  // "Only this brand" — whether a store has to be on record with *this* brand
+  // to count as having the item at all (shopsForItem and everything built on
+  // it, including trip coverage and the shelf captions).
+  //
+  // **Default false, and that's what makes this safe to ship.** A brand set
+  // before this existed, or set as a note to self, is a preference and not a
+  // rule; turning every one of them into a filter would silently rewrite which
+  // stores the app suggests. Nothing infers it — the user says so.
+  //
+  // It is deliberately a fact about the *item*, not about the occasion. The
+  // honest version of "the brand doesn't matter when it's for a recipe" needs
+  // to know why a row is on the list this week, and the only signal available
+  // (sourceRecipeId) is stamped solely on rows addFromPlan genuinely creates —
+  // so a catalog staple re-added for a recipe carries none, which is exactly
+  // the case it would have to get right. Guessing there would drop stores on
+  // evidence the app doesn't have; this is a switch instead.
+  brandStrict: boolean;
   // Never null, unlike Task.category: an unrecognised item is *in* the Other
   // aisle rather than aisle-less, which keeps the null branch out of every
   // grouping and sorting path.
@@ -1057,6 +1071,33 @@ export interface ItemShopLink {
   lastPriceMinor: number | null;
   lastPricedAt: string | null;
   lastPriceQuantity: string | null;
+  /**
+   * Which brand of the item this store is on record for — "Good Culture" at
+   * Costco, "Lucerne" at Safeway. This is the evidence GroceryItem.brandStrict
+   * reads, and the reason per-store availability can answer at brand
+   * granularity at all.
+   *
+   * **null means unknown, and unknown always counts as available.** Every link
+   * written before this existed is null, as is every trip finished on an item
+   * with no brand preference. The app not having watched which cottage cheese
+   * you bought at Costco is ignorance, not evidence that Costco lacks yours —
+   * and asserting an absence from ignorance is the thing shoppingTrip.ts exists
+   * to refuse (see the note there on why `likelyItemIds` was removed). So a
+   * strict item drops a store only on a *recorded conflict*: this field naming
+   * some other brand.
+   *
+   * Written two ways. By hand in the item sheet's store list, which is the
+   * whole point — "Safeway has cottage cheese, just not mine" was previously
+   * unsayable without claiming Safeway had none. And by finishShopping, but
+   * **only for a strict item**: strict means you would not have bought a
+   * substitute, so a purchase here really is evidence this store had your
+   * brand. On a non-strict item the same purchase says nothing about which one
+   * came home, so nothing is stamped.
+   *
+   * Compared with groceryNameKey, like every other name in this feature, so
+   * "good culture" and "Good Culture" are one brand rather than a conflict.
+   */
+  brand: string | null;
 }
 
 /**

@@ -20,6 +20,7 @@ function makeItem(overrides: Partial<GroceryItem> = {}): GroceryItem {
     name: 'Milk',
     nameKey: 'milk',
     brand: null,
+    brandStrict: false,
     aisle: 'Dairy',
     quantity: null,
     note: '',
@@ -64,6 +65,7 @@ function link(overrides: Partial<ItemShopLink> & Pick<ItemShopLink, 'itemId' | '
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null,
+    brand: null,
     ...overrides,
   };
 }

@@ -225,6 +225,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
   const next = summary.suggestion;
   const gapGain = next.length > 0 ? countIn(next[0].itemIds, summary.gap) : 0;
   const missingGain = next.length > 0 ? countIn(next[0].itemIds, summary.missing) : 0;
+  const wrongBrandGain = next.length > 0 ? countIn(next[0].itemIds, summary.wrongBrand) : 0;
   // What the whole suggested itinerary would come to — everything already
   // covered, plus the gap it closes.
   const plannedTotal =
@@ -369,6 +370,29 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
                           `${next[0].shop.name} doesn’t, but it has ${gapGain} of the rest.`}
                     </Text>
                   </>
+                ) : summary.wrongBrand.length > 0 ? (
+                  <>
+                    {/* Also quoting the user back to them, and also allowed to
+                        be flat about it — but it is a different claim from the
+                        card above and has to read as one. The shop has the
+                        thing; it hasn't got the one that was asked for, and
+                        saying "doesn't have it" here would be false. */}
+                    <Text style={styles.suggestionTitle}>
+                      {selectedNames} {selected.length > 1 ? 'carry' : 'carries'} a different brand of{' '}
+                      {namesFor(summary.wrongBrand)}.
+                    </Text>
+                    <Text style={styles.suggestionSub}>
+                      {wrongBrandGain > 0
+                        ? `${next[0].shop.name} has ${
+                            wrongBrandGain === summary.wrongBrand.length
+                              ? summary.wrongBrand.length === 1
+                                ? 'yours'
+                                : 'all of yours'
+                              : `${wrongBrandGain} of them`
+                          }.`
+                        : `${next[0].shop.name} doesn’t, but it has ${gapGain} of the rest.`}
+                    </Text>
+                  </>
                 ) : (
                   <>
                     {/* A fact about your history, not about the shop's shelves:
@@ -488,6 +512,12 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
                   You’ve marked {namesFor(summary.missing)} as not stocked{' '}
                   {selected.length > 1 ? 'at those stores' : `at ${selectedNames}`}, so{' '}
                   {summary.missing.length === 1 ? 'it needs' : 'they need'} another stop.
+                </Text>
+              )}
+              {summary.wrongBrand.length > 0 && (
+                <Text style={styles.footerNote}>
+                  You’ve recorded a different brand of {namesFor(summary.wrongBrand)} here, so{' '}
+                  {summary.wrongBrand.length === 1 ? 'it needs' : 'they need'} another stop.
                 </Text>
               )}
               {summary.unknown.length > 0 && (

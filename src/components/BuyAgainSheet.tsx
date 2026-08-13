@@ -120,7 +120,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
   // fewer rows; filtering a ranked set would silently shrink the 50-row cap.
   const scoped = useMemo(() => {
     if (!shopFilter) return items;
-    const ids = itemIdsForShop(shopFilter, itemShops);
+    const ids = itemIdsForShop(shopFilter, itemShops, items);
     return items.filter(i => ids.has(i.id));
   }, [items, itemShops, shopFilter]);
 
@@ -205,7 +205,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
     const isSelected = selected.has(item.id);
     // Suppressed while a store filter is on: every row would name the store
     // you just filtered to, which is a column of the same word.
-    const usual = shopFilter ? null : primaryShopFor(item.id, itemShops, shops);
+    const usual = shopFilter ? null : primaryShopFor(item, itemShops, shops);
     return (
       <TouchableOpacity
         style={styles.row}

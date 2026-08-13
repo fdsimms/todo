@@ -818,6 +818,8 @@ function seedGroceries(recipes: DemoRecipes): void {
     setQuantity,
     setNote,
     setBrand,
+    setBrandStrict,
+    setItemShopBrand,
     setAisle,
     setAisleOrder,
     setOnHandUntil,
@@ -961,6 +963,19 @@ function seedGroceries(recipes: DemoRecipes): void {
   // Trader Joe's too, where Costco is the answer. Same promotion as above.
   markItemsUnavailable(idsNamed(['Tortillas', 'Almonds']), traderJoes.id);
 
+  // The third claim a store can carry: it stocks the thing, just not the one
+  // you want. Cottage cheese already names a brand above; switching the rule on
+  // is what makes that brand filter store coverage rather than merely caption
+  // the row.
+  //
+  // Trader Joe's is the store the seeded trip below runs at, so this is also
+  // the only way the shelf caption for it ("Lucerne here, not Good Culture")
+  // appears in the demo at all — the same reason the trip is at Trader Joe's
+  // and the other two stores supply the `only`/`usually` markers.
+  setBrandStrict(itemNamed('Cottage cheese').id, true);
+  setItemShopBrand(itemNamed('Cottage cheese').id, traderJoes.id, 'Lucerne');
+  setItemShopBrand(itemNamed('Cottage cheese').id, costco.id, 'Good Culture');
+
   // Everything else typed above is still sitting on the list, since only what
   // a trip actually bought — or a link/unavailable claim above — came off it
   // or promoted it. Clearing parks what's already catalog and drops the rest,
@@ -1016,7 +1031,12 @@ function seedGroceries(recipes: DemoRecipes): void {
   // on the list as themselves; Cheddar, Sparkling water and Ice cream were
   // never bought or linked, so clearList dropped them — they're typed fresh,
   // same as a name nobody has shopped for yet.
-  const ON_LIST_EXISTING = ['Milk', 'Eggs', 'Bananas', 'Bread', 'Tortillas', 'Peanut butter'];
+  // Cottage cheese is here for the brand rule: it's on the list, Trader Joe's
+  // is recorded with the wrong brand, and the trip below is at Trader Joe's —
+  // which is what puts the wrong-brand caption on a row you can actually see.
+  const ON_LIST_EXISTING = [
+    'Milk', 'Eggs', 'Bananas', 'Bread', 'Tortillas', 'Peanut butter', 'Cottage cheese',
+  ];
   addExistingMany(idsNamed(ON_LIST_EXISTING));
   ['Cheddar', 'Sparkling water', 'Ice cream'].forEach(name =>
     addByName(name, undefined, undefined, { registerUndo: false })

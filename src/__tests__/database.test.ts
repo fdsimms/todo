@@ -53,6 +53,7 @@ import {
   dbUpdateGroceryItem,
   dbDeleteGroceryItem,
   dbFinishGroceryShopping,
+  dbGetAllItemShopLinks,
   dbClearGroceryList,
   dbGetGroceryAisleOrder,
   dbGetGroceryAisleOverrides,
@@ -1572,6 +1573,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
   return {
     nameKey: overrides.name.toLowerCase(),
     brand: null,
+    brandStrict: false,
     aisle: 'Other',
     quantity: null,
     note: '',
@@ -1650,6 +1652,27 @@ describe('grocery items', () => {
 
     dbUpdateGroceryItem({ ...item, brand: null });
     expect(dbGetAllGroceryItems()[0].brand).toBeNull();
+  });
+
+  it('round-trips brandStrict, defaulting an untouched row to off', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cottage cheese', brandStrict: true }));
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk' }));
+
+    const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i.brandStrict]));
+    expect(byId.get('g1')).toBe(true);
+    expect(byId.get('g2')).toBe(false);
+  });
+
+  // A brand recorded before the rule existed is a preference, not a filter —
+  // so an upgraded install changes nothing about which stores are suggested.
+  it('reads a row written without brand_strict as not strict', () => {
+    mockRawDb
+      .prepare('INSERT INTO grocery_items (id, name, name_key, brand, created_at) VALUES (?,?,?,?,?)')
+      .run('g1', 'Cottage cheese', 'cottage cheese', 'Good Culture', '2026-01-01T00:00:00.000Z');
+
+    const [read] = dbGetAllGroceryItems();
+    expect(read.brand).toBe('Good Culture');
+    expect(read.brandStrict).toBe(false);
   });
 
   // Every row that predates the column has no opinion about which one to buy,
@@ -1771,6 +1794,25 @@ describe('grocery items', () => {
       expect(byId.get('g1')!.lastPurchasedAt).toBe('2026-08-07T12:00:00.000Z');
       // Not bought, so still on the list for next time.
       expect(byId.get('g2')!.onList).toBe(true);
+    });
+
+    // The SQL half of the brand stamp — the store-side mirror of the patch in
+    // useGroceryStore.finishShopping. Only a strict row earns it.
+    it('records the brand on the link only when the item insists on one', () => {
+      dbInsertGroceryItem(makeGroceryItem({
+        id: 'g1', name: 'Cottage cheese', nameKey: 'cottage cheese', checked: true,
+        brand: 'Good Culture', brandStrict: true,
+      }));
+      dbInsertGroceryItem(makeGroceryItem({
+        id: 'g2', name: 'Yoghurt', nameKey: 'yoghurt', checked: true,
+        brand: 'Fage', brandStrict: false,
+      }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', {}, 'shop-1');
+
+      const byItem = new Map(dbGetAllItemShopLinks().map(l => [l.itemId, l.brand]));
+      expect(byItem.get('g1')).toBe('Good Culture');
+      expect(byItem.get('g2')).toBeNull();
     });
 
     it('promotes what was bought into the catalog', () => {

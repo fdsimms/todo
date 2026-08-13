@@ -113,6 +113,8 @@ export function GroceryItemSheet({
   const setQuantity = useGroceryStore(s => s.setQuantity);
   const setNote = useGroceryStore(s => s.setNote);
   const setBrand = useGroceryStore(s => s.setBrand);
+  const setBrandStrict = useGroceryStore(s => s.setBrandStrict);
+  const setItemShopBrand = useGroceryStore(s => s.setItemShopBrand);
   const setAisle = useGroceryStore(s => s.setAisle);
   const addAisle = useGroceryStore(s => s.addAisle);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
@@ -147,6 +149,10 @@ export function GroceryItemSheet({
   // untouched and the stored price shows through; '' means the user emptied
   // it, which is how a price is taken back.
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
+  // Per-store brand, keyed by shop id. Same shape as priceEdits and for the
+  // same reason — several stores can be edited before any of them blurs — but
+  // committed on blur rather than at Save, since it's a per-store fact.
+  const [shopBrandEdits, setShopBrandEdits] = useState<Record<string, string>>({});
   const [nameError, setNameError] = useState<string | null>(null);
   // One picker open at a time, like every other editor in the app — see the
   // progressive-disclosure note in CLAUDE.md.
@@ -160,6 +166,7 @@ export function GroceryItemSheet({
       setNoteText(item.note);
       setPriceTarget(null);
       setPriceEdits({});
+      setShopBrandEdits({});
       setNameError(null);
       setOpenField(initialField ?? null);
     }
@@ -266,7 +273,7 @@ export function GroceryItemSheet({
     // No closeField: stores are multi-select, so you're probably not done.
   };
 
-  const linkedShops = shopsForItem(item.id, itemShops, shops);
+  const linkedShops = shopsForItem(item, itemShops, shops);
   const linkedCounts = new Map(linkedShops.map(s => [s.shop.id, s.purchaseCount]));
   // Stores the user has said don't stock this — the third pill state, and the
   // only place in the app those claims can be seen and taken back.
@@ -489,6 +496,33 @@ export function GroceryItemSheet({
     };
   });
 
+  const brandStrictOptions: PillGroupOption[] = [
+    {
+      key: 'strict',
+      label: 'Only this brand',
+      selected: item.brandStrict,
+      accessibilityLabel: item.brandStrict
+        ? `Only ${item.brand}, on. Stores carrying another brand don’t count as having this. Tap to turn off.`
+        : `Only ${item.brand} — count only stores recorded as carrying it`,
+      onPress: () => {
+        haptics.tap();
+        setBrandStrict(item.id, !item.brandStrict);
+      },
+    },
+  ];
+
+  /**
+   * The stores this item has a live link to — the ones a brand can be recorded
+   * against. Built from the links rather than from `linkedShops`, because that
+   * read now *drops* a store carrying the wrong brand: listing it from there
+   * would hide the exact row the user needs in order to take the claim back.
+   * Negatives are excluded — they're the pills above, and "they don't stock it"
+   * already outranks any brand on the same row.
+   */
+  const brandRows = shops.filter(
+    s => !notStocked.has(s.id) && itemShops.some(l => l.itemId === item.id && l.shopId === s.id)
+  );
+
   const pantryOptions: PillGroupOption[] = [
     {
       key: 'staple',
@@ -623,13 +657,26 @@ export function GroceryItemSheet({
             maxLength={GROCERY_BRAND_MAX_LENGTH}
             accessibilityLabel="Brand"
           />
-          {/* The one thing a person will reasonably expect this to do and it
-              doesn't — said plainly rather than left to be discovered at a
-              shelf. See GroceryItem.brand. */}
           <Text style={styles.hint}>
-            Shown on the list so you know which one to get. Stores aren't
-            tracked per brand, so this doesn't change which shops are suggested.
+            Shown on the list so you know which one to get.
           </Text>
+          {/* Off by default and only offered once there's a brand to be strict
+              about — see GroceryItem.brandStrict. It's a pill rather than a
+              switch for the same reason "Always have it" is one: it's a
+              one-word state on the item, and the pantry row two fields down
+              already spells that idiom in this sheet. */}
+          {!!item.brand && (
+            <>
+              <View style={styles.brandStrictRow}>
+                <PillGroup options={brandStrictOptions} noun="option" />
+              </View>
+              <Text style={styles.hint}>
+                {item.brandStrict
+                  ? `Stores recorded as carrying a different brand won’t count as having this. Say which brand each one carries under Stores.`
+                  : 'Off, so every store that stocks this counts, whichever brand they carry.'}
+              </Text>
+            </>
+          )}
 
           <Text style={styles.label}>QUANTITY</Text>
           <TextInput
@@ -726,6 +773,47 @@ export function GroceryItemSheet({
               onToggle={() => toggleField('stores')}
             >
               <PillGroup options={shopOptions} noun="store" onCreate={handleCreateShop} />
+              {/* Only while a brand rule is actually in force. Without one
+                  these fields would be asking for evidence nothing reads, and
+                  the sheet is already dense — the pills above are what a person
+                  comes to Stores for. */}
+              {item.brandStrict && !!item.brand && brandRows.length > 0 && (
+                <View style={styles.brandAtBlock}>
+                  <Text style={styles.label}>WHICH BRAND THEY CARRY</Text>
+                  {brandRows.map(shop => (
+                    <View key={shop.id} style={styles.brandAtRow}>
+                      <Text style={styles.brandAtName} numberOfLines={1}>{shop.name}</Text>
+                      <TextInput
+                        style={styles.brandAtInput}
+                        value={shopBrandEdits[shop.id] ?? linkFor(shop.id)?.brand ?? ''}
+                        onChangeText={t => setShopBrandEdits(prev => ({ ...prev, [shop.id]: t }))}
+                        // Written on blur rather than buffered to Save, like
+                        // every other per-store fact in this sheet — tapping a
+                        // store pill commits immediately too. The price field
+                        // buffers because it belongs to the item's own form.
+                        onBlur={() =>
+                          setItemShopBrand(
+                            item.id,
+                            shop.id,
+                            shopBrandEdits[shop.id] ?? linkFor(shop.id)?.brand ?? ''
+                          )
+                        }
+                        placeholder="Not recorded"
+                        placeholderTextColor={colors.textTertiary}
+                        autoCorrect={false}
+                        maxLength={GROCERY_BRAND_MAX_LENGTH}
+                        accessibilityLabel={`Brand carried at ${shop.name}`}
+                      />
+                    </View>
+                  ))}
+                  {/* The rule that makes the whole feature safe, said where
+                      someone is about to rely on it. */}
+                  <Text style={styles.hint}>
+                    Left blank, a store still counts — not knowing which one they
+                    carry isn’t the same as knowing they haven’t got yours.
+                  </Text>
+                </View>
+              )}
             </CollapsibleField>
 
             <View style={styles.separator} />
@@ -925,6 +1013,33 @@ function makeStyles(colors: Colors) {
       height: 44,
     },
     priceTargets: { marginBottom: spacing.sm },
+    // Margin on both sides it needs, not just the one that happened to matter:
+    // the hint below has no top margin of its own.
+    brandStrictRow: { marginTop: spacing.sm, marginBottom: spacing.sm },
+    brandAtBlock: { marginTop: spacing.sm },
+    brandAtRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    // Fixed share of the row so the fields line up into a column rather than
+    // stepping in and out with the length of each store's name.
+    brandAtName: { flex: 1, fontSize: font.md, color: colors.text },
+    brandAtInput: {
+      flex: 1.4,
+      // bgTertiary, not the bgSecondary the top-level `input` uses: these rows
+      // sit *inside* the Stores card, which is itself bgSecondary, so the field
+      // would be invisible against it in both themes. Same step up the row's
+      // quantity pill takes over its own card.
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      fontSize: font.md,
+      color: colors.text,
+      // Same rule as `input` above — never lineHeight on a TextInput.
+      height: 40,
+    },
     priceSymbol: { color: colors.textSecondary, fontSize: font.md },
     // No lineHeight, same as `input` — see the note there.
     priceInput: { flex: 1, fontSize: font.md, color: colors.text, padding: 0 },
