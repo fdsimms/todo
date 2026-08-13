@@ -53,6 +53,7 @@ function item(id: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
     nameKey: id,
     brand: null,
     brandStrict: false,
+    variant: null,
     aisle: 'Other',
     quantity: null,
     note: '',

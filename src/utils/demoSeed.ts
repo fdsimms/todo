@@ -825,6 +825,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     setQuantity,
     setNote,
     setBrand,
+    setVariant,
     setBrandStrict,
     setBrandUnavailable,
     setAisle,
@@ -881,6 +882,12 @@ function seedGroceries(recipes: DemoRecipes): void {
   // carries no note, so the list shows the brand caption on its own rather
   // than stacked under one.
   setBrand(itemNamed('Cottage cheese').id, 'Good Culture');
+  // The same row carries the variant, which is the pairing worth showing: a
+  // brand alone doesn't finish the job, since one dairy makes several tubs.
+  // Both clauses compose into the single caption "Good Culture low fat" —
+  // seeded together so the demo shows the composition rather than a variant
+  // sitting on its own, which is the rarer of the two states.
+  setVariant(itemNamed('Cottage cheese').id, 'low fat');
 
   const traderJoes = newShop("Trader Joe's");
   const costco = newShop('Costco');

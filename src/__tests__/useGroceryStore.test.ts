@@ -126,6 +126,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     nameKey: groceryNameKey(name),
     brand: null,
     brandStrict: false,
+    variant: null,
     aisle: OTHER_AISLE,
     quantity: null,
     note: '',
@@ -2122,6 +2123,59 @@ describe('setBrand', () => {
 
     useGroceryStore.getState().setBrand(cc.id, '');
 
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(false);
+  });
+});
+
+describe('setVariant', () => {
+  it('writes the variant and persists it, leaving the name key and brand alone', () => {
+    const cc = makeItem({ name: 'Cottage cheese', brand: 'Good Culture' });
+    seed([cc]);
+
+    useGroceryStore.getState().setVariant(cc.id, 'low fat');
+
+    const [saved] = useGroceryStore.getState().items;
+    expect(saved.variant).toBe('low fat');
+    expect(saved.brand).toBe('Good Culture');
+    expect(saved.nameKey).toBe(cc.nameKey);
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: cc.id, variant: 'low fat' })
+    );
+  });
+
+  // Same two spellings of one state setBrand refuses — every reader tests for
+  // null, and '' would caption the row with a blank line.
+  it('clears an emptied or blank field back to null, trimming otherwise', () => {
+    const cc = makeItem({ name: 'Cottage cheese', variant: 'low fat' });
+    seed([cc]);
+
+    useGroceryStore.getState().setVariant(cc.id, '   ');
+    expect(useGroceryStore.getState().items[0].variant).toBeNull();
+
+    useGroceryStore.getState().setVariant(cc.id, '  4% ');
+    expect(useGroceryStore.getState().items[0].variant).toBe('4%');
+  });
+
+  it('shrugs off an id that no longer resolves', () => {
+    seed([makeItem({ name: 'Milk' })]);
+
+    expect(() => useGroceryStore.getState().setVariant('gone', 'whole')).not.toThrow();
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
+  // A variant is a standing fact about the item, exactly like the brand — so it
+  // has to survive the row leaving the list, and clearing it is not a reason to
+  // promote a row that was never in the catalog.
+  it('promotes a provisional row on setting one, but not on clearing', () => {
+    const cc = makeItem({ name: 'Cottage cheese', onList: true, inCatalog: false });
+    seed([cc]);
+
+    useGroceryStore.getState().setVariant(cc.id, 'low fat');
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+
+    const other = makeItem({ id: 'g-other', name: 'Milk', onList: true, inCatalog: false });
+    seed([other]);
+    useGroceryStore.getState().setVariant(other.id, '');
     expect(useGroceryStore.getState().items[0].inCatalog).toBe(false);
   });
 });

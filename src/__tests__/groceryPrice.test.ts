@@ -21,6 +21,7 @@ function makeItem(overrides: Partial<GroceryItem> = {}): GroceryItem {
     nameKey: 'milk',
     brand: null,
     brandStrict: false,
+    variant: null,
     aisle: 'Dairy',
     quantity: null,
     note: '',

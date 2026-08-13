@@ -21,6 +21,7 @@ function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
     nameKey: 'spinach',
     brand: null,
     brandStrict: false,
+    variant: null,
     aisle: 'Produce',
     quantity: null,
     note: '',

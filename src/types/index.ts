@@ -832,6 +832,28 @@ export interface GroceryItem {
   // the case it would have to get right. Guessing there would drop stores on
   // evidence the app doesn't have; this is a switch instead.
   brandStrict: boolean;
+  // Which one *of* that brand — "low fat", "4%", "crunchy". A second clause on
+  // exactly the same footing as `brand` above, and kept out of `nameKey` for
+  // exactly the same reasons: the row has to stay the one a recipe calling for
+  // "cottage cheese" matches, with one purchase history, one pantry state, one
+  // expiry. Nothing parses it out of typed text either — "low fat" has no
+  // marker in front of it any more than "Good Culture" does.
+  //
+  // It's separate from `brand` rather than more room inside it because the two
+  // are different kinds of fact: the maker is stable and is what a store gets
+  // recorded against (ItemShopLink.brand), while the product line is what
+  // actually varies within it. Written into the brand field, "Organic Valley
+  // low fat" would be recorded at a shop as a brand nobody stocks under that
+  // name.
+  //
+  // **It deliberately doesn't reach store availability, even now that
+  // brandStrict does.** The only per-store evidence there is a brand — what a
+  // link records, and what the user's "haven't got it here" claim is worded
+  // against — so a variant-level rule would need a variant-level claim to
+  // filter on, which nobody has made. Adding one belongs with the per-store
+  // brand work, not bolted onto a caption. Until then this says which box to
+  // reach for, and only that.
+  variant: string | null;
   // Never null, unlike Task.category: an unrecognised item is *in* the Other
   // aisle rather than aisle-less, which keeps the null branch out of every
   // grouping and sorting path.
@@ -995,6 +1017,10 @@ export const GROCERY_QUANTITY_MAX_LENGTH = 24;
 // Shorter than a name on purpose: this is a brand, not a second name for the
 // thing. Matches SHOP_NAME_MAX_LENGTH, which is the same kind of proper noun.
 export const GROCERY_BRAND_MAX_LENGTH = 40;
+// Its own constant rather than a second use of the brand's, because the two
+// cap different things — a maker's name against a product line — and one of
+// them changing shouldn't silently move the other. Same length for now.
+export const GROCERY_VARIANT_MAX_LENGTH = 40;
 
 // A place you shop. "Store" everywhere the user can read; `Shop` in code,
 // because `store` is already Zustand's word here (useGroceryStore,
