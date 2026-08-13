@@ -9,7 +9,9 @@ import {
   dbSetMealPlanAddedToList,
   dbGetMealPlanEntry,
 } from '../db/database';
-import type { MealPlanEntry, MealSlot, Task } from '../types';
+import type { GroceryItem, MealPlanEntry, MealSlot, Recipe, Task } from '../types';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { groceryNameKey } from '../utils/groceryParse';
 
 jest.mock('../db/database', () => ({
   dbGetMealPlanEntries: jest.fn().mockReturnValue([]),
@@ -87,10 +89,15 @@ jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => mockTaskState },
 }));
 
+// Mutable, so the cooked-offer tests below can put a recipe behind an entry —
+// the offer is computed from the cooked recipe's ingredient lines.
+const mockRecipeState = {
+  recipes: [] as Recipe[],
+  markCooked: jest.fn(),
+  restoreCookStats: jest.fn(),
+};
 jest.mock('../store/useRecipeStore', () => ({
-  useRecipeStore: {
-    getState: () => ({ recipes: [], markCooked: jest.fn(), restoreCookStats: jest.fn() }),
-  },
+  useRecipeStore: { getState: () => mockRecipeState },
 }));
 
 /** The live cook task for an entry, as the store's own helpers find it. */
@@ -143,11 +150,47 @@ beforeEach(() => {
   (dbGetMealPlanEntry as jest.Mock).mockReturnValue(null);
   (dbPurgeOldMealPlanEntries as jest.Mock).mockReturnValue(0);
   (dbGetMealPlanAddedToList as jest.Mock).mockReturnValue({});
+  mockRecipeState.recipes = [];
+  useGroceryStore.setState({ items: [] });
   useMealPlanStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
-    lastAction: null,
+    lastAction: null, cookedOffer: null,
   });
 });
+
+// ─── Fixtures for the cooked "out of anything?" offer ───────────────────────
+//
+// Only the handful of fields the offer's own pipeline reads
+// (plannedIngredientsForRecipe → classifyPlanned → consumedRows); cast rather
+// than filled out, since this suite is about which cook paths raise an offer
+// and the shapes themselves are pinned in mealPlanGroceries.test.ts.
+
+function recipeWith(name: string, ingredientNames: string[]): Recipe {
+  return {
+    id: `r-${name}`,
+    name,
+    ingredients: ingredientNames.map((n, i) => ({
+      id: `${name}-i${i}`, name: n, nameKey: groceryNameKey(n),
+      quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: null,
+    })),
+    components: [],
+  } as unknown as Recipe;
+}
+
+/** A catalog row the pantry claims you have — an explicit, unexpired "Got it". */
+function onHand(name: string): GroceryItem {
+  return {
+    id: `g-${name}`,
+    name,
+    nameKey: groceryNameKey(name),
+    onList: false,
+    checked: false,
+    inCatalog: true,
+    isStaple: false,
+    purchaseCount: 0,
+    onHandUntil: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+  } as unknown as GroceryItem;
+}
 
 describe('loadRange', () => {
   it('reads only the window asked for', () => {
@@ -1001,6 +1044,106 @@ describe('bulkReplaceItem', () => {
     useMealPlanStore.getState().undoLastAction();
 
     expect(getEntries()[0]).toEqual(a);
+  });
+});
+
+describe('cookedOffer', () => {
+  /** A cooked meal of `recipe`, with the catalog holding `stocked`. */
+  function cook(recipe: Recipe, stocked: GroceryItem[]) {
+    mockRecipeState.recipes = [recipe];
+    useGroceryStore.setState({ items: stocked });
+    const dinner = entry('2026-08-05', 'dinner', { recipeId: recipe.id, title: recipe.name });
+    loadWeek([dinner]);
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+    return dinner;
+  }
+
+  const chili = () => recipeWith('Chili', ['soy sauce', 'cumin', 'gochujang']);
+
+  it('is raised by a cook, naming the dish', () => {
+    cook(chili(), [onHand('soy sauce'), onHand('cumin')]);
+
+    expect(useMealPlanStore.getState().cookedOffer).toEqual({
+      recipeId: 'r-Chili',
+      recipeName: 'Chili',
+      choices: [],
+      scale: 1,
+    });
+  });
+
+  // The gate that keeps it from being a prompt after every cook: the screen
+  // suppresses the restock banner while an offer is live, so one that would
+  // show nothing must not be set at all.
+  it('is not raised when the app claims nothing about any of the ingredients', () => {
+    cook(chili(), []);
+    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+  });
+
+  it('is not raised by a free-text meal, which has no ingredients to ask about', () => {
+    useGroceryStore.setState({ items: [onHand('soy sauce')] });
+    const dinner = entry('2026-08-05', 'dinner', { title: 'Leftovers' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+
+    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+  });
+
+  it('is retracted by un-cooking — the tap it was about is undone', () => {
+    const dinner = cook(chili(), [onHand('soy sauce')]);
+    expect(useMealPlanStore.getState().cookedOffer).not.toBeNull();
+
+    useMealPlanStore.getState().setCooked(dinner.id, false);
+
+    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+  });
+
+  // Ticking the "Cook X" task off on Today is a cooking too, and the whole
+  // reason this lives in the store rather than on the meal plan screen.
+  it('is raised by a cook logged from the task', () => {
+    mockRecipeState.recipes = [chili()];
+    useGroceryStore.setState({ items: [onHand('soy sauce')] });
+    const dinner = entry('2026-08-05', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setCookedFromTask(dinner.id, true);
+
+    expect(useMealPlanStore.getState().cookedOffer?.recipeName).toBe('Chili');
+  });
+
+  // Marking last week's dinners cooked on a Sunday is bookkeeping. Asking what
+  // each of them used up would be asking someone to recall five kitchens.
+  it('is never raised by a bulk mark', () => {
+    mockRecipeState.recipes = [chili()];
+    useGroceryStore.setState({ items: [onHand('soy sauce')] });
+    const a = entry('2026-08-05', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
+    const b = entry('2026-08-06', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
+    loadWeek([a, b]);
+
+    useMealPlanStore.getState().bulkSetCooked([a.id, b.id], true);
+
+    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+  });
+
+  it('carries the entry’s own picks and batch, so it asks about what was actually made', () => {
+    mockRecipeState.recipes = [chili()];
+    useGroceryStore.setState({ items: [onHand('soy sauce')] });
+    const dinner = entry('2026-08-05', 'dinner', {
+      recipeId: 'r-Chili', title: 'Chili', recipeChoices: ['c-1'], recipeScale: 2,
+    });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+
+    expect(useMealPlanStore.getState().cookedOffer).toMatchObject({ choices: ['c-1'], scale: 2 });
+  });
+
+  it('is cleared on request — dismissed, or answered out', () => {
+    cook(chili(), [onHand('soy sauce')]);
+
+    useMealPlanStore.getState().clearCookedOffer();
+
+    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
   });
 });
 
