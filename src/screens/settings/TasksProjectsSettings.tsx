@@ -53,10 +53,10 @@ const NEW_TASK_DESTINATION_OPTIONS: SegmentOption<'today' | 'inbox' | 'unschedul
   { value: 'inbox', label: 'Inbox' },
   { value: 'unscheduled', label: 'Unscheduled' },
 ];
-// "Line" rather than "Strip": the user-facing word for what they'll see is the
-// shape of it, and the code's name for the component isn't their problem.
+// "In the list" rather than "Inline": what the user sees is where the meals
+// are, and the code's name for it isn't their problem.
 const MEALS_ON_TODAY_OPTIONS: SegmentOption<MealsOnToday>[] = [
-  { value: 'strip', label: 'One line' },
+  { value: 'inline', label: 'In the list' },
   { value: 'block', label: 'Full list' },
   { value: 'off', label: 'Off' },
 ];
@@ -302,7 +302,7 @@ export function TasksProjectsSettings() {
       <>
       <SettingsSection
         label="Meals on Today"
-        footer="A full list sits above your tasks; one line clears as you cook. Cook tasks themselves are under Tasks the app adds, below."
+        footer="A meal with no cook task behind it — a leftover, a takeaway, a dinner you typed — shows as a row in the list, filed under the same category as cook tasks. Cook tasks themselves are under Tasks the app adds, below."
       >
         <SettingsRow
           icon="restaurant-outline"
@@ -310,8 +310,8 @@ export function TasksProjectsSettings() {
           hint={
             mealsOnToday === 'block'
               ? 'A full list of today\'s meals above your tasks'
-              : mealsOnToday === 'strip'
-                ? 'One line of what\'s left to eat, which clears as you cook'
+              : mealsOnToday === 'inline'
+                ? 'As rows in the task list, with the day\'s other meals'
                 : 'Nothing — meals stay on the Meal plan tab'
           }
           tight

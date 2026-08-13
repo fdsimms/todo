@@ -12,8 +12,10 @@ import {
   dbSetCategoryEmoji,
   dbSetCategoryDefaultTimeSegments,
   dbBatchUpdateCategorySortOrders,
+  dbGetSetting,
 } from '../db/database';
 import { firstEmoji } from '../utils/emojiInput';
+import { useSettingsStore } from './useSettingsStore';
 
 interface CategoryStore {
   categories: Category[];
@@ -168,3 +170,46 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
     }));
   },
 }));
+
+/** What the events category is called until the user renames it. */
+export const CALENDAR_EVENTS_CATEGORY = 'Calendar Events';
+
+/**
+ * Make sure the day's events have a section to land in (#1571).
+ *
+ * Events file under a category like everything else on Today, which leaves one
+ * question a fresh install can't answer for itself: *which* one. This creates
+ * a real category — a row in the same table as every other, renameable,
+ * reorderable, deletable — and points the setting at it, rather than teaching
+ * the list about a synthetic section that only events can use. Everything that
+ * makes the fold worth having (its place in the order, collapsing it, focusing
+ * it) is then the category feature working normally.
+ *
+ * **Only ever fills in a blank.** A category the user has picked, renamed or
+ * pointed elsewhere is never overwritten, and a name that's already taken is
+ * adopted rather than duplicated (`addCategory` returns the existing row). If
+ * they delete the category, the setting is cleared by the delete and events
+ * stop showing until one is picked again — which is a real answer, and the
+ * closest thing this feature has to an off switch that isn't the calendar read
+ * itself.
+ *
+ * Called from two places for two reasons: turning the read on (`force`, so the
+ * section appears with the events rather than a launch later), and app startup,
+ * which is how an install that already had the read on gets one without a
+ * migration step of its own.
+ *
+ * **An empty stored row is a deliberate "nowhere" and is left alone**, which is
+ * the whole reason startup can't just fill in any blank it finds: deleting the
+ * category clears the setting, and a startup pass that couldn't tell that from
+ * "never answered" would put it back every launch — the user would have no way
+ * to say no. An *absent* row is the only unanswered state, so that's the one
+ * that gets filled in.
+ */
+export function ensureCalendarEventCategory(opts: { force?: boolean } = {}): void {
+  const settings = useSettingsStore.getState();
+  if (!settings.calendarReadEnabled) return;
+  if (settings.calendarEventCategory) return;
+  if (!opts.force && dbGetSetting('calendarEventCategory') !== null) return;
+  useCategoryStore.getState().addCategory(CALENDAR_EVENTS_CATEGORY);
+  settings.setCalendarEventCategory(CALENDAR_EVENTS_CATEGORY);
+}

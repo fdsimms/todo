@@ -1119,6 +1119,12 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   const { markCooked } = useRecipeStore.getState();
   const { logLeftover, finishLeftover } = useLeftoverStore.getState();
   const weekStartsOn = useSettingsStore.getState().weekStartsOn;
+  // Cook tasks and the meal rows beside them both file under this, and it
+  // defaults to none — which puts them loose at the top of Today, above every
+  // category. Naming one is what a real user does once they've seen that, and
+  // the demo should show the arrangement worth copying rather than the default
+  // nobody keeps. Home, because that's where dinner lives in this seed.
+  useSettingsStore.getState().setMealCookTaskCategory('Home');
 
   loadRange(dayKeyOf(subDays(today, 14)), dayKeyOf(addDays(today, 14)));
 
@@ -1232,6 +1238,13 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // snack plate opt out, which is what the entry sheet's per-meal toggle
   // writes. A day where every recipe became a chore is exactly the pile-up the
   // toggle exists for.
+  //
+  // That mixture is now also what shows both halves of the *fold* (#1571): the
+  // two with a cook task appear as ordinary task rows, and the two without
+  // appear as context rows in the same section — which is the whole point of
+  // meals going inline rather than into a strip of their own. The demo files
+  // them under Home (see mealCookTaskCategory below) so they land in a
+  // category rather than loose above one.
   plan(0, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
   plan(0, 'lunch', { title: 'Turkey and avocado sandwich', recipeId: recipes.sandwich, cookTask: false });
   plan(0, 'dinner', { title: 'Weeknight chicken stir-fry', recipeId: recipes.stirFry });

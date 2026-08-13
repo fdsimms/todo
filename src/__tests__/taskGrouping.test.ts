@@ -792,6 +792,7 @@ describe('findTaskJumpTarget', () => {
   const listItemKey = (item: TodayListItem): string =>
     item.type === 'header' ? `h-${item.label}`
     : item.type === 'group' ? `g-${item.group.id}`
+    : item.type === 'context' ? item.row.id
     : item.task.id;
 
   const find = (items: TodayListItem[], id: string) => findTaskJumpTarget(items, id, listItemKey);

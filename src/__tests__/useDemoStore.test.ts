@@ -28,6 +28,7 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
 import { isUsingDemoDatabase } from '../db/database';
+import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
 import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
@@ -739,6 +740,25 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Nothing spawned for free text or for a leftover night.
     const freeOrLeftover = entries.filter(e => !e.recipeId || e.leftoverId).map(e => e.id);
     expect(cookTasks.every(t => !freeOrLeftover.includes(t.generatedSourceId!))).toBe(true);
+  });
+
+  it('seeds today with meals on both sides of the fold', () => {
+    const { entries } = useMealPlanStore.getState();
+    const { tasks } = useTaskStore.getState();
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const todayEntries = entries.filter(e => e.date === todayKey && !e.cookedAt);
+
+    // Half of today's meals are a task in the list; the other half have no
+    // task and are the ones that render as context rows (see dayContextRows).
+    // A seed where every meal had a cook task would show only one of the two.
+    const hasCookTask = (id: string) =>
+      tasks.some(t => t.generatedKind === 'mealCook' && t.generatedSourceId === id && !t.completed);
+    expect(todayEntries.some(e => hasCookTask(e.id))).toBe(true);
+    expect(todayEntries.some(e => !hasCookTask(e.id))).toBe(true);
+
+    // And they land in a category rather than loose above every section —
+    // which is the arrangement the fold is worth having.
+    expect(useSettingsStore.getState().mealCookTaskCategory).toBe('Home');
   });
 
   it('seeds use-by dates, and one item opted in to a use-up task', () => {

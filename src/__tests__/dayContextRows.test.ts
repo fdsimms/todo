@@ -1,0 +1,211 @@
+import type { MealPlanEntry, MealSlot, Recipe } from '../types';
+import type { BusyEvent } from '../utils/calendarBusy';
+import type { TodayListItem } from '../utils/taskGrouping';
+import {
+  eventContextRows,
+  mealContextRows,
+  insertContextRows,
+  withoutContextRows,
+} from '../utils/dayContextRows';
+
+// Both mocks are here for what this module *imports*, not for what it does:
+// dateUtils reaches the settings store for the 12/24-hour preference (every
+// call below passes it explicitly), and taskGrouping — for LATER_TODAY_LABEL —
+// reaches visibilityUtils and so the category store, which loads expo-sqlite.
+// Same pair taskGrouping's own suite installs.
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ use24HourTime: false, dayResetTime: '00:00' }) },
+}));
+
+jest.mock('../store/useCategoryStore', () => ({
+  useCategoryStore: {
+    getState: () => ({ categories: [], getCategoryByName: () => null }),
+  },
+}));
+
+const NOW = new Date('2026-08-13T14:00:00Z');
+
+let seq = 0;
+function ev(start: string, end: string, overrides: Partial<BusyEvent> = {}): BusyEvent {
+  seq += 1;
+  return {
+    id: `e${seq}`,
+    title: `Event ${seq}`,
+    start,
+    end,
+    allDay: false,
+    calendarId: 'cal',
+    location: null,
+    status: 'confirmed',
+    availability: 'busy',
+    ...overrides,
+  };
+}
+
+/** An ISO instant at the given UTC hour on the test day. */
+function at(hours: number, minutes = 0): string {
+  const d = new Date('2026-08-13T00:00:00Z');
+  d.setUTCHours(hours, minutes, 0, 0);
+  return d.toISOString();
+}
+
+function entry(slot: MealSlot, overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
+  seq += 1;
+  return {
+    id: `m-${seq}`,
+    date: '2026-08-13',
+    slot,
+    recipeId: null,
+    title: `Meal ${seq}`,
+    sortOrder: 1,
+    createdAt: '2026-08-13T00:00:00.000Z',
+    cookedAt: null,
+    leftoverId: null,
+    recipeChoices: [],
+    recipeScale: 1,
+    cookTask: null,
+    calendarEventId: null,
+    ...overrides,
+  };
+}
+
+const NO_RECIPES = new Map<string, Recipe>();
+const eventOpts = { now: NOW, category: 'Calendar Events', use24Hour: true };
+const mealOpts = { category: 'Kitchen', hasCookTask: () => false };
+
+const header = (label: string): TodayListItem => ({ type: 'header', label });
+const task = (id: string, category: string | null = null): TodayListItem =>
+  ({ type: 'task', task: { id, category } as never });
+
+describe('eventContextRows', () => {
+  it('drops an event that has already ended', () => {
+    const rows = eventContextRows([ev(at(9), at(10)), ev(at(16), at(17))], eventOpts);
+    expect(rows.map(r => r.caption)).toEqual(['16:00']);
+  });
+
+  it('marks the event happening right now, and only that one', () => {
+    const rows = eventContextRows([ev(at(13, 30), at(14, 30)), ev(at(18), at(19))], eventOpts);
+    expect(rows.map(r => [r.caption, r.now])).toEqual([['Now', true], ['18:00', false]]);
+  });
+
+  it('keeps an all-day event and leads with it, whatever the clock says', () => {
+    const rows = eventContextRows(
+      [
+        ev(at(16), at(17), { title: 'Dentist' }),
+        ev(at(0), at(24), { allDay: true, title: 'Sam out of office' }),
+      ],
+      eventOpts,
+    );
+    expect(rows.map(r => [r.title, r.caption])).toEqual([
+      ['Sam out of office', 'All day'],
+      ['Dentist', '16:00'],
+    ]);
+  });
+
+  it('drops a cancelled event, matching every other calendar read', () => {
+    expect(eventContextRows([ev(at(16), at(17), { status: 'canceled' })], eventOpts)).toEqual([]);
+  });
+
+  it('prefixes the id by kind so it cannot collide with a task id', () => {
+    const [row] = eventContextRows([ev(at(16), at(17), { id: 'abc' })], eventOpts);
+    expect(row.id).toBe('event-abc');
+  });
+});
+
+describe('mealContextRows', () => {
+  it('leaves out a meal that already has a live cook task', () => {
+    const withTask = entry('dinner');
+    const withoutTask = entry('lunch');
+    const rows = mealContextRows([withTask, withoutTask], NO_RECIPES, {
+      category: 'Kitchen',
+      hasCookTask: id => id === withTask.id,
+    });
+    expect(rows.map(r => r.title)).toEqual([withoutTask.title]);
+  });
+
+  it('leaves out a meal already cooked', () => {
+    const rows = mealContextRows([entry('dinner', { cookedAt: at(12) })], NO_RECIPES, mealOpts);
+    expect(rows).toEqual([]);
+  });
+
+  it('reads in slot order and captions each with its slot', () => {
+    const rows = mealContextRows(
+      [entry('dinner', { title: 'Chilli' }), entry('breakfast', { title: 'Oats' })],
+      NO_RECIPES,
+      mealOpts,
+    );
+    expect(rows.map(r => [r.title, r.caption])).toEqual([['Oats', 'Breakfast'], ['Chilli', 'Dinner']]);
+  });
+});
+
+describe('insertContextRows', () => {
+  const rows = eventContextRows([ev(at(16), at(17), { title: 'Dentist' })], eventOpts);
+
+  it('puts rows under their existing header, ahead of that section\'s tasks', () => {
+    const out = insertContextRows(
+      [header('Home'), task('a', 'Home'), header('Calendar Events'), task('b', 'Calendar Events')],
+      rows,
+      { categoryOrder: ['Home', 'Calendar Events'] },
+    );
+    expect(out.map(i => (i.type === 'context' ? `ctx:${i.row.title}` : i.type))).toEqual([
+      'header', 'task', 'header', 'ctx:Dentist', 'task',
+    ]);
+  });
+
+  it('creates the section when the category holds nothing else', () => {
+    const out = insertContextRows([header('Home'), task('a', 'Home')], rows, {
+      categoryOrder: ['Home', 'Calendar Events'],
+    });
+    expect(out.map(i => (i.type === 'header' ? i.label : i.type))).toEqual([
+      'Home', 'task', 'Calendar Events', 'context',
+    ]);
+  });
+
+  it('places a created section where the category order says, not just last', () => {
+    const out = insertContextRows([header('Work'), task('a', 'Work')], rows, {
+      categoryOrder: ['Calendar Events', 'Work'],
+    });
+    expect(out.map(i => (i.type === 'header' ? i.label : i.type))).toEqual([
+      'Calendar Events', 'context', 'Work', 'task',
+    ]);
+  });
+
+  it('keeps a created section above Later Today, which is not a category', () => {
+    const out = insertContextRows([header('Later Today'), task('a')], rows, {
+      categoryOrder: ['Calendar Events'],
+    });
+    expect(out.map(i => (i.type === 'header' ? i.label : i.type))).toEqual([
+      'Calendar Events', 'context', 'Later Today', 'task',
+    ]);
+  });
+
+  it('puts uncategorized rows at the top, with the loose tasks', () => {
+    const loose = mealContextRows([entry('dinner', { title: 'Leftovers' })], NO_RECIPES, {
+      category: null,
+      hasCookTask: () => false,
+    });
+    const out = insertContextRows([task('a'), header('Home'), task('b', 'Home')], loose, {
+      categoryOrder: ['Home'],
+    });
+    expect(out.map(i => (i.type === 'header' ? i.label : i.type))).toEqual([
+      'context', 'task', 'Home', 'task',
+    ]);
+  });
+
+  it('changes nothing when there are no rows', () => {
+    const items = [header('Home'), task('a', 'Home')];
+    expect(insertContextRows(items, [], { categoryOrder: ['Home'] })).toEqual(items);
+  });
+});
+
+describe('withoutContextRows', () => {
+  it('strips them back out for the drop machinery', () => {
+    const withRows = insertContextRows(
+      [header('Calendar Events')],
+      eventContextRows([ev(at(16), at(17))], eventOpts),
+      { categoryOrder: ['Calendar Events'] },
+    );
+    expect(withRows).toHaveLength(2);
+    expect(withoutContextRows(withRows)).toEqual([header('Calendar Events')]);
+  });
+});

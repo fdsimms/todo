@@ -20,6 +20,10 @@ import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsChoiceTray } from './SettingsChoiceTray';
 import { makeSettingsStyles } from './settingsStyles';
+import { PillGroup } from '../../components/PillGroup';
+import { useCategoryStore, ensureCalendarEventCategory } from '../../store/useCategoryStore';
+import { categoryLabel } from '../../utils/categoryLabel';
+import { haptics } from '../../utils/haptics';
 
 /**
  * Reading the device calendar.
@@ -43,6 +47,9 @@ export function CalendarSettings() {
   const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
   const setReminderMeetingNudgeEnabled = useSettingsStore(s => s.setReminderMeetingNudgeEnabled);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const calendarEventCategory = useSettingsStore(s => s.calendarEventCategory);
+  const setCalendarEventCategory = useSettingsStore(s => s.setCalendarEventCategory);
+  const categories = useCategoryStore(s => s.categories);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const events = useCalendarStore(s => s.events);
   const loaded = useCalendarStore(s => s.loaded);
@@ -115,6 +122,17 @@ export function CalendarSettings() {
     return `${count}${booked}${upcoming}`;
   };
 
+  /**
+   * Turning the read on also gives the day's events somewhere to land — see
+   * ensureCalendarEventCategory. Both enable paths go through here so neither
+   * can switch the read on and leave the events with no section, which looks
+   * exactly like the read having failed.
+   */
+  const enableRead = () => {
+    setCalendarReadEnabled(true);
+    ensureCalendarEventCategory({ force: true });
+  };
+
   const toggleCalendar = (item: DeviceCalendar) => {
     const next = calendarIds.includes(item.id)
       ? calendarIds.filter(id => id !== item.id)
@@ -124,7 +142,7 @@ export function CalendarSettings() {
     // moment the feature has something to do, and un-picking the last leaves it
     // claiming to read something it isn't — turning it off is what makes the
     // row above tell the truth.
-    if (next.length > 0 && !calendarReadEnabled) setCalendarReadEnabled(true);
+    if (next.length > 0 && !calendarReadEnabled) enableRead();
     if (next.length === 0 && calendarReadEnabled) setCalendarReadEnabled(false);
   };
 
@@ -166,7 +184,7 @@ export function CalendarSettings() {
     // Calendars picked before it was last switched off — nothing to choose
     // again.
     if (calendarIds.length > 0) {
-      setCalendarReadEnabled(true);
+      enableRead();
       return;
     }
     animateLayout();
@@ -290,6 +308,39 @@ export function CalendarSettings() {
             hint={todaySummary()}
             accessibilityLabel={`Today: ${todaySummary()}`}
           />
+        </>
+      )}
+
+      {calendarReadEnabled && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="pricetag-outline"
+            label="Show events under"
+            hint={calendarEventCategory
+              ? "Today's events show as rows in this category"
+              : "Events don't show on Today"}
+            value={calendarEventCategory
+              ? categoryLabel(calendarEventCategory, categories)
+              : 'Nowhere'}
+            tight
+          />
+          <View style={styles.pillGroupRow}>
+            <PillGroup
+              noun="category"
+              options={[
+                { value: null, label: 'Nowhere' },
+                ...categories.map(c => ({ value: c.name, label: categoryLabel(c.name, categories) })),
+              ].map(o => ({
+                key: String(o.value),
+                label: o.label,
+                selected: o.value === calendarEventCategory,
+                pinned: o.value === null,
+                accessibilityLabel: `Show events under: ${o.label}`,
+                onPress: () => { haptics.tap(); setCalendarEventCategory(o.value); },
+              }))}
+            />
+          </View>
         </>
       )}
 

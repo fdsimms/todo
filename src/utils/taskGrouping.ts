@@ -1,4 +1,4 @@
-import type { Task, TaskGroup } from '../types';
+import type { ContextRow, Task, TaskGroup } from '../types';
 import { getVisibleAt } from './visibilityUtils';
 import { formatGroupHeader, formatHHMM } from './dateUtils';
 
@@ -12,9 +12,19 @@ export type CategoryListItem =
 // dividing off what was left. Both are gone: a pinned task now keeps its row
 // in its own category section and is *also* rendered in a pinned block above
 // the list (TodayScreen's ListHeaderComponent), which is outside this data
-// entirely. So Today's rows are just category rows, and the alias stays only
-// because the screen and its tests name it.
-export type TodayListItem = CategoryListItem;
+// entirely.
+//
+// What Today renders is a *superset* of what it can drag: a calendar event and
+// an uncooked meal fold into the list as `context` rows (see
+// src/utils/dayContextRows.ts), and they belong to their category for every
+// read that groups, collapses or focuses a section. They are deliberately not
+// in `CategoryListItem`, which is the drop machinery's domain — `resolveDrop`
+// assigns a category and a sortOrder to everything it's handed, and neither
+// means anything to a row the app doesn't own. The screen filters them out
+// before a drop resolves (`withoutContextRows`) and puts them back after, so
+// the two types never meet.
+export type ContextListItem = { type: 'context'; row: ContextRow };
+export type TodayListItem = CategoryListItem | ContextListItem;
 
 const UNCATEGORIZED = '';
 
@@ -473,7 +483,7 @@ export function applyCategoryCollapse(
   return items.filter((item, i) => {
     if (item.type === 'header') return true;
     if (
-      (item.type === 'task' || item.type === 'group') &&
+      (item.type === 'task' || item.type === 'group' || item.type === 'context') &&
       spans[i] !== null &&
       collapsedCategories.has(spans[i]!)
     ) {
@@ -502,6 +512,10 @@ export function applyCategoryFocus(
       return (item.task.category ?? UNCATEGORIZED) === focusedCategory;
     }
     if (item.type === 'group') return (item.group.category ?? UNCATEGORIZED) === focusedCategory;
+    // A context row belongs to its section like anything else in it: focusing
+    // Calendar Events and getting an empty section back would read as the
+    // focus having broken, since that section's rows are the only thing in it.
+    if (item.type === 'context') return (item.row.category ?? UNCATEGORIZED) === focusedCategory;
     return false;
   };
 

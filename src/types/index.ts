@@ -1839,6 +1839,51 @@ export const LEFTOVER_RETENTION_DAYS = 60;
  */
 export const MEAL_PLAN_RETENTION_DAYS = 180;
 
+/**
+ * A row on the Today list that isn't a task and never becomes one (#1571).
+ *
+ * A calendar event and a planned meal both belong on the day and neither can be
+ * ticked, dragged, selected or edited here — an event is EventKit's row and the
+ * app only reads it, and a meal is `MealPlanEntry`'s. They used to sit in two
+ * fixed strips above the list; folding them in needs a row treatment that says
+ * "not yours to act on" without a second interaction model, which is what this
+ * is: no card, no checkbox, and so no `SelectionDot` either. That absence is
+ * the whole signal — every *eligible* row grows a ring while a bulk edit is on,
+ * so a row without one is already how this list says "not this one".
+ *
+ * **A view model, computed per render, never stored.** Nothing here is written
+ * to SQLite: `src/utils/dayContextRows.ts` builds these from the calendar store
+ * and the meal plan on every read, the same way `TripSummary` is derived rather
+ * than kept. It carries only what a row draws, so no reader is tempted to
+ * treat it as the source — the event and the entry it came from stay canonical.
+ */
+export interface ContextRow {
+  /**
+   * Stable across renders (an event id, a meal entry id — prefixed by kind, so
+   * two sources can't collide), because it's the list key. Deliberately not the
+   * bare source id: a task and a context row can share a list, and a duplicate
+   * key is how a row ends up rendering someone else's content.
+   */
+  id: string;
+  kind: 'event' | 'meal';
+  title: string;
+  /**
+   * The right-hand caption — "4:15 PM", "All day", "Now", "Dinner". A single
+   * string rather than a time plus a formatter, because the four cases don't
+   * share a format and the row would otherwise need to know which it had.
+   */
+  caption: string;
+  /** Which category section this files under; null = the header-less loose group. */
+  category: string | null;
+  /**
+   * True only while an event is actually running. The one emphasis in the
+   * treatment (primary title, accent caption) and deliberately the only one —
+   * everything else here is secondary text, or the rows stop being context and
+   * start competing with the tasks they sit among.
+   */
+  now: boolean;
+}
+
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
 export const PRIORITY_COLORS = [
   'transparent',

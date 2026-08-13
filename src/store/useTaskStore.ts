@@ -28,7 +28,7 @@ import {
   dbGetMealPlanEntries,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
-import { useCategoryStore } from './useCategoryStore';
+import { useCategoryStore, ensureCalendarEventCategory } from './useCategoryStore';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
@@ -1007,6 +1007,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   initialize() {
     initDatabase();
     useCategoryStore.getState().initialize();
+    // After the categories load, because it may add one: an install that
+    // already had the calendar read on predates events having a section to
+    // land in, and this is the whole of that migration (see
+    // ensureCalendarEventCategory for why it only ever fills an *absent*
+    // answer, never a cleared one).
+    ensureCalendarEventCategory();
     useTemplateStore.getState().initialize();
     useTaskGroupStore.getState().initialize();
     useProjectStore.getState().initialize();
@@ -4005,11 +4011,32 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       groups: s.groups.map(g => g.category === name ? { ...g, category: null } : g),
     }));
 
+    // Two settings that *place* something rather than describe it have to let
+    // go, which is the opposite call to the template one above and for a
+    // concrete reason: a template item naming a dead category is a stale
+    // reference nobody acts on, while these two would be re-*created* from.
+    // Events file under their category by name, so a setting still naming this
+    // one would draw a header for a section the user just deleted — and a
+    // collapse remembered for it would fold whatever category later takes the
+    // name. Both are restored by the undo below.
+    const settings = useSettingsStore.getState();
+    const hadEventCategory = settings.calendarEventCategory === name;
+    const hadCollapsed = settings.collapsedCategories.includes(name);
+    if (hadEventCategory) settings.setCalendarEventCategory(null);
+    if (hadCollapsed) {
+      settings.setCollapsedCategories(settings.collapsedCategories.filter(c => c !== name));
+    }
+
     if (!category) return;
     get().setLastAction({
       label: 'Category deleted',
       undo: () => {
         useCategoryStore.getState().restoreCategory(category);
+        const s2 = useSettingsStore.getState();
+        if (hadEventCategory) s2.setCalendarEventCategory(name);
+        if (hadCollapsed && !s2.collapsedCategories.includes(name)) {
+          s2.setCollapsedCategories([...s2.collapsedCategories, name]);
+        }
         if (affectedTaskIds.length > 0) {
           dbBulkSetCategory(affectedTaskIds, name);
           set(s => ({
@@ -4037,6 +4064,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // silently blanking it would throw away what the user chose. A rename has
     // an obvious correct value, so leaving it stale was just a gap.
     useTemplateStore.getState().renameItemCategory(name, trimmed);
+    // So do the settings that name a category, which was the same gap one
+    // level further out: every one of these files something *into* a category
+    // by name, so a rename left them pointing at a name nothing had any more.
+    // The next generated task then landed in a category that no longer
+    // existed — which allCategories() promptly resurrects as a phantom
+    // section, so the rename appeared to half-undo itself.
+    const settings = useSettingsStore.getState();
+    if (settings.mealCookTaskCategory === name) settings.setMealCookTaskCategory(trimmed);
+    if (settings.groceryUseUpTaskCategory === name) settings.setGroceryUseUpTaskCategory(trimmed);
+    if (settings.leftoverUseUpTaskCategory === name) settings.setLeftoverUseUpTaskCategory(trimmed);
+    if (settings.calendarEventCategory === name) settings.setCalendarEventCategory(trimmed);
+    if (settings.collapsedCategories.includes(name)) {
+      settings.setCollapsedCategories(
+        settings.collapsedCategories.map(c => (c === name ? trimmed : c)),
+      );
+    }
     return true;
   },
 

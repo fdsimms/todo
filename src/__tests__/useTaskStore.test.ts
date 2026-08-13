@@ -113,6 +113,9 @@ jest.mock('../db/database', () => ({
 }));
 
 jest.mock('../store/useCategoryStore', () => ({
+  // Called by initialize() to give the day's calendar events a section; a
+  // no-op here, since this suite's category store is a mock with no rows.
+  ensureCalendarEventCategory: jest.fn(),
   useCategoryStore: {
     getState: jest.fn(() => ({
       categories: [],
@@ -135,6 +138,13 @@ jest.mock('../store/useSettingsStore', () => ({
     getState: jest.fn(() => ({
       dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
       newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      // The settings that name a category — renaming or deleting one has to
+      // carry them with it (see renameCategory/deleteCategory).
+      mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
+      calendarEventCategory: null, collapsedCategories: [],
+      setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
+      setLeftoverUseUpTaskCategory: jest.fn(), setCalendarEventCategory: jest.fn(),
+      setCollapsedCategories: jest.fn(),
     })),
   },
 }));
@@ -318,6 +328,11 @@ beforeEach(() => {
   useSettingsStore.getState.mockReturnValue({
     dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
+    calendarEventCategory: null, collapsedCategories: [],
+    setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
+    setLeftoverUseUpTaskCategory: jest.fn(), setCalendarEventCategory: jest.fn(),
+    setCollapsedCategories: jest.fn(),
   });
   // re-register the category store mock after clearAllMocks
   const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
