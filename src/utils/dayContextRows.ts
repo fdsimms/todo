@@ -68,6 +68,7 @@ export function eventContextRows(
     rows.push({
       row: {
         id: `event-${event.id}`,
+        sourceId: event.id,
         kind: 'event',
         title: event.title || 'Event',
         caption: event.allDay ? 'All day'
@@ -113,6 +114,7 @@ export function mealContextRows(
       (SLOT_RANK.get(a.slot) ?? 0) - (SLOT_RANK.get(b.slot) ?? 0) || a.sortOrder - b.sortOrder)
     .map(entry => ({
       id: `meal-${entry.id}`,
+      sourceId: entry.id,
       kind: 'meal' as const,
       title: titleForEntry(entry, recipesById),
       // The slot, not a time: a meal plan entry is a day and a slot by

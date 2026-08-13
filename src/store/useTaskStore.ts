@@ -2225,7 +2225,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Never on a miss — marking a task missed says the cooking didn't happen.
     const cookedEntryId = generatedSourceOf(task, 'mealCook');
     const undoMealCooked = !missed && cookedEntryId
-      ? useMealPlanStore.getState().setCookedFromTask(cookedEntryId, true)
+      ? useMealPlanStore.getState().setCookedPaired(cookedEntryId, true)
       : null;
 
     if (completionHoldTimer) clearTimeout(completionHoldTimer);
