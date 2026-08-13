@@ -383,6 +383,41 @@ export function restockRows(classified: readonly ClassifiedIngredient[]): Classi
   return classified.filter(r => r.category === 'needToBuy' && r.known);
 }
 
+/**
+ * The lines a cook can honestly be asked about *using up*: the ones the app is
+ * currently claiming you have.
+ *
+ * This is the mirror of `restockRows`, and the rule behind it is what keeps it
+ * from being a guess — **a cook can only take away a claim the app is already
+ * making**. Telling someone they're out of a thing you never thought they had
+ * is not a correction, it's an invention, so every other category is excluded
+ * for a reason it states itself:
+ *
+ * - **not `known`** — ignorance, exactly as in `restockRows`. A recipe naming
+ *   something with no catalog row says nothing about anyone's kitchen.
+ * - **`staple`** — a standing fact ("I always have salt"), deliberately not
+ *   conditioned on purchase history, and asking after every cook is how the
+ *   app would talk someone out of one.
+ * - **`alreadyOnList` / `inTrolley`** — already being restocked. There is
+ *   nothing an answer here would change.
+ * - **`needToBuy`** — the app doesn't think you have it, which is
+ *   `restockRows`' half of the same set.
+ *
+ * The two halves are disjoint and together cover every known line, which is
+ * the whole design: answering here moves a row from this set into that one
+ * (`probablyHaveReason` stops answering for it), so the buy offer follows from
+ * the consumption answer rather than being asked up front.
+ *
+ * Quantity deliberately plays no part. Whether one cook actually *finished* a
+ * thing is a question about real-world amounts, and reading "2 lb" against
+ * whatever is in the cupboard is precisely the arithmetic this module's header
+ * refuses. The answer comes from the person, who knows; the app's job is to
+ * have narrowed the question to a few lines worth asking about.
+ */
+export function consumedRows(classified: readonly ClassifiedIngredient[]): ClassifiedIngredient[] {
+  return classified.filter(r => r.category === 'probablyHave');
+}
+
 function shortestName(names: readonly string[]): string {
   return names.reduce((shortest, n) => (n.length < shortest.length ? n : shortest));
 }
