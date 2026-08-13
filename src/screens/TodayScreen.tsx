@@ -1455,22 +1455,16 @@ export function TodayScreen() {
     pendingGroupDragRef.current = null;
   };
 
-  // Tracks a "drag right to join a group" gesture while a plain loose task is
-  // being dragged: set from onDragMove below whenever the finger is offset
-  // rightward (like a subtask indent) while the dragged card sits anywhere
-  // over a group — header or children — and cleared once the offset falls
-  // back under the release threshold. Read once at drop time in onDragEnd.
+  // Tracks a "drag onto a group to join it" gesture while a plain loose task
+  // is being dragged: set from onDragMove below whenever the dragged card
+  // sits over a group — header or children — and cleared the moment it isn't.
+  // Read once at drop time in onDragEnd.
   const joinGroupIntentRef = useRef<string | null>(null);
   const [joinGroupIntentId, setJoinGroupIntentId] = useState<string | null>(null);
   // Task the drop just handed to a group (set in onDragEnd, which runs before
   // onReorder), so the placement pass below leaves it alone — it belongs to
   // the group now, not to whatever slot it was let go over.
   const joinedTaskIdRef = useRef<string | null>(null);
-  const JOIN_GROUP_INDENT_THRESHOLD = spacing.md + spacing.lg; // matches TaskItem's subtask indent
-  // Once armed it takes a much bigger leftward move to disarm than it took to
-  // arm. Without that gap, the small horizontal wobble of a finger dragging
-  // vertically flickered the highlight (and its haptic) on and off.
-  const JOIN_GROUP_RELEASE_THRESHOLD = spacing.md;
   // Index (within draggableData) of the row currently being dragged in the
   // main list — kept up to date from dragRange (called every hover update)
   // so onDragMove can tell which row is in flight without ReorderableList
@@ -2537,10 +2531,8 @@ export function TodayScreen() {
               setDraggingGroupId(null);
             }}
             onHoverChange={haptics.dragTick}
-            onDragMove={({ dx, overIndex }) => {
-              // Only a plain loose task can be dragged right to join a group —
-              // headers and groups themselves use the same horizontal offset
-              // purely as drag-overlay cosmetics (see ReorderableList).
+            onDragMove={({ overIndex }) => {
+              // Only a plain loose task can be dragged onto a group to join it.
               const draggedItem = draggableData[activeDragIndexRef.current ?? -1];
               if (draggedItem?.type !== 'task') return;
               // The target is the group the card is physically over, anywhere
@@ -2552,13 +2544,7 @@ export function TodayScreen() {
               // registered.
               const over = overIndex !== null ? draggableData[overIndex] : null;
               const target = over?.type === 'group' ? over.group : null;
-              // The rightward offset stays the deliberate part of the gesture —
-              // without it there'd be no way to drag a task past a group without
-              // falling into it — but disarming now needs a real move back, not
-              // just dropping under the arming threshold.
-              const armed = joinGroupIntentRef.current !== null;
-              const threshold = armed ? JOIN_GROUP_RELEASE_THRESHOLD : JOIN_GROUP_INDENT_THRESHOLD;
-              const nextId = target && dx > threshold ? target.id : null;
+              const nextId = target ? target.id : null;
               if (nextId !== joinGroupIntentRef.current) {
                 joinGroupIntentRef.current = nextId;
                 setJoinGroupIntentId(nextId);
