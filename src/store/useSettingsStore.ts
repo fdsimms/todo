@@ -340,6 +340,13 @@ interface SettingsStore {
   // the feature as a whole and shouldn't be flipped by a calendar going away.
   calendarReadEnabled: boolean;
   calendarIds: string[];
+  // Whether a reminder landing inside a meeting gets pushed to the meeting's
+  // end (#1491). A refinement of calendarReadEnabled, not a separate read —
+  // it does nothing while that's off, and defaults on once it's turned on so
+  // the behavior the issue asked for is what a fresh enable gets, with an
+  // escape hatch for anyone who'd rather see the reminder fire where it was
+  // set and dismiss it themselves.
+  reminderMeetingNudgeEnabled: boolean;
   // When the user last dismissed the quiet-projects banner. Read only through
   // isProjectNudgeDismissedToday, which compares it against today rather than
   // testing it for existence — so it expires at the day rollover on its own and
@@ -430,6 +437,7 @@ interface SettingsStore {
   setRemindersImportReview: (on: boolean) => void;
   setCalendarReadEnabled: (on: boolean) => void;
   setCalendarIds: (ids: string[]) => void;
+  setReminderMeetingNudgeEnabled: (on: boolean) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
@@ -481,6 +489,7 @@ const DEFAULT_SETTINGS = {
   groceryImportDelete: true,
   remindersImportReview: true,
   calendarReadEnabled: false,
+  reminderMeetingNudgeEnabled: true,
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
@@ -686,6 +695,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   remindersImportReview: true,
   calendarReadEnabled: false,
   calendarIds: [],
+  reminderMeetingNudgeEnabled: true,
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
@@ -807,6 +817,10 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const groceryImportDelete = dbGetSetting('groceryImportDelete') !== 'false';
     const calendarReadEnabled = dbGetSetting('calendarReadEnabled') === 'true';
     const calendarIds = parseCalendarIds(dbGetSetting('calendarIds'));
+    // Missing row (fresh install, or one that predates this setting) reads as
+    // on — same "absent means the default behavior" rule remindersImportDelete
+    // uses, so an existing calendar-read user doesn't lose the nudge silently.
+    const reminderMeetingNudgeEnabled = dbGetSetting('reminderMeetingNudgeEnabled') !== 'false';
     const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
     // Same TEXT-column parse as every other numeric setting here: an
     // unparseable or missing row (a fresh install, or one that predates this
@@ -854,7 +868,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, reminderMeetingNudgeEnabled, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -1214,6 +1228,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setCalendarIds(ids: string[]) {
     dbSetSetting('calendarIds', JSON.stringify(ids));
     set({ calendarIds: ids });
+  },
+
+  setReminderMeetingNudgeEnabled(on: boolean) {
+    dbSetSetting('reminderMeetingNudgeEnabled', on ? 'true' : 'false');
+    set({ reminderMeetingNudgeEnabled: on });
   },
 
   setPatchNoteQaStatus(id: string, status: PatchNoteQaStatus | null) {
