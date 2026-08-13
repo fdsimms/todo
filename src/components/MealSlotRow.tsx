@@ -45,6 +45,25 @@ interface Props {
    * multi-step flow behind the entry sheet's day picker.
    */
   onSwipeSelect?: (id: string) => void;
+  /**
+   * The background of the container this row sits in — the meal plan's card
+   * (`bgSecondary`), Today's tray (`bgSunken`).
+   *
+   * It has to be painted on the row itself, and that's what makes the swipe
+   * animate. `Swipeable` renders its action panel as an absolutely-filled
+   * sibling *behind* the row and parks it at `translateX: -10000` while closed,
+   * so the panel snaps to its full 80pt the moment a drag starts and is
+   * revealed only by the opaque row sliding off it. A transparent row reveals
+   * nothing: the whole blue panel appears at once on the first pixel of the
+   * gesture, with the row's own toggle and chevron drawn on top of it, which
+   * reads as the swipe having no animation at all. Every other swipeable row
+   * that feels right paints its own background for this reason (`TaskItem.row`,
+   * `TaskGroupHeader.row` — see the note on its `band`).
+   *
+   * A prop rather than a token because the two callers sit on different
+   * surfaces, and the row has to match whichever it's on.
+   */
+  surface?: string;
 }
 
 /**
@@ -68,6 +87,7 @@ interface Props {
  */
 export function MealSlotRow({
   entry, title, hasRecipe, choices, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
+  surface,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -99,7 +119,15 @@ export function MealSlotRow({
 
   const rowBody = (
     <TouchableOpacity
-      style={[styles.row, selectionMode && selected && styles.rowSelected]}
+      style={[
+        styles.row,
+        { backgroundColor: surface ?? colors.bgSecondary },
+        // Wins outright, as it always has: the tint is translucent, so it
+        // composites over the container to exactly the colour it did before
+        // the row painted a background of its own. Safe against the swipe
+        // panel too — the gesture is off in selection mode.
+        selectionMode && selected && styles.rowSelected,
+      ]}
       onPress={onPress}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole={selectionMode ? 'checkbox' : 'button'}

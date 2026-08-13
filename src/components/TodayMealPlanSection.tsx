@@ -97,6 +97,10 @@ export function TodayMealPlanSection({ entries, recipesById, onOpen }: Props) {
               hasRecipe={!!mealEntry.recipeId && recipesById.has(mealEntry.recipeId)}
               choices={choicesFor(mealEntry)}
               onPress={handleOpen}
+              // The tray, not the meal plan's card — see MealSlotRow's
+              // `surface`. No swipe panel is revealed here (no onSwipeSelect),
+              // but the row still has to match what it sits on.
+              surface={colors.bgSunken}
             />
           </React.Fragment>
         ))}
