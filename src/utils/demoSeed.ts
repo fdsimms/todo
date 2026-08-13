@@ -819,7 +819,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     setNote,
     setBrand,
     setBrandStrict,
-    setItemShopBrand,
+    setBrandUnavailable,
     setAisle,
     setAisleOrder,
     setOnHandUntil,
@@ -969,12 +969,19 @@ function seedGroceries(recipes: DemoRecipes): void {
   // the row.
   //
   // Trader Joe's is the store the seeded trip below runs at, so this is also
-  // the only way the shelf caption for it ("Lucerne here, not Good Culture")
-  // appears in the demo at all — the same reason the trip is at Trader Joe's
-  // and the other two stores supply the `only`/`usually` markers.
+  // the only way the shelf caption for it ("No Good Culture here") appears in
+  // the demo at all — the same reason the trip is at Trader Joe's and the other
+  // two stores supply the `only`/`usually` markers.
+  //
+  // Costco is deliberately left unmarked rather than confirmed: an unmarked
+  // store counts, and the seed has to show that reading as "still counts" or
+  // the rule looks like it needs a verdict on every shop before it works.
   setBrandStrict(itemNamed('Cottage cheese').id, true);
-  setItemShopBrand(itemNamed('Cottage cheese').id, traderJoes.id, 'Lucerne');
-  setItemShopBrand(itemNamed('Cottage cheese').id, costco.id, 'Good Culture');
+  setBrandUnavailable(itemNamed('Cottage cheese').id, traderJoes.id, true);
+  // Costco is linked but deliberately *not* ruled out, which is the half that
+  // shows the rule is narrow: only what you've marked drops out, so a store you
+  // haven't checked still counts as somewhere you can get this.
+  linkItemShop(itemNamed('Cottage cheese').id, costco.id);
 
   // Everything else typed above is still sitting on the list, since only what
   // a trip actually bought — or a link/unavailable claim above — came off it

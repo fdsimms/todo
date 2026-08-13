@@ -218,15 +218,13 @@ interface GroceryStore {
    */
   setBrandStrict: (id: string, strict: boolean) => void;
   /**
-   * Which brand a given store is on record with for this item. The empty string
-   * clears it back to unknown, which is what puts the store back in coverage —
-   * see ItemShopLink.brand on why unknown is not a conflict.
+   * "They haven't got the brand I want here", and taking it back. The only
+   * claim a brand rule filters on — see ItemShopLink.brandUnavailableAt.
    *
-   * Creates the link if there isn't one: saying "Safeway has Lucerne" is itself
-   * a statement that Safeway has the item, so it would be strange to require
-   * linking the store first.
+   * Creates the link if there isn't one: the claim is about a store that stocks
+   * the item, so it would be strange to require linking it first.
    */
-  setItemShopBrand: (itemId: string, shopId: string, brand: string) => void;
+  setBrandUnavailable: (itemId: string, shopId: string, unavailable: boolean) => void;
   /**
    * The pantry override — "Got it" / "Out of it" on GroceryItemSheet. A dumb
    * setter, same as setQuantity/setNote: the caller decides the value
@@ -1499,6 +1497,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                   // "they don't have it" outright, so the trip clears it rather
                   // than leaving the user to.
                   unavailableAt: null,
+                  // Buying your brand here refutes "they haven't got it"
+                  // outright, exactly as the purchase refutes the item-level
+                  // negative above. Mirrors dbFinishGroceryShopping.
+                  brandUnavailableAt: null,
                   ...pricePatch(l.itemId, l),
                   ...brandPatch(l.itemId, l),
                 }
@@ -1512,6 +1514,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
               purchaseCount: 1,
               lastPurchasedAt: purchasedAt,
               unavailableAt: null,
+              brandUnavailableAt: null,
               ...pricePatch(id, null),
               ...brandPatch(id, null),
             })),
@@ -1857,6 +1860,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // statement about which one they stock. The brand is set in its own
         // right by setItemShopBrand.
         brand: existing?.brand ?? null,
+        // Carried, not cleared: saying you can get it here is not a statement
+        // about which brand, so it neither makes nor withdraws that claim.
+        brandUnavailableAt: existing?.brandUnavailableAt ?? null,
         lastPriceMinor: existing?.lastPriceMinor ?? null,
         lastPricedAt: existing?.lastPricedAt ?? null,
         lastPriceQuantity: existing?.lastPriceQuantity ?? null,
@@ -1921,6 +1927,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         purchaseCount: existing?.purchaseCount ?? 0,
         lastPurchasedAt: existing?.lastPurchasedAt ?? null,
         unavailableAt: markedAt,
+        brandUnavailableAt: existing?.brandUnavailableAt ?? null,
         // Same carry again. "They don't stock it" supersedes the brand claim at
         // read time (isUnavailable is checked first), so there's no need to
         // erase it — and it comes back intact if the negative is undone.
@@ -1980,39 +1987,40 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }));
   },
 
-  setItemShopBrand(itemId, shopId, brand) {
+  setBrandUnavailable(itemId, shopId, unavailable) {
     const item = get().items.find(i => i.id === itemId);
     if (!item) return;
     if (!get().shops.some(s => s.id === shopId)) return;
-    const next = brand.trim() || null;
     const existing = get().itemShops.find(l => l.itemId === itemId && l.shopId === shopId);
-    if (!existing && next === null) return;
-    if (existing?.brand === next) return;
+    const next = unavailable ? new Date().toISOString() : null;
+    if (!existing && !unavailable) return;
+    if (existing && (existing.brandUnavailableAt !== null) === unavailable) return;
 
-    // Clearing the brand off a row that is *only* the brand claim leaves a bare
+    // Taking the claim back off a row that was *only* the claim leaves a bare
     // purchaseCount-0 link, which asserts "I get this here" — a different and
     // stronger statement than the one being withdrawn. Same call
     // clearItemUnavailable makes about a row that was only the negative.
-    if (existing && next === null && existing.purchaseCount === 0 && !existing.unavailableAt) {
+    if (existing && !unavailable && existing.purchaseCount === 0 && !existing.unavailableAt) {
       get().unlinkItemShop(itemId, shopId);
       return;
     }
 
     const link: ItemShopLink = existing
-      ? { ...existing, brand: next }
+      ? { ...existing, brandUnavailableAt: next }
       : {
           itemId,
           shopId,
-          // 0 is the assertion, exactly as linkItemShopMany writes it: naming
-          // the brand a store carries says the store carries it, and no trip
-          // has confirmed that.
+          // History is history, and there is none here — but the claim is about
+          // a store that *has* the item, so this is not the item-level
+          // negative and purchaseCount 0 is just "no trip has confirmed it".
           purchaseCount: 0,
           lastPurchasedAt: null,
           unavailableAt: null,
           lastPriceMinor: null,
           lastPricedAt: null,
           lastPriceQuantity: null,
-          brand: next,
+          brand: null,
+          brandUnavailableAt: next,
         };
     dbSetItemShopLink(link);
     // Promotes the row for the reason setBrand and linkItemShop both do: this

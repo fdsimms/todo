@@ -1,5 +1,5 @@
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
-import { hasWrongBrand } from './groceryShops';
+import { lacksWantedBrand } from './groceryShops';
 
 /**
  * Which store to shop the list you're actually holding.
@@ -89,15 +89,15 @@ export interface ShopCoverage {
    */
   unavailableItemIds: string[];
   /**
-   * On-list items this store is on record with the *wrong brand* for, when the
-   * item insists on one (GroceryItem.brandStrict). In list order.
+   * On-list items the user has said this store hasn't got their brand of, when
+   * the item insists on one (GroceryItem.brandStrict). In list order.
    *
    * Its own bucket rather than folded into `unavailableItemIds`, for the same
    * reason `missing` is split from `gap` below: the copy differs in kind. This
    * store has the item and hasn't got the one you want, which is not the same
    * claim as not stocking it, and saying the latter would be false.
    */
-  wrongBrandItemIds: string[];
+  withoutBrandItemIds: string[];
   /** How many of `itemIds` are hand-assertions rather than observed purchases. */
   assertedCount: number;
   /** Total purchases behind the observed ones — a tiebreak, never rendered. */
@@ -129,12 +129,13 @@ export interface TripSummary {
    */
   missing: string[];
   /**
-   * On-list items a selected store carries in the wrong brand, and that no
-   * selected store covers. The brand-level twin of `missing`: the trip won't
-   * come back with these either, but the reason is a preference the user set
-   * rather than an empty shelf, so the sheet says so in its own words.
+   * On-list items a selected store has been said not to have the right brand
+   * of, and that no selected store covers. The brand-level twin of `missing`:
+   * the trip won't come back with these either, but the shelf isn't empty —
+   * what's on it isn't what was asked for, so the sheet says so in its own
+   * words.
    */
-  wrongBrand: string[];
+  withoutBrand: string[];
   /** On-list items some *other* store is known to carry — a second stop closes them. */
   gap: string[];
   /**
@@ -182,7 +183,7 @@ export function planTrip(
           shop,
           itemIds: [],
           unavailableItemIds: [],
-          wrongBrandItemIds: [],
+          withoutBrandItemIds: [],
           assertedCount: 0,
           observedPurchases: 0,
           recordedItems: 0,
@@ -206,12 +207,12 @@ export function planTrip(
 
     // The store has the item, so it stays a store the app knows something
     // about — recordedItems is a measure of the record, not of this list. What
-    // it doesn't get is coverage of *this* row, because the row asked for a
-    // brand this store is on record without.
+    // it doesn't get is coverage of *this* row, because the user has said this
+    // store hasn't got the brand the row asks for.
     const item = itemsById.get(link.itemId);
-    if (item && hasWrongBrand(link, item)) {
+    if (item && lacksWantedBrand(link, item)) {
       entry.recordedItems++;
-      if (rank.has(link.itemId)) entry.wrongBrandItemIds.push(link.itemId);
+      if (rank.has(link.itemId)) entry.withoutBrandItemIds.push(link.itemId);
       continue;
     }
 
@@ -226,7 +227,7 @@ export function planTrip(
   for (const entry of byShop.values()) {
     entry.itemIds.sort((a, b) => rank.get(a)! - rank.get(b)!);
     entry.unavailableItemIds.sort((a, b) => rank.get(a)! - rank.get(b)!);
-    entry.wrongBrandItemIds.sort((a, b) => rank.get(a)! - rank.get(b)!);
+    entry.withoutBrandItemIds.sort((a, b) => rank.get(a)! - rank.get(b)!);
   }
 
   const coverage = [...byShop.values()];
@@ -251,7 +252,7 @@ export function summarizeTrip(selectedShopIds: readonly string[], plan: TripPlan
   const selected = new Set(selectedShopIds);
   const covered = new Set<string>();
   const absentHere = new Set<string>();
-  const wrongBrandHere = new Set<string>();
+  const withoutBrandHere = new Set<string>();
   const knownSomewhere = new Set<string>();
 
   for (const entry of plan.coverage) {
@@ -265,17 +266,17 @@ export function summarizeTrip(selectedShopIds: readonly string[], plan: TripPlan
     // being credited with it above.
     if (isSelected) {
       for (const id of entry.unavailableItemIds) absentHere.add(id);
-      for (const id of entry.wrongBrandItemIds) wrongBrandHere.add(id);
+      for (const id of entry.withoutBrandItemIds) withoutBrandHere.add(id);
     }
   }
 
   const rest = plan.itemIds.filter(id => !covered.has(id));
   const missing = rest.filter(id => absentHere.has(id));
-  // An outright "they don't stock it" outranks "they stock the wrong one" when
+  // An outright "they don't stock it" outranks "they haven't got your brand" when
   // two selected stores disagree — it's the stronger claim about the trip, and
   // an item must land in exactly one bucket or the sheet counts it twice.
-  const wrongBrand = rest.filter(id => !absentHere.has(id) && wrongBrandHere.has(id));
-  const open = rest.filter(id => !absentHere.has(id) && !wrongBrandHere.has(id));
+  const withoutBrand = rest.filter(id => !absentHere.has(id) && withoutBrandHere.has(id));
+  const open = rest.filter(id => !absentHere.has(id) && !withoutBrandHere.has(id));
   const gap = open.filter(id => knownSomewhere.has(id));
   const unknown = open.filter(id => !knownSomewhere.has(id));
 
@@ -283,7 +284,7 @@ export function summarizeTrip(selectedShopIds: readonly string[], plan: TripPlan
   // A missing item is the strongest possible reason for a second stop — it's
   // the one thing on the list the trip definitely won't come back with — so it
   // joins the greedy walk's target set alongside the gap.
-  const openSet = new Set([...missing, ...wrongBrand, ...gap]);
+  const openSet = new Set([...missing, ...withoutBrand, ...gap]);
   const taken = new Set(selected);
   while (openSet.size > 0 && selected.size + suggestion.length < MAX_TRIP_STOPS) {
     let best: ShopCoverage | null = null;
@@ -307,7 +308,7 @@ export function summarizeTrip(selectedShopIds: readonly string[], plan: TripPlan
   return {
     covered: plan.itemIds.filter(id => covered.has(id)),
     missing,
-    wrongBrand,
+    withoutBrand,
     gap,
     unknown,
     suggestion,

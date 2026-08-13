@@ -66,6 +66,7 @@ function link(overrides: Partial<ItemShopLink> & Pick<ItemShopLink, 'itemId' | '
     lastPricedAt: null,
     lastPriceQuantity: null,
     brand: null,
+    brandUnavailableAt: null,
     ...overrides,
   };
 }

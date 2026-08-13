@@ -658,6 +658,9 @@ export function initDatabase(): void {
     // never asked, and NULL reads as unknown rather than as a conflict, so no
     // existing store loses its coverage. See ItemShopLink.brand.
     'ALTER TABLE grocery_item_shops ADD COLUMN brand TEXT',
+    // The brand-level negative, and the only thing a brand rule filters on.
+    // NULL is unknown and always counts. See ItemShopLink.brandUnavailableAt.
+    'ALTER TABLE grocery_item_shops ADD COLUMN brand_unavailable_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1721,7 +1724,8 @@ export function dbFinishGroceryShopping(
          ON CONFLICT(item_id, shop_id)
          DO UPDATE SET purchase_count = purchase_count + 1,
                        last_purchased_at = excluded.last_purchased_at,
-                       unavailable_at = NULL`,
+                       unavailable_at = NULL,
+                       brand_unavailable_at = NULL`,
         [row.id, shopId, purchasedAt]
       );
       // Which one they had, and only when the row insisted on one. A strict
@@ -1908,6 +1912,7 @@ function rowToItemShopLink(row: Record<string, unknown>): ItemShopLink {
     lastPricedAt: (row.last_priced_at as string) ?? null,
     lastPriceQuantity: (row.last_price_quantity as string) ?? null,
     brand: (row.brand as string) ?? null,
+    brandUnavailableAt: (row.brand_unavailable_at as string) ?? null,
   };
 }
 
@@ -1927,8 +1932,8 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
   db.runSync(
     `INSERT INTO grocery_item_shops
        (item_id, shop_id, purchase_count, last_purchased_at, unavailable_at,
-        last_price_minor, last_priced_at, last_price_quantity, brand)
-     VALUES (?,?,?,?,?,?,?,?,?)
+        last_price_minor, last_priced_at, last_price_quantity, brand, brand_unavailable_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(item_id, shop_id)
      DO UPDATE SET purchase_count = excluded.purchase_count,
                    last_purchased_at = excluded.last_purchased_at,
@@ -1936,7 +1941,8 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
                    last_price_minor = excluded.last_price_minor,
                    last_priced_at = excluded.last_priced_at,
                    last_price_quantity = excluded.last_price_quantity,
-                   brand = excluded.brand`,
+                   brand = excluded.brand,
+                   brand_unavailable_at = excluded.brand_unavailable_at`,
     [
       link.itemId,
       link.shopId,
@@ -1947,6 +1953,7 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
       link.lastPricedAt ?? null,
       link.lastPriceQuantity ?? null,
       link.brand ?? null,
+      link.brandUnavailableAt ?? null,
     ]
   );
 }

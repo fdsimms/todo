@@ -114,7 +114,7 @@ export function GroceryItemSheet({
   const setNote = useGroceryStore(s => s.setNote);
   const setBrand = useGroceryStore(s => s.setBrand);
   const setBrandStrict = useGroceryStore(s => s.setBrandStrict);
-  const setItemShopBrand = useGroceryStore(s => s.setItemShopBrand);
+  const setBrandUnavailable = useGroceryStore(s => s.setBrandUnavailable);
   const setAisle = useGroceryStore(s => s.setAisle);
   const addAisle = useGroceryStore(s => s.addAisle);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
@@ -149,10 +149,6 @@ export function GroceryItemSheet({
   // untouched and the stored price shows through; '' means the user emptied
   // it, which is how a price is taken back.
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
-  // Per-store brand, keyed by shop id. Same shape as priceEdits and for the
-  // same reason — several stores can be edited before any of them blurs — but
-  // committed on blur rather than at Save, since it's a per-store fact.
-  const [shopBrandEdits, setShopBrandEdits] = useState<Record<string, string>>({});
   const [nameError, setNameError] = useState<string | null>(null);
   // One picker open at a time, like every other editor in the app — see the
   // progressive-disclosure note in CLAUDE.md.
@@ -166,7 +162,6 @@ export function GroceryItemSheet({
       setNoteText(item.note);
       setPriceTarget(null);
       setPriceEdits({});
-      setShopBrandEdits({});
       setNameError(null);
       setOpenField(initialField ?? null);
     }
@@ -512,16 +507,36 @@ export function GroceryItemSheet({
   ];
 
   /**
-   * The stores this item has a live link to — the ones a brand can be recorded
-   * against. Built from the links rather than from `linkedShops`, because that
-   * read now *drops* a store carrying the wrong brand: listing it from there
-   * would hide the exact row the user needs in order to take the claim back.
-   * Negatives are excluded — they're the pills above, and "they don't stock it"
-   * already outranks any brand on the same row.
+   * "Which stores haven't got it" — the claim, one pill per store, multi-select.
+   *
+   * Every store is offered, not just the linked ones: finding out a shop hasn't
+   * got your brand is a thing that happens at a shop you've never recorded this
+   * item at. The ones already marked as not stocking the item at all are left
+   * out, since that claim outranks this one and saying both is contradictory.
+   *
+   * Deliberately a claim rather than a "which brand do they carry" field. The
+   * app can only ever know the brand you last *got* somewhere, and a shelf
+   * holds several brands at once, so a recorded brand can never stand in for
+   * this — see groceryShops.lacksWantedBrand.
    */
-  const brandRows = shops.filter(
-    s => !notStocked.has(s.id) && itemShops.some(l => l.itemId === item.id && l.shopId === s.id)
-  );
+  const brandNegativeOptions: PillGroupOption[] = shops
+    .filter(s => !notStocked.has(s.id))
+    .map(shop => {
+      const marked = linkFor(shop.id)?.brandUnavailableAt != null;
+      return {
+        key: shop.id,
+        label: shop.name,
+        selected: marked,
+        negative: marked,
+        accessibilityLabel: marked
+          ? `${shop.name}, marked as not having ${item.brand}. Tap to clear.`
+          : `${shop.name}. Tap to say they haven’t got ${item.brand}.`,
+        onPress: () => {
+          haptics.tap();
+          setBrandUnavailable(item.id, shop.id, !marked);
+        },
+      };
+    });
 
   const pantryOptions: PillGroupOption[] = [
     {
@@ -672,8 +687,8 @@ export function GroceryItemSheet({
               </View>
               <Text style={styles.hint}>
                 {item.brandStrict
-                  ? `Stores recorded as carrying a different brand won’t count as having this. Say which brand each one carries under Stores.`
-                  : 'Off, so every store that stocks this counts, whichever brand they carry.'}
+                  ? 'Stores you’ve marked as not having it won’t count as having this. Mark them under Stores.'
+                  : 'Off, so every store that stocks this counts, whichever brand it has.'}
               </Text>
             </>
           )}
@@ -774,43 +789,21 @@ export function GroceryItemSheet({
             >
               <PillGroup options={shopOptions} noun="store" onCreate={handleCreateShop} />
               {/* Only while a brand rule is actually in force. Without one
-                  these fields would be asking for evidence nothing reads, and
+                  these claims would be recording evidence nothing reads, and
                   the sheet is already dense — the pills above are what a person
                   comes to Stores for. */}
-              {item.brandStrict && !!item.brand && brandRows.length > 0 && (
+              {item.brandStrict && !!item.brand && (
                 <View style={styles.brandAtBlock}>
-                  <Text style={styles.label}>WHICH BRAND THEY CARRY</Text>
-                  {brandRows.map(shop => (
-                    <View key={shop.id} style={styles.brandAtRow}>
-                      <Text style={styles.brandAtName} numberOfLines={1}>{shop.name}</Text>
-                      <TextInput
-                        style={styles.brandAtInput}
-                        value={shopBrandEdits[shop.id] ?? linkFor(shop.id)?.brand ?? ''}
-                        onChangeText={t => setShopBrandEdits(prev => ({ ...prev, [shop.id]: t }))}
-                        // Written on blur rather than buffered to Save, like
-                        // every other per-store fact in this sheet — tapping a
-                        // store pill commits immediately too. The price field
-                        // buffers because it belongs to the item's own form.
-                        onBlur={() =>
-                          setItemShopBrand(
-                            item.id,
-                            shop.id,
-                            shopBrandEdits[shop.id] ?? linkFor(shop.id)?.brand ?? ''
-                          )
-                        }
-                        placeholder="Not recorded"
-                        placeholderTextColor={colors.textTertiary}
-                        autoCorrect={false}
-                        maxLength={GROCERY_BRAND_MAX_LENGTH}
-                        accessibilityLabel={`Brand carried at ${shop.name}`}
-                      />
-                    </View>
-                  ))}
+                  <Text style={styles.label}>
+                    {`Haven’t got ${item.brand}`.toUpperCase()}
+                  </Text>
+                  <PillGroup options={brandNegativeOptions} noun="store" />
                   {/* The rule that makes the whole feature safe, said where
                       someone is about to rely on it. */}
                   <Text style={styles.hint}>
-                    Left blank, a store still counts — not knowing which one they
-                    carry isn’t the same as knowing they haven’t got yours.
+                    Only what you’ve marked here is left out. A store you haven’t
+                    marked still counts — shops carry several brands, so getting a
+                    different one somewhere isn’t knowing they haven’t got yours.
                   </Text>
                 </View>
               )}

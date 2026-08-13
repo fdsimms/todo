@@ -8,7 +8,7 @@ import {
   itemIdsForShop,
   itemCountsByShop,
   describeShops,
-  wrongBrandShopsFor,
+  withoutBrandShopsFor,
 } from '../utils/groceryShops';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
@@ -65,7 +65,8 @@ function link(
 ): ItemShopLink {
   return {
     itemId, shopId, purchaseCount, lastPurchasedAt, unavailableAt: null,
-    lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null,
+    lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null,
+    brand: null, brandUnavailableAt: null,
   };
 }
 
@@ -81,6 +82,7 @@ function notAt(itemId: string, shopId: string, purchaseCount = 0): ItemShopLink 
     lastPricedAt: null,
     lastPriceQuantity: null,
     brand: null,
+    brandUnavailableAt: null,
   };
 }
 
@@ -178,77 +180,85 @@ describe('shopsForItem', () => {
 });
 
 describe('brand strictness', () => {
-  const strict = (brand: string) => item('milk', { brand, brandStrict: true });
-  const carries = (shopId: string, brand: string | null, purchaseCount = 2) =>
+  const strict = (brand = 'Good Culture') => item('milk', { brand, brandStrict: true });
+  const gotHere = (shopId: string, brand: string | null, purchaseCount = 2) =>
     ({ ...link('milk', shopId, purchaseCount), brand });
-
-  it('drops a store recorded with a different brand', () => {
-    const links = [carries(costco.id, 'Good Culture'), carries(safeway.id, 'Lucerne')];
-    expect(shopsForItem(strict('Good Culture'), links, SHOPS).map(s => s.shop.name))
-      .toEqual(['Costco']);
+  const noneHere = (shopId: string, purchaseCount = 2) => ({
+    ...link('milk', shopId, purchaseCount),
+    brandUnavailableAt: '2026-03-04T00:00:00.000Z',
   });
 
-  // The rule the whole feature rests on: an unrecorded brand is ignorance, and
-  // ignorance must never read as "they haven't got yours". Every link that
-  // predates this is exactly this case.
+  it('drops a store the user has said hasn’t got their brand', () => {
+    const links = [gotHere(costco.id, 'Good Culture'), noneHere(safeway.id)];
+    expect(shopsForItem(strict(), links, SHOPS).map(s => s.shop.name)).toEqual(['Costco']);
+  });
+
+  // **The rule a store carrying several brands forces.** Having got Lucerne at
+  // Safeway is a fact about one purchase, not about the shelf — Safeway may
+  // stock Good Culture perfectly well. Reading the mismatch as an absence would
+  // drop a store that has exactly what you want.
+  it('keeps a store whose last brand was a different one', () => {
+    const links = [gotHere(costco.id, 'Good Culture'), gotHere(safeway.id, 'Lucerne')];
+    expect(shopsForItem(strict(), links, SHOPS).map(s => s.shop.name))
+      .toEqual(['Costco', 'Safeway']);
+  });
+
+  // The other half of the same principle: never watched is never evidence.
   it('keeps a store whose brand was never recorded', () => {
-    const links = [carries(costco.id, null), carries(safeway.id, 'Lucerne')];
-    expect(shopsForItem(strict('Good Culture'), links, SHOPS).map(s => s.shop.name))
-      .toEqual(['Costco']);
+    const links = [gotHere(costco.id, null), gotHere(safeway.id, null)];
+    expect(shopsForItem(strict(), links, SHOPS).map(s => s.shop.name))
+      .toEqual(['Costco', 'Safeway']);
   });
 
   it('changes nothing while the item is not strict', () => {
     const loose = item('milk', { brand: 'Good Culture', brandStrict: false });
-    const links = [carries(costco.id, 'Good Culture'), carries(safeway.id, 'Lucerne')];
-    expect(shopsForItem(loose, links, SHOPS).map(s => s.shop.name))
-      .toEqual(['Costco', 'Safeway']);
+    const links = [gotHere(costco.id, 'Good Culture'), noneHere(safeway.id)];
+    expect(shopsForItem(loose, links, SHOPS).map(s => s.shop.name)).toEqual(['Costco', 'Safeway']);
   });
 
   it('changes nothing when the item is strict but names no brand', () => {
     const none = item('milk', { brand: null, brandStrict: true });
-    expect(shopsForItem(none, [carries(safeway.id, 'Lucerne')], SHOPS).map(s => s.shop.name))
+    expect(shopsForItem(none, [noneHere(safeway.id)], SHOPS).map(s => s.shop.name))
       .toEqual(['Safeway']);
   });
 
-  it('compares brands the way every other name here is compared', () => {
-    const links = [carries(costco.id, 'good culture')];
-    expect(shopsForItem(strict('Good Culture'), links, SHOPS).map(s => s.shop.name))
-      .toEqual(['Costco']);
-  });
-
   it('carries through primaryShopFor and exclusiveShopFor', () => {
-    const links = [carries(costco.id, 'Good Culture', 1), carries(safeway.id, 'Lucerne', 9)];
+    const links = [gotHere(costco.id, 'Good Culture', 1), noneHere(safeway.id, 9)];
     // Safeway is bought at far more often and still loses — it isn't a place
     // you can get this at all now.
-    expect(primaryShopFor(strict('Good Culture'), links, SHOPS)).toEqual(costco);
-    expect(exclusiveShopFor(strict('Good Culture'), links, SHOPS)).toEqual(costco);
+    expect(primaryShopFor(strict(), links, SHOPS)).toEqual(costco);
+    expect(exclusiveShopFor(strict(), links, SHOPS)).toEqual(costco);
   });
 
   it('leaves the store out of the Buy again filter and its count', () => {
-    const milk = strict('Good Culture');
-    const links = [carries(safeway.id, 'Lucerne')];
+    const milk = strict();
+    const links = [noneHere(safeway.id)];
     expect(itemIdsForShop(safeway.id, links, [milk])).toEqual(new Set());
     expect(itemCountsByShop([milk], links).get(safeway.id)).toBeUndefined();
   });
 
-  describe('wrongBrandShopsFor', () => {
-    it('names the store and what it actually carries', () => {
-      const links = [carries(costco.id, 'Good Culture'), carries(safeway.id, 'Lucerne')];
-      expect(wrongBrandShopsFor(strict('Good Culture'), links, SHOPS))
-        .toEqual([{ shop: safeway, brand: 'Lucerne' }]);
+  describe('withoutBrandShopsFor', () => {
+    it('names the stores the claim has been made about', () => {
+      const links = [gotHere(costco.id, 'Good Culture'), noneHere(safeway.id)];
+      expect(withoutBrandShopsFor(strict(), links, SHOPS)).toEqual([safeway]);
     });
 
-    it('is empty when the item is not strict — there are no conflicts, only preferences', () => {
+    it('never names a store merely observed with another brand', () => {
+      const links = [gotHere(safeway.id, 'Lucerne')];
+      expect(withoutBrandShopsFor(strict(), links, SHOPS)).toEqual([]);
+    });
+
+    it('is empty when the item is not strict — no claim is in force', () => {
       const loose = item('milk', { brand: 'Good Culture', brandStrict: false });
-      expect(wrongBrandShopsFor(loose, [carries(safeway.id, 'Lucerne')], SHOPS)).toEqual([]);
+      expect(withoutBrandShopsFor(loose, [noneHere(safeway.id)], SHOPS)).toEqual([]);
     });
   });
 
   it('says so in the item sheet footnote, without calling it "not at"', () => {
     const milk = item('milk', { brand: 'Good Culture', brandStrict: true, purchaseCount: 7 });
-    const links = [carries(costco.id, 'Good Culture', 7), carries(safeway.id, 'Lucerne')];
+    const links = [gotHere(costco.id, 'Good Culture', 7), noneHere(safeway.id, 0)];
     expect(describeShops(milk, links, SHOPS)).toBe(
-      'Bought 7 times · only at Costco · Safeway has Lucerne'
+      'Bought 7 times · only at Costco · no Good Culture at Safeway'
     );
   });
 });

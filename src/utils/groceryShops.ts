@@ -47,40 +47,45 @@ export function isAsserted(link: ItemShopLink): boolean {
 }
 
 /**
- * The second negative, and the one this feature exists for: the store stocks
- * the item, but not the brand the user has said they want.
+ * The second negative, and the one this feature exists for: the user has said
+ * this store hasn't got the brand they want. The store stocks the item — that's
+ * what makes this a different claim from `isUnavailable` — it just hasn't got
+ * yours.
  *
- * True only on a **recorded conflict** — the item is strict, it names a brand,
- * and the link names a different one. A link with no brand on it (every link
- * written before this existed, and every trip finished on a non-strict item) is
- * *unknown*, and unknown is not a conflict: the app not having watched which
- * cottage cheese came home from Costco is ignorance, and turning ignorance into
- * "Costco doesn't have yours" is precisely the unfalsifiable guess
- * shoppingTrip.ts removed `likelyItemIds` to be rid of. So switching "Only this
- * brand" on drops nothing until the user or a trip records an actual conflict.
+ * **Only an asserted claim counts, never an observed brand.** `ItemShopLink`
+ * also records the brand you last got at a store, and it is tempting to read a
+ * mismatch there as this: you got Lucerne at Safeway, so Safeway must not have
+ * Good Culture. It mustn't, and the reason is simply that **a store carries
+ * more than one brand of a thing**. Safeway stocking Lucerne is not evidence
+ * about whether it also stocks Good Culture; it is evidence about one purchase.
+ * Inferring the absence would drop stores that have exactly what you want, and
+ * it is the same unfalsifiable move shoppingTrip.ts deleted `likelyItemIds` to
+ * be rid of — an absence read off something that was never evidence of one.
  *
- * Compared through groceryNameKey so "Good Culture" and "good culture" are one
- * brand — the same normalisation the item and shop names already agree on.
+ * So this reads the stamped claim and nothing else. Unknown stays unknown, and
+ * unknown always counts.
+ *
+ * Read only while the item is strict: a brand nobody made a rule of is a
+ * preference, and a preference is not a reason to drop a store.
  */
-export function hasWrongBrand(link: ItemShopLink, item: GroceryItem): boolean {
-  if (!item.brandStrict || !item.brand || !link.brand) return false;
-  return groceryNameKey(link.brand) !== groceryNameKey(item.brand);
+export function lacksWantedBrand(link: ItemShopLink, item: GroceryItem): boolean {
+  return item.brandStrict && !!item.brand && link.brandUnavailableAt !== null;
 }
 
 /**
  * The one gate every "where can I get this" read runs each link through.
  *
  * Two ways a store can fail it, and they're different claims: the user said the
- * store doesn't stock the item at all (`unavailableAt`), or the store is on
- * record with the wrong brand for an item that insists on one. Both mean "not
- * a place to get this"; only the first means "they haven't got it".
+ * store doesn't stock the item at all (`unavailableAt`), or that it hasn't got
+ * the brand they want (`brandUnavailableAt`). Both mean "not a place to get
+ * this"; only the first means "they haven't got it".
  *
  * Kept as one predicate rather than two filters at each call site because there
  * are seven such reads and a new one is exactly the kind of thing that ships
  * having remembered the first rule and forgotten the second.
  */
 export function countsForItem(link: ItemShopLink, item: GroceryItem): boolean {
-  return !isUnavailable(link) && !hasWrongBrand(link, item);
+  return !isUnavailable(link) && !lacksWantedBrand(link, item);
 }
 
 function byPurchasesThenRecency(a: ItemShopLink, b: ItemShopLink): number {
@@ -104,9 +109,9 @@ export interface ShopWithCount {
  * purchase history — this is the "where can I get this" read, and the whole
  * point of the negative claim is that the answer is "not here any more".
  * `unavailableShopsFor` is the other half, for the one caller that shows and
- * undoes those claims. **Nor is a store on record with the wrong brand**, when
- * the item insists on one — `wrongBrandShopsFor` is that half, and
- * `countsForItem` is the gate both go through.
+ * undoes those claims. **Nor is a store the user has said hasn't got their
+ * brand**, when the item insists on one — `withoutBrandShopsFor` is that half,
+ * and `countsForItem` is the gate both go through.
  *
  * Takes the whole item rather than an id because the brand rule is a fact about
  * the item, not about the link — the id alone can't answer it.
@@ -154,24 +159,26 @@ export function unavailableShopsFor(
 }
 
 /**
- * The stores dropped for carrying the wrong brand, each with the brand it's
- * actually on record for — the parallel of `unavailableShopsFor`, and for the
- * same reason: the default read must not have to remember to filter, and the
- * one surface that shows and undoes these claims is asking a different
- * question.
+ * The stores the user has said haven't got their brand — the parallel of
+ * `unavailableShopsFor`, and for the same reason: the default read must not
+ * have to remember to filter, and the one surface that shows and undoes these
+ * claims is asking a different question.
+ *
+ * In the store list's own order, like `unavailableShopsFor`: there is nothing
+ * to rank claims by, and one isn't stronger for being older.
  *
  * Empty whenever the item isn't strict, so a caller can render it unguarded:
- * with the switch off there are no conflicts, only preferences.
+ * with the switch off there are no claims in force, only a preference.
  */
-export function wrongBrandShopsFor(
+export function withoutBrandShopsFor(
   item: GroceryItem,
   links: readonly ItemShopLink[],
   shops: readonly Shop[]
-): { shop: Shop; brand: string }[] {
-  const byId = new Map(shops.map(s => [s.id, s]));
-  return links
-    .filter(l => l.itemId === item.id && byId.has(l.shopId) && hasWrongBrand(l, item))
-    .map(l => ({ shop: byId.get(l.shopId)!, brand: l.brand! }));
+): Shop[] {
+  const marked = new Set(
+    links.filter(l => l.itemId === item.id && lacksWantedBrand(l, item)).map(l => l.shopId)
+  );
+  return shops.filter(s => marked.has(s.id));
 }
 
 /**
@@ -280,20 +287,21 @@ export function describeShops(
   // read as qualifying the count in front of them. An item bought 7 times that
   // Safeway has stopped stocking is both of those things at once.
   const notAt = unavailableShopsFor(item.id, links, shops);
-  // The wrong-brand stores ride as their own trailing clause, after the
+  // The brand-level negatives ride as their own trailing clause, after the
   // not-stocked one and worded differently on purpose: "not at Safeway" and
-  // "Safeway has Lucerne" are different facts, and collapsing them would tell
-  // the user a shop had nothing when it had something they'd said no to.
-  const wrongBrand = wrongBrandShopsFor(item, links, shops);
+  // "no Good Culture at Safeway" are different facts, and collapsing them would
+  // tell the user a shop had nothing when it had the item and not their brand.
+  const withoutBrand = withoutBrandShopsFor(item, links, shops);
   const withClauses = (head: string | null): string | null => {
     let out = head;
     if (notAt.length > 0) {
       const names = notAt.map(s => s.name).join(', ');
       out = out ? `${out} · not at ${names}` : `Not at ${names}`;
     }
-    for (const { shop, brand } of wrongBrand) {
-      const clause = `${shop.name} has ${brand}`;
-      out = out ? `${out} · ${clause}` : clause;
+    if (withoutBrand.length > 0) {
+      const names = withoutBrand.map(s => s.name).join(', ');
+      const clause = `no ${item.brand} at ${names}`;
+      out = out ? `${out} · ${clause}` : `No ${item.brand} at ${names}`;
     }
     return out;
   };

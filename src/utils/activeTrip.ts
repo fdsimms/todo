@@ -1,5 +1,5 @@
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
-import { exclusiveShopFor, hasWrongBrand, isUnavailable, primaryShopFor } from './groceryShops';
+import { exclusiveShopFor, isUnavailable, lacksWantedBrand, primaryShopFor } from './groceryShops';
 
 /**
  * The trip you are on right now — "I'm at this store".
@@ -78,17 +78,20 @@ export function resolveActiveTrip(
  *
  * - `unavailable` — they marked this store as not stocking it. The hardest
  *   negative, and it outranks everything below.
- * - `wrongBrand` — this store is on record with a brand that isn't the one the
- *   item insists on. The store has the thing; it hasn't got *your* thing.
+ * - `withoutBrand` — the user has said this store hasn't got the brand the item
+ *   insists on. The store has the thing; it hasn't got *your* thing. Like every
+ *   other kind here it's their own claim, never an inference from a brand
+ *   observed on a past purchase — a store carries several brands of a thing,
+ *   so having got another one here says nothing (see lacksWantedBrand).
  * - `only` — every store on record for it is one other store. Includes a
  *   hand-assertion, because "I get this at Costco" is exactly that claim.
  * - `usually` — they've *bought* it somewhere else more than anywhere else.
  *
- * `wrongBrand` is the one kind that speaks about a store the row already has a
- * link for, and it's why the early return below is no longer a bare "we know
+ * `withoutBrand` is the one kind that speaks about a store the row already has
+ * a link for, and it's why the early return below is no longer a bare "we know
  * this store, say nothing". A link used to mean the store covers the row; with
- * a brand rule in play it can instead be the record of the exact mismatch the
- * shopper is standing in front of.
+ * a brand rule in play it can instead carry the exact refusal the shopper is
+ * standing in front of.
  *
  * **Silence is the default and it is load-bearing.** A row this store has any
  * link for says nothing, and so does a row nothing is known about — the app not
@@ -98,17 +101,16 @@ export function resolveActiveTrip(
  * come to be read as noise. Same discipline as `shoppingTrip.ts`, where the
  * only line allowed to assert an absence is the one the user asserted first.
  */
-export type TripMarkerKind = 'unavailable' | 'wrongBrand' | 'only' | 'usually';
+export type TripMarkerKind = 'unavailable' | 'withoutBrand' | 'only' | 'usually';
 
 export interface TripMarker {
   kind: TripMarkerKind;
   /**
-   * For `unavailable` and `wrongBrand` this is the store you're at; otherwise
+   * For `unavailable` and `withoutBrand` this is the store you're at; otherwise
    * the other one.
    */
   shop: Shop;
-  /** `wrongBrand` only: what this store is on record with, and what you wanted. */
-  brand?: string;
+  /** `withoutBrand` only: the brand the item insists on. */
   wantedBrand?: string;
 }
 
@@ -120,11 +122,11 @@ export function tripMarkerFor(
 ): TripMarker | null {
   const here = links.find(l => l.itemId === item.id && l.shopId === trip.id);
   if (here) {
-    // Not stocking it at all outranks stocking the wrong one — it's the
+    // Not stocking it at all outranks not having your brand — it's the
     // stronger claim, and both are the user's own.
     if (isUnavailable(here)) return { kind: 'unavailable', shop: trip };
-    if (hasWrongBrand(here, item)) {
-      return { kind: 'wrongBrand', shop: trip, brand: here.brand!, wantedBrand: item.brand! };
+    if (lacksWantedBrand(here, item)) {
+      return { kind: 'withoutBrand', shop: trip, wantedBrand: item.brand! };
     }
     // Otherwise this store covers the row, so say nothing.
     return null;
@@ -133,8 +135,8 @@ export function tripMarkerFor(
   // Nothing on record here. Anything to say now has to come from a link naming
   // a *different* store — and `exclusiveShopFor` before `primaryShopFor`
   // because "only" is the stronger claim when both would answer. Both already
-  // drop the stores that carry the wrong brand, so on a strict item "Only at
-  // Costco" means Costco has *your* one.
+  // drop the stores said to lack your brand, so on a strict item "Only at
+  // Costco" means Costco is the one place left you can get yours.
   const only = exclusiveShopFor(item, links, shops);
   if (only && only.id !== trip.id) return { kind: 'only', shop: only };
 
@@ -154,11 +156,13 @@ export function describeTripMarker(marker: TripMarker): string {
   switch (marker.kind) {
     case 'unavailable':
       return `Not at ${marker.shop.name}`;
-    // Names both brands rather than just saying "wrong brand": standing in the
-    // aisle, what this store *has* is the thing you're deciding about, and the
-    // store's own name is the one fact you don't need — you're in it.
-    case 'wrongBrand':
-      return `${marker.brand} here, not ${marker.wantedBrand}`;
+    // Names the brand rather than the store: you're standing in the store, so
+    // its name is the one fact on the row you don't need. It deliberately
+    // doesn't name what this shop *does* carry — the app only knows what you
+    // last got here, which on a shelf holding several brands is a fact about
+    // one purchase and not about today.
+    case 'withoutBrand':
+      return `No ${marker.wantedBrand} here`;
     case 'only':
       return `Only at ${marker.shop.name}`;
     case 'usually':

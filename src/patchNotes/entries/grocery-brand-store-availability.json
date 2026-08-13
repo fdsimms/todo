@@ -1,4 +1,4 @@
 {
-  "message": "Turn on \"Only this brand\" for an item and stores that carry a different brand stop counting as having it — so trip suggestions send you where you can actually get yours. Record which brand each store carries under Stores in the item sheet; finishing a shop records it for you. A store you haven't recorded a brand for still counts, since not knowing which one they stock isn't the same as knowing they haven't got yours.",
+  "message": "Turn on \"Only this brand\" for an item, then mark the shops that haven't got it under Stores — those stops stop counting as having the item, so trip suggestions send you where you can actually get yours. Only shops you've marked are left out: stores carry several brands, so having got a different one somewhere isn't the same as knowing they haven't got yours. Buying it somewhere clears the mark.",
   "date": "2026-08-13"
 }

@@ -1072,32 +1072,46 @@ export interface ItemShopLink {
   lastPricedAt: string | null;
   lastPriceQuantity: string | null;
   /**
-   * Which brand of the item this store is on record for — "Good Culture" at
-   * Costco, "Lucerne" at Safeway. This is the evidence GroceryItem.brandStrict
-   * reads, and the reason per-store availability can answer at brand
-   * granularity at all.
+   * The brand you last got here — "Good Culture" at Costco, "Lucerne" at
+   * Safeway. An **observation**, paired with lastPurchasedAt above, and
+   * deliberately not a claim about what the store stocks.
    *
-   * **null means unknown, and unknown always counts as available.** Every link
-   * written before this existed is null, as is every trip finished on an item
-   * with no brand preference. The app not having watched which cottage cheese
-   * you bought at Costco is ignorance, not evidence that Costco lacks yours —
-   * and asserting an absence from ignorance is the thing shoppingTrip.ts exists
-   * to refuse (see the note there on why `likelyItemIds` was removed). So a
-   * strict item drops a store only on a *recorded conflict*: this field naming
-   * some other brand.
+   * **It must never filter anything, because a store carries several brands of
+   * a thing.** Having got Lucerne at Safeway once is not evidence that Safeway
+   * hasn't got Good Culture — it says nothing at all about the rest of the
+   * shelf. Reading a mismatch here as "they haven't got yours" is an absence
+   * inferred from something that isn't evidence of absence, which is the error
+   * shoppingTrip.ts removed `likelyItemIds` to be rid of. The only thing that
+   * drops a store is brandUnavailableAt below, which the user asserts.
    *
-   * Written two ways. By hand in the item sheet's store list, which is the
-   * whole point — "Safeway has cottage cheese, just not mine" was previously
-   * unsayable without claiming Safeway had none. And by finishShopping, but
-   * **only for a strict item**: strict means you would not have bought a
-   * substitute, so a purchase here really is evidence this store had your
-   * brand. On a non-strict item the same purchase says nothing about which one
-   * came home, so nothing is stamped.
+   * A *match* is the safe direction and is all this is read for: if the last
+   * thing you got here was your brand, this store demonstrably had it.
    *
-   * Compared with groceryNameKey, like every other name in this feature, so
-   * "good culture" and "Good Culture" are one brand rather than a conflict.
+   * Written by finishShopping, and only for a strict item — on a row with no
+   * brand rule there is nothing to record, since the app has no idea which one
+   * came home.
    */
   brand: string | null;
+  /**
+   * "They haven't got the brand I want" — stamped when the user says so.
+   *
+   * The brand-level twin of unavailableAt, and a genuinely different claim: the
+   * store stocks the item, it just hasn't got yours. Every "where can I get
+   * this" read drops such a link when the item is strict, and **this is the
+   * only thing that does** — see brand above for why an observed mismatch
+   * can't.
+   *
+   * A date rather than a flag, for exactly unavailableAt's reasons: stock
+   * changes, so the claim ages and says *when* you looked. Null is unknown, and
+   * unknown always counts — the app not having watched you check is ignorance.
+   * A purchase clears it automatically, since buying your brand here refutes it
+   * outright.
+   *
+   * Read only while the item is strict. A brand nobody has made a rule of is a
+   * preference, and dropping a store over a preference is not something the
+   * user asked for.
+   */
+  brandUnavailableAt: string | null;
 }
 
 /**

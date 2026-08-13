@@ -483,13 +483,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const branded = items.find(i => i.brand);
     expect(branded).toBeDefined();
     expect(branded!.nameKey).not.toContain(branded!.brand!.toLowerCase());
-    // ...and the rule that makes a brand reach store coverage, plus the
-    // per-store evidence it reads. A strict item with no conflicting link
-    // recorded anywhere would filter nothing, so the switch would look inert.
+    // ...and the rule that makes a brand reach store coverage, plus the claim
+    // it reads. A strict item nobody has ruled a store out for would filter
+    // nothing, so the switch would look inert.
     const strict = items.find(i => i.brandStrict);
     expect(strict).toBeDefined();
+    expect(itemShops.some(l => l.itemId === strict!.id && l.brandUnavailableAt)).toBe(true);
+    // ...while another store is left unmarked, which is what shows that not
+    // having ruled a shop out still counts as it having the item.
     expect(
-      itemShops.some(l => l.itemId === strict!.id && l.brand && l.brand !== strict!.brand)
+      itemShops.some(l => l.itemId === strict!.id && !l.brandUnavailableAt)
     ).toBe(true);
     // Spread purchase counts, not a flat list of ones — the ranking signal.
     expect(Math.max(...items.map(i => i.purchaseCount))).toBeGreaterThan(1);
@@ -594,12 +597,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       .filter((m): m is NonNullable<typeof m> => !!m);
 
     // The three kinds this seed can honestly produce: the store's own negative
-    // claim, an item on record at exactly one other store, and a store recorded
-    // with a brand the item rules out. Without a row carrying one, the whole
+    // claim, an item on record at exactly one other store, and a store the user
+    // has said hasn't got their brand. Without a row carrying one, the whole
     // feature is a banner and nothing else.
     expect(markers.some(m => m.kind === 'unavailable')).toBe(true);
     expect(markers.some(m => m.kind === 'only')).toBe(true);
-    expect(markers.some(m => m.kind === 'wrongBrand')).toBe(true);
+    expect(markers.some(m => m.kind === 'withoutBrand')).toBe(true);
     // ...and most of the list still says nothing, which is the point.
     expect(markers.length).toBeLessThan(items.filter(i => i.onList).length);
   });
