@@ -2247,14 +2247,6 @@ export function TodayScreen() {
           accessibilityLabel: 'Sort and filter',
         }]
       : []),
-    ...(viewMode === 'today'
-      ? [{
-          icon: 'ellipsis-horizontal' as const,
-          onPress: () => setOptionsMenuVisible(true),
-          active: hideCategories,
-          accessibilityLabel: 'More options',
-        }]
-      : []),
     ...(viewMode === 'today' && pinnedTasks.length < MAX_SUGGESTED_PINS && visibleTasks.length > 0
       ? [{
           icon: 'color-wand' as const,
@@ -2262,6 +2254,14 @@ export function TodayScreen() {
           active: pinnedTasks.length === 0,
           tint: 'orange' as const,
           accessibilityLabel: 'Suggest pin tasks',
+        }]
+      : []),
+    ...(viewMode === 'today'
+      ? [{
+          icon: 'ellipsis-horizontal' as const,
+          onPress: () => setOptionsMenuVisible(true),
+          active: hideCategories,
+          accessibilityLabel: 'More options',
         }]
       : []),
   ];
