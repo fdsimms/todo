@@ -104,6 +104,7 @@ const BASE: Task = {
   leftoverId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  timeBlockEventId: null,
 };
 
 function makeTask(overrides: Partial<Task>): Task {

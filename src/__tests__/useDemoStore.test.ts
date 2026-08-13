@@ -111,6 +111,12 @@ jest.mock('../utils/calendarSync', () => ({
 jest.mock('../utils/deadlineCalendarSync', () => ({
   syncDeadlineEvent: jest.fn().mockResolvedValue(null),
 }));
+// And the same again for the time-block half (#1492), which reaches the
+// calendar store for a window of events to fit a block into — that one imports
+// AppState directly.
+jest.mock('../store/useCalendarStore', () => ({
+  useCalendarStore: { getState: () => ({ events: [], loaded: false }) },
+}));
 
 // ---------------------------------------------------------------------------
 
