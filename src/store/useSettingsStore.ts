@@ -44,27 +44,34 @@ export type WeekStart = 0 | 1;
 export type FabHand = 'right' | 'left';
 
 /**
- * How much of the day's meal plan Today shows (#1402).
+ * Whether Today shows the day's meals at all (#1402, #1571).
  *
- * `block` is what shipped first: a bold caption over a tray of full meal rows,
- * above every task. It turned out to read as though meal planning were the
- * point of the Today screen — it was the largest type on the page after the
- * word "Today", and it sat above the first task at any hour of the day.
+ * Two shapes came before this. `block` was a bold caption over a tray of meal
+ * rows above every task — it read as though meal planning were the point of the
+ * Today screen. `strip` shrank that to one line of what was left to eat, which
+ * fixed the height and kept the glance but was still a fixed row above the
+ * list.
  *
- * `strip` is one line of the meals still to come, and is the default: it keeps
- * the glance ("what am I eating today") that the block was wanted for, at
- * about a quarter of the height, and empties itself as the day is eaten. An
- * install upgrading into this changes appearance without being asked, which is
- * unusual here — but the block is the thing being fixed, so leaving it as the
- * default would ship the fix switched off.
+ * `inline` is what's left, and it's the default: a meal with no cook task
+ * behind it becomes a `ContextRow` *in* the list, filed under the same category
+ * the cook tasks use, so the day's food sits together and the top of the screen
+ * is a task. Only meals with nowhere else to appear are drawn — a leftover, a
+ * takeaway, a dinner typed by hand — because a recipe-backed meal is already a
+ * "Cook X" row further down.
+ *
+ * Both retired values read forward to `inline`. That's a shape someone may have
+ * picked on purpose in `block`'s case, and taking it away is deliberate: the
+ * block is a second answer to a question the list now answers, and keeping it
+ * would mean maintaining a meal-planner panel on the task screen for the sake
+ * of not changing an install's appearance once.
  *
  * `off` is for someone who plans meals and doesn't want them on Today at all;
  * with cook tasks on (see `mealCookTasks`) the meals that are *work* still
  * reach the list, so this isn't the same as turning the feature off.
  */
-export type MealsOnToday = 'block' | 'strip' | 'off';
+export type MealsOnToday = 'inline' | 'off';
 
-const MEALS_ON_TODAY: MealsOnToday[] = ['block', 'strip', 'off'];
+const MEALS_ON_TODAY: MealsOnToday[] = ['inline', 'off'];
 
 /**
  * What a *new* task starts with, applied by `newTaskFromDraft`
@@ -351,6 +358,36 @@ interface SettingsStore {
   // the feature as a whole and shouldn't be flipped by a calendar going away.
   calendarReadEnabled: boolean;
   calendarIds: string[];
+  // Which category the day's events file under on Today, by name — the fourth
+  // instance of the "File them under" setting the three generated-task kinds
+  // already have (see mealCookTaskCategory), and the whole of how events reach
+  // the list (#1571). Events used to be a fixed strip above it; as rows in a
+  // category they inherit that section's position, its collapse and its focus,
+  // so none of that had to be built for them.
+  //
+  // Stored by name like every other category reference here. It is *not*
+  // nullable-means-off: null means the category hasn't been chosen yet, and
+  // `ensureCalendarEventCategory` fills it in with a real, renameable category
+  // the first time the read is turned on. Nothing shows events when it's null,
+  // which is also what happens if the user deletes the category — a section
+  // that doesn't exist has nowhere to put them, and picking another (or
+  // re-creating it by name) brings them straight back.
+  calendarEventCategory: string | null;
+  // Which category sections on Today are folded shut, by name. Persisted, and
+  // that's the change: this used to be a `useState` in TodayScreen alongside
+  // the focus filter, so a category collapsed to get it out of the way was
+  // back open on the next cold start. A collapse is a preference about the
+  // shape of the list — unlike focus, which is a momentary "just this one for
+  // a minute" and stays session-only.
+  //
+  // Names, so it needs what every other name reference here needs: a rename
+  // carries the collapse with it and a delete drops it (see renameCategory /
+  // deleteCategory in useTaskStore). Anything those two miss — a restored
+  // backup naming categories this device never had — is inert rather than
+  // wrong: a name with no category behind it has no header to fold, so it
+  // costs a string until that name exists again, which is when the user would
+  // want it honoured anyway.
+  collapsedCategories: string[];
   // Whether a reminder landing inside a meeting gets pushed to the meeting's
   // end (#1491). A refinement of calendarReadEnabled, not a separate read —
   // it does nothing while that's off, and defaults on once it's turned on so
@@ -397,6 +434,13 @@ interface SettingsStore {
   // at the next week boundary on its own (same idiom as
   // projectNudgeDismissedAt / TaskGroup.completedAt).
   mealPlanNudgeLastFiredWeekKey: string | null;
+  // Which category the weekly "Plan meals for…" task files under, by name —
+  // the fourth of these, added when the nudge stopped being the one generator
+  // with nowhere to put its task. Same shape and same rules as
+  // mealCookTaskCategory, and it shares that generator's default category
+  // ("Meal Plan"), since planning the week and cooking what you planned are
+  // one job to the person reading the list.
+  mealPlanNudgeTaskCategory: string | null;
   patchNotesQaStatus: Record<string, PatchNoteQaStatus>; // patch note id -> QA result
   // What a *new* project's nudgeCadenceDays starts at (see DEFAULT_NUDGE_CADENCE_DAYS
   // in src/types/index.ts for why that constant itself stays 0). This is the
@@ -468,6 +512,8 @@ interface SettingsStore {
   setRemindersImportReview: (on: boolean) => void;
   setCalendarReadEnabled: (on: boolean) => void;
   setCalendarIds: (ids: string[]) => void;
+  setCalendarEventCategory: (category: string | null) => void;
+  setCollapsedCategories: (categories: string[]) => void;
   setReminderMeetingNudgeEnabled: (on: boolean) => void;
   setDeadlineCalendarId: (id: string | null) => void;
   setMealCalendarId: (id: string | null) => void;
@@ -477,6 +523,7 @@ interface SettingsStore {
   setMealPlanNudgeWeekday: (weekday: number) => void;
   setMealPlanNudgeTime: (time: string) => void;
   setMealPlanNudgeLastFiredWeekKey: (weekKey: string | null) => void;
+  setMealPlanNudgeTaskCategory: (category: string | null) => void;
   setGroceryUseUpTasks: (on: boolean) => void;
   setGroceryUseUpLeadDays: (days: number) => void;
   setGroceryUseUpTaskCategory: (category: string | null) => void;
@@ -510,7 +557,8 @@ const DEFAULT_SETTINGS = {
   hideCategories: false,
   simpleTaskForm: false,
   timerLiveActivity: true,
-  mealsOnToday: 'strip' as MealsOnToday,
+  collapsedCategories: [] as string[],
+  mealsOnToday: 'inline' as MealsOnToday,
   unitSystem: 'asWritten' as UnitSystem,
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
@@ -531,6 +579,7 @@ const DEFAULT_SETTINGS = {
   mealPlanNudgeEnabled: false,
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
+  mealPlanNudgeTaskCategory: null,
 };
 
 // Every value in DEFAULT_SETTINGS goes back to the settings table through
@@ -616,6 +665,25 @@ function parseCalendarIds(raw: string | null): string[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A stored list of category names — the collapsed sections on Today.
+ *
+ * Unvalidated against the live categories on purpose, the same call
+ * `parseCalendarIds` makes: the categories load from their own table and this
+ * is read before them, so dropping unknown names here would forget a collapse
+ * every launch. `TodayScreen` prunes against what actually rendered.
+ */
+function parseCategoryNames(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((name): name is string => typeof name === 'string' && name.length > 0);
   } catch {
     return [];
   }
@@ -712,8 +780,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   hideCategories: false,
   simpleTaskForm: false,
   timerLiveActivity: true,
+  collapsedCategories: [],
   kitchenEnabled: true,
-  mealsOnToday: 'strip',
+  mealsOnToday: 'inline',
   unitSystem: 'asWritten',
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
@@ -734,6 +803,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   remindersImportReview: true,
   calendarReadEnabled: false,
   calendarIds: [],
+  calendarEventCategory: null,
   reminderMeetingNudgeEnabled: true,
   deadlineCalendarId: null,
   mealCalendarId: null,
@@ -743,6 +813,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   mealPlanNudgeEnabled: false,
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
+  mealPlanNudgeTaskCategory: null,
   mealPlanNudgeLastFiredWeekKey: null,
   newTaskDefaults: DEFAULT_NEW_TASK_DEFAULTS,
   initialized: false,
@@ -790,6 +861,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
+    const collapsedCategories = parseCategoryNames(dbGetSetting('collapsedCategories'));
     const simpleTaskForm = dbGetSetting('simpleTaskForm') === 'true';
     // `!== 'false'`, not `=== 'true'` — defaults on, same reasoning as
     // hapticsEnabled/shakeToUndoEnabled above.
@@ -797,9 +869,13 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // Same `!== 'false'`: the groceries/recipes/meal plan area is on unless
     // someone has turned it off, so no existing install loses it.
     const kitchenEnabled = dbGetSetting('kitchenEnabled') !== 'false';
-    const storedMealsOnToday = dbGetSetting('mealsOnToday') as MealsOnToday | null;
-    const mealsOnToday: MealsOnToday =
-      storedMealsOnToday && MEALS_ON_TODAY.includes(storedMealsOnToday) ? storedMealsOnToday : 'strip';
+    const storedMealsOnToday = dbGetSetting('mealsOnToday');
+    // 'strip' and 'block' are the retired values (see MealsOnToday). Anything
+    // that isn't 'off' means "show me the day's meals", which is now one shape
+    // — so they read forward rather than falling through to a default that
+    // happens to agree. Read-time only: nothing rewrites the stored row, the
+    // same call normalizeAisleOrder makes.
+    const mealsOnToday: MealsOnToday = storedMealsOnToday === 'off' ? 'off' : 'inline';
     const storedUnitSystem = dbGetSetting('unitSystem') as UnitSystem | null;
     const unitSystem: UnitSystem =
       storedUnitSystem && UNIT_SYSTEMS.includes(storedUnitSystem) ? storedUnitSystem : 'asWritten';
@@ -864,6 +940,10 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const groceryImportDelete = dbGetSetting('groceryImportDelete') !== 'false';
     const calendarReadEnabled = dbGetSetting('calendarReadEnabled') === 'true';
     const calendarIds = parseCalendarIds(dbGetSetting('calendarIds'));
+    // '' persists as "not chosen", matching mealCookTaskCategory. Nothing
+    // creates the category from here — see ensureCalendarEventCategory, which
+    // runs once the categories themselves have loaded.
+    const calendarEventCategory = dbGetSetting('calendarEventCategory') || null;
     // Missing row (fresh install, or one that predates this setting) reads as
     // on — same "absent means the default behavior" rule remindersImportDelete
     // uses, so an existing calendar-read user doesn't lose the nudge silently.
@@ -885,6 +965,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         : DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY;
     const mealPlanNudgeTime = dbGetSetting('mealPlanNudgeTime') || DEFAULT_MEAL_PLAN_NUDGE_TIME;
     const mealPlanNudgeLastFiredWeekKey = dbGetSetting('mealPlanNudgeLastFiredWeekKey') || null;
+    // '' persists as "no category", matching mealCookTaskCategory.
+    const mealPlanNudgeTaskCategory = dbGetSetting('mealPlanNudgeTaskCategory') || null;
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
     if (storedQaStatus) {
@@ -917,7 +999,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeTaskCategory, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -1289,6 +1371,21 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setCalendarIds(ids: string[]) {
     dbSetSetting('calendarIds', JSON.stringify(ids));
     set({ calendarIds: ids });
+  },
+
+  setMealPlanNudgeTaskCategory(category: string | null) {
+    dbSetSetting('mealPlanNudgeTaskCategory', category ?? '');
+    set({ mealPlanNudgeTaskCategory: category });
+  },
+
+  setCalendarEventCategory(category: string | null) {
+    dbSetSetting('calendarEventCategory', category ?? '');
+    set({ calendarEventCategory: category });
+  },
+
+  setCollapsedCategories(categories: string[]) {
+    dbSetSetting('collapsedCategories', JSON.stringify(categories));
+    set({ collapsedCategories: categories });
   },
 
   setReminderMeetingNudgeEnabled(on: boolean) {

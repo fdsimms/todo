@@ -53,13 +53,6 @@ const NEW_TASK_DESTINATION_OPTIONS: SegmentOption<'today' | 'inbox' | 'unschedul
   { value: 'inbox', label: 'Inbox' },
   { value: 'unscheduled', label: 'Unscheduled' },
 ];
-// "Line" rather than "Strip": the user-facing word for what they'll see is the
-// shape of it, and the code's name for the component isn't their problem.
-const MEALS_ON_TODAY_OPTIONS: SegmentOption<MealsOnToday>[] = [
-  { value: 'strip', label: 'One line' },
-  { value: 'block', label: 'Full list' },
-  { value: 'off', label: 'Off' },
-];
 const UNIT_SYSTEM_OPTIONS: SegmentOption<UnitSystem>[] = [
   { value: 'asWritten', label: 'As written' },
   { value: 'metric', label: 'Metric' },
@@ -302,26 +295,22 @@ export function TasksProjectsSettings() {
       <>
       <SettingsSection
         label="Meals on Today"
-        footer="A full list sits above your tasks; one line clears as you cook. Cook tasks themselves are under Tasks the app adds, below."
+        footer="A meal with no cook task behind it — a leftover, a takeaway, a dinner you typed — shows as a row in the list, filed under the same category as cook tasks. Cook tasks themselves are under Tasks the app adds, below."
       >
+        {/* A toggle rather than a track of two: one bounded choice with two
+            answers is what a switch is for, and the two shapes this used to
+            pick between (a tray above the tasks, a one-line strip) are both
+            gone. */}
         <SettingsRow
           icon="restaurant-outline"
+          iconColor={mealsOnToday === 'inline' ? colors.accent : undefined}
           label="Show the day's meals"
-          hint={
-            mealsOnToday === 'block'
-              ? 'A full list of today\'s meals above your tasks'
-              : mealsOnToday === 'strip'
-                ? 'One line of what\'s left to eat, which clears as you cook'
-                : 'Nothing — meals stay on the Meal plan tab'
-          }
-          tight
-        />
-        <SettingsSegments
-          attached
-          options={MEALS_ON_TODAY_OPTIONS}
-          selected={mealsOnToday}
-          onSelect={setMealsOnToday}
-          accessibilityLabelFor={o => `Meals on Today: ${o.label}`}
+          hint={mealsOnToday === 'inline'
+            ? 'As rows in the task list, with the cook tasks'
+            : 'Nothing — meals stay on the Meal plan tab'}
+          toggle={mealsOnToday === 'inline'}
+          onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}
+          accessibilityLabel="Show the day's meals"
         />
       </SettingsSection>
 

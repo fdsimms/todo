@@ -12,8 +12,11 @@ import {
   dbSetCategoryEmoji,
   dbSetCategoryDefaultTimeSegments,
   dbBatchUpdateCategorySortOrders,
+  dbGetSetting,
 } from '../db/database';
 import { firstEmoji } from '../utils/emojiInput';
+import { useSettingsStore } from './useSettingsStore';
+import { GENERATED_KIND_LIST, GENERATED_KIND_SPECS, type GeneratedKind } from '../utils/generatedTasks';
 
 interface CategoryStore {
   categories: Category[];
@@ -168,3 +171,113 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
     }));
   },
 }));
+
+/** What the events category is called until the user renames it. */
+export const CALENDAR_EVENTS_CATEGORY = 'Calendar Events';
+
+/**
+ * Give something the app files into a category one to file into (#1571).
+ *
+ * The shared half of `ensureCalendarEventCategory` and
+ * `ensureGeneratedTaskCategory`: create a real category — a row in the same
+ * table as every other, renameable, reorderable, deletable — and point the
+ * setting at it, rather than teaching the list about a synthetic section only
+ * one feature can use. Everything that makes filing worth having (its place in
+ * the order, collapsing it, focusing it) is then the category feature working
+ * normally.
+ *
+ * **An empty stored row is a deliberate "nowhere" and is left alone**, which is
+ * the whole reason startup can't just fill in any blank it finds: deleting the
+ * category clears the setting, and a startup pass that couldn't tell that from
+ * "never answered" would put it back every launch, with no way for the user to
+ * say no. An *absent* row is the only unanswered state, so that's the one that
+ * gets filled in — and it's also what makes this safe on an install that has
+ * been running for a year with the generator on: it has never answered either,
+ * so it gets the same default a fresh install does, applying to the tasks
+ * written from here on and never to the ones already filed.
+ */
+function ensureCategoryFor(
+  settingKey: string,
+  name: string,
+  current: string | null,
+  assign: (category: string) => void,
+  force: boolean,
+): void {
+  if (current) return;
+  if (!force && dbGetSetting(settingKey) !== null) return;
+  useCategoryStore.getState().addCategory(name);
+  assign(name);
+}
+
+/**
+ * Make sure the day's events have a section to land in.
+ *
+ * Called from two places for two reasons: turning the read on (`force`, so the
+ * section appears with the events rather than a launch later), and app startup,
+ * which is how an install that already had the read on gets one without a
+ * migration step of its own.
+ */
+export function ensureCalendarEventCategory(opts: { force?: boolean } = {}): void {
+  const settings = useSettingsStore.getState();
+  if (!settings.calendarReadEnabled) return;
+  ensureCategoryFor(
+    'calendarEventCategory',
+    CALENDAR_EVENTS_CATEGORY,
+    settings.calendarEventCategory,
+    settings.setCalendarEventCategory,
+    !!opts.force,
+  );
+}
+
+/** Each generator's category setting, as a pair this module can read and write. */
+function generatedCategorySetting(kind: GeneratedKind): {
+  key: string;
+  current: string | null;
+  assign: (category: string) => void;
+} {
+  const s = useSettingsStore.getState();
+  switch (kind) {
+    case 'mealCook':
+      return { key: 'mealCookTaskCategory', current: s.mealCookTaskCategory, assign: s.setMealCookTaskCategory };
+    case 'groceryUseUp':
+      return { key: 'groceryUseUpTaskCategory', current: s.groceryUseUpTaskCategory, assign: s.setGroceryUseUpTaskCategory };
+    case 'leftoverUseUp':
+      return { key: 'leftoverUseUpTaskCategory', current: s.leftoverUseUpTaskCategory, assign: s.setLeftoverUseUpTaskCategory };
+    case 'mealPlanNudge':
+      return { key: 'mealPlanNudgeTaskCategory', current: s.mealPlanNudgeTaskCategory, assign: s.setMealPlanNudgeTaskCategory };
+  }
+}
+
+/** Whether this generator is currently switched on. */
+function generatorEnabled(kind: GeneratedKind): boolean {
+  const s = useSettingsStore.getState();
+  switch (kind) {
+    case 'mealCook': return s.mealCookTasks;
+    case 'groceryUseUp': return s.groceryUseUpTasks;
+    case 'leftoverUseUp': return s.leftoverUseUpTasks;
+    case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
+  }
+}
+
+/**
+ * Give a generator's tasks a category to file under.
+ *
+ * The same move `ensureCalendarEventCategory` makes, for the four kinds that
+ * write tasks: a generator left at its shipped default filed *nothing*, and an
+ * uncategorized task renders in the loose block above every section — so the
+ * tasks the app writes unasked ended up at the very top of Today, which is the
+ * position this whole change exists to give back to real work.
+ *
+ * Two of the four name the same category, which is why this reads the registry
+ * rather than taking a name: see `GeneratedKindSpec.defaultCategory`.
+ */
+export function ensureGeneratedTaskCategory(kind: GeneratedKind, opts: { force?: boolean } = {}): void {
+  if (!generatorEnabled(kind)) return;
+  const { key, current, assign } = generatedCategorySetting(kind);
+  ensureCategoryFor(key, GENERATED_KIND_SPECS[kind].defaultCategory, current, assign, !!opts.force);
+}
+
+/** Every generator that's on, at startup. Idempotent, like the calendar's. */
+export function ensureGeneratedTaskCategories(): void {
+  GENERATED_KIND_LIST.forEach(spec => ensureGeneratedTaskCategory(spec.kind));
+}

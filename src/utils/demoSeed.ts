@@ -1119,6 +1119,19 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   const { markCooked } = useRecipeStore.getState();
   const { logLeftover, finishLeftover } = useLeftoverStore.getState();
   const weekStartsOn = useSettingsStore.getState().weekStartsOn;
+  // The two categories the kitchen's generated tasks file under, named and
+  // pointed at explicitly rather than left to ensureGeneratedTaskCategories:
+  // that pass reads the *real* install's settings (demo mode swaps the
+  // database, not the in-memory preferences), so a demo that relied on it
+  // would look different depending on what the person's own settings happened
+  // to say. These are the names a fresh install gets.
+  const { addCategory, setCategoryEmoji } = useCategoryStore.getState();
+  ([['Meal Plan', '🍽️'], ['Leftovers', '🥡']] as Array<[string, string]>).forEach(([name, emoji]) => {
+    addCategory(name);
+    setCategoryEmoji(name, emoji);
+  });
+  useSettingsStore.getState().setMealCookTaskCategory('Meal Plan');
+  useSettingsStore.getState().setLeftoverUseUpTaskCategory('Leftovers');
 
   loadRange(dayKeyOf(subDays(today, 14)), dayKeyOf(addDays(today, 14)));
 
@@ -1232,6 +1245,13 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // snack plate opt out, which is what the entry sheet's per-meal toggle
   // writes. A day where every recipe became a chore is exactly the pile-up the
   // toggle exists for.
+  //
+  // That mixture is now also what shows both halves of the *fold* (#1571): the
+  // two with a cook task appear as ordinary task rows, and the two without
+  // appear as context rows in the same section — which is the whole point of
+  // meals going inline rather than into a strip of their own. The demo files
+  // them under Meal Plan (see the categories seeded above) so they land in a
+  // section rather than loose above every one.
   plan(0, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
   plan(0, 'lunch', { title: 'Turkey and avocado sandwich', recipeId: recipes.sandwich, cookTask: false });
   plan(0, 'dinner', { title: 'Weeknight chicken stir-fry', recipeId: recipes.stirFry });

@@ -15,8 +15,8 @@ interface Props {
 }
 
 /**
- * The full read of today's calendar (#1489) — what `TodayEventsStrip`'s one
- * line opens into.
+ * The full read of today's calendar (#1489) — what an event row on Today opens
+ * into (see `DayContextRow`; it replaced the strip this used to hang off).
  *
  * Deliberately not a calendar view: no grid, no hour rows, no laying events
  * out against a clock face. It's a plain time-ordered list, same footprint as

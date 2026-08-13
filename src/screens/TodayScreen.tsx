@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
-import type { Task, TaskGroup, TaskTemplate, Category } from '../types';
+import type { ContextRow, Task, TaskGroup, TaskTemplate, Category } from '../types';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday } from '../utils/visibilityUtils';
 import { isRealCompletion } from '../utils/missed';
 import { isToday } from 'date-fns/isToday';
@@ -41,8 +41,17 @@ import {
   findTaskJumpTarget,
   type LaterListItem,
   type CategoryListItem,
+  type TodayListItem,
   type LaterTodaySectionData,
 } from '../utils/taskGrouping';
+import { liveGeneratedTask } from '../utils/generatedTasks';
+import { useDemoStore } from '../store/useDemoStore';
+import {
+  eventContextRows,
+  mealContextRows,
+  insertContextRows,
+  withoutContextRows,
+} from '../utils/dayContextRows';
 import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -94,16 +103,14 @@ import { ProjectNudgeBanner } from '../components/ProjectNudgeBanner';
 import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
 import { findProjectStalls } from '../utils/projectPull';
 import { useProjectStore } from '../store/useProjectStore';
-import { TodayMealPlanSection } from '../components/TodayMealPlanSection';
-import { TodayMealStrip } from '../components/TodayMealStrip';
+import { DayContextRow } from '../components/DayContextRow';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { selectTodayMealEntries, recipeIndex, uncookedEntries } from '../utils/mealPlan';
+import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
 import { dayKeyOf, getDayStart } from '../utils/dateUtils';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { eventsIn } from '../utils/calendarBusy';
-import { TodayEventsStrip } from '../components/TodayEventsStrip';
 import { TodayEventsSheet } from '../components/TodayEventsSheet';
 import {
   SpotlightOverlay,
@@ -546,10 +553,9 @@ export function TodayScreen() {
   // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
   const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
   // "Hide everything but the pins", toggled by the eye in the pinned header.
-  // Off by default and session-only, like collapsedCategories: the pinned block
-  // is additive now — pinning shows you a copy at the top, it doesn't take the
-  // rest of the day away — so hiding is something you ask for, once, when you
-  // want it. The previous design had this the other way round ("Everything
+  // Off by default and session-only: the pinned block is additive now —
+  // pinning shows you a copy at the top, it doesn't take the rest of the day
+  // away — so hiding is something you ask for, once, when you want it. The previous design had this the other way round ("Everything
   // else" arrived collapsed) and that's the half people turned the feature off
   // over.
   const [othersHidden, setOthersHidden] = useState(false);
@@ -563,8 +569,23 @@ export function TodayScreen() {
   }, [pinnedTasks.length]);
   const [showHidden, setShowHidden] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
-  // Session-only, like collapsedCategories: "show only this category's tasks,
+  // Persisted, unlike the focus filter below it: folding a section shut is a
+  // statement about how you want the list to look, and it used to be forgotten
+  // on every cold start. Kept as a Set here (the three call sites below all ask
+  // "is this one collapsed") and written back as a plain array.
+  const storedCollapsedCategories = useSettingsStore(useShallow(s => s.collapsedCategories));
+  const setStoredCollapsedCategories = useSettingsStore(s => s.setCollapsedCategories);
+  const collapsedCategories = useMemo(
+    () => new Set(storedCollapsedCategories),
+    [storedCollapsedCategories],
+  );
+  const setCollapsedCategories = useCallback(
+    (update: (prev: Set<string>) => Set<string>) => {
+      setStoredCollapsedCategories([...update(new Set(storedCollapsedCategories))]);
+    },
+    [storedCollapsedCategories, setStoredCollapsedCategories],
+  );
+  // Session-only, unlike the collapse above: "show only this category's tasks,
   // hide the rest of Today" — a stronger filter than collapse, toggled from a
   // category header's long-press. Resets on unmount/view-mode switch, never
   // persisted; see toggleCategoryFocus and applyCategoryFocusTo.
@@ -729,7 +750,7 @@ export function TodayScreen() {
   // from time passing (a defer/time-segment threshold crossing, a window
   // expiring), with no store mutation to trigger that render. Tick while
   // focused so the list stays current on its own.
-  const [, forceRefresh] = useState(0);
+  const [minuteTick, forceRefresh] = useState(0);
   useFocusEffect(
     useCallback(() => {
       const interval = setInterval(() => forceRefresh(n => n + 1), 30000);
@@ -1008,10 +1029,10 @@ export function TodayScreen() {
   // header (see pinnedBlock), and a pinned task keeps its ordinary row in this
   // data as well. Two rows for one task, which is the point — pinning now adds
   // a copy at the top rather than moving the original.
-  type ListItem =
-    | { type: 'header'; label: string }
-    | { type: 'task'; task: Task }
-    | { type: 'group'; group: TaskGroup; children: Task[] };
+  // Headers, tasks and stacks — plus the `context` rows the day's calendar and
+  // meal plan fold in, which render here but are never dragged, selected or
+  // resolved into a drop (see dayContextRows.ts).
+  type ListItem = TodayListItem;
 
   const upcomingTaskIds = useMemo(
     () => new Set(upcomingTodayTasks.map(t => t.id)),
@@ -1149,6 +1170,88 @@ export function TodayScreen() {
       ? items.filter(item => item.type !== 'header' || item.label === LATER_TODAY_LABEL)
       : items;
 
+  // Today's planned meals (#1133). Read passively rather than calling
+  // loadRange: the store is range-scoped and the Meal Plan screen owns which
+  // week is loaded, so Today shows what's already there instead of fighting it
+  // for the window.
+  const todayKey = useMemo(() => dayKeyOf(new Date()), []);
+  const mealEntries = useMealPlanStore(useShallow(s => s.entries));
+  const mealRangeStart = useMealPlanStore(s => s.rangeStart);
+  const mealRangeEnd = useMealPlanStore(s => s.rangeEnd);
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
+  const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
+  const todayMealEntries = useMemo(
+    () => selectTodayMealEntries(mealEntries, mealRangeStart, mealRangeEnd, todayKey),
+    [mealEntries, mealRangeStart, mealRangeEnd, todayKey]
+  );
+  const openMealPlan = useCallback(() => {
+    navigation.navigate('MealPlan' as never);
+  }, [navigation]);
+  // Resolved rather than read straight through: with the groceries/meals area
+  // off, Today shows no meals whatever this is set to, but the setting itself
+  // is left alone so turning the area back on restores the shape the user
+  // picked. Both render sites below test this one value, so neither can be
+  // missed.
+  const storedMealsOnToday = useSettingsStore(s => s.mealsOnToday);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const mealsOnToday: MealsOnToday = kitchenEnabled ? storedMealsOnToday : 'off';
+  // Today's calendar (#1489) — silent unless the read is on and succeeded.
+  // `calendarLoaded` is checked separately from `events` being empty for the
+  // reason useCalendarStore documents: an empty day and a failed read both
+  // look like `[]`.
+  //
+  // Demo mode shows none of it, and that exception is the honest one: events
+  // are read from EventKit into memory and never touch the database, so the
+  // demo's swapped-out db can't seed them — which used to mean handing someone
+  // the phone showed them your real meetings. Every other store rides the
+  // database swap (see useTaskStore.initialize); this is the one that can't.
+  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const demoActive = useDemoStore(s => s.active);
+  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarLoaded = useCalendarStore(s => s.loaded);
+  const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
+  const todayCalendarDayEnd = useMemo(() => addDays(getDayStart(new Date()), 1), [todayKey]);
+  const todayCalendarEvents = useMemo(
+    () => (calendarReadEnabled && calendarLoaded && !demoActive
+      ? eventsIn(calendarEvents, getDayStart(new Date()), todayCalendarDayEnd)
+      : []),
+    [calendarReadEnabled, calendarLoaded, demoActive, calendarEvents, todayCalendarDayEnd]
+  );
+
+  // The day's events and its uncooked-and-untasked meals, as rows in the list
+  // (#1571). Each files under a category — the calendar's own, and the cook
+  // tasks' for meals, so a leftover sits with the "Cook X" it isn't one of —
+  // and inherits that section's place in the order, its collapse and its
+  // focus. `minuteTick` is in the deps because both reads are against the
+  // clock: an event drops when it ends and takes on the "Now" emphasis when it
+  // starts, and nothing mutates a store at either moment.
+  const calendarEventCategory = useSettingsStore(s => s.calendarEventCategory);
+  const mealCookTaskCategory = useSettingsStore(s => s.mealCookTaskCategory);
+  const use24HourTime = useSettingsStore(s => s.use24HourTime);
+  const contextRows = useMemo(() => {
+    const rows: ContextRow[] = [];
+    // No category means nowhere to put them — see ensureCalendarEventCategory
+    // for why a cleared setting is a real answer rather than a missing one.
+    if (calendarEventCategory) {
+      rows.push(...eventContextRows(todayCalendarEvents, {
+        now: new Date(),
+        category: calendarEventCategory,
+        use24Hour: use24HourTime,
+      }));
+    }
+    if (mealsOnToday === 'inline' && todayMealEntries) {
+      rows.push(...mealContextRows(todayMealEntries, recipesById, {
+        category: mealCookTaskCategory,
+        hasCookTask: entryId => !!liveGeneratedTask(allTasks, 'mealCook', entryId),
+      }));
+    }
+    return rows;
+  }, [
+    todayCalendarEvents, calendarEventCategory, use24HourTime,
+    mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
+    minuteTick,
+  ]);
+
   // Every row the current layout *has*, before anything the user has folded
   // away is dropped. `data` below is this narrowed to what's on screen; this
   // is what a jump searches, so a task inside a collapsed section can still be
@@ -1164,10 +1267,16 @@ export function TodayScreen() {
     // but only while the list is in its hand-ordered state. Any other sort
     // reorders the tasks by something sortOrder says nothing about, so the
     // stacks go back to heading their section.
-    return makeCategoryGroups(ungrouped, allCategories, visibleGroupItems, {
+    const grouped = makeCategoryGroups(ungrouped, allCategories, visibleGroupItems, {
       interleaveGroups: sort === 'default',
     });
-  }, [filtered, allCategories, visibleGroupItems, sort]);
+    // Folded in *here*, before collapse and focus run over the result, so a
+    // context row is hidden by its section's collapse and kept by its
+    // section's focus without either of them growing a special case. It's also
+    // what lets a category holding nothing but events have a header at all —
+    // makeCategoryGroups only knows about tasks and stacks.
+    return insertContextRows(grouped, contextRows, { categoryOrder: allCategories });
+  }, [filtered, allCategories, visibleGroupItems, sort, contextRows]);
 
   // Whether anything other than the pinned block is on screen. Focus wins over
   // the hide for the reason spelled out in `data` below.
@@ -1189,6 +1298,9 @@ export function TodayScreen() {
   const listItemKey = (item: ListItem): string =>
     item.type === 'header' ? `h-${item.label}`
     : item.type === 'group' ? `g-${item.group.id}`
+    // Already prefixed by kind (see ContextRow.id), so it can't collide with a
+    // task id sharing this list.
+    : item.type === 'context' ? item.row.id
     : item.task.id;
 
   // Set by Today's one list. There used to be two — a plain FlatList swapped
@@ -1242,6 +1354,24 @@ export function TodayScreen() {
   // isn't told they're all leaving.
   const sectionTaskIds = useMemo(() => computeSectionTaskIds(data), [data]);
 
+  // Context rows per section, for the count a collapsed header shows. They
+  // can't come from sectionTaskIds — that's task ids, and it feeds
+  // CompletionCollapse, which animates a header out with the rows being ticked
+  // off. Counting them there would have a header waiting on rows that can
+  // never complete. Without this a collapsed Calendar Events reads "(0)",
+  // since its rows are the only thing in it.
+  const sectionContextCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    let label: string | null = null;
+    for (const item of data) {
+      if (item.type === 'header') label = item.label;
+      else if (item.type === 'context' && label !== null) {
+        counts.set(label, (counts.get(label) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [data]);
+
   // Local copy of data fed to ReorderableList. onReorder writes the settled
   // grouped layout here immediately so the list doesn't flash back to the
   // pre-drag order while the store write propagates; the render-time sync
@@ -1264,6 +1394,14 @@ export function TodayScreen() {
     syncedDataRef.current = data;
     setDraggableData(data);
   }
+
+  // The settled layout a drop hands back, with the day's context rows put back
+  // into it. resolveDrop is deliberately blind to them (they carry no order to
+  // commit), so its `settled` is tasks-and-headers only — and setting that
+  // straight into the list would blink the events out for the frame or two
+  // before the store-derived `data` catches up.
+  const settleWithContext = (settled: CategoryListItem[]): ListItem[] =>
+    insertContextRows(settled, contextRows, { categoryOrder: allCategories });
 
   // ——— Dragging the add button into the list ———————————————————————————
   //
@@ -1358,16 +1496,13 @@ export function TodayScreen() {
 
     const spliced = [...draggableData];
     spliced.splice(intent.before ? anchor : anchor + 1, 0, { type: 'task', task });
-    const dropped = spliced.filter(
-      (item): item is CategoryListItem =>
-        item.type === 'header' || item.type === 'task' || item.type === 'group',
-    );
+    const dropped = withoutContextRows(spliced);
     const { taskOrders, categoryUpdates, groupUpdates, settled } = resolveDrop(dropped, {
       isUpcoming: id => upcomingTaskIds.has(id),
       showUpcoming,
       categoryOrder: allCategories,
     });
-    setDraggableData(settled);
+    setDraggableData(settleWithContext(settled));
     groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
     // No "this task or this and future occurrences?" prompt, unlike the drag
     // path: a task created a moment ago has no other occurrences to apply to.
@@ -1641,7 +1776,7 @@ export function TodayScreen() {
             onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
             onLongPress={isCategory ? () => toggleCategoryFocus(item.label) : undefined}
             focused={isCategory ? focusedCategory === item.label : undefined}
-            count={isCategory ? sectionIds.length : undefined}
+            count={isCategory ? sectionIds.length + (sectionContextCounts.get(item.label) ?? 0) : undefined}
           />
         </CompletionCollapse>
       );
@@ -1714,6 +1849,18 @@ export function TodayScreen() {
             </TaskGroupBody>
           </TaskGroupTray>
         </GroupDropTargetRow>
+      );
+    }
+
+    // Never handed `drag`: the app doesn't own these rows, so there is no
+    // order to commit and nothing for resolveDrop to place. Same as a section
+    // header, which is also in this data and also static.
+    if (item.type === 'context') {
+      return (
+        <DayContextRow
+          row={item.row}
+          onPress={item.row.kind === 'event' ? () => setEventsSheetVisible(true) : openMealPlan}
+        />
       );
     }
 
@@ -2117,52 +2264,6 @@ export function TodayScreen() {
 
   const today = format(new Date(), 'EEEE, MMMM d');
 
-  // Today's planned meals (#1133) — see TodayMealPlanSection for why this
-  // reads useMealPlanStore passively rather than calling loadRange itself.
-  const todayKey = useMemo(() => dayKeyOf(new Date()), []);
-  const mealEntries = useMealPlanStore(useShallow(s => s.entries));
-  const mealRangeStart = useMealPlanStore(s => s.rangeStart);
-  const mealRangeEnd = useMealPlanStore(s => s.rangeEnd);
-  const recipes = useRecipeStore(useShallow(s => s.recipes));
-  const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
-  const todayMealEntries = useMemo(
-    () => selectTodayMealEntries(mealEntries, mealRangeStart, mealRangeEnd, todayKey),
-    [mealEntries, mealRangeStart, mealRangeEnd, todayKey]
-  );
-  const openMealPlan = useCallback(() => {
-    navigation.navigate('MealPlan' as never);
-  }, [navigation]);
-  // Resolved rather than read straight through: with the groceries/meals area
-  // off, Today shows no meals whatever this is set to, but the setting itself
-  // is left alone so turning the area back on restores the shape the user
-  // picked. Both render sites below test this one value, so neither can be
-  // missed.
-  const storedMealsOnToday = useSettingsStore(s => s.mealsOnToday);
-  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
-  const mealsOnToday: MealsOnToday = kitchenEnabled ? storedMealsOnToday : 'off';
-  // What the strip shows: only what's still to be eaten, so the line empties
-  // as the day goes and disappears once everything's cooked. The block
-  // deliberately keeps the cooked ones — see uncookedEntries.
-  const todayMealStripEntries = useMemo(
-    () => (todayMealEntries ? uncookedEntries(todayMealEntries) : null),
-    [todayMealEntries]
-  );
-
-  // Today's calendar (#1489) — silent unless the read is on and succeeded, per
-  // TodayEventsStrip's own note. `calendarLoaded` is checked separately from
-  // `events` being empty for the reason useCalendarStore documents: an empty
-  // day and a failed read both look like `[]`.
-  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
-  const calendarEvents = useCalendarStore(s => s.events);
-  const calendarLoaded = useCalendarStore(s => s.loaded);
-  const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
-  const todayCalendarDayEnd = useMemo(() => addDays(getDayStart(new Date()), 1), [todayKey]);
-  const todayCalendarEvents = useMemo(
-    () => (calendarReadEnabled && calendarLoaded
-      ? eventsIn(calendarEvents, getDayStart(new Date()), todayCalendarDayEnd)
-      : []),
-    [calendarReadEnabled, calendarLoaded, calendarEvents, todayCalendarDayEnd]
-  );
 
   const laterSections = useMemo(() => computeLaterSections(deferredTasks), [deferredTasks]);
 
@@ -2360,36 +2461,16 @@ export function TodayScreen() {
           />
         )}
 
-        {viewMode === 'today' && (
-          <TodayEventsStrip
-            events={todayCalendarEvents}
-            dayEnd={todayCalendarDayEnd}
-            onOpen={() => setEventsSheetVisible(true)}
-          />
-        )}
-
         {/*
-          Two shapes for one thing, picked by `mealsOnToday` (default `strip`).
-          The strip additionally drops what's been cooked, which is why it reads
-          its own array rather than filtering inline.
+          Nothing about the day's calendar or its menu renders above the list
+          any more. Both were a fixed block here — which meant the top of the
+          Today screen was never a task — and both are rows in the list itself
+          now (see contextRows / dayContextRows.ts). The one thing still
+          rendered from the kitchen is CookedUseUpOffer above, which is not a
+          standing block: it draws nothing at all unless a meal was just
+          cooked, and it's the moment the "out of anything?" question can be
+          asked at all.
         */}
-        {viewMode === 'today' && mealsOnToday === 'strip'
-          && todayMealStripEntries && todayMealStripEntries.length > 0 && (
-          <TodayMealStrip
-            entries={todayMealStripEntries}
-            recipesById={recipesById}
-            onOpen={openMealPlan}
-          />
-        )}
-
-        {viewMode === 'today' && mealsOnToday === 'block' && todayMealEntries && todayMealEntries.length > 0 && (
-          <TodayMealPlanSection
-            entries={todayMealEntries}
-            recipesById={recipesById}
-            onOpen={openMealPlan}
-          />
-        )}
-
         <SpotlightOverlay
           visible={spotlightActive}
           onPress={() => setExpandedTaskId(null)}
@@ -2593,11 +2674,9 @@ export function TodayScreen() {
             }}
             placeholderStyle={styles.dropSlot}
             onReorder={reordered => {
-              // The draggable list only ever contains header/task/group items.
-              const dropped = reordered.filter(
-                (item): item is CategoryListItem =>
-                  item.type === 'header' || item.type === 'task' || item.type === 'group',
-              );
+              // Context rows ride along in the list but never in a drop — see
+              // withoutContextRows, and settleWithContext for the way back.
+              const dropped = withoutContextRows(reordered);
 
               const joinedTaskId = joinedTaskIdRef.current;
               joinedTaskIdRef.current = null;
@@ -2615,7 +2694,7 @@ export function TodayScreen() {
                   categoryOrder: allCategories,
                 });
                 groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
-                setDraggableData(settled);
+                setDraggableData(settleWithContext(settled));
                 reorderWithCategoryUpdates(taskOrders, categoryUpdates);
                 return;
               }
@@ -2630,7 +2709,7 @@ export function TodayScreen() {
                 // Show the final grouped layout immediately to avoid a flash; the
                 // effect then reconciles to the store-derived `data` (structurally
                 // identical) once the store write lands.
-                setDraggableData(settled);
+                setDraggableData(settleWithContext(settled));
                 groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
                 reorderWithCategoryUpdates(taskOrders, categoryUpdates, scope ? { scope } : undefined);
               };
@@ -2660,7 +2739,10 @@ export function TodayScreen() {
               commitDrop();
             }}
             contentContainerStyle={
-              filtered.length === 0
+              // `data.length` as well as `filtered.length`: a day with no tasks
+              // but something on the calendar still has rows to lay out, and
+              // the centering this style does is for a genuinely empty screen.
+              filtered.length === 0 && data.length === 0
                 ? styles.emptyContainer
                 : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
             }
@@ -2676,7 +2758,7 @@ export function TodayScreen() {
               // Direct child of the scroll content (no cell wrapper), so the
               // spacer's own flexGrow stretches it; pinned when empty so the
               // empty state stays centered.
-              listFooter(filtered.length === 0)
+              listFooter(filtered.length === 0 && data.length === 0)
             }
           />
         )}

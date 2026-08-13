@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
+import { ensureGeneratedTaskCategory } from '../../store/useCategoryStore';
 import {
   GENERATED_KIND_LIST,
   type GeneratedKind,
@@ -107,12 +108,19 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
     else if (kind === 'groceryUseUp') s.setGroceryUseUpTasks(next);
     else if (kind === 'leftoverUseUp') s.setLeftoverUseUpTasks(next);
     else s.setMealPlanNudgeEnabled(next);
+    // Switching one on gives it somewhere to file, so the "File them under"
+    // row that appears directly below already has an answer in it rather than
+    // reading "None" — which is the value that puts these tasks loose at the
+    // top of Today. Only ever fills an unanswered setting; see
+    // ensureGeneratedTaskCategory.
+    if (next) ensureGeneratedTaskCategory(kind, { force: true });
   };
 
   const categoryOf = (kind: GeneratedKind): string | null => (
     kind === 'mealCook' ? s.mealCookTaskCategory
     : kind === 'groceryUseUp' ? s.groceryUseUpTaskCategory
-    : s.leftoverUseUpTaskCategory
+    : kind === 'leftoverUseUp' ? s.leftoverUseUpTaskCategory
+    : s.mealPlanNudgeTaskCategory
   );
 
   // No haptic here: `categoryPills` fires one in its own onPress, and two for
@@ -120,7 +128,8 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
   const setCategory = (kind: GeneratedKind, category: string | null): void => {
     if (kind === 'mealCook') s.setMealCookTaskCategory(category);
     else if (kind === 'groceryUseUp') s.setGroceryUseUpTaskCategory(category);
-    else s.setLeftoverUseUpTaskCategory(category);
+    else if (kind === 'leftoverUseUp') s.setLeftoverUseUpTaskCategory(category);
+    else s.setMealPlanNudgeTaskCategory(category);
   };
 
   const confirmTime = () => {

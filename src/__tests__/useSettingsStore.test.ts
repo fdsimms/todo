@@ -872,7 +872,7 @@ describe('kitchenEnabled', () => {
   // turn-off that wrote these to their own "off" values would lose what the
   // user had chosen, and turning the area back on would return it changed.
   it('leaves every downstream kitchen setting exactly as it was', () => {
-    useSettingsStore.getState().setMealsOnToday('block');
+    useSettingsStore.getState().setMealsOnToday('off');
     useSettingsStore.getState().setMealCookTasks(false);
     useSettingsStore.getState().setMealPlanNudgeEnabled(true);
     useSettingsStore.getState().setGroceryImportEnabled(true);
@@ -882,7 +882,7 @@ describe('kitchenEnabled', () => {
     useSettingsStore.getState().setKitchenEnabled(false);
 
     const state = useSettingsStore.getState();
-    expect(state.mealsOnToday).toBe('block');
+    expect(state.mealsOnToday).toBe('off');
     expect(state.mealCookTasks).toBe(false);
     expect(state.mealPlanNudgeEnabled).toBe(true);
     expect(state.groceryImportEnabled).toBe(true);
