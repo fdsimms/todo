@@ -189,7 +189,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['grocery', 'recipes', 'meal plan', 'shopping', 'food', 'cooking',
       'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer'] },
   { id: 'mealsOnToday', groupId: 'tasksProjects', label: 'Show the day\'s meals', section: 'Meals on Today',
-    keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'in the list', 'block'], kitchen: true },
+    keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'takeaway'], kitchen: true },
   // The four generators, all in one section now (#1524) — they used to be three
   // sections here plus one over in Notifications. Each keeps its own entry
   // rather than collapsing to one "Tasks the app adds" row: a search index
@@ -214,6 +214,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['meal plan', 'weekly', 'nudge', 'remind', 'planning', 'generated', 'automatic'], kitchen: true },
   { id: 'mealPlanNudgeTime', groupId: 'tasksProjects', label: 'Nudge me on', section: 'Tasks the app adds',
     keywords: ['meal plan', 'weekday', 'day', 'time', 'when'], kitchen: true },
+  { id: 'mealPlanNudgeTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
+    keywords: ['category', 'meal plan', 'weekly', 'nudge', 'kitchen'], kitchen: true },
   // Flagged too: it only ever restates a recipe's or a grocery row's amount, so
   // with the area gone there is nothing left for it to convert.
   { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',

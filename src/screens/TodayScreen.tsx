@@ -103,7 +103,6 @@ import { ProjectNudgeBanner } from '../components/ProjectNudgeBanner';
 import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
 import { findProjectStalls } from '../utils/projectPull';
 import { useProjectStore } from '../store/useProjectStore';
-import { TodayMealPlanSection } from '../components/TodayMealPlanSection';
 import { DayContextRow } from '../components/DayContextRow';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -1171,8 +1170,10 @@ export function TodayScreen() {
       ? items.filter(item => item.type !== 'header' || item.label === LATER_TODAY_LABEL)
       : items;
 
-  // Today's planned meals (#1133) — see TodayMealPlanSection for why this
-  // reads useMealPlanStore passively rather than calling loadRange itself.
+  // Today's planned meals (#1133). Read passively rather than calling
+  // loadRange: the store is range-scoped and the Meal Plan screen owns which
+  // week is loaded, so Today shows what's already there instead of fighting it
+  // for the window.
   const todayKey = useMemo(() => dayKeyOf(new Date()), []);
   const mealEntries = useMealPlanStore(useShallow(s => s.entries));
   const mealRangeStart = useMealPlanStore(s => s.rangeStart);
@@ -2461,20 +2462,15 @@ export function TodayScreen() {
         )}
 
         {/*
-          Nothing about the day's calendar or its menu renders here any more.
-          Both were a fixed strip above the list, which meant the top of the
-          Today screen was never a task; they're rows in the list itself now
-          (see contextRows / dayContextRows.ts). `block` is the one meal shape
-          that's still a section of its own, for whoever picked it.
+          Nothing about the day's calendar or its menu renders above the list
+          any more. Both were a fixed block here — which meant the top of the
+          Today screen was never a task — and both are rows in the list itself
+          now (see contextRows / dayContextRows.ts). The one thing still
+          rendered from the kitchen is CookedUseUpOffer above, which is not a
+          standing block: it draws nothing at all unless a meal was just
+          cooked, and it's the moment the "out of anything?" question can be
+          asked at all.
         */}
-        {viewMode === 'today' && mealsOnToday === 'block' && todayMealEntries && todayMealEntries.length > 0 && (
-          <TodayMealPlanSection
-            entries={todayMealEntries}
-            recipesById={recipesById}
-            onOpen={openMealPlan}
-          />
-        )}
-
         <SpotlightOverlay
           visible={spotlightActive}
           onPress={() => setExpandedTaskId(null)}

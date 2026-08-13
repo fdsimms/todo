@@ -1119,12 +1119,19 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   const { markCooked } = useRecipeStore.getState();
   const { logLeftover, finishLeftover } = useLeftoverStore.getState();
   const weekStartsOn = useSettingsStore.getState().weekStartsOn;
-  // Cook tasks and the meal rows beside them both file under this, and it
-  // defaults to none — which puts them loose at the top of Today, above every
-  // category. Naming one is what a real user does once they've seen that, and
-  // the demo should show the arrangement worth copying rather than the default
-  // nobody keeps. Home, because that's where dinner lives in this seed.
-  useSettingsStore.getState().setMealCookTaskCategory('Home');
+  // The two categories the kitchen's generated tasks file under, named and
+  // pointed at explicitly rather than left to ensureGeneratedTaskCategories:
+  // that pass reads the *real* install's settings (demo mode swaps the
+  // database, not the in-memory preferences), so a demo that relied on it
+  // would look different depending on what the person's own settings happened
+  // to say. These are the names a fresh install gets.
+  const { addCategory, setCategoryEmoji } = useCategoryStore.getState();
+  ([['Meal Plan', '🍽️'], ['Leftovers', '🥡']] as Array<[string, string]>).forEach(([name, emoji]) => {
+    addCategory(name);
+    setCategoryEmoji(name, emoji);
+  });
+  useSettingsStore.getState().setMealCookTaskCategory('Meal Plan');
+  useSettingsStore.getState().setLeftoverUseUpTaskCategory('Leftovers');
 
   loadRange(dayKeyOf(subDays(today, 14)), dayKeyOf(addDays(today, 14)));
 
@@ -1243,8 +1250,8 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // two with a cook task appear as ordinary task rows, and the two without
   // appear as context rows in the same section — which is the whole point of
   // meals going inline rather than into a strip of their own. The demo files
-  // them under Home (see mealCookTaskCategory below) so they land in a
-  // category rather than loose above one.
+  // them under Meal Plan (see the categories seeded above) so they land in a
+  // section rather than loose above every one.
   plan(0, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
   plan(0, 'lunch', { title: 'Turkey and avocado sandwich', recipeId: recipes.sandwich, cookTask: false });
   plan(0, 'dinner', { title: 'Weeknight chicken stir-fry', recipeId: recipes.stirFry });

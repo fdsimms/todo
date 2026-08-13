@@ -44,35 +44,34 @@ export type WeekStart = 0 | 1;
 export type FabHand = 'right' | 'left';
 
 /**
- * How much of the day's meal plan Today shows (#1402).
+ * Whether Today shows the day's meals at all (#1402, #1571).
  *
- * `block` is what shipped first: a bold caption over a tray of full meal rows,
- * above every task. It turned out to read as though meal planning were the
- * point of the Today screen — it was the largest type on the page after the
- * word "Today", and it sat above the first task at any hour of the day.
+ * Two shapes came before this. `block` was a bold caption over a tray of meal
+ * rows above every task — it read as though meal planning were the point of the
+ * Today screen. `strip` shrank that to one line of what was left to eat, which
+ * fixed the height and kept the glance but was still a fixed row above the
+ * list.
  *
- * `strip` replaced it: one line of the meals still to come, above the list. It
- * fixed the height and kept the glance, but it was still a fixed row above
- * every task — which is the half `inline` finishes off (#1571).
+ * `inline` is what's left, and it's the default: a meal with no cook task
+ * behind it becomes a `ContextRow` *in* the list, filed under the same category
+ * the cook tasks use, so the day's food sits together and the top of the screen
+ * is a task. Only meals with nowhere else to appear are drawn — a leftover, a
+ * takeaway, a dinner typed by hand — because a recipe-backed meal is already a
+ * "Cook X" row further down.
  *
- * `inline` is the default now. A meal with no cook task behind it becomes a
- * `ContextRow` *in* the list, filed under the same category the cook tasks use
- * (`mealCookTaskCategory`), so the day's food sits together and the top of the
- * screen is a task. It is deliberately not "the strip, moved": what appears is
- * only what has nowhere else to be — a leftover, a takeaway, a dinner typed by
- * hand — because a recipe-backed meal is already a "Cook X" row down the list.
- *
- * A stored `strip` reads as `inline`, so nobody is asked to re-answer a
- * question they've already answered; `block` survives untouched for anyone who
- * deliberately picked the tray.
+ * Both retired values read forward to `inline`. That's a shape someone may have
+ * picked on purpose in `block`'s case, and taking it away is deliberate: the
+ * block is a second answer to a question the list now answers, and keeping it
+ * would mean maintaining a meal-planner panel on the task screen for the sake
+ * of not changing an install's appearance once.
  *
  * `off` is for someone who plans meals and doesn't want them on Today at all;
  * with cook tasks on (see `mealCookTasks`) the meals that are *work* still
  * reach the list, so this isn't the same as turning the feature off.
  */
-export type MealsOnToday = 'block' | 'inline' | 'off';
+export type MealsOnToday = 'inline' | 'off';
 
-const MEALS_ON_TODAY: MealsOnToday[] = ['block', 'inline', 'off'];
+const MEALS_ON_TODAY: MealsOnToday[] = ['inline', 'off'];
 
 /**
  * What a *new* task starts with, applied by `newTaskFromDraft`
@@ -435,6 +434,13 @@ interface SettingsStore {
   // at the next week boundary on its own (same idiom as
   // projectNudgeDismissedAt / TaskGroup.completedAt).
   mealPlanNudgeLastFiredWeekKey: string | null;
+  // Which category the weekly "Plan meals for…" task files under, by name —
+  // the fourth of these, added when the nudge stopped being the one generator
+  // with nowhere to put its task. Same shape and same rules as
+  // mealCookTaskCategory, and it shares that generator's default category
+  // ("Meal Plan"), since planning the week and cooking what you planned are
+  // one job to the person reading the list.
+  mealPlanNudgeTaskCategory: string | null;
   patchNotesQaStatus: Record<string, PatchNoteQaStatus>; // patch note id -> QA result
   // What a *new* project's nudgeCadenceDays starts at (see DEFAULT_NUDGE_CADENCE_DAYS
   // in src/types/index.ts for why that constant itself stays 0). This is the
@@ -517,6 +523,7 @@ interface SettingsStore {
   setMealPlanNudgeWeekday: (weekday: number) => void;
   setMealPlanNudgeTime: (time: string) => void;
   setMealPlanNudgeLastFiredWeekKey: (weekKey: string | null) => void;
+  setMealPlanNudgeTaskCategory: (category: string | null) => void;
   setGroceryUseUpTasks: (on: boolean) => void;
   setGroceryUseUpLeadDays: (days: number) => void;
   setGroceryUseUpTaskCategory: (category: string | null) => void;
@@ -572,6 +579,7 @@ const DEFAULT_SETTINGS = {
   mealPlanNudgeEnabled: false,
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
+  mealPlanNudgeTaskCategory: null,
 };
 
 // Every value in DEFAULT_SETTINGS goes back to the settings table through
@@ -805,6 +813,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   mealPlanNudgeEnabled: false,
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
   mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
+  mealPlanNudgeTaskCategory: null,
   mealPlanNudgeLastFiredWeekKey: null,
   newTaskDefaults: DEFAULT_NEW_TASK_DEFAULTS,
   initialized: false,
@@ -861,16 +870,12 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // someone has turned it off, so no existing install loses it.
     const kitchenEnabled = dbGetSetting('kitchenEnabled') !== 'false';
     const storedMealsOnToday = dbGetSetting('mealsOnToday');
-    // 'strip' is the retired third value (see MealsOnToday) and maps forward
-    // rather than falling through to the default, so an install that had
-    // deliberately chosen `block` keeps it while everyone else lands on the
-    // shape that replaced the strip. Read-time only — nothing rewrites the
-    // stored row, the same call normalizeAisleOrder makes.
-    const mealsOnToday: MealsOnToday =
-      storedMealsOnToday === 'strip' ? 'inline'
-      : storedMealsOnToday && MEALS_ON_TODAY.includes(storedMealsOnToday as MealsOnToday)
-        ? (storedMealsOnToday as MealsOnToday)
-        : 'inline';
+    // 'strip' and 'block' are the retired values (see MealsOnToday). Anything
+    // that isn't 'off' means "show me the day's meals", which is now one shape
+    // — so they read forward rather than falling through to a default that
+    // happens to agree. Read-time only: nothing rewrites the stored row, the
+    // same call normalizeAisleOrder makes.
+    const mealsOnToday: MealsOnToday = storedMealsOnToday === 'off' ? 'off' : 'inline';
     const storedUnitSystem = dbGetSetting('unitSystem') as UnitSystem | null;
     const unitSystem: UnitSystem =
       storedUnitSystem && UNIT_SYSTEMS.includes(storedUnitSystem) ? storedUnitSystem : 'asWritten';
@@ -960,6 +965,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         : DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY;
     const mealPlanNudgeTime = dbGetSetting('mealPlanNudgeTime') || DEFAULT_MEAL_PLAN_NUDGE_TIME;
     const mealPlanNudgeLastFiredWeekKey = dbGetSetting('mealPlanNudgeLastFiredWeekKey') || null;
+    // '' persists as "no category", matching mealCookTaskCategory.
+    const mealPlanNudgeTaskCategory = dbGetSetting('mealPlanNudgeTaskCategory') || null;
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
     if (storedQaStatus) {
@@ -992,7 +999,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeTaskCategory, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -1364,6 +1371,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setCalendarIds(ids: string[]) {
     dbSetSetting('calendarIds', JSON.stringify(ids));
     set({ calendarIds: ids });
+  },
+
+  setMealPlanNudgeTaskCategory(category: string | null) {
+    dbSetSetting('mealPlanNudgeTaskCategory', category ?? '');
+    set({ mealPlanNudgeTaskCategory: category });
   },
 
   setCalendarEventCategory(category: string | null) {

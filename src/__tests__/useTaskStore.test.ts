@@ -116,6 +116,7 @@ jest.mock('../store/useCategoryStore', () => ({
   // Called by initialize() to give the day's calendar events a section; a
   // no-op here, since this suite's category store is a mock with no rows.
   ensureCalendarEventCategory: jest.fn(),
+  ensureGeneratedTaskCategories: jest.fn(),
   useCategoryStore: {
     getState: jest.fn(() => ({
       categories: [],

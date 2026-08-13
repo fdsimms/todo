@@ -28,7 +28,7 @@ import {
   dbGetMealPlanEntries,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
-import { useCategoryStore, ensureCalendarEventCategory } from './useCategoryStore';
+import { useCategoryStore, ensureCalendarEventCategory, ensureGeneratedTaskCategories } from './useCategoryStore';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
@@ -1013,6 +1013,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // ensureCalendarEventCategory for why it only ever fills an *absent*
     // answer, never a cleared one).
     ensureCalendarEventCategory();
+    // And the same for the tasks the app writes itself. Both are here rather
+    // than in the settings store because they add a category, and the
+    // categories have just finished loading.
+    ensureGeneratedTaskCategories();
     useTemplateStore.getState().initialize();
     useTaskGroupStore.getState().initialize();
     useProjectStore.getState().initialize();
@@ -2729,6 +2733,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // it just no longer doubles as the marker saying who wrote the task —
       // generatedKind does that now, for this generator as for the other three.
       linkUrl: MEAL_PLAN_NUDGE_LINK_URL,
+      // Filed like the other three generators' tasks. Without this the one
+      // task the app writes entirely on its own schedule was also the one with
+      // no category, so it landed loose above every section.
+      category: settings.mealPlanNudgeTaskCategory,
       ...generatedBy('mealPlanNudge'),
     });
     // Deliberately no setLastAction, same reasoning as dripStalledProjects:

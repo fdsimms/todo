@@ -757,8 +757,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(todayEntries.some(e => !hasCookTask(e.id))).toBe(true);
 
     // And they land in a category rather than loose above every section —
-    // which is the arrangement the fold is worth having.
-    expect(useSettingsStore.getState().mealCookTaskCategory).toBe('Home');
+    // which is the arrangement the fold is worth having. The names are the
+    // ones a fresh install gets (see GeneratedKindSpec.defaultCategory).
+    expect(useSettingsStore.getState().mealCookTaskCategory).toBe('Meal Plan');
+    expect(useSettingsStore.getState().leftoverUseUpTaskCategory).toBe('Leftovers');
+    expect(useCategoryStore.getState().categories.map(c => c.name))
+      .toEqual(expect.arrayContaining(['Meal Plan', 'Leftovers']));
   });
 
   it('seeds use-by dates, and one item opted in to a use-up task', () => {

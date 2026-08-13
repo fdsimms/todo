@@ -79,6 +79,24 @@ export interface GeneratedKindSpec {
   sourced: boolean;
   /** Whether the user can choose a category to file this kind under. */
   categorized: boolean;
+  /**
+   * The category this kind files under until the user says otherwise, created
+   * on the generator's first switch-on (see ensureGeneratedTaskCategory).
+   *
+   * Not a cosmetic default. These settings shipped defaulting to *no* category,
+   * and an uncategorized task renders in the header-less loose block at the
+   * very top of Today, above every section — so a generator left at its default
+   * put its output exactly where the calendar and meal strips used to sit, and
+   * exactly where this whole change is trying not to put things. Naming a
+   * category is what a person does once they've seen that; shipping the answer
+   * saves them the trip.
+   *
+   * Two generators share "Meal Plan" on purpose: the weekly nudge to plan the
+   * week and the cook tasks that come out of having planned it are the same
+   * job to the person reading the list, and two sections for it would be a
+   * distinction only the code makes.
+   */
+  defaultCategory: string;
 }
 
 export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
@@ -90,6 +108,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     icon: 'restaurant-outline',
     sourced: true,
     categorized: true,
+    defaultCategory: 'Meal Plan',
   },
   groceryUseUp: {
     kind: 'groceryUseUp',
@@ -99,6 +118,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     icon: 'alarm-outline',
     sourced: true,
     categorized: true,
+    defaultCategory: 'Groceries',
   },
   leftoverUseUp: {
     kind: 'leftoverUseUp',
@@ -108,6 +128,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     icon: 'file-tray-outline',
     sourced: true,
     categorized: true,
+    defaultCategory: 'Leftovers',
   },
   mealPlanNudge: {
     kind: 'mealPlanNudge',
@@ -116,7 +137,11 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     offHint: 'No weekly task to plan the week ahead',
     icon: 'calendar-outline',
     sourced: false,
-    categorized: false,
+    // Categorized like the other three now: it was the one generator with
+    // nowhere to file its task, so the weekly nudge landed loose at the top of
+    // Today however the rest were set up.
+    categorized: true,
+    defaultCategory: 'Meal Plan',
   },
 };
 

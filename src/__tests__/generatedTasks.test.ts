@@ -179,8 +179,22 @@ describe('the registry', () => {
     expect(GENERATED_KIND_SPECS.leftoverUseUp.sourced).toBe(true);
   });
 
-  it('marks the three sourced kinds as the ones with a category to file under', () => {
+  it('gives every kind a category to file under, the nudge included', () => {
+    // The nudge was the odd one out until #1571: no category setting, so the
+    // one task written entirely on the app's own schedule landed loose at the
+    // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['mealCook', 'groceryUseUp', 'leftoverUseUp']);
+      .toEqual(['mealCook', 'groceryUseUp', 'leftoverUseUp', 'mealPlanNudge']);
+  });
+
+  it('shares one default category between planning the week and cooking it', () => {
+    // Two generators, one section: the distinction between "plan the week" and
+    // "cook what you planned" is one only the code makes.
+    expect(GENERATED_KIND_SPECS.mealCook.defaultCategory).toBe('Meal Plan');
+    expect(GENERATED_KIND_SPECS.mealPlanNudge.defaultCategory).toBe('Meal Plan');
+    expect(GENERATED_KIND_SPECS.leftoverUseUp.defaultCategory).toBe('Leftovers');
+    // Every kind has one — an unfiled generator is one whose tasks pile up in
+    // the loose block above every section.
+    expect(GENERATED_KIND_LIST.every(s => !!s.defaultCategory)).toBe(true);
   });
 });
