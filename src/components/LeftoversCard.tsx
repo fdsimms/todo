@@ -326,13 +326,14 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
       {/* A row rather than the single stretched pill this used to be — two
           actions side by side, each sized to its label. */}
       <View style={styles.actions}>
-        <InlineAction label="Log a leftover" icon="add" onPress={onAdd} variant="neutral" />
+        <InlineAction label="Log a leftover" icon="add" onPress={onAdd} variant="neutral" surface="page" />
         {hasHistory && (
           <InlineAction
             label="History"
             icon="time-outline"
             onPress={onHistory}
             variant="neutral"
+            surface="page"
             accessibilityLabel="What happened to past leftovers"
           />
         )}
