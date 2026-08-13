@@ -77,6 +77,50 @@ export function projectProgress(projectId: string, tasks: Task[]): { done: numbe
   return { done, total: groups.size };
 }
 
+/**
+ * The answers this project's members have recorded, most recent first.
+ *
+ * A decision is usually *about* something, and that something is often the
+ * project: "pick a date for the trip" and "decide on the trip budget" are facts
+ * about the trip. Once answered, though, they were only reachable
+ * chronologically (Logbook) or by remembering the task's title (Search) — so
+ * the project the decisions are for was the one place they couldn't be read
+ * together. This is the read that fixes that; nothing is stored, and nothing is
+ * written into the project's own fields (see deliverables.ts on propagation).
+ *
+ * Grouped by the same identity `projectProgress` counts by, for the same
+ * reason: a recurring decision leaves one answered row per occurrence, so
+ * listing rows would grow the block by one every time it's answered. Each
+ * identity contributes its most recently answered row — the current answer,
+ * with the superseded ones staying in the Logbook where history lives.
+ *
+ * Unanswered rows are left out entirely. "No answer" is a real state (a
+ * completion may never be blocked on giving one) and the Logbook row says so,
+ * but a block that exists to be read back has nothing to read back from one.
+ * Completion isn't checked either: un-completing a task keeps its answer, and
+ * the answer is no less recorded for the task being live again.
+ */
+export function projectDecisions(projectId: string, tasks: Task[]): Task[] {
+  const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
+  const byId = new Map(members.map(t => [t.id, t]));
+
+  const latest = new Map<string, Task>();
+  for (const member of members) {
+    if (member.deliverableKind === null || member.deliverableValue === null) continue;
+    const key = memberKey(member, byId);
+    const held = latest.get(key);
+    if (!held || answeredAt(member) > answeredAt(held)) latest.set(key, member);
+  }
+  return Array.from(latest.values()).sort((a, b) => answeredAt(b).localeCompare(answeredAt(a)));
+}
+
+// When a decision was made, as far as ordering goes. A live row that was
+// un-completed has no stamp and sorts last, which is the honest place for it:
+// the answer is still on the row, but the moment it was reached is gone.
+function answeredAt(task: Task): string {
+  return task.completedAt ?? '';
+}
+
 // A project is only flagged "past its window" when it missed its target end
 // date while still incomplete and not archived — nothing automatic happens,
 // this is purely a visual cue so the user can decide what to do about it.

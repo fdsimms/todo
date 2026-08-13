@@ -12,7 +12,7 @@
 import { useDemoStore } from '../store/useDemoStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { useProjectStore } from '../store/useProjectStore';
+import { useProjectStore, projectDecisions } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -306,6 +306,15 @@ describe('demo mode', () => {
     expect(formatTaskDeliverable(answered)).toBeTruthy();
   });
 
+  // A template item can declare the same question (#1471), and that half is
+  // invisible on the task rows above — nothing says a template carried it.
+  it('seeds a template item that asks on completion', () => {
+    useDemoStore.getState().enterDemoMode();
+    const items = useTemplateStore.getState().templates.flatMap(t => t.items);
+
+    expect(items.some(i => i.deliverableKind !== null)).toBe(true);
+  });
+
   // A rule nothing has a row for reads as a field that does nothing.
   it('seeds a task that adds an extra task every Nth completion', () => {
     useDemoStore.getState().enterDemoMode();
@@ -337,6 +346,20 @@ describe('demo mode', () => {
     expect(persistent.length).toBeGreaterThan(0);
     // A reminder kind only means anything with a time attached to it.
     expect(persistent.every(t => t.reminderTime !== null)).toBe(true);
+  });
+
+  // The Decisions block on a project's screen has nothing to render unless a
+  // project actually holds an answered decision, so without this the feature
+  // reads as one the app doesn't have.
+  it('seeds a project holding answered decisions', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    expect(kitchen).toBeDefined();
+
+    const decisions = projectDecisions(kitchen!.id, useTaskStore.getState().tasks);
+    expect(decisions.length).toBeGreaterThan(0);
+    expect(decisions.every(t => formatTaskDeliverable(t) !== null)).toBe(true);
   });
 
   it('seeds a reference-list project excluded from every nudge', () => {

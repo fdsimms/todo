@@ -60,6 +60,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   recurrenceCount: null,
   vacationPause: false,
   estimatedMinutes: null,
+  deliverableKind: null,
   chainEnabled: false,
   chainItems: [],
   chainIndex: 0,
@@ -253,6 +254,20 @@ describe('applyTemplate', () => {
     });
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null });
     expect(mockAddTask.mock.calls[0][0].dueDate).toBeNull();
+  });
+
+  it('carries an item\'s deliverableKind onto the task it creates (#1471)', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [
+          makeItem({ id: 'a', title: 'Pick dates', deliverableKind: 'date' }),
+          makeItem({ id: 'b', title: 'Pack' }),
+        ],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a', 'b']), { start: null, end: null });
+    expect(mockAddTask.mock.calls[0][0].deliverableKind).toBe('date');
+    expect(mockAddTask.mock.calls[1][0].deliverableKind).toBeNull();
   });
 
   it('returns [] for an unknown template', () => {

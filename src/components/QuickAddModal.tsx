@@ -187,12 +187,19 @@ export function QuickAddModal({
   // new centered resting spot on its own spring once the keyboard height is
   // known, landing shortly after the keyboard settles.
   const keyboardOffsetAnim = useRef(new Animated.Value(0)).current;
+  // iOS rounds the keyboard's own top corners, and the sliver that curve
+  // exposes is whatever sits behind it in the Modal — here, the dark blurred
+  // backdrop. This backs that sliver with the same color as the accessory
+  // bar above it, so the corner reads as a continuation of the bar rather
+  // than a dim gap. Only needs to be as tall as the keyboard itself.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const showSub = Keyboard.addListener(showEvent, e => {
       const height = e.endCoordinates?.height ?? 0;
+      setKeyboardHeight(height);
       Animated.spring(keyboardOffsetAnim, {
         toValue: -height / 2,
         ...animation.spring.smooth,
@@ -200,6 +207,7 @@ export function QuickAddModal({
       }).start();
     });
     const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
       Animated.spring(keyboardOffsetAnim, {
         toValue: 0,
         ...animation.spring.smooth,
@@ -929,6 +937,12 @@ export function QuickAddModal({
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      {keyboardHeight > 0 && (
+        <View
+          pointerEvents="none"
+          style={[styles.keyboardBacking, { height: keyboardHeight }]}
+        />
+      )}
       <View style={styles.centeredContainer} pointerEvents="box-none">
         <Animated.View style={[styles.sheet, shadows.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }, { translateY: Animated.add(translateYAnim, keyboardOffsetAnim) }] }]}>
           {/* Where the button was dropped. Removable: the drop chose a place,
@@ -981,6 +995,7 @@ export function QuickAddModal({
                 autoCorrect={false}
                 blurOnSubmit={false}
                 onLayout={e => setInputW(e.nativeEvent.layout.width)}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
               />
               {/* Invisible mirrors of the input text — their widths locate the
                   highlighted phrase so the tooltip can point at it. */}
@@ -1138,6 +1153,7 @@ export function QuickAddModal({
                   placeholderTextColor={colors.textSecondary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   accessibilityLabel="Custom duration in minutes"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
               </View>
             </View>
@@ -1167,6 +1183,7 @@ export function QuickAddModal({
                   maxLength={MAX_TARGET_UNIT_LENGTH}
                   autoCapitalize="none"
                   accessibilityLabel="Unit for the daily target, optional"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 <Text style={styles.targetStepperCaption}>a day</Text>
               </View>
@@ -1209,6 +1226,7 @@ export function QuickAddModal({
                   maxLength={TITLE_MAX_LENGTH}
                   returnKeyType="next"
                   blurOnSubmit={false}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {pendingStep.length > 0 && (
                   <TouchableOpacity
@@ -1505,6 +1523,7 @@ export function QuickAddModal({
                   placeholder="custom min"
                   placeholderTextColor={colors.textSecondary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
               </View>
             </View>
@@ -1544,6 +1563,7 @@ export function QuickAddModal({
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoFocus
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {tagInput.trim().length > 0 && (
                   <TouchableOpacity onPress={() => addTag(tagInput)} hitSlop={8}>
@@ -1642,6 +1662,7 @@ export function QuickAddModal({
                   autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="done"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {linkUrl !== null && (
                   <TouchableOpacity
@@ -1669,6 +1690,7 @@ export function QuickAddModal({
                   placeholderTextColor={colors.textSecondary}
                   keyboardType="phone-pad"
                   autoCorrect={false}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                   // No return key on the iOS phone pad, and the only other way
                   // to blur this field is a tap outside — which in this sheet
                   // dismisses the whole thing, taking the number with it. So
@@ -1713,6 +1735,7 @@ export function QuickAddModal({
                   autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="done"
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {emailAddress !== null && (
                   <TouchableOpacity
@@ -1815,6 +1838,13 @@ export function QuickAddModal({
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
+  keyboardBacking: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.bgSecondary,
+  },
   centeredContainer: {
     flex: 1,
     justifyContent: 'center',

@@ -654,6 +654,15 @@ export interface TemplateItem {
   vacationPause: boolean;
   estimatedMinutes: number | null;
 
+  // What the task created from this item asks for when it's completed, or null
+  // for the ordinary "ticking it is the whole answer" item. Another field
+  // alongside the ones above rather than a template-item "kind", exactly as
+  // Task.deliverableKind is — a decision item is where a template earns its
+  // keep ("Pick dates", "Decide on the budget"), and without this it had to be
+  // set by hand on every application. There is no template-side counterpart to
+  // deliverableValue: the question carries, the answer doesn't.
+  deliverableKind: DeliverableKind | null;
+
   chainEnabled: boolean;
   chainItems: ChainItem[];
   // Which step a task created from this template starts on. 0 by default —
