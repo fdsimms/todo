@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Leftover, LeftoverOutcome } from '../types';
+import type { Leftover, LeftoverOutcome, Task } from '../types';
 import { LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import {
   dbGetAllLeftovers,
@@ -16,6 +16,9 @@ import {
   leftoverPurgeCutoff,
   sortLeftovers,
 } from '../utils/leftovers';
+import { useUpTaskDraft, useUpTaskFields, useUpTaskNeedsUpdate, wantsUseUpTask } from '../utils/leftoverTasks';
+import { useTaskStore } from './useTaskStore';
+import { useSettingsStore } from './useSettingsStore';
 
 export interface LeftoverDraft {
   title: string;
@@ -82,10 +85,97 @@ interface LeftoverStore {
   reopenLeftover: (id: string) => void;
   deleteLeftover: (id: string) => void;
 
+  /**
+   * The per-leftover answer to "does this get a use-up task" — true, false, or
+   * null to hand the question back to the leftoverUseUpTasks setting.
+   * Reconciles immediately, same shape as useGroceryStore's setUseUpTask.
+   *
+   * `reconcile: false` records the answer and stops there — exactly one
+   * caller wants that: deleteTask's opt-out writeback in useTaskStore, which
+   * has already deleted the task itself and would otherwise immediately spawn
+   * it right back with the feature on.
+   */
+  setUseUpTask: (id: string, value: boolean | null, options?: { reconcile?: boolean }) => void;
+
   /** Drops closed-out rows past the retention horizon. Returns how many went. */
   purgeOldLeftovers: () => number;
 
+  /**
+   * Sweeps every live leftover's use-up task into line — created, updated or
+   * dropped, whichever `wantsUseUpTask` now says. Run once at startup (after
+   * tasks have loaded) and again on app foreground, since `needsAttention` is
+   * a function of the wall clock: a leftover can age from "fresh" into "soon"
+   * purely by time passing, with no leftover mutation to trigger a reconcile.
+   */
+  reconcileAllLeftoverTasks: () => void;
+
   leftoverById: (id: string) => Leftover | undefined;
+}
+
+// ─── Use-up tasks ───────────────────────────────────────────────────────────
+//
+// The leftover is the master and the task is the replica; these two helpers
+// are every write that crosses the line. The projection rules — which
+// leftovers qualify, what the task says, which fields the leftover owns once
+// it exists — are in utils/leftoverTasks so jest can reach them. Same shape
+// as reconcileUseUpTask/dropUseUpTask in useGroceryStore.ts.
+
+/** This leftover's live use-up task, if it has one. */
+function liveUseUpTaskFor(leftoverId: string): Task | undefined {
+  return useTaskStore
+    .getState()
+    .tasks.find(t => t.leftoverId === leftoverId && !t.completed && !t.archived);
+}
+
+/**
+ * Brings this leftover's use-up task into line: creates it, updates it, or
+ * removes it, depending on what the leftover now says.
+ */
+function reconcileLeftoverTask(leftover: Leftover): void {
+  const { addTask, updateTask, deleteTask, setLastAction } = useTaskStore.getState();
+  const { leftoverUseUpTasks, leftoverUseUpTaskCategory } = useSettingsStore.getState();
+  const existing = liveUseUpTaskFor(leftover.id);
+  const wanted = wantsUseUpTask(leftover, leftoverUseUpTasks);
+
+  if (!wanted) {
+    // Only the live one goes. A completed use-up task records something that
+    // was done, and the leftover going stale-but-unnoticed is not a claim it
+    // wasn't.
+    if (existing) {
+      // deleteTask arms shake-to-undo, which is right when a user deletes a
+      // task and wrong here: this is a consequence of a leftover reconcile,
+      // and there is no undo anywhere in the fridge card for it to belong to.
+      deleteTask(existing.id);
+      setLastAction(null);
+    }
+    return;
+  }
+
+  if (existing) {
+    if (useUpTaskNeedsUpdate(existing, leftover)) {
+      updateTask(existing.id, useUpTaskFields(leftover), { skipPostponeCount: true });
+    }
+    return;
+  }
+
+  addTask(useUpTaskDraft(leftover, leftoverUseUpTaskCategory));
+}
+
+/**
+ * Drops this leftover's use-up task because the leftover itself is closing
+ * out or going away.
+ *
+ * Deliberately not `reconcileLeftoverTask` on a finish/delete: those paths
+ * are a row that won't be live any more, while reconcile is a correction to
+ * one that still is. Completed tasks stay either way — closing out a
+ * leftover must not erase the Logbook.
+ */
+function dropLeftoverTask(leftoverId: string): void {
+  const existing = liveUseUpTaskFor(leftoverId);
+  if (!existing) return;
+  const { deleteTask, setLastAction } = useTaskStore.getState();
+  deleteTask(existing.id);
+  setLastAction(null);
 }
 
 export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
@@ -111,9 +201,11 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
       finishedAt: null,
       outcome: null,
       createdAt: new Date().toISOString(),
+      useUpTask: null,
     };
     dbInsertLeftover(leftover);
     set(s => ({ leftovers: sortLeftovers([...s.leftovers, leftover]) }));
+    reconcileLeftoverTask(leftover);
     return leftover;
   },
 
@@ -138,30 +230,55 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     // to avoid — the absolute day is authoritative for reading, not for edits
     // to the thing it was derived from.
     const days = keepDaysBetween(leftover.storedAt, leftover.keepUntil);
-    save(set, { ...leftover, storedAt, keepUntil: keepUntilKeyFor(storedAt, days) });
+    const updated = { ...leftover, storedAt, keepUntil: keepUntilKeyFor(storedAt, days) };
+    save(set, updated);
+    reconcileLeftoverTask(updated);
   },
 
   setKeepDays(id, days) {
     const leftover = get().leftovers.find(l => l.id === id);
     if (!leftover) return;
-    save(set, { ...leftover, keepUntil: keepUntilKeyFor(leftover.storedAt, days) });
+    const updated = { ...leftover, keepUntil: keepUntilKeyFor(leftover.storedAt, days) };
+    save(set, updated);
+    reconcileLeftoverTask(updated);
   },
 
   finishLeftover(id, outcome) {
     const leftover = get().leftovers.find(l => l.id === id);
     if (!leftover || leftover.finishedAt) return;
     save(set, { ...leftover, finishedAt: new Date().toISOString(), outcome });
+    // The row's no longer live, so its use-up task's job is done — dropped
+    // directly rather than through reconcile, same call dropUseUpTask makes:
+    // this is a row that won't be live any more, not a correction to one.
+    dropLeftoverTask(id);
   },
 
   reopenLeftover(id) {
     const leftover = get().leftovers.find(l => l.id === id);
     if (!leftover || !leftover.finishedAt) return;
-    save(set, { ...leftover, finishedAt: null, outcome: null });
+    const updated = { ...leftover, finishedAt: null, outcome: null };
+    save(set, updated);
+    reconcileLeftoverTask(updated);
   },
 
   deleteLeftover(id) {
     dbDeleteLeftover(id);
     set(s => ({ leftovers: s.leftovers.filter(l => l.id !== id) }));
+    dropLeftoverTask(id);
+  },
+
+  setUseUpTask(id, value, options) {
+    const leftover = get().leftovers.find(l => l.id === id);
+    if (!leftover || leftover.useUpTask === value) return;
+    const updated = { ...leftover, useUpTask: value };
+    save(set, updated);
+    if (options?.reconcile !== false) reconcileLeftoverTask(updated);
+  },
+
+  reconcileAllLeftoverTasks() {
+    for (const leftover of get().leftovers) {
+      if (!leftover.finishedAt) reconcileLeftoverTask(leftover);
+    }
   },
 
   purgeOldLeftovers() {

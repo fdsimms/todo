@@ -712,6 +712,31 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(leftovers.some(l => l.outcome === 'eaten')).toBe(true);
     expect(leftovers.some(l => l.outcome === 'tossed')).toBe(true);
   });
+
+  it('seeds a use-up task for every live leftover in "soon", "due" or "over"', () => {
+    const { leftovers } = useLeftoverStore.getState();
+    const { tasks } = useTaskStore.getState();
+    // On by default (leftoverUseUpTasks), unlike the grocery equivalent — the
+    // demo has to actually show the feature working, not just the leftover
+    // rows that could trigger it.
+    expect(useSettingsStore.getState().leftoverUseUpTasks).toBe(true);
+
+    const urgent = leftovers.filter(l => isLiveLeftover(l) && freshnessOf(l) !== 'fresh');
+    expect(urgent.length).toBeGreaterThan(0);
+
+    const useUpTasks = tasks.filter(t => t.leftoverId);
+    expect(useUpTasks.length).toBe(urgent.length);
+    useUpTasks.forEach(task => {
+      const leftover = leftovers.find(l => l.id === task.leftoverId);
+      expect(leftover).toBeDefined();
+      expect(task.title).toBe(`Use up ${leftover!.title}`);
+      expect(task.deadline).toBe(leftover!.keepUntil);
+    });
+    // The fresh one — furthest from its keep-until day — gets no task.
+    const fresh = leftovers.find(l => isLiveLeftover(l) && freshnessOf(l) === 'fresh');
+    expect(fresh).toBeDefined();
+    expect(tasks.some(t => t.leftoverId === fresh!.id)).toBe(false);
+  });
 });
 
 /**

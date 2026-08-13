@@ -223,6 +223,7 @@ function newTaskFromDraft(
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
     mealEntryId: draft.mealEntryId ?? null,
     groceryItemId: draft.groceryItemId ?? null,
+    leftoverId: draft.leftoverId ?? null,
     deadlineOnCalendar: draft.deadlineOnCalendar ?? false,
     // Never read off the draft, same reasoning as deliverableValue just
     // below: a duplicate or template application starting with someone
@@ -932,6 +933,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     set({ tasks, tagRegistry, initialized: true });
     rescheduleAllReminders(tasks);
+    // Deliberately after the set() above, not inside useLeftoverStore's own
+    // initialize(): reconciling reads useTaskStore.getState().tasks to find
+    // each leftover's live task, and at the point leftovers load (just above)
+    // that array is still whatever this store held before this call — stale
+    // rows on a demo-mode swap, or simply unset on a cold start. Running the
+    // sweep here means it sees the tasks this launch actually has.
+    useLeftoverStore.getState().reconcileAllLeftoverTasks();
   },
 
   // Must run after useSettingsStore.initialize() so autoRemoveExpiredTasks,
@@ -1538,6 +1546,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const wasUseUpTaskFor = task.groceryItemId;
     if (wasUseUpTaskFor) useGroceryStore.getState().setUseUpTask(wasUseUpTaskFor, false);
 
+    // Same instruction again, from the leftover feature: deleting a "Use up X"
+    // spawned from the fridge is the user saying this container doesn't need
+    // one, or the next foreground reconcile hands it straight back while it's
+    // still "soon". See Leftover.useUpTask.
+    const wasLeftoverTaskFor = task.leftoverId;
+    if (wasLeftoverTaskFor) useLeftoverStore.getState().setUseUpTask(wasLeftoverTaskFor, false);
+
     get().setLastAction({
       label: 'Task deleted',
       undo: () => {
@@ -1559,6 +1574,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         if (wasCookTaskFor) useMealPlanStore.getState().setCookTask(wasCookTaskFor, null);
         if (wasUseUpTaskFor) {
           useGroceryStore.getState().setUseUpTask(wasUseUpTaskFor, null, { reconcile: false });
+        }
+        if (wasLeftoverTaskFor) {
+          useLeftoverStore.getState().setUseUpTask(wasLeftoverTaskFor, null, { reconcile: false });
         }
       },
     });
@@ -1875,6 +1893,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // by hand.
           mealEntryId: null,
       groceryItemId: null,
+          // Same reasoning as groceryItemId just above: the leftover it points
+          // at is still the same container, and a spawned recurring occurrence
+          // claiming it too would make reconcileLeftoverTask decline to create
+          // the real one, or let a stray tick reopen a leftover already closed
+          // out.
+          leftoverId: null,
           // Never carried forward: the old occurrence's device event still
           // shows the old deadline, and this is a fresh row with a fresh
           // deadline (nextDeadline above) that needs its own event, created
@@ -2879,6 +2903,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       deliverableValue: null,
       mealEntryId: null,
       groceryItemId: null,
+      leftoverId: null,
       deadlineOnCalendar: false,
       calendarEventId: null,
       pendingImport: null,
@@ -3039,6 +3064,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       deliverableValue: null,
       mealEntryId: null,
       groceryItemId: null,
+      leftoverId: null,
       deadlineOnCalendar: false,
       calendarEventId: null,
       pendingImport: null,

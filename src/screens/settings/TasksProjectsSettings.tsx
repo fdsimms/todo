@@ -108,6 +108,10 @@ export function TasksProjectsSettings() {
   const setGroceryUseUpLeadDays = useSettingsStore(s => s.setGroceryUseUpLeadDays);
   const groceryUseUpTaskCategory = useSettingsStore(s => s.groceryUseUpTaskCategory);
   const setGroceryUseUpTaskCategory = useSettingsStore(s => s.setGroceryUseUpTaskCategory);
+  const leftoverUseUpTasks = useSettingsStore(s => s.leftoverUseUpTasks);
+  const setLeftoverUseUpTasks = useSettingsStore(s => s.setLeftoverUseUpTasks);
+  const leftoverUseUpTaskCategory = useSettingsStore(s => s.leftoverUseUpTaskCategory);
+  const setLeftoverUseUpTaskCategory = useSettingsStore(s => s.setLeftoverUseUpTaskCategory);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const setUnitSystem = useSettingsStore(s => s.setUnitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
@@ -410,6 +414,44 @@ export function TasksProjectsSettings() {
               selected={groceryUseUpTaskCategory}
               onSelect={category => { haptics.tap(); setGroceryUseUpTaskCategory(category); }}
               accessibilityLabelFor={o => `Use-up task category: ${o.label}`}
+            />
+          </>
+        )}
+      </SettingsSection>
+
+      <SettingsSection
+        label="Leftovers"
+        footer="A leftover gets a task once it's a day or less from its use-by date, or already past it. Delete a task and that leftover won't get another."
+      >
+        <SettingsRow
+          icon="restaurant-outline"
+          iconColor={leftoverUseUpTasks ? colors.accent : undefined}
+          label="Use-up tasks for leftovers"
+          hint={
+            leftoverUseUpTasks
+              ? "Add a task to Today when a leftover is about to go bad"
+              : 'A leftover about to go bad adds no task'
+          }
+          toggle={leftoverUseUpTasks}
+          onPress={() => setLeftoverUseUpTasks(!leftoverUseUpTasks)}
+        />
+        {leftoverUseUpTasks && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              icon="pricetag-outline"
+              label="File use-up tasks under"
+              hint="With none, they sit loose at the top of Today above your categories"
+              value={newTaskCategoryPills.find(o => o.value === leftoverUseUpTaskCategory)?.label ?? 'None'}
+              tight
+            />
+            <SettingsPills
+              attached
+              wrap
+              options={newTaskCategoryPills}
+              selected={leftoverUseUpTaskCategory}
+              onSelect={category => { haptics.tap(); setLeftoverUseUpTaskCategory(category); }}
+              accessibilityLabelFor={o => `Leftover use-up task category: ${o.label}`}
             />
           </>
         )}

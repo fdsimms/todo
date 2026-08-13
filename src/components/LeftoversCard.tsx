@@ -74,13 +74,15 @@ interface Props {
 /**
  * "In the fridge" — the live leftovers, most urgent first, above the week.
  *
- * **This is the nudge**, and it deliberately isn't a notification or an
- * auto-created Task. A reminder *Task* for a perishable is #1106's job and does
- * not exist yet; building a second mechanism here is exactly what that issue
- * asks not to happen, and this row already lands in front of the user at the
- * moment they're deciding what to eat — which is the moment the nudge is
- * actionable rather than merely noisy.
+ * **This is the in-app nudge**, and it stays even now that a leftover about
+ * to go bad can also spawn a "Use up X" Task (src/utils/leftoverTasks.ts,
+ * Task.leftoverId) — the two aren't redundant. The task is what lands on
+ * Today, away from the meal plan, for whoever isn't looking at this screen;
+ * this card is what lands in front of the user at the exact moment they're
+ * deciding what to eat, which is still the moment the nudge is most
+ * actionable. Turning the task off in Settings doesn't touch this card.
  *
+
  * It renders nothing at all when the fridge is empty *and* nothing has been
  * closed out. An empty state here would be a permanent block of chrome on the
  * meal plan for everyone who never uses the feature, and unlike a screen with
