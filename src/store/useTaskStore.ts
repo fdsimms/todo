@@ -60,7 +60,15 @@ import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
-import { deleteDeadlineEvent } from '../utils/calendarSync';
+import {
+  deleteDeadlineEvent,
+  presentTimeBlockCreate,
+  presentTimeBlockEdit,
+  readTimeBlockEvent,
+  updateTimeBlockEvent,
+} from '../utils/calendarSync';
+import { timeBlockFieldsFor, timeBlockUpdateFor } from '../utils/timeBlock';
+import { useCalendarStore } from './useCalendarStore';
 import { isTimedTask, timerElapsed } from '../utils/timer';
 import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
 
@@ -230,6 +238,8 @@ function newTaskFromDraft(
     // else's device event id would either point at the wrong task's event or
     // silently overwrite it on the first reconcile.
     calendarEventId: null,
+    // Same rule, and both are off the draft type for it (see TaskDraft).
+    timeBlockEventId: null,
     seriesId: draft.seriesId ?? null,
     seriesMonthDays: draft.seriesMonthDays ?? [],
     seriesRepeatMonths: draft.seriesRepeatMonths ?? 1,
@@ -278,6 +288,47 @@ function reconcileDeadlineEvent(task: Task): void {
       const updated = { ...current, calendarEventId };
       dbUpdateTask(updated);
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
+    })
+    .catch(() => {});
+}
+
+/** Points a task at its time block, if the task is still around to write to. */
+function setTimeBlockEventId(taskId: string, value: string | null): void {
+  const current = useTaskStore.getState().tasks.find(t => t.id === taskId);
+  if (!current || current.timeBlockEventId === value) return;
+  const updated = { ...current, timeBlockEventId: value };
+  dbUpdateTask(updated);
+  useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === taskId ? updated : t)) }));
+}
+
+/**
+ * Brings a task's time block in line with the task — fire-and-forget, like
+ * `reconcileDeadlineEvent` above, and far quieter.
+ *
+ * It does nothing at all unless a block already exists: a reconcile never
+ * *creates* one, because putting time in someone's calendar is a thing they
+ * ask for once, per task, through the system sheet. And what it writes is only
+ * ever the title and the length (see `timeBlockUpdateFor`) — never the start,
+ * which belongs to the event from the moment it exists.
+ *
+ * An event that's been deleted out from under us reads back as null, and the
+ * task drops its pointer rather than writing a replacement. That's the
+ * opposite of the deadline mirror's resolve-or-shrug-then-recreate, and
+ * deliberately so: a deadline event nobody asked for individually can be
+ * re-minted silently, but a block the user deleted in their calendar was
+ * deleted on purpose.
+ */
+function reconcileTimeBlockEvent(task: Task): void {
+  const eventId = task.timeBlockEventId;
+  if (!eventId) return;
+  readTimeBlockEvent(eventId)
+    .then(async event => {
+      if (!event) {
+        setTimeBlockEventId(task.id, null);
+        return;
+      }
+      const update = timeBlockUpdateFor(task, event);
+      if (update) await updateTimeBlockEvent(eventId, update);
     })
     .catch(() => {});
 }
@@ -634,6 +685,13 @@ interface TaskStore {
   purgeOldCompletedTasks: () => number;
   addTask: (draft: Partial<TaskDraft>) => Task;
   duplicateTask: (id: string) => Task | null;
+  /**
+   * Opens the system event sheet to block out time for a task — the new-event
+   * sheet when it has no block yet, the edit sheet for the one it has. Resolves
+   * to whether the task now has a block; nothing is written unless the user
+   * saves, and the sheet is the only thing in the app that deletes one.
+   */
+  putTaskOnCalendar: (id: string) => Promise<boolean>;
   // scope 'occurrence' ("this task only") applies `updates` to this row but
   // preserves whatever content-field values existed before the edit in
   // seriesDefaults, so the next occurrence (see completeTask) reverts to
@@ -1258,6 +1316,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // two tasks pointing at one event means editing either one's deadline
       // silently drags the other's calendar entry with it.
       calendarEventId: null,
+      // Same reasoning, and the copy has no claim on the original's slot
+      // anyway — the block was time set aside for one piece of work.
+      timeBlockEventId: null,
     };
     const copy: Task = {
       ...original,
@@ -1282,6 +1343,67 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     set(s => ({ tasks: [...s.tasks, copy, ...subtaskCopies] }));
     return copy;
+  },
+
+  /**
+   * The one entry point that creates a time block, and it does so by handing
+   * the decision to Apple's own event sheet — see the #1492 section of
+   * `calendarSync.ts` for why the write goes through the system UI rather than
+   * `createEventAsync`.
+   *
+   * The proposed slot is only a prefill. `timeBlockFieldsFor` reads the
+   * calendar window to find a gap the task actually fits in, but the user is
+   * looking at a real calendar UI by the time it matters, so a poor guess
+   * costs a drag rather than a wrong event.
+   *
+   * `loaded` is what's passed rather than `events`, for the reason the flag
+   * exists: an empty window and a calendar we couldn't open are both `[]`, and
+   * only one of them means the day is free.
+   */
+  async putTaskOnCalendar(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task) return false;
+
+    // Already has one — this is the edit sheet, and the only place in the app
+    // a block can be deleted.
+    if (task.timeBlockEventId) {
+      const result = await presentTimeBlockEdit(task.timeBlockEventId);
+      if (result.deleted) {
+        setTimeBlockEventId(id, null);
+        return false;
+      }
+      if (result.saved) return true;
+
+      // Nothing came back: either the user closed the sheet without changing
+      // anything, or it never opened. Only one of those is worth acting on, so
+      // ask whether the event is actually still there before assuming the
+      // worst — `presentTimeBlockEdit` deliberately doesn't guess (see there).
+      if (await readTimeBlockEvent(task.timeBlockEventId)) return true;
+
+      // Genuinely gone — deleted from the Calendar app, or on a calendar that
+      // was removed from the device. Drop the stale pointer and fall through
+      // to offering a fresh block, so the tap that found the rot also fixes it.
+      setTimeBlockEventId(id, null);
+    }
+
+    const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
+    const { events, loaded } = useCalendarStore.getState();
+    const fields = timeBlockFieldsFor(task, {
+      now: new Date(),
+      activeHoursStart,
+      activeHoursEnd,
+      events: loaded ? events : null,
+    });
+    if (!fields) return false;
+
+    const result = await presentTimeBlockCreate(fields);
+    // A saved event with no id — which iOS can return — is a real event we
+    // simply can't point at. Claiming a block we can't reconcile or reopen
+    // would be worse than admitting we have none, so the pointer stays null
+    // and the action offers to create another.
+    if (!result.saved || !result.eventId) return false;
+    setTimeBlockEventId(id, result.eventId);
+    return true;
   },
 
   updateTask(id, updates, options) {
@@ -1400,6 +1522,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         'title' in updates
       ) {
         reconcileDeadlineEvent(updated);
+      }
+      // The two fields a block mirrors, plus the chain position that decides
+      // which step's title and estimate those are. Not gated on completed or
+      // archived: a block is never removed for either (see Task.timeBlockEventId).
+      if (
+        'title' in updates ||
+        'estimatedMinutes' in updates ||
+        'effort' in updates ||
+        'chainItems' in updates ||
+        'chainIndex' in updates
+      ) {
+        reconcileTimeBlockEvent(updated);
       }
       // Archiving out from under a running countdown would otherwise leave its
       // alarm to fire for a task the user can no longer see.
@@ -1904,6 +2038,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // deadline (nextDeadline above) that needs its own event, created
           // by the reconcile call below.
           calendarEventId: null,
+          // Nor this: last Tuesday's block was time spent on last Tuesday's
+          // occurrence. The next one starts unblocked, and asking for a slot
+          // is a decision the user makes per occurrence — there is no
+          // reconcile here to create one, deliberately.
+          timeBlockEventId: null,
         };
         dbInsertTask(nextTask);
         scheduleTaskReminder(nextTask);
@@ -2906,6 +3045,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       leftoverId: null,
       deadlineOnCalendar: false,
       calendarEventId: null,
+      timeBlockEventId: null,
       pendingImport: null,
       postponeCount: 0,
       postponeMuted: false,
@@ -3067,6 +3207,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       leftoverId: null,
       deadlineOnCalendar: false,
       calendarEventId: null,
+      timeBlockEventId: null,
       pendingImport: null,
       postponeCount: 0,
       postponeMuted: false,

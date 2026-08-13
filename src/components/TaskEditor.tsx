@@ -59,7 +59,7 @@ import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, h
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/parseTaskInput';
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor } from '../utils/effort';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
 import { deliverableMeta } from '../utils/deliverables';
@@ -149,6 +149,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const addSubtask = useTaskStore(s => s.addSubtask);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const deleteSubtask = useTaskStore(s => s.deleteSubtask);
+  const putTaskOnCalendar = useTaskStore(s => s.putTaskOnCalendar);
   const reorderSubtasks = useTaskStore(s => s.reorderSubtasks);
   const subtasksOf = useTaskStore(s => s.subtasksOf);
   const seriesRowsOf = useTaskStore(s => s.seriesRowsOf);
@@ -359,6 +360,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
+
+  // Read off the store rather than the `task` prop: putTaskOnCalendar writes
+  // the id after the system sheet closes, and the row has to change from
+  // "put this on my calendar" to "it's on your calendar" without waiting for
+  // whichever screen owns the prop to hand down a new object.
+  const taskId = task?.id ?? null;
+  const timeBlockEventId = useTaskStore(
+    s => (taskId ? s.tasks.find(t => t.id === taskId)?.timeBlockEventId ?? null : null)
+  );
+  // The length a block would get, chain-aware, off the saved row — what
+  // putTaskOnCalendar will actually use. Null means the task has no length to
+  // block out, which is what disables the row.
+  const savedEstimateMinutes = task ? estimatedMinutesFor(task) : null;
 
   // Whether the picked reminder time lands inside a meeting, and where it
   // actually fires instead — mirrors what scheduleTaskReminder does at
@@ -2537,6 +2551,51 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          // Only for a saved top-level task: the action opens a system sheet
+          // that writes an event against a task id, and there isn't one yet
+          // while a task is being composed. Reads the *saved* estimate rather
+          // than the editor's live one for the same reason — but a later Save
+          // reconciles the block's title and length anyway (see
+          // reconcileTimeBlockEvent), so an estimate changed in the same
+          // sitting still lands on the event.
+          ...(task && !task.parentId && !task.completed && !task.archived ? [{
+            key: 'timeBlock', label: 'Time block', set: !!timeBlockEventId,
+            keywords: ['calendar', 'event', 'schedule', 'block', 'busy', 'agenda', 'when'],
+            node: (
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => {
+                  if (!savedEstimateMinutes) return;
+                  haptics.tap();
+                  putTaskOnCalendar(task.id);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                disabled={!savedEstimateMinutes}
+                accessibilityRole="button"
+                accessibilityLabel={timeBlockEventId ? 'Edit the calendar time block' : 'Put this task on my calendar'}
+                accessibilityState={{ disabled: !savedEstimateMinutes }}
+              >
+                <Ionicons
+                  name="calendar-number-outline"
+                  size={18}
+                  color={timeBlockEventId ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>
+                    {timeBlockEventId ? 'On your calendar' : 'Put on my calendar'}
+                  </Text>
+                  <Text style={styles.optionHint}>
+                    {!savedEstimateMinutes
+                      ? 'Set an estimate or effort first — a block needs a length'
+                      : timeBlockEventId
+                      ? 'Opens the event to move, resize or delete it'
+                      : `Blocks out ${formatDuration(savedEstimateMinutes)} in your calendar to do this`}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ),
+          }] : []),
           {
             key: 'remindMe', label: 'Remind me', primary: true, set: !!reminderTime,
             keywords: ['notification', 'notify', 'alert', 'alarm', 'ping', 'time'],

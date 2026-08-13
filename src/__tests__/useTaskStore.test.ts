@@ -154,6 +154,16 @@ jest.mock('../utils/deadlineCalendarSync', () => ({
 
 jest.mock('../utils/calendarSync', () => ({
   deleteDeadlineEvent: jest.fn().mockResolvedValue(undefined),
+  // The #1492 half. Stubbed to "the user cancelled" / "no such event" by
+  // default so nothing writes unless a test says so; the time-block block at
+  // the bottom of this file drives them.
+  presentTimeBlockCreate: jest.fn().mockResolvedValue({ saved: false, deleted: false, eventId: null }),
+  presentTimeBlockEdit: jest.fn().mockResolvedValue({ saved: false, deleted: false, eventId: null }),
+  readTimeBlockEvent: jest.fn().mockResolvedValue(null),
+  updateTimeBlockEvent: jest.fn().mockResolvedValue(true),
+}));
+jest.mock('../store/useCalendarStore', () => ({
+  useCalendarStore: { getState: () => ({ events: [], loaded: false }) },
 }));
 
 jest.mock('react-native', () => ({
@@ -249,6 +259,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   leftoverId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  timeBlockEventId: null,
   pendingImport: null,
   ...overrides,
 });
@@ -7207,5 +7218,190 @@ describe('setDeliverableValue', () => {
     useTaskStore.getState().setDeliverableValue('budget', '2400');
 
     expect(rowOf('budget').deliverableValue).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Time blocks (#1492) — the wiring between the system event sheet and the task
+// row. What slot gets proposed is timeBlock.test.ts's job; this is only about
+// which pointer ends up on the task.
+
+const rowOf = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+describe('putTaskOnCalendar', () => {
+  const sync = jest.requireMock('../utils/calendarSync') as {
+    presentTimeBlockCreate: jest.Mock;
+    presentTimeBlockEdit: jest.Mock;
+    readTimeBlockEvent: jest.Mock;
+    updateTimeBlockEvent: jest.Mock;
+  };
+
+  const blockable = (overrides: Partial<Task> = {}) =>
+    makeTask({ id: 'report', title: 'Write the report', estimatedMinutes: 45, ...overrides });
+
+  it('stores the event id once the user saves the sheet', async () => {
+    useTaskStore.setState({ tasks: [blockable()] });
+    sync.presentTimeBlockCreate.mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-1' });
+
+    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
+
+    expect(rowOf('report').timeBlockEventId).toBe('ev-1');
+  });
+
+  it('writes nothing when the sheet is cancelled', async () => {
+    useTaskStore.setState({ tasks: [blockable()] });
+
+    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+
+    expect(rowOf('report').timeBlockEventId).toBeNull();
+    expect(sync.presentTimeBlockCreate).toHaveBeenCalled();
+  });
+
+  it('refuses a task with no length to block out', async () => {
+    useTaskStore.setState({ tasks: [blockable({ estimatedMinutes: null, effort: 0 })] });
+
+    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+
+    expect(sync.presentTimeBlockCreate).not.toHaveBeenCalled();
+  });
+
+  it('opens the edit sheet, not a second sheet, once a block exists', async () => {
+    useTaskStore.setState({ tasks: [blockable({ timeBlockEventId: 'ev-1' })] });
+    sync.presentTimeBlockEdit.mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-1' });
+
+    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
+
+    expect(sync.presentTimeBlockEdit).toHaveBeenCalledWith('ev-1');
+    expect(sync.presentTimeBlockCreate).not.toHaveBeenCalled();
+    expect(rowOf('report').timeBlockEventId).toBe('ev-1');
+  });
+
+  it('drops the pointer when the user deletes the event from the sheet', async () => {
+    useTaskStore.setState({ tasks: [blockable({ timeBlockEventId: 'ev-1' })] });
+    sync.presentTimeBlockEdit.mockResolvedValueOnce({ saved: false, deleted: true, eventId: null });
+
+    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+
+    expect(rowOf('report').timeBlockEventId).toBeNull();
+  });
+
+  it('keeps the pointer when the edit sheet closes and the event is still there', async () => {
+    useTaskStore.setState({ tasks: [blockable({ timeBlockEventId: 'ev-1' })] });
+    // Cancelled, or the sheet failed to present — either way the event lives.
+    sync.readTimeBlockEvent.mockResolvedValueOnce({
+      title: 'Write the report', start: new Date(), end: new Date(), allDay: false,
+    });
+
+    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
+
+    expect(rowOf('report').timeBlockEventId).toBe('ev-1');
+  });
+
+  it('replaces a block that was deleted in the Calendar app', async () => {
+    useTaskStore.setState({ tasks: [blockable({ timeBlockEventId: 'gone' })] });
+    // Edit sheet does nothing, and the event genuinely isn't there any more.
+    sync.readTimeBlockEvent.mockResolvedValueOnce(null);
+    sync.presentTimeBlockCreate.mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-2' });
+
+    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
+
+    // The stale pointer is gone and the same tap produced a fresh block.
+    expect(rowOf('report').timeBlockEventId).toBe('ev-2');
+  });
+
+  it('ignores a saved event iOS gave us no id for', async () => {
+    useTaskStore.setState({ tasks: [blockable()] });
+    sync.presentTimeBlockCreate.mockResolvedValueOnce({ saved: true, deleted: false, eventId: null });
+
+    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+
+    // An event we can't point at is one we can't reconcile or reopen; better to
+    // hold no pointer than a broken one.
+    expect(rowOf('report').timeBlockEventId).toBeNull();
+  });
+});
+
+describe('time block reconcile', () => {
+  const sync = jest.requireMock('../utils/calendarSync') as {
+    readTimeBlockEvent: jest.Mock;
+    updateTimeBlockEvent: jest.Mock;
+  };
+
+  const blocked = (overrides: Partial<Task> = {}) =>
+    makeTask({
+      id: 'report', title: 'Write the report', estimatedMinutes: 45,
+      timeBlockEventId: 'ev-1', ...overrides,
+    });
+
+  const onDevice = (overrides: Partial<{ title: string; start: Date; end: Date; allDay: boolean }> = {}) => ({
+    title: 'Write the report',
+    start: new Date(2026, 7, 13, 14, 0),
+    end: new Date(2026, 7, 13, 14, 45),
+    allDay: false,
+    ...overrides,
+  });
+
+  it('pushes a renamed task onto the event, keeping the time the user chose', async () => {
+    useTaskStore.setState({ tasks: [blocked()] });
+    sync.readTimeBlockEvent.mockResolvedValue(onDevice());
+
+    useTaskStore.getState().updateTask('report', { title: 'Write the Q3 report' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sync.updateTimeBlockEvent).toHaveBeenCalledWith('ev-1', {
+      title: 'Write the Q3 report',
+      // Re-ended from the event's own 14:00 start — never moved.
+      endDate: new Date(2026, 7, 13, 14, 45),
+    });
+  });
+
+  it('resizes the event when the estimate changes', async () => {
+    useTaskStore.setState({ tasks: [blocked()] });
+    sync.readTimeBlockEvent.mockResolvedValue(onDevice());
+
+    useTaskStore.getState().updateTask('report', { estimatedMinutes: 90 });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sync.updateTimeBlockEvent).toHaveBeenCalledWith('ev-1', {
+      title: 'Write the report',
+      endDate: new Date(2026, 7, 13, 15, 30),
+    });
+  });
+
+  it('does not touch a task that has no block', async () => {
+    useTaskStore.setState({ tasks: [blocked({ timeBlockEventId: null })] });
+
+    useTaskStore.getState().updateTask('report', { title: 'Renamed' });
+    await Promise.resolve();
+
+    expect(sync.readTimeBlockEvent).not.toHaveBeenCalled();
+    expect(sync.updateTimeBlockEvent).not.toHaveBeenCalled();
+  });
+
+  it('drops the pointer instead of re-creating an event that is gone', async () => {
+    useTaskStore.setState({ tasks: [blocked()] });
+    sync.readTimeBlockEvent.mockResolvedValue(null);
+
+    useTaskStore.getState().updateTask('report', { title: 'Renamed' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(rowOf('report').timeBlockEventId).toBeNull();
+    expect(sync.updateTimeBlockEvent).not.toHaveBeenCalled();
+  });
+
+  it('leaves the block alone when a task is completed', async () => {
+    useTaskStore.setState({ tasks: [blocked()] });
+    sync.readTimeBlockEvent.mockResolvedValue(onDevice());
+
+    useTaskStore.getState().completeTask('report');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Time already set aside — and possibly shared with other people — is not
+    // this app's to withdraw. See Task.timeBlockEventId.
+    expect(rowOf('report').timeBlockEventId).toBe('ev-1');
   });
 });

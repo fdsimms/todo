@@ -94,6 +94,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   leftoverId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  timeBlockEventId: null,
   pendingImport: null,
   ...overrides,
 });
