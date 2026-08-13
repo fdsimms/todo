@@ -371,7 +371,7 @@ describe('use-up tasks', () => {
       keepDays: 0,
     })!;
 
-    const task = mockTaskState.tasks.find(t => t.leftoverId === logged.id);
+    const task = mockTaskState.tasks.find(t => t.generatedSourceId === logged.id);
     expect(task).toBeDefined();
     expect(task!.title).toBe('Use up Chilli');
     expect(task!.deadline).toBe(logged.keepUntil);
@@ -383,11 +383,11 @@ describe('use-up tasks', () => {
       storedAt: new Date(2026, 7, 10, 9, 0).toISOString(),
       keepDays: 0,
     })!;
-    expect(mockTaskState.tasks.some(t => t.leftoverId === logged.id)).toBe(true);
+    expect(mockTaskState.tasks.some(t => t.generatedSourceId === logged.id)).toBe(true);
 
     useLeftoverStore.getState().finishLeftover(logged.id, 'eaten');
 
-    expect(mockTaskState.tasks.some(t => t.leftoverId === logged.id)).toBe(false);
+    expect(mockTaskState.tasks.some(t => t.generatedSourceId === logged.id)).toBe(false);
   });
 
   it('drops the task when the leftover is deleted', () => {
@@ -399,7 +399,7 @@ describe('use-up tasks', () => {
 
     useLeftoverStore.getState().deleteLeftover(logged.id);
 
-    expect(mockTaskState.tasks.some(t => t.leftoverId === logged.id)).toBe(false);
+    expect(mockTaskState.tasks.some(t => t.generatedSourceId === logged.id)).toBe(false);
   });
 
   it('honors a per-leftover opt-out even with the setting on', () => {
@@ -410,7 +410,7 @@ describe('use-up tasks', () => {
     })!;
     useLeftoverStore.getState().setUseUpTask(logged.id, false);
 
-    expect(mockTaskState.tasks.some(t => t.leftoverId === logged.id)).toBe(false);
+    expect(mockTaskState.tasks.some(t => t.generatedSourceId === logged.id)).toBe(false);
     expect(useLeftoverStore.getState().leftoverById(logged.id)!.useUpTask).toBe(false);
   });
 
@@ -423,9 +423,9 @@ describe('use-up tasks', () => {
 
     useLeftoverStore.getState().reconcileAllLeftoverTasks();
 
-    expect(mockTaskState.tasks.some(t => t.leftoverId === 'urgent')).toBe(true);
-    expect(mockTaskState.tasks.some(t => t.leftoverId === 'fresh')).toBe(false);
-    expect(mockTaskState.tasks.some(t => t.leftoverId === 'closed')).toBe(false);
+    expect(mockTaskState.tasks.some(t => t.generatedSourceId === 'urgent')).toBe(true);
+    expect(mockTaskState.tasks.some(t => t.generatedSourceId === 'fresh')).toBe(false);
+    expect(mockTaskState.tasks.some(t => t.generatedSourceId === 'closed')).toBe(false);
   });
 });
 

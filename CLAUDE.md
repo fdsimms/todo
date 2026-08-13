@@ -274,6 +274,59 @@ the block would inherit none.
   it's due today. So the copy passes `hidesWhenOnPace: false`, and a pinned task that isn't visible
   today has only the one row rather than two.
 
+### Generated tasks — the four things that write a task unattended
+
+A planned meal becomes "Cook X", a perishable grocery and an ageing leftover each become "Use up
+X", and an opt-in weekly trigger becomes "Plan meals for…". Each was built by copying the last,
+which is fine twice and had reached four — four nullable back-pointer columns on `Task`, four
+hand-written "don't pile up" rules, three copies of one opt-out. They now share
+`src/utils/generatedTasks.ts` (pure: the kinds, the registry, the opt-out precedence, the lookups)
+and `src/store/generatedTaskSync.ts` (the create/update/delete). **A fifth generator should need
+neither a column nor a reconcile** — just its own rules module and a registry entry (#1524).
+
+- **`Task.generatedKind` + `Task.generatedSourceId` replaced `mealEntryId`/`groceryItemId`/
+  `leftoverId`.** Those three columns are still on the table, backfilled from and then left
+  unwritten, like `task_groups.completed_at` — the migrations array only appends. The backfill in
+  `initDatabase` is guarded on `generated_kind IS NULL`, so it touches only legacy rows and is a
+  no-op from the second launch (same shape as the `seen_at` one above it). It is the only thing
+  standing between an existing install and every generated task reading as user-typed, so
+  `database.test.ts` covers it directly.
+- **The meal-plan nudge is in the mechanism despite having no source row.** `generatedSourceId` is
+  null for it (`sourced: false` in the registry), and `hasLiveMealPlanNudgeTask` now keys on the
+  kind rather than on `linkUrl` as it used to. The link still opens the Meal Plan screen; it just
+  isn't the marker any more, so a task the *user* wrote pointing there no longer counts as the
+  app's own. Legacy rows are backfilled off exactly that link, so the set it matches is unchanged.
+- **Every read of `generatedSourceId` that means one particular kind goes through
+  `generatedSourceOf(task, kind)`.** One column where there were three means two generators can
+  hand out the same source id; without the kind check, ticking a leftover's task off could mark a
+  *meal* cooked.
+- **`blocksOnFinished` is cook tasks only, and that asymmetry is the feature.** A meal is one
+  event, so a completed cook task means the night happened and a second one would be an invention.
+  A grocery item and a leftover are rows that come round again — reading the wide set there would
+  mean a staple got exactly one use-up task, ever.
+- **The per-source opt-out stays on the source row** (`MealPlanEntry.cookTask`,
+  `GroceryItem.useUpTask`, `Leftover.useUpTask`), written by `deleteTask` and dispatched in one
+  `writeGeneratedOptOut` switch. **Don't hoist it into a generic suppression record** keyed by
+  `(kind, sourceId)`: that grows without bound, the same disease `remindersImportHandled` has and
+  survives only by pruning to what the Reminders list still holds on every drain. A generic record
+  has no equivalent pruning pass unless each generator supplies one, at which point it isn't
+  generic. On the source row it's bounded for free — whatever deletes the source deletes the "no".
+- **The settings keys stayed per-generator; only the UI merged.** One "Tasks the app adds" section
+  (`GeneratedTasksSection`) lists all four, replacing three sections here and one in Notifications.
+  Renaming `mealCookTasks`/`groceryUseUpTasks`/… to a generic pair would be a migration over
+  preferences people have already set, for nothing a person can see. The section's *list* comes
+  from the registry; its **controls are still hand-written JSX**, the same line `settingsIndex.ts`
+  draws — a config able to express a toggle, a category grid, a day-count stepper, a weekday pill
+  row and an inline time picker would be harder to read than the rows it replaced.
+- **A generator break inside that card is a band, not a hairline** (`groupBreak`). With two
+  generators on, the card runs to four rows apiece, and a hairline between one's "File them under"
+  and the next one's name reads exactly like the hairline above it — the list stops saying where a
+  generator ends.
+- **They still write straight to Today**, rather than proposing into a review surface the way
+  `deloadPlan`/`projectPull` do. That fork is real and was deliberately left alone here: it's a
+  product decision about all four at once, and this refactor is what makes it a change in one
+  place instead of four.
+
 ### Recurrence
 
 Completing a recurring task creates a new task row with a new `id` and the next computed `dueDate`. The original task is marked completed (not deleted). `getNextDueDate()` in `src/utils/dateUtils.ts` handles all recurrence types; it anchors to the previous `dueDate` for fixed schedules, or to today for `recurrenceFromCompletion`.

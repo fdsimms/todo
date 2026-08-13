@@ -156,6 +156,21 @@ export interface Project {
 // to two weeks so the feature wasn't inert on arrival.
 export const DEFAULT_NUDGE_CADENCE_DAYS = 0;
 
+/**
+ * Which of the app's four unattended generators wrote a task — see
+ * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
+ * mechanism they share.
+ *
+ * The strings are persisted in `tasks.generated_kind`, so these are storage
+ * values: rename one and every existing row goes unrecognised, which reads as
+ * that generator having forgotten every task it ever wrote.
+ */
+export type GeneratedKind =
+  | 'mealCook'
+  | 'groceryUseUp'
+  | 'leftoverUseUp'
+  | 'mealPlanNudge';
+
 export interface Task {
   id: string;
   title: string;
@@ -364,52 +379,40 @@ export interface Task {
    */
   deliverableValue: string | null;
 
-  // The MealPlanEntry this task was projected from — set only on a "Cook X"
-  // task the meal plan spawned, null on every task a person typed. See
-  // src/utils/mealTasks.ts for the projection rules.
+  // Which generator wrote this task, and the row it was projected from — both
+  // null on every task a person typed. See src/utils/generatedTasks.ts for the
+  // mechanism and src/utils/{mealTasks,groceryExpiry,leftoverTasks,
+  // mealPlanNudge}.ts for each generator's own rules.
   //
-  // **The meal plan is the master and this task is the replica**, which is the
-  // one thing to keep straight. The entry owns the title, the day and the
-  // time-of-day segment, and reconciling rewrites exactly those three on the
-  // task; everything else the user sets on the row (category, notes, priority,
-  // subtasks) is theirs and is never touched. Nothing flows the other way
-  // except cooked-ness — completing this task stamps the entry's cookedAt, and
-  // marking the entry cooked completes this task, each guarded by the other's
-  // idempotence check so the two can't ping-pong.
+  // These replaced a column per generator (mealEntryId, groceryItemId,
+  // leftoverId) once there were four of them and a fifth would have meant a
+  // fifth column, a fifth "don't pile up" rule and a fifth copy of the same
+  // opt-out (#1524). The old columns are still on the table, backfilled from
+  // and then left unwritten, like task_groups.completed_at.
   //
-  // Deliberately NOT the inverse of a taskId on the entry: one pointer can't
+  // **The source is the master and this task is the replica**, which is the one
+  // thing to keep straight. The source owns a named handful of fields — a
+  // meal's title, day and time-of-day segment; a grocery item's title, due date
+  // and deadline — and reconciling rewrites exactly those; everything else the
+  // user sets on the row (category, notes, priority, subtasks) is theirs and is
+  // never touched. Only meals flow anything back: completing a cook task stamps
+  // the entry's cookedAt and marking the entry cooked completes the task, each
+  // guarded by the other's idempotence check so the two can't ping-pong.
+  // Ticking "Use up spinach" off is deliberately *not* a claim about the
+  // catalog row or the container in the fridge — neither is marked eaten,
+  // thrown away or out of stock, because none of those is what ticking a task
+  // means.
+  //
+  // Deliberately NOT the inverse of a taskId on the source: one pointer can't
   // disagree with itself, and the lookup this direction is a scan of an array
-  // already in memory (see cookTaskFor in useMealPlanStore). Resolve-or-shrug
-  // like every other cross-row pointer here — an entry that has since been
-  // purged leaves this dangling, and a dangling cook task is just a task.
-  mealEntryId: string | null;
-
-  // The GroceryItem this task was projected from — set only on a "Use up X"
-  // task an expiry date spawned, null on every task a person typed. See
-  // src/utils/groceryExpiry.ts for the projection rules.
+  // already in memory. Resolve-or-shrug like every other cross-row pointer here
+  // — a source that has since been purged leaves this dangling, and a dangling
+  // generated task is just a task.
   //
-  // Same master/replica split as mealEntryId, one notch quieter: the item owns
-  // the title and the day, and reconciling rewrites those two and nothing else
-  // — but unlike a meal, nothing flows back. Ticking "Use up spinach" off is
-  // not a claim about the catalog row, which still knows when it was bought and
-  // when it goes off; the item is not marked eaten, thrown away or out of
-  // stock, because none of those is what ticking a task means.
-  //
-  // Reconciling is also deliberately narrower: it runs on the transitions that
-  // change the expiry, not on every grocery mutation, since an expiry date is
-  // set at the till and then left alone. Resolve-or-shrug like every other
-  // cross-row pointer here — a forgotten item leaves this dangling, and a
-  // dangling use-up task is just a task.
-  groceryItemId: string | null;
-
-  // The Leftover this task was projected from — set only on a "Use up X" task
-  // needsAttention() spawned, null on every task a person typed. Same
-  // master/replica split as groceryItemId, one notch quieter still: the
-  // leftover owns the title, due date and deadline, and reconciling rewrites
-  // exactly those — ticking the task off doesn't mark the leftover eaten or
-  // tossed, since that's a two-button question the container itself still
-  // asks. See src/utils/leftoverTasks.ts for the projection rules.
-  leftoverId: string | null;
+  // generatedSourceId is null for a generator projected from no row at all: the
+  // meal-plan nudge comes off the calendar, so its tasks carry the kind alone.
+  generatedKind: GeneratedKind | null;
+  generatedSourceId: string | null;
 
   // The id of the all-day calendar event mirroring this task's deadline, or
   // null when deadlineOnCalendar is off or the write hasn't happened (yet, or

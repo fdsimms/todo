@@ -102,7 +102,7 @@ jest.mock('../store/useRecipeStore', () => ({
 
 /** The live cook task for an entry, as the store's own helpers find it. */
 const cookTaskFor = (entryId: string) =>
-  mockTaskState.tasks.find(t => t.mealEntryId === entryId && !t.completed);
+  mockTaskState.tasks.find(t => t.generatedSourceId === entryId && !t.completed);
 
 let seq = 0;
 function entry(
@@ -1224,7 +1224,8 @@ describe('cook tasks', () => {
 
     const task = cookTaskFor(planned.id)!;
     expect(task.title).toBe('Cook Frijoles de la olla');
-    expect(task.mealEntryId).toBe(planned.id);
+    expect(task.generatedKind).toBe('mealCook');
+    expect(task.generatedSourceId).toBe(planned.id);
     // Dinner hides until evening — the whole reason this doesn't crowd Today.
     expect(task.timeSegments).toEqual(['evening']);
     expect(task.dueDate!.startsWith('2026-08-05')).toBe(true);

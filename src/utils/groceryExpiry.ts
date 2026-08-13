@@ -1,6 +1,7 @@
 import type { GroceryItem, TaskDraft } from '../types';
 import { GROCERY_USE_UP_LEAD_DAYS_MAX, GROCERY_USE_UP_LEAD_DAYS_MIN } from '../types';
 import { dayKeyToDate } from './dateUtils';
+import { generatedBy, wantsGeneratedTask } from './generatedTasks';
 import { resolveOffsetDate } from './templateUtils';
 
 /**
@@ -29,21 +30,17 @@ import { resolveOffsetDate } from './templateUtils';
 /**
  * Whether this item should have a use-up task, given the global setting.
  *
- * Three inputs collapse to one answer, the same shape `wantsCookTask` has:
+ * The precedence is `wantsGeneratedTask`'s, shared with the other generators.
+ * What qualifies an *item*:
  *
- * 1. **An explicit per-item answer always wins**, in both directions. `true`
- *    spawns a task with the setting off ("I keep wasting this one"), `false`
- *    suppresses it with the setting on — and `false` is what deleting the task
- *    records, so a staple bought every week can be told once and stays told.
- * 2. **A use-by date is the whole trigger.** No date, no task: the shelf-life
+ * 1. **A use-by date is the whole trigger.** No date, no task: the shelf-life
  *    lexicon is a whitelist of things that actually go off, so a catalog of
  *    hundreds contributes a handful of dates and the rest stay silent.
- * 3. **Nothing about being on the list matters.** A row can be both in the
+ * 2. **Nothing about being on the list matters.** A row can be both in the
  *    fridge and back on this week's list; the old bag still needs eating.
  */
 export function wantsUseUpTask(item: GroceryItem, enabled: boolean): boolean {
-  if (item.useUpTask !== null && item.useUpTask !== undefined) return item.useUpTask;
-  return enabled && item.expiresAt !== null;
+  return wantsGeneratedTask(item.useUpTask, enabled, item.expiresAt !== null);
 }
 
 /**
@@ -116,7 +113,7 @@ export function useUpTaskDraft(
   leadDays: number,
   category: string | null = null
 ): Partial<TaskDraft> {
-  return { ...useUpTaskFields(item, leadDays), groceryItemId: item.id, category };
+  return { ...useUpTaskFields(item, leadDays), ...generatedBy('groceryUseUp', item.id), category };
 }
 
 /**

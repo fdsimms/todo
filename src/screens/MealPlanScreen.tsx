@@ -83,6 +83,7 @@ import {
   recipeIndex,
   titleForEntry,
 } from '../utils/mealPlan';
+import { liveGeneratedTask } from '../utils/generatedTasks';
 import {
   classifyPlanned,
   plannedIngredientsForRecipe,
@@ -932,7 +933,7 @@ export function MealPlanScreen() {
   // flag's third state (null, "the setting decides") doesn't answer the
   // question the row is asking — whether a task exists right now.
   const selectedHasCookTask = useTaskStore(
-    s => !!selected && s.tasks.some(t => t.mealEntryId === selected.id && !t.completed && !t.archived)
+    s => !!selected && !!liveGeneratedTask(s.tasks, 'mealCook', selected.id)
   );
 
   // The either/or slots this meal has to answer, read under its own current
