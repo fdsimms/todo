@@ -40,14 +40,13 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   rowValue: disclosureValue(colors),
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
 
-  pillRow: { flexDirection: 'row', padding: spacing.sm, gap: spacing.sm },
-  pillRowAttached: { paddingTop: 0 },
-  // For an open-ended option set (categories) rather than the handful a
-  // segmented control assumes — wraps instead of squeezing every option into
-  // an equal-width column, which is what turned 15 categories into unreadable
-  // one-letter-per-line pills (#1466).
-  pillRowWrap: { flexWrap: 'wrap' },
-  pillAuto: { flex: 0, paddingHorizontal: spacing.md },
+  // A `SegmentedControl` in the padding a settings card expects — see
+  // SettingsSegments, the only thing that uses these.
+  segmentRow: { padding: spacing.sm },
+  segmentRowAttached: { paddingTop: 0 },
+  // The open-set case (the user's own categories), which is a `PillGroup` and
+  // not a segmented control at all — this is only its padding.
+  pillGroupRow: { paddingHorizontal: spacing.sm, paddingBottom: spacing.sm },
   // A stepper paired with its own unit pills, sitting under a `tight` row —
   // the unit pills stay one group and wrap together rather than splitting off
   // on their own at a narrow width (same idiom as ProjectEditor's cadenceRow).
@@ -56,6 +55,10 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
   cadenceUnitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  // The one pill left in Settings: the unit beside a `CountStepper`, which is
+  // deliberately not a segmented control — it has a fourth state (no unit at
+  // all, when the count is "Never") that a track with one raised segment can't
+  // show, and it sits inline next to the stepper rather than owning a row.
   pill: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 10, borderRadius: radius.sm,

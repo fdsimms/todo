@@ -4,12 +4,21 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { segmentRows } from '../utils/segmentColumns';
 
 export interface SegmentOption<T> {
   value: T;
   label: string;
   /** Ionicons glyph, for the option sets that carry one. */
   icon?: string;
+  /**
+   * A colour swatch before the label, on *every* segment rather than only the
+   * chosen one — priority, whose colour is information (it's the same dot the
+   * task row shows) and not decoration. Filling the selected segment with it
+   * instead was the old pill treatment, and it says the colour only once you've
+   * already picked: you could never see that Urgent is red without choosing it.
+   */
+  dot?: string;
   /** Spoken label, when the visible one is too terse to read aloud ("2nd"). */
   accessibilityLabel?: string;
   /**
@@ -34,6 +43,9 @@ interface Props<T> {
    * a handful of these sets. Wrapping *ragged* (each segment its natural width)
    * is the thing this exists to avoid — that's a row of pills again, just
    * inside a box.
+   *
+   * The rows are built by `segmentRows`, not by wrapping one flex line; see
+   * that module for why a percentage-width cell can't make this grid.
    */
   columns?: number;
   /** Names the group for screen readers: "Repeats". */
@@ -41,8 +53,8 @@ interface Props<T> {
 }
 
 /**
- * Pick exactly one of a small, closed set — the repeat type, the end mode,
- * priority, effort.
+ * Pick exactly one of a small, closed set — the task's kind, the repeat type,
+ * the end mode, priority.
  *
  * The distinction it draws is the one the app kept losing: **a closed
  * single-choice set is one control, and an open or multi-select set is many.**
@@ -61,8 +73,33 @@ interface Props<T> {
  * The selected segment is *raised* rather than filled with the accent: a row of
  * these otherwise puts a saturated blue blob at a random horizontal position in
  * every row, which is most of the noise. Elevation survives grayscale
- * accessibility mode as well as `SettingsPills`' border does, and it leaves the
- * accent to mean "you can change this" the way it does everywhere else.
+ * accessibility mode as well as a border does, and it leaves the accent to mean
+ * "you can change this" the way it does everywhere else.
+ *
+ * Four things the #1497 sweep looked at and deliberately left as pills. They're
+ * here so the next one doesn't have to re-derive them:
+ *
+ * - **Effort.** Eight options, each a name over a duration ("M" / "~1-2hr"),
+ *   plus a Custom that opens a number pad. A segment is one line of text by
+ *   construction, and a 4×2 grid of two-line cells is the pill grid it would
+ *   have replaced. It stays pills.
+ * - **A row of *presets* beside a free input** — quick add's timer minutes, the
+ *   link-app shortcuts above a URL field. The set on screen isn't the set of
+ *   possible values, so no segment can be the current one; a preset is a
+ *   shortcut, and shortcuts are objects.
+ * - **A filter over a list** (the meal-type row in `SuggestMealsSheet`). It
+ *   narrows what's on screen rather than setting a value on anything, "All" is a
+ *   reset and not a value, and which options exist depends on the user's data.
+ *   The app's other filter rows are pills; one track among them would be the
+ *   drift, not the fix.
+ * - **A unit beside a `CountStepper`** (the nudge cadence's Days/Weeks/Months).
+ *   It has a state no track can show — *no* unit lit, which is how "Never"
+ *   reads — and it sits inline next to the stepper rather than owning a row.
+ *
+ * It also assumes a card or sheet surface: `bgTertiary` against a light theme's
+ * `bg` is nearly invisible, which is why `RecipeScaleChips` (a factor row that
+ * usually sits straight on the page) is still pills and would need this to take
+ * a `surface` first.
  */
 export function SegmentedControl<T extends string | number | boolean | null>({
   options, value, onChange, columns, label,
@@ -71,55 +108,60 @@ export function SegmentedControl<T extends string | number | boolean | null>({
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
-  // A cell in an N-column grid, less the gap it shares with its neighbours.
-  const cellStyle = columns
-    ? { flexBasis: `${100 / columns}%` as const, flexGrow: 0, flexShrink: 0 }
-    : undefined;
+  const renderSegment = (opt: SegmentOption<T>) => {
+    const selected = opt.value === value;
+    return (
+      <TouchableOpacity
+        key={String(opt.value)}
+        style={[
+          styles.segment,
+          selected && styles.segmentSelected,
+          opt.disabled && styles.segmentDisabled,
+        ]}
+        onPress={() => {
+          if (selected) return;
+          haptics.tap();
+          onChange(opt.value);
+        }}
+        disabled={opt.disabled}
+        activeOpacity={interaction.activeOpacity}
+        accessibilityRole="radio"
+        accessibilityState={{ selected, disabled: opt.disabled }}
+        accessibilityLabel={opt.accessibilityLabel ?? opt.label}
+      >
+        {!!opt.icon && (
+          <Ionicons
+            name={opt.icon as never}
+            size={iconSize.sm}
+            color={selected ? colors.text : colors.textSecondary}
+          />
+        )}
+        {!!opt.dot && <View style={[styles.dot, { backgroundColor: opt.dot }]} />}
+        <Text
+          style={[styles.segmentText, selected && styles.segmentTextSelected]}
+          numberOfLines={1}
+        >
+          {opt.label}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View
-      style={[styles.track, !!columns && styles.trackWrapped]}
+      style={[styles.track, !!columns && styles.trackGrid]}
       accessibilityRole="radiogroup"
       accessibilityLabel={label}
     >
-      {options.map(opt => {
-        const selected = opt.value === value;
-        return (
-          <TouchableOpacity
-            key={String(opt.value)}
-            style={[
-              styles.segment,
-              cellStyle,
-              selected && styles.segmentSelected,
-              opt.disabled && styles.segmentDisabled,
-            ]}
-            onPress={() => {
-              if (selected) return;
-              haptics.tap();
-              onChange(opt.value);
-            }}
-            disabled={opt.disabled}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="radio"
-            accessibilityState={{ selected, disabled: opt.disabled }}
-            accessibilityLabel={opt.accessibilityLabel ?? opt.label}
-          >
-            {!!opt.icon && (
-              <Ionicons
-                name={opt.icon as never}
-                size={iconSize.sm}
-                color={selected ? colors.text : colors.textSecondary}
-              />
-            )}
-            <Text
-              style={[styles.segmentText, selected && styles.segmentTextSelected]}
-              numberOfLines={1}
-            >
-              {opt.label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
+      {columns
+        ? segmentRows(options, columns).map((row, i) => (
+            <View key={i} style={styles.row}>
+              {row.map((opt, j) => (
+                opt ? renderSegment(opt) : <View key={`gap-${j}`} style={styles.segment} />
+              ))}
+            </View>
+          ))
+        : options.map(renderSegment)}
     </View>
   );
 }
@@ -132,8 +174,9 @@ const makeStyles = (colors: Colors, isDark: boolean) => StyleSheet.create({
     padding: 2,
     gap: 2,
   },
-  // `gap` alone would leave the rows touching; the row gap has to match it.
-  trackWrapped: { flexWrap: 'wrap', rowGap: 2 },
+  // In grid mode the track stacks its rows; each row lays its own cells out.
+  trackGrid: { flexDirection: 'column' },
+  row: { flexDirection: 'row', gap: 2 },
   segment: {
     flex: 1,
     // Not `minTouchTarget`: a segment is wide, and a stack of 44pt tracks turns
@@ -160,6 +203,7 @@ const makeStyles = (colors: Colors, isDark: boolean) => StyleSheet.create({
     elevation: 3,
   },
   segmentDisabled: { opacity: 0.4 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
   segmentText: {
     color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium,
     flexShrink: 1,

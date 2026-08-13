@@ -21,6 +21,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { WhenPicker } from './WhenPicker';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import type { Task } from '../types';
 
 interface Props {
@@ -49,9 +50,9 @@ interface Props {
  */
 type DayMode = 'suggested' | 'tomorrow';
 
-const MODES: ReadonlyArray<{ key: DayMode; label: string }> = [
-  { key: 'suggested', label: 'Best day' },
-  { key: 'tomorrow', label: 'Tomorrow' },
+const MODES: SegmentOption<DayMode>[] = [
+  { value: 'suggested', label: 'Best day', accessibilityLabel: 'Move to the best day' },
+  { value: 'tomorrow', label: 'Tomorrow', accessibilityLabel: 'Move to tomorrow' },
 ];
 export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
   const colors = useColors();
@@ -144,7 +145,7 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
 
   const switchMode = (m: DayMode) => {
     if (m === dayMode) return;
-    haptics.tap();
+    // No haptic here — the segmented control fires its own on the press.
     animateLayout();
     setDayMode(m);
     // Same rule the plan uses for its own defaults: everything that can move
@@ -285,22 +286,12 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
           ) : (
             <>
               <View style={styles.modeRow}>
-                {MODES.map(({ key, label }) => {
-                  const active = dayMode === key;
-                  return (
-                    <TouchableOpacity
-                      key={key}
-                      style={[styles.modePill, active && styles.modePillActive]}
-                      onPress={() => switchMode(key)}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      accessibilityLabel={`Move to ${label}`}
-                    >
-                      <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>{label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                <SegmentedControl
+                  label="Move to"
+                  value={dayMode}
+                  onChange={switchMode}
+                  options={MODES}
+                />
               </View>
               <Text style={styles.hint}>Tap to include or skip. Long press to pick a different day.</Text>
             </>
@@ -414,21 +405,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   modeRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
   },
-  modePill: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-  },
-  modePillActive: { backgroundColor: colors.accent },
-  modeLabel: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-  modeLabelActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   emptyHint: {
     color: colors.textTertiary,
     fontSize: font.sm,
