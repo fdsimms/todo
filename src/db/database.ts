@@ -616,6 +616,11 @@ export function initDatabase(): void {
     'ALTER TABLE grocery_item_shops ADD COLUMN last_price_minor INTEGER',
     'ALTER TABLE grocery_item_shops ADD COLUMN last_priced_at TEXT',
     'ALTER TABLE grocery_item_shops ADD COLUMN last_price_quantity TEXT',
+    // 0 for every existing row — nothing predating this feature had ever
+    // asked to mirror its deadline. See Task.deadlineOnCalendar.
+    'ALTER TABLE tasks ADD COLUMN deadline_on_calendar INTEGER NOT NULL DEFAULT 0',
+    // NULL until the first successful device write. See Task.calendarEventId.
+    'ALTER TABLE tasks ADD COLUMN calendar_event_id TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -864,6 +869,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     deadline: (row.deadline as string) ?? null,
     deadlineOffsetDays: (row.deadline_offset_days as number | null) ?? null,
     deadlineMonthDay: (row.deadline_month_day as number | null) ?? null,
+    deadlineOnCalendar: Boolean(row.deadline_on_calendar),
     deferUntil: (row.defer_until as string) ?? null,
     timeSegments: parseTimeSegments(row.time_of_day),
     windowStart: (row.window_start as string) ?? null,
@@ -933,6 +939,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     postponeCount: (row.postpone_count as number) ?? 0,
     postponeMuted: Boolean(row.postpone_muted),
     driftingSince: (row.drifting_since as string | null) ?? null,
+    calendarEventId: (row.calendar_event_id as string | null) ?? null,
   };
 }
 
@@ -957,8 +964,8 @@ export function dbInsertTask(task: Task): void {
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, meal_entry_id,
       grocery_item_id, postpone_count, postpone_muted, drifting_since,
       extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally,
-      deliverable_kind, deliverable_value
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1004,6 +1011,8 @@ export function dbInsertTask(task: Task): void {
       task.previousExtraTaskTally,
       task.deliverableKind ?? null,
       task.deliverableValue ?? null,
+      task.deadlineOnCalendar ? 1 : 0,
+      task.calendarEventId ?? null,
     ]
   );
 }
@@ -1024,7 +1033,7 @@ export function dbUpdateTask(task: Task): void {
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, meal_entry_id=?,
       grocery_item_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
       extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?,
-      deliverable_kind=?, deliverable_value=?
+      deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -1071,6 +1080,8 @@ export function dbUpdateTask(task: Task): void {
       task.previousExtraTaskTally,
       task.deliverableKind ?? null,
       task.deliverableValue ?? null,
+      task.deadlineOnCalendar ? 1 : 0,
+      task.calendarEventId ?? null,
       task.id,
     ]
   );

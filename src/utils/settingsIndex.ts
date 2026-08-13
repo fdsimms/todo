@@ -155,6 +155,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['events', 'booked', 'busy', 'free', 'google'] },
   { id: 'reminderMeetingNudge', groupId: 'capture', label: 'Move reminders out of meetings', section: 'Calendar',
     keywords: ['notification', 'event', 'busy', 'nudge', 'delay', 'push back'] },
+  { id: 'deadlineCalendar', groupId: 'capture', label: 'Write deadlines to', section: 'Deadlines on your calendar',
+    keywords: ['all-day', 'event', 'export', 'google', 'sync'] },
 
   // Tasks & projects
   { id: 'vacationMode', groupId: 'tasksProjects', label: 'Vacation mode', section: 'Vacation',

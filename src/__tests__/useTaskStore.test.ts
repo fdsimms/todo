@@ -33,6 +33,8 @@ import {
   cancelTaskReminder,
   rescheduleAllReminders,
 } from '../utils/notifications';
+import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
+import { deleteDeadlineEvent } from '../utils/calendarSync';
 import type { Task, TaskGroup } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -146,6 +148,14 @@ jest.mock('../utils/notifications', () => ({
   rescheduleAllTimerAlarms: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.mock('../utils/deadlineCalendarSync', () => ({
+  syncDeadlineEvent: jest.fn().mockResolvedValue(null),
+}));
+
+jest.mock('../utils/calendarSync', () => ({
+  deleteDeadlineEvent: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
   UIManager: { setLayoutAnimationEnabledExperimental: jest.fn() },
@@ -236,6 +246,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   deliverableValue: null,
   mealEntryId: null,
   groceryItemId: null,
+  deadlineOnCalendar: false,
+  calendarEventId: null,
   pendingImport: null,
   ...overrides,
 });
@@ -379,6 +391,11 @@ describe('addTask', () => {
     expect(dbInsertTask).toHaveBeenCalledWith(task);
     expect(scheduleTaskReminder).toHaveBeenCalledWith(task);
   });
+
+  it('reconciles the deadline calendar event', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Renew passport' });
+    expect(syncDeadlineEvent).toHaveBeenCalledWith(task);
+  });
 });
 
 // ─── newTaskFromDraft: Settings' newTaskDefaults ────────────────────────────
@@ -486,6 +503,24 @@ describe('updateTask', () => {
     expect(scheduleTaskReminder).not.toHaveBeenCalled();
   });
 
+  it('reconciles the deadline calendar event when the deadline changes', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.getState().updateTask('t1', { deadline: new Date(2025, 5, 11).toISOString() });
+    expect(syncDeadlineEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconciles the deadline calendar event when the per-task toggle changes', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', deadline: new Date(2025, 5, 11).toISOString() })] });
+    useTaskStore.getState().updateTask('t1', { deadlineOnCalendar: true });
+    expect(syncDeadlineEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not touch the deadline calendar event when the update does not affect it', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.getState().updateTask('t1', { priority: 2, sortOrder: 5 });
+    expect(syncDeadlineEvent).not.toHaveBeenCalled();
+  });
+
   describe('scope: "occurrence" ("this task only")', () => {
     it('captures the pre-edit value of changed content fields into seriesDefaults', () => {
       useTaskStore.setState({ tasks: [makeTask({ id: 't1', title: 'Original', recurrenceType: 'daily' })] });
@@ -572,6 +607,18 @@ describe('deleteTask', () => {
     expect(cancelTaskReminder).toHaveBeenCalledWith('t1');
   });
 
+  it('deletes the linked calendar event when the task has one', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', calendarEventId: 'evt-1' })] });
+    useTaskStore.getState().deleteTask('t1');
+    expect(deleteDeadlineEvent).toHaveBeenCalledWith('evt-1');
+  });
+
+  it('does not call deleteDeadlineEvent when the task has no linked event', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', calendarEventId: null })] });
+    useTaskStore.getState().deleteTask('t1');
+    expect(deleteDeadlineEvent).not.toHaveBeenCalled();
+  });
+
   it('does not queue an undo action for a nonexistent task', () => {
     useTaskStore.setState({ tasks: [] });
     useTaskStore.getState().deleteTask('missing');
@@ -595,6 +642,14 @@ describe('deleteTask', () => {
     expect(useTaskStore.getState().tasks.map(t => t.id).sort()).toEqual(['child', 'parent']);
     expect(dbInsertTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'parent' }));
     expect(dbInsertTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'child' }));
+  });
+
+  it('reconciles a fresh calendar event for the restored task on undo', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', calendarEventId: 'evt-1' })] });
+    useTaskStore.getState().deleteTask('t1');
+    (syncDeadlineEvent as jest.Mock).mockClear();
+    useTaskStore.getState().lastAction?.undo();
+    expect(syncDeadlineEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 't1' }));
   });
 });
 
@@ -726,6 +781,21 @@ describe('duplicateTask', () => {
     expect(dbInsertTask).toHaveBeenCalledWith(copy);
     expect(scheduleTaskReminder).toHaveBeenCalledWith(copy);
   });
+
+  it('does not carry the original calendar event id onto the copy', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', calendarEventId: 'evt-1', deadlineOnCalendar: true,
+        deadline: new Date(2025, 5, 20).toISOString(),
+      })],
+    });
+    const copy = useTaskStore.getState().duplicateTask('t1')!;
+    expect(copy.calendarEventId).toBeNull();
+    // The preference carries; the event doesn't — two tasks must never point
+    // at one device event.
+    expect(copy.deadlineOnCalendar).toBe(true);
+    expect(syncDeadlineEvent).toHaveBeenCalledWith(copy);
+  });
 });
 
 // ─── completeTask ─────────────────────────────────────────────────────────────
@@ -746,6 +816,24 @@ describe('completeTask', () => {
     const task = useTaskStore.getState().tasks.find(t => t.id === 't1');
     expect(task?.completed).toBe(true);
     expect(task?.completedAt).toBeTruthy();
+  });
+
+  it('reconciles the deadline calendar event for the completed row', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', deadline: new Date(2025, 5, 20).toISOString() })] });
+    useTaskStore.getState().completeTask('t1');
+    expect(syncDeadlineEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', completed: true }));
+  });
+
+  it('clears calendarEventId on the fresh occurrence of a recurring task', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', recurrenceType: 'daily', dueDate: new Date(2025, 5, 10).toISOString(),
+        deadlineOffsetDays: 1, calendarEventId: 'old-evt', deadlineOnCalendar: true,
+      })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    const next = useTaskStore.getState().tasks.find(t => t.previousOccurrenceId === 't1');
+    expect(next?.calendarEventId).toBeNull();
   });
 
   it('persists the completed task to the db', () => {
@@ -5948,6 +6036,24 @@ describe('applyTaskDates', () => {
 
     const days = useTaskStore.getState().tasks.map(t => new Date(t.dueDate!).getDate()).sort((a, b) => a - b);
     expect(days).toEqual([10, 20]);
+  });
+
+  it('deletes the calendar event of a row dropped from the set', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.setState({
+      tasks: useTaskStore.getState().tasks.map(t =>
+        t.id === rows[1].id ? { ...t, calendarEventId: 'evt-dropped' } : t
+      ),
+    });
+    (deleteDeadlineEvent as jest.Mock).mockClear();
+    useTaskStore.getState().applyTaskDates(rows[0].id, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 20, 12, 0, 0),
+    ]);
+    expect(deleteDeadlineEvent).toHaveBeenCalledWith('evt-dropped');
   });
 
   it('never deletes a completed date — it is history, not schedule', () => {

@@ -59,6 +59,8 @@ import {
 import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
+import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
+import { deleteDeadlineEvent } from '../utils/calendarSync';
 import { isTimedTask, timerElapsed } from '../utils/timer';
 import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
 
@@ -221,6 +223,12 @@ function newTaskFromDraft(
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
     mealEntryId: draft.mealEntryId ?? null,
     groceryItemId: draft.groceryItemId ?? null,
+    deadlineOnCalendar: draft.deadlineOnCalendar ?? false,
+    // Never read off the draft, same reasoning as deliverableValue just
+    // below: a duplicate or template application starting with someone
+    // else's device event id would either point at the wrong task's event or
+    // silently overwrite it on the first reconcile.
+    calendarEventId: null,
     seriesId: draft.seriesId ?? null,
     seriesMonthDays: draft.seriesMonthDays ?? [],
     seriesRepeatMonths: draft.seriesRepeatMonths ?? 1,
@@ -245,6 +253,32 @@ function newTaskFromDraft(
     extraTaskTally: 0,
     previousExtraTaskTally: 0,
   };
+}
+
+/**
+ * Brings a task's device deadline event in line with the task, fire-and-
+ * forget — same shape as every `scheduleTaskReminder(...)` call in this
+ * file: the write is async and best-effort, so nothing here awaits it.
+ *
+ * Only patches the task if the resulting id actually changed (most calls are
+ * a no-op — most saves don't touch the deadline), and only if the task is
+ * still around by the time the device write finishes; one deleted mid-write
+ * has nothing left to patch. `syncDeadlineEvent` (deadlineCalendarSync.ts)
+ * owns the decision of what the device event should look like; this is only
+ * the plumbing back into SQLite and the store, which is why it lives here
+ * rather than there — that file has no business reaching into this store.
+ */
+function reconcileDeadlineEvent(task: Task): void {
+  syncDeadlineEvent(task)
+    .then(calendarEventId => {
+      if (calendarEventId === task.calendarEventId) return;
+      const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
+      if (!current) return;
+      const updated = { ...current, calendarEventId };
+      dbUpdateTask(updated);
+      useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
+    })
+    .catch(() => {});
 }
 
 // Identity of a date as the user picked it off a calendar — deliberately the
@@ -966,6 +1000,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
     scheduleTaskReminder(task);
+    reconcileDeadlineEvent(task);
     return task;
   },
 
@@ -990,6 +1025,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     rows.forEach(row => {
       dbInsertTask(row);
       scheduleTaskReminder(row);
+      reconcileDeadlineEvent(row);
     });
     set(s => ({ tasks: [...s.tasks, ...rows] }));
     return rows;
@@ -1030,6 +1066,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         dbDeleteSubtasks(t.id);
         dbDeleteTask(t.id);
         cancelTaskReminder(t.id);
+        if (t.calendarEventId) deleteDeadlineEvent(t.calendarEventId);
       });
       unfiled.forEach(dbUpdateTask);
 
@@ -1121,10 +1158,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dbDeleteSubtasks(t.id);
       dbDeleteTask(t.id);
       cancelTaskReminder(t.id);
+      // The row is gone for good, not archived — nothing will ever revisit
+      // it to notice a dangling event, so clean it up now, same as deleteTask.
+      if (t.calendarEventId) deleteDeadlineEvent(t.calendarEventId);
     });
     added.forEach(t => {
       dbInsertTask(t);
       scheduleTaskReminder(t);
+      reconcileDeadlineEvent(t);
     });
     rewritten.forEach(dbUpdateTask);
 
@@ -1204,6 +1245,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       postponeCount: 0,
       postponeMuted: false,
       driftingSince: null,
+      // deadlineOnCalendar (the preference) carries via ...original, same as
+      // every other setting on the copy, but the device event does not —
+      // two tasks pointing at one event means editing either one's deadline
+      // silently drags the other's calendar entry with it.
+      calendarEventId: null,
     };
     const copy: Task = {
       ...original,
@@ -1213,6 +1259,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     };
     dbInsertTask(copy);
     scheduleTaskReminder(copy);
+    reconcileDeadlineEvent(copy);
 
     const subtaskCopies = get().subtasksOf(id).map(sub => ({
       ...sub,
@@ -1335,6 +1382,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         cancelTaskReminder(id);
         scheduleTaskReminder(updated);
       }
+      if (
+        'deadline' in updates ||
+        'deadlineOffsetDays' in updates ||
+        'deadlineMonthDay' in updates ||
+        'deadlineOnCalendar' in updates ||
+        'completed' in updates ||
+        'archived' in updates ||
+        'title' in updates
+      ) {
+        reconcileDeadlineEvent(updated);
+      }
       // Archiving out from under a running countdown would otherwise leave its
       // alarm to fire for a task the user can no longer see.
       if (updated.archived && updated.timerStartedAt !== null) cancelTimerAlarm(id);
@@ -1453,6 +1511,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbDeleteTask(id);
     cancelTaskReminder(id);
     if (task.timerStartedAt !== null) cancelTimerAlarm(id);
+    // Fire-and-forget, same as every other calendar/notification side effect
+    // here. Not restored on undo below — deleting a device event isn't
+    // reversible, so an undone delete gets a fresh event on its next
+    // reconcile rather than a promise this can't keep.
+    if (task.calendarEventId) deleteDeadlineEvent(task.calendarEventId);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id && t.parentId !== id) }));
 
     // Deleting a cook task is the user saying this meal doesn't need one, and
@@ -1480,6 +1543,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       undo: () => {
         dbInsertTask(task);
         scheduleTaskReminder(task);
+        // The device event was deleted above and isn't coming back under the
+        // same id — this writes a fresh one and repoints calendarEventId at
+        // it, rather than leaving the restored task pointing at nothing
+        // until its next unrelated edit.
+        reconcileDeadlineEvent(task);
         subtasks.forEach(sub => {
           dbInsertTask(sub);
           scheduleTaskReminder(sub);
@@ -1658,6 +1726,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     };
     if (task.pinned) pendingUnpinIds.push(id);
     dbUpdateTask(completed);
+    // A completed row has nothing left to be late for — its deadline event,
+    // if it had one, is deleted rather than left dangling on the calendar.
+    reconcileDeadlineEvent(completed);
 
     cancelTaskReminder(id);
 
@@ -1804,9 +1875,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // by hand.
           mealEntryId: null,
       groceryItemId: null,
+          // Never carried forward: the old occurrence's device event still
+          // shows the old deadline, and this is a fresh row with a fresh
+          // deadline (nextDeadline above) that needs its own event, created
+          // by the reconcile call below.
+          calendarEventId: null,
         };
         dbInsertTask(nextTask);
         scheduleTaskReminder(nextTask);
+        reconcileDeadlineEvent(nextTask);
 
         // Subtasks belong to the series, not a single occurrence — carry them
         // onto the fresh occurrence the same way duplicateTask does, reset to
@@ -2034,6 +2111,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       extraTaskTally: task.previousExtraTaskTally,
     };
     dbUpdateTask(updated);
+    // Reopened, so a deadline it still carries is live again.
+    reconcileDeadlineEvent(updated);
 
     // Completing a recurring task spawns a fresh next occurrence. Undoing
     // that completion means it never happened, so the occurrence it
@@ -2800,6 +2879,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       deliverableValue: null,
       mealEntryId: null,
       groceryItemId: null,
+      deadlineOnCalendar: false,
+      calendarEventId: null,
       pendingImport: null,
       postponeCount: 0,
       postponeMuted: false,
@@ -2958,6 +3039,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       deliverableValue: null,
       mealEntryId: null,
       groceryItemId: null,
+      deadlineOnCalendar: false,
+      calendarEventId: null,
       pendingImport: null,
       postponeCount: 0,
       postponeMuted: false,

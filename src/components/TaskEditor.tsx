@@ -251,6 +251,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [deadlineOffsetDays, setDeadlineOffsetDays] = useState<number | null>(null);
   const [deadlineMonthDay, setDeadlineMonthDay] = useState<number | null>(null);
+  const [deadlineOnCalendar, setDeadlineOnCalendar] = useState(false);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [targetCount, setTargetCount] = useState<number | null>(null);
@@ -354,6 +355,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
+  const deadlineCalendarId = useSettingsStore(s => s.deadlineCalendarId);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
@@ -423,6 +425,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setDeadline(task.deadline ? new Date(task.deadline) : null);
       setDeadlineOffsetDays(task.deadlineOffsetDays ?? null);
       setDeadlineMonthDay(task.deadlineMonthDay ?? null);
+      setDeadlineOnCalendar(task.deadlineOnCalendar ?? false);
       setTimeSegments(task.timeSegments ?? []);
       setWindowStart(task.windowStart ?? null);
       setWindowEnd(task.windowEnd ?? null);
@@ -458,7 +461,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -508,6 +511,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         : null,
       deadlineOffsetDays: task?.deadlineOffsetDays ?? null,
       deadlineMonthDay: task?.deadlineMonthDay ?? null,
+      deadlineOnCalendar: task?.deadlineOnCalendar ?? false,
       timeSegments: task ? (task.timeSegments ?? []) : (initialDraft?.timeSegments ?? []),
       windowStart: task?.windowStart ?? null,
       windowEnd: task?.windowEnd ?? null,
@@ -671,6 +675,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadline: deadline?.toISOString() ?? null,
       deadlineOffsetDays,
       deadlineMonthDay: recurrenceType === 'monthly' ? deadlineMonthDay : null,
+      // Meaningless with no deadline to mirror — cleared alongside it so a
+      // task that no longer has one doesn't quietly keep the flag armed for
+      // whenever a deadline comes back.
+      deadlineOnCalendar: deadline ? deadlineOnCalendar : false,
       timeSegments, windowStart, windowEnd, targetCount,
       // Cleared with the count it labels — a unit left behind on a task that is
       // no longer a target has nothing to sit beside, and would come back the
@@ -1095,6 +1103,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadline: deadline?.toISOString() ?? null,
       deadlineOffsetDays,
       deadlineMonthDay,
+      deadlineOnCalendar,
       timeSegments,
       windowStart, windowEnd,
       targetCount,
@@ -2230,7 +2239,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'deadline', label: 'Deadline', primary: true, set: !!deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null,
-            keywords: ['due', 'by', 'cutoff', 'hard date', 'late', 'overdue'],
+            keywords: ['due', 'by', 'cutoff', 'hard date', 'late', 'overdue', 'calendar'],
             node: (
               <>
             <EditorRow
@@ -2245,8 +2254,40 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   : (deadline ? formatDeadlineDate(deadline.toISOString()) : undefined)
               }
               onPress={() => { if (deadlineOffsetDays === null && deadlineMonthDay === null) setShowDeadlinePicker(true); }}
-              onClear={(deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) ? () => { setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); } : undefined}
+              onClear={(deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) ? () => { setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); } : undefined}
             />
+            {!!deadline && (
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => {
+                  if (!deadlineCalendarId) return;
+                  haptics.tap();
+                  setDeadlineOnCalendar(v => !v);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                disabled={!deadlineCalendarId}
+                accessibilityRole="switch"
+                accessibilityLabel="Add this deadline to your calendar"
+                accessibilityState={{ checked: deadlineOnCalendar, disabled: !deadlineCalendarId }}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={18}
+                  color={deadlineOnCalendar ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Add to calendar</Text>
+                  <Text style={styles.optionHint}>
+                    {deadlineCalendarId
+                      ? 'An all-day event on your calendar for this deadline'
+                      : 'Pick a calendar to write to in Settings › Calendar first'}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, deadlineOnCalendar && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, deadlineOnCalendar && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            )}
             {recurrenceType !== 'none' && (deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) && (
               <>
                 <View style={styles.scheduleRow}>

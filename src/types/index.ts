@@ -212,6 +212,11 @@ export interface Task {
   // means the last day of the month. Mutually exclusive with
   // deadlineOffsetDays; recomputed the same way on every new occurrence.
   deadlineMonthDay: number | null;
+  // Whether this deadline is mirrored as an all-day event on the calendar
+  // picked in Settings › Calendar (useSettingsStore's deadlineCalendarId) —
+  // opt-in per task, never a blanket export of every deadline in the app.
+  // See calendarEventId below and reconcileDeadlineEvent in useTaskStore.ts.
+  deadlineOnCalendar: boolean;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
@@ -396,6 +401,23 @@ export interface Task {
   // cross-row pointer here — a forgotten item leaves this dangling, and a
   // dangling use-up task is just a task.
   groceryItemId: string | null;
+
+  // The id of the all-day calendar event mirroring this task's deadline, or
+  // null when deadlineOnCalendar is off or the write hasn't happened (yet, or
+  // ever — the device write is best-effort).
+  //
+  // Inverted from mealEntryId/groceryItemId just above: there this task is
+  // the replica of another row. Here **the task is the master** — it owns
+  // the title and the date, the event is the replica, and reconciling
+  // rewrites exactly those two on the device event. Nothing flows back: a
+  // deadline dragged around in Apple Calendar doesn't move it here, because
+  // the whole point of a deadline is that it doesn't move just because a day
+  // got busy — see reconcileDeadlineEvent in useTaskStore.ts.
+  //
+  // Resolve-or-shrug like every other cross-row pointer here — the event
+  // gone missing (deleted by hand, or the calendar itself removed) leaves
+  // this dangling, and the next reconcile just writes a fresh one.
+  calendarEventId: string | null;
 
   // Streaks (recurring tasks only)
   streakCount: number;       // positive = N consecutive completions
@@ -609,7 +631,7 @@ export interface Task {
 // source, so a series row or a template application can't inherit a count.
 // extraTaskTally is the same kind of thing — the rule (extraTaskEveryN,
 // extraTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"

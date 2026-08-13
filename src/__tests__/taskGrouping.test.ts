@@ -131,6 +131,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   deliverableValue: null,
   mealEntryId: null,
   groceryItemId: null,
+  deadlineOnCalendar: false,
+  calendarEventId: null,
   pendingImport: null,
   ...overrides,
 });
