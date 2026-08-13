@@ -68,7 +68,11 @@ import {
   dbUpdateLeftover,
   dbDeleteLeftover,
   dbPurgeOldLeftovers,
+  dbSyncChangesSince,
+  dbPruneSyncDeletions,
+  isSyncableDatabase,
 } from '../db/database';
+import { SYNC_TRACKED_TABLES, TOMBSTONE_RETENTION_DAYS } from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, Leftover, MealPlanEntry, MealSlot } from '../types';
 
@@ -2129,5 +2133,119 @@ describe('leftovers', () => {
       dbReplaceAllData(backup);
       expect(dbGetAllLeftovers()).toEqual([chilli]);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sync change tracking
+// ---------------------------------------------------------------------------
+
+describe('sync change tracking', () => {
+  beforeEach(() => {
+    // The shared beforeEach deletes rows, which is itself tracked — so clear
+    // the tombstones it just wrote before asserting on what a test produces.
+    mockRawDb.exec('DELETE FROM sync_deletions');
+  });
+
+  it('gives every tracked table an updated_at column', () => {
+    for (const { name } of SYNC_TRACKED_TABLES) {
+      const cols = mockRawDb.prepare(`PRAGMA table_info("${name}")`).all() as Array<{ name: string }>;
+      expect(cols.map(c => c.name)).toContain('updated_at');
+    }
+  });
+
+  it('reports a newly created task', () => {
+    dbInsertTask(makeTask({ id: 'sync-1', title: 'Buy milk' }));
+
+    const changes = dbSyncChangesSince(null);
+
+    expect(changes.tables.tasks.map(r => r.id)).toContain('sync-1');
+    expect(changes.until).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(changes.since).toBeNull();
+  });
+
+  it('reports nothing new once the cursor has caught up', () => {
+    dbInsertTask(makeTask({ id: 'sync-1' }));
+    const first = dbSyncChangesSince(null);
+
+    const second = dbSyncChangesSince(first.until);
+
+    // The inclusive lower bound can re-send rows stamped exactly at the
+    // cursor, which is harmless — what must not appear is anything newer.
+    for (const row of second.tables.tasks) {
+      // ISO strings sort lexicographically, which is why the cursor can be one.
+      expect(String(row.updated_at) <= second.until).toBe(true);
+    }
+    expect(second.deletions).toEqual([]);
+  });
+
+  it('reports a task edited after the cursor', () => {
+    dbInsertTask(makeTask({ id: 'sync-1', title: 'Before' }));
+    const first = dbSyncChangesSince(null);
+    mockRawDb.prepare("UPDATE tasks SET updated_at = '2020-01-01T00:00:00.000Z' WHERE id = 'sync-1'").run();
+
+    dbUpdateTask(makeTask({ id: 'sync-1', title: 'After' }));
+
+    const second = dbSyncChangesSince(first.until);
+    const row = second.tables.tasks.find(r => r.id === 'sync-1');
+    expect(row?.title).toBe('After');
+  });
+
+  it('reports a deletion as a tombstone, not a missing row', () => {
+    dbInsertTask(makeTask({ id: 'sync-1' }));
+    const first = dbSyncChangesSince(null);
+
+    dbDeleteTask('sync-1');
+
+    const second = dbSyncChangesSince(first.until);
+    expect(second.deletions).toEqual([
+      expect.objectContaining({ table: 'tasks', rowKey: 'sync-1' }),
+    ]);
+  });
+
+  it('reports every row of a cascading bulk delete', () => {
+    dbInsertTask(makeTask({ id: 'parent' }));
+    dbInsertTask(makeTask({ id: 'child', parentId: 'parent' }));
+    const first = dbSyncChangesSince(null);
+
+    dbBulkDeleteTasks(['parent']);
+
+    const second = dbSyncChangesSince(first.until);
+    const keys = second.deletions.filter(d => d.table === 'tasks').map(d => d.rowKey).sort();
+    expect(keys).toEqual(['child', 'parent']);
+  });
+
+  it('does not report a first read as having deletions', () => {
+    dbInsertTask(makeTask({ id: 'sync-1' }));
+    dbDeleteTask('sync-1');
+
+    expect(dbSyncChangesSince(null).deletions).toEqual([]);
+  });
+
+  it('never reports the settings table', () => {
+    dbSetSetting('theme', 'dark');
+
+    expect(Object.keys(dbSyncChangesSince(null).tables)).not.toContain('settings');
+  });
+
+  it('prunes only tombstones past the retention window', () => {
+    const insert = mockRawDb.prepare(
+      `INSERT INTO sync_deletions (table_name, row_key, deleted_at)
+       VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?))`
+    );
+    insert.run('tasks', 'ancient', `-${TOMBSTONE_RETENTION_DAYS + 1} days`);
+    insert.run('tasks', 'recent', '-1 days');
+
+    const removed = dbPruneSyncDeletions();
+
+    expect(removed).toBe(1);
+    const left = mockRawDb.prepare('SELECT row_key FROM sync_deletions').all() as Array<{ row_key: string }>;
+    expect(left.map(r => r.row_key)).toEqual(['recent']);
+  });
+
+  it('treats the real database as syncable', () => {
+    // Demo mode is what this exists to exclude; the mock never swaps handles,
+    // so the real one must answer true or the transport would sync nothing.
+    expect(isSyncableDatabase()).toBe(true);
   });
 });

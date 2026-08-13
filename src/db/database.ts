@@ -9,6 +9,15 @@ import { parseRecipeChoices, parseRecipeComponents } from '../utils/recipeCompon
 import { normalizeScale } from '../utils/recipeScale';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
+import {
+  SYNC_DELETIONS_TABLE,
+  SYNC_TRACKED_TABLES,
+  TOMBSTONE_RETENTION_DAYS,
+  NOW_EXPR,
+  backfillStatements,
+  installStatements,
+  updatedAtMigrations,
+} from './syncTracking';
 
 function parseTimeSegments(raw: unknown): TimeOfDay[] {
   if (!raw) return [];
@@ -635,10 +644,26 @@ export function initDatabase(): void {
     // DEFAULT 0 would record every leftover already in the fridge as an
     // explicit refusal. See Leftover.useUpTask.
     'ALTER TABLE leftovers ADD COLUMN use_up_task INTEGER',
+    // The change-tracking column every synced table carries. Generated from
+    // SYNC_TRACKED_TABLES rather than written out thirteen times, so a table
+    // added to that list can't be left without one. See db/syncTracking.ts.
+    ...updatedAtMigrations(),
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
   }
+
+  // Change tracking for multi-device sync. Ordered deliberately: the columns
+  // exist by now (above), the backfill runs while there are still no triggers
+  // to fire, and only then are the triggers installed — so stamping every
+  // pre-existing row costs one UPDATE per table rather than one per row.
+  for (const sql of backfillStatements()) {
+    try { db.runSync(sql); } catch (_) { /* table predates this install */ }
+  }
+  for (const sql of installStatements()) {
+    try { db.runSync(sql); } catch (_) { /* trigger or index already current */ }
+  }
+  try { dbPruneSyncDeletions(); } catch (_) { /* nothing to prune */ }
 
   // Backfill seen_at for tasks that predate the "new" dot feature so they
   // don't all light up as new the moment this ships — treat them as already
@@ -844,6 +869,130 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
       db.runSync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [row.key, row.value]);
     }
   });
+}
+
+// ─── Sync change tracking ────────────────────────────────────────────────────
+
+/** One deleted row, as a peer needs to hear about it. */
+export interface SyncDeletion {
+  table: string;
+  /** The row's primary key; composite keys joined by KEY_SEPARATOR. */
+  rowKey: string;
+  deletedAt: string;
+}
+
+/** Everything that changed in one window, plus the cursor to resume from. */
+export interface SyncChangeSet {
+  /** The cursor this was read from — null on a first, full read. */
+  since: string | null;
+  /** The cursor to pass as `since` next time. */
+  until: string;
+  /** Changed and created rows, exactly as stored, keyed by table. */
+  tables: Record<string, BackupRow[]>;
+  deletions: SyncDeletion[];
+}
+
+/**
+ * Whether the live handle is one whose changes may be synced.
+ *
+ * Demo mode swaps the whole database for a throwaway (see
+ * switchToDemoDatabase), and its contents are seeded fiction — uploading them
+ * would put fake groceries on the user's real phone. The transport must gate
+ * on this rather than assuming, because the swap is invisible from outside:
+ * every db* function keeps working and quietly answers about demo data.
+ */
+export function isSyncableDatabase(): boolean {
+  return db === realDb;
+}
+
+/**
+ * Everything that changed after `since`, or everything there is when null.
+ *
+ * Read inside a transaction against a single `until` taken from the database's
+ * own clock, and bounded by it at both ends. Both halves matter: taking the
+ * cursor from SQLite rather than JS keeps it on the same clock the triggers
+ * stamp with (a device whose JS clock runs a few milliseconds ahead would
+ * otherwise skip its own writes), and the upper bound means a row written
+ * while this is being read is left for the next window instead of being
+ * reported under a cursor that has already moved past it.
+ *
+ * **The lower bound is inclusive, and that is deliberate.** Stamps have
+ * millisecond resolution, so several changes can share one — and an exclusive
+ * `> since` silently drops any row written in the same millisecond as the
+ * previous read's `until`. Re-sending a row costs a duplicate that the apply
+ * side discards (last-writer-wins is idempotent by construction); dropping one
+ * costs an edit that never arrives and that nothing will ever retry. This is
+ * also what makes the stamp trigger's same-millisecond no-op safe — see the
+ * note on it in syncTracking.ts.
+ *
+ * Deliberately returns raw rows rather than model objects, exactly as
+ * backup.ts does — see the note in its header. A column added to the schema
+ * and not yet threaded into rowToTask still syncs.
+ */
+export function dbSyncChangesSince(since: string | null): SyncChangeSet {
+  let result: SyncChangeSet | null = null;
+
+  db.withTransactionSync(() => {
+    const until =
+      db.getFirstSync<{ now: string }>(`SELECT ${NOW_EXPR} AS now`)?.now ??
+      new Date().toISOString();
+
+    const tables: Record<string, BackupRow[]> = {};
+    for (const { name } of SYNC_TRACKED_TABLES) {
+      tables[name] = since === null
+        ? db.getAllSync<BackupRow>(
+            `SELECT * FROM "${name}" WHERE updated_at <= ?`,
+            [until]
+          )
+        : db.getAllSync<BackupRow>(
+            `SELECT * FROM "${name}" WHERE updated_at >= ? AND updated_at <= ?`,
+            [since, until]
+          );
+    }
+
+    // A first read needs no deletions: a peer that has never heard of a row
+    // has nothing to delete, and the tombstones only reach back as far as
+    // whenever tracking was installed anyway.
+    const deletionRows = since === null
+      ? []
+      : db.getAllSync<{ table_name: string; row_key: string; deleted_at: string }>(
+          `SELECT table_name, row_key, deleted_at FROM ${SYNC_DELETIONS_TABLE}
+            WHERE deleted_at >= ? AND deleted_at <= ?
+            ORDER BY deleted_at ASC`,
+          [since, until]
+        );
+
+    result = {
+      since,
+      until,
+      tables,
+      deletions: deletionRows.map(r => ({
+        table: r.table_name,
+        rowKey: r.row_key,
+        deletedAt: r.deleted_at,
+      })),
+    };
+  });
+
+  // withTransactionSync runs the callback synchronously, so this is always set.
+  return result as unknown as SyncChangeSet;
+}
+
+/**
+ * Drops tombstones older than the retention window.
+ *
+ * Runs at startup from initDatabase. Kept exported so the transport can call
+ * it after a successful round trip, but note that it must never be given a
+ * shorter window than TOMBSTONE_RETENTION_DAYS on the reasoning there — a
+ * tombstone dropped before every device has seen it resurrects the row.
+ */
+export function dbPruneSyncDeletions(olderThanDays = TOMBSTONE_RETENTION_DAYS): number {
+  const res = db.runSync(
+    `DELETE FROM ${SYNC_DELETIONS_TABLE}
+      WHERE deleted_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`,
+    [`-${olderThanDays} days`]
+  );
+  return res.changes ?? 0;
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────

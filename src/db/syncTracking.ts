@@ -1,0 +1,242 @@
+/**
+ * Change tracking — the local half of multi-device sync (#1550).
+ *
+ * Two facts have to survive for a second device to be able to catch up: when
+ * each row last changed, and which rows have been deleted. Neither is
+ * recoverable after the fact, which is why this ships before any transport
+ * exists (#1551) — a deletion that happened before tracking was installed is
+ * simply gone, and no sync engine can invent it.
+ *
+ * **State-based, not an operation log.** The issue this came from said
+ * "oplog", and that would have been the wrong shape. Row-level
+ * last-writer-wins converges no matter what order changes arrive in, so the
+ * current row plus its `updated_at` is already a complete description of what
+ * a peer needs — an operations table would double every write, need its own
+ * pruning, and buy nothing back. "Everything since cursor X" is a query here,
+ * not a replay.
+ *
+ * **Triggers, not call sites.** Every write already funnels through
+ * database.ts, but that is ~90 `runSync` calls and 20 `DELETE FROM`s, and the
+ * failure mode of missing one is silent and unbounded: a row that never
+ * reports itself as changed, forever. SQLite triggers cover every write to the
+ * table including ones added later, so a store action written next year is
+ * tracked without anybody remembering to stamp it. The ~13k lines of store
+ * code needed no edits at all.
+ */
+
+/** A table whose changes are tracked, and the columns forming its primary key. */
+export interface SyncTable {
+  readonly name: string;
+  /** Primary key columns, in order. More than one means a composite key. */
+  readonly key: readonly string[];
+}
+
+/**
+ * Joins the parts of a composite key into the single `row_key` string a
+ * tombstone carries.
+ *
+ * Safe as a plain character because every id in this app comes from
+ * `generateId()`, which is base36 throughout — see src/utils/id.ts. A table
+ * keyed by user-entered text would need escaping instead; none is.
+ */
+export const KEY_SEPARATOR = '|';
+
+/**
+ * The tables a peer needs to see. Thirteen of the fourteen — `settings` is
+ * deliberately absent.
+ *
+ * That table is a key/value store holding three quite different kinds of row,
+ * and only one of them should ever travel: real preferences (theme,
+ * `dayResetTime`, retention window), **one-time migration flags**
+ * (`effort_xxs_migration_done`, `pinned_backfill_from_focused_done`, …), and
+ * device-local records (`remindersImportHandled`, which names reminders in one
+ * device's Reminders list). Syncing the second kind is actively destructive —
+ * a device that receives `..._done = 1` before running the migration skips it
+ * permanently — and the third is meaningless off the device that wrote it.
+ *
+ * So which settings sync is a per-key allowlist, and building it is a
+ * decision, not a default. It belongs with the transport work rather than
+ * being smuggled in here as "all of them".
+ */
+export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
+  { name: 'tasks', key: ['id'] },
+  { name: 'task_groups', key: ['id'] },
+  { name: 'projects', key: ['id'] },
+  { name: 'categories', key: ['id'] },
+  { name: 'project_categories', key: ['id'] },
+  { name: 'template_categories', key: ['id'] },
+  { name: 'templates', key: ['id'] },
+  { name: 'grocery_items', key: ['id'] },
+  { name: 'grocery_shops', key: ['id'] },
+  { name: 'grocery_item_shops', key: ['item_id', 'shop_id'] },
+  { name: 'recipes', key: ['id'] },
+  { name: 'leftovers', key: ['id'] },
+  { name: 'meal_plan_entries', key: ['id'] },
+];
+
+/** Where deletions go. A row here is the only evidence a row ever existed. */
+export const SYNC_DELETIONS_TABLE = 'sync_deletions';
+
+/**
+ * UTC, milliseconds, `Z`-suffixed — the same ISO shape every date in this app
+ * is stored as, so a value read out of a row needs no conversion to be
+ * compared against one written by JS.
+ */
+export const NOW_EXPR = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`;
+
+/**
+ * How long a tombstone is kept.
+ *
+ * A tombstone deleted before every device has seen it resurrects the row, so
+ * this is the window a device may be offline for and still catch up by the
+ * ordinary path. Ninety days is deliberately far more generous than it needs
+ * to be: the table holds three short strings per deleted row, so the cost of
+ * being wrong in the safe direction is nothing, while the cost of being wrong
+ * in the other direction is a deleted task quietly coming back.
+ *
+ * A device that has been away longer than this needs a full reconcile rather
+ * than an incremental catch-up — which the transport has to handle anyway for
+ * the first-pair case, so this adds no work that wasn't already required.
+ */
+export const TOMBSTONE_RETENTION_DAYS = 90;
+
+/** `NEW.id`, or `NEW.item_id || '|' || NEW.shop_id` for a composite key. */
+export function rowKeyExpr(table: SyncTable, alias: 'NEW' | 'OLD'): string {
+  return table.key
+    .map(col => `${alias}.${col}`)
+    .join(` || '${KEY_SEPARATOR}' || `);
+}
+
+/** `id = NEW.id`, and-ed across every key column for a composite. */
+function keyMatchExpr(table: SyncTable, alias: 'NEW' | 'OLD'): string {
+  return table.key.map(col => `${col} = ${alias}.${col}`).join(' AND ');
+}
+
+/** The DDL for the tombstone table. */
+export function deletionsTableStatements(): string[] {
+  return [
+    `CREATE TABLE IF NOT EXISTS ${SYNC_DELETIONS_TABLE} (
+      table_name TEXT NOT NULL,
+      row_key TEXT NOT NULL,
+      deleted_at TEXT NOT NULL,
+      PRIMARY KEY (table_name, row_key)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_${SYNC_DELETIONS_TABLE}_deleted_at
+       ON ${SYNC_DELETIONS_TABLE} (deleted_at)`,
+  ];
+}
+
+/** `ALTER TABLE … ADD COLUMN updated_at`, one per tracked table. */
+export function updatedAtMigrations(): string[] {
+  return SYNC_TRACKED_TABLES.map(
+    t => `ALTER TABLE ${t.name} ADD COLUMN updated_at TEXT`
+  );
+}
+
+/**
+ * The four triggers and one index that track a single table.
+ *
+ * Dropped and recreated rather than `CREATE TRIGGER IF NOT EXISTS`, so that
+ * editing a trigger body here actually reaches an install that already has the
+ * old one. Fifty-odd statements at startup is nothing next to a device
+ * silently running last release's tracking rules.
+ */
+export function changeTrackingStatements(table: SyncTable): string[] {
+  const { name } = table;
+  const newKey = rowKeyExpr(table, 'NEW');
+  const oldKey = rowKeyExpr(table, 'OLD');
+  const match = keyMatchExpr(table, 'NEW');
+
+  return [
+    `DROP TRIGGER IF EXISTS ${name}_sync_stamp_insert`,
+    `DROP TRIGGER IF EXISTS ${name}_sync_undelete`,
+    `DROP TRIGGER IF EXISTS ${name}_sync_stamp_update`,
+    `DROP TRIGGER IF EXISTS ${name}_sync_tombstone`,
+
+    // A row inserted without an explicit stamp is a local change, so it gets
+    // one. The guard is what lets the sync client insert a row *with* a peer's
+    // timestamp and have it survive — without it, applying a remote change
+    // would restamp it as locally-modified and the two devices would hand the
+    // same row back and forth forever.
+    `CREATE TRIGGER ${name}_sync_stamp_insert
+       AFTER INSERT ON ${name}
+       WHEN NEW.updated_at IS NULL
+     BEGIN
+       UPDATE ${name} SET updated_at = ${NOW_EXPR} WHERE ${match};
+     END`,
+
+    // Re-inserting a row clears its tombstone. This is not a theoretical case:
+    // shake-to-undo and bulkDeleteTasks both put deleted rows back under their
+    // original ids, and a surviving tombstone would have the next sync delete
+    // them again on every device — an undo that works locally and silently
+    // loses the data a minute later.
+    `CREATE TRIGGER ${name}_sync_undelete
+       AFTER INSERT ON ${name}
+     BEGIN
+       DELETE FROM ${SYNC_DELETIONS_TABLE}
+        WHERE table_name = '${name}' AND row_key = ${newKey};
+     END`,
+
+    // First clause: the same peer-write guard as the insert, for the same
+    // reason.
+    //
+    // Second clause: don't restamp a row that already carries this
+    // millisecond's stamp. Without it the trigger is not self-terminating —
+    // two writes inside one millisecond produce an inner UPDATE that sets
+    // updated_at to the value it already had, leaving the WHEN true and
+    // recursing until SQLite gives up. That only bites while
+    // `PRAGMA recursive_triggers` is ON, which is not the default and which
+    // nothing here turns on, but "correct only because of a pragma we don't
+    // set" is not a property worth depending on in the layer that decides
+    // whether data survives.
+    //
+    // The cost is that a same-millisecond write leaves the stamp where it
+    // was. That is safe only because the cursor in dbSyncChangesSince is
+    // inclusive — see the note there; the two decisions are load-bearing for
+    // each other.
+    `CREATE TRIGGER ${name}_sync_stamp_update
+       AFTER UPDATE ON ${name}
+       WHEN NEW.updated_at IS OLD.updated_at
+        AND (OLD.updated_at IS NULL OR OLD.updated_at <> ${NOW_EXPR})
+     BEGIN
+       UPDATE ${name} SET updated_at = ${NOW_EXPR} WHERE ${match};
+     END`,
+
+    // INSERT OR REPLACE, not INSERT: a row can be deleted, restored by an
+    // undo, and deleted again, and it is the *last* deletion that has to win.
+    `CREATE TRIGGER ${name}_sync_tombstone
+       AFTER DELETE ON ${name}
+     BEGIN
+       INSERT OR REPLACE INTO ${SYNC_DELETIONS_TABLE} (table_name, row_key, deleted_at)
+       VALUES ('${name}', ${oldKey}, ${NOW_EXPR});
+     END`,
+
+    // The sync loop's only read pattern is "everything after this cursor".
+    `CREATE INDEX IF NOT EXISTS idx_${name}_updated_at ON ${name} (updated_at)`,
+  ];
+}
+
+/**
+ * Stamps rows that predate tracking.
+ *
+ * Uniform rather than falling back to `created_at` (which only nine of the
+ * thirteen tables have anyway): the value is only ever read to decide which of
+ * two conflicting *copies of the same row* is newer, and rows can only collide
+ * once the devices have synced at least once. Nothing that exists before the
+ * first sync can conflict with anything, so a truthful "tracking started here"
+ * is worth more than a reconstructed history that implies an ordering the app
+ * never actually observed.
+ */
+export function backfillStatements(): string[] {
+  return SYNC_TRACKED_TABLES.map(
+    t => `UPDATE ${t.name} SET updated_at = ${NOW_EXPR} WHERE updated_at IS NULL`
+  );
+}
+
+/** Every statement needed to install tracking, in order. */
+export function installStatements(): string[] {
+  return [
+    ...deletionsTableStatements(),
+    ...SYNC_TRACKED_TABLES.flatMap(changeTrackingStatements),
+  ];
+}
