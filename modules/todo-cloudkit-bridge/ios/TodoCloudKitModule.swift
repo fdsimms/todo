@@ -66,7 +66,7 @@ public class TodoCloudKitModule: Module {
   /// rather than a full scan the client has to filter.
   private func ensureZone(completion: @escaping (Error?) -> Void) {
     let zone = CKRecordZone(zoneID: zoneID)
-    let op = CKModifyRecordZonesOperation(recordZonesToSave: [zone], recordZoneIDsToDeleteWithID: nil)
+    let op = CKModifyRecordZonesOperation(recordZonesToSave: [zone], recordZoneIDsToDelete: nil)
     op.modifyRecordZonesResultBlock = { result in
       switch result {
       case .success:
@@ -143,7 +143,21 @@ public class TodoCloudKitModule: Module {
     // mean anything to a peer anyway — the payload's *contents* already say
     // what was removed, via the tombstones in the changeset.
 
-    op.recordZoneFetchResultBlock = { _, result in
+    // Spelled out rather than left for Swift to infer: the closure's
+    // parameter is a Result over a *labeled* tuple
+    // (serverChangeToken:, clientChangeTokenData:, moreComing:), and the
+    // compiler could not work that type out on its own — reported as
+    // "cannot infer type of closure parameter 'result'" even though the body
+    // itself was fine. An explicit annotation sidesteps the inference
+    // entirely rather than depending on however this particular SDK version
+    // manages to (or doesn't) work it out.
+    let handleZoneFetchResult: (
+      CKRecordZone.ID,
+      Result<
+        (serverChangeToken: CKServerChangeToken, clientChangeTokenData: Data?, moreComing: Bool),
+        Error
+      >
+    ) -> Void = { _, result in
       switch result {
       case .success(let (token, _, _)):
         promise.resolve([
@@ -161,6 +175,7 @@ public class TodoCloudKitModule: Module {
         }
       }
     }
+    op.recordZoneFetchResultBlock = handleZoneFetchResult
 
     database.add(op)
   }
