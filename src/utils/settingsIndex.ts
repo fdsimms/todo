@@ -157,6 +157,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['notification', 'event', 'busy', 'nudge', 'delay', 'push back'] },
   { id: 'deadlineCalendar', groupId: 'capture', label: 'Write deadlines to', section: 'Deadlines on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync'] },
+  { id: 'mealCalendar', groupId: 'capture', label: 'Write meals to', section: 'Meals on your calendar',
+    keywords: ['all-day', 'event', 'export', 'google', 'sync', 'meal plan', 'dinner', 'share', 'household', 'family'],
+    kitchen: true },
 
   // Tasks & projects
   { id: 'vacationMode', groupId: 'tasksProjects', label: 'Vacation mode', section: 'Vacation',

@@ -95,8 +95,12 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
  * against what the user has actually filed. Baking a guess into the recipe
  * would outrank their own filings for ever after — the same mistake
  * deleteAisle avoids by forgetting overrides rather than rewriting them.
+ *
+ * `section` stamps the row with whatever heading the caller currently has
+ * selected (the editor's add field carries one along) — trimmed and capped
+ * the same way RecipeIngredientSheet's own Section field is.
  */
-export function makeIngredient(line: string): RecipeIngredient | null {
+export function makeIngredient(line: string, section: string | null = null): RecipeIngredient | null {
   const { name: rawName, quantity } = parseGroceryInput(line);
   if (!rawName.trim()) return null;
   const { name: afterPrep, prep } = splitPrep(rawName);
@@ -118,7 +122,7 @@ export function makeIngredient(line: string): RecipeIngredient | null {
     aisle: null,
     prep,
     purpose: purposeSplit?.purpose ?? null,
-    section: null,
+    section: section && section.trim() ? section.trim().slice(0, RECIPE_SECTION_MAX_LENGTH) : null,
     choiceGroup: null,
   };
 }
@@ -128,13 +132,14 @@ export function makeIngredient(line: string): RecipeIngredient | null {
  * so a recipe listing salt twice doesn't carry it twice.
  *
  * splitGroceryLines already strips bullets and caps the paste; this adds only
- * the parse and the empty-name guard.
+ * the parse and the empty-name guard. `section` is passed through to every
+ * line, same as makeIngredient.
  */
-export function ingredientsFromText(raw: string): RecipeIngredient[] {
+export function ingredientsFromText(raw: string, section: string | null = null): RecipeIngredient[] {
   const out: RecipeIngredient[] = [];
   const seen = new Set<string>();
   for (const line of splitGroceryLines(raw)) {
-    const ingredient = makeIngredient(line);
+    const ingredient = makeIngredient(line, section);
     if (!ingredient) continue;
     const key = ingredient.nameKey || ingredient.name.toLowerCase();
     if (seen.has(key)) continue;

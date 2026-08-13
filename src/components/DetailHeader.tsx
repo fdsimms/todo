@@ -63,10 +63,10 @@ export function DetailHeader({
       {leading ? (
         <View style={styles.titleBlock}>
           {leading}
-          <Text style={styles.title} numberOfLines={1}>{title}</Text>
+          <Text style={styles.title}>{title}</Text>
         </View>
       ) : (
-        <Text style={[styles.title, styles.titleCentered]} numberOfLines={1}>{title}</Text>
+        <Text style={[styles.title, styles.titleCentered]}>{title}</Text>
       )}
 
       {actions ?? <View style={styles.spacer} />}
@@ -79,6 +79,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,

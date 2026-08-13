@@ -103,10 +103,10 @@ jest.mock('../utils/notifications', () => ({
 }));
 
 // Same reason: useTaskStore.ts reaches calendarSync.ts (real react-native
-// import) both directly (deleteDeadlineEvent) and via deadlineCalendarSync.ts
+// import) both directly (deleteCalendarEvent) and via deadlineCalendarSync.ts
 // (syncDeadlineEvent).
 jest.mock('../utils/calendarSync', () => ({
-  deleteDeadlineEvent: jest.fn().mockResolvedValue(undefined),
+  deleteCalendarEvent: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../utils/deadlineCalendarSync', () => ({
   syncDeadlineEvent: jest.fn().mockResolvedValue(null),

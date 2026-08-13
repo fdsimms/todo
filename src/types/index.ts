@@ -1575,6 +1575,26 @@ export interface MealPlanEntry {
    * about the recipe, which may well be a component of something else.
    */
   cookTask: boolean | null;
+  /**
+   * The device calendar event mirroring this meal, or null when there isn't
+   * one (#1494) — the household's shared answer to "what's for dinner
+   * Thursday", which a local task can't give.
+   *
+   * Same direction of authority as `Task.calendarEventId`, and the opposite
+   * of `cookTask` right above: **the entry is the master** — it owns the
+   * title, the day and the slot, reconciling rewrites exactly those on the
+   * device event, and nothing flows back. A cook task is a projection the
+   * user can talk back to (deleting it says "not this meal"); a calendar
+   * event isn't, because expo-calendar exposes no `EKEventStoreChanged`
+   * bridge, so an event moved or deleted on the device is invisible from
+   * here. Hence no tri-state opt-out to match `cookTask`'s: there is no
+   * gesture that would write one.
+   *
+   * Not in `MealPlanDraft` — nothing may create an entry pre-pointed at an
+   * event. Written only by `reconcileMealEvent` in useMealPlanStore, from
+   * whatever the device write returned.
+   */
+  calendarEventId: string | null;
 }
 
 /**

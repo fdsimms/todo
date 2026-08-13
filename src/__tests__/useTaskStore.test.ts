@@ -34,7 +34,7 @@ import {
   rescheduleAllReminders,
 } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
-import { deleteDeadlineEvent } from '../utils/calendarSync';
+import { deleteCalendarEvent } from '../utils/calendarSync';
 import type { Task, TaskGroup } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -153,7 +153,7 @@ jest.mock('../utils/deadlineCalendarSync', () => ({
 }));
 
 jest.mock('../utils/calendarSync', () => ({
-  deleteDeadlineEvent: jest.fn().mockResolvedValue(undefined),
+  deleteCalendarEvent: jest.fn().mockResolvedValue(undefined),
   // The #1492 half. Stubbed to "the user cancelled" / "no such event" by
   // default so nothing writes unless a test says so; the time-block block at
   // the bottom of this file drives them.
@@ -621,13 +621,13 @@ describe('deleteTask', () => {
   it('deletes the linked calendar event when the task has one', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', calendarEventId: 'evt-1' })] });
     useTaskStore.getState().deleteTask('t1');
-    expect(deleteDeadlineEvent).toHaveBeenCalledWith('evt-1');
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('evt-1');
   });
 
-  it('does not call deleteDeadlineEvent when the task has no linked event', () => {
+  it('does not call deleteCalendarEvent when the task has no linked event', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', calendarEventId: null })] });
     useTaskStore.getState().deleteTask('t1');
-    expect(deleteDeadlineEvent).not.toHaveBeenCalled();
+    expect(deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
   it('does not queue an undo action for a nonexistent task', () => {
@@ -6068,12 +6068,12 @@ describe('applyTaskDates', () => {
         t.id === rows[1].id ? { ...t, calendarEventId: 'evt-dropped' } : t
       ),
     });
-    (deleteDeadlineEvent as jest.Mock).mockClear();
+    (deleteCalendarEvent as jest.Mock).mockClear();
     useTaskStore.getState().applyTaskDates(rows[0].id, [
       new Date(2025, 8, 10, 12, 0, 0),
       new Date(2025, 8, 20, 12, 0, 0),
     ]);
-    expect(deleteDeadlineEvent).toHaveBeenCalledWith('evt-dropped');
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('evt-dropped');
   });
 
   it('never deletes a completed date — it is history, not schedule', () => {
