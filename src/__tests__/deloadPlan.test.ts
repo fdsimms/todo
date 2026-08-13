@@ -1,6 +1,7 @@
 import { addDays } from 'date-fns/addDays';
 import { buildDeloadPlan, deloadUpdates } from '../utils/deloadPlan';
 import type { Task } from '../types';
+import type { BusyEvent } from '../utils/calendarBusy';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
@@ -102,6 +103,23 @@ function makeTask(overrides: Partial<Task>): Task {
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+let busySeq = 0;
+function busyEvent(start: Date, end: Date, overrides: Partial<BusyEvent> = {}): BusyEvent {
+  busySeq += 1;
+  return {
+    id: `busy-${busySeq}`,
+    title: 'Meeting',
+    start: start.toISOString(),
+    end: end.toISOString(),
+    allDay: false,
+    calendarId: 'cal',
+    location: null,
+    status: 'confirmed',
+    availability: 'busy',
+    ...overrides,
+  };
 }
 
 const today = new Date();
@@ -438,6 +456,35 @@ describe('buildDeloadPlan', () => {
       expect(plan.proposals).toEqual([]);
       expect(plan.currentMinutes).toBe(0);
       expect(plan.projectedMinutes).toBe(0);
+    });
+  });
+
+  describe('calendar busy time', () => {
+    it('steers the suggested destination away from a meeting-packed day', () => {
+      const tomorrow = addDays(today, 1);
+      const dayAfter = addDays(today, 2);
+
+      const meetingStart = new Date(tomorrow);
+      meetingStart.setHours(9, 0, 0, 0);
+      const meetingEnd = new Date(tomorrow);
+      meetingEnd.setHours(17, 0, 0, 0);
+      const events = [busyEvent(meetingStart, meetingEnd)];
+
+      const task = makeTask({ id: 'a', estimatedMinutes: 30 });
+
+      const withoutCalendar = buildDeloadPlan([task], [task]);
+      expect(isoDate(withoutCalendar.proposals[0].suggested!.date)).toBe(isoDate(tomorrow));
+
+      const withCalendar = buildDeloadPlan([task], [task], undefined, events);
+      expect(isoDate(withCalendar.proposals[0].suggested!.date)).toBe(isoDate(dayAfter));
+    });
+
+    it('behaves exactly as before when no calendar data is passed', () => {
+      const task = makeTask({ id: 'a', estimatedMinutes: 30 });
+      const withoutParam = buildDeloadPlan([task], [task]);
+      const withEmpty = buildDeloadPlan([task], [task], undefined, []);
+      expect(isoDate(withoutParam.proposals[0].suggested!.date))
+        .toBe(isoDate(withEmpty.proposals[0].suggested!.date));
     });
   });
 });
