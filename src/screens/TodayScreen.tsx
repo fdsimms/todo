@@ -2115,9 +2115,20 @@ export function TodayScreen() {
               color={othersHidden ? colors.orange : colors.textTertiary}
             />
           </TouchableOpacity>
-          <TouchableOpacity onPress={clearAllPins} hitSlop={8} accessibilityRole="button">
-            <Text style={styles.clearText}>Clear</Text>
-          </TouchableOpacity>
+          {/* Gone during a bulk edit. It unpins every task in one tap, with no
+              confirm and no undo, and it sits a thumb's width from the rows
+              being tapped in a mode whose whole gesture is tapping rows — so
+              the one control here that ignores the selection is also the most
+              expensive thing to hit by accident. Unpinning has a home in that
+              mode already, and it's the right one: the bulk bar's Pin/Unpin,
+              which acts on what was picked. The eye stays, because hiding
+              everything but the pinned tasks is a way to *see* the rows you're
+              selecting among, and it's reversible by tapping it again. */}
+          {!selectionMode && (
+            <TouchableOpacity onPress={clearAllPins} hitSlop={8} accessibilityRole="button">
+              <Text style={styles.clearText}>Clear</Text>
+            </TouchableOpacity>
+          )}
         </View>
         <SpotlightScrim />
       </Pressable>
