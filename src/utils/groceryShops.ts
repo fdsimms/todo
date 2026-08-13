@@ -1,4 +1,5 @@
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
+import { groceryNameKey } from './groceryParse';
 
 /**
  * Which stores have which items — the read side of the purchase links.
@@ -45,6 +46,48 @@ export function isAsserted(link: ItemShopLink): boolean {
   return link.purchaseCount === 0 && !isUnavailable(link);
 }
 
+/**
+ * The second negative, and the one this feature exists for: the user has said
+ * this store hasn't got the brand they want. The store stocks the item — that's
+ * what makes this a different claim from `isUnavailable` — it just hasn't got
+ * yours.
+ *
+ * **Only an asserted claim counts, never an observed brand.** `ItemShopLink`
+ * also records the brand you last got at a store, and it is tempting to read a
+ * mismatch there as this: you got Lucerne at Safeway, so Safeway must not have
+ * Good Culture. It mustn't, and the reason is simply that **a store carries
+ * more than one brand of a thing**. Safeway stocking Lucerne is not evidence
+ * about whether it also stocks Good Culture; it is evidence about one purchase.
+ * Inferring the absence would drop stores that have exactly what you want, and
+ * it is the same unfalsifiable move shoppingTrip.ts deleted `likelyItemIds` to
+ * be rid of — an absence read off something that was never evidence of one.
+ *
+ * So this reads the stamped claim and nothing else. Unknown stays unknown, and
+ * unknown always counts.
+ *
+ * Read only while the item is strict: a brand nobody made a rule of is a
+ * preference, and a preference is not a reason to drop a store.
+ */
+export function lacksWantedBrand(link: ItemShopLink, item: GroceryItem): boolean {
+  return item.brandStrict && !!item.brand && link.brandUnavailableAt !== null;
+}
+
+/**
+ * The one gate every "where can I get this" read runs each link through.
+ *
+ * Two ways a store can fail it, and they're different claims: the user said the
+ * store doesn't stock the item at all (`unavailableAt`), or that it hasn't got
+ * the brand they want (`brandUnavailableAt`). Both mean "not a place to get
+ * this"; only the first means "they haven't got it".
+ *
+ * Kept as one predicate rather than two filters at each call site because there
+ * are seven such reads and a new one is exactly the kind of thing that ships
+ * having remembered the first rule and forgotten the second.
+ */
+export function countsForItem(link: ItemShopLink, item: GroceryItem): boolean {
+  return !isUnavailable(link) && !lacksWantedBrand(link, item);
+}
+
 function byPurchasesThenRecency(a: ItemShopLink, b: ItemShopLink): number {
   if (b.purchaseCount !== a.purchaseCount) return b.purchaseCount - a.purchaseCount;
   const at = a.lastPurchasedAt ? Date.parse(a.lastPurchasedAt) : 0;
@@ -66,7 +109,12 @@ export interface ShopWithCount {
  * purchase history — this is the "where can I get this" read, and the whole
  * point of the negative claim is that the answer is "not here any more".
  * `unavailableShopsFor` is the other half, for the one caller that shows and
- * undoes those claims.
+ * undoes those claims. **Nor is a store the user has said hasn't got their
+ * brand**, when the item insists on one — `withoutBrandShopsFor` is that half,
+ * and `countsForItem` is the gate both go through.
+ *
+ * Takes the whole item rather than an id because the brand rule is a fact about
+ * the item, not about the link — the id alone can't answer it.
  *
  * A link naming a store that no longer exists is dropped rather than rendered
  * as a blank chip. That shouldn't happen — dbDeleteGroceryShop cascades — but
@@ -75,13 +123,13 @@ export interface ShopWithCount {
  * difference between a stale row and a crash.
  */
 export function shopsForItem(
-  itemId: string,
+  item: GroceryItem,
   links: readonly ItemShopLink[],
   shops: readonly Shop[]
 ): ShopWithCount[] {
   const byId = new Map(shops.map(s => [s.id, s]));
   return links
-    .filter(l => l.itemId === itemId && byId.has(l.shopId) && !isUnavailable(l))
+    .filter(l => l.itemId === item.id && byId.has(l.shopId) && countsForItem(l, item))
     .sort(byPurchasesThenRecency)
     .map(l => ({
       shop: byId.get(l.shopId)!,
@@ -111,6 +159,29 @@ export function unavailableShopsFor(
 }
 
 /**
+ * The stores the user has said haven't got their brand — the parallel of
+ * `unavailableShopsFor`, and for the same reason: the default read must not
+ * have to remember to filter, and the one surface that shows and undoes these
+ * claims is asking a different question.
+ *
+ * In the store list's own order, like `unavailableShopsFor`: there is nothing
+ * to rank claims by, and one isn't stronger for being older.
+ *
+ * Empty whenever the item isn't strict, so a caller can render it unguarded:
+ * with the switch off there are no claims in force, only a preference.
+ */
+export function withoutBrandShopsFor(
+  item: GroceryItem,
+  links: readonly ItemShopLink[],
+  shops: readonly Shop[]
+): Shop[] {
+  const marked = new Set(
+    links.filter(l => l.itemId === item.id && lacksWantedBrand(l, item)).map(l => l.shopId)
+  );
+  return shops.filter(s => marked.has(s.id));
+}
+
+/**
  * Where you usually get this, or null.
  *
  * Only an *observed* link qualifies: "usually Costco" off the back of a
@@ -125,11 +196,11 @@ export function unavailableShopsFor(
  * still lists it.
  */
 export function primaryShopFor(
-  itemId: string,
+  item: GroceryItem,
   links: readonly ItemShopLink[],
   shops: readonly Shop[]
 ): Shop | null {
-  const ranked = shopsForItem(itemId, links, shops)
+  const ranked = shopsForItem(item, links, shops)
     .filter(s => s.purchaseCount > 0 && !s.shop.excludeFromSuggestions);
   return ranked.length > 0 ? ranked[0].shop : null;
 }
@@ -144,11 +215,11 @@ export function primaryShopFor(
  * only linked to Amazon reads as tied to none, not "exclusively Amazon".
  */
 export function exclusiveShopFor(
-  itemId: string,
+  item: GroceryItem,
   links: readonly ItemShopLink[],
   shops: readonly Shop[]
 ): Shop | null {
-  const all = shopsForItem(itemId, links, shops).filter(s => !s.shop.excludeFromSuggestions);
+  const all = shopsForItem(item, links, shops).filter(s => !s.shop.excludeFromSuggestions);
   return all.length === 1 ? all[0].shop : null;
 }
 
@@ -157,10 +228,21 @@ export function exclusiveShopFor(
  * negative link isn't one: "what does Costco carry" must not answer with the
  * thing you noted Costco doesn't.
  */
-export function itemIdsForShop(shopId: string, links: readonly ItemShopLink[]): Set<string> {
+export function itemIdsForShop(
+  shopId: string,
+  links: readonly ItemShopLink[],
+  items: readonly GroceryItem[]
+): Set<string> {
+  const byId = new Map(items.map(i => [i.id, i]));
   const out = new Set<string>();
   for (const link of links) {
-    if (link.shopId === shopId && !isUnavailable(link)) out.add(link.itemId);
+    if (link.shopId !== shopId) continue;
+    const item = byId.get(link.itemId);
+    // Resolve-or-shrug on a link whose item is gone, same as shopsForItem does
+    // for a missing shop — and it can't be brand-judged without the item
+    // anyway.
+    if (!item || !countsForItem(link, item)) continue;
+    out.add(link.itemId);
   }
   return out;
 }
@@ -175,10 +257,11 @@ export function itemCountsByShop(
   items: readonly GroceryItem[],
   links: readonly ItemShopLink[]
 ): Map<string, number> {
-  const live = new Set(items.map(i => i.id));
+  const byId = new Map(items.map(i => [i.id, i]));
   const counts = new Map<string, number>();
   for (const link of links) {
-    if (!live.has(link.itemId) || isUnavailable(link)) continue;
+    const item = byId.get(link.itemId);
+    if (!item || !countsForItem(link, item)) continue;
     counts.set(link.shopId, (counts.get(link.shopId) ?? 0) + 1);
   }
   return counts;
@@ -204,21 +287,34 @@ export function describeShops(
   // read as qualifying the count in front of them. An item bought 7 times that
   // Safeway has stopped stocking is both of those things at once.
   const notAt = unavailableShopsFor(item.id, links, shops);
-  const withNotAt = (head: string | null): string | null => {
-    if (notAt.length === 0) return head;
-    const names = notAt.map(s => s.name).join(', ');
-    return head ? `${head} · not at ${names}` : `Not at ${names}`;
+  // The brand-level negatives ride as their own trailing clause, after the
+  // not-stocked one and worded differently on purpose: "not at Safeway" and
+  // "no Good Culture at Safeway" are different facts, and collapsing them would
+  // tell the user a shop had nothing when it had the item and not their brand.
+  const withoutBrand = withoutBrandShopsFor(item, links, shops);
+  const withClauses = (head: string | null): string | null => {
+    let out = head;
+    if (notAt.length > 0) {
+      const names = notAt.map(s => s.name).join(', ');
+      out = out ? `${out} · not at ${names}` : `Not at ${names}`;
+    }
+    if (withoutBrand.length > 0) {
+      const names = withoutBrand.map(s => s.name).join(', ');
+      const clause = `no ${item.brand} at ${names}`;
+      out = out ? `${out} · ${clause}` : `No ${item.brand} at ${names}`;
+    }
+    return out;
   };
 
-  const ranked = shopsForItem(item.id, links, shops);
-  if (ranked.length === 0) return withNotAt(bought);
+  const ranked = shopsForItem(item, links, shops);
+  if (ranked.length === 0) return withClauses(bought);
 
   const observed = ranked.filter(s => s.purchaseCount > 0);
   if (observed.length === 0) {
     // Every link here is a hand-assertion, so say so rather than dressing it
     // up as history the app collected.
     const names = ranked.map(s => s.shop.name).join(', ');
-    return withNotAt(bought ? `${bought} · you get it at ${names}` : `You get it at ${names}`);
+    return withClauses(bought ? `${bought} · you get it at ${names}` : `You get it at ${names}`);
   }
 
   // "only at" needs *every* positive link to be that one store, not just every
@@ -229,5 +325,5 @@ export function describeShops(
   const where = ranked.length === 1
     ? `only at ${observed[0].shop.name}`
     : `usually ${observed[0].shop.name}`;
-  return withNotAt(bought ? `${bought} · ${where}` : where);
+  return withClauses(bought ? `${bought} · ${where}` : where);
 }

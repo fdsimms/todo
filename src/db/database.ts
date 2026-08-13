@@ -655,6 +655,21 @@ export function initDatabase(): void {
     // them, and a backfilled row is the only thing that ever needed to be read.
     'ALTER TABLE tasks ADD COLUMN generated_kind TEXT',
     'ALTER TABLE tasks ADD COLUMN generated_source_id TEXT',
+    // NULL on every row that predates this and on most rows after it — "no
+    // opinion about which one" is the honest default, and nothing backfills a
+    // brand out of a name (see GroceryItem.brand for why that parse is unsafe).
+    // Deliberately not part of name_key, so no key is stranded by this landing.
+    'ALTER TABLE grocery_items ADD COLUMN brand TEXT',
+    // 0 for every existing row: a brand recorded before this column existed is
+    // a preference, not a filter over stores. See GroceryItem.brandStrict.
+    'ALTER TABLE grocery_items ADD COLUMN brand_strict INTEGER NOT NULL DEFAULT 0',
+    // NULL on every link that predates this — "which one this store had" was
+    // never asked, and NULL reads as unknown rather than as a conflict, so no
+    // existing store loses its coverage. See ItemShopLink.brand.
+    'ALTER TABLE grocery_item_shops ADD COLUMN brand TEXT',
+    // The brand-level negative, and the only thing a brand rule filters on.
+    // NULL is unknown and always counts. See ItemShopLink.brandUnavailableAt.
+    'ALTER TABLE grocery_item_shops ADD COLUMN brand_unavailable_at TEXT',
     // The change-tracking column every synced table carries. Generated from
     // SYNC_TRACKED_TABLES rather than written out thirteen times, so a table
     // added to that list can't be left without one. See db/syncTracking.ts.
@@ -1673,6 +1688,8 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     id: row.id as string,
     name: row.name as string,
     nameKey: row.name_key as string,
+    brand: (row.brand as string) ?? null,
+    brandStrict: Boolean(row.brand_strict),
     aisle: (row.aisle as string) ?? 'Other',
     quantity: (row.quantity as string) ?? null,
     note: (row.note as string) ?? '',
@@ -1716,8 +1733,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, use_up_task,
-       last_price_minor, last_priced_at, last_price_quantity)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       last_price_minor, last_priced_at, last_price_quantity, brand, brand_strict)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -1729,6 +1746,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.expiresAt ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
+      item.brand ?? null, item.brandStrict ? 1 : 0,
     ]
   );
 }
@@ -1740,7 +1758,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
        expires_at=?, use_up_task=?,
-       last_price_minor=?, last_priced_at=?, last_price_quantity=?
+       last_price_minor=?, last_priced_at=?, last_price_quantity=?, brand=?, brand_strict=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
@@ -1753,6 +1771,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.expiresAt ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
+      item.brand ?? null, item.brandStrict ? 1 : 0,
       item.id,
     ]
   );
@@ -1798,8 +1817,16 @@ export function dbFinishGroceryShopping(
   // alongside what it bought (see GroceryItem.lastPriceQuantity), and the
   // trolley's quantities are still on the rows at this point — the bulk UPDATE
   // below doesn't touch that column.
-  const rows = db.getAllSync<{ id: string; quantity: string | null }>(
-    'SELECT id, quantity FROM grocery_items WHERE checked = 1 AND on_list = 1'
+  // brand/brand_strict come back for the same reason quantity does: the link
+  // written below can only record which one this store had if it knows what the
+  // row was asking for. See ItemShopLink.brand.
+  const rows = db.getAllSync<{
+    id: string;
+    quantity: string | null;
+    brand: string | null;
+    brand_strict: number | null;
+  }>(
+    'SELECT id, quantity, brand, brand_strict FROM grocery_items WHERE checked = 1 AND on_list = 1'
   );
   if (rows.length === 0) return [];
   db.runSync(
@@ -1846,9 +1873,25 @@ export function dbFinishGroceryShopping(
          ON CONFLICT(item_id, shop_id)
          DO UPDATE SET purchase_count = purchase_count + 1,
                        last_purchased_at = excluded.last_purchased_at,
-                       unavailable_at = NULL`,
+                       unavailable_at = NULL,
+                       brand_unavailable_at = NULL`,
         [row.id, shopId, purchasedAt]
       );
+      // Which one they had, and only when the row insisted on one. A strict
+      // item is a row the user would not have substituted, so a purchase here
+      // is real evidence this store carries their brand; on a row with no rule
+      // the same purchase says nothing about which one came home, so nothing is
+      // written and the link's brand stays whatever it was. Mirrored in
+      // useGroceryStore.finishShopping's in-memory patch.
+      //
+      // Its own statement for the same reason the price below is: "leave the
+      // old value alone" and "write this one" can't share an upsert column.
+      if (row.brand_strict && row.brand) {
+        db.runSync(
+          'UPDATE grocery_item_shops SET brand = ? WHERE item_id = ? AND shop_id = ?',
+          [row.brand, row.id, shopId]
+        );
+      }
       // A second statement rather than more columns on the upsert above,
       // because "leave the old price alone" and "write this one" can't share a
       // COALESCE: an item with no quantity would pair its new price with the
@@ -2017,6 +2060,8 @@ function rowToItemShopLink(row: Record<string, unknown>): ItemShopLink {
     lastPriceMinor: (row.last_price_minor as number) ?? null,
     lastPricedAt: (row.last_priced_at as string) ?? null,
     lastPriceQuantity: (row.last_price_quantity as string) ?? null,
+    brand: (row.brand as string) ?? null,
+    brandUnavailableAt: (row.brand_unavailable_at as string) ?? null,
   };
 }
 
@@ -2036,15 +2081,17 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
   db.runSync(
     `INSERT INTO grocery_item_shops
        (item_id, shop_id, purchase_count, last_purchased_at, unavailable_at,
-        last_price_minor, last_priced_at, last_price_quantity)
-     VALUES (?,?,?,?,?,?,?,?)
+        last_price_minor, last_priced_at, last_price_quantity, brand, brand_unavailable_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(item_id, shop_id)
      DO UPDATE SET purchase_count = excluded.purchase_count,
                    last_purchased_at = excluded.last_purchased_at,
                    unavailable_at = excluded.unavailable_at,
                    last_price_minor = excluded.last_price_minor,
                    last_priced_at = excluded.last_priced_at,
-                   last_price_quantity = excluded.last_price_quantity`,
+                   last_price_quantity = excluded.last_price_quantity,
+                   brand = excluded.brand,
+                   brand_unavailable_at = excluded.brand_unavailable_at`,
     [
       link.itemId,
       link.shopId,
@@ -2054,6 +2101,8 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
       link.lastPriceMinor ?? null,
       link.lastPricedAt ?? null,
       link.lastPriceQuantity ?? null,
+      link.brand ?? null,
+      link.brandUnavailableAt ?? null,
     ]
   );
 }
