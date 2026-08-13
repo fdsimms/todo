@@ -646,6 +646,11 @@ export function initDatabase(): void {
     // them, and a backfilled row is the only thing that ever needed to be read.
     'ALTER TABLE tasks ADD COLUMN generated_kind TEXT',
     'ALTER TABLE tasks ADD COLUMN generated_source_id TEXT',
+    // NULL on every row that predates this and on most rows after it — "no
+    // opinion about which one" is the honest default, and nothing backfills a
+    // brand out of a name (see GroceryItem.brand for why that parse is unsafe).
+    // Deliberately not part of name_key, so no key is stranded by this landing.
+    'ALTER TABLE grocery_items ADD COLUMN brand TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1524,6 +1529,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     id: row.id as string,
     name: row.name as string,
     nameKey: row.name_key as string,
+    brand: (row.brand as string) ?? null,
     aisle: (row.aisle as string) ?? 'Other',
     quantity: (row.quantity as string) ?? null,
     note: (row.note as string) ?? '',
@@ -1567,8 +1573,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, use_up_task,
-       last_price_minor, last_priced_at, last_price_quantity)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       last_price_minor, last_priced_at, last_price_quantity, brand)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -1580,6 +1586,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.expiresAt ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
+      item.brand ?? null,
     ]
   );
 }
@@ -1591,7 +1598,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
        expires_at=?, use_up_task=?,
-       last_price_minor=?, last_priced_at=?, last_price_quantity=?
+       last_price_minor=?, last_priced_at=?, last_price_quantity=?, brand=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
@@ -1604,6 +1611,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.expiresAt ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
+      item.brand ?? null,
       item.id,
     ]
   );

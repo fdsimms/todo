@@ -28,6 +28,7 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     id: `item-${groceryNameKey(name).replace(/\s/g, '-')}`,
     name,
     nameKey: groceryNameKey(name),
+    brand: null,
     aisle: OTHER_AISLE,
     quantity: null,
     note: '',

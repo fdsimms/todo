@@ -476,6 +476,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(onList.some(i => i.checked)).toBe(true);
     expect(items.some(i => i.quantity)).toBe(true);
     expect(items.some(i => i.note)).toBe(true);
+    // A brand preference — invisible until a row carries one, so without a
+    // seeded instance the feature reads as one the app doesn't have. It has to
+    // sit beside the name rather than in it: the row is still plain "cottage
+    // cheese" to a recipe and to its own purchase history.
+    const branded = items.find(i => i.brand);
+    expect(branded).toBeDefined();
+    expect(branded!.nameKey).not.toContain(branded!.brand!.toLowerCase());
     // Spread purchase counts, not a flat list of ones — the ranking signal.
     expect(Math.max(...items.map(i => i.purchaseCount))).toBeGreaterThan(1);
     // Attributed to the recipe that put it there.

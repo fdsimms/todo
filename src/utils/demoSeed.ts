@@ -817,6 +817,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     clearList,
     setQuantity,
     setNote,
+    setBrand,
     setAisle,
     setAisleOrder,
     setOnHandUntil,
@@ -837,7 +838,7 @@ function seedGroceries(recipes: DemoRecipes): void {
 
   const CATALOG = [
     // Dairy & Eggs
-    'Milk', 'Eggs', 'Greek yogurt', 'Butter', 'Cheddar',
+    'Milk', 'Eggs', 'Greek yogurt', 'Butter', 'Cheddar', 'Cottage cheese',
     // Produce
     'Spinach', 'Bananas', 'Tomatoes', 'Onions', 'Garlic', 'Lemons',
     // Meat & Seafood
@@ -865,6 +866,12 @@ function seedGroceries(recipes: DemoRecipes): void {
   setQuantity(itemNamed('Rice').id, '5 lb');
   setNote(itemNamed('Black beans').id, 'The low-sodium ones');
   setNote(itemNamed('Bread').id, 'Seeded, from the back shelf');
+  // The brand is a clause beside the name, so this row is still plain "cottage
+  // cheese" to a recipe that calls for it and to its own purchase history —
+  // the caption only says which one to pick up. Seeded on a row that also
+  // carries no note, so the list shows the brand caption on its own rather
+  // than stacked under one.
+  setBrand(itemNamed('Cottage cheese').id, 'Good Culture');
 
   const traderJoes = newShop("Trader Joe's");
   const costco = newShop('Costco');

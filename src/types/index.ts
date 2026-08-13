@@ -796,6 +796,28 @@ export interface GroceryItem {
   // Normalised identity, from groceryNameKey(). UNIQUE in SQLite, which is
   // where the no-duplicates guarantee actually lives.
   nameKey: string;
+  // Which one to reach for — "Good Culture", "Oatly". A clause *beside* the
+  // name and deliberately never part of it, exactly like RecipeIngredient's
+  // `prep` and `purpose`: nameKey is the bridge to recipes, Buy again, the
+  // pantry and the aisle lexicon, so folding a brand into the name mints a
+  // second catalog row that can never match "cottage cheese" the ingredient,
+  // and splits one item's purchase history, pantry state and expiry in two.
+  //
+  // **Nothing parses this out of typed text, and that's the decision, not a
+  // gap.** `prep` and `purpose` are split off marked-up clauses — a comma, a
+  // trailing "for X" — while a brand has no marker at all, so telling "Good
+  // Culture cottage cheese" from "sliced almonds" means knowing what the
+  // words mean. That's the guess splitPrep already refuses to make. It's set
+  // by hand on GroceryItemSheet, and null (the common case) means the user
+  // has no opinion about which one.
+  //
+  // Display-only for now: it says what to grab, not where to get it. It
+  // deliberately does **not** feed shopsForItem/planTrip — a store that has
+  // sold you cottage cheese is still credited with cottage cheese, because
+  // the app has no evidence about *which* one it stocked. Making availability
+  // answer at brand granularity needs per-store brand evidence on
+  // ItemShopLink, which is its own change (#1107).
+  brand: string | null;
   // Never null, unlike Task.category: an unrecognised item is *in* the Other
   // aisle rather than aisle-less, which keeps the null branch out of every
   // grouping and sorting path.
@@ -956,6 +978,9 @@ export const GROCERY_EXPIRY_DAYS_MAX = 365;
 // title, and a long one wrecks the row layout at the bigger grocery font size.
 export const GROCERY_NAME_MAX_LENGTH = 80;
 export const GROCERY_QUANTITY_MAX_LENGTH = 24;
+// Shorter than a name on purpose: this is a brand, not a second name for the
+// thing. Matches SHOP_NAME_MAX_LENGTH, which is the same kind of proper noun.
+export const GROCERY_BRAND_MAX_LENGTH = 40;
 
 // A place you shop. "Store" everywhere the user can read; `Shop` in code,
 // because `store` is already Zustand's word here (useGroceryStore,

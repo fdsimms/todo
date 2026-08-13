@@ -48,6 +48,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { CountStepper } from './CountStepper';
 import {
   GROCERY_EXPIRY_DAYS_MAX,
+  GROCERY_BRAND_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
 } from '../types';
@@ -111,6 +112,7 @@ export function GroceryItemSheet({
   const renameItem = useGroceryStore(s => s.renameItem);
   const setQuantity = useGroceryStore(s => s.setQuantity);
   const setNote = useGroceryStore(s => s.setNote);
+  const setBrand = useGroceryStore(s => s.setBrand);
   const setAisle = useGroceryStore(s => s.setAisle);
   const addAisle = useGroceryStore(s => s.addAisle);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
@@ -133,6 +135,7 @@ export function GroceryItemSheet({
 
   const [name, setName] = useState('');
   const [quantity, setQuantityText] = useState('');
+  const [brand, setBrandText] = useState('');
   const [note, setNoteText] = useState('');
   // Which price the field is editing: null is the item's own ("any store"),
   // else the store's id. The stores are the item's linked ones — see
@@ -153,6 +156,7 @@ export function GroceryItemSheet({
     if (visible && item) {
       setName(item.name);
       setQuantityText(item.quantity ?? '');
+      setBrandText(item.brand ?? '');
       setNoteText(item.note);
       setPriceTarget(null);
       setPriceEdits({});
@@ -187,6 +191,7 @@ export function GroceryItemSheet({
       }
     }
     setQuantity(item.id, quantity);
+    setBrand(item.id, brand);
     setNote(item.id, note);
     // After setQuantity, so a price being *changed* here is paired with the
     // quantity being saved alongside it. A price left alone keeps the quantity
@@ -602,6 +607,29 @@ export function GroceryItemSheet({
               />
             </View>
           )}
+
+          {/* Directly under the name, because it qualifies the name — this is
+              the half of "what am I buying" that deliberately stays out of it
+              so the name keeps matching recipes and purchase history. Left
+              empty it clears back to no preference. */}
+          <Text style={styles.label}>BRAND</Text>
+          <TextInput
+            style={styles.input}
+            value={brand}
+            onChangeText={setBrandText}
+            placeholder="Any brand"
+            placeholderTextColor={colors.textTertiary}
+            autoCorrect={false}
+            maxLength={GROCERY_BRAND_MAX_LENGTH}
+            accessibilityLabel="Brand"
+          />
+          {/* The one thing a person will reasonably expect this to do and it
+              doesn't — said plainly rather than left to be discovered at a
+              shelf. See GroceryItem.brand. */}
+          <Text style={styles.hint}>
+            Shown on the list so you know which one to get. Stores aren't
+            tracked per brand, so this doesn't change which shops are suggested.
+          </Text>
 
           <Text style={styles.label}>QUANTITY</Text>
           <TextInput

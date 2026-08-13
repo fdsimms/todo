@@ -1571,6 +1571,7 @@ describe('backup and restore', () => {
 function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: string }): GroceryItem {
   return {
     nameKey: overrides.name.toLowerCase(),
+    brand: null,
     aisle: 'Other',
     quantity: null,
     note: '',
@@ -1616,10 +1617,49 @@ describe('grocery items', () => {
       isStaple: true,
       expiresAt: '2026-08-17',
       useUpTask: true,
+      brand: 'Good Culture',
     });
     dbInsertGroceryItem(item);
 
     expect(dbGetAllGroceryItems()).toEqual([item]);
+  });
+
+  // The brand is a clause beside the name, never part of it — so a branded row
+  // keeps the same name_key an unbranded one would have, and stays the row a
+  // recipe calling for "cottage cheese" matches. See GroceryItem.brand.
+  it('stores a brand without disturbing the name key', () => {
+    const item = makeGroceryItem({
+      id: 'g1',
+      name: 'Cottage cheese',
+      nameKey: 'cottage cheese',
+      brand: 'Good Culture',
+    });
+    dbInsertGroceryItem(item);
+
+    const [read] = dbGetAllGroceryItems();
+    expect(read.brand).toBe('Good Culture');
+    expect(read.nameKey).toBe('cottage cheese');
+  });
+
+  it('updates a brand in place, and clears it back to null', () => {
+    const item = makeGroceryItem({ id: 'g1', name: 'Cottage cheese', brand: 'Good Culture' });
+    dbInsertGroceryItem(item);
+
+    dbUpdateGroceryItem({ ...item, brand: "Nancy's" });
+    expect(dbGetAllGroceryItems()[0].brand).toBe("Nancy's");
+
+    dbUpdateGroceryItem({ ...item, brand: null });
+    expect(dbGetAllGroceryItems()[0].brand).toBeNull();
+  });
+
+  // Every row that predates the column has no opinion about which one to buy,
+  // and nothing backfills one out of the name.
+  it('reads a row written without brand as having none', () => {
+    mockRawDb
+      .prepare('INSERT INTO grocery_items (id, name, name_key, created_at) VALUES (?,?,?,?)')
+      .run('g1', 'Milk', 'milk', '2026-01-01T00:00:00.000Z');
+
+    expect(dbGetAllGroceryItems()[0].brand).toBeNull();
   });
 
   // The tri-state, which a plain INTEGER NOT NULL DEFAULT 0 would have

@@ -207,6 +207,12 @@ interface GroceryStore {
   renameItem: (id: string, name: string) => boolean;
   setNote: (id: string, note: string) => void;
   /**
+   * Which one to reach for — "Good Culture". A dumb setter like setNote: the
+   * empty string clears it back to "no opinion" rather than storing a blank,
+   * so the field and the pill state can't disagree about what null means.
+   */
+  setBrand: (id: string, brand: string) => void;
+  /**
    * The pantry override — "Got it" / "Out of it" on GroceryItemSheet. A dumb
    * setter, same as setQuantity/setNote: the caller decides the value
    * (defaultOnHandUntil for "Got it", a past timestamp for "Out of it", or
@@ -456,6 +462,11 @@ function newItemRow(fields: {
     id: generateId(),
     name: fields.name,
     nameKey: fields.nameKey,
+    // Never seeded from a typed line — nothing parses a brand out of text (see
+    // GroceryItem.brand). A fresh row has no opinion until the user sets one,
+    // and addByName's `existing` branch carries an established brand through on
+    // every later re-add because it spreads the row it found.
+    brand: null,
     aisle: fields.aisle,
     quantity: fields.quantity ?? null,
     note: fields.note ?? '',
@@ -1004,6 +1015,32 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const item = get().items.find(i => i.id === id);
     if (!item) return;
     const updated = { ...item, note: note.trim() };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setBrand(id, brand) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    // Trimmed to null rather than '', unlike note above: note is a string
+    // whose empty value is "nothing written", while brand is nullable and
+    // every reader tests it for null. Storing '' would render an empty
+    // caption line and read as a brand nobody can see.
+    const next = brand.trim() || null;
+    // Promotes a provisional row, the same way linkItemShop and addToPantry do
+    // and for the same reason: which one you want is a standing fact about the
+    // item, not about this week's list. Without it the next "Remove from list"
+    // deletes the row outright and silently takes the preference with it —
+    // which is precisely the retyping this field exists to stop.
+    //
+    // Only on setting one. Clearing a brand is not a reason to promote a row
+    // that was never in the catalog, and demoting one that already is would
+    // throw away purchase history over an edit to a caption.
+    const updated = {
+      ...item,
+      brand: next,
+      inCatalog: next !== null ? true : item.inCatalog,
+    };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },

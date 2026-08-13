@@ -124,6 +124,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
   return {
     id: `id-${++seq}`,
     nameKey: groceryNameKey(name),
+    brand: null,
     aisle: OTHER_AISLE,
     quantity: null,
     note: '',
@@ -262,6 +263,26 @@ describe('addByName', () => {
     // not an instruction to blank what's already on the row.
     const again = useGroceryStore.getState().addByName('limes');
     expect(again.note).toBe('for margs');
+  });
+
+  // The whole point of keeping the brand out of the name: re-adding the item —
+  // by hand, from Buy again, or from a recipe that calls for the plain
+  // ingredient — must not lose which one the user actually wants.
+  it('keeps an established brand across a re-add', () => {
+    const item = useGroceryStore.getState().addByName('cottage cheese');
+    useGroceryStore.getState().setBrand(item.id, 'Good Culture');
+    useGroceryStore.getState().removeFromList(item.id);
+
+    const again = useGroceryStore.getState().addByName('cottage cheese');
+    expect(again.id).toBe(item.id);
+    expect(again.brand).toBe('Good Culture');
+  });
+
+  it('gives a genuinely new row no brand', () => {
+    // Nothing parses one out of typed text — "Good Culture cottage cheese"
+    // typed into the add field is a name, not a name plus a brand.
+    expect(useGroceryStore.getState().addByName('cottage cheese').brand).toBeNull();
+    expect(useGroceryStore.getState().addByName('Good Culture cottage cheese').brand).toBeNull();
   });
 
   it('inserts a genuinely new item, filed by the lexicon', () => {
@@ -1981,6 +2002,71 @@ describe('renameItem keeps recipe ingredients in step', () => {
     useGroceryStore.getState().renameItem(item.id, 'Sourdough loaf');
 
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('setBrand', () => {
+  it('writes the brand and persists it, leaving the name key alone', () => {
+    const cc = makeItem({ name: 'Cottage cheese' });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrand(cc.id, 'Good Culture');
+
+    const [saved] = useGroceryStore.getState().items;
+    expect(saved.brand).toBe('Good Culture');
+    expect(saved.nameKey).toBe(cc.nameKey);
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: cc.id, brand: 'Good Culture' })
+    );
+  });
+
+  // An emptied field is how the preference is taken back, and it has to land as
+  // null: '' would render a blank caption line on the row and read to every
+  // `!!item.brand` check as no brand anyway — two spellings of one state.
+  it('clears an emptied or blank field back to null', () => {
+    const cc = makeItem({ name: 'Cottage cheese', brand: 'Good Culture' });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrand(cc.id, '   ');
+
+    expect(useGroceryStore.getState().items[0].brand).toBeNull();
+  });
+
+  it('trims what the user typed', () => {
+    const cc = makeItem({ name: 'Cottage cheese' });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrand(cc.id, '  Good Culture ');
+
+    expect(useGroceryStore.getState().items[0].brand).toBe('Good Culture');
+  });
+
+  it('shrugs off an id that no longer resolves', () => {
+    seed([makeItem({ name: 'Milk' })]);
+
+    expect(() => useGroceryStore.getState().setBrand('gone', 'Oatly')).not.toThrow();
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
+  // Same promotion linkItemShop and addToPantry perform: a preference has to
+  // outlive the list it was set from, and a provisional row is deleted when it
+  // leaves the list rather than parked.
+  it('promotes a provisional row so the preference survives leaving the list', () => {
+    const cc = makeItem({ name: 'Cottage cheese', onList: true, inCatalog: false });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrand(cc.id, 'Good Culture');
+
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+  });
+
+  it('does not promote a provisional row when the brand is being cleared', () => {
+    const cc = makeItem({ name: 'Cottage cheese', onList: true, inCatalog: false });
+    seed([cc]);
+
+    useGroceryStore.getState().setBrand(cc.id, '');
+
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(false);
   });
 });
 

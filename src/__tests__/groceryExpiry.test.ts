@@ -19,6 +19,7 @@ function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
     id: `item-${++seq}`,
     name: 'Spinach',
     nameKey: 'spinach',
+    brand: null,
     aisle: 'Produce',
     quantity: null,
     note: '',

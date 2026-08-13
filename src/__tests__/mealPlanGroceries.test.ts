@@ -100,6 +100,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   return {
     id: `gi-${++seq}`,
     nameKey: groceryNameKey(overrides.name),
+    brand: null,
     aisle: 'Other',
     quantity: null,
     note: '',
