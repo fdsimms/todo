@@ -811,6 +811,41 @@ describe('duplicateTask', () => {
 
 // ─── completeTask ─────────────────────────────────────────────────────────────
 
+describe('completeTask spawns a stable successor id', () => {
+  it('gives the same successor id when the same completion is redone', () => {
+    // Stands in for the two-device case, which is the same thing in space
+    // rather than in time: the id must come from the completion, not from a
+    // random draw, or completing on the phone and the Mac while apart makes
+    // two successors where there should be one.
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', recurrenceType: 'daily' })] });
+
+    useTaskStore.getState().completeTask('t1');
+    const first = useTaskStore.getState().tasks.find(t => t.previousOccurrenceId === 't1');
+    expect(first).toBeDefined();
+
+    useTaskStore.getState().uncompleteTask('t1');
+    useTaskStore.getState().completeTask('t1');
+    const second = useTaskStore.getState().tasks.find(t => t.previousOccurrenceId === 't1');
+
+    expect(second?.id).toBe(first?.id);
+  });
+
+  it('gives different successor ids to different tasks', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', recurrenceType: 'daily' }),
+        makeTask({ id: 't2', recurrenceType: 'daily' }),
+      ],
+    });
+
+    useTaskStore.getState().completeTask('t1');
+    useTaskStore.getState().completeTask('t2');
+
+    const spawned = useTaskStore.getState().tasks.filter(t => t.previousOccurrenceId !== null);
+    expect(new Set(spawned.map(t => t.id)).size).toBe(spawned.length);
+  });
+});
+
 describe('completeTask', () => {
   beforeEach(() => {
     jest.useFakeTimers();

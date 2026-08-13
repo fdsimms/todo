@@ -13,11 +13,24 @@ import {
   SYNC_DELETIONS_TABLE,
   SYNC_TRACKED_TABLES,
   TOMBSTONE_RETENTION_DAYS,
+  KEY_SEPARATOR,
   NOW_EXPR,
   backfillStatements,
   installStatements,
   updatedAtMigrations,
+  type SyncTable,
 } from './syncTracking';
+import {
+  emptyApplyReport,
+  remoteDeletionWins,
+  remoteRowWins,
+  type ApplyReport,
+  type SyncChangeSet,
+  type SyncDeletion,
+  type SyncPayload,
+} from '../utils/syncMerge';
+
+export type { SyncChangeSet, SyncDeletion } from '../utils/syncMerge';
 
 function parseTimeSegments(raw: unknown): TimeOfDay[] {
   if (!raw) return [];
@@ -936,25 +949,6 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
 
 // ─── Sync change tracking ────────────────────────────────────────────────────
 
-/** One deleted row, as a peer needs to hear about it. */
-export interface SyncDeletion {
-  table: string;
-  /** The row's primary key; composite keys joined by KEY_SEPARATOR. */
-  rowKey: string;
-  deletedAt: string;
-}
-
-/** Everything that changed in one window, plus the cursor to resume from. */
-export interface SyncChangeSet {
-  /** The cursor this was read from — null on a first, full read. */
-  since: string | null;
-  /** The cursor to pass as `since` next time. */
-  until: string;
-  /** Changed and created rows, exactly as stored, keyed by table. */
-  tables: Record<string, BackupRow[]>;
-  deletions: SyncDeletion[];
-}
-
 /**
  * Whether the live handle is one whose changes may be synced.
  *
@@ -1039,6 +1033,159 @@ export function dbSyncChangesSince(since: string | null): SyncChangeSet {
 
   // withTransactionSync runs the callback synchronously, so this is always set.
   return result as unknown as SyncChangeSet;
+}
+
+const DEVICE_ID_KEY = 'syncDeviceId';
+const CURSOR_KEY_PREFIX = 'syncCursor:';
+
+/**
+ * This device's stable id, minted on first use.
+ *
+ * Lives in `settings`, which is the one table sync deliberately doesn't carry
+ * (see SYNC_TRACKED_TABLES) — so it cannot travel to the other device and make
+ * two devices claim the same identity. That the storage happens to guarantee
+ * this is luck worth naming: if settings ever start syncing by allowlist, this
+ * key and the cursors below must stay off it.
+ */
+export function dbGetDeviceId(): string {
+  const existing = dbGetSetting(DEVICE_ID_KEY);
+  if (existing) return existing;
+  const id = generateId();
+  dbSetSetting(DEVICE_ID_KEY, id);
+  return id;
+}
+
+/**
+ * How far this device has caught up with a given source.
+ *
+ * Keyed by source rather than global because a device may eventually read from
+ * more than one place (a relay, another device's file), and one shared cursor
+ * would have whichever synced first hide the others' changes.
+ */
+export function dbGetSyncCursor(source: string): string | null {
+  return dbGetSetting(`${CURSOR_KEY_PREFIX}${source}`);
+}
+
+export function dbSetSyncCursor(source: string, cursor: string): void {
+  dbSetSetting(`${CURSOR_KEY_PREFIX}${source}`, cursor);
+}
+
+/** The tracked-table definition for a name off the wire, or null if unknown. */
+function trackedTable(name: string): SyncTable | null {
+  return SYNC_TRACKED_TABLES.find(t => t.name === name) ?? null;
+}
+
+/** `WHERE id = ?`, and-ed across a composite key, with its bound values. */
+function keyClause(table: SyncTable, rowKey: string): { sql: string; values: string[] } {
+  const values = rowKey.split(KEY_SEPARATOR);
+  return {
+    sql: table.key.map(col => `"${col}" = ?`).join(' AND '),
+    values,
+  };
+}
+
+/** The row key of a row off the wire, or null if it doesn't carry its own key. */
+function rowKeyOf(table: SyncTable, row: BackupRow): string | null {
+  const parts: string[] = [];
+  for (const col of table.key) {
+    const v = row[col];
+    if (typeof v !== 'string' || v === '') return null;
+    parts.push(v);
+  }
+  return parts.join(KEY_SEPARATOR);
+}
+
+/**
+ * Applies a peer's changes to the local database.
+ *
+ * One transaction: a half-applied payload is the state nothing can recover
+ * from, since the cursor would advance past changes that never landed. Same
+ * reasoning as dbReplaceAllData.
+ *
+ * Three properties this leans on, all of them from the tracking layer:
+ *
+ * - **Rows are written with the peer's `updated_at`**, so the stamp triggers
+ *   leave them alone (that guard is exactly what it exists for). Restamping
+ *   them as locally-modified would have the two devices trade the same row
+ *   back and forth forever, each reading the other's echo as news.
+ * - **An insert clears the row's tombstone**, so a peer's re-creation of a row
+ *   this device deleted resolves without special handling here.
+ * - **A delete performed here writes a local tombstone**, which is correct:
+ *   this device now genuinely holds that deletion and should pass it on to any
+ *   third device.
+ *
+ * Unknown tables and unknown columns are dropped rather than rejected —
+ * `projectRow` intersects against the live schema, the same way a restore
+ * does. A peer on a newer build sending a column this one has never heard of
+ * must not fail the whole sync.
+ */
+export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
+  const report = emptyApplyReport();
+
+  db.withTransactionSync(() => {
+    for (const [name, rows] of Object.entries(payload.tables)) {
+      const table = trackedTable(name);
+      if (!table) continue;
+      const allowed = dbTableColumns(name);
+
+      for (const raw of rows) {
+        const rowKey = rowKeyOf(table, raw);
+        const remoteStamp = raw.updated_at;
+        if (rowKey === null || typeof remoteStamp !== 'string') {
+          report.skipped++;
+          continue;
+        }
+
+        const where = keyClause(table, rowKey);
+        const local = db.getFirstSync<{ updated_at: string | null }>(
+          `SELECT updated_at FROM "${name}" WHERE ${where.sql}`,
+          where.values
+        );
+
+        if (local && !remoteRowWins(local.updated_at, remoteStamp)) {
+          report.skipped++;
+          continue;
+        }
+
+        const row = projectRow(raw, allowed);
+        const columns = Object.keys(row);
+        if (columns.length === 0) {
+          report.skipped++;
+          continue;
+        }
+        const quoted = columns.map(c => `"${c}"`).join(', ');
+        const placeholders = columns.map(() => '?').join(', ');
+        db.runSync(
+          `INSERT OR REPLACE INTO "${name}" (${quoted}) VALUES (${placeholders})`,
+          columns.map(c => row[c])
+        );
+        if (local) report.updated++;
+        else report.inserted++;
+      }
+    }
+
+    for (const deletion of payload.deletions) {
+      const table = trackedTable(deletion.table);
+      if (!table) continue;
+
+      const where = keyClause(table, deletion.rowKey);
+      const local = db.getFirstSync<{ updated_at: string | null }>(
+        `SELECT updated_at FROM "${deletion.table}" WHERE ${where.sql}`,
+        where.values
+      );
+      if (!local) continue; // Already gone, or never seen. Nothing to do.
+
+      if (!remoteDeletionWins(local.updated_at, deletion.deletedAt)) {
+        report.deletionsRefused++;
+        continue;
+      }
+
+      db.runSync(`DELETE FROM "${deletion.table}" WHERE ${where.sql}`, where.values);
+      report.deleted++;
+    }
+  });
+
+  return report;
 }
 
 /**

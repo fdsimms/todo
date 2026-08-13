@@ -43,6 +43,7 @@ import { dueMealPlanNudge, mealPlanNudgeSuppressed, hasLiveMealPlanNudgeTask, ME
 import { generatedBy, generatedSourceOf } from '../utils/generatedTasks';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
+import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
@@ -1975,7 +1976,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             : null;
         nextTask = {
           ...effective,
-          id: generateId(),
+          // Derived, not random: completing this task on two devices while
+          // they are apart must produce one successor, not two. See syncIds.
+          id: derivedId(spawnSeed.occurrence(task.id)),
           completed: false,
           completedAt: null,
           missedAt: null, // a miss belongs to the occurrence that was missed, never to its successor
@@ -2071,7 +2074,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // task's subtasks would vanish after the first step.
         nextSubtasks = get().subtasksOf(task.id).map(sub => ({
           ...sub,
-          id: generateId(),
+          id: derivedId(spawnSeed.subtask(nextTask!.id, sub.id)),
           parentId: nextTask!.id,
           completed: false,
           completedAt: null,
@@ -2115,6 +2118,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // with it, and the tally goes back with the restored row.
         previousOccurrenceId: task.id,
       }, now.toISOString(), maxOrder + 1);
+      // Derived for the same reason the occurrence above is: one milestone
+      // task per completion, however many devices saw that completion.
+      extraTask = { ...extraTask, id: derivedId(spawnSeed.extra(task.id)) };
       dbInsertTask(extraTask);
     }
 
@@ -2148,6 +2154,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               { monthDays: task.seriesMonthDays, repeatMonths: task.seriesRepeatMonths },
             ),
             sortOrder: order,
+            // Derived per date, so a rollover triggered on two devices lands
+            // on one row per date rather than two. See syncIds.
+            id: derivedId(spawnSeed.seriesDate(id, date.toISOString())),
             // Linked to the completion that produced it, exactly as a
             // recurrence's next occurrence is, so undoing that completion
             // takes the next set back out with it (see uncompleteTask).
@@ -2476,7 +2485,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const effective: Task = { ...task, ...(task.seriesDefaults ?? {}) };
       spawned.push({
         ...effective,
-        id: generateId(),
+        id: derivedId(spawnSeed.catchUp(task.id)),
         completed: false,
         completedAt: null,
         missedAt: null,

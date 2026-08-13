@@ -72,7 +72,12 @@ import {
   dbSyncChangesSince,
   dbPruneSyncDeletions,
   isSyncableDatabase,
+  dbApplySyncChanges,
+  dbGetDeviceId,
+  dbGetSyncCursor,
+  dbSetSyncCursor,
 } from '../db/database';
+import { SYNC_FORMAT, type SyncPayload } from '../utils/syncMerge';
 import { SYNC_TRACKED_TABLES, TOMBSTONE_RETENTION_DAYS } from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, Leftover, MealPlanEntry, MealSlot } from '../types';
@@ -2392,5 +2397,226 @@ describe('sync change tracking', () => {
     // Demo mode is what this exists to exclude; the mock never swaps handles,
     // so the real one must answer true or the transport would sync nothing.
     expect(isSyncableDatabase()).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Applying a peer's changes
+// ---------------------------------------------------------------------------
+
+describe('dbApplySyncChanges', () => {
+  beforeEach(() => {
+    mockRawDb.exec('DELETE FROM sync_deletions');
+  });
+
+  const payload = (over: Partial<SyncPayload> = {}): SyncPayload => ({
+    format: SYNC_FORMAT,
+    deviceId: 'peer',
+    since: null,
+    until: '2030-01-01T00:00:00.000Z',
+    tables: {},
+    deletions: [],
+    ...over,
+  });
+
+  /**
+   * A complete task row as a peer would actually send it.
+   *
+   * Built by inserting locally and reading the row back, because a real
+   * payload comes from `SELECT *` and carries every column — and
+   * INSERT OR REPLACE replaces the whole row, so a hand-written partial row
+   * would both violate NOT NULL constraints and quietly blank the columns it
+   * omitted. Cleaned up afterwards so the row genuinely looks unseen.
+   */
+  const peerTaskRow = (id: string, title: string, updatedAt: string) => {
+    dbInsertTask(makeTask({ id, title }));
+    const row = mockRawDb.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown>;
+    mockRawDb.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+    mockRawDb.exec('DELETE FROM sync_deletions');
+    return { ...row, title, updated_at: updatedAt };
+  };
+
+  const rowOf = (id: string) =>
+    mockRawDb.prepare('SELECT title, updated_at FROM tasks WHERE id = ?').get(id) as
+      | { title: string; updated_at: string | null }
+      | undefined;
+
+  const stampLocal = (id: string, at: string) =>
+    mockRawDb.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run(at, id);
+
+  it('inserts a row this device has never seen', () => {
+    const report = dbApplySyncChanges(payload({
+      tables: { tasks: [peerTaskRow('p1', 'From peer', '2026-01-01T00:00:00.000Z')] },
+    }));
+
+    expect(report.inserted).toBe(1);
+    expect(rowOf('p1')?.title).toBe('From peer');
+  });
+
+  it('keeps the peer stamp rather than restamping as a local change', () => {
+    // The stamp triggers' peer guard doing its job. Restamping would have the
+    // two devices trade the row back and forth forever.
+    dbApplySyncChanges(payload({
+      tables: { tasks: [peerTaskRow('p1', 'From peer', '2026-01-01T00:00:00.000Z')] },
+    }));
+
+    expect(rowOf('p1')?.updated_at).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('overwrites a local row the peer edited later', () => {
+    const remote = peerTaskRow('p1', 'Peer wins', '2026-06-01T00:00:00.000Z');
+    dbInsertTask(makeTask({ id: 'p1', title: 'Local' }));
+    stampLocal('p1', '2026-01-01T00:00:00.000Z');
+
+    const report = dbApplySyncChanges(payload({ tables: { tasks: [remote] } }));
+
+    expect(report.updated).toBe(1);
+    expect(rowOf('p1')?.title).toBe('Peer wins');
+  });
+
+  it('keeps a local row edited after the peer copy', () => {
+    const remote = peerTaskRow('p1', 'Stale peer', '2026-01-01T00:00:00.000Z');
+    dbInsertTask(makeTask({ id: 'p1', title: 'Local wins' }));
+    stampLocal('p1', '2026-06-01T00:00:00.000Z');
+
+    const report = dbApplySyncChanges(payload({ tables: { tasks: [remote] } }));
+
+    expect(report.skipped).toBe(1);
+    expect(rowOf('p1')?.title).toBe('Local wins');
+  });
+
+  it('is idempotent — applying the same payload twice changes nothing', () => {
+    // What lets dbSyncChangesSince re-send rows at the cursor freely.
+    const p = payload({ tables: { tasks: [peerTaskRow('p1', 'From peer', '2026-01-01T00:00:00.000Z')] } });
+    dbApplySyncChanges(p);
+
+    const second = dbApplySyncChanges(p);
+
+    expect(second).toMatchObject({ inserted: 0, updated: 0, skipped: 1 });
+  });
+
+  it('applies a deletion', () => {
+    dbInsertTask(makeTask({ id: 'p1' }));
+    stampLocal('p1', '2026-01-01T00:00:00.000Z');
+
+    const report = dbApplySyncChanges(payload({
+      deletions: [{ table: 'tasks', rowKey: 'p1', deletedAt: '2026-06-01T00:00:00.000Z' }],
+    }));
+
+    expect(report.deleted).toBe(1);
+    expect(rowOf('p1')).toBeUndefined();
+  });
+
+  it('refuses a deletion the local row was edited after', () => {
+    dbInsertTask(makeTask({ id: 'p1', title: 'Still wanted' }));
+    stampLocal('p1', '2026-06-01T00:00:00.000Z');
+
+    const report = dbApplySyncChanges(payload({
+      deletions: [{ table: 'tasks', rowKey: 'p1', deletedAt: '2026-01-01T00:00:00.000Z' }],
+    }));
+
+    expect(report.deletionsRefused).toBe(1);
+    expect(rowOf('p1')?.title).toBe('Still wanted');
+  });
+
+  it('passes an applied deletion on as its own tombstone', () => {
+    // This device now genuinely holds the deletion and must tell a third one.
+    dbInsertTask(makeTask({ id: 'p1' }));
+    stampLocal('p1', '2026-01-01T00:00:00.000Z');
+
+    dbApplySyncChanges(payload({
+      deletions: [{ table: 'tasks', rowKey: 'p1', deletedAt: '2026-06-01T00:00:00.000Z' }],
+    }));
+
+    const left = mockRawDb.prepare('SELECT row_key FROM sync_deletions').all() as Array<{ row_key: string }>;
+    expect(left.map(r => r.row_key)).toContain('p1');
+  });
+
+  it('clears a local tombstone when a peer re-creates the row', () => {
+    const remote = peerTaskRow('p1', 'Back', '2030-01-01T00:00:00.000Z');
+    dbInsertTask(makeTask({ id: 'p1' }));
+    dbDeleteTask('p1');
+
+    dbApplySyncChanges(payload({ tables: { tasks: [remote] } }));
+
+    const left = mockRawDb.prepare('SELECT row_key FROM sync_deletions').all() as Array<{ row_key: string }>;
+    expect(left.map(r => r.row_key)).not.toContain('p1');
+  });
+
+  it('handles a composite-keyed row', () => {
+    dbApplySyncChanges(payload({
+      tables: {
+        grocery_item_shops: [
+          { item_id: 'i1', shop_id: 's1', purchase_count: 3, updated_at: '2026-01-01T00:00:00.000Z' },
+        ],
+      },
+    }));
+
+    const row = mockRawDb
+      .prepare('SELECT purchase_count FROM grocery_item_shops WHERE item_id = ? AND shop_id = ?')
+      .get('i1', 's1') as { purchase_count: number } | undefined;
+    expect(row?.purchase_count).toBe(3);
+  });
+
+  it('applies a composite-keyed deletion', () => {
+    mockRawDb
+      .prepare(
+        "INSERT OR REPLACE INTO grocery_item_shops (item_id, shop_id, purchase_count, updated_at) VALUES ('i1', 's1', 1, '2026-01-01T00:00:00.000Z')"
+      )
+      .run();
+
+    dbApplySyncChanges(payload({
+      deletions: [{ table: 'grocery_item_shops', rowKey: 'i1|s1', deletedAt: '2026-06-01T00:00:00.000Z' }],
+    }));
+
+    const row = mockRawDb
+      .prepare('SELECT item_id FROM grocery_item_shops WHERE item_id = ? AND shop_id = ?')
+      .get('i1', 's1');
+    expect(row).toBeUndefined();
+  });
+
+  it('ignores a table it has never heard of', () => {
+    // A peer on a newer build must not fail the whole sync.
+    expect(() =>
+      dbApplySyncChanges(payload({
+        tables: { some_future_table: [{ id: 'x', updated_at: '2026-01-01T00:00:00.000Z' }] },
+        deletions: [{ table: 'some_future_table', rowKey: 'x', deletedAt: '2026-01-01T00:00:00.000Z' }],
+      }))
+    ).not.toThrow();
+  });
+
+  it('drops a column it has never heard of but keeps the row', () => {
+    const remote = { ...peerTaskRow('p1', 'Kept', '2026-01-01T00:00:00.000Z'), some_future_column: 'ignored' };
+
+    dbApplySyncChanges(payload({ tables: { tasks: [remote] } }));
+
+    expect(rowOf('p1')?.title).toBe('Kept');
+  });
+
+  it('never applies the settings table even if a peer sends one', () => {
+    // Not tracked, so not applied — which is what stops a migration flag
+    // reaching a device that has not run that migration.
+    dbApplySyncChanges(payload({
+      tables: { settings: [{ key: 'effort_xxs_migration_done', value: '1', updated_at: '2030-01-01T00:00:00.000Z' }] },
+    }));
+
+    expect(dbGetSetting('effort_xxs_migration_done')).toBeNull();
+  });
+});
+
+describe('sync identity', () => {
+  it('mints a device id once and keeps it', () => {
+    const first = dbGetDeviceId();
+    expect(first).toEqual(expect.any(String));
+    expect(dbGetDeviceId()).toBe(first);
+  });
+
+  it('tracks a cursor per source', () => {
+    dbSetSyncCursor('relay', '2026-01-01T00:00:00.000Z');
+    dbSetSyncCursor('other', '2026-02-01T00:00:00.000Z');
+
+    expect(dbGetSyncCursor('relay')).toBe('2026-01-01T00:00:00.000Z');
+    expect(dbGetSyncCursor('other')).toBe('2026-02-01T00:00:00.000Z');
+    expect(dbGetSyncCursor('never-used')).toBeNull();
   });
 });
