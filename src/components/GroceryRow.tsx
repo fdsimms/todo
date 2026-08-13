@@ -18,6 +18,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
 import { SwipeableRow } from './SwipeableRow';
 import { convertQuantity } from '../utils/unitConvert';
+import { describeProduct } from '../utils/groceryProduct';
 
 const CHECKBOX_SIZE = 24;
 // Generous beyond the visual box, matching TaskItem's checkbox hitSlop —
@@ -118,12 +119,18 @@ export const GroceryRow = React.memo(function GroceryRow({
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(item.name);
 
+  // Brand and variant name one product, so they compose into one caption line
+  // rather than taking one each — a fifth treatment on a row that can already
+  // be four captions tall is past what's readable while walking. See
+  // describeProduct for the wording rules.
+  const product = describeProduct(item);
+
   const label = [
     item.name,
     // Before the quantity, matching the caption order on screen — and read out
     // at all, since a row whose whole point is "this brand" would otherwise
     // announce identically to one with no preference set.
-    item.brand ? `, ${item.brand}` : '',
+    product ? `, ${product}` : '',
     shownQuantity ? `, ${shownQuantity}` : '',
     item.checked ? ', in cart' : '',
   ].join('');
@@ -225,10 +232,13 @@ export const GroceryRow = React.memo(function GroceryRow({
               rather than trailing the name: the name is numberOfLines={1} and
               flexes against the quantity pill, so on anything longer than
               "cottage cheese" an inline brand is the first thing truncated
-              away — losing exactly the word the row was captioned for. */}
-          {!!item.brand && (
+              away — losing exactly the word the row was captioned for. The
+              variant rides on this same line for the same reason it can't
+              afford its own: a branded, varianted, noted row with a store
+              marker would be six lines tall. */}
+          {!!product && (
             <Text style={styles.brand} numberOfLines={1}>
-              {item.brand}
+              {product}
             </Text>
           )}
           {!!item.note && (
@@ -423,8 +433,9 @@ function makeStyles(colors: Colors) {
     // The fourth caption treatment, and the loudest of them — semibold on
     // textSecondary, where `alternatives` is medium on the same colour and both
     // greys below are tertiary. The ranking is by how much the line changes
-    // what you pick up: the brand decides which tub, an either/or decides which
-    // of two items, the store marker sends you elsewhere, a note qualifies.
+    // what you pick up: the brand and variant together decide which tub, an
+    // either/or decides which of two items, the store marker sends you
+    // elsewhere, a note qualifies.
     //
     // Semibold at font.sm is not new here — it's what qtyText already uses on
     // this row, so this reads as the row's existing emphasis weight rather than

@@ -49,6 +49,7 @@ import { CountStepper } from './CountStepper';
 import {
   GROCERY_EXPIRY_DAYS_MAX,
   GROCERY_BRAND_MAX_LENGTH,
+  GROCERY_VARIANT_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
 } from '../types';
@@ -113,6 +114,7 @@ export function GroceryItemSheet({
   const setQuantity = useGroceryStore(s => s.setQuantity);
   const setNote = useGroceryStore(s => s.setNote);
   const setBrand = useGroceryStore(s => s.setBrand);
+  const setVariant = useGroceryStore(s => s.setVariant);
   const setBrandStrict = useGroceryStore(s => s.setBrandStrict);
   const setBrandUnavailable = useGroceryStore(s => s.setBrandUnavailable);
   const setAisle = useGroceryStore(s => s.setAisle);
@@ -138,6 +140,7 @@ export function GroceryItemSheet({
   const [name, setName] = useState('');
   const [quantity, setQuantityText] = useState('');
   const [brand, setBrandText] = useState('');
+  const [variant, setVariantText] = useState('');
   const [note, setNoteText] = useState('');
   // Which price the field is editing: null is the item's own ("any store"),
   // else the store's id. The stores are the item's linked ones — see
@@ -159,6 +162,7 @@ export function GroceryItemSheet({
       setName(item.name);
       setQuantityText(item.quantity ?? '');
       setBrandText(item.brand ?? '');
+      setVariantText(item.variant ?? '');
       setNoteText(item.note);
       setPriceTarget(null);
       setPriceEdits({});
@@ -194,6 +198,7 @@ export function GroceryItemSheet({
     }
     setQuantity(item.id, quantity);
     setBrand(item.id, brand);
+    setVariant(item.id, variant);
     setNote(item.id, note);
     // After setQuantity, so a price being *changed* here is paired with the
     // quantity being saved alongside it. A price left alone keeps the quantity
@@ -692,6 +697,30 @@ export function GroceryItemSheet({
               </Text>
             </>
           )}
+
+          {/* After the whole brand block rather than between the field and its
+              pill: "Only this brand" qualifies the field above it and reads as
+              a stray question with another field wedged in between. With no
+              brand set — the common case — the pill doesn't render and this
+              does sit directly under BRAND.
+
+              A separate field rather than more room in BRAND, because the two
+              are different facts: see GroceryItem.variant. On the list they
+              compose into the one caption. */}
+          <Text style={styles.label}>VARIANT</Text>
+          <TextInput
+            style={styles.input}
+            value={variant}
+            onChangeText={setVariantText}
+            placeholder="Low fat, 4%, crunchy…"
+            placeholderTextColor={colors.textTertiary}
+            autoCorrect={false}
+            maxLength={GROCERY_VARIANT_MAX_LENGTH}
+            accessibilityLabel="Variant"
+          />
+          <Text style={styles.hint}>
+            Shown on the list, after the brand.
+          </Text>
 
           <Text style={styles.label}>QUANTITY</Text>
           <TextInput

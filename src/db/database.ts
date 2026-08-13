@@ -676,6 +676,10 @@ export function initDatabase(): void {
     // 0 for every existing row: a brand recorded before this column existed is
     // a preference, not a filter over stores. See GroceryItem.brandStrict.
     'ALTER TABLE grocery_items ADD COLUMN brand_strict INTEGER NOT NULL DEFAULT 0',
+    // NULL like brand above, and for the same reasons — nothing infers a
+    // product line out of a name, and it's out of name_key, so no key moves.
+    // See GroceryItem.variant.
+    'ALTER TABLE grocery_items ADD COLUMN variant TEXT',
     // NULL on every link that predates this — "which one this store had" was
     // never asked, and NULL reads as unknown rather than as a conflict, so no
     // existing store loses its coverage. See ItemShopLink.brand.
@@ -1842,6 +1846,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     nameKey: row.name_key as string,
     brand: (row.brand as string) ?? null,
     brandStrict: Boolean(row.brand_strict),
+    variant: (row.variant as string) ?? null,
     aisle: (row.aisle as string) ?? 'Other',
     quantity: (row.quantity as string) ?? null,
     note: (row.note as string) ?? '',
@@ -1885,8 +1890,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, use_up_task,
-       last_price_minor, last_priced_at, last_price_quantity, brand, brand_strict)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       last_price_minor, last_priced_at, last_price_quantity, brand, brand_strict, variant)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -1898,7 +1903,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.expiresAt ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
-      item.brand ?? null, item.brandStrict ? 1 : 0,
+      item.brand ?? null, item.brandStrict ? 1 : 0, item.variant ?? null,
     ]
   );
 }
@@ -1910,7 +1915,8 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
        expires_at=?, use_up_task=?,
-       last_price_minor=?, last_priced_at=?, last_price_quantity=?, brand=?, brand_strict=?
+       last_price_minor=?, last_priced_at=?, last_price_quantity=?, brand=?, brand_strict=?,
+       variant=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
@@ -1923,7 +1929,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.expiresAt ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
-      item.brand ?? null, item.brandStrict ? 1 : 0,
+      item.brand ?? null, item.brandStrict ? 1 : 0, item.variant ?? null,
       item.id,
     ]
   );

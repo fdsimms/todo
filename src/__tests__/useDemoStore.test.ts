@@ -483,6 +483,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const branded = items.find(i => i.brand);
     expect(branded).toBeDefined();
     expect(branded!.nameKey).not.toContain(branded!.brand!.toLowerCase());
+    // ...and the variant beside it, which is the pairing the caption exists to
+    // compose ("Good Culture low fat"). Out of the name key for the same reason
+    // the brand is: one row, one purchase history, whichever tub it names.
+    const varianted = items.find(i => i.variant);
+    expect(varianted).toBeDefined();
+    expect(varianted!.brand).toBeTruthy();
+    expect(varianted!.nameKey).not.toContain(varianted!.variant!.toLowerCase());
     // ...and the rule that makes a brand reach store coverage, plus the claim
     // it reads. A strict item nobody has ruled a store out for would filter
     // nothing, so the switch would look inert.

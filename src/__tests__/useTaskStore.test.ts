@@ -6905,7 +6905,7 @@ describe('postponeCount', () => {
 
 describe('deleting a use-up task', () => {
   const item = {
-    id: 'g-1', name: 'Spinach', nameKey: 'spinach', brand: null, brandStrict: false, aisle: 'Produce', quantity: null, note: '',
+    id: 'g-1', name: 'Spinach', nameKey: 'spinach', brand: null, brandStrict: false, variant: null, aisle: 'Produce', quantity: null, note: '',
     onList: false, checked: false, inCatalog: true, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,

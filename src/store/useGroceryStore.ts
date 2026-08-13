@@ -213,6 +213,11 @@ interface GroceryStore {
    */
   setBrand: (id: string, brand: string) => void;
   /**
+   * Which one of that brand — "low fat", "4%". Same dumb setter as setBrand,
+   * down to clearing on empty. See GroceryItem.variant.
+   */
+  setVariant: (id: string, variant: string) => void;
+  /**
    * "Only this brand" — whether the brand filters store availability or is just
    * shown on the row. See GroceryItem.brandStrict.
    */
@@ -483,6 +488,9 @@ function newItemRow(fields: {
     // A preference is not a rule — see GroceryItem.brandStrict. Nothing infers
     // this, including from a brand being set.
     brandStrict: false,
+    // Unparsed and uninferred exactly like the brand above, and carried through
+    // a re-add by the same spread.
+    variant: null,
     aisle: fields.aisle,
     quantity: fields.quantity ?? null,
     note: fields.note ?? '',
@@ -1055,6 +1063,23 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const updated = {
       ...item,
       brand: next,
+      inCatalog: next !== null ? true : item.inCatalog,
+    };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setVariant(id, variant) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    // Trimmed to null and promoting on the way up, both for the reasons spelled
+    // out in setBrand above: null is what every reader tests for, and which one
+    // of a brand you want is a standing fact about the item that has to outlive
+    // this week's list. Clearing promotes nothing, again like setBrand.
+    const next = variant.trim() || null;
+    const updated = {
+      ...item,
+      variant: next,
       inCatalog: next !== null ? true : item.inCatalog,
     };
     dbUpdateGroceryItem(updated);

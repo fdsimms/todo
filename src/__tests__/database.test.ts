@@ -1583,6 +1583,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     nameKey: overrides.name.toLowerCase(),
     brand: null,
     brandStrict: false,
+    variant: null,
     aisle: 'Other',
     quantity: null,
     note: '',
@@ -1629,6 +1630,7 @@ describe('grocery items', () => {
       expiresAt: '2026-08-17',
       useUpTask: true,
       brand: 'Good Culture',
+      variant: 'low fat',
     });
     dbInsertGroceryItem(item);
 
@@ -1661,6 +1663,40 @@ describe('grocery items', () => {
 
     dbUpdateGroceryItem({ ...item, brand: null });
     expect(dbGetAllGroceryItems()[0].brand).toBeNull();
+  });
+
+  // The variant is out of the name key for the same reason the brand is: one
+  // row per thing, whichever tub of it you want. See GroceryItem.variant.
+  it('stores and clears a variant without disturbing the name key', () => {
+    const item = makeGroceryItem({
+      id: 'g1',
+      name: 'Cottage cheese',
+      nameKey: 'cottage cheese',
+      brand: 'Good Culture',
+      variant: 'low fat',
+    });
+    dbInsertGroceryItem(item);
+
+    const [read] = dbGetAllGroceryItems();
+    expect(read.variant).toBe('low fat');
+    expect(read.nameKey).toBe('cottage cheese');
+
+    dbUpdateGroceryItem({ ...item, variant: '4%' });
+    expect(dbGetAllGroceryItems()[0].variant).toBe('4%');
+
+    dbUpdateGroceryItem({ ...item, variant: null });
+    expect(dbGetAllGroceryItems()[0].variant).toBeNull();
+  });
+
+  // Nothing is backfilled: a row written before the column existed has no
+  // opinion about which one, which is exactly what null means here.
+  it('reads a row written without variant as having none', () => {
+    mockRawDb
+      .prepare('INSERT INTO grocery_items (id, name, name_key, brand, created_at) VALUES (?,?,?,?,?)')
+      .run('g1', 'Cottage cheese', 'cottage cheese', 'Good Culture', '2026-01-01T00:00:00.000Z');
+
+    const [read] = dbGetAllGroceryItems();
+    expect(read.variant).toBeNull();
   });
 
   it('round-trips brandStrict, defaulting an untouched row to off', () => {

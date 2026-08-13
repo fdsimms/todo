@@ -103,6 +103,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     nameKey: groceryNameKey(overrides.name),
     brand: null,
     brandStrict: false,
+    variant: null,
     aisle: 'Other',
     quantity: null,
     note: '',
