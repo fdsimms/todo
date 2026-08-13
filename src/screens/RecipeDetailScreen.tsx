@@ -1309,7 +1309,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   addRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     gap: spacing.sm,
     marginTop: spacing.md,
   },
