@@ -841,6 +841,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     linkItemShopMany,
     markItemsUnavailable,
     setShopExcludedFromSuggestions,
+    setSeparateTrips,
     startTrip,
     itemById,
   } = useGroceryStore.getState();
@@ -1081,6 +1082,22 @@ function seedGroceries(recipes: DemoRecipes): void {
     sourceRecipeId: recipes.stirFry,
     sourceRecipeTitle: 'Weeknight chicken stir-fry',
   })));
+
+  // The fourth store exists to be turned down. It covers four things Trader
+  // Joe's can't — one more than Costco — so on coverage alone the trip planner
+  // would send you there second every week; the pairing is the user saying
+  // it's in the wrong direction to combine, and Costco is offered instead.
+  // That's the whole feature in one seeded state, and it takes a third
+  // suggestable store to show: separating the two that *are* suggested would
+  // just delete the second stop, which demonstrates nothing.
+  //
+  // Linked here rather than up with the other stores because three of these
+  // rows are typed fresh above — before that they don't exist to link, and
+  // linking them earlier would promote names the comment there says nothing
+  // has touched.
+  const cornerMarket = newShop('Corner Market');
+  linkItemShopMany(idsNamed(['Cheddar', 'Sparkling water', 'Ice cream', 'Soy sauce']), cornerMarket.id);
+  setSeparateTrips(traderJoes.id, cornerMarket.id, true);
 
   // ...and you're at Trader Joe's right now, which is the only state in which
   // the list says anything about stores. Two of the three things a row can say

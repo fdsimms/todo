@@ -68,6 +68,7 @@ export function TripSuggestionCard({ onPress }: Props) {
   const items = useGroceryStore(useShallow(s => s.items));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const shops = useGroceryStore(useShallow(s => s.shops));
+  const separateTrips = useGroceryStore(useShallow(s => s.separateTrips));
 
   const plan = useMemo(() => planTrip(items, itemShops, shops), [items, itemShops, shops]);
   const nameOf = useMemo(() => new Map(items.map(i => [i.id, i.name])), [items]);
@@ -79,8 +80,12 @@ export function TripSuggestionCard({ onPress }: Props) {
     if (plan.coverage.length < 2) return null;
     // An empty selection *is* the recommendation, same call the sheet makes to
     // pick its default — one code path for "where should I go".
-    return describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length, nameOf);
-  }, [plan, nameOf]);
+    return describeTripSuggestion(
+      summarizeTrip([], plan, separateTrips).suggestion,
+      plan.itemIds.length,
+      nameOf
+    );
+  }, [plan, nameOf, separateTrips]);
 
   if (!copy) return null;
 

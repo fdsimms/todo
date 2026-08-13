@@ -22,6 +22,8 @@ import {
   summarizeTrip,
   describeShopCoverage,
   joinNames,
+  separableSuggestion,
+  resolveSeparateTrips,
   type ShopCoverage,
 } from '../utils/shoppingTrip';
 import type { Shop } from '../types';
@@ -96,6 +98,8 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
   const total = plan.itemIds.length;
 
   const linkItemShopMany = useGroceryStore(s => s.linkItemShopMany);
+  const separateTrips = useGroceryStore(useShallow(s => s.separateTrips));
+  const setSeparateTrips = useGroceryStore(s => s.setSeparateTrips);
 
   // Selection order is task order, so it's an array rather than a Set.
   const [selected, setSelected] = useState<string[]>([]);
@@ -113,6 +117,8 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
   planRef.current = plan;
   const lastShopRef = useRef(lastShopId);
   lastShopRef.current = lastShopId;
+  const separateRef = useRef(separateTrips);
+  separateRef.current = separateTrips;
 
   useEffect(() => {
     if (!visible) return;
@@ -120,7 +126,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
     // The best store, or — with nothing on the list to rank by — wherever the
     // last trip was finished, which is FinishShoppingSheet's default and right
     // more often than it's wrong.
-    const best = summarizeTrip([], current).suggestion[0]?.shop.id ?? null;
+    const best = summarizeTrip([], current, separateRef.current).suggestion[0]?.shop.id ?? null;
     const last = lastShopRef.current;
     const fallback = last && current.coverage.some(c => c.shop.id === last) ? last : null;
     const initial = best ?? fallback;
@@ -128,7 +134,10 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
     setCorrecting(null);
   }, [visible]);
 
-  const summary = useMemo(() => summarizeTrip(selected, plan), [selected, plan]);
+  const summary = useMemo(
+    () => summarizeTrip(selected, plan, separateTrips),
+    [selected, plan, separateTrips]
+  );
 
   const nameOf = useMemo(() => new Map(items.map(i => [i.id, i.name])), [items]);
   const namesFor = useCallback(
@@ -158,6 +167,18 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
   const startable = useMemo(
     () => (selected.length === 1 ? shops.find(s => s.id === selected[0]) ?? null : null),
     [selected, shops]
+  );
+
+  // The pair a "not on the same trip" tap would separate, and the pairs already
+  // separated. Both resolve against live shops rather than trusting the stored
+  // ids, same as startable above.
+  const separable = useMemo(
+    () => separableSuggestion(selected, summary.suggestion),
+    [selected, summary.suggestion]
+  );
+  const separatedPairs = useMemo(
+    () => resolveSeparateTrips(separateTrips, shops),
+    [separateTrips, shops]
   );
 
   /**
@@ -417,20 +438,40 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
                     </Text>
                   </>
                 )}
-                <InlineAction
-                  label={
-                    selected.length === 0
-                      ? next.length > 1
-                        ? `Pick all ${next.length}`
-                        : `Pick ${next[0].shop.name}`
-                      : next.length > 1
-                        ? `Add ${next.length} stores`
-                        : `Add ${next[0].shop.name}`
-                  }
-                  icon="add"
-                  onPress={() => pickSuggestion(next)}
-                  style={styles.suggestionAction}
-                />
+                <View style={styles.suggestionActions}>
+                  <InlineAction
+                    label={
+                      selected.length === 0
+                        ? next.length > 1
+                          ? `Pick all ${next.length}`
+                          : `Pick ${next[0].shop.name}`
+                        : next.length > 1
+                          ? `Add ${next.length} stores`
+                          : `Add ${next[0].shop.name}`
+                    }
+                    icon="add"
+                    onPress={() => pickSuggestion(next)}
+                  />
+                  {/* The correction this card most needs and had no way to
+                      take: coverage says what a store has and nothing says
+                      what it costs to get there, so a plan can pair two shops
+                      in opposite directions and look like an answer. Neutral
+                      because it's the quieter half of the pair, and it names
+                      both stores because it's a claim about the two of them —
+                      shown only where the suggestion implies exactly one
+                      pairing (separableSuggestion). */}
+                  {separable && (
+                    <InlineAction
+                      label="Not on the same trip"
+                      icon="git-branch-outline"
+                      variant="neutral"
+                      onPress={() => {
+                        haptics.tap();
+                        setSeparateTrips(separable[0], separable[1], true);
+                      }}
+                    />
+                  )}
+                </View>
               </View>
             </View>
           )}
@@ -468,6 +509,44 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
               />
             ))}
           </View>
+
+          {/* Where a pairing is taken back, and the only place it's visible at
+              all. It lives here rather than in the store-management sheet
+              because it's a fact about trips rather than about either store —
+              and because a rule you can't find is one you end up fighting: the
+              suggestion simply stops naming a shop, with nothing on screen to
+              say you're the reason. Rendered only once there's one, so it
+              costs nothing until the feature has been used. */}
+          {separatedPairs.length > 0 && (
+            <>
+              <Text style={styles.label}>SEPARATE TRIPS</Text>
+              <Text style={styles.hint}>
+                Stores you’ve said you don’t visit on one trip. They won’t be suggested together;
+                you can still pick both above.
+              </Text>
+              <View style={styles.card}>
+                {separatedPairs.map(([a, b], i) => (
+                  <View key={`${a.id}|${b.id}`} style={[styles.pairRow, i === 0 && styles.pairRowFirst]}>
+                    <Text style={styles.pairLabel} numberOfLines={2}>
+                      {a.name} and {b.name}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        haptics.tap();
+                        setSeparateTrips(a.id, b.id, false);
+                      }}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Allow ${a.name} and ${b.name} on the same trip`}
+                    >
+                      <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
 
           {/* The other verb. The confirm in the header plans a trip — a task
               for Today, possibly for tomorrow — and this says you're standing
@@ -668,8 +747,30 @@ function makeStyles(colors: Colors) {
       lineHeight: 21,
     },
     suggestionSub: { color: colors.textSecondary, fontSize: font.sm, marginTop: 2, lineHeight: 19 },
-    suggestionAction: { marginTop: spacing.md },
+    // Wraps rather than scrolls: the second label is a sentence, not a word,
+    // and at 390pt the two don't sit on one line in every language.
+    suggestionActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.md,
+    },
     startAction: { alignSelf: 'flex-start', marginTop: spacing.xs },
+    // Deliberately the store rows' geometry (see `row`), because it's the same
+    // kind of thing — a store line in a card — and giving it its own metrics
+    // would read as a different sort of list.
+    pairRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+      borderTopWidth: border.hairline,
+      borderTopColor: colors.separator,
+    },
+    pairRowFirst: { borderTopWidth: 0 },
+    pairLabel: { flex: 1, color: colors.text, fontSize: font.md },
     label: {
       fontSize: font.xs,
       fontWeight: fontWeight.semibold,

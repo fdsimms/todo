@@ -518,7 +518,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {
-    const { shops, itemShops, aisleOrder, hiddenAisles, items } = useGroceryStore.getState();
+    const { shops, itemShops, aisleOrder, hiddenAisles, items, separateTrips } =
+      useGroceryStore.getState();
 
     expect(shops.length).toBeGreaterThanOrEqual(3);
     // "It has everything, but don't send me there".
@@ -542,10 +543,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // read as a feature the app hasn't got.
     const plan = planTrip(items, itemShops, shops);
     expect(plan.coverage.length).toBeGreaterThanOrEqual(2);
+    const names = new Map(items.map(i => [i.id, i.name]));
     const copy = describeTripSuggestion(
-      summarizeTrip([], plan).suggestion,
+      summarizeTrip([], plan, separateTrips).suggestion,
       plan.itemIds.length,
-      new Map(items.map(i => [i.id, i.name]))
+      names
     );
     expect(copy).not.toBeNull();
     // Both halves of the card, because the second one is conditional: the
@@ -554,6 +556,22 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // and the line would read as a feature the app hasn't got.
     expect(copy?.store).toBe("Trader Joe's");
     expect(copy?.offer).toBe('Add Costco for Cottage cheese, Peanut butter and Tortillas');
+
+    // …and the seeded pairing is what makes that Costco. Corner Market covers
+    // four the headline store can't against Costco's three, so on coverage
+    // alone it wins the second stop — the seed says the user doesn't combine it
+    // with Trader Joe's, and the walk takes the next best instead. Asserted by
+    // dropping the pairs rather than by reading the setting, so it pins the
+    // behaviour and not the fixture.
+    expect(separateTrips).toHaveLength(1);
+    const unconstrained = describeTripSuggestion(
+      summarizeTrip([], plan).suggestion,
+      plan.itemIds.length,
+      names
+    );
+    expect(unconstrained?.offer).toBe(
+      'Add Corner Market for Cheddar, Sparkling water, Ice cream and 1 more'
+    );
   });
 
   it('seeds prices, including one item priced at two stores', () => {

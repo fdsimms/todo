@@ -5,6 +5,11 @@ import {
   describeTripSuggestion,
   joinNames,
   extraStopThreshold,
+  shopPairKey,
+  areOnSeparateTrips,
+  toggleSeparateTrips,
+  resolveSeparateTrips,
+  separableSuggestion,
   MAX_TRIP_STOPS,
   MIN_EXTRA_STOP_ITEMS,
   type ShopCoverage,
@@ -623,5 +628,117 @@ describe('describeTripSuggestion', () => {
       detail: 'Likely has 3/5 items on your list: milk, bread and eggs',
       offer: null,
     });
+  });
+});
+
+describe('separate trips — the pairing the user states', () => {
+  it('stores a pair once, whichever way round it is given', () => {
+    expect(shopPairKey('b', 'a')).toBe(shopPairKey('a', 'b'));
+    const once = toggleSeparateTrips([], 'b', 'a', true);
+    expect(toggleSeparateTrips(once, 'a', 'b', true)).toEqual(once);
+    expect(areOnSeparateTrips(once, 'a', 'b')).toBe(true);
+    expect(areOnSeparateTrips(once, 'b', 'a')).toBe(true);
+  });
+
+  it('takes one back without touching the rest', () => {
+    const pairs = toggleSeparateTrips(toggleSeparateTrips([], 'a', 'b', true), 'a', 'c', true);
+    const after = toggleSeparateTrips(pairs, 'b', 'a', false);
+    expect(areOnSeparateTrips(after, 'a', 'b')).toBe(false);
+    expect(areOnSeparateTrips(after, 'a', 'c')).toBe(true);
+  });
+
+  it('keeps a separated store out of the same suggested trip', () => {
+    const plan = planTrip(LIST, LINKS, SHOPS);
+    // Trader Joe's has 3 of the 5 and the pharmacy has the shampoo, so the
+    // walk pairs them by default…
+    expect(summarizeTrip([], plan).suggestion.map(s => s.shop.name)).toEqual([
+      "Trader Joe's",
+      'Ballard Pharmacy',
+    ]);
+    // …and stops once the user says those two aren't one trip. Union Market
+    // isn't picked up in its place: it covers only milk, which Trader Joe's
+    // already has, and the walk never adds a store that closes nothing.
+    const apart = toggleSeparateTrips([], tj.id, pharmacy.id, true);
+    expect(summarizeTrip([], plan, apart).suggestion.map(s => s.shop.name)).toEqual([
+      "Trader Joe's",
+    ]);
+  });
+
+  it('takes the next best store rather than simply dropping the stop', () => {
+    const plan = planTrip(
+      LIST,
+      [...LINKS, link(shampoo.id, union.id, 1), link(saffron.id, union.id, 1)],
+      SHOPS
+    );
+    // Union Market now closes more than the pharmacy, so it leads the second
+    // stop; separated from Trader Joe's, the pharmacy gets it back.
+    expect(summarizeTrip([], plan).suggestion[1].shop.name).toBe('Union Market');
+    const apart = toggleSeparateTrips([], tj.id, union.id, true);
+    expect(summarizeTrip([], plan, apart).suggestion[1].shop.name).toBe('Ballard Pharmacy');
+  });
+
+  it('checks a candidate against every store already in the plan, not just the first', () => {
+    const plan = planTrip(
+      LIST,
+      [...LINKS, link(saffron.id, union.id, 1)],
+      SHOPS
+    );
+    expect(summarizeTrip([], plan).suggestion.map(s => s.shop.name)).toEqual([
+      "Trader Joe's",
+      'Union Market',
+      'Ballard Pharmacy',
+    ]);
+    // The pharmacy is fine with Trader Joe's and not with Union Market — which
+    // the walk only added on its second pass. Checking the candidate against
+    // the first stop alone would let it through.
+    const apart = toggleSeparateTrips([], pharmacy.id, union.id, true);
+    expect(summarizeTrip([], plan, apart).suggestion.map(s => s.shop.name)).toEqual([
+      "Trader Joe's",
+      'Union Market',
+    ]);
+  });
+
+  it('constrains what is suggested, never what is picked', () => {
+    const plan = planTrip(LIST, LINKS, SHOPS);
+    const apart = toggleSeparateTrips([], tj.id, pharmacy.id, true);
+    // Both hand-picked: the summary answers for the trip the user built, and
+    // says nothing about the pairing. Same line excludeFromSuggestions draws.
+    const summary = summarizeTrip([tj.id, pharmacy.id], plan, apart);
+    expect(summary.covered).toEqual([milk.id, bread.id, eggs.id, shampoo.id]);
+    expect(summary.suggestion).toEqual([]);
+  });
+
+  it('resolves pairs to stores and drops the ones that cannot be', () => {
+    const pairs = [shopPairKey(tj.id, pharmacy.id), shopPairKey(tj.id, 'shop-gone')];
+    expect(resolveSeparateTrips(pairs, SHOPS)).toEqual([[tj, pharmacy]]);
+    // Nothing can produce a self-pair, and it would render as a store kept
+    // apart from itself.
+    expect(resolveSeparateTrips([shopPairKey(tj.id, tj.id)], SHOPS)).toEqual([]);
+  });
+});
+
+describe('separableSuggestion', () => {
+  function cov(shop: Shop): ShopCoverage {
+    return {
+      shop, itemIds: [], unavailableItemIds: [], withoutBrandItemIds: [],
+      assertedCount: 0, observedPurchases: 0, recordedItems: 0,
+    };
+  }
+
+  it('pairs the one picked store with the one being suggested', () => {
+    expect(separableSuggestion([tj.id], [cov(pharmacy), cov(union)])).toEqual([tj.id, pharmacy.id]);
+  });
+
+  it('pairs the walk’s own first two stops when nothing is picked', () => {
+    expect(separableSuggestion([], [cov(tj), cov(pharmacy)])).toEqual([tj.id, pharmacy.id]);
+  });
+
+  it('offers nothing when the pairing would be a guess', () => {
+    // Several picked: "not together" could mean any of several pairs, and
+    // choosing one would record a claim the user didn't make.
+    expect(separableSuggestion([tj.id, union.id], [cov(pharmacy)])).toBeNull();
+    // Nothing to pair with at all.
+    expect(separableSuggestion([], [cov(tj)])).toBeNull();
+    expect(separableSuggestion([tj.id], [])).toBeNull();
   });
 });
