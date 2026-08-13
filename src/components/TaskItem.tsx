@@ -2138,7 +2138,7 @@ export const TaskItem = React.memo(function TaskItem({
                           accessibilityRole="button"
                           accessibilityLabel={`Reset timer for ${task.title}`}
                         >
-                          <Ionicons name="refresh" size={iconSize.xs} color={colors.textTertiary} />
+                          <Ionicons name="trash-outline" size={iconSize.xs} color={colors.textTertiary} />
                         </TouchableOpacity>
                       )}
                     </View>

@@ -1,0 +1,4 @@
+{
+  "message": "Pickers that choose one option from a fixed set — a task's kind, priority, the template date anchor, and most Settings rows — are now a single segmented control instead of a row of pills. Priority shows its colour on every option, not just the one you picked",
+  "date": "2026-08-13"
+}

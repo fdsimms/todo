@@ -111,6 +111,12 @@ jest.mock('../utils/calendarSync', () => ({
 jest.mock('../utils/deadlineCalendarSync', () => ({
   syncDeadlineEvent: jest.fn().mockResolvedValue(null),
 }));
+// And the same again for the time-block half (#1492), which reaches the
+// calendar store for a window of events to fit a block into — that one imports
+// AppState directly.
+jest.mock('../store/useCalendarStore', () => ({
+  useCalendarStore: { getState: () => ({ events: [], loaded: false }) },
+}));
 
 // ---------------------------------------------------------------------------
 
@@ -648,6 +654,30 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(Math.max(...perSlot.values())).toBeGreaterThan(1);
     // "Added to list on X" on the week header.
     expect(Object.keys(useMealPlanStore.getState().addedToListAt).length).toBeGreaterThan(0);
+  });
+
+  it('leaves no post-cook offer standing, but sets tonight up to raise one', () => {
+    // The "out of anything after X?" offer is the app's answer to a tap you
+    // just made, so it can't be seeded — the past nights the seed marks cooked
+    // would otherwise leave demo mode opening on a banner about a dinner eight
+    // days ago. What *can* be checked is the claim the seed comment makes: that
+    // cooking tonight's dinner raises one, which is the only honest way to see
+    // this feature in the demo.
+    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+
+    const tonight = useMealPlanStore.getState().entries.find(
+      e => e.title === 'Weeknight chicken stir-fry' && !e.cookedAt
+    );
+    expect(tonight).toBeDefined();
+
+    useMealPlanStore.getState().setCooked(tonight!.id, true);
+
+    // Raised because the stir-fry calls for rice and the seeded pantry claims
+    // you have rice — the offer can only ever take away a claim the app is
+    // already making, so the overlap is what makes it demonstrable at all.
+    expect(useMealPlanStore.getState().cookedOffer).toMatchObject({
+      recipeName: 'Weeknight chicken stir-fry',
+    });
   });
 
   it('seeds cook tasks, and a meal that deliberately has none', () => {

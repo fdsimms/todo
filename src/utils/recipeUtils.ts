@@ -919,12 +919,16 @@ function suggestionNovelty(recipe: Pick<Recipe, 'lastCookedAt'>, now: Date): num
  * catalog — there is nothing here to recommend it over any other empty
  * night, regardless of how long it's been since it was cooked.
  */
-export function scoreRecipeAgainstCatalog(
+/** Coverage has to clear this before a recipe reads as "made from the catalog" rather than
+ * "shares one ingredient with it" — see `suggestRecipesForEmptyNight`. */
+const MIN_SUGGESTION_COVERAGE = 0.5;
+
+function catalogCoverage(
   recipe: Recipe,
   items: readonly GroceryItem[],
   now: Date,
   recipesById?: ReadonlyMap<string, Recipe>,
-): number {
+): { matched: number; total: number; coverage: number; avgRecency: number } {
   // Coverage has to be measured over everything the dish actually needs — a
   // parent with two ingredients of its own would otherwise score as a night's
   // cooking away from ready while its components' shopping list is untouched.
@@ -935,7 +939,7 @@ export function scoreRecipeAgainstCatalog(
   // choice would score as less ready than the same recipe without one.
   const ingredients = flattenRecipeIngredients(recipe, recipesById ?? new Map([[recipe.id, recipe]]))
     .map(f => f.ingredient);
-  if (ingredients.length === 0) return 0;
+  if (ingredients.length === 0) return { matched: 0, total: 0, coverage: 0, avgRecency: 0 };
   const byKey = new Map(items.map(i => [i.nameKey, i]));
   let matched = 0;
   let recencySum = 0;
@@ -945,9 +949,22 @@ export function scoreRecipeAgainstCatalog(
     matched += 1;
     recencySum += purchaseRecency(item, now);
   }
+  return {
+    matched,
+    total: ingredients.length,
+    coverage: matched / ingredients.length,
+    avgRecency: matched === 0 ? 0 : recencySum / matched,
+  };
+}
+
+export function scoreRecipeAgainstCatalog(
+  recipe: Recipe,
+  items: readonly GroceryItem[],
+  now: Date,
+  recipesById?: ReadonlyMap<string, Recipe>,
+): number {
+  const { matched, coverage, avgRecency } = catalogCoverage(recipe, items, now, recipesById);
   if (matched === 0) return 0;
-  const coverage = matched / ingredients.length;
-  const avgRecency = recencySum / matched;
   const catalogFit = coverage * (0.5 + 0.5 * avgRecency);
   return catalogFit * suggestionNovelty(recipe, now);
 }
@@ -959,6 +976,11 @@ export function scoreRecipeAgainstCatalog(
  * nothing) is a separate, much larger surface — this is "the offline
  * suggestions should be the better ones" being taken at its word, not a
  * fallback for when there's no API key.
+ *
+ * Gated on `MIN_SUGGESTION_COVERAGE`, not just "shares an ingredient" —
+ * without a floor, a recipe with one match out of eleven ingredients still
+ * scored above zero and could out-rank an empty result set, which reads as
+ * the app recommending a dish you're nowhere close to being able to cook.
  */
 export function suggestRecipesForEmptyNight(
   recipes: readonly Recipe[],
@@ -968,8 +990,9 @@ export function suggestRecipesForEmptyNight(
 ): Recipe[] {
   const byId = recipeMap(recipes);
   return recipes
-    .map(recipe => ({ recipe, score: scoreRecipeAgainstCatalog(recipe, items, now, byId) }))
-    .filter(x => x.score > 0)
+    .map(recipe => ({ recipe, ...catalogCoverage(recipe, items, now, byId) }))
+    .filter(x => x.coverage >= MIN_SUGGESTION_COVERAGE)
+    .map(x => ({ recipe: x.recipe, score: scoreRecipeAgainstCatalog(x.recipe, items, now, byId) }))
     .sort((a, b) => b.score - a.score || a.recipe.name.localeCompare(b.recipe.name))
     .slice(0, limit)
     .map(x => x.recipe);

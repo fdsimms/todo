@@ -1378,6 +1378,14 @@ describe('suggestRecipesForEmptyNight', () => {
     expect(suggestRecipesForEmptyNight([r], [], now)).toEqual([]);
   });
 
+  it('excludes a recipe under the coverage floor even with a real overlap', () => {
+    const r = recipe('Mostly missing', {
+      ingredients: Array.from({ length: 11 }, (_, i) => ing(`Ingredient ${i}`, { nameKey: `ingredient-${i}` })),
+    });
+    const items = [item('Ingredient 0', { nameKey: 'ingredient-0' })];
+    expect(suggestRecipesForEmptyNight([r], items, now)).toEqual([]);
+  });
+
   it('ranks full coverage above partial', () => {
     const full = recipe('Full', { ingredients: [ing('Onions', { nameKey: 'onions' })] });
     const partial = recipe('Partial', {

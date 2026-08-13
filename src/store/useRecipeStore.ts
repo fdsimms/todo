@@ -150,6 +150,14 @@ interface RecipeStore {
   pauseCookTimer: (id: string) => void;
   resetCookTimer: (id: string) => void;
   stopCookTimer: (id: string) => void;
+  /**
+   * Logs a cook time typed in directly, for whoever times a cook on their own
+   * stove clock rather than this one — same applyMeasuredCookTime write
+   * stopCookTimer makes, just skipping the running/paused segment entirely.
+   * A no-op run must not still bank a log, so this never touches
+   * timerStartedAt/timerElapsedSeconds; abandon the timer first if one is live.
+   */
+  logManualCookTime: (id: string, minutes: number) => void;
 
   /** null clears it. Rounded and floored at 1 minute, same clamp as setEstimatedMinutes. */
   setPrepMinutes: (id: string, minutes: number | null) => void;
@@ -166,6 +174,8 @@ interface RecipeStore {
   pausePrepTimer: (id: string) => void;
   resetPrepTimer: (id: string) => void;
   stopPrepTimer: (id: string) => void;
+  /** The prep-timer counterpart of logManualCookTime, logging through applyMeasuredPrepTime. */
+  logManualPrepTime: (id: string, minutes: number) => void;
 
   /**
    * Appends one typed line. Null when it parses to nothing or is already
@@ -506,6 +516,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     });
   },
 
+  logManualCookTime(id, minutes) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe || minutes <= 0) return;
+    save(set, { ...recipe, ...applyMeasuredCookTime(minutes, recipe) });
+  },
+
   setPrepMinutes(id, minutes) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
@@ -542,6 +558,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       prepTimerElapsedSeconds: 0,
       ...applyMeasuredPrepTime(minutes, recipe),
     });
+  },
+
+  logManualPrepTime(id, minutes) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe || minutes <= 0) return;
+    save(set, { ...recipe, ...applyMeasuredPrepTime(minutes, recipe) });
   },
 
   addIngredient(recipeId, line, section = null) {

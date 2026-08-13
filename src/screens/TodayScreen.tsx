@@ -91,6 +91,7 @@ import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { ProjectNudgeBanner } from '../components/ProjectNudgeBanner';
+import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
 import { findProjectStalls } from '../utils/projectPull';
 import { useProjectStore } from '../store/useProjectStore';
 import { TodayMealPlanSection } from '../components/TodayMealPlanSection';
@@ -2343,6 +2344,12 @@ export function TodayScreen() {
           <NewTasksBanner tasks={newTasks} onJumpToTask={jumpToTask} onDismiss={dismissNewTasksBanner} />
         )}
 
+        {/* Here as well as on the meal plan, because a meal is ticked off from
+            either: completing a "Cook X" task is a cooking, and the app's only
+            signal that something was *used up* shouldn't depend on which screen
+            the tap landed on. Renders nothing unless a cook just raised one. */}
+        {viewMode === 'today' && <CookedUseUpOffer />}
+
         {/* "What's new" leads; "what's gone quiet" follows. */}
         {viewMode === 'today' && projectStalls.length > 0 && !nudgeDismissed && (
           <ProjectNudgeBanner
@@ -3159,17 +3166,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listFooterFixed: { flexGrow: 0, minHeight: 0 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
-  filterBar: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: spacing.md, paddingVertical: 2, gap: spacing.sm,
-  },
-  filterChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: spacing.md, paddingVertical: 7,
-    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
-  },
-  filterChipActive: { backgroundColor: colors.accent },
-  filterDot: { width: 6, height: 6, borderRadius: radius.full },
-  filterChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-  filterChipTextActive: { color: colors.text, fontWeight: fontWeight.semibold, letterSpacing: 0.1 },
 });

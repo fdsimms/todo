@@ -8,17 +8,24 @@ import { useReduceMotion } from '../utils/useReduceMotion';
 import { haptics } from '../utils/haptics';
 
 interface Props {
-  /** The dish just marked cooked — named, so the offer says what it's about. */
-  recipeName: string;
-  /** How many lines `restockRows` will defend. Never rendered at 0; see below. */
-  count: number;
-  onReview: () => void;
+  /** The bold half of the sentence — always a count, e.g. "3 ingredients". */
+  lead: string;
+  /** The rest of it, read straight on from `lead`. */
+  rest: string;
+  actionLabel: string;
+  onAction: () => void;
   onDismiss: () => void;
+  /** The whole sentence, said once, since the two halves are one thought. */
+  accessibilityLabel: string;
+  actionAccessibilityLabel: string;
+  dismissAccessibilityLabel: string;
 }
 
 /**
- * Shown on the meal plan after a meal is marked cooked, when the app can name
- * items you buy that aren't on your list.
+ * The passive offer shown on the meal plan (and on Today) after a meal is
+ * marked cooked. Two of them exist and they are the same shape on purpose:
+ * "you might be out of these" (CookedUseUpOffer) and "these aren't on your
+ * list" (MealPlanScreen's restock offer).
  *
  * This replaced opening `RecipeToListSheet` outright on the mark-cooked tap.
  * The sheet is a full-screen modal with a Cancel and an Add, and firing one at
@@ -26,18 +33,32 @@ interface Props {
  * you wanted to re-buy a meal the moment you finished eating it. Three things
  * about that were wrong and only one of them was the timing: it also fired
  * with no idea whether anything needed buying (see `restockRows`), and it
- * arrived pre-ticked. So the offer is now a banner — the same shape
+ * arrived pre-ticked. So the offer is a banner — the same shape
  * `ProjectNudgeBanner` uses for the other "here's something you might want to
  * look at" on Today — and the sheet opens only if you ask for it.
  *
- * **The caller computes `count` live and renders nothing at 0.** That's what
- * takes the place of a dismissal stamp: adding the items empties the set and
- * the banner goes on its own, the way `TripSuggestionCard` returns null rather
- * than hedging. The × is for "not now" — nothing is wrong with the offer, it
- * just isn't wanted, and it doesn't have to persist to be honest since the
- * same shop is always available from the recipe itself.
+ * **Every caller computes its count live and renders nothing at 0.** That's
+ * what takes the place of a dismissal stamp: answering empties the set and the
+ * banner goes on its own, the way `TripSuggestionCard` returns null rather than
+ * hedging. The × is for "not now" — nothing is wrong with the offer, it just
+ * isn't wanted, and it doesn't have to persist to be honest since both the
+ * shop and the pantry stay reachable by hand.
+ *
+ * One banner at a time, and the two are ranked rather than stacked: the
+ * consumption question is the one only this moment can answer, so the restock
+ * offer waits behind it (see MealPlanScreen). Two of these side by side is the
+ * noise the passive treatment exists to avoid.
  */
-export function CookedRestockBanner({ recipeName, count, onReview, onDismiss }: Props) {
+export function CookedOfferBanner({
+  lead,
+  rest,
+  actionLabel,
+  onAction,
+  onDismiss,
+  accessibilityLabel,
+  actionAccessibilityLabel,
+  dismissAccessibilityLabel,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const reduceMotion = useReduceMotion();
@@ -55,11 +76,9 @@ export function CookedRestockBanner({ recipeName, count, onReview, onDismiss }: 
     }).start();
   }, [progress, reduceMotion]);
 
-  const label = `${count} ingredient${count === 1 ? '' : 's'}`;
-
-  const handleReview = () => {
+  const handleAction = () => {
     haptics.tap();
-    onReview();
+    onAction();
   };
 
   const handleDismiss = () => {
@@ -77,23 +96,23 @@ export function CookedRestockBanner({ recipeName, count, onReview, onDismiss }: 
         },
       ]}
       accessibilityRole="summary"
-      accessibilityLabel={`${label} from ${recipeName} are not on your shopping list`}
+      accessibilityLabel={accessibilityLabel}
     >
       <Text style={styles.text} numberOfLines={2}>
-        <Text style={styles.count}>{label}</Text>
-        {` from ${recipeName} aren't on your list`}
+        <Text style={styles.lead}>{lead}</Text>
+        {` ${rest}`}
       </Text>
       <PressableScale
         style={styles.button}
-        onPress={handleReview}
-        accessibilityLabel={`Review ${label} from ${recipeName} to add to your shopping list`}
+        onPress={handleAction}
+        accessibilityLabel={actionAccessibilityLabel}
       >
-        <Text style={styles.buttonText}>Review</Text>
+        <Text style={styles.buttonText}>{actionLabel}</Text>
       </PressableScale>
       <PressableScale
         style={styles.dismiss}
         onPress={handleDismiss}
-        accessibilityLabel="Dismiss restock notice"
+        accessibilityLabel={dismissAccessibilityLabel}
       >
         <Ionicons name="close" size={iconSize.sm} color={colors.textSecondary} />
       </PressableScale>
@@ -117,7 +136,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
   },
   text: { flex: 1, color: colors.text, fontSize: font.sm, lineHeight: font.sm * 1.35 },
-  count: { fontWeight: fontWeight.bold },
+  lead: { fontWeight: fontWeight.bold },
   button: {
     backgroundColor: colors.accent,
     paddingHorizontal: spacing.md,

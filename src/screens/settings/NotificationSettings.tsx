@@ -17,21 +17,22 @@ import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
-import { SettingsPills, type PillOption } from './SettingsPills';
+import { SettingsSegments } from './SettingsSegments';
+import { type SegmentOption } from '../../components/SegmentedControl';
 import { InlineTimePicker } from './InlineTimePicker';
 import { makeSettingsStyles } from './settingsStyles';
 
-const REMINDER_LEAD_PILLS: PillOption<number | null>[] =
+const REMINDER_LEAD_OPTIONS: SegmentOption<number | null>[] =
   DEFAULT_REMINDER_LEAD_OPTIONS.map(o => ({ value: o.value, label: o.label }));
 
 // Full names for the hint sentence and screen reader labels; single letters
-// on the pills themselves, same compression buildWeekDays'/weekdayHeaders'
+// on the segments themselves, same compression buildWeekDays'/weekdayHeaders'
 // calendar headers already use to fit all seven across 390pt.
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-/** Weekday pills rotated to start at weekStartsOn, matching the calendar's own header order. */
-function weekdayPills(weekStartsOn: WeekStart): PillOption<number>[] {
+/** Weekday segments rotated to start at weekStartsOn, matching the calendar's own header order. */
+function weekdayOptions(weekStartsOn: WeekStart): SegmentOption<number>[] {
   return Array.from({ length: 7 }, (_, i) => {
     const value = (weekStartsOn + i) % 7;
     return { value, label: WEEKDAY_LETTERS[value] };
@@ -92,7 +93,7 @@ export function NotificationSettings() {
 
   const [mealPlanPickerOpen, setMealPlanPickerOpen] = useState(false);
   const [mealPlanPickerDate, setMealPlanPickerDate] = useState<Date>(new Date());
-  const weekdayPillOptions = useMemo(() => weekdayPills(weekStartsOn), [weekStartsOn]);
+  const weekdaySegmentOptions = useMemo(() => weekdayOptions(weekStartsOn), [weekStartsOn]);
 
   const [quietPickerKey, setQuietPickerKey] = useState<'start' | 'end' | null>(null);
   const [quietPickerDate, setQuietPickerDate] = useState<Date>(new Date());
@@ -342,9 +343,9 @@ export function NotificationSettings() {
             label="Nudge me on"
             tight
           />
-          <SettingsPills
+          <SettingsSegments
             attached
-            options={weekdayPillOptions}
+            options={weekdaySegmentOptions}
             selected={mealPlanNudgeWeekday}
             onSelect={setMealPlanNudgeWeekday}
             accessibilityLabelFor={o => WEEKDAY_NAMES[o.value]}
@@ -387,9 +388,9 @@ export function NotificationSettings() {
             : `New start times get a reminder ${DEFAULT_REMINDER_LEAD_OPTIONS.find(o => o.value === defaultReminderLeadMinutes)?.label.toLowerCase() ?? ''} early`}
           tight
         />
-        <SettingsPills
+        <SettingsSegments
           attached
-          options={REMINDER_LEAD_PILLS}
+          options={REMINDER_LEAD_OPTIONS}
           selected={defaultReminderLeadMinutes}
           onSelect={setDefaultReminderLeadMinutes}
           accessibilityLabelFor={o => `Default reminder lead time ${o.label}`}

@@ -7,13 +7,14 @@ import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
-import { SettingsPills, type PillOption } from './SettingsPills';
+import { SettingsSegments } from './SettingsSegments';
+import { type SegmentOption } from '../../components/SegmentedControl';
 import { InlineTimePicker } from './InlineTimePicker';
 import { makeSettingsStyles } from './settingsStyles';
 
 type SegmentKey = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd';
 
-const WEEK_START_OPTIONS: PillOption<WeekStart>[] = [
+const WEEK_START_OPTIONS: SegmentOption<WeekStart>[] = [
   { value: 0, label: 'Sunday' },
   { value: 1, label: 'Monday' },
 ];
@@ -133,7 +134,7 @@ export function DayTimeSettings() {
           label="Week starts on"
           tight
         />
-        <SettingsPills
+        <SettingsSegments
           attached
           options={WEEK_START_OPTIONS}
           selected={weekStartsOn}
