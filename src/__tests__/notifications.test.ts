@@ -316,7 +316,10 @@ describe('scheduleTaskReminder', () => {
     mockAlarmKitAvailable = true;
     // Reminder lands 10 minutes before quiet hours open, so only rings at
     // +0 and +5 are outside the window.
+    // Tomorrow, so the 21:50 anchor is still in the future when the suite
+    // itself runs after 21:50 — a reminder in the past schedules nothing.
     const base = new Date(FUTURE);
+    base.setDate(base.getDate() + 1);
     base.setHours(21, 50, 0, 0);
     mockSettings.quietHoursStart = '22:00';
     mockSettings.quietHoursEnd = '07:00';

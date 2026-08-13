@@ -44,6 +44,8 @@ export interface RowScroller {
    * as soon as it does, rather than being missed.
    */
   scrollToKey: (key: string) => void;
+  /** Scroll back to the very top of the list, header included. */
+  scrollToTop: () => void;
 }
 
 export interface ReorderableRenderInfo<T> {
@@ -386,7 +388,16 @@ export function ReorderableList<T>({
       pendingScrollKeyRef.current = key;
       pendingScrollTimerRef.current = setTimeout(clearPendingScroll, PENDING_SCROLL_TTL);
     },
-  }), [scrollRowIntoView]);
+    // A pending scrollToKey would fight this the moment its row laid out, so
+    // going to the top cancels it. scrollOffsetRef is left to the scroll
+    // events this animation emits rather than being zeroed here — unlike the
+    // instant scrollToOffset above, an animated scroll isn't where it was
+    // asked to go yet, and an interrupted one never gets there at all.
+    scrollToTop: () => {
+      clearPendingScroll();
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    },
+  }), [scrollRowIntoView, scrollRef]);
 
   const stopAutoscroll = () => {
     if (autoscrollTimerRef.current !== null) {
