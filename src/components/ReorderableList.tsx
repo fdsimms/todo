@@ -77,8 +77,8 @@ interface Props<T> {
    * hovered (the gap the drop would land in, or null before the first move),
    * and `overIndex` — the row the floating card is physically sitting on top
    * of, measured against the list's resting layout. Purely additive to the
-   * existing vertical reorder machinery — e.g. lets a caller detect "dragged
-   * right, like an indent" to offer joining the row under the card into a
+   * existing vertical reorder machinery — e.g. lets a caller detect the card
+   * sitting over a group row to offer joining the task under it into that
    * group, without this component needing to know anything about that
    * meaning.
    *
