@@ -119,6 +119,17 @@ public class TodoCloudKitModule: Module {
 
   private func fetchChanges(since: String?, promise: Promise) {
     var payloads: [String] = []
+    // Set the moment any record fails to decode, and checked once the fetch
+    // finishes. Not rejected from inside the block itself: a Promise can only
+    // be resolved once, and the fetch operation carries on calling this block
+    // for further records regardless of what it does — resolving here would
+    // either be ignored or (worse) collide with the real completion later.
+    //
+    // The record and the reason are logged before the generic message goes to
+    // the promise, because the recordName is the only thing that could ever
+    // point at *which* payload misbehaved, and that's only visible in a device
+    // console, not in the app.
+    var decodeFailure: (recordID: CKRecord.ID, reason: String)?
 
     let config = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
     config.previousServerChangeToken = Self.decodeToken(since)
@@ -128,14 +139,32 @@ public class TodoCloudKitModule: Module {
       configurationsByRecordZoneID: [zoneID: config]
     )
 
-    op.recordWasChangedBlock = { _, result in
-      guard case .success(let record) = result else { return }
-      guard
-        let asset = record[Self.payloadKey] as? CKAsset,
-        let url = asset.fileURL,
-        let text = try? String(contentsOf: url, encoding: .utf8)
-      else { return }
-      payloads.append(text)
+    // Every early return here used to be silent: the operation still finished
+    // and reported success with fewer payloads than it should have had, which
+    // is indistinguishable from "the peer had nothing new" on this end. A sync
+    // that quietly drops a device's data while saying it succeeded is a worse
+    // failure than one that visibly fails, so every branch below is now named
+    // and remembered instead of discarded.
+    op.recordWasChangedBlock = { recordID, result in
+      guard decodeFailure == nil else { return } // already failing this fetch; don't pile on
+      switch result {
+      case .success(let record):
+        guard let asset = record[Self.payloadKey] as? CKAsset else {
+          decodeFailure = (recordID, "record has no readable payload asset")
+          return
+        }
+        guard let url = asset.fileURL else {
+          decodeFailure = (recordID, "payload asset has no local file URL")
+          return
+        }
+        do {
+          payloads.append(try String(contentsOf: url, encoding: .utf8))
+        } catch {
+          decodeFailure = (recordID, "could not read payload asset: \(error.localizedDescription)")
+        }
+      case .failure(let error):
+        decodeFailure = (recordID, "record fetch failed: \(error.localizedDescription)")
+      }
     }
 
     // Deletions are not handled: a payload record is never deleted, only aged
@@ -158,8 +187,27 @@ public class TodoCloudKitModule: Module {
         Error
       >
     ) -> Void = { _, result in
+      // Checked first, ahead of the fetch's own result: a record that failed
+      // to decode is a real failure even when CloudKit itself reports the
+      // fetch as a success — that combination is exactly what used to slip
+      // through silently. See the comment above recordWasChangedBlock.
+      if let (recordID, reason) = decodeFailure {
+        NSLog("[todo-cloudkit-bridge] dropping pull, %@ (%@)", recordID.recordName, reason)
+        promise.reject("ERR_CLOUDKIT_DECODE", "A record from iCloud could not be read (\(reason)).")
+        return
+      }
+
       switch result {
-      case .success(let (token, _, _)):
+      case .success(let (token, _, moreComing)):
+        // Not yet handled: a batch large enough that CloudKit splits it across
+        // several fetches. moreComing would be true here, and this resolves
+        // with only the first batch rather than looping for the rest — silent
+        // truncation on a scale this app hasn't reached yet (a handful of
+        // tasks per device, not thousands), but a real gap, not an oversight
+        // that's been dismissed. Flagged rather than fixed blind: the loop
+        // needs a real multi-batch payload to prove out against, which
+        // nothing available here can produce.
+        _ = moreComing
         promise.resolve([
           "payloads": payloads,
           "cursor": Self.encodeToken(token),
