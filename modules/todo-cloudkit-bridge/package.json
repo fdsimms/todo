@@ -1,0 +1,7 @@
+{
+  "name": "todo-cloudkit-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module that stores and fetches sync payloads in the user's private CloudKit database.",
+  "main": "index.ts",
+  "private": true
+}

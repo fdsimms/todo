@@ -44,7 +44,7 @@
         "expo-calendar",
         {
           "remindersPermission": "Lets dundundun move tasks out of the Reminders app and into your Inbox, so anything you dictate to Siri ends up here.",
-          "calendarPermission": "Lets dundundun see what's already on a day — the calendars you pick, including a Google account added on this device — so it can tell how much of the day is free. It only adds events to a calendar you pick yourself in Settings, for deadlines and planned meals you turn on; it changes nothing else."
+          "calendarPermission": "Lets dundundun see what's already on a day \u2014 the calendars you pick, including a Google account added on this device \u2014 so it can tell how much of the day is free. It only adds events to a calendar you pick yourself in Settings, for deadlines and planned meals you turn on; it changes nothing else."
         }
       ],
       [
@@ -63,7 +63,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Lets dundundun read a recipe out of a photo you've already taken, so a cookbook page you snapped becomes a recipe instead of something to retype.",
-          "cameraPermission": "Lets dundundun read a recipe straight off the page you point the camera at — a cookbook, a recipe card, a clipping.",
+          "cameraPermission": "Lets dundundun read a recipe straight off the page you point the camera at \u2014 a cookbook, a recipe card, a clipping.",
           "microphonePermission": false
         }
       ],
@@ -81,6 +81,7 @@
       "./plugins/withAppGroup",
       "./plugins/withWidgetExtension",
       "./plugins/withAlarmKit",
+      "./plugins/withCloudKit",
       [
         "expo-quick-actions",
         {
@@ -120,7 +121,9 @@
                   "targetName": "TodoWidget",
                   "bundleIdentifier": "com.fdsimms.dundundun.TodoWidget",
                   "entitlements": {
-                    "com.apple.security.application-groups": ["group.com.fdsimms.dundundun"]
+                    "com.apple.security.application-groups": [
+                      "group.com.fdsimms.dundundun"
+                    ]
                   }
                 }
               ]
