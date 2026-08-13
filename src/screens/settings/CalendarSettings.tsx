@@ -40,6 +40,8 @@ export function CalendarSettings() {
   const setCalendarReadEnabled = useSettingsStore(s => s.setCalendarReadEnabled);
   const calendarIds = useSettingsStore(s => s.calendarIds);
   const setCalendarIds = useSettingsStore(s => s.setCalendarIds);
+  const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
+  const setReminderMeetingNudgeEnabled = useSettingsStore(s => s.setReminderMeetingNudgeEnabled);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const events = useCalendarStore(s => s.events);
@@ -287,6 +289,23 @@ export function CalendarSettings() {
             label="Today"
             hint={todaySummary()}
             accessibilityLabel={`Today: ${todaySummary()}`}
+          />
+        </>
+      )}
+
+      {calendarReadEnabled && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="notifications-outline"
+            iconColor={reminderMeetingNudgeEnabled ? colors.accent : undefined}
+            label="Move reminders out of meetings"
+            hint={reminderMeetingNudgeEnabled
+              ? 'A reminder due during an event fires right after it ends instead'
+              : 'Reminders fire at the time you set, even during an event'}
+            toggle={reminderMeetingNudgeEnabled}
+            onPress={() => setReminderMeetingNudgeEnabled(!reminderMeetingNudgeEnabled)}
+            accessibilityLabel="Move reminders out of meetings"
           />
         </>
       )}

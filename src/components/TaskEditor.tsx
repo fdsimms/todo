@@ -353,6 +353,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
@@ -360,12 +361,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // Whether the picked reminder time lands inside a meeting, and where it
   // actually fires instead — mirrors what scheduleTaskReminder does at
   // schedule time, so the row never shows a different answer than the one
-  // that ends up ringing. Off unless calendar read is on, per #1491.
+  // that ends up ringing. Off unless calendar read *and* the nudge setting
+  // are both on, per #1491.
   const reminderNudge = useMemo(() => {
-    if (!reminderTime || !calendarReadEnabled || !calendarLoaded) return null;
+    if (!reminderTime || !calendarReadEnabled || !reminderMeetingNudgeEnabled || !calendarLoaded) return null;
     const nudge = nudgeReminderPastMeeting(reminderTime, calendarEvents);
     return nudge.nudged ? nudge : null;
-  }, [reminderTime, calendarReadEnabled, calendarLoaded, calendarEvents]);
+  }, [reminderTime, calendarReadEnabled, reminderMeetingNudgeEnabled, calendarLoaded, calendarEvents]);
 
   const scheduleTooltipAnim = useRef(new Animated.Value(0)).current;
   const hadScheduleParse = useRef(false);

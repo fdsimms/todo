@@ -43,6 +43,7 @@ const DEFAULT_MOCK_SETTINGS = {
   quietHoursStart: null,
   quietHoursEnd: null,
   calendarReadEnabled: false,
+  reminderMeetingNudgeEnabled: true,
 };
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -651,6 +652,18 @@ describe('scheduleTaskReminder nudges a reminder out of a meeting', () => {
     mockCalendar.events = [meetingEvent(new Date(2026, 0, 1, 9, 0), new Date(2026, 0, 1, 10, 0))];
     const reminderTime = new Date(2026, 0, 1, 9, 30).toISOString();
     await scheduleTaskReminder(makeTask({ id: 'meeting-2', reminderTime }));
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.trigger.date.toISOString()).toBe(new Date(reminderTime).toISOString());
+  });
+
+  it('leaves the trigger alone when the nudge setting itself is off', async () => {
+    jest.setSystemTime(new Date(2026, 0, 1, 8, 0));
+    mockSettings.calendarReadEnabled = true;
+    mockSettings.reminderMeetingNudgeEnabled = false;
+    mockCalendar.loaded = true;
+    mockCalendar.events = [meetingEvent(new Date(2026, 0, 1, 9, 0), new Date(2026, 0, 1, 10, 0))];
+    const reminderTime = new Date(2026, 0, 1, 9, 30).toISOString();
+    await scheduleTaskReminder(makeTask({ id: 'meeting-2b', reminderTime }));
     const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
     expect(arg.trigger.date.toISOString()).toBe(new Date(reminderTime).toISOString());
   });

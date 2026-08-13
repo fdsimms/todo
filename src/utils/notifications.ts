@@ -143,8 +143,8 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
   // 9:15–9:45 quiet-hours window still needs the second push, and applying
   // them in the other order could land a reminder back inside quiet hours
   // with nothing left to defer it again.
-  const { calendarReadEnabled, quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
-  if (calendarReadEnabled) {
+  const { calendarReadEnabled, reminderMeetingNudgeEnabled, quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+  if (calendarReadEnabled && reminderMeetingNudgeEnabled) {
     const { events, loaded } = useCalendarStore.getState();
     if (loaded) triggerDate = nudgeReminderPastMeeting(triggerDate, events).time;
   }
