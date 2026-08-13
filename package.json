@@ -72,6 +72,7 @@
     "expo-secure-store": "~15.0.8",
     "expo-sensors": "~15.0.6",
     "expo-sharing": "~14.0.7",
+    "expo-splash-screen": "~31.0.13",
     "expo-sqlite": "~16.0.8",
     "expo-status-bar": "~3.0.7",
     "react": "19.1.0",

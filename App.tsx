@@ -1,8 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { enableScreens } from 'react-native-screens';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
 import AppNavigator from './src/navigation/AppNavigator';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { AppLockGate } from './src/components/AppLockGate';
@@ -20,9 +21,15 @@ import { useWidgetSync } from './src/utils/widgetSync';
 import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
-import { runStartupSequence } from './src/utils/startup';
+import { runStartupSequence, runStartupStep } from './src/utils/startup';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import { preloadAppFont } from './src/theme/AppFont';
 import { View } from 'react-native';
+
+// Held open until `AppGate` below knows which font to render in and has it
+// loaded, so the first frame the user ever sees is already in the right
+// typeface instead of a system-font flash that swaps a few frames later.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // Disables react-native-screens' native optimizations app-wide, called once
 // before any navigator mounts. Workaround for a crash in
@@ -60,15 +67,45 @@ function AppContent() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <AppRoot />
+      <AppGate />
     </ErrorBoundary>
   );
 }
 
+/**
+ * Holds the native splash screen up until the DB is open, settings are
+ * loaded, and (if the user picked a bundled typeface) its faces are
+ * registered — the three things `AppRoot`'s first render would otherwise
+ * commit against stale/default values. `initialize tasks` and `load
+ * settings` used to be the first two steps of `AppRoot`'s own startup
+ * sequence below; they moved here because that sequence only ever runs
+ * *after* the first paint, which is exactly the frame this is trying to
+ * avoid.
+ */
+function AppGate() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      runStartupStep('initialize tasks', () => useTaskStore.getState().initialize());
+      runStartupStep('load settings', () => useSettingsStore.getState().initialize());
+      await preloadAppFont(useSettingsStore.getState().appFont);
+      if (!cancelled) setReady(true);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
+
+  if (!ready) return null;
+  return <AppRoot />;
+}
+
 function AppRoot() {
-  const initTasks = useTaskStore(s => s.initialize);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
-  const initSettings = useSettingsStore(s => s.initialize);
   const initSecrets = useSettingsStore(s => s.initializeSecrets);
   const sweepExpiredTasks = useTaskStore(s => s.sweepExpiredTasks);
   const checkVacationExpiry = useTaskStore(s => s.checkVacationExpiry);
@@ -87,10 +124,9 @@ function AppRoot() {
     // where it does — runStartupSequence just refuses to let a failure halfway
     // down take the app with it.
     runStartupSequence([
-      // initTasks calls initDatabase() which creates all tables first
-      ['initialize tasks', initTasks],
-      // Then load settings from the now-initialized DB
-      ['load settings', initSettings],
+      // initTasks and initSettings ran already, in AppGate above — before this
+      // component even mounted — so the DB is open and settings are loaded by
+      // the time any step below runs.
       // The API key, which lives in the keychain rather than the settings table.
       // Async and deliberately not awaited — nothing in the launch sequence below
       // reads it, and the first thing that does is a suggestion the user asks for
@@ -145,7 +181,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initTasks, initSettings, initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any
