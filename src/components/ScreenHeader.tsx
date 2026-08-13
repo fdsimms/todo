@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, lineHeight, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, border, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 
 export interface ScreenHeaderAction {
@@ -137,7 +137,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   actions: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', paddingBottom: 2 },
   iconBtn: {
     width: 34, height: 34, borderRadius: 17,
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: colors.glassFill,
+    borderWidth: border.thin,
+    borderColor: colors.glassBorder,
+    borderTopColor: colors.glassBorderTop,
     alignItems: 'center', justifyContent: 'center',
   },
   badge: {
