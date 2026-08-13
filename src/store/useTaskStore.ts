@@ -39,7 +39,16 @@ import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
 import { dripCandidate, projectPullUpdates } from '../utils/projectPull';
-import { dueMealPlanNudge, mealPlanNudgeSuppressed, hasLiveMealPlanNudgeTask, MEAL_PLAN_NUDGE_LINK_URL } from '../utils/mealPlanNudge';
+import {
+  dueMealPlanNudge,
+  mealPlanNudgeLinkUrl,
+  mealPlanNudgeSuppressed,
+  partitionMealPlanNudgeTasks,
+} from '../utils/mealPlanNudge';
+// Imports this module back, like useMealPlanStore does — inert for the same
+// reason: the reference is inside an action body, by which time both modules
+// have finished loading.
+import { deleteGeneratedTaskQuietly } from './generatedTaskSync';
 import { generatedBy, generatedSourceOf } from '../utils/generatedTasks';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
@@ -312,13 +321,21 @@ function reconcileDeadlineEvent(task: Task): void {
  *   just-restored task live and leaves it alone.
  * - **`mealPlanNudge` writes nothing**, having no source row to write on. Its
  *   equivalent of an opt-out is the Settings toggle, and its equivalent of
- *   "don't hand it back" is `mealPlanNudgeLastFiredWeekKey`.
+ *   "don't hand it back" is `mealPlanNudgeLastFiredWeekKey`. It gets an
+ *   explicit case rather than falling through the default: its source id used
+ *   to be null, so the guard below was what kept it out of here, and that guard
+ *   stopped applying when its tasks started carrying a day key. A day key names
+ *   a square on the calendar, not a row — there is nothing to write "no" on,
+ *   and deleting one of the seven means only that this day doesn't need
+ *   planning, which the next firing has already moved past.
  */
 function writeGeneratedOptOut(task: Task, value: false | null): void {
   const sourceId = task.generatedSourceId;
   if (!sourceId) return;
   const reconcileOff = { reconcile: false } as const;
   switch (task.generatedKind) {
+    case 'mealPlanNudge':
+      return;
     case 'mealCook':
       useMealPlanStore.getState().setCookTask(sourceId, value);
       return;
@@ -2717,27 +2734,65 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // idempotency key's purposes.
     settings.setMealPlanNudgeLastFiredWeekKey(due.weekKey);
 
-    // This is a fresh addTask() every week, not one recurring row that only
-    // spawns its successor on completion (see mealPlanNudge.ts) — so without
-    // this gate, ignoring one nudge would pile up a new one every week
-    // instead of just leaving the same task unread.
-    if (hasLiveMealPlanNudgeTask(get().tasks)) return;
+    // This is a fresh write every week, not one recurring row that only spawns
+    // its successor on completion (see mealPlanNudge.ts) — so without a gate,
+    // ignoring one nudge would pile up another set every week instead of just
+    // leaving the same tasks unread. `current` is this week's set, which blocks
+    // a second one; `stale` is a previous week's, asking about days that have
+    // already happened.
+    const { current, stale } = partitionMealPlanNudgeTasks(get().tasks, due);
+    stale.forEach(task => deleteGeneratedTaskQuietly(task.id));
+    if (current.length > 0) return;
 
     const plannedEntries = dbGetMealPlanEntries(due.targetWeekStartKey, due.targetWeekEndKey);
     if (mealPlanNudgeSuppressed(due, plannedEntries)) return;
 
-    get().addTask({
-      title: due.title,
-      dueDate: due.dueDate.toISOString(),
-      // The link still opens the Meal Plan screen from the row's link button;
-      // it just no longer doubles as the marker saying who wrote the task —
-      // generatedKind does that now, for this generator as for the other three.
-      linkUrl: MEAL_PLAN_NUDGE_LINK_URL,
-      // Filed like the other three generators' tasks. Without this the one
-      // task the app writes entirely on its own schedule was also the one with
-      // no category, so it landed loose above every section.
-      category: settings.mealPlanNudgeTaskCategory,
-      ...generatedBy('mealPlanNudge'),
+    // Filed like the other three generators' tasks. Without this the one thing
+    // the app writes entirely on its own schedule was also the one with no
+    // category, so it landed loose above every section.
+    const category = settings.mealPlanNudgeTaskCategory;
+    const groupStore = useTaskGroupStore.getState();
+
+    // One stack, reused and retitled week after week (see mealPlanNudgeGroupId).
+    // Resolve-or-shrug: a stack the user deleted reads back as null here and a
+    // new one takes its place, rather than the week's tasks landing loose
+    // because a row went missing.
+    const existing = settings.mealPlanNudgeGroupId
+      ? groupStore.getGroupById(settings.mealPlanNudgeGroupId)
+      : null;
+    const group = existing ?? groupStore.createGroup(due.title, category);
+    if (existing) {
+      groupStore.updateGroup(group.id, { title: due.title, category });
+    } else {
+      // Stacks are created collapsed, which is right for one a person just
+      // built out of tasks they picked — they know what's in it. A stack that
+      // appears unattended showing "0 of 7 done today" and no rows hides the
+      // whole week behind a chevron nobody was told to tap. Only on creation:
+      // a stack the user collapsed last week stays collapsed.
+      groupStore.setGroupCollapsed(group.id, false);
+    }
+    if (group.id !== settings.mealPlanNudgeGroupId) {
+      settings.setMealPlanNudgeGroupId(group.id);
+    }
+
+    due.days.forEach((day, index) => {
+      const task = get().addTask({
+        title: day.title,
+        // Every day shares the firing day's due date rather than taking its
+        // own — see mealPlanNudge.ts. Planning next week is work for today.
+        dueDate: due.dueDate.toISOString(),
+        // The link opens the Meal Plan screen on this task's own day. It no
+        // longer doubles as the marker saying who wrote the task — generatedKind
+        // does that now, for this generator as for the other three.
+        linkUrl: mealPlanNudgeLinkUrl(day.dayKey),
+        category,
+        groupId: group.id,
+        ...generatedBy('mealPlanNudge', day.dayKey),
+      });
+      // The stack's own 1..K order, which is a separate number space from the
+      // list order addTask just stamped (see reorderGroupChildren). Set the way
+      // groupTasks sets it, so the rows read down the week.
+      get().updateTask(task.id, { sortOrder: index + 1 }, { skipPostponeCount: true });
     });
     // Deliberately no setLastAction, same reasoning as dripStalledProjects:
     // an unattended background write shouldn't occupy the shake-to-undo slot

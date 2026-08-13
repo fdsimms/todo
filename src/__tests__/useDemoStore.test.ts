@@ -28,7 +28,9 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
 import { isUsingDemoDatabase } from '../db/database';
-import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
 import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
@@ -740,6 +742,58 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Nothing spawned for free text or for a leftover night.
     const freeOrLeftover = entries.filter(e => !e.recipeId || e.leftoverId).map(e => e.id);
     expect(cookTasks.every(t => !freeOrLeftover.includes(t.generatedSourceId!))).toBe(true);
+  });
+
+  it('seeds the weekly meal-plan nudge as a stack of seven day tasks', () => {
+    const { tasks } = useTaskStore.getState();
+    const { groups } = useTaskGroupStore.getState();
+
+    const nudgeTasks = tasks.filter(t => t.generatedKind === 'mealPlanNudge');
+    expect(nudgeTasks).toHaveLength(7);
+
+    // All in one stack, ordered down the week.
+    const groupIds = new Set(nudgeTasks.map(t => t.groupId));
+    expect(groupIds.size).toBe(1);
+    const group = groups.find(g => g.id === nudgeTasks[0].groupId);
+    expect(group).toBeDefined();
+    expect(group!.title).toMatch(/^Plan meals for /);
+    // A stack that arrives unattended opens itself; nothing else would show
+    // the seven rows this feature is.
+    expect(group!.collapsed).toBe(false);
+
+    // Seven consecutive days, each carrying its own day key and a link that
+    // opens the meal plan on it.
+    const dayKeys = nudgeTasks
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(t => t.generatedSourceId!);
+    expect(new Set(dayKeys).size).toBe(7);
+    dayKeys.forEach((key, i) => {
+      expect(key).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      if (i > 0) {
+        expect(differenceInCalendarDays(dayKeyToDate(key), dayKeyToDate(dayKeys[i - 1]))).toBe(1);
+      }
+    });
+    nudgeTasks.forEach(t => {
+      expect(t.linkUrl).toBe(`dundundun://mealplan?date=${t.generatedSourceId}`);
+    });
+  });
+
+  it('seeds one nudge day already planned end to end, so the ready state shows', () => {
+    // The counter and its full state are invisible until a day has all three
+    // meals on it — the reason this is seeded rather than left to the user.
+    const { entries } = useMealPlanStore.getState();
+    const { tasks } = useTaskStore.getState();
+
+    const counts = tasks
+      .filter(t => t.generatedKind === 'mealPlanNudge')
+      .map(t => countPlannedSlots(entries, t.generatedSourceId!));
+
+    expect(counts.filter(c => c === MEAL_PLAN_NUDGE_SLOT_COUNT)).toHaveLength(1);
+    // ...and a spread either side of it, so the counter reads as a range
+    // rather than as an on/off badge.
+    expect(counts.some(c => c > 0 && c < MEAL_PLAN_NUDGE_SLOT_COUNT)).toBe(true);
+    expect(counts.some(c => c === 0)).toBe(true);
   });
 
   it('seeds today with meals on both sides of the fold', () => {

@@ -4,9 +4,13 @@ import {
   MEAL_PLAN_NUDGE_LINK_URL,
   dueMealPlanNudge,
   mealPlanNudgeSuppressed,
-  hasLiveMealPlanNudgeTask,
+  partitionMealPlanNudgeTasks,
+  countPlannedSlots,
+  mealPlanNudgeDayKey,
+  mealPlanNudgeLinkUrl,
+  MEAL_PLAN_NUDGE_SLOT_COUNT,
 } from '../utils/mealPlanNudge';
-import type { Task } from '../types';
+import type { MealSlot, Task } from '../types';
 
 // mealPlanNudge reaches dateUtils/mealPlan for dayKeyOf/describeWeekRange,
 // which reach the settings store for dayResetTime — which nothing here
@@ -92,6 +96,35 @@ describe('dueMealPlanNudge', () => {
     expect(due!.title).toBe('Plan meals for 10 – 16 Aug');
   });
 
+  it('names all seven days of the target week, in week order', () => {
+    const due = dueMealPlanNudge(SUN_AUG_3(9, 0), 0, 0, '09:00', null);
+    expect(due!.days.map(d => d.dayKey)).toEqual([
+      '2025-08-10',
+      '2025-08-11',
+      '2025-08-12',
+      '2025-08-13',
+      '2025-08-14',
+      '2025-08-15',
+      '2025-08-16',
+    ]);
+  });
+
+  it('titles each day by weekday and date, without repeating the stack\'s verb', () => {
+    const due = dueMealPlanNudge(SUN_AUG_3(9, 0), 0, 0, '09:00', null);
+    expect(due!.days[0].title).toBe('Sunday 10 Aug');
+    expect(due!.days[6].title).toBe('Saturday 16 Aug');
+  });
+
+  it('follows weekStartsOn into the day set, not just the range', () => {
+    // Monday-start, firing inside Mon Aug 4 – Sun Aug 10, so the week being
+    // asked about is Mon Aug 11 – Sun Aug 17 and the rows start on a Monday.
+    const due = dueMealPlanNudge(TUE_AUG_5(9, 0), 1, 1, '09:00', null);
+    expect(due!.days).toHaveLength(7);
+    expect(due!.days[0].dayKey).toBe('2025-08-11');
+    expect(due!.days[0].title).toBe('Monday 11 Aug');
+    expect(due!.days[6].dayKey).toBe('2025-08-17');
+  });
+
   it('anchors dueDate to noon on the day it fires, not the trigger day', () => {
     const due = dueMealPlanNudge(TUE_AUG_5(16, 30), 0, 0, '09:00', null);
     expect(due!.dueDate.getFullYear()).toBe(2025);
@@ -119,51 +152,154 @@ describe('mealPlanNudgeSuppressed', () => {
   });
 });
 
-describe('hasLiveMealPlanNudgeTask', () => {
-  const nudgeTask = (overrides: Partial<Task> = {}): Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'> => ({
+describe('partitionMealPlanNudgeTasks', () => {
+  // The week dueMealPlanNudge asks about when it fires on Sun Aug 3.
+  const due = { targetWeekStartKey: '2025-08-10', targetWeekEndKey: '2025-08-16' };
+
+  const nudgeTask = (
+    overrides: Partial<Task> = {}
+  ): Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'> => ({
     generatedKind: 'mealPlanNudge',
-    generatedSourceId: null,
+    generatedSourceId: '2025-08-11',
     completed: false,
     archived: false,
     ...overrides,
   });
 
-  it('is false with no tasks at all', () => {
-    expect(hasLiveMealPlanNudgeTask([])).toBe(false);
+  it('finds nothing in an empty list', () => {
+    expect(partitionMealPlanNudgeTasks([], due)).toEqual({ current: [], stale: [] });
   });
 
-  it('is true when an incomplete, unarchived nudge task exists', () => {
-    expect(hasLiveMealPlanNudgeTask([nudgeTask()])).toBe(true);
+  it('counts a live task for a day of the target week as current', () => {
+    const task = nudgeTask();
+    expect(partitionMealPlanNudgeTasks([task], due)).toEqual({ current: [task], stale: [] });
   });
 
-  it('ignores a completed nudge task', () => {
-    expect(hasLiveMealPlanNudgeTask([nudgeTask({ completed: true })])).toBe(false);
+  it('treats both ends of the target week as inside it', () => {
+    const first = nudgeTask({ generatedSourceId: '2025-08-10' });
+    const last = nudgeTask({ generatedSourceId: '2025-08-16' });
+    expect(partitionMealPlanNudgeTasks([first, last], due).current).toEqual([first, last]);
   });
 
-  it('ignores an archived nudge task', () => {
-    expect(hasLiveMealPlanNudgeTask([nudgeTask({ archived: true })])).toBe(false);
+  it('counts a live task for a day outside that week as stale', () => {
+    // Last week's set, still sitting there. Its day has already happened, so it
+    // is cleared rather than allowed to block this week's nudge for ever.
+    const task = nudgeTask({ generatedSourceId: '2025-08-04' });
+    expect(partitionMealPlanNudgeTasks([task], due)).toEqual({ current: [], stale: [task] });
+  });
+
+  it('counts a legacy nudge task with no day at all as stale', () => {
+    // What an install upgrading into this feature carries: one task for the
+    // whole week, backfilled with the kind but no source id.
+    const task = nudgeTask({ generatedSourceId: null });
+    expect(partitionMealPlanNudgeTasks([task], due)).toEqual({ current: [], stale: [task] });
+  });
+
+  it('ignores completed and archived tasks, which are neither', () => {
+    const done = nudgeTask({ completed: true });
+    const archived = nudgeTask({ archived: true });
+    const staleDone = nudgeTask({ generatedSourceId: '2025-08-04', completed: true });
+    expect(partitionMealPlanNudgeTasks([done, archived, staleDone], due)).toEqual({
+      current: [],
+      stale: [],
+    });
   });
 
   it('ignores tasks no generator wrote, live or not', () => {
     // The link alone used to be the marker, so a hand-written task pointing at
     // the meal plan counted as the nudge's own. It no longer does.
-    expect(hasLiveMealPlanNudgeTask([nudgeTask({ generatedKind: null })])).toBe(false);
+    expect(partitionMealPlanNudgeTasks([nudgeTask({ generatedKind: null })], due)).toEqual({
+      current: [],
+      stale: [],
+    });
   });
 
-  it('ignores a task another generator wrote', () => {
-    expect(
-      hasLiveMealPlanNudgeTask([nudgeTask({ generatedKind: 'mealCook', generatedSourceId: 'm-1' })])
-    ).toBe(false);
+  it("ignores another generator's task, even one whose source id looks like a day", () => {
+    // One column holds four generators' source ids now, so the kind check is
+    // the only thing keeping a cook task out of the nudge's week.
+    const cook = nudgeTask({ generatedKind: 'mealCook', generatedSourceId: '2025-08-11' });
+    expect(partitionMealPlanNudgeTasks([cook], due)).toEqual({ current: [], stale: [] });
   });
 
-  it('is true if any one task among several is a live nudge task', () => {
+  it('splits a mixed list of both weeks', () => {
+    const thisWeek = nudgeTask({ generatedSourceId: '2025-08-12' });
+    const lastWeek = nudgeTask({ generatedSourceId: '2025-08-05' });
+    expect(partitionMealPlanNudgeTasks([lastWeek, thisWeek], due)).toEqual({
+      current: [thisWeek],
+      stale: [lastWeek],
+    });
+  });
+});
+
+describe('mealPlanNudgeDayKey', () => {
+  it('reads the day off a nudge task', () => {
     expect(
-      hasLiveMealPlanNudgeTask([
-        nudgeTask({ generatedKind: null }),
-        nudgeTask({ completed: true }),
-        nudgeTask(),
-      ])
-    ).toBe(true);
+      mealPlanNudgeDayKey({ generatedKind: 'mealPlanNudge', generatedSourceId: '2025-08-11' })
+    ).toBe('2025-08-11');
+  });
+
+  it("refuses another generator's source id", () => {
+    expect(
+      mealPlanNudgeDayKey({ generatedKind: 'leftoverUseUp', generatedSourceId: 'l-1' })
+    ).toBeNull();
+  });
+
+  it('is null for a task nothing generated', () => {
+    expect(mealPlanNudgeDayKey({ generatedKind: null, generatedSourceId: null })).toBeNull();
+  });
+});
+
+describe('countPlannedSlots', () => {
+  const entry = (date: string, slot: MealSlot) => ({ date, slot });
+
+  it('is zero for a day with nothing on it', () => {
+    expect(countPlannedSlots([], '2025-08-11')).toBe(0);
+  });
+
+  it('counts each of the three meals once', () => {
+    const entries = [
+      entry('2025-08-11', 'breakfast'),
+      entry('2025-08-11', 'lunch'),
+      entry('2025-08-11', 'dinner'),
+    ];
+    expect(countPlannedSlots(entries, '2025-08-11')).toBe(MEAL_PLAN_NUDGE_SLOT_COUNT);
+  });
+
+  it('counts two things on one dinner as one planned meal', () => {
+    // There is deliberately no UNIQUE(date, slot) — two dishes on one evening
+    // is a legal plan, and counting rows would report 2/3 for a day with one
+    // meal on it (and 4/3 for a fuller one).
+    const entries = [entry('2025-08-11', 'dinner'), entry('2025-08-11', 'dinner')];
+    expect(countPlannedSlots(entries, '2025-08-11')).toBe(1);
+  });
+
+  it('does not count a snack', () => {
+    // The fourth slot is deliberately unscored: a day is not incomplete for
+    // want of a snack, and counting it would put a fully planned day at 3/4.
+    const entries = [
+      entry('2025-08-11', 'snack'),
+      entry('2025-08-11', 'breakfast'),
+    ];
+    expect(countPlannedSlots(entries, '2025-08-11')).toBe(1);
+  });
+
+  it('ignores meals on other days', () => {
+    const entries = [
+      entry('2025-08-10', 'breakfast'),
+      entry('2025-08-12', 'lunch'),
+      entry('2025-08-11', 'dinner'),
+    ];
+    expect(countPlannedSlots(entries, '2025-08-11')).toBe(1);
+  });
+});
+
+describe('mealPlanNudgeLinkUrl', () => {
+  it('carries the day as a query parameter', () => {
+    expect(mealPlanNudgeLinkUrl('2025-08-11')).toBe('dundundun://mealplan?date=2025-08-11');
+  });
+
+  it('falls back to the bare link rather than minting one that matches nothing', () => {
+    expect(mealPlanNudgeLinkUrl('')).toBe(MEAL_PLAN_NUDGE_LINK_URL);
   });
 });
 

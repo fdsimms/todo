@@ -154,7 +154,7 @@ beforeEach(() => {
   useGroceryStore.setState({ items: [] });
   useMealPlanStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
-    lastAction: null, cookedOffer: null,
+    lastAction: null, cookedOffer: null, plannedSlotCounts: {},
   });
 });
 
@@ -191,6 +191,73 @@ function onHand(name: string): GroceryItem {
     onHandUntil: new Date(Date.now() + 7 * 86_400_000).toISOString(),
   } as unknown as GroceryItem;
 }
+
+describe('refreshPlannedSlotCounts', () => {
+  const counts = () => useMealPlanStore.getState().plannedSlotCounts;
+
+  it('counts each asked-for day out of three, from the database rather than the window', () => {
+    // Nothing is loaded — which is the normal state for the week a nudge asks
+    // about, since it fires for the week *after* the one on screen.
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-11', 'breakfast'),
+      entry('2026-08-11', 'dinner'),
+      entry('2026-08-12', 'dinner'),
+    ]);
+
+    useMealPlanStore.getState().refreshPlannedSlotCounts(['2026-08-11', '2026-08-12', '2026-08-13']);
+
+    expect(counts()).toEqual({ '2026-08-11': 2, '2026-08-12': 1, '2026-08-13': 0 });
+    expect(useMealPlanStore.getState().entries).toEqual([]); // window untouched
+  });
+
+  it('reads the whole span in one query', () => {
+    useMealPlanStore.getState().refreshPlannedSlotCounts(['2026-08-13', '2026-08-11', '2026-08-16']);
+
+    expect(dbGetMealPlanEntries).toHaveBeenCalledTimes(1);
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-08-11', '2026-08-16');
+  });
+
+  it('leaves the loaded window alone', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry('2026-08-11', 'lunch')]);
+
+    useMealPlanStore.getState().refreshPlannedSlotCounts(['2026-08-11']);
+
+    expect(useMealPlanStore.getState().rangeStart).toBe('2026-08-03');
+    expect(useMealPlanStore.getState().entries).toHaveLength(1);
+    expect(useMealPlanStore.getState().entries[0].date).toBe('2026-08-05');
+  });
+
+  it('drops days that stop being asked about', () => {
+    useMealPlanStore.setState({ plannedSlotCounts: { '2026-08-04': 3 } });
+
+    useMealPlanStore.getState().refreshPlannedSlotCounts(['2026-08-11']);
+
+    expect(counts()).toEqual({ '2026-08-11': 0 });
+  });
+
+  it('clears the map when nothing is asking any more', () => {
+    useMealPlanStore.setState({ plannedSlotCounts: { '2026-08-11': 2 } });
+
+    useMealPlanStore.getState().refreshPlannedSlotCounts([]);
+
+    expect(counts()).toEqual({});
+    expect(dbGetMealPlanEntries).not.toHaveBeenCalled();
+  });
+
+  it('keeps the same object when the counts have not changed', () => {
+    // It's wired to something that fires often (every change to the loaded
+    // window, plus every focus), so an unrelated meal moving must not
+    // re-render a stack of seven rows.
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry('2026-08-11', 'dinner')]);
+    useMealPlanStore.getState().refreshPlannedSlotCounts(['2026-08-11']);
+    const first = counts();
+
+    useMealPlanStore.getState().refreshPlannedSlotCounts(['2026-08-11']);
+
+    expect(counts()).toBe(first);
+  });
+});
 
 describe('loadRange', () => {
   it('reads only the window asked for', () => {

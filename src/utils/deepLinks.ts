@@ -18,20 +18,11 @@ export interface AddTaskLink {
 // Must match app.json's `expo.scheme`. Update here if the app is ever renamed again.
 const SCHEME = 'dundundun';
 
-// Parses an "add task" deep link of the form `dundundun://add?title=…[&notes=…]`.
-// Kept pure and dependency-free (no expo-linking) so it stays unit-testable
-// under the node jest env and correctly decodes dictated text — which arrives
-// full of spaces, apostrophes and the occasional ampersand. Returns null for
-// anything that isn't a well-formed add link with a non-empty title.
-export function parseAddTaskUrl(url: string): AddTaskLink | null {
-  if (typeof url !== 'string') return null;
-
-  // Match the scheme + `add` action, tolerating `dundundun://add`, `dundundun:///add`
-  // and a trailing slash before the query string.
-  const match = new RegExp(`^${SCHEME}:\\/\\/\\/?add\\/?(?:\\?(.*))?$`, 'i').exec(url.trim());
-  if (!match) return null;
-
-  const query = match[1] ?? '';
+// Decodes a query string into a plain map. Shared by every link in this file
+// that takes parameters rather than written out per link — the escaping rules
+// below are the fiddly half, and a second copy is how one of them would come to
+// handle `+` and the other not.
+function parseQuery(query: string): Record<string, string> {
   const params: Record<string, string> = {};
   for (const pair of query.split('&')) {
     if (!pair) continue;
@@ -50,6 +41,23 @@ export function parseAddTaskUrl(url: string): AddTaskLink | null {
     };
     params[decode(rawKey)] = decode(rawVal);
   }
+  return params;
+}
+
+// Parses an "add task" deep link of the form `dundundun://add?title=…[&notes=…]`.
+// Kept pure and dependency-free (no expo-linking) so it stays unit-testable
+// under the node jest env and correctly decodes dictated text — which arrives
+// full of spaces, apostrophes and the occasional ampersand. Returns null for
+// anything that isn't a well-formed add link with a non-empty title.
+export function parseAddTaskUrl(url: string): AddTaskLink | null {
+  if (typeof url !== 'string') return null;
+
+  // Match the scheme + `add` action, tolerating `dundundun://add`, `dundundun:///add`
+  // and a trailing slash before the query string.
+  const match = new RegExp(`^${SCHEME}:\\/\\/\\/?add\\/?(?:\\?(.*))?$`, 'i').exec(url.trim());
+  if (!match) return null;
+
+  const params = parseQuery(match[1] ?? '');
 
   const title = (params.title ?? '').trim();
   if (!title) return null;
@@ -109,12 +117,34 @@ export function isRecipesUrl(url: string): boolean {
   return typeof url === 'string' && RECIPES_RE.test(url.trim());
 }
 
-// `dundundun://mealplan` — the third kitchen link, so a recurring "Plan the
-// week" task opens the week it's asking about.
-const MEAL_PLAN_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?mealplan\\/?$`, 'i');
+// `dundundun://mealplan[?date=YYYY-MM-DD]` — the third kitchen link, so a
+// recurring "Plan the week" task opens the week it's asking about, and one of
+// the weekly nudge's seven day tasks opens on its own day.
+const MEAL_PLAN_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?mealplan\\/?(?:\\?(.*))?$`, 'i');
+
+// A day key and nothing else. The screen looks this up as a date, so anything
+// that isn't one is dropped back to "open the meal plan" rather than carried
+// through to be parsed into an Invalid Date halfway down the render.
+const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function isMealPlanUrl(url: string): boolean {
   return typeof url === 'string' && MEAL_PLAN_RE.test(url.trim());
+}
+
+/**
+ * The day a meal-plan link asks to be opened on, or null for the bare link.
+ *
+ * Returns null both for "no date given" and "the date given is nonsense", which
+ * are the same instruction as far as the screen is concerned: show the week
+ * you'd have shown anyway. Non-meal-plan URLs return null too, so callers gate
+ * on `isMealPlanUrl` first — the same shape `parseAddTaskUrl` has.
+ */
+export function mealPlanUrlDayKey(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = MEAL_PLAN_RE.exec(url.trim());
+  if (!match) return null;
+  const dayKey = (parseQuery(match[1] ?? '').date ?? '').trim();
+  return DAY_KEY_RE.test(dayKey) ? dayKey : null;
 }
 
 /**
@@ -140,7 +170,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     return true;
   }
   if (isMealPlanUrl(url)) {
-    resetToMealPlan();
+    resetToMealPlan(mealPlanUrlDayKey(url));
     return true;
   }
   if (isOpenAppUrl(url)) {

@@ -31,9 +31,19 @@ export function resetToRecipes(): void {
 
 // Where `dundundun://mealplan` lands — the third of the kitchen links, so a
 // recurring "Plan the week" task can open the week it's asking about.
-export function resetToMealPlan(): void {
+//
+// `focusDay` is a day key (`2026-08-17`), carried by the weekly nudge's per-day
+// tasks: the screen pages to that day's week, opens the day if it was collapsed
+// and scrolls it into view. Stamped like resetToToday's param, and for the same
+// reason — the screen compares against the last value it handled, so tapping
+// two different days in a row (or the same one twice) has to look different
+// each time. Omitted entirely for the bare link, which leaves the week alone.
+export function resetToMealPlan(focusDay?: string | null): void {
   if (!navigationRef.isReady()) return;
-  navigationRef.navigate('MealPlan');
+  navigationRef.navigate({
+    name: 'MealPlan',
+    params: focusDay ? { focusDay, focusStamp: Date.now() } : undefined,
+  });
 }
 
 // Where the "Search" and "Projects" Home Screen quick actions land — both

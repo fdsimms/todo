@@ -291,11 +291,39 @@ neither a column nor a reconcile** — just its own rules module and a registry 
   no-op from the second launch (same shape as the `seen_at` one above it). It is the only thing
   standing between an existing install and every generated task reading as user-typed, so
   `database.test.ts` covers it directly.
-- **The meal-plan nudge is in the mechanism despite having no source row.** `generatedSourceId` is
-  null for it (`sourced: false` in the registry), and `hasLiveMealPlanNudgeTask` now keys on the
-  kind rather than on `linkUrl` as it used to. The link still opens the Meal Plan screen; it just
-  isn't the marker any more, so a task the *user* wrote pointing there no longer counts as the
-  app's own. Legacy rows are backfilled off exactly that link, so the set it matches is unchanged.
+- **The meal-plan nudge is in the mechanism despite having no source row.** `sourced: false` in the
+  registry, and it keys on the kind rather than on `linkUrl` as it used to. The link still opens
+  the Meal Plan screen; it just isn't the marker any more, so a task the *user* wrote pointing
+  there no longer counts as the app's own. Legacy rows are backfilled off exactly that link, so the
+  set it matches is unchanged.
+- **It fires as a stack of seven — one task per day of the week it's asking about** — and that's
+  what its `generatedSourceId` now holds: a **day key**, where it used to be null. Still not
+  `sourced`; a day key names a square on the calendar, not a row, so `writeGeneratedOptOut` has an
+  explicit `case 'mealPlanNudge': return` where the `!sourceId` guard used to cover it. Three
+  consequences worth not re-deriving:
+  - **`liveGeneratedTask` can't answer "is one still live"** — it defaults to matching
+    `sourceId === null`, so it matches no nudge task at all now and would hand out a second stack
+    every week. `liveGeneratedTasksOfKind` is the kind-only read, and
+    `partitionMealPlanNudgeTasks` splits the result into the week being asked about (blocks a
+    re-fire) and days that have already passed (deleted by the next firing). One ignored Saturday
+    used to silence the nudge for good.
+  - **One stack row is reused and retitled weekly**, its id in `mealPlanNudgeGroupId` — state, not
+    a preference, like `mealPlanNudgeLastFiredWeekKey` beside it. A stack per firing would leave a
+    year of empty stacks nothing prunes. Resolve-or-shrug: deleted stack reads as null, next firing
+    makes another.
+  - **All seven share the firing day's `dueDate`**, deliberately not their own day — the point is
+    to plan next week *now*, and dated forward they'd be hidden by `isTaskVisible` until the week
+    they were meant to prepare for had started.
+- **The "n/3 planned" counter on those rows is derived, and its data is its own read.**
+  `countPlannedSlots` counts distinct slots (there's no `UNIQUE(date, slot)`, so counting rows
+  reports 4/3 for a day with two dinners) and ignores `snack` (a day isn't incomplete for want of
+  one, and counting it makes 3/3 unreachable). It can't come from `useMealPlanStore.entries` —
+  that's the single window MealPlanScreen owns, and the week a nudge asks about is never the week
+  on screen, so a bare filter would report 0/3 across a fully planned week. Hence
+  `plannedSlotCounts` + `refreshPlannedSlotCounts`, pulled by `useMealPlanNudgeProgress` rather
+  than pushed by the ~15 mutators that would each need a line. **An absent count renders no chip**
+  — "not looked yet" is a third answer and must not render as 0/3. Full day tints the checkbox with
+  the timer's own `circleReady`; nothing ticks a task off by itself (see `timer.ts`).
 - **Every read of `generatedSourceId` that means one particular kind goes through
   `generatedSourceOf(task, kind)`.** One column where there were three means two generators can
   hand out the same source id; without the kind check, ticking a leftover's task off could mark a

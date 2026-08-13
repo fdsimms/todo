@@ -36,6 +36,7 @@ import {
   handleIncomingUrl,
   isGroceriesUrl,
   isMealPlanUrl,
+  mealPlanUrlDayKey,
   isQuickAddUrl,
   openInAppUrl,
 } from '../utils/deepLinks';
@@ -150,12 +151,42 @@ describe('isMealPlanUrl', () => {
     expect(isMealPlanUrl('  dundundun://mealplan  ')).toBe(true);
   });
 
+  it('accepts the day-scoped form the weekly nudge carries', () => {
+    expect(isMealPlanUrl('dundundun://mealplan?date=2026-08-05')).toBe(true);
+    expect(isMealPlanUrl('dundundun://mealplan/?date=2026-08-05')).toBe(true);
+  });
+
   it('rejects anything else, including its neighbours', () => {
     expect(isMealPlanUrl('dundundun://')).toBe(false);
     expect(isMealPlanUrl('dundundun://groceries')).toBe(false);
     expect(isMealPlanUrl('dundundun://recipes')).toBe(false);
+    // A day is a query parameter, not a path segment.
     expect(isMealPlanUrl('dundundun://mealplan/2026-08-05')).toBe(false);
     expect(isMealPlanUrl('')).toBe(false);
+  });
+});
+
+describe('mealPlanUrlDayKey', () => {
+  it('reads the day off a day-scoped link', () => {
+    expect(mealPlanUrlDayKey('dundundun://mealplan?date=2026-08-05')).toBe('2026-08-05');
+  });
+
+  it('is null for the bare link, which means "leave the week alone"', () => {
+    expect(mealPlanUrlDayKey('dundundun://mealplan')).toBeNull();
+    expect(mealPlanUrlDayKey('dundundun://mealplan?date=')).toBeNull();
+  });
+
+  it('refuses a date that is not a day key rather than passing it on', () => {
+    // The screen turns this into a Date; anything else would arrive as an
+    // Invalid Date halfway down a render.
+    expect(mealPlanUrlDayKey('dundundun://mealplan?date=tomorrow')).toBeNull();
+    expect(mealPlanUrlDayKey('dundundun://mealplan?date=2026-8-5')).toBeNull();
+    expect(mealPlanUrlDayKey('dundundun://mealplan?date=2026-08-05T09:00:00Z')).toBeNull();
+  });
+
+  it('ignores other parameters and other links', () => {
+    expect(mealPlanUrlDayKey('dundundun://mealplan?foo=bar&date=2026-08-05')).toBe('2026-08-05');
+    expect(mealPlanUrlDayKey('dundundun://groceries?date=2026-08-05')).toBeNull();
   });
 });
 
