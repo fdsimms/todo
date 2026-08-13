@@ -25,6 +25,7 @@ import { generateId } from '../utils/id';
 import type { TimeOfDay, Effort, Priority, Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useCalendarStore } from '../store/useCalendarStore';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 import { shouldNudgePostpone } from '../utils/postpone';
 import { PostponeCheckBanner, type PostponeCheckAction } from './PostponeCheckBanner';
@@ -130,6 +131,9 @@ export function WhenPicker({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tasks = useTaskStore(s => s.tasks);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarLoaded = useCalendarStore(s => s.loaded);
 
   const [displayMonth, setDisplayMonth] = useState(() => new Date());
   const [segments, setSegments] = useState<TimeOfDay[]>([]);
@@ -244,7 +248,8 @@ export function WhenPicker({
         effort: taskEffort ?? 0,
         estimatedMinutes: taskEstimatedMinutes ?? null,
       };
-      const res = computeSnoozeSuggestion(draftTask, tasks);
+      const busyEvents = calendarReadEnabled && calendarLoaded ? calendarEvents : [];
+      const res = computeSnoozeSuggestion(draftTask, tasks, busyEvents);
       setSuggestion({ key: dayKeyOf(res.date), reason: res.reason });
       setDisplayMonth(startOfMonth(res.date));
       haptics.success();

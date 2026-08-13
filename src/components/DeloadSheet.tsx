@@ -18,6 +18,8 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { formatDuration } from '../utils/effort';
 import { buildDeloadPlan, deloadUpdates, type DeloadPlan, type DeloadProposal } from '../utils/deloadPlan';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { useCalendarStore } from '../store/useCalendarStore';
 import { WhenPicker } from './WhenPicker';
 import type { Task } from '../types';
 
@@ -58,6 +60,9 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
 
   const allTasks = useTaskStore(s => s.tasks);
   const deloadTasks = useTaskStore(s => s.deloadTasks);
+  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarLoaded = useCalendarStore(s => s.loaded);
 
   // The plan is computed once per opening, not derived live: it's a snapshot
   // the user is deciding on, and re-running it as the store changes underneath
@@ -73,7 +78,8 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
 
   useEffect(() => {
     if (!visible) return;
-    const next = buildDeloadPlan(todaysTasks, allTasks);
+    const busyEvents = calendarReadEnabled && calendarLoaded ? calendarEvents : undefined;
+    const next = buildDeloadPlan(todaysTasks, allTasks, undefined, busyEvents);
     setPlan(next);
     setSelectedIds(new Set(next.proposals.filter(p => p.selected).map(p => p.task.id)));
     setOverrides({});

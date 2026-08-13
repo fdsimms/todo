@@ -1,6 +1,7 @@
 import { addDays, format } from 'date-fns';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 import type { Task } from '../types';
+import type { BusyEvent } from '../utils/calendarBusy';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
@@ -102,6 +103,23 @@ function makeTask(overrides: Partial<Task>): Task {
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+let busySeq = 0;
+function busyEvent(start: Date, end: Date, overrides: Partial<BusyEvent> = {}): BusyEvent {
+  busySeq += 1;
+  return {
+    id: `busy-${busySeq}`,
+    title: 'Meeting',
+    start: start.toISOString(),
+    end: end.toISOString(),
+    allDay: false,
+    calendarId: 'cal',
+    location: null,
+    status: 'confirmed',
+    availability: 'busy',
+    ...overrides,
+  };
 }
 
 describe('computeSnoozeSuggestion', () => {
@@ -274,6 +292,47 @@ describe('computeSnoozeSuggestion', () => {
     const task = makeTask({ id: 'snooze-me', category: 'Errands' });
     const result = computeSnoozeSuggestion(task, [task]);
     expect(result.date.getDay()).toBe(scheduledDow);
+  });
+
+  describe('calendar busy time', () => {
+    it('avoids a day packed with meetings even though it has no tasks', () => {
+      const tomorrow = addDays(new Date(), 1);
+      const dayAfter = addDays(new Date(), 2);
+
+      // Tomorrow is otherwise the obvious pick — nothing due, nearest day — but
+      // it's an 8-hour meeting day. The day after has nothing on it at all.
+      const meetingStart = new Date(tomorrow);
+      meetingStart.setHours(9, 0, 0, 0);
+      const meetingEnd = new Date(tomorrow);
+      meetingEnd.setHours(17, 0, 0, 0);
+      const events = [busyEvent(meetingStart, meetingEnd)];
+
+      const task = makeTask({ id: 'snooze-me' });
+
+      const withoutCalendar = computeSnoozeSuggestion(task, [task]);
+      expect(isoDate(withoutCalendar.date)).toBe(isoDate(tomorrow));
+
+      const withCalendar = computeSnoozeSuggestion(task, [task], events);
+      expect(isoDate(withCalendar.date)).toBe(isoDate(dayAfter));
+    });
+
+    it('ignores an all-day event and one marked Free', () => {
+      const tomorrow = addDays(new Date(), 1);
+      const events = [
+        busyEvent(tomorrow, addDays(tomorrow, 1), { allDay: true }),
+        busyEvent(tomorrow, addDays(tomorrow, 1), { availability: 'free' }),
+      ];
+      const task = makeTask({ id: 'snooze-me' });
+      const result = computeSnoozeSuggestion(task, [task], events);
+      expect(isoDate(result.date)).toBe(isoDate(tomorrow));
+    });
+
+    it('defaults to no calendar data when the parameter is omitted', () => {
+      const task = makeTask({ id: 'snooze-me' });
+      const withDefault = computeSnoozeSuggestion(task, [task]);
+      const withEmpty = computeSnoozeSuggestion(task, [task], []);
+      expect(isoDate(withDefault.date)).toBe(isoDate(withEmpty.date));
+    });
   });
 });
 

@@ -6,6 +6,7 @@ import { format } from 'date-fns/format';
 import type { Task } from '../types';
 import { getDayStart, getNextDueDate, getWeekStart } from './dateUtils';
 import { estimatedMinutesFor } from './effort';
+import { type BusyEvent, busyMinutesIn } from './calendarBusy';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 
@@ -81,6 +82,13 @@ function recurrenceHorizonDays(task: Task, dayResetTime: string): number | null 
 export function computeSnoozeSuggestion(
   task: Task,
   allTasks: Task[],
+  // Calendar events, for weighing a day's meetings alongside its tasks.
+  // Defaults to none — the caller is the one that knows whether calendar read
+  // is on and the window loaded (TaskEditor's reminder nudge follows the same
+  // gate-at-the-call-site shape), so an omitted array reproduces exactly
+  // today's task-only scoring rather than this engine re-deciding permission
+  // state itself.
+  busyEvents: readonly BusyEvent[] = [],
 ): SnoozeSuggestion {
   const today = new Date();
   const dayResetTime = useSettingsStore.getState().dayResetTime;
@@ -167,14 +175,21 @@ export function computeSnoozeSuggestion(
       : 1 / 7;
     const dowBonus = -(dowRate * 2.0);
 
-    // Signal 4: effort already on this day (explicit + projected recurring)
+    // Signal 4: effort already on this day (explicit + projected recurring +
+    // calendar meetings, all in the same S-task-unit scale — a day with two
+    // tasks and six hours of meetings should score exactly as loaded as a day
+    // with twelve tasks, not as a light one because only tasks were counted).
     const explicitEffort = pending
       .filter(t =>
         (t.dueDate != null && sameLogicalDay(new Date(t.dueDate), d, dayResetTime)) ||
         (t.deferUntil != null && sameLogicalDay(new Date(t.deferUntil), d, dayResetTime))
       )
       .reduce((sum, t) => sum + effortUnits(t), 0);
-    const effortOnDay = explicitEffort + recurringDay.effort;
+    const dayStart = getDayStart(d, dayResetTime);
+    const busyMinutes = busyEvents.length > 0
+      ? busyMinutesIn(busyEvents, dayStart, addDays(dayStart, 1))
+      : 0;
+    const effortOnDay = explicitEffort + recurringDay.effort + busyMinutes / 30;
     const effortPenalty = effortOnDay * 0.5;
 
     // Signal 5: recency — slight bias toward sooner dates
