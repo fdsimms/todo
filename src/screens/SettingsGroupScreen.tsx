@@ -12,10 +12,12 @@ import { NotificationSettings } from './settings/NotificationSettings';
 import { RemindersCaptureSettings } from './settings/RemindersCaptureSettings';
 import { CalendarSettings } from './settings/CalendarSettings';
 import { DeadlineCalendarSettings } from './settings/DeadlineCalendarSettings';
+import { MealCalendarSettings } from './settings/MealCalendarSettings';
 import { TasksProjectsSettings } from './settings/TasksProjectsSettings';
 import { PrivacyAiSettings } from './settings/PrivacyAiSettings';
 import { DataResetSettings } from './settings/DataResetSettings';
 import { AboutSettings } from './settings/AboutSettings';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 type RootStackParamList = {
   SettingsGroup: { groupId: SettingsGroupId };
@@ -36,6 +38,10 @@ export function SettingsGroupScreen() {
   const scrollRef = useRef<ScrollView>(null);
 
   const group = settingsGroup(groupId);
+  // Gated here rather than inside the section, so the whole thing — including
+  // its header and footer — leaves with the rest of the area. Same rule the
+  // Meals on Today section follows in TasksProjectsSettings.
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + spacing.md }]}>
@@ -56,6 +62,7 @@ export function SettingsGroupScreen() {
           {groupId === 'capture' && <RemindersCaptureSettings />}
           {groupId === 'capture' && <CalendarSettings />}
           {groupId === 'capture' && <DeadlineCalendarSettings />}
+          {groupId === 'capture' && kitchenEnabled && <MealCalendarSettings />}
           {groupId === 'tasksProjects' && <TasksProjectsSettings />}
           {groupId === 'privacyAi' && <PrivacyAiSettings scrollRef={scrollRef} />}
           {groupId === 'dataReset' && <DataResetSettings />}

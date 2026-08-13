@@ -50,6 +50,7 @@ function entry(
     recipeChoices: [],
     recipeScale: 1,
     cookTask: null,
+    calendarEventId: null,
     ...overrides,
   };
 }

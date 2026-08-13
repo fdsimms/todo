@@ -635,6 +635,11 @@ export function initDatabase(): void {
     // DEFAULT 0 would record every leftover already in the fridge as an
     // explicit refusal. See Leftover.useUpTask.
     'ALTER TABLE leftovers ADD COLUMN use_up_task INTEGER',
+    // NULL on every meal already planned, which is what makes the rollout
+    // silent: picking a calendar mirrors the meals planned from then on
+    // rather than back-filling a shared calendar with a fortnight of dinners
+    // nobody asked for. See MealPlanEntry.calendarEventId.
+    'ALTER TABLE meal_plan_entries ADD COLUMN calendar_event_id TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2018,6 +2023,7 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     cookTask: row.cook_task === null || row.cook_task === undefined
       ? null
       : Boolean(row.cook_task),
+    calendarEventId: (row.calendar_event_id as string | null) ?? null,
   };
 }
 
@@ -2058,26 +2064,28 @@ export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlan
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, calendar_event_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
       entry.leftoverId ?? null, JSON.stringify(entry.recipeChoices ?? []),
       normalizeScale(entry.recipeScale),
       entry.cookTask === null || entry.cookTask === undefined ? null : (entry.cookTask ? 1 : 0),
+      entry.calendarEventId ?? null,
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, calendar_event_id=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
       JSON.stringify(entry.recipeChoices ?? []), normalizeScale(entry.recipeScale),
       entry.cookTask === null || entry.cookTask === undefined ? null : (entry.cookTask ? 1 : 0),
+      entry.calendarEventId ?? null,
       entry.id,
     ]
   );
