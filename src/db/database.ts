@@ -621,6 +621,15 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN deadline_on_calendar INTEGER NOT NULL DEFAULT 0',
     // NULL until the first successful device write. See Task.calendarEventId.
     'ALTER TABLE tasks ADD COLUMN calendar_event_id TEXT',
+    // NULL on every task that already exists — a task nobody projected from a
+    // leftover isn't one. Same shape as meal_entry_id/grocery_item_id above.
+    // See Task.leftoverId.
+    'ALTER TABLE tasks ADD COLUMN leftover_id TEXT',
+    // Nullable with no default, for exactly the reason grocery_items.
+    // use_up_task is: NULL is the third state ("the setting decides"), and a
+    // DEFAULT 0 would record every leftover already in the fridge as an
+    // explicit refusal. See Leftover.useUpTask.
+    'ALTER TABLE leftovers ADD COLUMN use_up_task INTEGER',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -935,6 +944,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     deliverableValue: (row.deliverable_value as string | null) ?? null,
     mealEntryId: (row.meal_entry_id as string | null) ?? null,
     groceryItemId: (row.grocery_item_id as string | null) ?? null,
+    leftoverId: (row.leftover_id as string | null) ?? null,
     pendingImport: parsePendingImport(row.pending_import),
     postponeCount: (row.postpone_count as number) ?? 0,
     postponeMuted: Boolean(row.postpone_muted),
@@ -962,10 +972,10 @@ export function dbInsertTask(task: Task): void {
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, meal_entry_id,
-      grocery_item_id, postpone_count, postpone_muted, drifting_since,
+      grocery_item_id, leftover_id, postpone_count, postpone_muted, drifting_since,
       extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally,
       deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1002,6 +1012,7 @@ export function dbInsertTask(task: Task): void {
       task.pinnedOrder,
       task.mealEntryId ?? null,
       task.groceryItemId ?? null,
+      task.leftoverId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
       task.driftingSince ?? null,
@@ -1031,7 +1042,7 @@ export function dbUpdateTask(task: Task): void {
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, meal_entry_id=?,
-      grocery_item_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
+      grocery_item_id=?, leftover_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
       extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?,
       deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?
     WHERE id=?`,
@@ -1071,6 +1082,7 @@ export function dbUpdateTask(task: Task): void {
       task.pinnedOrder,
       task.mealEntryId ?? null,
       task.groceryItemId ?? null,
+      task.leftoverId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
       task.driftingSince ?? null,
@@ -2131,6 +2143,9 @@ function rowToLeftover(row: Record<string, unknown>): Leftover {
       ? (outcome === 'tossed' ? 'tossed' : 'eaten')
       : null,
     createdAt: row.created_at as string,
+    useUpTask: row.use_up_task === null || row.use_up_task === undefined
+      ? null
+      : Boolean(row.use_up_task),
   };
 }
 
@@ -2151,23 +2166,26 @@ export function dbGetAllLeftovers(): Leftover[] {
 
 export function dbInsertLeftover(leftover: Leftover): void {
   db.runSync(
-    `INSERT INTO leftovers (id, title, recipe_id, source_entry_id, stored_at, keep_until, finished_at, outcome, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO leftovers (id, title, recipe_id, source_entry_id, stored_at, keep_until, finished_at, outcome, created_at, use_up_task)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
     [
       leftover.id, leftover.title, leftover.recipeId ?? null, leftover.sourceEntryId ?? null,
       leftover.storedAt, leftover.keepUntil, leftover.finishedAt ?? null,
       leftover.outcome ?? null, leftover.createdAt,
+      leftover.useUpTask === null || leftover.useUpTask === undefined ? null : (leftover.useUpTask ? 1 : 0),
     ]
   );
 }
 
 export function dbUpdateLeftover(leftover: Leftover): void {
   db.runSync(
-    `UPDATE leftovers SET title=?, recipe_id=?, source_entry_id=?, stored_at=?, keep_until=?, finished_at=?, outcome=? WHERE id=?`,
+    `UPDATE leftovers SET title=?, recipe_id=?, source_entry_id=?, stored_at=?, keep_until=?, finished_at=?, outcome=?, use_up_task=? WHERE id=?`,
     [
       leftover.title, leftover.recipeId ?? null, leftover.sourceEntryId ?? null,
       leftover.storedAt, leftover.keepUntil, leftover.finishedAt ?? null,
-      leftover.outcome ?? null, leftover.id,
+      leftover.outcome ?? null,
+      leftover.useUpTask === null || leftover.useUpTask === undefined ? null : (leftover.useUpTask ? 1 : 0),
+      leftover.id,
     ]
   );
 }

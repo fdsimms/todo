@@ -6,7 +6,7 @@ import {
   dbDeleteLeftover,
   dbPurgeOldLeftovers,
 } from '../db/database';
-import type { Leftover } from '../types';
+import type { Leftover, Task } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetAllLeftovers: jest.fn().mockReturnValue([]),
@@ -17,10 +17,42 @@ jest.mock('../db/database', () => ({
 }));
 
 // The store reaches utils/leftovers → dateUtils → the settings store, for
-// dayResetTime a calendar day key doesn't use. Same stub the other meal-plan
-// suites take.
+// dayResetTime a calendar day key doesn't use — and now reconcileLeftoverTask
+// reaches it directly for leftoverUseUpTasks/leftoverUseUpTaskCategory. Off
+// by default here (unlike the real default) so a bare seed/logLeftover in a
+// test that isn't about use-up tasks doesn't start spawning them; the
+// use-up-task describe block below flips it on per test.
+let mockLeftoverUseUpTasks = false;
+let mockLeftoverUseUpTaskCategory: string | null = null;
 jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
+  useSettingsStore: {
+    getState: () => ({
+      dayResetTime: '00:00',
+      get leftoverUseUpTasks() { return mockLeftoverUseUpTasks; },
+      get leftoverUseUpTaskCategory() { return mockLeftoverUseUpTaskCategory; },
+    }),
+  },
+}));
+
+// Same shape as useGroceryStore.test.ts's mockTaskState: reconcileLeftoverTask
+// reaches useTaskStore directly, so it needs a task list to read and write.
+const mockTaskState = {
+  tasks: [] as Task[],
+  addTask: (draft: Partial<Task>) => {
+    const task = { id: `t-${mockTaskState.tasks.length + 1}`, completed: false, archived: false, ...draft } as Task;
+    mockTaskState.tasks.push(task);
+    return task;
+  },
+  updateTask: (id: string, updates: Partial<Task>) => {
+    mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, ...updates } : t));
+  },
+  deleteTask: (id: string) => {
+    mockTaskState.tasks = mockTaskState.tasks.filter(t => t.id !== id);
+  },
+  setLastAction: jest.fn(),
+};
+jest.mock('../store/useTaskStore', () => ({
+  useTaskStore: { getState: () => mockTaskState },
 }));
 
 let seq = 0;
@@ -36,6 +68,7 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
     finishedAt: null,
     outcome: null,
     createdAt: '2026-08-10T09:00:00.000Z',
+    useUpTask: null,
     ...overrides,
   };
 }
@@ -48,6 +81,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllLeftovers as jest.Mock).mockReturnValue([]);
   (dbPurgeOldLeftovers as jest.Mock).mockReturnValue(0);
+  mockLeftoverUseUpTasks = false;
+  mockLeftoverUseUpTaskCategory = null;
+  mockTaskState.tasks = [];
   seed([]);
 });
 
@@ -320,6 +356,76 @@ describe('purgeOldLeftovers', () => {
     expect(useLeftoverStore.getState().purgeOldLeftovers()).toBe(1);
     expect(useLeftoverStore.getState().leftovers.map(l => l.id).sort())
       .toEqual(['kept', 'live']);
+  });
+});
+
+describe('use-up tasks', () => {
+  beforeEach(() => {
+    mockLeftoverUseUpTasks = true;
+  });
+
+  it('spawns a task when a logged leftover already needs attention', () => {
+    const logged = useLeftoverStore.getState().logLeftover({
+      title: 'Chilli',
+      storedAt: new Date(2026, 7, 10, 9, 0).toISOString(),
+      keepDays: 0,
+    })!;
+
+    const task = mockTaskState.tasks.find(t => t.leftoverId === logged.id);
+    expect(task).toBeDefined();
+    expect(task!.title).toBe('Use up Chilli');
+    expect(task!.deadline).toBe(logged.keepUntil);
+  });
+
+  it('drops the task when the leftover is finished', () => {
+    const logged = useLeftoverStore.getState().logLeftover({
+      title: 'Chilli',
+      storedAt: new Date(2026, 7, 10, 9, 0).toISOString(),
+      keepDays: 0,
+    })!;
+    expect(mockTaskState.tasks.some(t => t.leftoverId === logged.id)).toBe(true);
+
+    useLeftoverStore.getState().finishLeftover(logged.id, 'eaten');
+
+    expect(mockTaskState.tasks.some(t => t.leftoverId === logged.id)).toBe(false);
+  });
+
+  it('drops the task when the leftover is deleted', () => {
+    const logged = useLeftoverStore.getState().logLeftover({
+      title: 'Chilli',
+      storedAt: new Date(2026, 7, 10, 9, 0).toISOString(),
+      keepDays: 0,
+    })!;
+
+    useLeftoverStore.getState().deleteLeftover(logged.id);
+
+    expect(mockTaskState.tasks.some(t => t.leftoverId === logged.id)).toBe(false);
+  });
+
+  it('honors a per-leftover opt-out even with the setting on', () => {
+    const logged = useLeftoverStore.getState().logLeftover({
+      title: 'Chilli',
+      storedAt: new Date(2026, 7, 10, 9, 0).toISOString(),
+      keepDays: 0,
+    })!;
+    useLeftoverStore.getState().setUseUpTask(logged.id, false);
+
+    expect(mockTaskState.tasks.some(t => t.leftoverId === logged.id)).toBe(false);
+    expect(useLeftoverStore.getState().leftoverById(logged.id)!.useUpTask).toBe(false);
+  });
+
+  it('reconcileAllLeftoverTasks sweeps every live leftover, skipping finished ones', () => {
+    seed([
+      makeLeftover({ id: 'urgent', keepUntil: '2026-08-10' }),
+      makeLeftover({ id: 'fresh', keepUntil: '2099-01-01' }),
+      makeLeftover({ id: 'closed', keepUntil: '2026-08-10', finishedAt: '2026-08-09T00:00:00.000Z', outcome: 'eaten' }),
+    ]);
+
+    useLeftoverStore.getState().reconcileAllLeftoverTasks();
+
+    expect(mockTaskState.tasks.some(t => t.leftoverId === 'urgent')).toBe(true);
+    expect(mockTaskState.tasks.some(t => t.leftoverId === 'fresh')).toBe(false);
+    expect(mockTaskState.tasks.some(t => t.leftoverId === 'closed')).toBe(false);
   });
 });
 

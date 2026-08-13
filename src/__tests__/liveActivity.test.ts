@@ -101,6 +101,7 @@ const BASE: Task = {
   pendingImport: null,
   mealEntryId: null,
   groceryItemId: null,
+  leftoverId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
 };

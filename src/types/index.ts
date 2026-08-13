@@ -402,6 +402,15 @@ export interface Task {
   // dangling use-up task is just a task.
   groceryItemId: string | null;
 
+  // The Leftover this task was projected from — set only on a "Use up X" task
+  // needsAttention() spawned, null on every task a person typed. Same
+  // master/replica split as groceryItemId, one notch quieter still: the
+  // leftover owns the title, due date and deadline, and reconciling rewrites
+  // exactly those — ticking the task off doesn't mark the leftover eaten or
+  // tossed, since that's a two-button question the container itself still
+  // asks. See src/utils/leftoverTasks.ts for the projection rules.
+  leftoverId: string | null;
+
   // The id of the all-day calendar event mirroring this task's deadline, or
   // null when deadlineOnCalendar is off or the write hasn't happened (yet, or
   // ever — the device write is best-effort).
@@ -1557,11 +1566,11 @@ export interface MealPlanEntry {
  * gets eaten across several later meals, and can be logged with no planned meal
  * behind it at all.
  *
- * **It is also not a Task**, for the reasons MealPlanEntry gives — and one more:
- * a reminder *Task* for "use up the chilli" is #1106's job (expiry-driven tasks
- * for perishable groceries), which doesn't exist yet. This row carries the dates
- * that mechanism would need, and the nudge here stays in-app, so that when #1106
- * ships there is one reminder-task path to join rather than a second to unpick.
+ * **It is also not a Task**, for the reasons MealPlanEntry gives. What it can
+ * have is a *replica* Task — "Use up the chilli" — projected the same way
+ * #1106 projects one from a perishable grocery item: a separate ordinary row
+ * pointing back here via Task.leftoverId, spawned/updated/dropped by
+ * src/utils/leftoverTasks.ts, never a second lifecycle grafted onto this row.
  */
 export interface Leftover {
   id: string;
@@ -1598,6 +1607,14 @@ export interface Leftover {
   /** Which ending it got. Null exactly while `finishedAt` is null. */
   outcome: LeftoverOutcome | null;
   createdAt: string;
+  /**
+   * The per-leftover answer to "does this get a use-up task" — true, false, or
+   * null to hand the question back to the leftoverUseUpTasks setting. Same
+   * semantics as GroceryItem.useUpTask: `false` is what deleting the task
+   * records, so a leftover you've already been reminded about once doesn't
+   * spawn another the moment it crosses back into "soon".
+   */
+  useUpTask: boolean | null;
 }
 
 /**

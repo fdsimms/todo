@@ -45,6 +45,7 @@ import {
 } from '../utils/taskGrouping';
 import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -743,6 +744,11 @@ export function TodayScreen() {
           // After rolloverQuotas/sweepOvershootQuotas: either can complete and
           // spawn members, which changes what a project counts as scheduled.
           useTaskStore.getState().dripStalledProjects();
+          // A leftover can age from "fresh" into "soon" purely by time
+          // passing, with no store mutation to trigger a reconcile — same
+          // reason the other checks above run here rather than waiting for
+          // the next cold start.
+          useLeftoverStore.getState().reconcileAllLeftoverTasks();
           forceRefresh(n => n + 1);
           // The rows are memoized, so re-rendering this screen no longer
           // re-renders them. Their clock-derived text (deadline countdowns,

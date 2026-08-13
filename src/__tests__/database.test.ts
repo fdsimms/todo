@@ -197,6 +197,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   deliverableValue: null,
   mealEntryId: null,
   groceryItemId: null,
+  leftoverId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
   pendingImport: null,
@@ -2008,6 +2009,7 @@ describe('leftovers', () => {
       finishedAt: null,
       outcome: null,
       createdAt: '2026-08-10T09:00:00.000Z',
+      useUpTask: null,
       ...overrides,
     };
   };
