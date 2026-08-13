@@ -199,6 +199,21 @@ const COPY_LOOKBACK_WEEKS = 4;
 /** How far a lifted fridge row swells. Deliberately SortableList's LIFT_SCALE. */
 const DRAG_LIFT_SCALE = 1.03;
 
+/**
+ * The default `collapsedDays` set for a week: every day but today, so today's
+ * plan is the one card already open when the screen appears. A week with no
+ * "today" in it (paged away from the current one) collapses nothing — there's
+ * no day to make prominent, and folding one at random would just be surprising.
+ */
+function collapseAllButToday(weekDays: Date[]): Set<string> {
+  const set = new Set<string>();
+  if (!weekDays.some(day => isToday(day))) return set;
+  for (const day of weekDays) {
+    if (!isToday(day)) set.add(dayKeyOf(day));
+  }
+  return set;
+}
+
 export function MealPlanScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -272,9 +287,14 @@ export function MealPlanScreen() {
   // the finger that just tapped it. Null closes it.
   const [suggesting, setSuggesting] =
     useState<{ recipes: Recipe[]; cookAgainRecipes: Recipe[]; days: Date[] } | null>(null);
-  // Per-day collapse, local-only — every day starts expanded, and folding one
-  // away is just less to scroll past, not a decision worth persisting.
-  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
+  // Per-day collapse, local-only — folding one away is just less to scroll
+  // past, not a decision worth persisting. The current week starts with
+  // every day but today collapsed, so today's card is what's on screen
+  // without scrolling past Sunday through Thursday to reach a Friday or
+  // Saturday plan; a past or future week (nothing "today" about it) starts
+  // fully expanded as it always did. Explicit taps on `toggleDayCollapse`
+  // override this per key from then on.
+  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(() => collapseAllButToday(days));
 
   // ——— Bulk selection (#1110) ————————————————————————————————————————
   //
@@ -975,12 +995,18 @@ export function MealPlanScreen() {
     if (!onThisWeek) {
       actions.push({
         icon: 'today-outline',
-        onPress: () => { haptics.tap(); if (selectionMode) exitSelection(); setAnchor(new Date()); },
+        onPress: () => {
+          haptics.tap();
+          if (selectionMode) exitSelection();
+          animateLayout();
+          setAnchor(new Date());
+          setCollapsedDays(collapseAllButToday(buildWeekDays(new Date(), weekStartsOn)));
+        },
         accessibilityLabel: 'Back to this week',
       });
     }
     return actions;
-  }, [onThisWeek, selectionMode, page, exitSelection]);
+  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn]);
 
   /**
    * The week a "copy" would take from, and only while this one is empty.
