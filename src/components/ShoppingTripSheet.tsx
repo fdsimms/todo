@@ -505,6 +505,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
                   label="Actually, it has more"
                   icon="pricetag-outline"
                   variant="neutral"
+                  surface="page"
                   onPress={() => startCorrection(correctable.shop.id)}
                   accessibilityLabel={`Record what else ${correctable.shop.name} has`}
                   style={styles.correctAction}

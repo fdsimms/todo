@@ -236,8 +236,20 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
   return (
     <View style={styles.wrap}>
       <View style={styles.header}>
-        <Ionicons name="snow-outline" size={iconSize.sm} color={colors.textTertiary} />
-        <Text style={styles.headerText}>{describeFridge(leftovers)}</Text>
+        <View style={styles.headerLeft}>
+          <Ionicons name="snow-outline" size={iconSize.sm} color={colors.textTertiary} />
+          <Text style={styles.headerText}>{describeFridge(leftovers)}</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.headerAdd}
+          onPress={onAdd}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel="Log a leftover"
+        >
+          <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
+        </TouchableOpacity>
       </View>
 
       {live.length > 0 && (
@@ -323,20 +335,20 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
       </View>
       )}
 
-      {/* A row rather than the single stretched pill this used to be — two
-          actions side by side, each sized to its label. */}
-      <View style={styles.actions}>
-        <InlineAction label="Log a leftover" icon="add" onPress={onAdd} variant="neutral" />
-        {hasHistory && (
+      {/* The add button moved into the header (see below) — this row is now
+          History alone, and only renders once there's something to show. */}
+      {hasHistory && (
+        <View style={styles.actions}>
           <InlineAction
             label="History"
             icon="time-outline"
             onPress={onHistory}
             variant="neutral"
+            surface="page"
             accessibilityLabel="What happened to past leftovers"
           />
-        )}
-      </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -426,8 +438,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    justifyContent: 'space-between',
     paddingBottom: 2,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  headerAdd: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerText: {
     color: colors.textSecondary,

@@ -562,6 +562,7 @@ export function SuggestMealsSheet({
               label="Try again"
               icon="refresh"
               variant="neutral"
+              surface="page"
               onPress={() => { haptics.tap(); generate(); }}
               accessibilityLabel="Try generating meal ideas again"
             />

@@ -786,6 +786,7 @@ export function RecipeDetailScreen() {
             icon="camera-outline"
             label="Add a photo"
             variant="neutral"
+            surface="page"
             onPress={openImagePicker}
           />
         )}
