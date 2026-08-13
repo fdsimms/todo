@@ -26,6 +26,8 @@ import {
   dbSetGroceryAisleOverrides,
   dbGetGroceryHiddenAisles,
   dbSetGroceryHiddenAisles,
+  dbGetGrocerySeparateTrips,
+  dbSetGrocerySeparateTrips,
   dbTransaction,
 } from '../db/database';
 import { useRecipeStore } from './useRecipeStore';
@@ -49,6 +51,7 @@ import {
   OTHER_AISLE,
 } from '../utils/groceryAisles';
 import { isTripLive, resolveActiveTrip } from '../utils/activeTrip';
+import { toggleSeparateTrips } from '../utils/shoppingTrip';
 
 /**
  * The grocery catalog, which is also the shopping list.
@@ -382,6 +385,14 @@ interface GroceryStore {
   renameShop: (id: string, name: string) => boolean;
   reorderShops: (ids: string[]) => void;
   deleteShop: (id: string) => void;
+  /**
+   * "I don't go to those two on one trip" — canonical pair keys, see
+   * shopPairKey. Kept here rather than on Shop because the fact is about a
+   * pair: direction is relative, so a per-store flag couldn't say it.
+   */
+  separateTrips: string[];
+  /** Records or takes back one pairing. Suggestions only — both stay pickable. */
+  setSeparateTrips: (a: string, b: string, separate: boolean) => void;
   /** "It has everything, but don't send me there" — pulls the store out of
    * primaryShopFor/exclusiveShopFor and the grocery-run task's store picker
    * while leaving manual linking and finishShopping untouched. */
@@ -625,6 +636,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   aisleOrder: [],
   hiddenAisles: [],
   shops: [],
+  separateTrips: [],
   itemShops: [],
   lastShopId: null,
   tripShopId: null,
@@ -662,6 +674,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     );
     const shops = dbGetAllGroceryShops();
     const itemShops = dbGetAllItemShopLinks();
+    // Read as stored and deliberately not repaired here: a pair naming a
+    // deleted store resolves to nothing at every reader (resolveSeparateTrips),
+    // and deleteShop prunes it at the one moment that knows it happened.
+    const separateTrips = dbGetGrocerySeparateTrips();
     // Resolved against live shops rather than trusted: the setting outlives
     // the store it names, and a preselected shop that no longer exists would
     // record the next trip against nothing.
@@ -691,6 +707,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       aisleOverrides: dbGetGroceryAisleOverrides(),
       shops,
       itemShops,
+      separateTrips,
       lastShopId,
       tripShopId,
       tripStartedAt,
@@ -1797,18 +1814,37 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    * exist is unreadable rather than merely orphaned, so there's nothing to
    * preserve — and the confirm that fronts this says so.
    */
+  setSeparateTrips(a, b, separate) {
+    if (a === b) return;
+    const shops = get().shops;
+    if (!shops.some(s => s.id === a) || !shops.some(s => s.id === b)) return;
+    const next = toggleSeparateTrips(get().separateTrips, a, b, separate);
+    dbSetGrocerySeparateTrips(next);
+    set({ separateTrips: next });
+  },
+
   deleteShop(id) {
     const wasLast = get().lastShopId === id;
     // Deleting the store you said you were in ends the trip — there's nowhere
     // left for it to be. Inlined rather than routed through endTrip() for the
     // same reason lastShopId is: the whole cleanup belongs in one set().
     const wasTrip = get().tripShopId === id;
+    // Every pairing naming it goes with it, and unlike the dangling pointers
+    // elsewhere here this one is worth writing: the list is a settings blob
+    // nothing else prunes, and a store re-added under the same name gets a new
+    // id, so a kept pair would be invisible *and* wrong rather than merely
+    // stale. The delete is the one moment that knows.
+    const separateTrips = get().separateTrips.filter(k => !k.split('|').includes(id));
     dbDeleteGroceryShop(id);
     if (wasLast) dbSetLastShopId(null);
     if (wasTrip) dbSetTrip(null, null);
+    if (separateTrips.length !== get().separateTrips.length) {
+      dbSetGrocerySeparateTrips(separateTrips);
+    }
     set(s => ({
       shops: s.shops.filter(x => x.id !== id),
       itemShops: s.itemShops.filter(l => l.shopId !== id),
+      separateTrips,
       lastShopId: wasLast ? null : s.lastShopId,
       tripShopId: wasTrip ? null : s.tripShopId,
       tripStartedAt: wasTrip ? null : s.tripStartedAt,

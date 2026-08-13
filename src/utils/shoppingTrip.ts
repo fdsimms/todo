@@ -79,6 +79,111 @@ import { lacksWantedBrand } from './groceryShops';
  */
 export const MAX_TRIP_STOPS = 3;
 
+/**
+ * "I don't go to those two on one trip."
+ *
+ * The coverage ranking answers *what* a store has and has never had anything
+ * to say about what it costs to get there — so a greedy walk will happily send
+ * you to two shops in opposite directions from home because between them they
+ * close the list. `extraStopThreshold` makes an unsolicited second stop earn
+ * its place, but it prices every stop the same; it can't know that these two
+ * in particular don't go together.
+ *
+ * This is the fact that can, and it's the user's, not a guess: the same shape
+ * as `ItemShopLink.unavailableAt`, which is the only other thing in this module
+ * allowed to assert something flatly. It's stored, it's reversible, and nothing
+ * infers it — the app never marks a pair from a trip it watched you take, the
+ * way it never marks an item unavailable from one you didn't buy.
+ *
+ * **A pair is symmetric, so it's stored once**, under a key with the two ids in
+ * sorted order. Two rows for one fact is how the halves come to disagree.
+ *
+ * **It constrains suggestions, never selection** — exactly the line
+ * `excludeFromSuggestions` draws. The walk won't put two separated stores in
+ * one plan, but both stay fully pickable by hand in the trip sheet: the week
+ * you do drive right across town is a week the app has no business arguing
+ * about.
+ *
+ * **And it's a pair, not a per-store "out of the way" flag.** Direction is
+ * relative — a store can be a natural second stop from one shop and an absurd
+ * one from another — so a flag on the store would answer a question nobody
+ * asked. What the user can actually state is which two don't combine.
+ */
+export function shopPairKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+export function areOnSeparateTrips(
+  separateTrips: readonly string[],
+  a: string,
+  b: string
+): boolean {
+  return separateTrips.includes(shopPairKey(a, b));
+}
+
+/** Adds or removes one pair, leaving the rest alone. Never stores a duplicate. */
+export function toggleSeparateTrips(
+  separateTrips: readonly string[],
+  a: string,
+  b: string,
+  separate: boolean
+): string[] {
+  const key = shopPairKey(a, b);
+  const without = separateTrips.filter(k => k !== key);
+  return separate ? [...without, key] : without;
+}
+
+/**
+ * The stored pairs as the two stores they name, for rendering and for pruning.
+ *
+ * Resolve-or-shrug like every other cross-row pointer here: a pair naming a
+ * deleted store is dropped rather than rendered half-empty. A pair with itself
+ * on both sides goes too — nothing can produce one, and it would render as a
+ * store kept apart from itself.
+ */
+export function resolveSeparateTrips(
+  separateTrips: readonly string[],
+  shops: readonly Shop[]
+): Array<[Shop, Shop]> {
+  const byId = new Map(shops.map(s => [s.id, s]));
+  const out: Array<[Shop, Shop]> = [];
+  for (const key of separateTrips) {
+    const [a, b] = key.split('|');
+    const shopA = byId.get(a);
+    const shopB = byId.get(b);
+    if (!shopA || !shopB || shopA.id === shopB.id) continue;
+    // Named in the user's own store order, not the key's. The key sorts by id
+    // so the pair can be stored once; ids are opaque, so rendering that order
+    // would put the two names in an arrangement nothing on screen explains.
+    out.push(shopA.sortOrder <= shopB.sortOrder ? [shopA, shopB] : [shopB, shopA]);
+  }
+  return out;
+}
+
+/**
+ * The two stores a "not on the same trip" control would separate, or null when
+ * the question doesn't have one answer.
+ *
+ * The control has to name a specific pair, so it's offered only where the
+ * suggestion implies one: a single store you've picked and the one being
+ * suggested to join it, or — with nothing picked — the walk's own first two
+ * stops. With several stores selected, "not together" could mean any of
+ * several pairings, and picking one for the user would be recording a claim
+ * they didn't make.
+ */
+export function separableSuggestion(
+  selectedShopIds: readonly string[],
+  suggestion: readonly ShopCoverage[]
+): [string, string] | null {
+  if (selectedShopIds.length === 1 && suggestion.length >= 1) {
+    return [selectedShopIds[0], suggestion[0].shop.id];
+  }
+  if (selectedShopIds.length === 0 && suggestion.length >= 2) {
+    return [suggestion[0].shop.id, suggestion[1].shop.id];
+  }
+  return null;
+}
+
 export interface ShopCoverage {
   shop: Shop;
   /** On-list items seen at this store — bought or asserted — in list order. */
@@ -248,7 +353,11 @@ export function planTrip(
  * closes the gap behind it. So the sheet has one code path for "what should I
  * suggest" and "what's still missing now that you've picked".
  */
-export function summarizeTrip(selectedShopIds: readonly string[], plan: TripPlan): TripSummary {
+export function summarizeTrip(
+  selectedShopIds: readonly string[],
+  plan: TripPlan,
+  separateTrips: readonly string[] = []
+): TripSummary {
   const selected = new Set(selectedShopIds);
   const covered = new Set<string>();
   const absentHere = new Set<string>();
@@ -291,6 +400,11 @@ export function summarizeTrip(selectedShopIds: readonly string[], plan: TripPlan
     let bestKnown = 0;
     for (const entry of plan.coverage) {
       if (taken.has(entry.shop.id)) continue;
+      // The user's own "I don't do those two in one go" — checked against
+      // everything already in the plan, picked or suggested, since the walk is
+      // building one trip. It gates the *suggestion* only: both stores stay
+      // selectable by hand, the same line excludeFromSuggestions draws.
+      if ([...taken].some(id => areOnSeparateTrips(separateTrips, entry.shop.id, id))) continue;
       // Strictly greater, so a tie falls to the better-ranked store — the
       // coverage list is already sorted, so the walk inherits that order.
       const known = countIn(entry.itemIds, openSet);

@@ -4,6 +4,8 @@ import {
   dbGetGroceryAisleOrder,
   dbSetGroceryAisleOrder,
   dbGetGroceryHiddenAisles,
+  dbGetGrocerySeparateTrips,
+  dbSetGrocerySeparateTrips,
   dbSetGroceryHiddenAisles,
   dbGetGroceryAisleOverrides,
   dbSetGroceryAisleOverrides,
@@ -28,6 +30,7 @@ import {
   dbUpdateRecipe,
 } from '../db/database';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { shopPairKey } from '../utils/shoppingTrip';
 import { groceryNameKey } from '../utils/groceryParse';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
 import { OUT_OF_IT_UNTIL, probablyHaveReason } from '../utils/grocerySuggest';
@@ -38,6 +41,8 @@ jest.mock('../db/database', () => ({
   dbGetGroceryAisleOrder: jest.fn().mockReturnValue(null),
   dbSetGroceryAisleOrder: jest.fn(),
   dbGetGroceryHiddenAisles: jest.fn().mockReturnValue([]),
+  dbGetGrocerySeparateTrips: jest.fn().mockReturnValue([]),
+  dbSetGrocerySeparateTrips: jest.fn(),
   dbSetGroceryHiddenAisles: jest.fn(),
   dbGetGroceryAisleOverrides: jest.fn().mockReturnValue({}),
   dbSetGroceryAisleOverrides: jest.fn(),
@@ -172,6 +177,7 @@ function seed(
     aisleOverrides?: Record<string, string>;
     shops?: Shop[];
     itemShops?: ItemShopLink[];
+    separateTrips?: string[];
     tripShopId?: string | null;
     tripStartedAt?: string | null;
   } = {}
@@ -183,6 +189,7 @@ function seed(
     aisleOverrides: extra.aisleOverrides ?? {},
     shops: extra.shops ?? [],
     itemShops: extra.itemShops ?? [],
+    separateTrips: extra.separateTrips ?? [],
     lastShopId: null,
     tripShopId: extra.tripShopId ?? null,
     tripStartedAt: extra.tripStartedAt ?? null,
@@ -196,6 +203,7 @@ beforeEach(() => {
   (dbGetAllGroceryItems as jest.Mock).mockReturnValue([]);
   (dbGetGroceryAisleOrder as jest.Mock).mockReturnValue(null);
   (dbGetGroceryHiddenAisles as jest.Mock).mockReturnValue([]);
+  (dbGetGrocerySeparateTrips as jest.Mock).mockReturnValue([]);
   (dbGetGroceryAisleOverrides as jest.Mock).mockReturnValue({});
   (dbFinishGroceryShopping as jest.Mock).mockReturnValue([]);
   (dbClearGroceryList as jest.Mock).mockReturnValue([]);
@@ -2870,5 +2878,74 @@ describe('the active trip', () => {
     useGroceryStore.getState().initialize();
 
     expect(useGroceryStore.getState().tripShopId).toBeNull();
+  });
+});
+
+describe('separate trips', () => {
+  it('records a pairing and persists it', () => {
+    const tj = makeShop("Trader Joe's");
+    const costco = makeShop('Costco');
+    seed([], { shops: [tj, costco] });
+
+    useGroceryStore.getState().setSeparateTrips(tj.id, costco.id, true);
+
+    expect(useGroceryStore.getState().separateTrips).toEqual([shopPairKey(tj.id, costco.id)]);
+    expect(dbSetGrocerySeparateTrips).toHaveBeenCalledWith([shopPairKey(tj.id, costco.id)]);
+  });
+
+  it('takes one back', () => {
+    const tj = makeShop("Trader Joe's");
+    const costco = makeShop('Costco');
+    seed([], { shops: [tj, costco], separateTrips: [shopPairKey(tj.id, costco.id)] });
+
+    useGroceryStore.getState().setSeparateTrips(costco.id, tj.id, false);
+
+    expect(useGroceryStore.getState().separateTrips).toEqual([]);
+  });
+
+  it('refuses a pairing naming a store that is not there', () => {
+    const tj = makeShop("Trader Joe's");
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().setSeparateTrips(tj.id, 'shop-gone', true);
+    useGroceryStore.getState().setSeparateTrips(tj.id, tj.id, true);
+
+    expect(useGroceryStore.getState().separateTrips).toEqual([]);
+    expect(dbSetGrocerySeparateTrips).not.toHaveBeenCalled();
+  });
+
+  it('deleteShop takes every pairing naming it with it', () => {
+    const tj = makeShop("Trader Joe's");
+    const costco = makeShop('Costco');
+    const corner = makeShop('Corner Market');
+    seed([], {
+      shops: [tj, costco, corner],
+      separateTrips: [shopPairKey(tj.id, corner.id), shopPairKey(tj.id, costco.id)],
+    });
+
+    useGroceryStore.getState().deleteShop(corner.id);
+
+    // Pruned rather than left to dangle: a store re-added under the same name
+    // gets a new id, so a kept pairing would be invisible and wrong.
+    expect(useGroceryStore.getState().separateTrips).toEqual([shopPairKey(tj.id, costco.id)]);
+    expect(dbSetGrocerySeparateTrips).toHaveBeenCalledWith([shopPairKey(tj.id, costco.id)]);
+  });
+
+  it('deleteShop writes nothing when no pairing named it', () => {
+    const tj = makeShop("Trader Joe's");
+    const costco = makeShop('Costco');
+    seed([], { shops: [tj, costco], separateTrips: [shopPairKey(tj.id, costco.id)] });
+
+    useGroceryStore.getState().deleteShop(makeShop('Unrelated').id);
+
+    expect(dbSetGrocerySeparateTrips).not.toHaveBeenCalled();
+  });
+
+  it('initialize loads what was stored', () => {
+    (dbGetGrocerySeparateTrips as jest.Mock).mockReturnValue(['a|b']);
+
+    useGroceryStore.getState().initialize();
+
+    expect(useGroceryStore.getState().separateTrips).toEqual(['a|b']);
   });
 });

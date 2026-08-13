@@ -2124,6 +2124,29 @@ export function dbSetGroceryHiddenAisles(hidden: string[]): void {
   dbSetSetting('grocery_aisle_hidden', JSON.stringify(hidden));
 }
 
+// Pairs of stores the user has said they don't visit on one trip, as canonical
+// `a|b` keys (see shopPairKey). A settings list rather than the table stores
+// themselves got, which looks like the opposite call but follows the same rule:
+// a store needs an id because every link row references it, and a *pair*
+// references nothing and is referenced by nothing — it has no attributes, no
+// identity, and is bounded by (stores × stores) on a set most people count on
+// one hand. Same shape and same tolerance for a corrupt value as the hidden
+// aisles above; a bad blob costs the pairings, not the launch.
+export function dbGetGrocerySeparateTrips(): string[] {
+  const val = dbGetSetting('grocery_separate_trips');
+  if (!val) return [];
+  try {
+    const parsed = JSON.parse(val) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function dbSetGrocerySeparateTrips(pairs: string[]): void {
+  dbSetSetting('grocery_separate_trips', JSON.stringify(pairs));
+}
+
 // name_key → the aisle the user filed that item under, which is why it lives
 // here and not on the row: a provisional grocery row is deleted when it comes
 // off the list, and the filing has to outlive it. Same tolerance for a corrupt
