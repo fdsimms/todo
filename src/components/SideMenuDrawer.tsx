@@ -51,6 +51,9 @@ const MENU_ITEMS: MenuItemWithGate[] = [
   // Sits with Tasks rather than down among Logbook/Archived: it's a peer
   // surface you go to on purpose, not somewhere things end up.
   { name: 'Groceries', icon: 'cart-outline', label: 'Groceries & Meals', alsoActiveFor: GROCERIES_HUB_TABS, kitchen: true },
+  // Sits directly under Tasks: it's another way of reading the same tasks,
+  // where everything below it groups them by something other than a date.
+  { name: 'Calendar', icon: 'calendar-outline', label: 'Calendar' },
   { name: 'Categories', icon: 'folder-outline', label: 'Categories' },
   { name: 'Tags', icon: 'pricetag-outline', label: 'Tags' },
   { name: 'Stacks', icon: 'layers-outline', label: 'Stacks' },
