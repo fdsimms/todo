@@ -101,6 +101,7 @@ const BASE: Task = {
   generatedSourceId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  timeBlockEventId: null,
   pendingImport: null,
 };
 

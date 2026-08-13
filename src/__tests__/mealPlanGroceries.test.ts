@@ -8,6 +8,7 @@ import {
   describeQuantities,
   classifyPlanned,
   restockRows,
+  consumedRows,
 } from '../utils/mealPlanGroceries';
 
 // mealPlanGroceries reaches mealPlan.ts for isKeyInRange, which reaches
@@ -635,5 +636,99 @@ describe('restockRows', () => {
       now
     ));
     expect(rows.map(r => r.name).sort()).toEqual(['Yukon Gold potatoes', 'vegan butter']);
+  });
+});
+
+describe('consumedRows', () => {
+  const now = new Date(2026, 7, 12);
+
+  const planned = (name: string) => ({
+    name, nameKey: groceryNameKey(name), quantity: '', aisle: null, source: 'Tue Chili',
+  });
+
+  /** Bought often enough, and recently enough, for the cadence guess to hold. */
+  const stocked = (name: string) => item({
+    name,
+    onList: false,
+    inCatalog: true,
+    purchaseCount: 3,
+    createdAt: new Date(2026, 4, 14).toISOString(),
+    lastPurchasedAt: new Date(2026, 7, 2).toISOString(),
+  });
+
+  it('names what the app currently claims you have', () => {
+    const rows = consumedRows(classifyPlanned([planned('Butter')], [stocked('Butter')], now));
+    expect(rows.map(r => r.name)).toEqual(['Butter']);
+  });
+
+  it('carries probablyHaveReason so the sheet can say why it asked', () => {
+    const rows = consumedRows(classifyPlanned([planned('Butter')], [stocked('Butter')], now));
+    expect(rows[0].reason).toMatch(/bought 3×/);
+  });
+
+  it('takes an explicit "Got it" as readily as the cadence guess', () => {
+    // A fortnight-old assertion is exactly the stale claim a cook should be
+    // able to take back, so it's asked about like any other.
+    const asserted = item({
+      name: 'Soy sauce',
+      onList: false,
+      inCatalog: true,
+      onHandUntil: new Date(2026, 7, 20).toISOString(),
+    });
+    const rows = consumedRows(classifyPlanned([planned('Soy sauce')], [asserted], now));
+    expect(rows.map(r => r.name)).toEqual(['Soy sauce']);
+  });
+
+  it('drops a name the app has never seen — it can only take away a claim it made', () => {
+    const rows = consumedRows(classifyPlanned([planned('gochujang')], [], now));
+    expect(rows).toEqual([]);
+  });
+
+  it('drops a staple, which is a standing fact rather than a guess about this week', () => {
+    const items = [item({ name: 'Salt', onList: false, isStaple: true })];
+    expect(consumedRows(classifyPlanned([planned('Salt')], items, now))).toEqual([]);
+  });
+
+  it('drops anything already being restocked', () => {
+    const items = [
+      item({ name: 'Milk', onList: true, checked: false }),
+      item({ name: 'Eggs', onList: true, checked: true }),
+    ];
+    const rows = consumedRows(classifyPlanned([planned('Milk'), planned('Eggs')], items, now));
+    expect(rows).toEqual([]);
+  });
+
+  it('drops an item already marked out of — there is no claim left to take back', () => {
+    const out = item({
+      name: 'Butter',
+      onList: false,
+      inCatalog: true,
+      purchaseCount: 3,
+      createdAt: new Date(2026, 4, 14).toISOString(),
+      lastPurchasedAt: new Date(2026, 7, 2).toISOString(),
+      onHandUntil: new Date(0).toISOString(),
+    });
+    expect(consumedRows(classifyPlanned([planned('Butter')], [out], now))).toEqual([]);
+  });
+
+  it('is disjoint from restockRows, and the two cover every known line', () => {
+    // The property the whole design leans on: answering here moves a row from
+    // this set into that one, so the buy offer follows from the consumption
+    // answer rather than being asked up front.
+    const items = [stocked('Butter'), item({ name: 'Onions', onList: false, inCatalog: true })];
+    const classified = classifyPlanned(
+      [planned('Butter'), planned('Onions'), planned('gochujang')],
+      items,
+      now
+    );
+    const consumed = consumedRows(classified).map(r => r.nameKey);
+    const restock = restockRows(classified).map(r => r.nameKey);
+
+    expect(consumed).toEqual(['butter']);
+    expect(restock).toEqual(['onions']);
+    expect(consumed.filter(k => restock.includes(k))).toEqual([]);
+    expect([...consumed, ...restock].sort()).toEqual(
+      classified.filter(r => r.known).map(r => r.nameKey).sort()
+    );
   });
 });

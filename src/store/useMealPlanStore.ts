@@ -18,9 +18,11 @@ import {
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useRecipeStore } from './useRecipeStore';
+import { useGroceryStore } from './useGroceryStore';
 import { cookTaskDraft, cookTaskFields, cookTaskNeedsUpdate, wantsCookTask } from '../utils/mealTasks';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
+import { classifyPlanned, consumedRows, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
 import { generateId } from '../utils/id';
 import { normalizeScale } from '../utils/recipeScale';
 import {
@@ -83,6 +85,22 @@ export interface MealPlanDraft {
  *
  * Thin on purpose — the logic lives in utils/mealPlan where jest can reach it.
  */
+/**
+ * What the post-cook "out of anything?" offer needs to name its subject and
+ * recompute its own lines: the dish, and the two things about *this* cooking
+ * that decide which ingredients it actually used (which side was made, and how
+ * much of it). Carried by value rather than as an entry id because the entry is
+ * not the subject — the question is about the recipe that was cooked, and it
+ * survives that night's row being edited or deleted out from under it.
+ */
+export interface CookedOffer {
+  recipeId: string;
+  /** For the banner's wording. The recipe's own name at the time it was cooked. */
+  recipeName: string;
+  choices: string[];
+  scale: number;
+}
+
 interface MealPlanStore {
   /** Exactly the loaded window, in reading order. Never a superset. */
   entries: MealPlanEntry[];
@@ -95,6 +113,35 @@ interface MealPlanStore {
   lastAction: UndoableAction | null;
   setLastAction: (action: UndoableAction | null) => void;
   undoLastAction: () => void;
+
+  /**
+   * The meal just marked cooked, when there is something worth asking whether
+   * it used up — the subject of CookedUseUpOffer's banner.
+   *
+   * **It lives in the store rather than on the meal plan screen**, which is the
+   * one structural difference from the restock offer next to it. Cooking is the
+   * only moment this app learns something was *consumed*, and a meal can be
+   * ticked off from the "Cook X" task on Today as readily as from the plan
+   * (`setCookedFromTask`); a signal that important shouldn't depend on which
+   * screen the tap happened to land on. The restock offer stays screen-local
+   * because buying is a meal-plan question with two other entry points already.
+   *
+   * Set only where a *person* said they cooked one meal — `setCooked`, and so
+   * `setCookedFromTask` through it. Deliberately **not** `bulkSetCooked`:
+   * marking last week's five dinners cooked on a Sunday is bookkeeping, and
+   * asking what each of them used up would be asking someone to recall five
+   * kitchens. Un-cooking retracts it, since the tap it was about is undone.
+   *
+   * Session-only, like the restock offer: it's about a tap you just made, so
+   * there is nothing for it to mean on the next launch.
+   */
+  cookedOffer: CookedOffer | null;
+  /**
+   * Dismissed by hand, or retired by the banner once every line it could name
+   * has been answered. Both are "there is no longer anything to ask", which is
+   * also what un-suppresses the restock banner behind it.
+   */
+  clearCookedOffer: () => void;
 
   /**
    * Reloads whatever window is currently loaded. Rides useTaskStore.initialize's
@@ -319,6 +366,11 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   addedToListAt: {},
   initialized: false,
   lastAction: null,
+  cookedOffer: null,
+
+  clearCookedOffer() {
+    set({ cookedOffer: null });
+  },
 
   setLastAction(action) {
     set({ lastAction: action ? { ...action, at: Date.now() } : null });
@@ -512,6 +564,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const next: MealPlanEntry = { ...entry, cookedAt: cooked ? new Date().toISOString() : null };
     dbUpdateMealPlanEntry(next);
     set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
+    set({ cookedOffer: cooked ? useUpOfferFor(next) : null });
     // Ticking the meal ticks its task, and un-ticking un-ticks it. The
     // ping-pong this would otherwise cause is broken by the guard above plus
     // the one in completeTask: whichever side moves first has already written
@@ -759,6 +812,49 @@ function patchInRange(
  */
 function resolveEntry(get: () => MealPlanStore, id: string): MealPlanEntry | null {
   return get().entries.find(e => e.id === id) ?? dbGetMealPlanEntry(id);
+}
+
+/**
+ * The offer a just-cooked meal raises, or null when there's nothing to ask.
+ *
+ * **Gated on there being at least one line to name**, exactly as the restock
+ * banner is gated on `restockRows` — an offer that exists but shows nothing
+ * would be indistinguishable from one that hasn't been dismissed, and the
+ * screen suppresses the restock banner while this is set. `consumedRows` is
+ * what it can defend: the lines the app is already claiming you have.
+ *
+ * The count isn't stored. It's recomputed live by the banner off the same
+ * three utils, so answering the questions empties the set and retires the
+ * offer — the same "hidden rather than hedged" call the restock banner makes,
+ * and what makes the two hand over to each other with no plumbing between them.
+ *
+ * Reads two other stores at write time, like `setCookedFromTask` reaching into
+ * `useRecipeStore` just below. A free-text meal has no recipe and so no
+ * ingredients, which is not an error — just a meal with nothing to ask about.
+ */
+function useUpOfferFor(entry: MealPlanEntry): CookedOffer | null {
+  if (!entry.recipeId) return null;
+  const recipes = useRecipeStore.getState().recipes;
+  const recipe = recipes.find(r => r.id === entry.recipeId);
+  if (!recipe) return null;
+
+  const recipesById = new Map(recipes.map(r => [r.id, r]));
+  const scale = normalizeScale(entry.recipeScale);
+  const rows = consumedRows(
+    classifyPlanned(
+      plannedIngredientsForRecipe(recipe, recipesById, { chosen: entry.recipeChoices }, scale),
+      useGroceryStore.getState().items,
+      new Date()
+    )
+  );
+  if (rows.length === 0) return null;
+
+  return {
+    recipeId: recipe.id,
+    recipeName: recipe.name,
+    choices: [...entry.recipeChoices],
+    scale,
+  };
 }
 
 // ─── Cook tasks (#1402) ─────────────────────────────────────────────────────

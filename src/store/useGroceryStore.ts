@@ -33,7 +33,7 @@ import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
-import { defaultOnHandUntil } from '../utils/grocerySuggest';
+import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { defaultExpiresAt } from '../utils/groceryShelfLife';
 import { useUpTaskDraft, useUpTaskFields, useUpTaskNeedsUpdate, wantsUseUpTask } from '../utils/groceryExpiry';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
@@ -213,6 +213,20 @@ interface GroceryStore {
    * null to clear back to grocerySuggest.probablyHaveReason's own guess).
    */
   setOnHandUntil: (id: string, until: string | null) => void;
+  /**
+   * "Out of it" for several rows at once — what a cook reports it used up
+   * (CookedUseUpSheet), where the item sheet's pill says it one row at a time.
+   *
+   * Exactly the assertion that pill writes, batched: `OUT_OF_IT_UNTIL` on each,
+   * nothing else touched. It's a separate action rather than a loop over
+   * `setOnHandUntil` for the undo — a cook that reports three things is one
+   * action the user took, and three entries in a queue shake-to-undo reads the
+   * freshest of would let them take back one third of it.
+   *
+   * Rows already marked out are skipped rather than rewritten, so the count it
+   * returns is what actually changed and an all-no-op call registers no undo.
+   */
+  markOutOfMany: (ids: readonly string[]) => number;
   /**
    * "I have this" for something the app hasn't worked out on its own — the add
    * field on PantrySheet. It writes exactly the assertion GroceryItemSheet's
@@ -1000,6 +1014,33 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const updated = { ...item, onHandUntil: until };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  markOutOfMany(ids) {
+    if (ids.length === 0) return 0;
+    const wanted = new Set(ids);
+    // Snapshotted before the write, and restored verbatim rather than to null:
+    // a row that carried an active "Got it" had an assertion before this, and
+    // undo owes it that back rather than the cadence guess.
+    const before = get().items.filter(
+      i => wanted.has(i.id) && i.onHandUntil !== OUT_OF_IT_UNTIL
+    );
+    if (before.length === 0) return 0;
+
+    const updates = before.map((i): GroceryItem => ({ ...i, onHandUntil: OUT_OF_IT_UNTIL }));
+    for (const u of updates) dbUpdateGroceryItem(u);
+    const byId = new Map(updates.map(u => [u.id, u]));
+    set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+
+    get().setLastAction({
+      label: `Marked ${updates.length} ${updates.length === 1 ? 'thing' : 'things'} out`,
+      undo: () => {
+        for (const b of before) dbUpdateGroceryItem(b);
+        const originalById = new Map(before.map(b => [b.id, b]));
+        set(s => ({ items: s.items.map(i => originalById.get(i.id) ?? i) }));
+      },
+    });
+    return updates.length;
   },
 
   addToPantry(raw) {

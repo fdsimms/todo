@@ -11,7 +11,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, RecurrenceType, ChainItem, DeliverableKind } from '../types';
-import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
+import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -39,6 +39,8 @@ import { SortableList } from './SortableList';
 import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { StepMinutes } from './StepMinutes';
 import { RecurrencePicker } from './RecurrencePicker';
+import { SegmentedControl } from './SegmentedControl';
+import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -395,21 +397,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             </Text>
           </View>
         </View>
-        <View style={styles.timePillRow}>
-          {(['start', 'end'] as TemplateAnchor[]).map(a => {
-            const active = anchor === a;
-            return (
-              <TouchableOpacity
-                key={a}
-                style={[styles.timePill, active && styles.timePillActive]}
-                onPress={() => { haptics.tap(); setAnchor(a); }}
-              >
-                <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
-                  {anchorLabel(a)}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.anchorRow}>
+          <SegmentedControl
+            label="Count days from"
+            value={anchor}
+            onChange={setAnchor}
+            options={(['start', 'end'] as TemplateAnchor[]).map(a => ({ value: a, label: anchorLabel(a) }))}
+          />
         </View>
         <View style={styles.sep} />
         <OffsetRow
@@ -1024,23 +1018,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           expanded={fieldOpen('priority')}
           onToggle={() => toggleField('priority')}
         >
-          <View style={styles.pillRow}>
-            {([0, 1, 2, 3, 4] as Priority[]).map(p => (
-              <TouchableOpacity
-                key={p}
-                style={[
-                  styles.pill,
-                  priority === p && p === 0 && styles.pillActiveNeutral,
-                  priority === p && p > 0 && { backgroundColor: PRIORITY_COLORS[p] },
-                ]}
-                onPress={() => { haptics.tap(); setPriority(p); closeField('priority'); }}
-              >
-                <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>
-                  {PRIORITY_LABELS[p]}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <SegmentedControl
+            label="Priority"
+            value={priority}
+            onChange={p => { setPriority(p); closeField('priority'); }}
+            columns={3}
+            options={PRIORITY_SEGMENTS}
+          />
         </CollapsibleField>
 
         <View style={styles.cardSep} />
@@ -1246,6 +1230,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
   pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: 2 },
+  anchorRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,

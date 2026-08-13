@@ -18,7 +18,8 @@ import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
 import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
-import { CookedRestockBanner } from '../components/CookedRestockBanner';
+import { CookedOfferBanner } from '../components/CookedOfferBanner';
+import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
 import { PrepTasksReviewSheet } from '../components/PrepTasksReviewSheet';
 import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
 import { CalendarPicker } from '../components/CalendarPicker';
@@ -350,12 +351,19 @@ export function MealPlanScreen() {
   //
   // This is the *banner's* subject, not the sheet's — marking something cooked
   // used to open RecipeToListSheet outright, which is what made a tick about
-  // eating read as a question about shopping (see CookedRestockBanner).
+  // eating read as a question about shopping (see CookedOfferBanner).
   // Session-only, and deliberately not persisted: it's an offer about a tap
   // you just made, so there is nothing for it to mean on the next launch.
+  //
+  // Screen state, where the used-up offer next to it is store state, and the
+  // asymmetry is the point: buying is a meal-plan question with two other entry
+  // points already, while what a cook consumed is the app's only signal of its
+  // kind and has to be raised wherever the meal was ticked off — see
+  // useMealPlanStore.cookedOffer.
   const [restockOffer, setRestockOffer] =
     useState<{ recipe: Recipe; choices: string[]; scale: number } | null>(null);
   const [restockSheetVisible, setRestockSheetVisible] = useState(false);
+  const cookedOffer = useMealPlanStore(s => s.cookedOffer);
 
   // One count, used twice: whether to make the offer at all, and what the
   // banner says. Computed against the live catalog rather than snapshotted at
@@ -650,13 +658,19 @@ export function MealPlanScreen() {
       }
     }
 
-    // A recipe with nothing to restock offers nothing. The bar used to be
-    // "has any ingredient lines at all", which is no bar: on a dish cooked for
-    // the first time every line qualifies, so the offer arrived asking to buy
-    // the salt and pepper. restockRows is what the offer can actually defend —
-    // see its note, and CookedRestockBanner's.
+    // Stored for any cooked recipe, and *not* gated on the count being above
+    // zero right now — the banner renders nothing at 0 either way (see
+    // `restockCount`), and a cook whose ingredients are all in the pantry is
+    // exactly the one whose restock set is about to be created: saying you're
+    // out of the soy sauce in the used-up sheet moves it into `restockRows`,
+    // and with the offer already standing by, the buy follows from the
+    // consumption answer instead of having to be asked for.
+    //
+    // What the offer must still never be is "every line of the recipe" —
+    // restockRows is what it can defend, since on a dish cooked for the first
+    // time every line looks unbought, which is how this arrived asking to buy
+    // the salt and pepper. See its note, and CookedOfferBanner's.
     if (!recipe) return;
-    if (restockCountFor(recipe, entry.recipeChoices, entry.recipeScale) === 0) return;
     setRestockOffer({ recipe, choices: entry.recipeChoices, scale: entry.recipeScale });
   };
 
@@ -1066,18 +1080,33 @@ export function MealPlanScreen() {
       />
       <GroceriesHubPills active="MealPlan" />
 
-      {/* A sibling of the list rather than part of its header, like
-          ActiveTripBanner and unlike the cards inside ListHeaderComponent: the
-          tap it answers can happen on any day of the week, so an offer that
-          scrolls with the week is one you can miss entirely. Hidden while
-          selecting, for the reason the list header gives — nothing that opens
-          a sheet belongs over an in-progress selection. */}
-      {restockOffer && restockCount > 0 && !selectionMode && (
-        <CookedRestockBanner
-          recipeName={restockOffer.recipe.name}
-          count={restockCount}
-          onReview={() => setRestockSheetVisible(true)}
+      {/* Both post-cook offers are siblings of the list rather than part of its
+          header, like ActiveTripBanner and unlike the cards inside
+          ListHeaderComponent: the tap they answer can happen on any day of the
+          week, so an offer that scrolls with the week is one you can miss
+          entirely. Hidden while selecting, for the reason the list header gives
+          — nothing that opens a sheet belongs over an in-progress selection. */}
+      {!selectionMode && <CookedUseUpOffer />}
+
+      {/* Ranked behind the used-up offer, never stacked with it: what a cook
+          used up is the question only this moment can answer, while the shop is
+          reachable from the recipe whenever you want it. Answering or
+          dismissing that one clears `cookedOffer`, and this appears — by then
+          counting whatever was just marked out, since restockCount reads the
+          live catalog. */}
+      {restockOffer && restockCount > 0 && !cookedOffer && !selectionMode && (
+        <CookedOfferBanner
+          lead={`${restockCount} ingredient${restockCount === 1 ? '' : 's'}`}
+          rest={`from ${restockOffer.recipe.name} aren't on your list`}
+          actionLabel="Review"
+          onAction={() => setRestockSheetVisible(true)}
           onDismiss={() => setRestockOffer(null)}
+          accessibilityLabel={
+            `${restockCount} ingredient${restockCount === 1 ? '' : 's'} from ` +
+            `${restockOffer.recipe.name} are not on your shopping list`
+          }
+          actionAccessibilityLabel={`Review ingredients from ${restockOffer.recipe.name} to add to your shopping list`}
+          dismissAccessibilityLabel="Dismiss restock notice"
         />
       )}
 

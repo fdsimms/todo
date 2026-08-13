@@ -14,11 +14,14 @@ import { CountStepper } from '../../components/CountStepper';
 import { SettingsSection } from './SettingsSection';
 import { GeneratedTasksSection } from './GeneratedTasksSection';
 import { SettingsRow } from './SettingsRow';
-import { SettingsPills, type PillOption } from './SettingsPills';
+import { SettingsSegments } from './SettingsSegments';
+import { type SegmentOption } from '../../components/SegmentedControl';
+import { PillGroup } from '../../components/PillGroup';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
 import { categoryLabel } from '../../utils/categoryLabel';
-import { PRIORITY_LABELS, EFFORT_LABELS, type Priority, type Effort, type TimeOfDay } from '../../types';
+import { EFFORT_LABELS, type Effort, type TimeOfDay } from '../../types';
+import { PRIORITY_SEGMENTS } from '../../utils/prioritySegments';
 import {
   CADENCE_UNITS, CADENCE_UNIT_MAX, cadenceUnitLabel,
   describeCadence, fromCadenceParts, toCadenceParts, withCadenceUnit,
@@ -28,44 +31,43 @@ import {
 } from '../../utils/postpone';
 import { CURRENCY_SYMBOLS } from '../../types';
 
-const EXPIRED_TASK_GRACE_PILLS: PillOption<ExpiredTaskGraceDays>[] =
+const EXPIRED_TASK_GRACE_SEGMENTS: SegmentOption<ExpiredTaskGraceDays>[] =
   EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
 
 // 0 already means "None"/"—" everywhere else a priority or effort is picked
-// (TaskEditor, QuickAdd), so there's no separate null option here — leaving a
-// new task's priority/effort default at 0 behaves identically to not
-// configuring a default at all (newTaskFromDraft falls back to 0 either way).
-const NEW_TASK_PRIORITY_PILLS: PillOption<Priority>[] =
-  PRIORITY_LABELS.map((label, value) => ({ value: value as Priority, label }));
-const NEW_TASK_EFFORT_PILLS: PillOption<Effort>[] =
+// (TaskEditor, QuickAdd), so there's no separate null option here or in
+// PRIORITY_SEGMENTS — leaving a new task's priority/effort default at 0 behaves
+// identically to not configuring a default at all (newTaskFromDraft falls back
+// to 0 either way).
+const NEW_TASK_EFFORT_OPTIONS: SegmentOption<Effort>[] =
   EFFORT_LABELS.map((label, value) => ({ value: value as Effort, label: value === 0 ? 'None' : label }));
-const NEW_TASK_TIME_SEGMENT_PILLS: PillOption<TimeOfDay | null>[] = [
+const NEW_TASK_TIME_OF_DAY_OPTIONS: SegmentOption<TimeOfDay | null>[] = [
   { value: null, label: 'None' },
   { value: 'morning', label: 'Morning' },
   { value: 'afternoon', label: 'Afternoon' },
   { value: 'evening', label: 'Evening' },
   { value: 'night', label: 'Night' },
 ];
-const NEW_TASK_DESTINATION_PILLS: PillOption<'today' | 'inbox' | 'unscheduled'>[] = [
+const NEW_TASK_DESTINATION_OPTIONS: SegmentOption<'today' | 'inbox' | 'unscheduled'>[] = [
   { value: 'today', label: 'Today' },
   { value: 'inbox', label: 'Inbox' },
   { value: 'unscheduled', label: 'Unscheduled' },
 ];
 // "Line" rather than "Strip": the user-facing word for what they'll see is the
 // shape of it, and the code's name for the component isn't their problem.
-const MEALS_ON_TODAY_PILLS: PillOption<MealsOnToday>[] = [
+const MEALS_ON_TODAY_OPTIONS: SegmentOption<MealsOnToday>[] = [
   { value: 'strip', label: 'One line' },
   { value: 'block', label: 'Full list' },
   { value: 'off', label: 'Off' },
 ];
-const UNIT_SYSTEM_PILLS: PillOption<UnitSystem>[] = [
+const UNIT_SYSTEM_OPTIONS: SegmentOption<UnitSystem>[] = [
   { value: 'asWritten', label: 'As written' },
   { value: 'metric', label: 'Metric' },
   { value: 'us', label: 'US' },
 ];
 // The symbol only. Prices are stored as plain numbers and nothing converts
 // between currencies — see src/utils/groceryPrice.ts.
-const CURRENCY_PILLS: PillOption<string>[] = CURRENCY_SYMBOLS.map(symbol => ({
+const CURRENCY_OPTIONS: SegmentOption<string>[] = CURRENCY_SYMBOLS.map(symbol => ({
   value: symbol,
   label: symbol,
 }));
@@ -110,10 +112,27 @@ export function TasksProjectsSettings() {
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
 
-  const newTaskCategoryPills: PillOption<string | null>[] = useMemo(() => [
+  // Not a segmented control: the categories are the user's own and there can be
+  // fifteen of them, which is `PillGroup`'s job (it caps and filters) and not a
+  // track's. `None` is `pinned` — the option meaning "no choice" is never the
+  // one buried behind "N more".
+  const newTaskCategoryOptions: { value: string | null; label: string }[] = useMemo(() => [
     { value: null, label: 'None' },
     ...categories.map(c => ({ value: c.name, label: categoryLabel(c.name, categories) })),
   ], [categories]);
+
+  const categoryPills = (
+    selected: string | null,
+    onSelect: (value: string | null) => void,
+    describe: (label: string) => string,
+  ) => newTaskCategoryOptions.map(o => ({
+    key: String(o.value),
+    label: o.label,
+    selected: o.value === selected,
+    pinned: o.value === null,
+    accessibilityLabel: describe(o.label),
+    onPress: () => { haptics.tap(); onSelect(o.value); },
+  }));
 
   // The cadence is stored in days; the picker shows it as a count and a unit —
   // same conversion the per-project field in ProjectEditor uses.
@@ -183,9 +202,10 @@ export function TasksProjectsSettings() {
               : `Deleted ${expiredTaskGraceLabel(autoRemoveExpiredTasks).toLowerCase()} after their time window closes`}
           tight
         />
-        <SettingsPills
+        <SettingsSegments
           attached
-          options={EXPIRED_TASK_GRACE_PILLS}
+          columns={3}
+          options={EXPIRED_TASK_GRACE_SEGMENTS}
           selected={autoRemoveExpiredTasks}
           onSelect={setAutoRemoveExpiredTasks}
           accessibilityLabelFor={o => `Auto-remove expired tasks: ${o.label}`}
@@ -296,16 +316,19 @@ export function TasksProjectsSettings() {
           }
           tight
         />
-        <SettingsPills
+        <SettingsSegments
           attached
-          options={MEALS_ON_TODAY_PILLS}
+          options={MEALS_ON_TODAY_OPTIONS}
           selected={mealsOnToday}
-          onSelect={mode => { haptics.tap(); setMealsOnToday(mode); }}
+          onSelect={setMealsOnToday}
           accessibilityLabelFor={o => `Meals on Today: ${o.label}`}
         />
       </SettingsSection>
 
-      <GeneratedTasksSection categoryPills={newTaskCategoryPills} />
+      <GeneratedTasksSection
+        categoryOptions={newTaskCategoryOptions}
+        categoryPills={categoryPills}
+      />
 
       <SettingsSection
         label="Recipe & grocery amounts"
@@ -324,11 +347,11 @@ export function TasksProjectsSettings() {
           }
           tight
         />
-        <SettingsPills
+        <SettingsSegments
           attached
-          options={UNIT_SYSTEM_PILLS}
+          options={UNIT_SYSTEM_OPTIONS}
           selected={unitSystem}
-          onSelect={system => { haptics.tap(); setUnitSystem(system); }}
+          onSelect={setUnitSystem}
           accessibilityLabelFor={o => `Units: ${o.label}`}
         />
         <SettingsRow
@@ -337,11 +360,11 @@ export function TasksProjectsSettings() {
           hint="The symbol grocery prices are shown with"
           tight
         />
-        <SettingsPills
+        <SettingsSegments
           attached
-          options={CURRENCY_PILLS}
+          options={CURRENCY_OPTIONS}
           selected={currencySymbol}
-          onSelect={symbol => { haptics.tap(); setCurrencySymbol(symbol); }}
+          onSelect={setCurrencySymbol}
           accessibilityLabelFor={o => `Currency: ${o.label}`}
         />
       </SettingsSection>
@@ -368,49 +391,53 @@ export function TasksProjectsSettings() {
         label="New tasks"
         footer="What a fresh task starts with, and where quick-add files it before you type anything. None of these override a value you actually pick — typing a date in quick-add still wins over the destination below."
       >
-        <SettingsRow icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own" value={newTaskCategoryPills.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
-        <SettingsPills
-          attached
-          wrap
-          options={newTaskCategoryPills}
-          selected={newTaskDefaults.category}
-          onSelect={category => { haptics.tap(); setNewTaskDefaults({ category }); }}
-          accessibilityLabelFor={o => `Default category: ${o.label}`}
-        />
+        <SettingsRow icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own" value={newTaskCategoryOptions.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
+        <View style={styles.pillGroupRow}>
+          <PillGroup
+            noun="category"
+            options={categoryPills(
+              newTaskDefaults.category,
+              category => setNewTaskDefaults({ category }),
+              label => `Default category: ${label}`,
+            )}
+          />
+        </View>
         <View style={styles.sep} />
         <SettingsRow icon="flag-outline" label="Priority" tight />
-        <SettingsPills
+        <SettingsSegments
           attached
-          options={NEW_TASK_PRIORITY_PILLS}
+          columns={3}
+          options={PRIORITY_SEGMENTS}
           selected={newTaskDefaults.priority ?? 0}
-          onSelect={priority => { haptics.tap(); setNewTaskDefaults({ priority }); }}
+          onSelect={priority => setNewTaskDefaults({ priority })}
           accessibilityLabelFor={o => `Default priority: ${o.label}`}
         />
         <View style={styles.sep} />
         <SettingsRow icon="speedometer-outline" label="Effort" tight />
-        <SettingsPills
+        <SettingsSegments
           attached
-          options={NEW_TASK_EFFORT_PILLS}
+          options={NEW_TASK_EFFORT_OPTIONS}
           selected={newTaskDefaults.effort ?? 0}
-          onSelect={effort => { haptics.tap(); setNewTaskDefaults({ effort }); }}
+          onSelect={effort => setNewTaskDefaults({ effort })}
           accessibilityLabelFor={o => `Default effort: ${o.label}`}
         />
         <View style={styles.sep} />
         <SettingsRow icon="partly-sunny-outline" label="Time of day" tight />
-        <SettingsPills
+        <SettingsSegments
           attached
-          options={NEW_TASK_TIME_SEGMENT_PILLS}
+          columns={3}
+          options={NEW_TASK_TIME_OF_DAY_OPTIONS}
           selected={newTaskDefaults.timeSegment}
-          onSelect={timeSegment => { haptics.tap(); setNewTaskDefaults({ timeSegment }); }}
+          onSelect={timeSegment => setNewTaskDefaults({ timeSegment })}
           accessibilityLabelFor={o => `Default time of day: ${o.label}`}
         />
         <View style={styles.sep} />
         <SettingsRow icon="albums-outline" label="Where quick-add lands" hint="Which list a quick-added task files into before you set a date" tight />
-        <SettingsPills
+        <SettingsSegments
           attached
-          options={NEW_TASK_DESTINATION_PILLS}
+          options={NEW_TASK_DESTINATION_OPTIONS}
           selected={newTaskDefaults.destination}
-          onSelect={destination => { haptics.tap(); setNewTaskDefaults({ destination }); }}
+          onSelect={destination => setNewTaskDefaults({ destination })}
           accessibilityLabelFor={o => `Quick-add destination: ${o.label}`}
         />
         <View style={styles.sep} />

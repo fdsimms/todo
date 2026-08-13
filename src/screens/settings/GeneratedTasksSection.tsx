@@ -13,14 +13,15 @@ import {
 } from '../../types';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
-import { haptics } from '../../utils/haptics';
 import { useColors } from '../../theme/ThemeContext';
 import { spacing, type Colors } from '../../theme';
 import { CountStepper } from '../../components/CountStepper';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
-import { SettingsPills, type PillOption } from './SettingsPills';
+import { SettingsSegments } from './SettingsSegments';
 import { InlineTimePicker } from './InlineTimePicker';
+import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
+import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 
 /**
@@ -50,13 +51,13 @@ import { makeSettingsStyles } from './settingsStyles';
  */
 
 // Full names for the hint sentence and screen reader labels; single letters on
-// the pills themselves, the same compression the calendar's own header uses to
-// fit all seven across 390pt. Moved here with the nudge's controls.
+// the segments themselves, the same compression the calendar's own header uses
+// to fit all seven across 390pt. Moved here with the nudge's controls.
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-/** Weekday pills rotated to start at weekStartsOn, matching the calendar's header order. */
-function weekdayPills(weekStartsOn: WeekStart): PillOption<number>[] {
+/** Weekday segments rotated to start at weekStartsOn, matching the calendar's header order. */
+function weekdayOptions(weekStartsOn: WeekStart): SegmentOption<number>[] {
   return Array.from({ length: 7 }, (_, i) => {
     const value = (weekStartsOn + i) % 7;
     return { value, label: WEEKDAY_LETTERS[value] };
@@ -64,11 +65,21 @@ function weekdayPills(weekStartsOn: WeekStart): PillOption<number>[] {
 }
 
 interface Props {
-  /** The category options, built once by the parent screen and shared with its other pickers. */
-  categoryPills: PillOption<string | null>[];
+  /** For naming the current value in each generator's disclosure row. */
+  categoryOptions: { value: string | null; label: string }[];
+  /**
+   * The parent screen's own pill builder, shared rather than rebuilt: a closed
+   * set gets a segmented control, but categories are the user's own and there
+   * can be fifteen, which is `PillGroup`'s job. See newTaskCategoryOptions.
+   */
+  categoryPills: (
+    selected: string | null,
+    onSelect: (value: string | null) => void,
+    describe: (label: string) => string,
+  ) => PillGroupOption[];
 }
 
-export function GeneratedTasksSection({ categoryPills }: Props) {
+export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const sectionStyles = useMemo(() => makeStyles(colors), [colors]);
@@ -77,7 +88,7 @@ export function GeneratedTasksSection({ categoryPills }: Props) {
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [pickerDate, setPickerDate] = useState<Date>(() => hhmmToDate(s.mealPlanNudgeTime));
 
-  const weekdayPillOptions = useMemo(() => weekdayPills(s.weekStartsOn), [s.weekStartsOn]);
+  const weekdaySegmentOptions = useMemo(() => weekdayOptions(s.weekStartsOn), [s.weekStartsOn]);
 
   // Each generator's on/off answer and its category still live under their own
   // settings keys. Renaming them to a generic pair would be a migration over
@@ -104,8 +115,9 @@ export function GeneratedTasksSection({ categoryPills }: Props) {
     : s.leftoverUseUpTaskCategory
   );
 
+  // No haptic here: `categoryPills` fires one in its own onPress, and two for
+  // one tap reads as a stutter.
   const setCategory = (kind: GeneratedKind, category: string | null): void => {
-    haptics.tap();
     if (kind === 'mealCook') s.setMealCookTaskCategory(category);
     else if (kind === 'groceryUseUp') s.setGroceryUseUpTaskCategory(category);
     else s.setLeftoverUseUpTaskCategory(category);
@@ -168,9 +180,9 @@ export function GeneratedTasksSection({ categoryPills }: Props) {
         <>
           <View style={styles.sep} />
           <SettingsRow icon="calendar-outline" iconColor={colors.accent} label="Nudge me on" tight />
-          <SettingsPills
+          <SettingsSegments
             attached
-            options={weekdayPillOptions}
+            options={weekdaySegmentOptions}
             selected={s.mealPlanNudgeWeekday}
             onSelect={s.setMealPlanNudgeWeekday}
             accessibilityLabelFor={o => WEEKDAY_NAMES[o.value]}
@@ -235,17 +247,19 @@ export function GeneratedTasksSection({ categoryPills }: Props) {
                   icon="pricetag-outline"
                   label="File them under"
                   hint="With none, they sit loose at the top of Today above your categories"
-                  value={categoryPills.find(o => o.value === categoryOf(spec.kind))?.label ?? 'None'}
+                  value={categoryOptions.find(o => o.value === categoryOf(spec.kind))?.label ?? 'None'}
                   tight
                 />
-                <SettingsPills
-                  attached
-                  wrap
-                  options={categoryPills}
-                  selected={categoryOf(spec.kind)}
-                  onSelect={category => setCategory(spec.kind, category)}
-                  accessibilityLabelFor={o => `${spec.label} category: ${o.label}`}
-                />
+                <View style={styles.pillGroupRow}>
+                  <PillGroup
+                    noun="category"
+                    options={categoryPills(
+                      categoryOf(spec.kind),
+                      category => setCategory(spec.kind, category),
+                      label => `${spec.label} category: ${label}`,
+                    )}
+                  />
+                </View>
               </>
             )}
           </React.Fragment>

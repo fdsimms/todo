@@ -1062,6 +1062,38 @@ describe('cook timer', () => {
   });
 });
 
+describe('logManualCookTime', () => {
+  it('logs a typed time without touching the timer, and backfills a never-set estimate', () => {
+    const r = makeRecipe('Ragu', { estimatedMinutes: null });
+    seed([r]);
+
+    useRecipeStore.getState().logManualCookTime(r.id, 22);
+
+    const logged = useRecipeStore.getState().recipeById(r.id)!;
+    expect(logged.lastCookMinutes).toBe(22);
+    expect(logged.cookTimeCount).toBe(1);
+    expect(logged.totalCookMinutes).toBe(22);
+    expect(logged.estimatedMinutes).toBe(22);
+    expect(logged.timerStartedAt).toBeNull();
+  });
+
+  it('never overwrites a typed estimate', () => {
+    const r = makeRecipe('Ragu', { estimatedMinutes: 25 });
+    seed([r]);
+
+    useRecipeStore.getState().logManualCookTime(r.id, 30);
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.estimatedMinutes).toBe(25);
+  });
+
+  it('ignores a zero or negative entry', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().logManualCookTime(r.id, 0);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
 describe('setPrepMinutes', () => {
   it('sets, rounds and floors at 1 minute, and clears with null', () => {
     const r = makeRecipe('Ragu');
@@ -1199,6 +1231,38 @@ describe('prep timer', () => {
     const r = makeRecipe('Ragu');
     seed([r]);
     useRecipeStore.getState().stopPrepTimer(r.id);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('logManualPrepTime', () => {
+  it('logs a typed time without touching the timer, and backfills a never-set prep estimate', () => {
+    const r = makeRecipe('Ragu', { prepMinutes: null });
+    seed([r]);
+
+    useRecipeStore.getState().logManualPrepTime(r.id, 6);
+
+    const logged = useRecipeStore.getState().recipeById(r.id)!;
+    expect(logged.lastPrepMinutes).toBe(6);
+    expect(logged.prepTimeCount).toBe(1);
+    expect(logged.totalPrepMinutes).toBe(6);
+    expect(logged.prepMinutes).toBe(6);
+    expect(logged.prepTimerStartedAt).toBeNull();
+  });
+
+  it('never overwrites a typed prep estimate', () => {
+    const r = makeRecipe('Ragu', { prepMinutes: 10 });
+    seed([r]);
+
+    useRecipeStore.getState().logManualPrepTime(r.id, 15);
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.prepMinutes).toBe(10);
+  });
+
+  it('ignores a zero or negative entry', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().logManualPrepTime(r.id, -1);
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
   });
 });

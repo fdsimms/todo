@@ -1080,6 +1080,30 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   it *is* a native module, so it needs a fresh build, not just a JS reload). The app's *other*
   `pin-outline` — the "Count days from" anchor row in `TemplateItemEditor` — is a map pin on
   purpose and stays Ionicons.
+- `SegmentedControl` (`src/components/SegmentedControl.tsx`) — **pick exactly one of a small,
+  closed set.** The task's kind, the repeat type, priority, a unit, an anchor: one bounded track
+  of equal segments, the chosen one raised rather than accent-filled. This is the rule the pill
+  had lost — it was doing four unrelated jobs in one styling, and only two of them are pills:
+
+  | Job | Control |
+  |---|---|
+  | Pick one from a small **closed** set | **`SegmentedControl`** |
+  | **Multi**-select toggles (weekdays, time-of-day segments) | pills |
+  | Pick from an **open** set the user builds (tags, categories, aisles, stores) | `PillGroup` |
+  | An action ("New task", "Add tag") | `InlineAction` |
+
+  N free-width pills read as N objects, so an editor holding four such rows read as sixteen
+  things to consider rather than four questions to answer; a track reads as one field whatever
+  it contains. A weekday row next to one *should* look different — that's the rule working.
+  Sets too wide for a line take `columns` (an equal-width grid **inside the same track**, rows
+  built by `src/utils/segmentColumns.ts` — ragged wrapping is a row of pills again, just inside
+  a box). Settings gets it through `SettingsSegments`, which is only the padding: the
+  accent-bordered `SettingsPills` that predated this is gone, since two treatments for one job
+  is the drift. Priority is in a track *and* keeps its colour — every segment carries its dot
+  (`SegmentOption.dot`), which shows more than the old fill did, since that only coloured the
+  option you'd already picked. The cases deliberately left as pills (effort, presets beside a
+  free input, list filters, a unit beside a stepper) are listed in the component's own doc
+  comment with the reason for each; read it before converting or un-converting one.
 - `PillGroup` (`src/components/PillGroup.tsx`) — a wrapping grid of pills for picking from an
   open-ended set (aisles, stores). Past `DEFAULT_PILL_LIMIT` (8) it caps itself behind one
   "N more" and grows a field that both filters the set and adds to it, the way `ListBulkBar`'s

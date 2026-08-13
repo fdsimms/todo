@@ -103,6 +103,7 @@ const BASE: Task = {
   generatedSourceId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  timeBlockEventId: null,
 };
 
 function makeTask(overrides: Partial<Task>): Task {
