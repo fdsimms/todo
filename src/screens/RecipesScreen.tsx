@@ -531,7 +531,9 @@ export function RecipesScreen() {
                 mealTypeUpdates.forEach(u => setMealType(u.id, u.mealType));
               }}
               contentContainerStyle={styles.list}
-              ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
+              ListFooterComponent={
+                <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
+              }
             />
           ) : (
             <FlatList
