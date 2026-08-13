@@ -103,6 +103,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see Timed tasks below |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
+| the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see The month grid below |
 | a column, migration, or row↔object mapping | `src/db/database.ts` (`initDatabase`, `rowToTask`) |
 | any model's shape | `src/types/index.ts` — one file, every type |
 | colors, spacing, animation | `src/theme/index.ts`, `src/theme/ThemeContext.tsx` |
@@ -285,6 +286,55 @@ Every completion leaves its row behind, so a daily recurring task accumulates on
 - **Only top-level rows are ever named.** A completed subtask under a *live* parent is a checked-off step, not history — `dbBulkDeleteTasks`' `parent_id` cascade takes the subtasks of a purged parent, so listing subtasks directly would be the bug, not the feature.
 - **Streaks are safe and that's structural**, not luck: `streakCount`/`streakDate` and their `previous*` snapshot live on the row still running the streak and are never summed back across the chain. The pointers that *do* cross rows (`previousOccurrenceId`, `blockedById`) are resolve-or-shrug at every reader — `canBlock(undefined)` is false, chain walks stop on a missed lookup — and already dangle this way after a manual Logbook delete, so a purge leaves them rather than rewriting rows it isn't deleting.
 - **It must not go through `bulkDeleteTasks`**, which arms shake-to-undo. A purge the user didn't just perform sitting under their first shake of the session is not an undo.
+
+### The month grid — the one place a projected occurrence is drawn
+
+`CalendarScreen` reads a month of `dueDate` / `deadline` / `deferUntil`; `calendarMonth.ts` owns
+every rule it renders. No schema change and no new column — it's a read over dates that already
+exist, which is why the whole feature is a util plus a screen.
+
+- **A dot may be projected; a row may not.** A recurring task's future occurrences aren't in the
+  database — completing one spawns the next — so drawing the schedule means rendering something
+  that doesn't exist. That's the thing the Series note below rejected for Later, and it's rejected
+  there for a reason that doesn't apply here: a ghost in a *task list* needs a non-completable,
+  non-selectable row type threaded through `TaskItem`/`TodayScreen`/`useTaskSelection`, whereas
+  nothing on a day cell was ever tappable. So the boundary is drawn at the row: `dayDetail` returns
+  real `Task`s for the day's list and `{taskId, title}` captions for the projections, under
+  "Expected". Deliberately not `Task` — hand a caption a Task and it ends up rendered as one.
+- **Four things are never projected**, each of them a schedule the app doesn't actually promise:
+  a **completed row** (recurrence leaves a tombstone per completion *and* spawns the successor, so
+  walking tombstones draws every future occurrence once per completion the task has ever had —
+  the same unbounded growth `groupRoster` exists to collapse); **`recurrenceFromCompletion`**
+  (anchored to a completion that hasn't happened, so `getNextDueDate` answers from *today* and a
+  walk would lay a fictional track from now to the edge of the grid); a **live chain** (completing
+  advances `chainIndex` and spawns the next step *undated* — the recurrence only advances at chain
+  end, so `getNextDueDate` isn't its next date at all); and an **archived row**. `canProject` is
+  the one place that list lives.
+- **The walk decrements `recurrenceCount` itself.** It's "occurrences remaining, including this
+  one" and `completeTask` takes one off per spawn — walking without it projects a repeat-3-times
+  task all the way to the edge of the grid, because `getNextDueDate` reads the count off the row
+  it's handed and that row never runs down. `recurrenceEndDate` needs no such care; it already
+  returns null.
+- **A relative deadline is projected with its occurrence** (`deadlineOffsetDays`,
+  `deadlineMonthDay`), reusing `getDeadlineFromOffset`/`getDeadlineFromMonthDay` rather than
+  restating the arithmetic — the sign is the whole meaning of that field. A *fixed* `deadline`
+  doesn't carry forward, so it has nothing to project.
+- **Placement, not visibility.** A task shows on its day whether or not it's actionable there —
+  vacation-paused, blocked, behind a time segment. The grid answers "what date is this on", the
+  same call `pinnedTasks()` makes; `isTaskVisible` is Today's question. `windowStart`/`windowEnd`
+  are correspondingly *not* a fourth signal: they're clock times within a day, with no cell to
+  land in.
+- **The reset time deliberately doesn't reach the bucketing.** `getTaskDayStart` only moves the
+  clock time inside the date it was handed and never rolls it to another day, so
+  `dayKeyOf(getTaskDayStart(d, r))` is `dayKeyOf(d)` for every `r`. Threading `dayResetTime`
+  through the buckets would read like it did something. Projection takes it because
+  `getNextDueDate` does.
+- **Three dot states, not two.** `solid` (real work outstanding), `done` (rows here, all ticked),
+  `projected` (hollow). Collapsing `done` into `projected` makes a finished Tuesday read as a
+  guess; collapsing it into `solid` makes a month you've cleared look untouched.
+- **Its own route, not a fifth Today lens** — see the Navigation note. And paging months carries
+  the selection with it: a detail pane naming a day outside the grid renders "Nothing on this day"
+  about a day that simply isn't in range.
 
 ### Series (`seriesId`) — one task on several dates
 

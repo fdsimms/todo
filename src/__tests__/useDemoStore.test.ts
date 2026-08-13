@@ -34,6 +34,8 @@ import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppi
 import { cheapestShopFor, describeShopPrices, shopPricesFor } from '../utils/groceryPrice';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor } from '../utils/activeTrip';
+import { buildDayBuckets, canProject } from '../utils/calendarMonth';
+import { buildCalendarGrid } from '../utils/calendarGrid';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockDbs: Map<string, any>;
@@ -244,6 +246,28 @@ describe('demo mode', () => {
     expect(useTaskGroupStore.getState().groups.length).toBeGreaterThan(0);
     expect(useCategoryStore.getState().categories.length).toBeGreaterThan(0);
     expect(s.tagRegistry.length).toBeGreaterThan(0);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  // The month grid's one distinctive mark is a dot for an occurrence that has
+  // no row yet, and only a fixed-schedule recurrence with a due date produces
+  // one (see canProject). Nothing else in the seed asserts that combination
+  // exists, so a later edit that made every repeat complete-anchored would
+  // empty the calendar of the only thing it does that a list can't.
+  it('seeds a repeat the calendar can project onto days it has no row for', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const projectable = tasks.filter(t => canProject(t));
+    expect(projectable.length).toBeGreaterThan(0);
+
+    const grid = buildCalendarGrid(new Date(), 0);
+    const buckets = buildDayBuckets(tasks, { from: grid[0], to: grid[grid.length - 1] });
+    expect([...buckets.values()].some(b => b.projectedOnly)).toBe(true);
+    // And the three date signals a cell can colour are all represented.
+    const kinds = new Set([...buckets.values()].flatMap(b => b.dots.map(d => d.kind)));
+    expect([...kinds].sort()).toEqual(['deadline', 'defer', 'due']);
 
     useDemoStore.getState().exitDemoMode();
   });
