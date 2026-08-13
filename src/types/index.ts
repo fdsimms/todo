@@ -3,7 +3,9 @@ export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
-export type ReminderKind = 'notification' | 'alarm';
+// 'persistent' is 'alarm' that re-rings on an interval until the task is
+// completed, rather than once — see src/utils/alarmChain.ts.
+export type ReminderKind = 'notification' | 'alarm' | 'persistent';
 /**
  * What a decision task asks for when you complete it — see
  * `Task.deliverableKind` and `src/utils/deliverables.ts`.

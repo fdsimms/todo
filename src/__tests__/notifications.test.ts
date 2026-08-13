@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { Task } from '../types';
 import { nextAgendaTime } from '../utils/dailyAgenda';
+import { ALARM_MAX_RINGS, ALARM_RING_INTERVAL_MINUTES, taskAlarmUuid } from '../utils/alarmChain';
 
 jest.mock('expo-notifications', () => ({
   setNotificationHandler: jest.fn(),
@@ -254,16 +255,68 @@ describe('scheduleTaskReminder', () => {
     mockAlarmKitAvailable = true;
     const task = makeTask({ id: 'task-alarm', title: 'Wake up', reminderTime: FUTURE, reminderKind: 'alarm' });
     await scheduleTaskReminder(task);
-    expect(scheduleNativeAlarm).toHaveBeenCalledWith('task-alarm', new Date(FUTURE), 'Wake up');
+    // The derived UUID, not the bare task id: AlarmKit rejects a non-UUID id,
+    // which is why passing 'task-alarm' straight through scheduled nothing.
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('task-alarm', 0), new Date(FUTURE), 'Wake up');
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
     // Still clears any stale plain notification left behind by a prior 'notification'-kind schedule.
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-alarm');
   });
 
+  it('schedules an alarm id AlarmKit can actually parse as a UUID', async () => {
+    mockAlarmKitAvailable = true;
+    await scheduleTaskReminder(makeTask({ id: 'm1a2b3c4d5e6f', reminderTime: FUTURE, reminderKind: 'alarm' }));
+    const id = (scheduleNativeAlarm as jest.Mock).mock.calls[0][0];
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  });
+
+  it('rings a "persistent" reminder repeatedly, starting at the reminder time', async () => {
+    mockAlarmKitAvailable = true;
+    const task = makeTask({ id: 'nag', title: 'Take pills', reminderTime: FUTURE, reminderKind: 'persistent' });
+    await scheduleTaskReminder(task);
+    expect(scheduleNativeAlarm).toHaveBeenCalledTimes(ALARM_MAX_RINGS);
+
+    const calls = (scheduleNativeAlarm as jest.Mock).mock.calls;
+    expect(calls[0]).toEqual([taskAlarmUuid('nag', 0), new Date(FUTURE), 'Take pills']);
+    // Each ring one interval after the last, under its own id.
+    expect(calls[1][0]).toBe(taskAlarmUuid('nag', 1));
+    expect(calls[1][1].getTime() - calls[0][1].getTime()).toBe(ALARM_RING_INTERVAL_MINUTES * 60 * 1000);
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('rings a "persistent" reminder once as a plain notification when AlarmKit is unavailable', async () => {
+    mockAlarmKitAvailable = false;
+    await scheduleTaskReminder(makeTask({ reminderTime: FUTURE, reminderKind: 'persistent' }));
+    expect(scheduleNativeAlarm).not.toHaveBeenCalled();
+    // Not twelve pushes five minutes apart — see ringCountFor.
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the previous chain before laying down a new one', async () => {
+    mockAlarmKitAvailable = true;
+    await scheduleTaskReminder(makeTask({ id: 'nag', reminderTime: FUTURE, reminderKind: 'alarm' }));
+    // Shrinking a chain to one ring must not strand rings 1..N-1.
+    expect(cancelNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('nag', ALARM_MAX_RINGS - 1));
+  });
+
+  it('stops a persistent chain at the quiet-hours boundary rather than deferring the rest', async () => {
+    mockAlarmKitAvailable = true;
+    // Reminder lands 10 minutes before quiet hours open, so only rings at
+    // +0 and +5 are outside the window.
+    const base = new Date(FUTURE);
+    base.setHours(21, 50, 0, 0);
+    mockSettings.quietHoursStart = '22:00';
+    mockSettings.quietHoursEnd = '07:00';
+    await scheduleTaskReminder(
+      makeTask({ id: 'nag', reminderTime: base.toISOString(), reminderKind: 'persistent' })
+    );
+    expect(scheduleNativeAlarm).toHaveBeenCalledTimes(2);
+  });
+
   it('clears any stale native alarm when scheduling a plain notification', async () => {
     mockAlarmKitAvailable = true;
     await scheduleTaskReminder(makeTask({ id: 'task-1', reminderTime: FUTURE, reminderKind: 'notification' }));
-    expect(cancelNativeAlarm).toHaveBeenCalledWith('task-1');
+    expect(cancelNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('task-1', 0));
     expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
   });
 });
@@ -286,7 +339,22 @@ describe('cancelTaskReminder', () => {
   it('cancels from both the notification and AlarmKit backends unconditionally', async () => {
     await cancelTaskReminder('my-task-id');
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('my-task-id');
-    expect(cancelNativeAlarm).toHaveBeenCalledWith('my-task-id');
+    expect(cancelNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('my-task-id', 0));
+  });
+
+  // This is what makes "rings until you complete it" terminate: completeTask
+  // calls cancelTaskReminder with an id and nothing else, so the cancel has to
+  // name every ring without knowing the reminder's kind.
+  it('cancels every ring of a persistent chain, not just the first', async () => {
+    await cancelTaskReminder('nag');
+    for (let i = 0; i < ALARM_MAX_RINGS; i++) {
+      expect(cancelNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('nag', i));
+    }
+  });
+
+  it('does not throw when a native alarm cancel rejects mid-chain', async () => {
+    (cancelNativeAlarm as jest.Mock).mockRejectedValueOnce(new Error('native error'));
+    await expect(cancelTaskReminder('nag')).resolves.toBeUndefined();
   });
 });
 
@@ -360,7 +428,7 @@ describe('rescheduleAllReminders', () => {
     await rescheduleAllReminders(tasks);
     expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(64);
     expect(scheduleNativeAlarm).toHaveBeenCalledTimes(1);
-    expect(scheduleNativeAlarm).toHaveBeenCalledWith('alarm-1', new Date(FUTURE), expect.any(String));
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('alarm-1', 0), new Date(FUTURE), expect.any(String));
   });
 
   it('schedules only the nearest MAX_PENDING_REMINDERS upcoming reminders, soonest first', async () => {
@@ -542,7 +610,7 @@ describe('scheduleTaskReminder honors quiet hours by deferring', () => {
     const reminderTime = new Date(2026, 0, 1, 23, 0).toISOString();
     await scheduleTaskReminder(makeTask({ id: 'quiet-alarm', reminderTime, reminderKind: 'alarm' }));
     expect(scheduleNativeAlarm).toHaveBeenCalledWith(
-      'quiet-alarm', new Date(2026, 0, 2, 7, 0), expect.any(String)
+      taskAlarmUuid('quiet-alarm', 0), new Date(2026, 0, 2, 7, 0), expect.any(String)
     );
   });
 });

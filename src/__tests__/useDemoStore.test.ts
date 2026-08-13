@@ -330,6 +330,15 @@ describe('demo mode', () => {
     expect(withPhone.length).toBeGreaterThan(0);
   });
 
+  it('seeds a reminder that keeps ringing until the task is completed', () => {
+    useDemoStore.getState().enterDemoMode();
+    const persistent = useTaskStore.getState().tasks.filter(t => t.reminderKind === 'persistent');
+
+    expect(persistent.length).toBeGreaterThan(0);
+    // A reminder kind only means anything with a time attached to it.
+    expect(persistent.every(t => t.reminderTime !== null)).toBe(true);
+  });
+
   it('seeds a reference-list project excluded from every nudge', () => {
     // A checklist project like Gift ideas has nothing but undated tasks —
     // exactly what would otherwise read as "gone quiet" — so the seed only

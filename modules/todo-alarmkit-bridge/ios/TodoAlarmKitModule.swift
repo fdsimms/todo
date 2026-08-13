@@ -66,6 +66,12 @@ public class TodoAlarmKitModule: Module {
       return result
     }
 
+    // `id` is an alarm id, NOT a task id — the JS side derives a real UUID per
+    // ring in src/utils/alarmChain.ts (`taskAlarmUuid`) and passes that. This
+    // matters because `generateId()` produces ids like "m1a2b3c4d5e6f", which
+    // `UUID(uuidString:)` rejects: passing a bare task id here made every
+    // schedule bail at the guard below and silently return false. Don't
+    // "simplify" the call sites back to handing this a task id.
     AsyncFunction("scheduleAlarm") { (id: String, epochSeconds: Double, title: String) -> Bool in
       guard #available(iOS 26, *) else { return false }
       guard let uuid = UUID(uuidString: id) else { return false }
