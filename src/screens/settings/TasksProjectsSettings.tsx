@@ -12,6 +12,7 @@ import { CalendarPicker } from '../../components/CalendarPicker';
 import { EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, type ExpiredTaskGraceDays } from '../../utils/expiredTaskGrace';
 import { CountStepper } from '../../components/CountStepper';
 import { SettingsSection } from './SettingsSection';
+import { GeneratedTasksSection } from './GeneratedTasksSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsPills, type PillOption } from './SettingsPills';
 import { makeSettingsStyles } from './settingsStyles';
@@ -25,12 +26,7 @@ import {
 import {
   DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD,
 } from '../../utils/postpone';
-import {
-  CURRENCY_SYMBOLS,
-  GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
-  GROCERY_USE_UP_LEAD_DAYS_MAX,
-  GROCERY_USE_UP_LEAD_DAYS_MIN,
-} from '../../types';
+import { CURRENCY_SYMBOLS } from '../../types';
 
 const EXPIRED_TASK_GRACE_PILLS: PillOption<ExpiredTaskGraceDays>[] =
   EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
@@ -98,20 +94,6 @@ export function TasksProjectsSettings() {
   const setKitchenEnabled = useSettingsStore(s => s.setKitchenEnabled);
   const mealsOnToday = useSettingsStore(s => s.mealsOnToday);
   const setMealsOnToday = useSettingsStore(s => s.setMealsOnToday);
-  const mealCookTasks = useSettingsStore(s => s.mealCookTasks);
-  const setMealCookTasks = useSettingsStore(s => s.setMealCookTasks);
-  const mealCookTaskCategory = useSettingsStore(s => s.mealCookTaskCategory);
-  const setMealCookTaskCategory = useSettingsStore(s => s.setMealCookTaskCategory);
-  const groceryUseUpTasks = useSettingsStore(s => s.groceryUseUpTasks);
-  const setGroceryUseUpTasks = useSettingsStore(s => s.setGroceryUseUpTasks);
-  const groceryUseUpLeadDays = useSettingsStore(s => s.groceryUseUpLeadDays);
-  const setGroceryUseUpLeadDays = useSettingsStore(s => s.setGroceryUseUpLeadDays);
-  const groceryUseUpTaskCategory = useSettingsStore(s => s.groceryUseUpTaskCategory);
-  const setGroceryUseUpTaskCategory = useSettingsStore(s => s.setGroceryUseUpTaskCategory);
-  const leftoverUseUpTasks = useSettingsStore(s => s.leftoverUseUpTasks);
-  const setLeftoverUseUpTasks = useSettingsStore(s => s.setLeftoverUseUpTasks);
-  const leftoverUseUpTaskCategory = useSettingsStore(s => s.leftoverUseUpTaskCategory);
-  const setLeftoverUseUpTaskCategory = useSettingsStore(s => s.setLeftoverUseUpTaskCategory);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const setUnitSystem = useSettingsStore(s => s.setUnitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
@@ -293,14 +275,14 @@ export function TasksProjectsSettings() {
         />
       </SettingsSection>
 
-      {/* Both sections belong to the groceries/meals area: one puts its meals
-          on Today, the other restates its amounts. Neither has anything to
-          configure once the area is hidden. */}
+      {/* Everything below belongs to the groceries/meals area: what it puts on
+          Today, what it adds to the task list, and how it states amounts. None
+          of it has anything to configure once the area is hidden. */}
       {kitchenEnabled && (
       <>
       <SettingsSection
         label="Meals on Today"
-        footer="Cook tasks appear on the day the meal is planned for, hidden until that part of the day — breakfast in the morning, dinner in the evening. Ticking one off marks the meal cooked, and vice versa. Only meals made from a recipe get one; delete a cook task and that meal won't get another."
+        footer="A full list sits above your tasks; one line clears as you cook. Cook tasks themselves are under Tasks the app adds, below."
       >
         <SettingsRow
           icon="restaurant-outline"
@@ -321,141 +303,9 @@ export function TasksProjectsSettings() {
           onSelect={mode => { haptics.tap(); setMealsOnToday(mode); }}
           accessibilityLabelFor={o => `Meals on Today: ${o.label}`}
         />
-        <View style={styles.sep} />
-        <SettingsRow
-          icon="checkbox-outline"
-          iconColor={mealCookTasks ? colors.accent : undefined}
-          label="Cook tasks"
-          hint={
-            mealCookTasks
-              ? 'Planning a recipe adds a task to cook it'
-              : 'Planning a recipe adds no task'
-          }
-          toggle={mealCookTasks}
-          onPress={() => setMealCookTasks(!mealCookTasks)}
-        />
-        {mealCookTasks && (
-          <>
-            <View style={styles.sep} />
-            <SettingsRow
-              icon="pricetag-outline"
-              label="File cook tasks under"
-              hint="With none, they sit loose at the top of Today above your categories"
-              value={newTaskCategoryPills.find(o => o.value === mealCookTaskCategory)?.label ?? 'None'}
-              tight
-            />
-            <SettingsPills
-              attached
-              wrap
-              options={newTaskCategoryPills}
-              selected={mealCookTaskCategory}
-              onSelect={category => { haptics.tap(); setMealCookTaskCategory(category); }}
-              accessibilityLabelFor={o => `Cook task category: ${o.label}`}
-            />
-          </>
-        )}
       </SettingsSection>
 
-      <SettingsSection
-        label="Use-up reminders"
-        footer="A shop fills in a use-by date for the things it recognises as going off — fresh produce, dairy, meat, bread. Only items with a date get a task, and you can set or clear a date on any item from its Use by row. Delete a task and that item won't get another."
-      >
-        <SettingsRow
-          icon="alarm-outline"
-          iconColor={groceryUseUpTasks ? colors.accent : undefined}
-          label="Use-up tasks"
-          hint={
-            groceryUseUpTasks
-              ? 'Buying something with a use-by date adds a task to use it up'
-              : 'Buying something with a use-by date adds no task'
-          }
-          toggle={groceryUseUpTasks}
-          onPress={() => setGroceryUseUpTasks(!groceryUseUpTasks)}
-        />
-        {groceryUseUpTasks && (
-          <>
-            <View style={styles.sep} />
-            <SettingsRow
-              icon="calendar-outline"
-              label="Show the task"
-              hint="How many days before the use-by date the task falls due"
-              value={
-                groceryUseUpLeadDays === 0
-                  ? 'On the day'
-                  : `${groceryUseUpLeadDays} ${groceryUseUpLeadDays === 1 ? 'day' : 'days'} before`
-              }
-              tight
-            />
-            <View style={styles.cadenceRow}>
-              <CountStepper
-                value={groceryUseUpLeadDays}
-                onChange={next => setGroceryUseUpLeadDays(next ?? GROCERY_USE_UP_LEAD_DAYS_DEFAULT)}
-                min={GROCERY_USE_UP_LEAD_DAYS_MIN}
-                max={GROCERY_USE_UP_LEAD_DAYS_MAX}
-                format={n => (n === 0 ? 'Day of' : `${n}d`)}
-                label="Days before the use-by date"
-                describeValue={n =>
-                  n === 0 ? 'On the use-by day' : `${n} ${n === 1 ? 'day' : 'days'} before`
-                }
-              />
-            </View>
-            <View style={styles.sep} />
-            <SettingsRow
-              icon="pricetag-outline"
-              label="File use-up tasks under"
-              hint="With none, they sit loose at the top of Today above your categories"
-              value={newTaskCategoryPills.find(o => o.value === groceryUseUpTaskCategory)?.label ?? 'None'}
-              tight
-            />
-            <SettingsPills
-              attached
-              wrap
-              options={newTaskCategoryPills}
-              selected={groceryUseUpTaskCategory}
-              onSelect={category => { haptics.tap(); setGroceryUseUpTaskCategory(category); }}
-              accessibilityLabelFor={o => `Use-up task category: ${o.label}`}
-            />
-          </>
-        )}
-      </SettingsSection>
-
-      <SettingsSection
-        label="Leftovers"
-        footer="A leftover gets a task once it's a day or less from its use-by date, or already past it. Delete a task and that leftover won't get another."
-      >
-        <SettingsRow
-          icon="restaurant-outline"
-          iconColor={leftoverUseUpTasks ? colors.accent : undefined}
-          label="Use-up tasks for leftovers"
-          hint={
-            leftoverUseUpTasks
-              ? "Add a task to Today when a leftover is about to go bad"
-              : 'A leftover about to go bad adds no task'
-          }
-          toggle={leftoverUseUpTasks}
-          onPress={() => setLeftoverUseUpTasks(!leftoverUseUpTasks)}
-        />
-        {leftoverUseUpTasks && (
-          <>
-            <View style={styles.sep} />
-            <SettingsRow
-              icon="pricetag-outline"
-              label="File use-up tasks under"
-              hint="With none, they sit loose at the top of Today above your categories"
-              value={newTaskCategoryPills.find(o => o.value === leftoverUseUpTaskCategory)?.label ?? 'None'}
-              tight
-            />
-            <SettingsPills
-              attached
-              wrap
-              options={newTaskCategoryPills}
-              selected={leftoverUseUpTaskCategory}
-              onSelect={category => { haptics.tap(); setLeftoverUseUpTaskCategory(category); }}
-              accessibilityLabelFor={o => `Leftover use-up task category: ${o.label}`}
-            />
-          </>
-        )}
-      </SettingsSection>
+      <GeneratedTasksSection categoryPills={newTaskCategoryPills} />
 
       <SettingsSection
         label="Recipe & grocery amounts"

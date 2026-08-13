@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroceryItem, ItemShopLink, Shop, Task } from '../types';
+import type { GroceryItem, ItemShopLink, Shop } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,

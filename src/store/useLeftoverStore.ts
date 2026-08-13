@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Leftover, LeftoverOutcome, Task } from '../types';
+import type { Leftover, LeftoverOutcome } from '../types';
 import { LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import {
   dbGetAllLeftovers,

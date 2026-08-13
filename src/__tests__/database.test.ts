@@ -311,6 +311,68 @@ describe('initDatabase', () => {
     const row = mockRawDb.prepare('SELECT seen_at FROM tasks WHERE id = ?').get('legacy-row') as { seen_at: string };
     expect(row.seen_at).toBe('2025-01-01T00:00:00.000Z');
   });
+
+  // A row that misses this pass reads as a task nobody generated: its meal
+  // would spawn a second cook task, and the first would stop being rewritten
+  // when the meal moved. Nothing writes the old columns any more, so this is
+  // the only thing standing between an existing install and that.
+  describe('backfilling generated_kind from the per-generator columns (#1524)', () => {
+    const legacy = (id: string, column: string, value: string) => {
+      mockRawDb
+        .prepare(`INSERT INTO tasks (id, created_at, ${column}) VALUES (?, '2025-01-01T00:00:00.000Z', ?)`)
+        .run(id, value);
+    };
+    const generated = (id: string) =>
+      mockRawDb
+        .prepare('SELECT generated_kind, generated_source_id FROM tasks WHERE id = ?')
+        .get(id) as { generated_kind: string | null; generated_source_id: string | null };
+
+    it('carries each old column onto the kind that replaced it', () => {
+      legacy('cook', 'meal_entry_id', 'm-1');
+      legacy('grocery', 'grocery_item_id', 'g-1');
+      legacy('leftover', 'leftover_id', 'lo-1');
+
+      initDatabase();
+
+      expect(generated('cook')).toEqual({ generated_kind: 'mealCook', generated_source_id: 'm-1' });
+      expect(generated('grocery')).toEqual({ generated_kind: 'groceryUseUp', generated_source_id: 'g-1' });
+      expect(generated('leftover')).toEqual({ generated_kind: 'leftoverUseUp', generated_source_id: 'lo-1' });
+    });
+
+    it('recognises the nudge by the link it used to be keyed on, with no source', () => {
+      legacy('nudge', 'link_url', 'dundundun://mealplan');
+
+      initDatabase();
+
+      expect(generated('nudge')).toEqual({
+        generated_kind: 'mealPlanNudge',
+        generated_source_id: null,
+      });
+    });
+
+    it('leaves a task nobody generated alone', () => {
+      legacy('typed', 'link_url', 'https://example.com');
+
+      initDatabase();
+
+      expect(generated('typed')).toEqual({ generated_kind: null, generated_source_id: null });
+    });
+
+    it('is a no-op on a second run, and does not overwrite a row already stamped', () => {
+      legacy('cook', 'meal_entry_id', 'm-1');
+      initDatabase();
+      // The user has since deleted the cook task and the row was reused for a
+      // different generator — a contrived case, but it's what "guarded on NULL"
+      // is protecting: the backfill must never rewrite a live answer.
+      mockRawDb
+        .prepare("UPDATE tasks SET generated_kind = 'leftoverUseUp', generated_source_id = 'lo-9' WHERE id = 'cook'")
+        .run();
+
+      initDatabase();
+
+      expect(generated('cook')).toEqual({ generated_kind: 'leftoverUseUp', generated_source_id: 'lo-9' });
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
