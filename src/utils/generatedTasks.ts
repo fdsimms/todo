@@ -61,9 +61,18 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
  * remembering to hand-write a fourth near-identical section.
  *
  * `sourced: false` marks the one generator with nothing to point back at: the
- * meal-plan nudge is projected from the calendar, not from a row, so its tasks
- * carry a kind and a null `generatedSourceId`. It's the reason the source id is
- * nullable, and the reason `hasAnyGeneratedTask` takes an optional one.
+ * meal-plan nudge is projected from the calendar, not from a row. It's the
+ * reason the source id is nullable, and the reason `hasAnyGeneratedTask` takes
+ * an optional one.
+ *
+ * Its tasks do now carry a `generatedSourceId` — the **day key** each one is
+ * asking about (`2026-08-17`), since the nudge lays down a task per day of the
+ * week rather than one for the week. That doesn't make it sourced: a day key
+ * names a square on the calendar, not a row anything could be written back to,
+ * which is exactly why `writeGeneratedOptOut` still has nothing to write for
+ * this kind and why its "don't hand it back" is `mealPlanNudgeLastFiredWeekKey`
+ * rather than a flag on a source. Read it with `generatedSourceOf`, like every
+ * other kind's.
  */
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -200,6 +209,27 @@ export function liveGeneratedTask<T extends Pick<Task, 'generatedKind' | 'genera
   sourceId: string | null = null
 ): T | undefined {
   return tasks.find(t => isFrom(t, kind, sourceId) && !t.completed && !t.archived);
+}
+
+/**
+ * Every live task of a kind, whatever source each came from.
+ *
+ * The peer of `liveGeneratedTask` for a generator that writes a *set* at once
+ * rather than one task per source decided one at a time. The meal-plan nudge
+ * is the only one: it lays down a task per day of the week it's asking about,
+ * so "is last week's nudge still sitting there" can't be asked about any one
+ * source id, and asking `liveGeneratedTask` would quietly match on
+ * `sourceId === null` — true of no nudge task since the day keys arrived, and
+ * so an answer of "no" every single week.
+ *
+ * Order follows `tasks`, which is the store's own order, so a caller that
+ * renders or reconciles the set gets it the way the list already reads.
+ */
+export function liveGeneratedTasksOfKind<T extends Pick<Task, 'generatedKind' | 'completed' | 'archived'>>(
+  tasks: readonly T[],
+  kind: GeneratedKind
+): T[] {
+  return tasks.filter(t => t.generatedKind === kind && !t.completed && !t.archived);
 }
 
 /**

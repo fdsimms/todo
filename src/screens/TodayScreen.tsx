@@ -59,6 +59,7 @@ import { isLiveLeftover } from '../utils/leftovers';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useMealPlanNudgeProgress } from '../hooks/useMealPlanNudgeProgress';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -1182,6 +1183,12 @@ export function TodayScreen() {
     hideCategories
       ? items.filter(item => item.type !== 'header' || item.label === LATER_TODAY_LABEL)
       : items;
+
+  // Keeps the "2/3 planned" counters on the weekly nudge's day tasks current.
+  // Mounted here because this is where those rows live; it holds no state of
+  // its own and renders nothing (see the hook's own note on why the counts are
+  // a separate read from the window below).
+  useMealPlanNudgeProgress();
 
   // Today's planned meals (#1133). Read passively rather than calling
   // loadRange: the store is range-scoped and the Meal Plan screen owns which

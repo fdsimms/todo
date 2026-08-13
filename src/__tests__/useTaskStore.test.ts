@@ -2146,6 +2146,9 @@ describe('checkMealPlanNudge', () => {
     mealPlanNudgeTime: '09:00',
     mealPlanNudgeLastFiredWeekKey: null as string | null,
     setMealPlanNudgeLastFiredWeekKey: jest.fn(),
+    mealPlanNudgeTaskCategory: null as string | null,
+    mealPlanNudgeGroupId: null as string | null,
+    setMealPlanNudgeGroupId: jest.fn(),
     // addTask -> newTaskFromDraft reads this unconditionally.
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
     ...overrides,
@@ -2208,7 +2211,7 @@ describe('checkMealPlanNudge', () => {
     expect(useTaskStore.getState().tasks).toHaveLength(0);
   });
 
-  it('creates a task linking to the meal plan once the trigger arrives', () => {
+  it('creates a stack of seven day tasks once the trigger arrives', () => {
     jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
     const s = settings();
     useSettingsStore.getState.mockReturnValue(s);
@@ -2216,12 +2219,110 @@ describe('checkMealPlanNudge', () => {
 
     useTaskStore.getState().checkMealPlanNudge();
 
-    expect(useTaskStore.getState().tasks).toHaveLength(1);
-    const task = useTaskStore.getState().tasks[0];
-    expect(task.title).toBe('Plan meals for 10 – 16 Aug');
-    expect(task.linkUrl).toBe('dundundun://mealplan');
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(7);
+    expect(tasks.map(t => t.title)).toEqual([
+      'Sunday 10 Aug',
+      'Monday 11 Aug',
+      'Tuesday 12 Aug',
+      'Wednesday 13 Aug',
+      'Thursday 14 Aug',
+      'Friday 15 Aug',
+      'Saturday 16 Aug',
+    ]);
     expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2025-08-10', '2025-08-16');
     expect(s.setMealPlanNudgeLastFiredWeekKey).toHaveBeenCalledWith('2025-08-03');
+  });
+
+  it('stamps each day task with its own day key and a link that opens on it', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.map(t => t.generatedSourceId)).toEqual([
+      '2025-08-10', '2025-08-11', '2025-08-12', '2025-08-13',
+      '2025-08-14', '2025-08-15', '2025-08-16',
+    ]);
+    expect(tasks.every(t => t.generatedKind === 'mealPlanNudge')).toBe(true);
+    expect(tasks[3].linkUrl).toBe('dundundun://mealplan?date=2025-08-13');
+  });
+
+  it('gives every day the firing day\'s due date, not its own', () => {
+    // Planning next week is work for today — a task due on Thursday would be
+    // hidden until the week it was meant to prepare for had started.
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    const due = useTaskStore.getState().tasks.map(t => t.dueDate);
+    expect(new Set(due).size).toBe(1);
+    const only = new Date(due[0]!);
+    expect(only.getDate()).toBe(3);
+    expect(only.getHours()).toBe(12);
+  });
+
+  it('files the seven under one stack, expanded, and remembers which', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    const s = settings();
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    const groups = useTaskGroupStore.getState().groups;
+    expect(groups).toHaveLength(1);
+    expect(groups[0].title).toBe('Plan meals for 10 – 16 Aug');
+    // A stack that appears unattended showing "0 of 7 done today" and no rows
+    // hides the whole week behind a chevron nobody was told to tap.
+    expect(groups[0].collapsed).toBe(false);
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.every(t => t.groupId === groups[0].id)).toBe(true);
+    // Ordered down the week within the stack.
+    expect(tasks.map(t => t.sortOrder)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(s.setMealPlanNudgeGroupId).toHaveBeenCalledWith(groups[0].id);
+  });
+
+  it('reuses and retitles the same stack the following week', () => {
+    // A stack is a label. A fresh one every Sunday leaves a year of empty
+    // stacks behind it, each a row in the Stacks screen that nothing prunes.
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().checkMealPlanNudge();
+
+    const groupId = useTaskGroupStore.getState().groups[0].id;
+    // Next week's firing, with last week's set finished off.
+    jest.setSystemTime(new Date(2025, 7, 10, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(
+      settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03', mealPlanNudgeGroupId: groupId })
+    );
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskGroupStore.getState().groups).toHaveLength(1);
+    expect(useTaskGroupStore.getState().groups[0].id).toBe(groupId);
+    expect(useTaskGroupStore.getState().groups[0].title).toBe('Plan meals for 17 – 23 Aug');
+  });
+
+  it('makes a new stack when the remembered one has been deleted', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    const s = settings({ mealPlanNudgeGroupId: 'gone' });
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.setState({ tasks: [] });
+    useTaskGroupStore.setState({ groups: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    const groups = useTaskGroupStore.getState().groups;
+    expect(groups).toHaveLength(1);
+    expect(groups[0].id).not.toBe('gone');
+    expect(useTaskStore.getState().tasks.every(t => t.groupId === groups[0].id)).toBe(true);
   });
 
   it('does not create a second task on a later call the same week', () => {
@@ -2244,31 +2345,110 @@ describe('checkMealPlanNudge', () => {
 
     useTaskStore.getState().checkMealPlanNudge();
 
-    expect(useTaskStore.getState().tasks).toHaveLength(1);
+    expect(useTaskStore.getState().tasks).toHaveLength(7);
     expect(s.setMealPlanNudgeLastFiredWeekKey).toHaveBeenCalledWith('2025-08-10');
   });
 
-  it('is suppressed — no task, but the week still counts as handled — when last week\'s nudge is still untouched', () => {
+  it("is suppressed — no new tasks, but the week still counts as handled — when this week's set is already there", () => {
     jest.setSystemTime(new Date(2025, 7, 10, 9, 0, 0));
     const s = settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03' });
     useSettingsStore.getState.mockReturnValue(s);
     useTaskStore.setState({
-      // generatedKind, not the linkUrl this used to be recognised by. A legacy
-      // row carrying only the link is backfilled to exactly this by the
-      // migration in initDatabase, so the set that blocks a second nudge is
-      // unchanged; what a bare link no longer does is claim to be the app's.
+      // One day of the week being asked about, still live: the set is already
+      // laid down, so a second one must not be.
       tasks: [makeTask({
         id: 'nudge-1',
-        title: 'Plan meals for 10 – 16 Aug',
-        linkUrl: 'dundundun://mealplan',
+        title: 'Wednesday 20 Aug',
+        linkUrl: 'dundundun://mealplan?date=2025-08-20',
         generatedKind: 'mealPlanNudge',
+        generatedSourceId: '2025-08-20',
       })],
     });
 
     useTaskStore.getState().checkMealPlanNudge();
 
-    expect(useTaskStore.getState().tasks).toHaveLength(1); // unchanged — no second task
+    expect(useTaskStore.getState().tasks).toHaveLength(1); // unchanged
     expect(s.setMealPlanNudgeLastFiredWeekKey).toHaveBeenCalledWith('2025-08-10');
+  });
+
+  it("clears last week's leftovers and lays down the new set", () => {
+    // One task for the week used to mean "left it untouched? then no new one".
+    // Seven mean that one ignored Saturday would block every future nudge — and
+    // a task asking about a day that has already happened can't be done anyway.
+    jest.setSystemTime(new Date(2025, 7, 10, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(
+      settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03' })
+    );
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'stale-1',
+          title: 'Saturday 16 Aug',
+          generatedKind: 'mealPlanNudge',
+          generatedSourceId: '2025-08-16',
+        }),
+        makeTask({ id: 'mine', title: 'Something I wrote' }),
+      ],
+    });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.find(t => t.id === 'stale-1')).toBeUndefined();
+    // The user's own task is untouched, and the new week is there in full.
+    expect(tasks.find(t => t.id === 'mine')).toBeDefined();
+    expect(tasks.filter(t => t.generatedKind === 'mealPlanNudge')).toHaveLength(7);
+  });
+
+  it("does not arm shake-to-undo when clearing last week's leftovers", () => {
+    jest.setSystemTime(new Date(2025, 7, 10, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(
+      settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03' })
+    );
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'stale-1',
+        generatedKind: 'mealPlanNudge',
+        generatedSourceId: '2025-08-16',
+      })],
+      lastAction: null,
+    });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it("leaves last week's completed and archived tasks alone as the record of them", () => {
+    jest.setSystemTime(new Date(2025, 7, 10, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(
+      settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03' })
+    );
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'done-1',
+          generatedKind: 'mealPlanNudge',
+          generatedSourceId: '2025-08-16',
+          completed: true,
+          completedAt: '2025-08-16T00:00:00.000Z',
+        }),
+        makeTask({
+          id: 'archived-1',
+          generatedKind: 'mealPlanNudge',
+          generatedSourceId: '2025-08-15',
+          archived: true,
+        }),
+      ],
+    });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.find(t => t.id === 'done-1')).toBeDefined();
+    expect(tasks.find(t => t.id === 'archived-1')).toBeDefined();
+    expect(tasks.filter(t => t.generatedKind === 'mealPlanNudge' && !t.completed && !t.archived))
+      .toHaveLength(7);
   });
 
   it('fires again once last week\'s nudge task has been completed', () => {
@@ -2281,7 +2461,7 @@ describe('checkMealPlanNudge', () => {
 
     useTaskStore.getState().checkMealPlanNudge();
 
-    expect(useTaskStore.getState().tasks).toHaveLength(2);
+    expect(useTaskStore.getState().tasks).toHaveLength(8);
   });
 
   it('fires again once last week\'s nudge task has been archived', () => {
@@ -2294,7 +2474,7 @@ describe('checkMealPlanNudge', () => {
 
     useTaskStore.getState().checkMealPlanNudge();
 
-    expect(useTaskStore.getState().tasks).toHaveLength(2);
+    expect(useTaskStore.getState().tasks).toHaveLength(8);
   });
 
   it('is not blocked by an unrelated live task that happens to link elsewhere', () => {
@@ -2305,7 +2485,7 @@ describe('checkMealPlanNudge', () => {
 
     useTaskStore.getState().checkMealPlanNudge();
 
-    expect(useTaskStore.getState().tasks).toHaveLength(2);
+    expect(useTaskStore.getState().tasks).toHaveLength(8);
   });
 
   it('is suppressed — no task, but the week still counts as handled — when the coming week is already planned', () => {
