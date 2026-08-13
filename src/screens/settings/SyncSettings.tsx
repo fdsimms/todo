@@ -30,7 +30,7 @@ export function SyncSettings() {
 
   if (!supported) return null;
 
-  const toggle = () => {
+  const onToggle = () => {
     animateLayout();
     void setEnabled(!enabled);
   };
@@ -45,9 +45,9 @@ export function SyncSettings() {
         iconColor={enabled ? colors.accent : undefined}
         label="Sync with iCloud"
         hint="Keeps your tasks, lists and recipes the same on every device signed in to this Apple ID."
-        toggle
+        toggle={enabled}
         value={enabled ? 'On' : 'Off'}
-        onPress={toggle}
+        onPress={onToggle}
         accessibilityLabel="Sync with iCloud"
       />
 
