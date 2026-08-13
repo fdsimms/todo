@@ -6,6 +6,7 @@ import {
   fabCancelCircle,
   fabCircle,
   fabGlyphSize,
+  FAB_SIZE,
   type FabDragHandlers,
   type FabMenuItem,
 } from './Fab';
@@ -278,6 +279,13 @@ interface MiniFabMenuProps extends Omit<MiniFabProps, 'onPress'> {
  * than a stack with two members has. Measuring once on tap is enough because
  * the Modal covers the sheet, so nothing can scroll the button out from under
  * its own menu while it's open.
+ *
+ * **The open menu is the standard size, not this button's size.** Only the
+ * resting button is 36pt, and only because it shares a card with the rows; once
+ * the menu is up it's the same full-screen Modal Today opens, so it's drawn at
+ * `FAB_SIZE` with the same pills. The close button grows over the resting one
+ * rather than beside it — both are pinned to the same bottom corner of the
+ * button's box, and a 56pt circle in that corner covers the 36pt one whole.
  */
 export function MiniFabMenu({ items, onSelect, size = MINI_FAB_SIZE, ...rest }: MiniFabMenuProps) {
   const hand = useSettingsStore(s => s.fabHand);
@@ -324,14 +332,13 @@ export function MiniFabMenu({ items, onSelect, size = MINI_FAB_SIZE, ...rest }: 
         anim={anim}
         onSelect={key => { haptics.tap(); close(() => onSelect(key)); }}
         onDismiss={() => close()}
-        size={size}
+        size={FAB_SIZE}
         anchor={{
           bottom: anchor.bottom,
           left: anchor.left,
           right: anchor.right,
           alignItems: hand === 'left' ? 'flex-start' : 'flex-end',
         }}
-        compact
       />
     </>
   );
