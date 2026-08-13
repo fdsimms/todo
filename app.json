@@ -44,7 +44,7 @@
         "expo-calendar",
         {
           "remindersPermission": "Lets dundundun move tasks out of the Reminders app and into your Inbox, so anything you dictate to Siri ends up here.",
-          "calendarPermission": "Lets dundundun see what's already on a day — the calendars you pick, including a Google account added on this device — so it can tell how much of the day is free. It only reads; nothing is added, changed or deleted."
+          "calendarPermission": "Lets dundundun see what's already on a day — the calendars you pick, including a Google account added on this device — so it can tell how much of the day is free. It only adds events to a calendar you pick yourself in Settings, for deadlines and planned meals you turn on; it changes nothing else."
         }
       ],
       [

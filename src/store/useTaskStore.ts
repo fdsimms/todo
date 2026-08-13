@@ -60,7 +60,7 @@ import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
-import { deleteDeadlineEvent } from '../utils/calendarSync';
+import { deleteCalendarEvent } from '../utils/calendarSync';
 import { isTimedTask, timerElapsed } from '../utils/timer';
 import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
 
@@ -1074,7 +1074,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         dbDeleteSubtasks(t.id);
         dbDeleteTask(t.id);
         cancelTaskReminder(t.id);
-        if (t.calendarEventId) deleteDeadlineEvent(t.calendarEventId);
+        if (t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
       });
       unfiled.forEach(dbUpdateTask);
 
@@ -1168,7 +1168,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cancelTaskReminder(t.id);
       // The row is gone for good, not archived — nothing will ever revisit
       // it to notice a dangling event, so clean it up now, same as deleteTask.
-      if (t.calendarEventId) deleteDeadlineEvent(t.calendarEventId);
+      if (t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
     });
     added.forEach(t => {
       dbInsertTask(t);
@@ -1523,7 +1523,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // here. Not restored on undo below — deleting a device event isn't
     // reversible, so an undone delete gets a fresh event on its next
     // reconcile rather than a promise this can't keep.
-    if (task.calendarEventId) deleteDeadlineEvent(task.calendarEventId);
+    if (task.calendarEventId) deleteCalendarEvent(task.calendarEventId);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id && t.parentId !== id) }));
 
     // Deleting a cook task is the user saying this meal doesn't need one, and

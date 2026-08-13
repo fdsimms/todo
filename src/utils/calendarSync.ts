@@ -4,13 +4,19 @@ import type { Calendar as DeviceCalendar, Event } from 'expo-calendar';
 import type { BusyEvent } from './calendarBusy';
 
 /**
- * The EventKit half of the calendar read and (as of #1493) the deadline
+ * The EventKit half of the calendar read and (as of #1493) the all-day
  * write — permission, which calendars exist, fetching a window of events,
- * and the handful of write calls a deadline mirror needs. Everything that
- * *decides* anything lives elsewhere — `calendarBusy.ts` for what counts as
- * busy, `deadlineCalendarSync.ts` for when a deadline event should be
- * created/updated/deleted; this file marshals and nothing else, so the rules
+ * and the handful of write calls a mirror needs. Everything that *decides*
+ * anything lives elsewhere — `calendarBusy.ts` for what counts as busy,
+ * `deadlineCalendarSync.ts` for when a deadline event should be
+ * created/updated/deleted, `mealCalendarSync.ts` for the same question about
+ * a planned meal (#1494); this file marshals and nothing else, so the rules
  * stay testable in a `node` environment with no native modules.
+ *
+ * The write calls are named for what they write (an all-day event), not for
+ * who asked — the two projections differ in what they decide to put on the
+ * calendar, never in how it's written, and a second copy per caller is how
+ * they would drift.
  *
  * Modelled on `remindersImportSync.ts`, which is the app's other EventKit
  * consumer, and inherits its constraints — including the big one: expo-calendar
@@ -166,7 +172,7 @@ export async function fetchEvents(
 }
 
 /**
- * Every calendar an app could plausibly write a deadline into — filtered to
+ * Every calendar an app could plausibly write into — filtered to
  * `allowsModifications`, unlike `listEventCalendars`. That filter is exactly
  * the one this file's own read-side doc comment says "comes back when
  * something actually writes" — this is that write.
@@ -183,24 +189,28 @@ export async function listWritableCalendars(): Promise<DeviceCalendar[]> {
   }
 }
 
-/** The title and day an all-day deadline event carries — nothing else. */
-export interface DeadlineEventFields {
+/**
+ * The title and day an all-day event carries — nothing else. Shared by every
+ * projection that writes one (a task's deadline, a planned meal), because
+ * they differ in what they decide to write, never in how it's written.
+ */
+export interface AllDayEventFields {
   title: string;
-  /** The deadline's calendar day, read as a whole day rather than a moment. */
+  /** The event's calendar day, read as a whole day rather than a moment. */
   date: Date;
 }
 
 /**
- * Writes a fresh all-day event for a deadline and returns its id, or null on
- * any failure — a missing calendar, a revoked permission, a device that
- * stopped responding. The caller (`deadlineCalendarSync.ts`) treats null as
- * "try again on the next reconcile" rather than an error to surface — there
- * is no user-facing failure state for a background write nobody asked to
- * watch.
+ * Writes a fresh all-day event and returns its id, or null on any failure —
+ * a missing calendar, a revoked permission, a device that stopped
+ * responding. Callers (`deadlineCalendarSync.ts`, `mealCalendarSync.ts`)
+ * treat null as "try again on the next reconcile" rather than an error to
+ * surface — there is no user-facing failure state for a background write
+ * nobody asked to watch.
  */
-export async function createDeadlineEvent(
+export async function createAllDayEvent(
   calendarId: string,
-  fields: DeadlineEventFields
+  fields: AllDayEventFields
 ): Promise<string | null> {
   if (Platform.OS !== 'ios') return null;
   try {
@@ -225,9 +235,9 @@ export async function createDeadlineEvent(
  * erroring, the same resolve-or-shrug rule as every other place a device id
  * can go stale.
  */
-export async function updateDeadlineEvent(
+export async function updateAllDayEvent(
   eventId: string,
-  fields: DeadlineEventFields
+  fields: AllDayEventFields
 ): Promise<boolean> {
   if (Platform.OS !== 'ios') return false;
   try {
@@ -248,7 +258,7 @@ export async function updateDeadlineEvent(
  * event and a revoked permission all mean the same thing from here: there's
  * nothing left to delete.
  */
-export async function deleteDeadlineEvent(eventId: string): Promise<void> {
+export async function deleteCalendarEvent(eventId: string): Promise<void> {
   if (Platform.OS !== 'ios') return;
   try {
     await calendar().deleteEventAsync(eventId);

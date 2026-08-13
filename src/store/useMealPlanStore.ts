@@ -19,6 +19,8 @@ import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useRecipeStore } from './useRecipeStore';
 import { cookTaskDraft, cookTaskFields, cookTaskNeedsUpdate, wantsCookTask } from '../utils/mealTasks';
+import { syncMealEvent } from '../utils/mealCalendarSync';
+import { deleteCalendarEvent } from '../utils/calendarSync';
 import { generateId } from '../utils/id';
 import { normalizeScale } from '../utils/recipeScale';
 import {
@@ -393,15 +395,20 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       // picker can pass an explicit answer, which is how "add a cook task" is
       // said at plan time.
       cookTask: draft.cookTask ?? null,
+      // Nothing on the device yet. reconcileMealEvent below writes the id
+      // back if a calendar is picked.
+      calendarEventId: null,
     };
 
     dbInsertMealPlanEntry(entry);
     patchInRange(set, get, entry);
     reconcileCookTask(entry);
+    reconcileMealEvent(entry);
     get().setLastAction({
       label: `Planned "${entry.title}"`,
       undo: () => {
         dropCookTask(entry.id);
+        dropMealEvent(entry.id);
         dbDeleteMealPlanEntry(entry.id);
         set(s => ({ entries: s.entries.filter(e => e.id !== entry.id) }));
       },
@@ -426,8 +433,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     set(s => ({ entries: sortMealEntries(s.entries.filter(e => e.id !== id)) }));
     patchInRange(set, get, moved);
     // Moving the meal moves its cook task: the day and the slot are two of the
-    // three fields the entry owns on it.
+    // three fields the entry owns on it. The calendar event carries both too —
+    // the day it sits on and the slot in its title.
     reconcileCookTask(moved);
+    reconcileMealEvent(moved);
     get().setLastAction({
       label: `Moved "${entry.title}"`,
       undo: () => {
@@ -435,6 +444,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         set(s => ({ entries: sortMealEntries(s.entries.filter(e => e.id !== id)) }));
         patchInRange(set, get, entry);
         reconcileCookTask(entry);
+        reconcileMealEvent(entry);
       },
     });
   },
@@ -445,6 +455,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // its. A cook task already completed is left alone — it's history now, the
     // same call deleteGroup makes about a stack's past occurrences.
     dropCookTask(id);
+    dropMealEvent(id);
     dbDeleteMealPlanEntry(id);
     set(s => ({ entries: s.entries.filter(e => e.id !== id) }));
     if (entry) {
@@ -454,6 +465,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
           dbInsertMealPlanEntry(entry);
           patchInRange(set, get, entry);
           reconcileCookTask(entry);
+          reconcileMealEvent(entry);
         },
       });
     }
@@ -471,6 +483,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     dbUpdateMealPlanEntry(renamed);
     set(s => ({ entries: s.entries.map(e => e.id === id ? renamed : e) }));
     reconcileCookTask(renamed);
+    reconcileMealEvent(renamed);
     // The only single-entry mutation here that used to write without one.
     get().setLastAction({
       label: `Renamed "${entry.title}"`,
@@ -478,6 +491,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         dbUpdateMealPlanEntry(entry);
         set(s => ({ entries: s.entries.map(e => e.id === id ? entry : e) }));
         reconcileCookTask(entry);
+        reconcileMealEvent(entry);
       },
     });
   },
@@ -550,6 +564,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (ids.length === 0) return;
     const idSet = new Set(ids);
     ids.forEach(dropCookTask);
+    ids.forEach(dropMealEvent);
     ids.forEach(id => dbDeleteMealPlanEntry(id));
     // lastAction: null — see the doc comment. The delete registers no undo of
     // its own *and* takes the slot away from whatever was in it, so a shake
@@ -585,6 +600,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     set(s => ({ entries: sortMealEntries(s.entries.filter(e => !movedIds.has(e.id))) }));
     moved.forEach(entry => patchInRange(set, get, entry));
     moved.forEach(reconcileCookTask);
+    moved.forEach(reconcileMealEvent);
 
     get().setLastAction({
       label: `${moved.length} meal${moved.length === 1 ? '' : 's'} moved`,
@@ -593,6 +609,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         set(s => ({ entries: sortMealEntries(s.entries.filter(e => !movedIds.has(e.id))) }));
         originals.forEach(entry => patchInRange(set, get, entry));
         originals.forEach(reconcileCookTask);
+        originals.forEach(reconcileMealEvent);
       },
     });
   },
@@ -620,6 +637,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // recipeScale surviving a swap for the same reason), so an explicit
     // per-meal answer isn't quietly undone by changing what's cooked.
     updated.forEach(reconcileCookTask);
+    updated.forEach(reconcileMealEvent);
 
     get().setLastAction({
       label: `${updated.length} meal${updated.length === 1 ? '' : 's'} replaced`,
@@ -628,6 +646,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         const originalById = new Map(toUpdate.map(e => [e.id, e]));
         set(s => ({ entries: s.entries.map(e => originalById.get(e.id) ?? e) }));
         toUpdate.forEach(reconcileCookTask);
+        toUpdate.forEach(reconcileMealEvent);
       },
     });
   },
@@ -679,16 +698,20 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       ...draft,
       id: generateId(),
       createdAt: new Date().toISOString(),
+      // Its own event, never the source week's — see MealCopyDraft.
+      calendarEventId: null,
     }));
     created.forEach(dbInsertMealPlanEntry);
     created.forEach(entry => patchInRange(set, get, entry));
     created.forEach(reconcileCookTask);
+    created.forEach(reconcileMealEvent);
 
     const ids = new Set(created.map(e => e.id));
     get().setLastAction({
       label: `Copied ${created.length} meal${created.length === 1 ? '' : 's'}`,
       undo: () => {
         created.forEach(e => dropCookTask(e.id));
+        created.forEach(e => dropMealEvent(e.id));
         created.forEach(e => dbDeleteMealPlanEntry(e.id));
         set(s => ({ entries: s.entries.filter(e => !ids.has(e.id)) }));
       },
@@ -867,4 +890,56 @@ function syncCookTaskCompletion(entryId: string, cooked: boolean): void {
   }
   const done = tasks.find(t => t.mealEntryId === entryId && t.completed && !t.archived);
   if (done) uncompleteTask(done.id);
+}
+
+// ─── Calendar events (#1494) ────────────────────────────────────────────────
+//
+// The third replica of the same master, and the plumbing half of it: the rules
+// for what a meal's event says, and whether it should have one at all, are in
+// utils/mealCalendarSync so jest can reach them without a native module.
+
+/**
+ * Brings this meal's device calendar event in line with the meal,
+ * fire-and-forget — the same shape as `reconcileDeadlineEvent` in
+ * useTaskStore, and for the same reason: the write is async and best-effort,
+ * so nothing here awaits it and a failure is retried on the next reconcile
+ * rather than surfaced.
+ *
+ * The two guards are what keep it cheap: most reconciles hand back the id the
+ * entry already has and write nothing, and an entry deleted while the device
+ * write was in flight is left alone rather than resurrected in SQLite.
+ */
+function reconcileMealEvent(entry: MealPlanEntry): void {
+  syncMealEvent(entry)
+    .then(calendarEventId => {
+      if (calendarEventId === entry.calendarEventId) return;
+      const current = resolveEntry(useMealPlanStore.getState, entry.id);
+      if (!current) return;
+      const updated = { ...current, calendarEventId };
+      dbUpdateMealPlanEntry(updated);
+      useMealPlanStore.setState(s => ({
+        entries: s.entries.map(e => (e.id === entry.id ? updated : e)),
+      }));
+    })
+    .catch(() => {});
+}
+
+/**
+ * Deletes this meal's event because the meal itself is going.
+ *
+ * Deliberately not `reconcileMealEvent` on a copy with the calendar unset:
+ * the row is about to stop existing, so there is nothing left to write the
+ * cleared id back onto, and nothing will ever revisit it to notice a dangling
+ * event. Same call `deleteTask` makes about a task's own calendar event.
+ *
+ * **Takes an id and re-resolves the row, rather than trusting a caller's
+ * copy.** `reconcileMealEvent` writes the id back asynchronously, so an entry
+ * captured in an undo closure — every caller here is one — is very likely to
+ * predate the write and carry a null where the event id now is. Reading it
+ * back at call time is what stops that leaking the event permanently. Must
+ * still be called *before* the row is deleted, same as `dropCookTask`.
+ */
+function dropMealEvent(entryId: string): void {
+  const current = resolveEntry(useMealPlanStore.getState, entryId);
+  if (current?.calendarEventId) deleteCalendarEvent(current.calendarEventId);
 }
