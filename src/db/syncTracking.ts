@@ -49,6 +49,11 @@ export const KEY_SEPARATOR = '|';
  * read is deliberate: the alternative is a trigger with the allowlist compiled
  * into its WHEN clause, which would have to be rebuilt whenever a key is added
  * and would be invisible from the TypeScript that decides the policy.
+ *
+ * `database.test.ts`'s "every real table is accounted for" check reads the
+ * live schema and fails if a table is in neither this list nor
+ * SYNC_EXCLUDED_TABLES below — a table added to the schema and left off both
+ * would otherwise just never sync, silently, with nothing to say why.
  */
 export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'settings', key: ['key'] },
@@ -66,6 +71,22 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'leftovers', key: ['id'] },
   { name: 'meal_plan_entries', key: ['id'] },
 ];
+
+/**
+ * Real tables deliberately outside SYNC_TRACKED_TABLES, with the reason
+ * attached — an exception has to be argued for here, not just missing from
+ * the list above, or nothing would distinguish a deliberate omission from a
+ * forgotten one.
+ */
+export const SYNC_EXCLUDED_TABLES = [
+  // The tombstone table itself (SYNC_DELETIONS_TABLE below — named as a
+  // literal here because that constant isn't declared until later in this
+  // file, and const bindings can't be read before their own declaration).
+  // Tracking changes to the change-tracking table is meaningless: there is no
+  // peer that needs to know a tombstone row was written, only that the row it
+  // describes was deleted, and the tombstone already says that.
+  'sync_deletions',
+] as const;
 
 /**
  * The settings rows that travel between devices — an allowlist, never a
