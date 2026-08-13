@@ -21,6 +21,8 @@ import { useWidgetSync } from './src/utils/widgetSync';
 import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
+import { useSyncStore } from './src/store/useSyncStore';
+import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
 import { runStartupSequence, runStartupStep } from './src/utils/startup';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { preloadAppFont } from './src/theme/AppFont';
@@ -90,6 +92,7 @@ function AppGate() {
     (async () => {
       runStartupStep('initialize tasks', () => useTaskStore.getState().initialize());
       runStartupStep('load settings', () => useSettingsStore.getState().initialize());
+      runStartupStep('load sync state', () => useSyncStore.getState().initialize());
       await preloadAppFont(useSettingsStore.getState().appFont);
       if (!cancelled) setReady(true);
     })();
@@ -205,6 +208,7 @@ function AppRoot() {
   // EKEventStoreChanged bridge, so this refreshes on foreground rather than
   // subscribing to anything.
   useCalendarSync();
+  useSyncOnForeground();
 
   // Keeps the iOS Today widget's shared snapshot in sync with the task store.
   useWidgetSync();

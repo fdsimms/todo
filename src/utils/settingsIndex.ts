@@ -240,6 +240,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['claude', 'model', 'dinner', 'suggest', 'meal plan'], kitchen: true },
 
   // Data & reset
+  { id: 'syncEnabled', groupId: 'dataReset', label: 'Sync with iCloud', section: 'Sync',
+    keywords: ['devices', 'mac', 'laptop', 'phone', 'across', 'same'] },
+  { id: 'syncNow', groupId: 'dataReset', label: 'Sync now', section: 'Sync',
+    keywords: ['refresh', 'update', 'fetch'] },
   { id: 'exportBackup', groupId: 'dataReset', label: 'Export all data', section: 'Backup',
     keywords: ['backup', 'json', 'save', 'share'] },
   { id: 'restoreBackup', groupId: 'dataReset', label: 'Restore from a backup', section: 'Backup',

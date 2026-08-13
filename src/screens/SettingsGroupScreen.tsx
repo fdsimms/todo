@@ -16,6 +16,7 @@ import { MealCalendarSettings } from './settings/MealCalendarSettings';
 import { TasksProjectsSettings } from './settings/TasksProjectsSettings';
 import { PrivacyAiSettings } from './settings/PrivacyAiSettings';
 import { DataResetSettings } from './settings/DataResetSettings';
+import { SyncSettings } from './settings/SyncSettings';
 import { AboutSettings } from './settings/AboutSettings';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -65,6 +66,7 @@ export function SettingsGroupScreen() {
           {groupId === 'capture' && kitchenEnabled && <MealCalendarSettings />}
           {groupId === 'tasksProjects' && <TasksProjectsSettings />}
           {groupId === 'privacyAi' && <PrivacyAiSettings scrollRef={scrollRef} />}
+          {groupId === 'dataReset' && <SyncSettings />}
           {groupId === 'dataReset' && <DataResetSettings />}
           {groupId === 'about' && <AboutSettings />}
         </ScrollView>
