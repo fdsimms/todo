@@ -3,7 +3,16 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
+import {
+  spacing,
+  radius,
+  font,
+  fontWeight,
+  border,
+  iconSize,
+  interaction,
+  type Colors,
+} from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
 
@@ -21,21 +30,27 @@ interface Props {
  * button labelled for something else. This is the same computation on the
  * screen you're holding while you shop.
  *
- * It renders one line of itinerary and one line of evidence, and taps through
- * to `ShoppingTripSheet` for the per-store breakdown, the corrections and the
+ * It names one store and what it's likely to have, and taps through to
+ * `ShoppingTripSheet` for the per-store breakdown, the corrections and the
  * tasks. Deliberately not a second place to *change* anything: two controls
  * for one plan is how the two would come to disagree.
  *
  * **It's kept short, because it sits on top of the list it describes** — every
- * row it pushes off the screen is a row of the actual list. The itinerary is
- * clamped to one line (a fourth stop is capped at three anyway, and the detail
- * gives the count), and the padding is `sm` rather than `md` vertically.
+ * row it pushes off the screen is a row of the actual list. The store name is
+ * clamped to one line, and the padding is `sm` rather than `md` vertically.
  *
  * **The detail gets two lines, though, and that's deliberate.** It names the
  * items rather than only counting them, because "1/4" is a score and which
  * items it means is the actual question — and at 390pt a store's worth of item
  * names doesn't fit on one line, so clamping it to one would truncate exactly
  * the half worth reading. Two lines of names beats one line ending in "coff…".
+ *
+ * **A second stop is an offer on its own line, under a rule, and usually there
+ * isn't one.** `describeTripSuggestion` returns it only when it clears
+ * `extraStopThreshold`, so the third line is the exception rather than the
+ * height this card always costs. The rule stays there rather than here: what
+ * the card renders and what the sheet plans have to be the same computation,
+ * or the two would recommend different trips on the same list.
  *
  * **Hidden rather than hedged when there's nothing to say.** No items, one
  * suggestable store, or a suggestion with no known and no likely item, and the
@@ -75,17 +90,24 @@ export function TripSuggestionCard({ onPress }: Props) {
       activeOpacity={interaction.activeOpacity}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Suggested trip: ${copy.stores}. ${copy.detail}`}
+      accessibilityLabel={[`Suggested trip: ${copy.store}.`, copy.detail, copy.offer]
+        .filter(Boolean)
+        .join(' ')}
       accessibilityHint="Opens the shopping trip planner"
     >
       <Ionicons name="storefront-outline" size={iconSize.sm} color={colors.accent} />
       <View style={styles.text}>
         <Text style={styles.title} numberOfLines={1}>
-          {copy.stores}
+          {copy.store}
         </Text>
         <Text style={styles.detail} numberOfLines={2}>
           {copy.detail}
         </Text>
+        {copy.offer !== null && (
+          <Text style={styles.offer} numberOfLines={2}>
+            {copy.offer}
+          </Text>
+        )}
       </View>
       <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
     </TouchableOpacity>
@@ -111,5 +133,19 @@ function makeStyles(colors: Colors) {
     text: { flex: 1 },
     title: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: 1, lineHeight: 17 },
+    // A hairline rather than a weight or colour change: the offer is the same
+    // kind of statement as the detail above it — what a store is likely to have
+    // — and the only thing separating them is which store. A rule says "these
+    // are two answers" where a second grey would just look like more of the
+    // first, and it's what keeps the store name in it findable at a glance.
+    offer: {
+      color: colors.textSecondary,
+      fontSize: font.sm,
+      lineHeight: 17,
+      marginTop: spacing.xs + 2,
+      paddingTop: spacing.xs + 2,
+      borderTopWidth: border.hairline,
+      borderTopColor: colors.separator,
+    },
   });
 }

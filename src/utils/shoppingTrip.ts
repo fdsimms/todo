@@ -356,18 +356,56 @@ export function describeShopCoverage(entry: ShopCoverage, total: number): string
 }
 
 export interface TripSuggestionCopy {
-  /** The stores to visit, best first — "Costco, then Trader Joe's". */
-  stores: string;
-  /** What the record says they account for, and which items those are. */
+  /** The one store to go to — the walk's best. */
+  store: string;
+  /** What the record says it accounts for, and which items those are. */
   detail: string;
+  /**
+   * "Add Ballard Pharmacy for shampoo and kale" — the second stop and exactly
+   * what it buys you, when it's worth the detour. Null when one store is the
+   * whole answer, or when the next one doesn't clear `extraStopThreshold`.
+   */
+  offer: string | null;
 }
 
 /**
- * The recommendation in two lines, for somewhere that isn't the trip sheet —
- * the card at the top of the shopping list. `summarizeTrip([], plan)` is the
- * fewest stores the greedy walk can cover the list with, and this is the one
- * place that turns it into a sentence, so the list screen and anywhere else
- * that surfaces it can't word it two ways.
+ * How many items a store the user didn't ask about has to add before the card
+ * puts its name on the screen.
+ *
+ * A stop costs something — time, and often a drive in the wrong direction —
+ * and until this the walk priced it at zero: `summarizeTrip` takes any store
+ * closing even one item, so a list of five could produce a two-store itinerary
+ * for the sake of a single tub of yoghurt. That's the right answer for
+ * `summarizeTrip` itself, which is exhaustive on purpose — the trip sheet is
+ * somewhere you're *actively planning*, and "one more stop gets you the last
+ * thing" is exactly what you opened it to find out. It's the wrong answer for
+ * an unsolicited suggestion at the top of the list, so the threshold lives
+ * here, with the copy, and the walk stays honest.
+ *
+ * Two items or a fifth of the list, whichever is more: a floor, because one
+ * item is never worth a second shop, and a share, because on a thirty-item
+ * list two more is still noise.
+ *
+ * **It is not a model of distance, and it can't become one.** The app has
+ * never known where a shop is or which of them are on one road, so this prices
+ * every second stop the same. What it does is stop the card asserting a plan
+ * that has to earn nothing — the store's own "don't send me there" is
+ * `excludeFromSuggestions`, and anything finer wants a fact the user has told
+ * us, not a sharper guess.
+ */
+export const MIN_EXTRA_STOP_ITEMS = 2;
+export const EXTRA_STOP_SHARE = 0.2;
+
+export function extraStopThreshold(total: number): number {
+  return Math.max(MIN_EXTRA_STOP_ITEMS, Math.ceil(total * EXTRA_STOP_SHARE));
+}
+
+/**
+ * The recommendation, for somewhere that isn't the trip sheet — the card at
+ * the top of the shopping list. `summarizeTrip([], plan)` is the fewest stores
+ * the greedy walk can cover the list with, and this is the one place that
+ * turns it into a sentence, so the list screen and anywhere else that surfaces
+ * it can't word it two ways.
  *
  * The same rule as everywhere else in this module: the number is a floor and
  * the copy says so. "Likely has 1/4 items on your list" is a fact about what
@@ -381,6 +419,22 @@ export interface TripSuggestionCopy {
  * `names` map the caller already has — and the number is there to say how much
  * the naming leaves out.
  *
+ * **One store is the recommendation; a second is an offer with a price on it.**
+ * It used to headline the whole itinerary — "The Bad Wife, then Mr. Kiwi" over
+ * a *joint* "likely have 2/5" — and both halves of that were wrong. The count
+ * was unsplittable, so the one number that decides whether the detour is worth
+ * making (what the second shop adds that the first hasn't) was the one number
+ * you couldn't get; and "then" asserted a route, when the order is coverage
+ * rank and this app has never known where a shop is. Now the headline store's
+ * own coverage is the detail, and the extra stop is named with exactly what it
+ * adds — so declining it is a decision you can make from the card.
+ *
+ * **At most one extra is offered**, however far `MAX_TRIP_STOPS` lets the walk
+ * run: a third store is an itinerary again, and the sheet is where an itinerary
+ * belongs. It's the walk's own next stop rather than a fresh scan of the rest —
+ * the greedy pick already maximises what's added on top of the headline, and
+ * re-ranking here would be a second walk to disagree with the sheet's.
+ *
  * Null when there's nothing to say, which is the card's own "don't render": an
  * empty list, no suggestion, or a suggestion covering nothing on record.
  */
@@ -391,38 +445,51 @@ export function describeTripSuggestion(
 ): TripSuggestionCopy | null {
   if (total === 0 || suggestion.length === 0) return null;
 
-  const seen = new Set<string>();
-  const covered: string[] = [];
-  for (const entry of suggestion) {
-    for (const id of entry.itemIds) {
-      if (seen.has(id)) continue;
-      seen.add(id);
-      covered.push(id);
-    }
-  }
+  const [head, ...rest] = suggestion;
+  // A store's own coverage is already one row per item — no dedupe needed, and
+  // no union across stops any more, which is the point.
+  const covered = head.itemIds;
   if (covered.length === 0) return null;
 
-  const shopNames = suggestion.map(s => s.shop.name);
-  const stores =
-    shopNames.length === 1
-      ? shopNames[0]
-      : `${shopNames.slice(0, -1).join(', ')}, then ${shopNames[shopNames.length - 1]}`;
+  const store = head.shop.name;
+  const offer = describeExtraStop(rest[0], covered, total, names);
 
-  // Agrees with `stores`, which is the line directly above it.
-  const verb = suggestion.length === 1 ? 'has' : 'have';
   if (covered.length === total) {
     return {
-      stores,
+      store,
       detail:
         total === 1
-          ? `Likely ${verb} the one item on your list`
-          : `Likely ${verb} all ${total} items on your list`,
+          ? 'Likely has the one item on your list'
+          : `Likely has all ${total} items on your list`,
+      offer,
     };
   }
 
   const named = joinNames(covered.map(id => names.get(id) ?? 'an item'));
-  const head = `Likely ${verb} ${covered.length}/${total} items on your list`;
-  return { stores, detail: named ? `${head}: ${named}` : head };
+  const line = `Likely has ${covered.length}/${total} items on your list`;
+  return { store, detail: named ? `${line}: ${named}` : line, offer };
+}
+
+/**
+ * "Add Ballard Pharmacy for shampoo" — the second stop priced in the only
+ * currency that matters, which is what it adds that the first one hasn't.
+ *
+ * Null below `extraStopThreshold`: a stop that closes one item is a stop most
+ * people won't make, and offering it every week is how the card would come to
+ * be ignored. Silence is the right answer there — the store is still in the
+ * sheet, one tap away, for the week you do want it.
+ */
+function describeExtraStop(
+  next: ShopCoverage | undefined,
+  coveredByHead: readonly string[],
+  total: number,
+  names: ReadonlyMap<string, string>
+): string | null {
+  if (!next) return null;
+  const already = new Set(coveredByHead);
+  const adds = next.itemIds.filter(id => !already.has(id));
+  if (adds.length < extraStopThreshold(total)) return null;
+  return `Add ${next.shop.name} for ${joinNames(adds.map(id => names.get(id) ?? 'an item'))}`;
 }
 
 /**

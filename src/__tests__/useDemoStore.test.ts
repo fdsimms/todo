@@ -542,13 +542,18 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // read as a feature the app hasn't got.
     const plan = planTrip(items, itemShops, shops);
     expect(plan.coverage.length).toBeGreaterThanOrEqual(2);
-    expect(
-      describeTripSuggestion(
-        summarizeTrip([], plan).suggestion,
-        plan.itemIds.length,
-        new Map(items.map(i => [i.id, i.name]))
-      )
-    ).not.toBeNull();
+    const copy = describeTripSuggestion(
+      summarizeTrip([], plan).suggestion,
+      plan.itemIds.length,
+      new Map(items.map(i => [i.id, i.name]))
+    );
+    expect(copy).not.toBeNull();
+    // Both halves of the card, because the second one is conditional: the
+    // offer only appears when a second store clears extraStopThreshold, so a
+    // seed one link short of it shows the one-store case and nothing else —
+    // and the line would read as a feature the app hasn't got.
+    expect(copy?.store).toBe("Trader Joe's");
+    expect(copy?.offer).toBe('Add Costco for Cottage cheese, Peanut butter and Tortillas');
   });
 
   it('seeds prices, including one item priced at two stores', () => {
