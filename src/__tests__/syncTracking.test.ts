@@ -47,6 +47,17 @@ function makeDb(): Db {
   return db;
 }
 
+/** A clock that cannot move between statements, for the timing edge cases. */
+const FROZEN_NOW = '2024-03-01T09:30:00.000Z';
+
+function frozenClockDb(): Db {
+  const db = new BetterSqlite3(':memory:');
+  db.exec('CREATE TABLE widgets (id TEXT PRIMARY KEY NOT NULL, label TEXT, updated_at TEXT)');
+  for (const sql of deletionsTableStatements()) db.exec(sql);
+  for (const sql of changeTrackingStatements(SIMPLE, `'${FROZEN_NOW}'`)) db.exec(sql);
+  return db;
+}
+
 const stampOf = (db: Db, id: string): string | null =>
   db.prepare('SELECT updated_at FROM widgets WHERE id = ?').get(id)?.updated_at ?? null;
 
@@ -151,34 +162,50 @@ describe('stamping', () => {
   });
 
   it('leaves the stamp alone for a write inside the same millisecond', () => {
-    // The deliberate trade that makes the update trigger self-terminating.
-    // It is only safe because dbSyncChangesSince's lower bound is inclusive,
-    // so a row still reports itself under the cursor it already carries.
-    const db = makeDb();
-    db.prepare('INSERT INTO widgets (id, label) VALUES (?, ?)').run('w1', 'a');
-    const stamp = stampOf(db, 'w1');
+    // The deliberate trade that makes the update trigger self-terminating. It
+    // is only safe because dbSyncChangesSince's lower bound is inclusive, so a
+    // row still reports itself under the cursor it already carries.
+    //
+    // Uses a frozen clock rather than racing the real one: SQLite keeps 'now'
+    // constant within a statement but not across them, so a test that sets the
+    // stamp in one statement and writes in the next collides only when the
+    // millisecond happens not to roll over between the two.
+    const db = frozenClockDb();
+    db.prepare('INSERT INTO widgets (id, label, updated_at) VALUES (?, ?, ?)')
+      .run('w1', 'a', FROZEN_NOW);
 
-    // Force the collision rather than racing the clock: put the row's stamp at
-    // exactly the value the trigger would compute for this write.
-    const now = db.prepare(`SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AS now`).get().now;
-    db.prepare('UPDATE widgets SET updated_at = ? WHERE id = ?').run(now, 'w1');
     db.prepare('UPDATE widgets SET label = ? WHERE id = ?').run('b', 'w1');
 
-    expect(stampOf(db, 'w1')).toBe(now);
-    expect(typeof stamp).toBe('string');
+    expect(stampOf(db, 'w1')).toBe(FROZEN_NOW);
   });
 
-  it('terminates even with recursive triggers enabled', () => {
-    // The WHEN guard is what stops this, not the pragma being off by default.
-    // If that reasoning is ever wrong, this hangs or throws rather than
-    // silently working until someone turns the pragma on.
-    const db = makeDb();
+  it('terminates on a same-millisecond write with recursive triggers enabled', () => {
+    // The guard clause is what stops this, not the pragma being off by
+    // default. With the clock frozen the collision is certain, so this fails
+    // if that guard is ever dropped — against the real clock it would only
+    // catch the bug on the runs that happened to collide, which is how the
+    // first version of this test passed alone and failed in the full suite.
+    const db = frozenClockDb();
     db.pragma('recursive_triggers = ON');
+    db.prepare('INSERT INTO widgets (id, label, updated_at) VALUES (?, ?, ?)')
+      .run('w1', 'a', FROZEN_NOW);
+
     expect(() => {
-      db.prepare('INSERT INTO widgets (id, label) VALUES (?, ?)').run('w1', 'a');
       db.prepare('UPDATE widgets SET label = ? WHERE id = ?').run('b', 'w1');
     }).not.toThrow();
-    expect(stampOf(db, 'w1')).not.toBeNull();
+    expect(stampOf(db, 'w1')).toBe(FROZEN_NOW);
+  });
+
+  it('still stamps a write that lands in a later millisecond', () => {
+    // The other half of the guard: a moved clock must restamp, or nothing
+    // would ever be reported as changed.
+    const db = frozenClockDb();
+    db.prepare('INSERT INTO widgets (id, label, updated_at) VALUES (?, ?, ?)')
+      .run('w1', 'a', '2020-01-01T00:00:00.000Z');
+
+    db.prepare('UPDATE widgets SET label = ? WHERE id = ?').run('b', 'w1');
+
+    expect(stampOf(db, 'w1')).toBe(FROZEN_NOW);
   });
 });
 

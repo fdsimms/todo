@@ -3,6 +3,7 @@ import type { MealPlanEntry, Task } from '../types';
 import type { WeekStart } from '../store/useSettingsStore';
 import { buildWeekDays } from './calendarGrid';
 import { dayKeyOf } from './dateUtils';
+import { liveGeneratedTask } from './generatedTasks';
 import { describeWeekRange, isKeyInRange } from './mealPlan';
 
 /**
@@ -124,16 +125,28 @@ export function mealPlanNudgeSuppressed(
 
 /**
  * True when a previous firing's nudge task is still live — incomplete and
- * not archived. Checked by `linkUrl` alone, the same marker the task row's
- * link button already opens the Meal Plan screen from, since nothing else
- * about the task (title, dueDate) stays stable enough to key off across
- * weeks.
+ * not archived.
+ *
+ * Keyed on `generatedKind`, the marker every generator now carries, rather
+ * than on `linkUrl` as it used to be. The link was the only stable thing about
+ * this task before there was a kind (the title and dueDate both move week to
+ * week), but it was never actually a claim about *provenance* — a task the
+ * user wrote themselves pointing at the meal plan counted as the app's nudge.
+ * Legacy rows are backfilled off exactly that link, so the set this matches
+ * doesn't change; what changes is that it can't be joined by a hand-written
+ * task from here on.
+ *
+ * `generatedSourceId` is null and stays null: this is the one generator
+ * projected from the calendar rather than from a row (see `sourced` in
+ * `generatedTasks.ts`), so the kind alone identifies it.
  *
  * A completed task doesn't count (the user did the thing), and neither does
  * an archived one (archiving is this app's other explicit "I've dealt with
  * this, stop showing it to me" — see the note on `archiveTask` in
  * CLAUDE.md). Only "still sitting there, untouched" blocks the next one.
  */
-export function hasLiveMealPlanNudgeTask(tasks: readonly Pick<Task, 'linkUrl' | 'completed' | 'archived'>[]): boolean {
-  return tasks.some(t => t.linkUrl === MEAL_PLAN_NUDGE_LINK_URL && !t.completed && !t.archived);
+export function hasLiveMealPlanNudgeTask(
+  tasks: readonly Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>[]
+): boolean {
+  return !!liveGeneratedTask(tasks, 'mealPlanNudge');
 }

@@ -13,9 +13,9 @@ const mockCreateDeadlineEvent = jest.fn();
 const mockUpdateDeadlineEvent = jest.fn();
 const mockDeleteDeadlineEvent = jest.fn();
 jest.mock('../utils/calendarSync', () => ({
-  createDeadlineEvent: (...args: unknown[]) => mockCreateDeadlineEvent(...args),
-  updateDeadlineEvent: (...args: unknown[]) => mockUpdateDeadlineEvent(...args),
-  deleteDeadlineEvent: (...args: unknown[]) => mockDeleteDeadlineEvent(...args),
+  createAllDayEvent: (...args: unknown[]) => mockCreateDeadlineEvent(...args),
+  updateAllDayEvent: (...args: unknown[]) => mockUpdateDeadlineEvent(...args),
+  deleteCalendarEvent: (...args: unknown[]) => mockDeleteDeadlineEvent(...args),
 }));
 
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
@@ -97,9 +97,8 @@ const BASE: Task = {
   blockedById: null,
   deliverableKind: null,
   deliverableValue: null,
-  mealEntryId: null,
-  groceryItemId: null,
-  leftoverId: null,
+  generatedKind: null,
+  generatedSourceId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
   timeBlockEventId: null,
@@ -169,7 +168,7 @@ describe('syncDeadlineEvent', () => {
     expect(mockDeleteDeadlineEvent).toHaveBeenCalledWith('evt-1');
   });
 
-  it('does not call deleteDeadlineEvent when there was never an event to remove', async () => {
+  it('does not call deleteCalendarEvent when there was never an event to remove', async () => {
     const task = makeTask({ deadlineOnCalendar: false, deadline: null, calendarEventId: null });
     await syncDeadlineEvent(task);
     expect(mockDeleteDeadlineEvent).not.toHaveBeenCalled();

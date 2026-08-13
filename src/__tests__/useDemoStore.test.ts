@@ -103,10 +103,10 @@ jest.mock('../utils/notifications', () => ({
 }));
 
 // Same reason: useTaskStore.ts reaches calendarSync.ts (real react-native
-// import) both directly (deleteDeadlineEvent) and via deadlineCalendarSync.ts
+// import) both directly (deleteCalendarEvent) and via deadlineCalendarSync.ts
 // (syncDeadlineEvent).
 jest.mock('../utils/calendarSync', () => ({
-  deleteDeadlineEvent: jest.fn().mockResolvedValue(undefined),
+  deleteCalendarEvent: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../utils/deadlineCalendarSync', () => ({
   syncDeadlineEvent: jest.fn().mockResolvedValue(null),
@@ -684,11 +684,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const { entries } = useMealPlanStore.getState();
     const { tasks } = useTaskStore.getState();
 
-    const cookTasks = tasks.filter(t => t.mealEntryId);
+    const cookTasks = tasks.filter(t => t.generatedKind === 'mealCook');
     expect(cookTasks.length).toBeGreaterThan(0);
     // Each points at a meal that really exists, and says what to cook.
     cookTasks.forEach(task => {
-      const entry = entries.find(e => e.id === task.mealEntryId);
+      const entry = entries.find(e => e.id === task.generatedSourceId);
       expect(entry).toBeDefined();
       expect(task.title).toBe(`Cook ${entry!.title}`);
     });
@@ -701,7 +701,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     // Nothing spawned for free text or for a leftover night.
     const freeOrLeftover = entries.filter(e => !e.recipeId || e.leftoverId).map(e => e.id);
-    expect(cookTasks.every(t => !freeOrLeftover.includes(t.mealEntryId!))).toBe(true);
+    expect(cookTasks.every(t => !freeOrLeftover.includes(t.generatedSourceId!))).toBe(true);
   });
 
   it('seeds use-by dates, and one item opted in to a use-up task', () => {
@@ -719,9 +719,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(optedIn).toBeDefined();
     expect(optedIn.expiresAt).not.toBeNull();
 
-    const useUpTasks = tasks.filter(t => t.groceryItemId);
+    const useUpTasks = tasks.filter(t => t.generatedKind === 'groceryUseUp');
     expect(useUpTasks).toHaveLength(1);
-    expect(useUpTasks[0].groceryItemId).toBe(optedIn.id);
+    expect(useUpTasks[0].generatedSourceId).toBe(optedIn.id);
     expect(useUpTasks[0].title).toBe(`Use up ${optedIn.name}`);
     // Dated off the use-by day rather than off today, with the day itself
     // carried as the deadline.
@@ -754,10 +754,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const urgent = leftovers.filter(l => isLiveLeftover(l) && freshnessOf(l) !== 'fresh');
     expect(urgent.length).toBeGreaterThan(0);
 
-    const useUpTasks = tasks.filter(t => t.leftoverId);
+    const useUpTasks = tasks.filter(t => t.generatedKind === 'leftoverUseUp');
     expect(useUpTasks.length).toBe(urgent.length);
     useUpTasks.forEach(task => {
-      const leftover = leftovers.find(l => l.id === task.leftoverId);
+      const leftover = leftovers.find(l => l.id === task.generatedSourceId);
       expect(leftover).toBeDefined();
       expect(task.title).toBe(`Use up ${leftover!.title}`);
       expect(task.deadline).toBe(leftover!.keepUntil);
@@ -765,7 +765,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // The fresh one — furthest from its keep-until day — gets no task.
     const fresh = leftovers.find(l => isLiveLeftover(l) && freshnessOf(l) === 'fresh');
     expect(fresh).toBeDefined();
-    expect(tasks.some(t => t.leftoverId === fresh!.id)).toBe(false);
+    expect(tasks.some(t => t.generatedSourceId === fresh!.id)).toBe(false);
   });
 });
 
@@ -798,6 +798,6 @@ describe('demo seed — with the groceries area turned off', () => {
   });
 
   it('spawns no cook tasks, so Today has nothing pointing at a hidden screen', () => {
-    expect(useTaskStore.getState().tasks.some(t => t.mealEntryId)).toBe(false);
+    expect(useTaskStore.getState().tasks.some(t => t.generatedKind === 'mealCook')).toBe(false);
   });
 });

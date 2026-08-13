@@ -117,10 +117,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['morning summary', 'digest', 'notification'] },
   { id: 'dailyAgendaTime', groupId: 'notifications', label: 'Send it at', section: 'Notifications',
     keywords: ['agenda time'] },
-  { id: 'mealPlanNudge', groupId: 'notifications', label: 'Plan meals for the week', section: 'Meal planning',
-    keywords: ['meal plan', 'recipes', 'dinner', 'nudge', 'reminder', 'weekly', 'grocery'], kitchen: true },
-  { id: 'mealPlanNudgeTime', groupId: 'notifications', label: 'Nudge me on', section: 'Meal planning',
-    keywords: ['weekday', 'meal plan time', 'day'], kitchen: true },
+  // The meal-plan nudge used to sit here, on the grounds that it fires on a
+  // schedule. It writes a *task*, though, not a notification, which is the
+  // thing it has in common with the other three generators — so it moved to
+  // "Tasks the app adds" in Tasks & projects (#1524).
 
   // Capture from Reminders (iOS)
   { id: 'remindersImport', groupId: 'capture', label: 'Import from Reminders', section: 'Apple Reminders',
@@ -157,6 +157,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['notification', 'event', 'busy', 'nudge', 'delay', 'push back'] },
   { id: 'deadlineCalendar', groupId: 'capture', label: 'Write deadlines to', section: 'Deadlines on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync'] },
+  { id: 'mealCalendar', groupId: 'capture', label: 'Write meals to', section: 'Meals on your calendar',
+    keywords: ['all-day', 'event', 'export', 'google', 'sync', 'meal plan', 'dinner', 'share', 'household', 'family'],
+    kitchen: true },
 
   // Tasks & projects
   { id: 'vacationMode', groupId: 'tasksProjects', label: 'Vacation mode', section: 'Vacation',
@@ -185,21 +188,30 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer'] },
   { id: 'mealsOnToday', groupId: 'tasksProjects', label: 'Show the day\'s meals', section: 'Meals on Today',
     keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'strip', 'block'], kitchen: true },
-  { id: 'mealCookTasks', groupId: 'tasksProjects', label: 'Cook tasks', section: 'Meals on Today',
-    keywords: ['meal plan', 'recipe', 'dinner', 'auto'], kitchen: true },
-  { id: 'mealCookTaskCategory', groupId: 'tasksProjects', label: 'File cook tasks under', section: 'Meals on Today',
+  // The four generators, all in one section now (#1524) — they used to be three
+  // sections here plus one over in Notifications. Each keeps its own entry
+  // rather than collapsing to one "Tasks the app adds" row: a search index
+  // exists to find the row you can't see, and "cook tasks" and "use-by" are
+  // what people type, not the name of the section they happen to share.
+  { id: 'mealCookTasks', groupId: 'tasksProjects', label: 'Cook tasks', section: 'Tasks the app adds',
+    keywords: ['meal plan', 'recipe', 'dinner', 'auto', 'generated', 'automatic'], kitchen: true },
+  { id: 'mealCookTaskCategory', groupId: 'tasksProjects', label: 'File cook tasks under', section: 'Tasks the app adds',
     keywords: ['category', 'meal plan', 'kitchen'], kitchen: true },
-  { id: 'groceryUseUpTasks', groupId: 'tasksProjects', label: 'Use-up tasks', section: 'Use-up reminders',
+  { id: 'groceryUseUpTasks', groupId: 'tasksProjects', label: 'Use-up tasks for groceries', section: 'Tasks the app adds',
     keywords: ['expiry', 'expires', 'expiration', 'use by', 'best before', 'perishable', 'spoil',
-      'waste', 'fridge', 'grocery', 'food', 'leftovers'], kitchen: true },
-  { id: 'groceryUseUpLeadDays', groupId: 'tasksProjects', label: 'Show the task', section: 'Use-up reminders',
+      'waste', 'fridge', 'grocery', 'food', 'leftovers', 'generated', 'automatic'], kitchen: true },
+  { id: 'groceryUseUpLeadDays', groupId: 'tasksProjects', label: 'Show the task', section: 'Tasks the app adds',
     keywords: ['expiry', 'use by', 'days before', 'lead', 'warning', 'grocery'], kitchen: true },
-  { id: 'groceryUseUpTaskCategory', groupId: 'tasksProjects', label: 'File use-up tasks under', section: 'Use-up reminders',
+  { id: 'groceryUseUpTaskCategory', groupId: 'tasksProjects', label: 'File use-up tasks under', section: 'Tasks the app adds',
     keywords: ['category', 'grocery', 'expiry', 'kitchen'], kitchen: true },
-  { id: 'leftoverUseUpTasks', groupId: 'tasksProjects', label: 'Use-up tasks for leftovers', section: 'Leftovers',
-    keywords: ['fridge', 'expiry', 'expires', 'use by', 'spoil', 'waste', 'food'], kitchen: true },
-  { id: 'leftoverUseUpTaskCategory', groupId: 'tasksProjects', label: 'File use-up tasks under', section: 'Leftovers',
+  { id: 'leftoverUseUpTasks', groupId: 'tasksProjects', label: 'Use-up tasks for leftovers', section: 'Tasks the app adds',
+    keywords: ['fridge', 'expiry', 'expires', 'use by', 'spoil', 'waste', 'food', 'generated', 'automatic'], kitchen: true },
+  { id: 'leftoverUseUpTaskCategory', groupId: 'tasksProjects', label: 'File use-up tasks under', section: 'Tasks the app adds',
     keywords: ['category', 'leftover', 'fridge', 'kitchen'], kitchen: true },
+  { id: 'mealPlanNudge', groupId: 'tasksProjects', label: 'Plan meals for the week', section: 'Tasks the app adds',
+    keywords: ['meal plan', 'weekly', 'nudge', 'remind', 'planning', 'generated', 'automatic'], kitchen: true },
+  { id: 'mealPlanNudgeTime', groupId: 'tasksProjects', label: 'Nudge me on', section: 'Tasks the app adds',
+    keywords: ['meal plan', 'weekday', 'day', 'time', 'when'], kitchen: true },
   // Flagged too: it only ever restates a recipe's or a grocery row's amount, so
   // with the area gone there is nothing left for it to convert.
   { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',

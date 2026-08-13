@@ -28,6 +28,7 @@ function entry(overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
     recipeChoices: [],
     recipeScale: 1,
     cookTask: null,
+    calendarEventId: null,
     ...overrides,
   };
 }
@@ -93,7 +94,8 @@ describe('cookTaskFields', () => {
   });
 
   it('carries the back-pointer on a new draft', () => {
-    expect(cookTaskDraft(entry({ id: 'm-9' })).mealEntryId).toBe('m-9');
+    expect(cookTaskDraft(entry({ id: 'm-9' })).generatedKind).toBe('mealCook');
+    expect(cookTaskDraft(entry({ id: 'm-9' })).generatedSourceId).toBe('m-9');
   });
 });
 

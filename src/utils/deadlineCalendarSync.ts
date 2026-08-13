@@ -1,6 +1,6 @@
 import type { Task } from '../types';
 import { displayTitleFor } from './visibilityUtils';
-import { createDeadlineEvent, updateDeadlineEvent, deleteDeadlineEvent } from './calendarSync';
+import { createAllDayEvent, updateAllDayEvent, deleteCalendarEvent } from './calendarSync';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 /**
@@ -23,18 +23,18 @@ export async function syncDeadlineEvent(task: Task): Promise<string | null> {
   // done/archived and has nothing left to be late for — the event (if one
   // exists) goes away, and there's nothing to link.
   if (!deadlineCalendarId || !task.deadlineOnCalendar || !task.deadline || task.completed || task.archived) {
-    if (task.calendarEventId) await deleteDeadlineEvent(task.calendarEventId);
+    if (task.calendarEventId) await deleteCalendarEvent(task.calendarEventId);
     return null;
   }
 
   const fields = { title: displayTitleFor(task) || 'Deadline', date: new Date(task.deadline) };
 
   if (task.calendarEventId) {
-    if (await updateDeadlineEvent(task.calendarEventId, fields)) return task.calendarEventId;
+    if (await updateAllDayEvent(task.calendarEventId, fields)) return task.calendarEventId;
     // The id didn't resolve to a live event — deleted by hand, or the
     // calendar itself is gone. Resolve-or-shrug: fall through and write a
     // fresh one rather than leaving the task pointing at nothing.
   }
 
-  return createDeadlineEvent(deadlineCalendarId, fields);
+  return createAllDayEvent(deadlineCalendarId, fields);
 }

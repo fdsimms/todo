@@ -84,7 +84,8 @@ describe('useUpTaskDraft', () => {
   it('points back at the leftover and files itself under the configured category', () => {
     const chilli = leftover();
     const draft = useUpTaskDraft(chilli, 'Home', now);
-    expect(draft.leftoverId).toBe(chilli.id);
+    expect(draft.generatedKind).toBe('leftoverUseUp');
+    expect(draft.generatedSourceId).toBe(chilli.id);
     expect(draft.category).toBe('Home');
     expect(draft.title).toBe('Use up Chicken stir-fry');
   });

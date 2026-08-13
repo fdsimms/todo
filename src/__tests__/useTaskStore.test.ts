@@ -34,7 +34,7 @@ import {
   rescheduleAllReminders,
 } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
-import { deleteDeadlineEvent } from '../utils/calendarSync';
+import { deleteCalendarEvent } from '../utils/calendarSync';
 import type { Task, TaskGroup } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -153,7 +153,7 @@ jest.mock('../utils/deadlineCalendarSync', () => ({
 }));
 
 jest.mock('../utils/calendarSync', () => ({
-  deleteDeadlineEvent: jest.fn().mockResolvedValue(undefined),
+  deleteCalendarEvent: jest.fn().mockResolvedValue(undefined),
   // The #1492 half. Stubbed to "the user cancelled" / "no such event" by
   // default so nothing writes unless a test says so; the time-block block at
   // the bottom of this file drives them.
@@ -254,9 +254,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   blockedById: null,
   deliverableKind: null,
   deliverableValue: null,
-  mealEntryId: null,
-  groceryItemId: null,
-  leftoverId: null,
+  generatedKind: null,
+  generatedSourceId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
   timeBlockEventId: null,
@@ -622,13 +621,13 @@ describe('deleteTask', () => {
   it('deletes the linked calendar event when the task has one', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', calendarEventId: 'evt-1' })] });
     useTaskStore.getState().deleteTask('t1');
-    expect(deleteDeadlineEvent).toHaveBeenCalledWith('evt-1');
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('evt-1');
   });
 
-  it('does not call deleteDeadlineEvent when the task has no linked event', () => {
+  it('does not call deleteCalendarEvent when the task has no linked event', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', calendarEventId: null })] });
     useTaskStore.getState().deleteTask('t1');
-    expect(deleteDeadlineEvent).not.toHaveBeenCalled();
+    expect(deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
   it('does not queue an undo action for a nonexistent task', () => {
@@ -2203,7 +2202,16 @@ describe('checkMealPlanNudge', () => {
     const s = settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03' });
     useSettingsStore.getState.mockReturnValue(s);
     useTaskStore.setState({
-      tasks: [makeTask({ id: 'nudge-1', title: 'Plan meals for 10 – 16 Aug', linkUrl: 'dundundun://mealplan' })],
+      // generatedKind, not the linkUrl this used to be recognised by. A legacy
+      // row carrying only the link is backfilled to exactly this by the
+      // migration in initDatabase, so the set that blocks a second nudge is
+      // unchanged; what a bare link no longer does is claim to be the app's.
+      tasks: [makeTask({
+        id: 'nudge-1',
+        title: 'Plan meals for 10 – 16 Aug',
+        linkUrl: 'dundundun://mealplan',
+        generatedKind: 'mealPlanNudge',
+      })],
     });
 
     useTaskStore.getState().checkMealPlanNudge();
@@ -6060,12 +6068,12 @@ describe('applyTaskDates', () => {
         t.id === rows[1].id ? { ...t, calendarEventId: 'evt-dropped' } : t
       ),
     });
-    (deleteDeadlineEvent as jest.Mock).mockClear();
+    (deleteCalendarEvent as jest.Mock).mockClear();
     useTaskStore.getState().applyTaskDates(rows[0].id, [
       new Date(2025, 8, 10, 12, 0, 0),
       new Date(2025, 8, 20, 12, 0, 0),
     ]);
-    expect(deleteDeadlineEvent).toHaveBeenCalledWith('evt-dropped');
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('evt-dropped');
   });
 
   it('never deletes a completed date — it is history, not schedule', () => {
@@ -6879,7 +6887,7 @@ describe('deleting a use-up task', () => {
 
   it('records the item\'s opt-out, so the next purchase doesn\'t hand it back', () => {
     seedItem();
-    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', groceryItemId: 'g-1' });
+    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', generatedKind: 'groceryUseUp', generatedSourceId: 'g-1' });
 
     useTaskStore.getState().deleteTask(task.id);
 
@@ -6888,7 +6896,7 @@ describe('deleting a use-up task', () => {
 
   it('undo clears the opt-out again, and leaves the restored task alone', () => {
     seedItem();
-    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', groceryItemId: 'g-1' });
+    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', generatedKind: 'groceryUseUp', generatedSourceId: 'g-1' });
     useTaskStore.getState().deleteTask(task.id);
 
     useTaskStore.getState().lastAction!.undo();

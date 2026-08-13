@@ -141,7 +141,16 @@ export function updatedAtMigrations(): string[] {
  * old one. Fifty-odd statements at startup is nothing next to a device
  * silently running last release's tracking rules.
  */
-export function changeTrackingStatements(table: SyncTable): string[] {
+export function changeTrackingStatements(
+  table: SyncTable,
+  /**
+   * The SQL expression for "now". Only ever overridden by tests, which need a
+   * clock that doesn't move between statements: SQLite freezes `'now'` within
+   * a single step but not across them, so the same-millisecond edge cases
+   * below are otherwise reproducible only by racing the real clock.
+   */
+  nowExpr: string = NOW_EXPR
+): string[] {
   const { name } = table;
   const newKey = rowKeyExpr(table, 'NEW');
   const oldKey = rowKeyExpr(table, 'OLD');
@@ -162,7 +171,7 @@ export function changeTrackingStatements(table: SyncTable): string[] {
        AFTER INSERT ON ${name}
        WHEN NEW.updated_at IS NULL
      BEGIN
-       UPDATE ${name} SET updated_at = ${NOW_EXPR} WHERE ${match};
+       UPDATE ${name} SET updated_at = ${nowExpr} WHERE ${match};
      END`,
 
     // Re-inserting a row clears its tombstone. This is not a theoretical case:
@@ -197,9 +206,9 @@ export function changeTrackingStatements(table: SyncTable): string[] {
     `CREATE TRIGGER ${name}_sync_stamp_update
        AFTER UPDATE ON ${name}
        WHEN NEW.updated_at IS OLD.updated_at
-        AND (OLD.updated_at IS NULL OR OLD.updated_at <> ${NOW_EXPR})
+        AND (OLD.updated_at IS NULL OR OLD.updated_at <> ${nowExpr})
      BEGIN
-       UPDATE ${name} SET updated_at = ${NOW_EXPR} WHERE ${match};
+       UPDATE ${name} SET updated_at = ${nowExpr} WHERE ${match};
      END`,
 
     // INSERT OR REPLACE, not INSERT: a row can be deleted, restored by an
@@ -208,7 +217,7 @@ export function changeTrackingStatements(table: SyncTable): string[] {
        AFTER DELETE ON ${name}
      BEGIN
        INSERT OR REPLACE INTO ${SYNC_DELETIONS_TABLE} (table_name, row_key, deleted_at)
-       VALUES ('${name}', ${oldKey}, ${NOW_EXPR});
+       VALUES ('${name}', ${oldKey}, ${nowExpr});
      END`,
 
     // The sync loop's only read pattern is "everything after this cursor".
@@ -237,6 +246,8 @@ export function backfillStatements(): string[] {
 export function installStatements(): string[] {
   return [
     ...deletionsTableStatements(),
-    ...SYNC_TRACKED_TABLES.flatMap(changeTrackingStatements),
+    // Arrow rather than a bare reference: flatMap passes (element, index),
+    // and the index would land in changeTrackingStatements' nowExpr parameter.
+    ...SYNC_TRACKED_TABLES.flatMap(t => changeTrackingStatements(t)),
   ];
 }

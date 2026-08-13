@@ -1,4 +1,5 @@
 import type { Leftover, TaskDraft } from '../types';
+import { generatedBy, wantsGeneratedTask } from './generatedTasks';
 import { needsAttention } from './leftovers';
 import { resolveOffsetDate } from './templateUtils';
 
@@ -24,23 +25,18 @@ import { resolveOffsetDate } from './templateUtils';
 /**
  * Whether this leftover should have a use-up task, given the global setting.
  *
- * Same two-input shape as wantsUseUpTask (groceryExpiry.ts) and wantsCookTask
- * (mealTasks.ts):
+ * The precedence is `wantsGeneratedTask`'s, shared with the other generators —
+ * which is what stops a leftover already flagged once from nagging a second
+ * time as it drifts from "soon" back into range on a keep-days edit. What
+ * qualifies a *leftover*:
  *
- * 1. **An explicit per-leftover answer always wins**, in both directions.
- *    `true` spawns a task with the setting off, `false` suppresses it with
- *    the setting on — and `false` is what deleting the task records, so a
- *    leftover that's already been flagged once doesn't nag a second time as
- *    it drifts from "soon" back into range on a keep-days edit.
- * 2. **`needsAttention` is the whole trigger.** A fresh leftover gets no
- *    task; one about to go bad does. No separate lead-time setting — unlike
- *    groceries, which stamp a use-by date days ahead of the trip, a leftover
- *    is already tracked from the moment it's logged, so "soon" already means
- *    "look at this now".
+ * **`needsAttention` is the whole trigger.** A fresh leftover gets no task; one
+ * about to go bad does. No separate lead-time setting — unlike groceries, which
+ * stamp a use-by date days ahead of the trip, a leftover is already tracked
+ * from the moment it's logged, so "soon" already means "look at this now".
  */
 export function wantsUseUpTask(leftover: Leftover, enabled: boolean): boolean {
-  if (leftover.useUpTask !== null && leftover.useUpTask !== undefined) return leftover.useUpTask;
-  return enabled && needsAttention(leftover);
+  return wantsGeneratedTask(leftover.useUpTask, enabled, needsAttention(leftover));
 }
 
 /** What a use-up task is called. Built off `leftover.title`, same as the other two. */
@@ -87,7 +83,7 @@ export function useUpTaskDraft(
   category: string | null = null,
   now: Date = new Date()
 ): Partial<TaskDraft> {
-  return { ...useUpTaskFields(leftover, now), leftoverId: leftover.id, category };
+  return { ...useUpTaskFields(leftover, now), ...generatedBy('leftoverUseUp', leftover.id), category };
 }
 
 /**

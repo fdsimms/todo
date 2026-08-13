@@ -17,7 +17,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient, RecipePrepTask } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -144,6 +144,12 @@ export function RecipeDetailScreen() {
   }, [recipe, scale]);
 
   const [draft, setDraft] = useState('');
+  // What new ingredients are filed under, until changed or cleared — the add
+  // field's own equivalent of RecipeIngredientSheet's Section field, so a
+  // section can be started here instead of only discoverable by editing a
+  // row after the fact. Free text, not a picker: nothing enumerates the
+  // sections a recipe has, the same way nothing enumerates aisle names.
+  const [sectionDraft, setSectionDraft] = useState('');
   const [pickingImage, setPickingImage] = useState(false);
   const draftInputRef = useRef<TextInput>(null);
   const [prepDraft, setPrepDraft] = useState('');
@@ -279,11 +285,12 @@ export function RecipeDetailScreen() {
     const text = draft;
     if (!text.trim()) return;
     animateLayout();
+    const section = sectionDraft.trim() || null;
     // A multi-line paste is the common way a recipe arrives, so one field
     // handles both — splitGroceryLines tells them apart.
     const added = splitGroceryLines(text).length > 1
-      ? addIngredientsFromText(recipe.id, text)
-      : (addIngredient(recipe.id, text) ? 1 : 0);
+      ? addIngredientsFromText(recipe.id, text, section)
+      : (addIngredient(recipe.id, text, section) ? 1 : 0);
     setDraft('');
     if (added > 0) haptics.tap();
     else haptics.warning();
@@ -902,6 +909,38 @@ export function RecipeDetailScreen() {
             the arithmetic for rather than assuming it did. */}
         {!!unscaledNote && <Text style={styles.scaleNote}>{unscaledNote}</Text>}
 
+        {/* Sets a heading for ingredients added below, the same "section" field
+            RecipeIngredientSheet has always had — just reachable from the add
+            flow itself instead of only by opening an existing row afterward.
+            Free text and sticky rather than a one-shot prompt: typing "For the
+            cake" once, adding those lines, then changing it to "For the
+            frosting" is how a recipe with several sections actually gets
+            typed in, and it needs no cleanup — leave it blank to file plain. */}
+        <View style={styles.sectionDraftRow}>
+          <Ionicons name="albums-outline" size={iconSize.sm} color={colors.textTertiary} />
+          <TextInput
+            style={styles.sectionDraftInput}
+            value={sectionDraft}
+            onChangeText={setSectionDraft}
+            placeholder="Section (optional), e.g. “For the cake”"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={RECIPE_SECTION_MAX_LENGTH}
+            returnKeyType="done"
+            autoCapitalize="words"
+            accessibilityLabel="Section for new ingredients"
+          />
+          {!!sectionDraft && (
+            <TouchableOpacity
+              onPress={() => setSectionDraft('')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Clear section"
+            >
+              <Ionicons name="close-circle" size={iconSize.sm} color={colors.textTertiary} />
+            </TouchableOpacity>
+          )}
+        </View>
+
         <View style={styles.addRow}>
           <TextInput
             ref={draftInputRef}
@@ -1316,11 +1355,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     marginTop: spacing.xs,
   },
+  // Quieter than addInput below it — this sets where an ingredient files,
+  // not the ingredient itself, so it reads as a modifier on the row beneath
+  // rather than a second thing to fill in.
+  sectionDraftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.xs,
+  },
+  sectionDraftInput: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+    paddingVertical: 6,
+  },
   addRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.md,
+    marginTop: spacing.xs,
   },
   inputHint: {
     color: colors.textTertiary,

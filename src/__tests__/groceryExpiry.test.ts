@@ -106,7 +106,8 @@ describe('useUpTaskDraft', () => {
   it('points back at the item and files itself under the configured category', () => {
     const spinach = item();
     const draft = useUpTaskDraft(spinach, 1, 'Home');
-    expect(draft.groceryItemId).toBe(spinach.id);
+    expect(draft.generatedKind).toBe('groceryUseUp');
+    expect(draft.generatedSourceId).toBe(spinach.id);
     expect(draft.category).toBe('Home');
     expect(draft.title).toBe('Use up Spinach');
   });

@@ -366,6 +366,18 @@ interface SettingsStore {
   // calendar" toggle in the editor has nothing to offer without one, the
   // same way `calendarReadEnabled` follows `calendarIds` in `CalendarSettings`.
   deadlineCalendarId: string | null;
+  // Which calendar the week's planned meals are mirrored onto as all-day
+  // events (#1494). Null means off, and off is the default — same shape as
+  // `deadlineCalendarId` above and for the same reason: a calendar to write
+  // into is exactly what turns the feature on, so a second "meal calendar
+  // enabled" boolean would only ever be able to disagree with it.
+  //
+  // Separate from `deadlineCalendarId` rather than one "write to" calendar
+  // for the whole app, because the two answer to different people: a
+  // deadline is yours, while the point of this one is the household who
+  // shares it. Writing both into one calendar would put your work deadlines
+  // on the family fridge.
+  mealCalendarId: string | null;
   // When the user last dismissed the quiet-projects banner. Read only through
   // isProjectNudgeDismissedToday, which compares it against today rather than
   // testing it for existence — so it expires at the day rollover on its own and
@@ -458,6 +470,7 @@ interface SettingsStore {
   setCalendarIds: (ids: string[]) => void;
   setReminderMeetingNudgeEnabled: (on: boolean) => void;
   setDeadlineCalendarId: (id: string | null) => void;
+  setMealCalendarId: (id: string | null) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
@@ -723,6 +736,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   calendarIds: [],
   reminderMeetingNudgeEnabled: true,
   deadlineCalendarId: null,
+  mealCalendarId: null,
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
@@ -855,6 +869,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // uses, so an existing calendar-read user doesn't lose the nudge silently.
     const reminderMeetingNudgeEnabled = dbGetSetting('reminderMeetingNudgeEnabled') !== 'false';
     const deadlineCalendarId = dbGetSetting('deadlineCalendarId') || null;
+    const mealCalendarId = dbGetSetting('mealCalendarId') || null;
     const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
     // Same TEXT-column parse as every other numeric setting here: an
     // unparseable or missing row (a fresh install, or one that predates this
@@ -902,7 +917,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, reminderMeetingNudgeEnabled, deadlineCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -1286,6 +1301,17 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ deadlineCalendarId: id });
   },
 
+  // Deliberately no backfill, the same call `mealCookTasks` makes: picking a
+  // calendar mirrors the meals planned from here on, and leaves the ones
+  // already in the plan alone. Turning it back off likewise leaves whatever
+  // was already written — there is no sweep over the plan, and a shared
+  // calendar silently losing a fortnight of dinners because someone changed
+  // a setting is worse than a few stale ones they can delete.
+  setMealCalendarId(id: string | null) {
+    dbSetSetting('mealCalendarId', id ?? '');
+    set({ mealCalendarId: id });
+  },
+
   setPatchNoteQaStatus(id: string, status: PatchNoteQaStatus | null) {
     set(state => {
       const next = { ...state.patchNotesQaStatus };
@@ -1360,6 +1386,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // Per-task deadlineOnCalendar flags aren't settings and aren't touched —
     // they just have nothing to write to until a calendar is picked again.
     dbSetSetting('deadlineCalendarId', '');
+    dbSetSetting('mealCalendarId', '');
     set({
       ...DEFAULT_SETTINGS,
       remindersImportListId: null,
@@ -1367,6 +1394,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       groceryImportListId: null,
       groceryImportConfirmedListId: null,
       deadlineCalendarId: null,
+      mealCalendarId: null,
     });
   },
 }));

@@ -40,6 +40,7 @@ import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
 import { dripCandidate, projectPullUpdates } from '../utils/projectPull';
 import { dueMealPlanNudge, mealPlanNudgeSuppressed, hasLiveMealPlanNudgeTask, MEAL_PLAN_NUDGE_LINK_URL } from '../utils/mealPlanNudge';
+import { generatedBy, generatedSourceOf } from '../utils/generatedTasks';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
@@ -61,7 +62,7 @@ import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import {
-  deleteDeadlineEvent,
+  deleteCalendarEvent,
   presentTimeBlockCreate,
   presentTimeBlockEdit,
   readTimeBlockEvent,
@@ -229,9 +230,8 @@ function newTaskFromDraft(
     timedMinutes: draft.timedMinutes ?? null,
     timerElapsedSeconds: draft.timerElapsedSeconds ?? 0,
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
-    mealEntryId: draft.mealEntryId ?? null,
-    groceryItemId: draft.groceryItemId ?? null,
-    leftoverId: draft.leftoverId ?? null,
+    generatedKind: draft.generatedKind ?? null,
+    generatedSourceId: draft.generatedSourceId ?? null,
     deadlineOnCalendar: draft.deadlineOnCalendar ?? false,
     // Never read off the draft, same reasoning as deliverableValue just
     // below: a duplicate or template application starting with someone
@@ -290,6 +290,48 @@ function reconcileDeadlineEvent(task: Task): void {
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
     })
     .catch(() => {});
+}
+
+/**
+ * Write (or take back) the "this source doesn't need a task" answer that
+ * deleting a generated task records on the row it came from.
+ *
+ * One dispatch over `Task.generatedKind` in place of the three near-identical
+ * blocks `deleteTask` used to carry (#1524). The switch is not an abstraction
+ * leak waiting to be tidied — each generator's flag lives on its own source
+ * row, in its own store, under its own name, and that placement is the thing
+ * the issue explicitly decided to keep: a generic suppression record keyed by
+ * `(kind, sourceId)` would grow without bound, since nothing prunes it. On the
+ * source row it's bounded for free.
+ *
+ * Two asymmetries preserved from the code this replaced:
+ *
+ * - **The meal path passes no `reconcile: false`**, because `setCookTask` has
+ *   no such option — it always reconciles, which on the undo path finds the
+ *   just-restored task live and leaves it alone.
+ * - **`mealPlanNudge` writes nothing**, having no source row to write on. Its
+ *   equivalent of an opt-out is the Settings toggle, and its equivalent of
+ *   "don't hand it back" is `mealPlanNudgeLastFiredWeekKey`.
+ */
+function writeGeneratedOptOut(task: Task, value: false | null): void {
+  const sourceId = task.generatedSourceId;
+  if (!sourceId) return;
+  const reconcileOff = { reconcile: false } as const;
+  switch (task.generatedKind) {
+    case 'mealCook':
+      useMealPlanStore.getState().setCookTask(sourceId, value);
+      return;
+    case 'groceryUseUp':
+      useGroceryStore.getState()
+        .setUseUpTask(sourceId, value, value === null ? reconcileOff : undefined);
+      return;
+    case 'leftoverUseUp':
+      useLeftoverStore.getState()
+        .setUseUpTask(sourceId, value, value === null ? reconcileOff : undefined);
+      return;
+    default:
+      return;
+  }
 }
 
 /** Points a task at its time block, if the task is still around to write to. */
@@ -1132,7 +1174,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         dbDeleteSubtasks(t.id);
         dbDeleteTask(t.id);
         cancelTaskReminder(t.id);
-        if (t.calendarEventId) deleteDeadlineEvent(t.calendarEventId);
+        if (t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
       });
       unfiled.forEach(dbUpdateTask);
 
@@ -1226,7 +1268,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cancelTaskReminder(t.id);
       // The row is gone for good, not archived — nothing will ever revisit
       // it to notice a dangling event, so clean it up now, same as deleteTask.
-      if (t.calendarEventId) deleteDeadlineEvent(t.calendarEventId);
+      if (t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
     });
     added.forEach(t => {
       dbInsertTask(t);
@@ -1657,35 +1699,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // here. Not restored on undo below — deleting a device event isn't
     // reversible, so an undone delete gets a fresh event on its next
     // reconcile rather than a promise this can't keep.
-    if (task.calendarEventId) deleteDeadlineEvent(task.calendarEventId);
+    if (task.calendarEventId) deleteCalendarEvent(task.calendarEventId);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id && t.parentId !== id) }));
 
-    // Deleting a cook task is the user saying this meal doesn't need one, and
-    // that has to be written down: the meal is still on the calendar, and the
-    // next edit to it would otherwise reconcile the task straight back. The
-    // one deliberate exception to "the meal plan is the master" — a delete
-    // here is an instruction to it, not drift from it. See
-    // MealPlanEntry.cookTask.
+    // Deleting a generated task is the user saying this source doesn't need
+    // one, and that has to be written down on the source: the meal is still on
+    // the calendar, the item is still in the catalog, the container is still in
+    // the fridge, and the next reconcile would otherwise hand the task straight
+    // back — weekly, for a staple. The one deliberate exception to "the source
+    // is the master": a delete here is an instruction to it, not drift from it.
     //
     // Only this path, not bulkDeleteTasks: the sweeps and purges that route
-    // through the bulk form aren't the user saying anything, and a cook task
-    // they reach has been completed for months anyway.
-    const wasCookTaskFor = task.mealEntryId;
-    if (wasCookTaskFor) useMealPlanStore.getState().setCookTask(wasCookTaskFor, false);
-
-    // Same instruction, from the other feature that projects tasks: deleting a
-    // "Use up X" is the user saying this item doesn't need one, and it has to
-    // be written down or the next trip that buys it hands the task straight
-    // back — weekly for a staple. See GroceryItem.useUpTask.
-    const wasUseUpTaskFor = task.groceryItemId;
-    if (wasUseUpTaskFor) useGroceryStore.getState().setUseUpTask(wasUseUpTaskFor, false);
-
-    // Same instruction again, from the leftover feature: deleting a "Use up X"
-    // spawned from the fridge is the user saying this container doesn't need
-    // one, or the next foreground reconcile hands it straight back while it's
-    // still "soon". See Leftover.useUpTask.
-    const wasLeftoverTaskFor = task.leftoverId;
-    if (wasLeftoverTaskFor) useLeftoverStore.getState().setUseUpTask(wasLeftoverTaskFor, false);
+    // through the bulk form aren't the user saying anything, and a generated
+    // task they reach has been completed for months anyway.
+    writeGeneratedOptOut(task, false);
 
     get().setLastAction({
       label: 'Task deleted',
@@ -1705,13 +1732,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // Back to "the setting decides" rather than to whatever it was: the
         // opt-out above is the only thing that could have written it, so this
         // is its exact inverse.
-        if (wasCookTaskFor) useMealPlanStore.getState().setCookTask(wasCookTaskFor, null);
-        if (wasUseUpTaskFor) {
-          useGroceryStore.getState().setUseUpTask(wasUseUpTaskFor, null, { reconcile: false });
-        }
-        if (wasLeftoverTaskFor) {
-          useLeftoverStore.getState().setUseUpTask(wasLeftoverTaskFor, null, { reconcile: false });
-        }
+        writeGeneratedOptOut(task, null);
       },
     });
   },
@@ -2017,22 +2038,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           seriesId: null,
           seriesMonthDays: [],
           seriesRepeatMonths: 1,
-          // Carries via ...effective otherwise, and must not: the meal it
-          // points at has been cooked, so a spawned row would be a second task
-          // claiming the same entry — enough to make reconcileCookTask decline
-          // to create the real one later, and enough for a stray tick to
-          // un-cook a night that already happened. A cook task is a one-off by
-          // construction (nothing here ever gives it a recurrence rule); this
-          // is the defensive half of that, for a row the user made recurring
-          // by hand.
-          mealEntryId: null,
-      groceryItemId: null,
-          // Same reasoning as groceryItemId just above: the leftover it points
-          // at is still the same container, and a spawned recurring occurrence
-          // claiming it too would make reconcileLeftoverTask decline to create
-          // the real one, or let a stray tick reopen a leftover already closed
-          // out.
-          leftoverId: null,
+          // Carries via ...effective otherwise, and must not: the source this
+          // points at is still the same meal, the same catalog row, the same
+          // container, so a spawned occurrence would be a second task claiming
+          // it — enough to make the reconcile decline to create the real one
+          // later, and enough for a stray tick to un-cook a night that already
+          // happened or reopen a leftover already closed out. A generated task
+          // is a one-off by construction (nothing gives one a recurrence rule);
+          // this is the defensive half of that, for a row the user made
+          // recurring by hand.
+          generatedKind: null,
+          generatedSourceId: null,
           // Never carried forward: the old occurrence's device event still
           // shows the old deadline, and this is a fresh row with a fresh
           // deadline (nextDeadline above) that needs its own event, created
@@ -2188,8 +2204,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Placed after the set() so the task is already committed as completed,
     // which is what makes the call back into this store from setCooked a no-op.
     // Never on a miss — marking a task missed says the cooking didn't happen.
-    const undoMealCooked = !missed && task.mealEntryId
-      ? useMealPlanStore.getState().setCookedFromTask(task.mealEntryId, true)
+    const cookedEntryId = generatedSourceOf(task, 'mealCook');
+    const undoMealCooked = !missed && cookedEntryId
+      ? useMealPlanStore.getState().setCookedFromTask(cookedEntryId, true)
       : null;
 
     if (completionHoldTimer) clearTimeout(completionHoldTimer);
@@ -2308,7 +2325,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // MealPlanScreen's setCooked for why undo and un-tick differ here). Safe to
     // call unconditionally: the entry is already un-cooked when this runs as
     // part of a completion's undo, so setCooked returns early.
-    if (task.mealEntryId) useMealPlanStore.getState().setCooked(task.mealEntryId, false);
+    const uncookedEntryId = generatedSourceOf(task, 'mealCook');
+    if (uncookedEntryId) useMealPlanStore.getState().setCooked(uncookedEntryId, false);
 
     // Un-completing a task (e.g. from the Logbook) is itself undoable via
     // shake-to-undo — this restores the exact prior completed state rather
@@ -2692,7 +2710,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().addTask({
       title: due.title,
       dueDate: due.dueDate.toISOString(),
+      // The link still opens the Meal Plan screen from the row's link button;
+      // it just no longer doubles as the marker saying who wrote the task —
+      // generatedKind does that now, for this generator as for the other three.
       linkUrl: MEAL_PLAN_NUDGE_LINK_URL,
+      ...generatedBy('mealPlanNudge'),
     });
     // Deliberately no setLastAction, same reasoning as dripStalledProjects:
     // an unattended background write shouldn't occupy the shake-to-undo slot
@@ -3040,9 +3062,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       blockedById: null,
       deliverableKind: null,
       deliverableValue: null,
-      mealEntryId: null,
-      groceryItemId: null,
-      leftoverId: null,
+      generatedKind: null,
+      generatedSourceId: null,
       deadlineOnCalendar: false,
       calendarEventId: null,
       timeBlockEventId: null,
@@ -3202,9 +3223,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       blockedById: null,
       deliverableKind: null,
       deliverableValue: null,
-      mealEntryId: null,
-      groceryItemId: null,
-      leftoverId: null,
+      generatedKind: null,
+      generatedSourceId: null,
       deadlineOnCalendar: false,
       calendarEventId: null,
       timeBlockEventId: null,
