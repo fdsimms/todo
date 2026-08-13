@@ -101,6 +101,8 @@ const BASE: Task = {
   pendingImport: null,
   mealEntryId: null,
   groceryItemId: null,
+  deadlineOnCalendar: false,
+  calendarEventId: null,
 };
 
 function makeTask(overrides: Partial<Task>): Task {

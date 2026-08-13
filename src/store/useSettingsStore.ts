@@ -347,6 +347,14 @@ interface SettingsStore {
   // escape hatch for anyone who'd rather see the reminder fire where it was
   // set and dismiss it themselves.
   reminderMeetingNudgeEnabled: boolean;
+  // Which calendar a task's deadline is mirrored onto as an all-day event
+  // (#1493), separate from `calendarIds` — those are what's *read*, this is
+  // the one place the app *writes*. Null means the write is off: there is no
+  // separate "deadline calendar enabled" boolean, because a calendar to
+  // write into is exactly what turns the feature on — the per-task "Add to
+  // calendar" toggle in the editor has nothing to offer without one, the
+  // same way `calendarReadEnabled` follows `calendarIds` in `CalendarSettings`.
+  deadlineCalendarId: string | null;
   // When the user last dismissed the quiet-projects banner. Read only through
   // isProjectNudgeDismissedToday, which compares it against today rather than
   // testing it for existence — so it expires at the day rollover on its own and
@@ -438,6 +446,7 @@ interface SettingsStore {
   setCalendarReadEnabled: (on: boolean) => void;
   setCalendarIds: (ids: string[]) => void;
   setReminderMeetingNudgeEnabled: (on: boolean) => void;
+  setDeadlineCalendarId: (id: string | null) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
@@ -696,6 +705,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   calendarReadEnabled: false,
   calendarIds: [],
   reminderMeetingNudgeEnabled: true,
+  deadlineCalendarId: null,
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
@@ -821,6 +831,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // on — same "absent means the default behavior" rule remindersImportDelete
     // uses, so an existing calendar-read user doesn't lose the nudge silently.
     const reminderMeetingNudgeEnabled = dbGetSetting('reminderMeetingNudgeEnabled') !== 'false';
+    const deadlineCalendarId = dbGetSetting('deadlineCalendarId') || null;
     const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
     // Same TEXT-column parse as every other numeric setting here: an
     // unparseable or missing row (a fresh install, or one that predates this
@@ -868,7 +879,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, reminderMeetingNudgeEnabled, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, reminderMeetingNudgeEnabled, deadlineCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -1235,6 +1246,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ reminderMeetingNudgeEnabled: on });
   },
 
+  setDeadlineCalendarId(id: string | null) {
+    dbSetSetting('deadlineCalendarId', id ?? '');
+    set({ deadlineCalendarId: id });
+  },
+
   setPatchNoteQaStatus(id: string, status: PatchNoteQaStatus | null) {
     set(state => {
       const next = { ...state.patchNotesQaStatus };
@@ -1303,12 +1319,18 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     dbSetSetting('remindersImportConfirmedListId', '');
     dbSetSetting('groceryImportListId', '');
     dbSetSetting('groceryImportConfirmedListId', '');
+    // Same reasoning as the two import list ids: reset stops the write
+    // rather than leaving it pointed at a calendar reset didn't ask about.
+    // Per-task deadlineOnCalendar flags aren't settings and aren't touched —
+    // they just have nothing to write to until a calendar is picked again.
+    dbSetSetting('deadlineCalendarId', '');
     set({
       ...DEFAULT_SETTINGS,
       remindersImportListId: null,
       remindersImportConfirmedListId: null,
       groceryImportListId: null,
       groceryImportConfirmedListId: null,
+      deadlineCalendarId: null,
     });
   },
 }));

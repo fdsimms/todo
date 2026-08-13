@@ -11,6 +11,7 @@ import { DayTimeSettings } from './settings/DayTimeSettings';
 import { NotificationSettings } from './settings/NotificationSettings';
 import { RemindersCaptureSettings } from './settings/RemindersCaptureSettings';
 import { CalendarSettings } from './settings/CalendarSettings';
+import { DeadlineCalendarSettings } from './settings/DeadlineCalendarSettings';
 import { TasksProjectsSettings } from './settings/TasksProjectsSettings';
 import { PrivacyAiSettings } from './settings/PrivacyAiSettings';
 import { DataResetSettings } from './settings/DataResetSettings';
@@ -54,6 +55,7 @@ export function SettingsGroupScreen() {
           {groupId === 'notifications' && <NotificationSettings />}
           {groupId === 'capture' && <RemindersCaptureSettings />}
           {groupId === 'capture' && <CalendarSettings />}
+          {groupId === 'capture' && <DeadlineCalendarSettings />}
           {groupId === 'tasksProjects' && <TasksProjectsSettings />}
           {groupId === 'privacyAi' && <PrivacyAiSettings scrollRef={scrollRef} />}
           {groupId === 'dataReset' && <DataResetSettings />}
