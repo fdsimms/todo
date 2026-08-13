@@ -109,6 +109,7 @@ describe('eventContextRows', () => {
   it('prefixes the id by kind so it cannot collide with a task id', () => {
     const [row] = eventContextRows([ev(at(16), at(17), { id: 'abc' })], eventOpts);
     expect(row.id).toBe('event-abc');
+    expect(row.sourceId).toBe('abc');
   });
 });
 
@@ -135,6 +136,16 @@ describe('mealContextRows', () => {
       mealOpts,
     );
     expect(rows.map(r => [r.title, r.caption])).toEqual([['Oats', 'Breakfast'], ['Chilli', 'Dinner']]);
+  });
+
+  // Today ticks a meal off by this id — a row that carried only the prefixed
+  // list key would have the screen peeling the prefix back off to find the
+  // entry, which is exactly the re-derivation sourceId exists to stop.
+  it('carries the entry id alongside the prefixed list key', () => {
+    const dinner = entry('dinner');
+    const [row] = mealContextRows([dinner], NO_RECIPES, mealOpts);
+    expect(row.id).toBe(`meal-${dinner.id}`);
+    expect(row.sourceId).toBe(dinner.id);
   });
 });
 

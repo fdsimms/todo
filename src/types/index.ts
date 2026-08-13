@@ -1843,13 +1843,19 @@ export const MEAL_PLAN_RETENTION_DAYS = 180;
  * A row on the Today list that isn't a task and never becomes one (#1571).
  *
  * A calendar event and a planned meal both belong on the day and neither can be
- * ticked, dragged, selected or edited here — an event is EventKit's row and the
- * app only reads it, and a meal is `MealPlanEntry`'s. They used to sit in two
- * fixed strips above the list; folding them in needs a row treatment that says
- * "not yours to act on" without a second interaction model, which is what this
- * is: no card, no checkbox, and so no `SelectionDot` either. That absence is
- * the whole signal — every *eligible* row grows a ring while a bulk edit is on,
- * so a row without one is already how this list says "not this one".
+ * dragged, selected or edited here — an event is EventKit's row and the app only
+ * reads it, and a meal is `MealPlanEntry`'s. They used to sit in two fixed
+ * strips above the list; folding them in needs a row treatment that doesn't
+ * bring a second interaction model with it, which is what this is: no drag
+ * handle and no `SelectionDot`. That last absence is the signal for bulk edits —
+ * every *eligible* row grows a ring while one is on, so a row without one is
+ * already how this list says "not this one".
+ *
+ * **A meal can be ticked off from here; an event can't.** That asymmetry is the
+ * whole of what a context row can *do*, and it follows from who owns the row: a
+ * meal's `cookedAt` is this app's to write, and a leftover or a takeaway planned
+ * for tonight is a real thing to finish that has no "Cook X" task to finish it
+ * with. See `DayContextRow`, which draws the tickable one's glyph as a button.
  *
  * **A view model, computed per render, never stored.** Nothing here is written
  * to SQLite: `src/utils/dayContextRows.ts` builds these from the calendar store
@@ -1865,6 +1871,14 @@ export interface ContextRow {
    * key is how a row ends up rendering someone else's content.
    */
   id: string;
+  /**
+   * The row this was built from — a `MealPlanEntry.id` for a meal, a
+   * `BusyEvent.id` for an event. Its own field rather than `id` with the prefix
+   * peeled off at the call site: `id` is a list key and owes nothing to whatever
+   * made it, and a screen re-deriving a store key by string surgery is how the
+   * two quietly stop matching.
+   */
+  sourceId: string;
   kind: 'event' | 'meal';
   title: string;
   /**

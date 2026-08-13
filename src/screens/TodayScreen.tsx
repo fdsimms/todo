@@ -55,6 +55,7 @@ import {
 import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { isLiveLeftover } from '../utils/leftovers';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -1187,6 +1188,51 @@ export function TodayScreen() {
   const openMealPlan = useCallback(() => {
     navigation.navigate('MealPlan' as never);
   }, [navigation]);
+  const setMealCookedPaired = useMealPlanStore(s => s.setCookedPaired);
+  const setMealLastAction = useMealPlanStore(s => s.setLastAction);
+  const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
+  const finishLeftover = useLeftoverStore(s => s.finishLeftover);
+  /**
+   * Ticking a meal off from its row here (#1571).
+   *
+   * One way only, and that isn't a missing half: `mealContextRows` drops a
+   * cooked entry, so the row leaves the moment it's ticked and there is no
+   * un-tick left to offer. The way back is the undo registered below — the same
+   * one the Meal plan screen's own row badge registers, which is why the label
+   * matches it word for word.
+   *
+   * `setCookedPaired` because the recipe's counters have to move with the
+   * entry, exactly as they do when the "Cook X" task is ticked off two rows up
+   * this same list. Null back from it means nothing happened (a stale row, an
+   * entry already cooked), so nothing is animated and no undo is stored.
+   *
+   * **The leftover close-out is asked here too.** A leftover never gets a cook
+   * task by default (see `wantsCookTask`), so a leftover-backed meal is exactly
+   * what these rows are made of — skipping the ask would mean the one surface
+   * most likely to tick one off is the one that never closes the container. The
+   * restock offer the Meal plan screen also makes is deliberately *not* copied:
+   * it's a banner that screen owns, it needs a recipe, and Today already
+   * doesn't make it when a cook task is ticked off.
+   */
+  const handleMarkMealCooked = useCallback((entryId: string, title: string) => {
+    const undo = setMealCookedPaired(entryId, true);
+    if (!undo) return;
+    animateLayout();
+    setMealLastAction({ label: `Cooked "${title}"`, undo });
+
+    const entry = mealEntries.find(e => e.id === entryId);
+    if (!entry?.leftoverId) return;
+    const leftover = leftovers.find(l => l.id === entry.leftoverId);
+    if (!leftover || !isLiveLeftover(leftover)) return;
+    Alert.alert(
+      'Finished the leftovers?',
+      `Was that the last of the ${leftover.title}?`,
+      [
+        { text: 'Still some left', style: 'cancel' },
+        { text: 'Finished it', onPress: () => finishLeftover(leftover.id, 'eaten') },
+      ]
+    );
+  }, [setMealCookedPaired, setMealLastAction, mealEntries, leftovers, finishLeftover]);
   // Resolved rather than read straight through: with the groceries/meals area
   // off, Today shows no meals whatever this is set to, but the setting itself
   // is left alone so turning the area back on restores the shape the user
@@ -1860,6 +1906,11 @@ export function TodayScreen() {
         <DayContextRow
           row={item.row}
           onPress={item.row.kind === 'event' ? () => setEventsSheetVisible(true) : openMealPlan}
+          onMarkCooked={
+            item.row.kind === 'meal'
+              ? () => handleMarkMealCooked(item.row.sourceId, item.row.title)
+              : undefined
+          }
         />
       );
     }

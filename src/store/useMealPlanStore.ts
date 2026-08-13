@@ -123,13 +123,13 @@ interface MealPlanStore {
    * **It lives in the store rather than on the meal plan screen**, which is the
    * one structural difference from the restock offer next to it. Cooking is the
    * only moment this app learns something was *consumed*, and a meal can be
-   * ticked off from the "Cook X" task on Today as readily as from the plan
-   * (`setCookedFromTask`); a signal that important shouldn't depend on which
-   * screen the tap happened to land on. The restock offer stays screen-local
-   * because buying is a meal-plan question with two other entry points already.
+   * ticked off from Today as readily as from the plan (`setCookedPaired`); a
+   * signal that important shouldn't depend on which screen the tap happened to
+   * land on. The restock offer stays screen-local because buying is a meal-plan
+   * question with two other entry points already.
    *
    * Set only where a *person* said they cooked one meal — `setCooked`, and so
-   * `setCookedFromTask` through it. Deliberately **not** `bulkSetCooked`:
+   * `setCookedPaired` through it. Deliberately **not** `bulkSetCooked`:
    * marking last week's five dinners cooked on a Sunday is bookkeeping, and
    * asking what each of them used up would be asking someone to recall five
    * kitchens. Un-cooking retracts it, since the tap it was about is undone.
@@ -226,27 +226,29 @@ interface MealPlanStore {
   setCookTask: (id: string, value: boolean | null) => void;
 
   /**
-   * The reverse leg of the cook-task link: the meal plan's half of "the user
-   * ticked the Cook task off on Today" (#1402).
+   * "Cooked" as a single user action: stamps `cookedAt` **and** bumps the
+   * recipe's counters, returning an undo that reverses both — the same pairing,
+   * and the same asymmetry about counters, that MealPlanScreen's own `setCooked`
+   * composes by hand (see its doc comment: undo restores `lastCookedAt`, a
+   * plain un-tick never does). It lives here rather than in a screen because the
+   * pairing is a fact about meals, and it *returns* the undo rather than
+   * registering one because the caller knows what the user actually did and owns
+   * the label — see `setLastAction`.
    *
-   * Stamps `cookedAt` and bumps the recipe's counters together, returning an
-   * undo that reverses both — the same pairing, and the same asymmetry about
-   * counters, that MealPlanScreen's own `setCooked` composes by hand (see its
-   * doc comment: undo restores `lastCookedAt`, a plain un-tick never does).
-   * It lives here rather than in useTaskStore because the pairing is a fact
-   * about meals, and returns the undo rather than registering one because the
-   * task's completion is the action the user actually took — useTaskStore owns
-   * that undo and folds this into it.
+   * Two callers, neither of them the meal plan: `useTaskStore.completeTask`,
+   * for the "Cook X" task ticked off on Today (#1402), and Today's own meal row
+   * for a meal that never got one (a leftover, a takeaway, a dinner typed by
+   * hand — see `mealContextRows`). It was `setCookedFromTask` while the task was
+   * the only way in; the pairing was never about tasks.
    *
    * Resolves the entry through SQLite when it isn't in the loaded window,
-   * which is the normal case: ticking a cook task off on Today says nothing
-   * about which week Meal plan happens to have open, and on a cold start it
-   * has none.
+   * which is the normal case: ticking a meal off on Today says nothing about
+   * which week Meal plan happens to have open, and on a cold start it has none.
    *
    * Returns null when there was nothing to do — no such entry, or it already
    * says what's being asked — so the caller stores no undo for a no-op.
    */
-  setCookedFromTask: (id: string, cooked: boolean) => (() => void) | null;
+  setCookedPaired: (id: string, cooked: boolean) => (() => void) | null;
 
   /**
    * The bulk-selection actions (#1110) — mirrors of planMeal/moveEntry/
@@ -596,7 +598,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     reconcileCookTask(next);
   },
 
-  setCookedFromTask(id, cooked) {
+  setCookedPaired(id, cooked) {
     const entry = resolveEntry(get, id);
     if (!entry || !!entry.cookedAt === cooked) return null;
 
@@ -851,7 +853,7 @@ function resolveEntry(get: () => MealPlanStore, id: string): MealPlanEntry | nul
  * offer — the same "hidden rather than hedged" call the restock banner makes,
  * and what makes the two hand over to each other with no plumbing between them.
  *
- * Reads two other stores at write time, like `setCookedFromTask` reaching into
+ * Reads two other stores at write time, like `setCookedPaired` reaching into
  * `useRecipeStore` just below. A free-text meal has no recipe and so no
  * ingredients, which is not an error — just a meal with nothing to ask about.
  */

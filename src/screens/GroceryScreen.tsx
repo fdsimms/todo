@@ -111,7 +111,6 @@ export function GroceryScreen() {
   const setAisleMany = useGroceryStore(s => s.setAisleMany);
   const addAisle = useGroceryStore(s => s.addAisle);
   const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
-  const deleteItems = useGroceryStore(s => s.deleteItems);
   const finishShopping = useGroceryStore(s => s.finishShopping);
   const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
   const clearList = useGroceryStore(s => s.clearList);
@@ -436,28 +435,16 @@ export function GroceryScreen() {
     exitSelection();
   }, [selectedIds, removeFromListMany, exitSelection]);
 
-  const handleBulkDelete = useCallback(() => {
-    const ids = Array.from(selectedIds);
-    const count = ids.length;
-    const plural = count === 1 ? 'item' : 'items';
-    haptics.warning();
-    Alert.alert(
-      `Delete ${count} ${plural}?`,
-      `This removes ${count === 1 ? 'it' : 'them'} from your catalog too, along with ${count === 1 ? 'its' : 'their'} purchase history. This can't be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            deleteItems(ids);
-            exitSelection();
-          },
-        },
-      ]
-    );
-  }, [selectedIds, deleteItems, exitSelection]);
+  // There is deliberately no bulk Delete here. It sat one chip along from
+  // Remove, did something Remove doesn't — took the rows out of the catalog
+  // with their purchase history, unrecoverably — and the two are a swipe apart
+  // in a bar you enter by swiping a row. A confirm isn't enough of a guard for
+  // that, because the confirm is the same "are you sure" every destructive
+  // action shows and the difference between the two chips is a sentence inside
+  // it. Deleting from the catalog is a catalog job and has two homes on the
+  // catalog surfaces: "Forget" on a single item's sheet, and "Forget" over a
+  // selection in Buy again. This screen is the shopping list, where the answer
+  // to "I don't want this here" is Remove.
 
   // The confirm is a sheet rather than an Alert because it now carries a store
   // picker, and an Alert can't hold one. It's still a confirm: nothing is
@@ -848,7 +835,6 @@ export function GroceryScreen() {
               onPress: handleBulkCheck,
             },
             { key: 'remove', icon: 'remove-circle', label: 'Remove', onPress: handleBulkRemove },
-            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
           ]}
           onSelectAll={() => selectAll(selectableItemIds)}
           onDeselectAll={deselectAll}

@@ -1106,7 +1106,7 @@ describe('cookedOffer', () => {
     const dinner = entry('2026-08-05', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
     loadWeek([dinner]);
 
-    useMealPlanStore.getState().setCookedFromTask(dinner.id, true);
+    useMealPlanStore.getState().setCookedPaired(dinner.id, true);
 
     expect(useMealPlanStore.getState().cookedOffer?.recipeName).toBe('Chili');
   });
@@ -1361,23 +1361,23 @@ describe('cook tasks', () => {
     expect(cookTaskFor(meal.id)).toBeUndefined();
   });
 
-  it('setCookedFromTask resolves an entry outside the loaded window', () => {
+  it('setCookedPaired resolves an entry outside the loaded window', () => {
     const offscreen = entry('2026-09-20', 'dinner', { recipeId: 'r1' });
     (dbGetMealPlanEntry as jest.Mock).mockReturnValue(offscreen);
     loadWeek();
 
-    const undo = useMealPlanStore.getState().setCookedFromTask(offscreen.id, true);
+    const undo = useMealPlanStore.getState().setCookedPaired(offscreen.id, true);
     expect(undo).not.toBeNull();
     expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
       expect.objectContaining({ id: offscreen.id, cookedAt: expect.any(String) })
     );
   });
 
-  it('setCookedFromTask returns null when there is nothing to do', () => {
+  it('setCookedPaired returns null when there is nothing to do', () => {
     loadWeek([entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' })]);
     const cooked = getEntries()[0];
-    expect(useMealPlanStore.getState().setCookedFromTask(cooked.id, true)).toBeNull();
-    expect(useMealPlanStore.getState().setCookedFromTask('nope', true)).toBeNull();
+    expect(useMealPlanStore.getState().setCookedPaired(cooked.id, true)).toBeNull();
+    expect(useMealPlanStore.getState().setCookedPaired('nope', true)).toBeNull();
   });
 
   it('copying a week re-spawns the cook tasks', () => {
