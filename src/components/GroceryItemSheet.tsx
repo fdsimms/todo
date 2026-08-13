@@ -594,6 +594,7 @@ export function GroceryItemSheet({
                 label="Not an either/or"
                 icon="unlink-outline"
                 variant="neutral"
+                surface="page"
                 onPress={() => {
                   haptics.tap();
                   clearChoice(item.id);

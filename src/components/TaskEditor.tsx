@@ -1632,6 +1632,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             icon={showPhoneNudge ? 'call-outline' : 'mail-outline'}
             label={showPhoneNudge ? 'Add a phone number for this?' : 'Add an email address for this?'}
             variant="neutral"
+            surface="page"
             onPress={() => {
               if (showPhoneNudge) {
                 setPhoneText(phoneNumber ?? '');
