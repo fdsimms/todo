@@ -33,14 +33,6 @@ export type Colors = {
   onWarning: string;
   backdrop: string;
   blurFallback: string;
-  /** Translucent fill for a "glass" chip/button/capsule resting directly on a screen's own background. */
-  glassFill: string;
-  /** Hairline border for a glass surface. */
-  glassBorder: string;
-  /** Brighter border for the top edge of a glass surface, standing in for a specular highlight. */
-  glassBorderTop: string;
-  /** Translucent fill for a floating card/sheet that sits over an already-blurred backdrop. */
-  glassCardFill: string;
   timeMorning: string;
   timeAfternoon: string;
   timeEvening: string;
@@ -72,10 +64,6 @@ export const darkColors: Colors = {
   onWarning: '#000000',
   backdrop: 'rgba(0, 0, 0, 0.45)',
   blurFallback: 'rgba(28, 28, 30, 0.85)',
-  glassFill: 'rgba(255, 255, 255, 0.08)',
-  glassBorder: 'rgba(255, 255, 255, 0.14)',
-  glassBorderTop: 'rgba(255, 255, 255, 0.26)',
-  glassCardFill: 'rgba(28, 28, 30, 0.68)',
   timeMorning: '#FF9F0A',
   timeAfternoon: '#0A84FF',
   timeEvening: '#BF5AF2',
@@ -110,10 +98,6 @@ export const darkPurpleColors: Colors = {
   onWarning: '#000000',
   backdrop: 'rgba(10, 6, 20, 0.5)',
   blurFallback: 'rgba(31, 26, 44, 0.85)',
-  glassFill: 'rgba(255, 255, 255, 0.08)',
-  glassBorder: 'rgba(255, 255, 255, 0.14)',
-  glassBorderTop: 'rgba(255, 255, 255, 0.26)',
-  glassCardFill: 'rgba(31, 26, 44, 0.68)',
   timeMorning: '#FF9F0A',
   timeAfternoon: '#0A84FF',
   timeEvening: '#BF5AF2',
@@ -146,10 +130,6 @@ export const lightColors: Colors = {
   onWarning: '#000000',
   backdrop: 'rgba(0, 0, 0, 0.35)',
   blurFallback: 'rgba(255, 255, 255, 0.85)',
-  glassFill: 'rgba(255, 255, 255, 0.5)',
-  glassBorder: 'rgba(0, 0, 0, 0.06)',
-  glassBorderTop: 'rgba(255, 255, 255, 0.9)',
-  glassCardFill: 'rgba(255, 255, 255, 0.62)',
   timeMorning: '#FF9500',
   timeAfternoon: '#007AFF',
   timeEvening: '#AF52DE',

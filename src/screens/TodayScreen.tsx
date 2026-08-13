@@ -121,7 +121,7 @@ import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { type FabDragHandlers } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, iconSize, border, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { emitNowTick } from '../utils/nowTick';
@@ -2289,7 +2289,6 @@ export function TodayScreen() {
           style={styles.viewModePillsScroll}
           contentContainerStyle={styles.viewModePills}
         >
-          <View style={styles.viewModePillsWrap}>
           {VIEW_MODES.map(mode => {
             const active = viewMode === mode;
             const badge = mode === 'inbox' ? inboxTasks.length : 0;
@@ -2325,7 +2324,6 @@ export function TodayScreen() {
               </TouchableOpacity>
             );
           })}
-          </View>
         </ScrollView>
 
         {viewMode === 'today' && focusedCategory && (
@@ -3033,26 +3031,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // content — this pins it back to its natural height.
   viewModePillsScroll: { flexGrow: 0, flexShrink: 0 },
   viewModePills: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4,
-  },
-  viewModePillsWrap: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.xs / 2,
-    padding: spacing.xs / 2,
-    borderRadius: radius.full,
-    backgroundColor: colors.glassFill,
-    borderWidth: border.thin,
-    borderColor: colors.glassBorder,
-    borderTopColor: colors.glassBorderTop,
   },
   viewModePill: {
     paddingHorizontal: spacing.md, paddingVertical: 6,
-    borderRadius: radius.full, backgroundColor: 'transparent',
+    borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
-  viewModePillActive: {
-    backgroundColor: colors.accent,
-    borderWidth: border.thin,
-    borderColor: colors.glassBorderTop,
-  },
+  viewModePillActive: { backgroundColor: colors.accent },
   viewModePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   viewModePillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   viewModePillBadge: {
