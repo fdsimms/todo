@@ -13,6 +13,8 @@ interface Props {
   value?: string;
   /** One-liner explaining what the row does, shown while it has no value. */
   hint?: string;
+  /** One-liner shown below a set value, for a value that needs a caveat attached. */
+  caption?: string;
   /**
    * Set for rows whose controls unfold in place rather than opening a picker:
    * swaps the disclosure chevron for an up/down one.
@@ -27,7 +29,7 @@ interface Props {
  * Lives here rather than in each editor so the task, project and template
  * forms can't drift apart in padding, chevron or clear-button behaviour.
  */
-export function EditorRow({ icon, label, value, hint, expanded, onPress, onClear }: Props) {
+export function EditorRow({ icon, label, value, hint, caption, expanded, onPress, onClear }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -41,13 +43,14 @@ export function EditorRow({ icon, label, value, hint, expanded, onPress, onClear
       onPress={() => { haptics.tap(); onPress(); }}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
-      accessibilityLabel={`${label}${value ? `: ${value}` : ''}`}
+      accessibilityLabel={`${label}${value ? `: ${value}` : ''}${caption && value ? `. ${caption}` : ''}`}
       accessibilityState={expanded === undefined ? undefined : { expanded }}
     >
       <Ionicons name={icon as never} size={18} color={value ? colors.accent : colors.textSecondary} />
       <View style={styles.content}>
         <Text style={styles.label}>{label}</Text>
         {!!hint && !value && <Text style={styles.hint}>{hint}</Text>}
+        {!!caption && !!value && <Text style={styles.hint}>{caption}</Text>}
       </View>
       {value ? (
         <View style={styles.valueRow}>

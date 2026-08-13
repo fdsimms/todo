@@ -47,6 +47,8 @@ import { ordinal } from '../utils/ordinal';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useCalendarStore } from '../store/useCalendarStore';
+import { nudgeReminderPastMeeting } from '../utils/reminderNudge';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -350,6 +352,21 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const use24HourTime = useSettingsStore(s => s.use24HourTime);
+  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarLoaded = useCalendarStore(s => s.loaded);
+
+  // Whether the picked reminder time lands inside a meeting, and where it
+  // actually fires instead — mirrors what scheduleTaskReminder does at
+  // schedule time, so the row never shows a different answer than the one
+  // that ends up ringing. Off unless calendar read is on, per #1491.
+  const reminderNudge = useMemo(() => {
+    if (!reminderTime || !calendarReadEnabled || !calendarLoaded) return null;
+    const nudge = nudgeReminderPastMeeting(reminderTime, calendarEvents);
+    return nudge.nudged ? nudge : null;
+  }, [reminderTime, calendarReadEnabled, calendarLoaded, calendarEvents]);
+
   const scheduleTooltipAnim = useRef(new Animated.Value(0)).current;
   const hadScheduleParse = useRef(false);
 
@@ -2492,6 +2509,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     : 'Send a notification at this time'
               }
               value={reminderTime ? `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}` : undefined}
+              caption={reminderNudge
+                ? `Actually sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)} — moved past ${reminderNudge.meetingTitle ? `"${reminderNudge.meetingTitle}"` : 'a calendar event'}`
+                : undefined}
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderTouched(true); } : undefined}
             />

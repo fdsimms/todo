@@ -6,6 +6,8 @@ import { isTimedTask, isTimerRunning, timerRemaining } from './timer';
 import { displayTitleFor, isHiddenForVacation } from './visibilityUtils';
 import { agendaCounts, agendaBody, nextAgendaTime } from './dailyAgenda';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useCalendarStore } from '../store/useCalendarStore';
+import { nudgeReminderPastMeeting } from './reminderNudge';
 import { isAlarmKitAvailable, requestAlarmAuthorization, scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, taskAlarmUuid } from './alarmChain';
 
@@ -137,10 +139,19 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
   let triggerDate = new Date(task.reminderTime);
   if (triggerDate <= new Date()) return;
 
+  // A meeting first, quiet hours second: nudging past a 9am meeting into a
+  // 9:15–9:45 quiet-hours window still needs the second push, and applying
+  // them in the other order could land a reminder back inside quiet hours
+  // with nothing left to defer it again.
+  const { calendarReadEnabled, quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+  if (calendarReadEnabled) {
+    const { events, loaded } = useCalendarStore.getState();
+    if (loaded) triggerDate = nudgeReminderPastMeeting(triggerDate, events).time;
+  }
+
   // Quiet hours defer rather than drop: a reminder still matters at 7am even
   // if the moment the user asked for it was 3am. (Timer alarms below take the
   // opposite call — see scheduleTimerAlarm.)
-  const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
   triggerDate = deferPastQuietHours(triggerDate, quietHoursStart, quietHoursEnd);
 
   if (usesAlarmKit(task)) {

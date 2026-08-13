@@ -42,10 +42,17 @@ const DEFAULT_MOCK_SETTINGS = {
   dailyAgendaTime: '08:00',
   quietHoursStart: null,
   quietHoursEnd: null,
+  calendarReadEnabled: false,
 };
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettings },
+}));
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockCalendar: Record<string, any> = { events: [], loaded: false };
+jest.mock('../store/useCalendarStore', () => ({
+  useCalendarStore: { getState: () => mockCalendar },
 }));
 
 jest.mock('../store/useCategoryStore', () => ({
@@ -161,6 +168,8 @@ beforeEach(() => {
   (Platform as any).OS = 'ios';
   for (const key of Object.keys(mockSettings)) delete mockSettings[key];
   Object.assign(mockSettings, DEFAULT_MOCK_SETTINGS);
+  mockCalendar.events = [];
+  mockCalendar.loaded = false;
   mockAlarmKitAvailable = false;
 });
 
@@ -612,6 +621,65 @@ describe('scheduleTaskReminder honors quiet hours by deferring', () => {
     expect(scheduleNativeAlarm).toHaveBeenCalledWith(
       taskAlarmUuid('quiet-alarm', 0), new Date(2026, 0, 2, 7, 0), expect.any(String)
     );
+  });
+});
+
+describe('scheduleTaskReminder nudges a reminder out of a meeting', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  const meetingEvent = (start: Date, end: Date) => ({
+    id: 'evt-1', title: 'Team sync', start: start.toISOString(), end: end.toISOString(),
+    allDay: false, calendarId: 'cal', location: null, status: 'confirmed', availability: 'busy',
+  });
+
+  it('moves the trigger to the meeting\'s end when calendar read is on', async () => {
+    jest.setSystemTime(new Date(2026, 0, 1, 8, 0));
+    mockSettings.calendarReadEnabled = true;
+    mockCalendar.loaded = true;
+    mockCalendar.events = [meetingEvent(new Date(2026, 0, 1, 9, 0), new Date(2026, 0, 1, 10, 0))];
+    const reminderTime = new Date(2026, 0, 1, 9, 30).toISOString();
+    await scheduleTaskReminder(makeTask({ id: 'meeting-1', reminderTime }));
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.trigger.date.toISOString()).toBe(new Date(2026, 0, 1, 10, 0).toISOString());
+  });
+
+  it('leaves the trigger alone when calendar read is off', async () => {
+    jest.setSystemTime(new Date(2026, 0, 1, 8, 0));
+    mockSettings.calendarReadEnabled = false;
+    mockCalendar.loaded = true;
+    mockCalendar.events = [meetingEvent(new Date(2026, 0, 1, 9, 0), new Date(2026, 0, 1, 10, 0))];
+    const reminderTime = new Date(2026, 0, 1, 9, 30).toISOString();
+    await scheduleTaskReminder(makeTask({ id: 'meeting-2', reminderTime }));
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.trigger.date.toISOString()).toBe(new Date(reminderTime).toISOString());
+  });
+
+  it('leaves the trigger alone when the calendar window failed to load', async () => {
+    jest.setSystemTime(new Date(2026, 0, 1, 8, 0));
+    mockSettings.calendarReadEnabled = true;
+    mockCalendar.loaded = false;
+    mockCalendar.events = [meetingEvent(new Date(2026, 0, 1, 9, 0), new Date(2026, 0, 1, 10, 0))];
+    const reminderTime = new Date(2026, 0, 1, 9, 30).toISOString();
+    await scheduleTaskReminder(makeTask({ id: 'meeting-3', reminderTime }));
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.trigger.date.toISOString()).toBe(new Date(reminderTime).toISOString());
+  });
+
+  it('applies the meeting nudge before deferring past quiet hours', async () => {
+    jest.setSystemTime(new Date(2026, 0, 1, 8, 0));
+    mockSettings.calendarReadEnabled = true;
+    mockSettings.quietHoursStart = '10:00';
+    mockSettings.quietHoursEnd = '11:00';
+    mockCalendar.loaded = true;
+    // Meeting 9:30–10:15 pushes the reminder to 10:15, which now falls inside
+    // quiet hours — the second defer has to see the nudged time, not the
+    // original 9:45.
+    mockCalendar.events = [meetingEvent(new Date(2026, 0, 1, 9, 30), new Date(2026, 0, 1, 10, 15))];
+    const reminderTime = new Date(2026, 0, 1, 9, 45).toISOString();
+    await scheduleTaskReminder(makeTask({ id: 'meeting-4', reminderTime }));
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.trigger.date.toISOString()).toBe(new Date(2026, 0, 1, 11, 0).toISOString());
   });
 });
 
