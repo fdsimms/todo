@@ -2013,6 +2013,63 @@ describe('setOnHandUntil', () => {
   });
 });
 
+describe('markOutOfMany', () => {
+  it('writes the same assertion the item sheet writes, to every row named', () => {
+    const soy = makeItem({ name: 'Soy sauce', onHandUntil: '2026-08-21T00:00:00.000Z' });
+    const cumin = makeItem({ name: 'Cumin' });
+    seed([soy, cumin]);
+
+    expect(useGroceryStore.getState().markOutOfMany([soy.id, cumin.id])).toBe(2);
+
+    for (const item of useGroceryStore.getState().items) {
+      expect(item.onHandUntil).toBe(OUT_OF_IT_UNTIL);
+      // Which is the whole point: the pantry stops claiming them.
+      expect(probablyHaveReason(item, new Date())).toBeNull();
+    }
+  });
+
+  it('touches nothing else about a row', () => {
+    const soy = makeItem({ name: 'Soy sauce', onList: true, checked: true, purchaseCount: 6 });
+    seed([soy]);
+
+    useGroceryStore.getState().markOutOfMany([soy.id]);
+
+    const after = useGroceryStore.getState().items[0];
+    expect(after).toEqual({ ...soy, onHandUntil: OUT_OF_IT_UNTIL });
+  });
+
+  it('is one undo for the whole cook, not one per row', () => {
+    const soy = makeItem({ name: 'Soy sauce', onHandUntil: '2026-08-21T00:00:00.000Z' });
+    const cumin = makeItem({ name: 'Cumin' });
+    seed([soy, cumin]);
+
+    useGroceryStore.getState().markOutOfMany([soy.id, cumin.id]);
+    useGroceryStore.getState().undoLastAction();
+
+    // Each row back to what it carried before, rather than to a shared null —
+    // one of these had an assertion of its own and is owed it back.
+    const byId = new Map(useGroceryStore.getState().items.map(i => [i.id, i]));
+    expect(byId.get(soy.id)!.onHandUntil).toBe('2026-08-21T00:00:00.000Z');
+    expect(byId.get(cumin.id)!.onHandUntil).toBeNull();
+  });
+
+  it('skips rows already marked out, and registers no undo when nothing changed', () => {
+    const soy = makeItem({ name: 'Soy sauce', onHandUntil: OUT_OF_IT_UNTIL });
+    seed([soy]);
+    useGroceryStore.setState({ lastAction: null });
+
+    expect(useGroceryStore.getState().markOutOfMany([soy.id])).toBe(0);
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
+  it('shrugs at ids it does not hold', () => {
+    seed([]);
+    expect(useGroceryStore.getState().markOutOfMany(['gone'])).toBe(0);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
 describe('addToPantry', () => {
   it('creates an off-list catalog row marked on hand', () => {
     seed([]);

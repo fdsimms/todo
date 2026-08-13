@@ -91,6 +91,7 @@ import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { ProjectNudgeBanner } from '../components/ProjectNudgeBanner';
+import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
 import { findProjectStalls } from '../utils/projectPull';
 import { useProjectStore } from '../store/useProjectStore';
 import { TodayMealPlanSection } from '../components/TodayMealPlanSection';
@@ -2342,6 +2343,12 @@ export function TodayScreen() {
         {viewMode === 'today' && newTasks.length > 0 && (
           <NewTasksBanner tasks={newTasks} onJumpToTask={jumpToTask} onDismiss={dismissNewTasksBanner} />
         )}
+
+        {/* Here as well as on the meal plan, because a meal is ticked off from
+            either: completing a "Cook X" task is a cooking, and the app's only
+            signal that something was *used up* shouldn't depend on which screen
+            the tap landed on. Renders nothing unless a cook just raised one. */}
+        {viewMode === 'today' && <CookedUseUpOffer />}
 
         {/* "What's new" leads; "what's gone quiet" follows. */}
         {viewMode === 'today' && projectStalls.length > 0 && !nudgeDismissed && (
