@@ -428,6 +428,27 @@ export interface Task {
   // this dangling, and the next reconcile just writes a fresh one.
   calendarEventId: string | null;
 
+  // The id of the timed event blocking out room to actually *do* this task,
+  // or null until the user asks for one. Deliberately its own field rather
+  // than sharing calendarEventId above: a deadline event and a time block are
+  // two events, on two days, saying two different things ("this is due" vs
+  // "I'm doing this from 2 to 3"), and a task can very reasonably have both.
+  //
+  // Master/replica the same way calendarEventId is, with one field moved
+  // across the line: **the task owns the title and the duration, the event
+  // owns the time.** Dragging the block to a better hour in Apple Calendar is
+  // the entire point of putting it there, so nothing here ever rewrites its
+  // start — see syncTimeBlockEvent in timeBlock.ts for exactly what a
+  // reconcile touches.
+  //
+  // Never written except through the system event sheet, which is also the
+  // only thing that deletes one: this app has no call site for
+  // deleteEventAsync on a block, because the block is a commitment the user
+  // made in their own calendar and may have shared with other people. A task
+  // completed, deleted or spawned into its next occurrence leaves the event
+  // alone. Resolve-or-shrug like every other cross-row pointer here.
+  timeBlockEventId: string | null;
+
   // Streaks (recurring tasks only)
   streakCount: number;       // positive = N consecutive completions
   streakDate: string | null; // logical-day ISO string of last completion
@@ -640,7 +661,7 @@ export interface Task {
 // source, so a series row or a template application can't inherit a count.
 // extraTaskTally is the same kind of thing — the rule (extraTaskEveryN,
 // extraTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"

@@ -8,17 +8,18 @@ import { APP_FONT_OPTIONS, resolveFontFace } from '../../theme/fonts';
 import { useFontPreviewsLoaded } from '../../theme/AppFont';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
-import { SettingsPills, type PillOption } from './SettingsPills';
+import { SettingsSegments } from './SettingsSegments';
+import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 
-const THEME_OPTIONS: PillOption<ThemeMode>[] = [
+const THEME_OPTIONS: SegmentOption<ThemeMode>[] = [
   { value: 'light', label: 'Light', icon: 'sunny' },
   { value: 'dark', label: 'Dark', icon: 'moon' },
   { value: 'darkPurple', label: 'Purple', icon: 'color-palette' },
   { value: 'system', label: 'System', icon: 'phone-portrait' },
 ];
 
-const FAB_HAND_OPTIONS: PillOption<FabHand>[] = [
+const FAB_HAND_OPTIONS: SegmentOption<FabHand>[] = [
   { value: 'right', label: 'Right', icon: 'hand-right-outline' },
   { value: 'left', label: 'Left', icon: 'hand-left-outline' },
 ];
@@ -42,7 +43,7 @@ export function AppearanceSettings() {
   return (
     <>
       <SettingsSection label="Theme">
-        <SettingsPills
+        <SettingsSegments
           options={THEME_OPTIONS}
           selected={themeMode}
           onSelect={setThemeMode}
@@ -56,7 +57,7 @@ export function AppearanceSettings() {
           hint="Which corner the + button rests in, on every list"
           tight
         />
-        <SettingsPills
+        <SettingsSegments
           attached
           options={FAB_HAND_OPTIONS}
           selected={fabHand}

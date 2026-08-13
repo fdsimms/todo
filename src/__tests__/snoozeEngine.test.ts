@@ -97,6 +97,7 @@ const BASE: Task = {
   leftoverId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  timeBlockEventId: null,
   pendingImport: null,
 };
 

@@ -27,7 +27,7 @@ import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind } from '../types';
-import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
+import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -59,7 +59,7 @@ import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, h
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/parseTaskInput';
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor } from '../utils/effort';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
 import { deliverableMeta } from '../utils/deliverables';
@@ -75,8 +75,23 @@ import { BlockerPickerSheet } from './BlockerPickerSheet';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
+import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
+
+/** The kind picker's segments. The hint under the track says what the pick does. */
+const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
+  value: meta.key,
+  label: meta.label,
+  icon: meta.icon,
+  accessibilityLabel: `${meta.label}. ${meta.hint}`,
+}));
+
+/** The unit beside a typed number — one set, used by Duration and by custom Effort. */
+const DURATION_UNIT_SEGMENTS = [
+  { value: 'min' as const, label: 'min' },
+  { value: 'hr' as const, label: 'hr' },
+];
 
 /** Pre-filled values carried over from the quick add modal when creating a new task. */
 export interface TaskDraft {
@@ -149,6 +164,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const addSubtask = useTaskStore(s => s.addSubtask);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const deleteSubtask = useTaskStore(s => s.deleteSubtask);
+  const putTaskOnCalendar = useTaskStore(s => s.putTaskOnCalendar);
   const reorderSubtasks = useTaskStore(s => s.reorderSubtasks);
   const subtasksOf = useTaskStore(s => s.subtasksOf);
   const seriesRowsOf = useTaskStore(s => s.seriesRowsOf);
@@ -359,6 +375,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
+
+  // Read off the store rather than the `task` prop: putTaskOnCalendar writes
+  // the id after the system sheet closes, and the row has to change from
+  // "put this on my calendar" to "it's on your calendar" without waiting for
+  // whichever screen owns the prop to hand down a new object.
+  const taskId = task?.id ?? null;
+  const timeBlockEventId = useTaskStore(
+    s => (taskId ? s.tasks.find(t => t.id === taskId)?.timeBlockEventId ?? null : null)
+  );
+  // The length a block would get, chain-aware, off the saved row — what
+  // putTaskOnCalendar will actually use. Null means the task has no length to
+  // block out, which is what disables the row.
+  const savedEstimateMinutes = task ? estimatedMinutesFor(task) : null;
 
   // Whether the picked reminder time lands inside a meeting, and where it
   // actually fires instead — mirrors what scheduleTaskReminder does at
@@ -883,7 +912,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
    */
   const applyKind = (next: TaskKind) => {
     if (next === kind) return;
-    haptics.tap();
+    // No haptic here — the Kind segmented control fires its own on the press.
     animateLayout();
     // Whatever the outgoing kind held is worth keeping — see kindMemory.
     if (timedMinutes !== null) kindMemory.current.timedMinutes = timedMinutes;
@@ -1697,31 +1726,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             keywords: ['type', 'shape', 'timed', 'timer', 'quota', 'chain'],
             node: (
               <View style={styles.kindBlock}>
-                <View style={styles.pillRow}>
-                  {TASK_KIND_META.map(meta => {
-                    const active = kind === meta.key;
-                    return (
-                      <TouchableOpacity
-                        key={meta.key}
-                        style={[styles.pill, styles.pillWithIcon, active && styles.pillActiveAccent]}
-                        onPress={() => applyKind(meta.key)}
-                        activeOpacity={interaction.activeOpacity}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
-                        accessibilityLabel={`${meta.label}. ${meta.hint}`}
-                      >
-                        <Ionicons
-                          name={meta.icon as never}
-                          size={iconSize.sm}
-                          color={active ? colors.accent : colors.textSecondary}
-                        />
-                        <Text style={[styles.pillText, active && styles.pillTextActiveAccent]}>
-                          {meta.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                {/* Two columns: "Daily target" alongside an icon has no
+                    one-row spelling at four across. */}
+                <SegmentedControl
+                  label="Kind"
+                  value={kind}
+                  onChange={applyKind}
+                  columns={2}
+                  options={TASK_KIND_SEGMENTS}
+                />
                 <Text style={styles.kindHint}>
                   {TASK_KIND_META.find(m => m.key === kind)!.hint}
                 </Text>
@@ -1807,15 +1820,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 />
                 <View style={styles.unitToggle}>
-                  {(['min', 'hr'] as const).map(u => (
-                    <TouchableOpacity
-                      key={u}
-                      style={[styles.unitChip, durationUnit === u && styles.unitChipActive]}
-                      onPress={() => { setDurationUnit(u); applyDuration(durationText, u); }}
-                    >
-                      <Text style={[styles.unitChipText, durationUnit === u && styles.unitChipTextActive]}>{u}</Text>
-                    </TouchableOpacity>
-                  ))}
+                  <SegmentedControl
+                    label="Duration unit"
+                    value={durationUnit}
+                    onChange={u => { setDurationUnit(u); applyDuration(durationText, u); }}
+                    options={DURATION_UNIT_SEGMENTS}
+                  />
                 </View>
               </View>
               </>)}
@@ -2537,6 +2547,51 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          // Only for a saved top-level task: the action opens a system sheet
+          // that writes an event against a task id, and there isn't one yet
+          // while a task is being composed. Reads the *saved* estimate rather
+          // than the editor's live one for the same reason — but a later Save
+          // reconciles the block's title and length anyway (see
+          // reconcileTimeBlockEvent), so an estimate changed in the same
+          // sitting still lands on the event.
+          ...(task && !task.parentId && !task.completed && !task.archived ? [{
+            key: 'timeBlock', label: 'Time block', set: !!timeBlockEventId,
+            keywords: ['calendar', 'event', 'schedule', 'block', 'busy', 'agenda', 'when'],
+            node: (
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => {
+                  if (!savedEstimateMinutes) return;
+                  haptics.tap();
+                  putTaskOnCalendar(task.id);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                disabled={!savedEstimateMinutes}
+                accessibilityRole="button"
+                accessibilityLabel={timeBlockEventId ? 'Edit the calendar time block' : 'Put this task on my calendar'}
+                accessibilityState={{ disabled: !savedEstimateMinutes }}
+              >
+                <Ionicons
+                  name="calendar-number-outline"
+                  size={18}
+                  color={timeBlockEventId ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>
+                    {timeBlockEventId ? 'On your calendar' : 'Put on my calendar'}
+                  </Text>
+                  <Text style={styles.optionHint}>
+                    {!savedEstimateMinutes
+                      ? 'Set an estimate or effort first — a block needs a length'
+                      : timeBlockEventId
+                      ? 'Opens the event to move, resize or delete it'
+                      : `Blocks out ${formatDuration(savedEstimateMinutes)} in your calendar to do this`}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ),
+          }] : []),
           {
             key: 'remindMe', label: 'Remind me', primary: true, set: !!reminderTime,
             keywords: ['notification', 'notify', 'alert', 'alarm', 'ping', 'time'],
@@ -3066,23 +3121,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             expanded={fieldOpen('priority')}
             onToggle={() => toggleField('priority')}
           >
-            <View style={styles.pillRow}>
-              {([0, 1, 2, 3, 4] as Priority[]).map(p => (
-                <TouchableOpacity
-                  key={p}
-                  style={[
-                    styles.pill,
-                    priority === p && p === 0 && styles.pillActiveNeutral,
-                    priority === p && p > 0 && { backgroundColor: PRIORITY_COLORS[p] },
-                  ]}
-                  onPress={() => { haptics.tap(); setPriority(p); closeField('priority'); }}
-                >
-                  <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>
-                    {PRIORITY_LABELS[p]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <SegmentedControl
+              label="Priority"
+              value={priority}
+              onChange={p => { setPriority(p); closeField('priority'); }}
+              // Five with "Medium" among them doesn't fit one row once each
+              // carries a dot; 3 + 2 does, and keeps every cell the same width.
+              columns={3}
+              options={PRIORITY_SEGMENTS}
+            />
           </CollapsibleField>
               </>
             ),
@@ -3142,15 +3189,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   autoFocus
                 />
                 <View style={styles.unitToggle}>
-                  {(['min', 'hr'] as const).map(u => (
-                    <TouchableOpacity
-                      key={u}
-                      style={[styles.unitChip, customEffortUnit === u && styles.unitChipActive]}
-                      onPress={() => { setCustomEffortUnit(u); applyCustomEffort(customEffortText, u); }}
-                    >
-                      <Text style={[styles.unitChipText, customEffortUnit === u && styles.unitChipTextActive]}>{u}</Text>
-                    </TouchableOpacity>
-                  ))}
+                  <SegmentedControl
+                    label="Effort unit"
+                    value={customEffortUnit}
+                    onChange={u => { setCustomEffortUnit(u); applyCustomEffort(customEffortText, u); }}
+                    options={DURATION_UNIT_SEGMENTS}
+                  />
                 </View>
               </View>
             )}
@@ -3681,22 +3725,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
-  /** A pill that carries a glyph beside its label — the Kind picker's four. */
-  pillWithIcon: { flexDirection: 'row', gap: 6, borderWidth: border.sm, borderColor: 'transparent' },
-  /**
-   * A louder selected state than `pillActiveNeutral`, for Kind only.
-   *
-   * The neutral one is right where the pills are a list of equal options you
-   * pick from and forget (a category, a project). Kind isn't that: it's the
-   * card's whole subject, it changes what the rows below it are, and
-   * bgQuaternary against bgTertiary is a shade apart — a distinction that
-   * needs good eyes and a good screen. Same accent-tinted treatment quick
-   * add's chips use to say "this one is set". The border is the part that
-   * survives grayscale accessibility mode, where accentSubtle and bgTertiary
-   * collapse to nearly the same shade.
-   */
-  pillActiveAccent: { backgroundColor: colors.accentSubtle, borderColor: colors.accent },
-  pillTextActiveAccent: { color: colors.accent, fontWeight: '600' },
   kindBlock: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   kindHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm, lineHeight: 16 },
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
@@ -3710,14 +3738,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
     paddingHorizontal: 12, paddingVertical: 8, minWidth: 72, textAlign: 'center',
   },
-  unitToggle: { flexDirection: 'row', gap: 4 },
-  unitChip: {
-    paddingHorizontal: 12, paddingVertical: 8,
-    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
-  },
-  unitChipActive: { backgroundColor: colors.bgQuaternary },
-  unitChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  unitChipTextActive: { color: colors.text, fontWeight: '600' },
+  // A track next to the number it labels, so it takes a width rather than
+  // stretching across the row the way one owning a line does.
+  unitToggle: { width: 104 },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,

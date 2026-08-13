@@ -29,7 +29,8 @@ import type { BusyEvent } from './calendarBusy';
  * The deadline write goes through `createEventAsync`/`updateEventAsync`
  * /`deleteEventAsync` rather than `createEventInCalendarAsync`'s system
  * sheet, unlike the "put this task on my calendar" one-tap action #1492
- * describes — a deadline reconciles silently on every save and every new
+ * describes and the bottom half of this file now implements — a deadline
+ * reconciles silently on every save and every new
  * recurrence, and a UI sheet popping up on its own for a write nobody asked
  * to watch this moment would be its own kind of bug. That means it rides on
  * the same permission this file's read half already asks for, rather than a
@@ -264,5 +265,156 @@ export async function deleteCalendarEvent(eventId: string): Promise<void> {
     await calendar().deleteEventAsync(eventId);
   } catch {
     // Already gone, or never existed — resolve-or-shrug.
+  }
+}
+
+// ---- Time blocks (#1492) -------------------------------------------------
+//
+// The other half of the write, and it works the opposite way round to the
+// deadline mirror above: these go through **the system event sheet**
+// (`createEventInCalendarAsync` / `editEventInCalendarAsync`), which presents
+// Apple's own event UI and hands back what the user did with it.
+//
+// That buys three things a `createEventAsync` version wouldn't. There is no
+// calendar to pick in Settings, because the sheet has a calendar picker and
+// it's already the one the user knows. There is no form to design, and so no
+// second-rate copy of a date picker Apple ships. And there is nothing written
+// that the user didn't watch being written — which is the whole reason this
+// path can be a one-tap action on a task, where the deadline mirror had to be
+// an opt-in toggle plus a named target calendar.
+//
+// The corollary is the rule this file holds to: **nothing here deletes a time
+// block.** There is no `deleteEventAsync` call on this side, deliberately.
+// An event the user saved in their own calendar app — possibly moved to a
+// shared calendar, possibly with people invited — is not this app's to remove
+// because a task got ticked off. Removing one is a tap in the sheet
+// `presentTimeBlockEdit` opens, where it's their own decision in their own UI,
+// and `deleted` comes back so the task can drop its pointer.
+
+/** What the user did with an event sheet, and the event it left behind. */
+export interface TimeBlockSheetResult {
+  /** True if an event was saved or edited — as opposed to cancelled. */
+  saved: boolean;
+  /** True if the user deleted the event from inside the sheet. */
+  deleted: boolean;
+  /** The event's id, when iOS gave us one. */
+  eventId: string | null;
+}
+
+const NO_RESULT: TimeBlockSheetResult = { saved: false, deleted: false, eventId: null };
+
+/**
+ * Presents the system "new event" sheet, prefilled with a task's block.
+ *
+ * No calendar id is passed: the sheet defaults to the user's default calendar
+ * and lets them change it, which is a better answer than any id this app could
+ * choose — and is why the time block, unlike the deadline mirror, needs no
+ * setting of its own.
+ */
+export async function presentTimeBlockCreate(fields: {
+  title: string;
+  start: Date;
+  end: Date;
+  notes?: string;
+}): Promise<TimeBlockSheetResult> {
+  if (Platform.OS !== 'ios') return NO_RESULT;
+  try {
+    const result = await calendar().createEventInCalendarAsync({
+      title: fields.title,
+      startDate: fields.start,
+      endDate: fields.end,
+      notes: fields.notes,
+    });
+    return {
+      saved: result.action === 'saved',
+      deleted: result.action === 'deleted',
+      eventId: result.id ?? null,
+    };
+  } catch {
+    return NO_RESULT;
+  }
+}
+
+/**
+ * Presents the system sheet for an event that already exists, so the user can
+ * move, resize or delete it.
+ *
+ * A `deleted` result is the one thing the caller must act on — that's the
+ * user saying the block is gone, and the task's pointer has to go with it.
+ */
+export async function presentTimeBlockEdit(eventId: string): Promise<TimeBlockSheetResult> {
+  if (Platform.OS !== 'ios') return NO_RESULT;
+  try {
+    const result = await calendar().editEventInCalendarAsync({ id: eventId });
+    return {
+      saved: result.action === 'saved',
+      deleted: result.action === 'deleted',
+      eventId: result.id ?? eventId,
+    };
+  } catch {
+    // Deliberately *not* reported as a deletion. A throw here is most often an
+    // event that's gone, but a refused permission and a sheet that failed to
+    // present throw identically — and treating those as "the user deleted it"
+    // would drop a pointer to an event that still exists. Whether the event is
+    // really gone is `readTimeBlockEvent`'s question, and the caller asks it.
+    return NO_RESULT;
+  }
+}
+
+/** A time block as it currently stands on the device. */
+export interface TimeBlockEvent {
+  title: string;
+  start: Date;
+  end: Date;
+  allDay: boolean;
+}
+
+/**
+ * Reads a block back, or null if it isn't there any more.
+ *
+ * `futureEvents: false` with no `instanceStartDate` resolves to the *first*
+ * instance when the id names a recurring series — which it can, because the
+ * user is free to add a repeat rule in the system sheet, and EventKit shares
+ * one id across every instance of a series. Taking the first instance is the
+ * one interpretation that's stable across calls; guessing an instance from the
+ * task's due date would silently retarget as the task moved.
+ */
+export async function readTimeBlockEvent(eventId: string): Promise<TimeBlockEvent | null> {
+  if (Platform.OS !== 'ios') return null;
+  try {
+    const event = await calendar().getEventAsync(eventId, { futureEvents: false });
+    if (!event) return null;
+    const start = new Date(event.startDate as string | Date);
+    const end = new Date(event.endDate as string | Date);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+    return { title: (event.title ?? '').trim(), start, end, allDay: !!event.allDay };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rewrites the two fields the task owns — title and end — leaving the start,
+ * the calendar, the alerts, the invitees and everything else the user set in
+ * the sheet exactly as they left them.
+ *
+ * `futureEvents: false` again, and it matters more here than on the read: on a
+ * series it confines the change to one instance rather than rewriting every
+ * future one, which is the conservative half of a choice EventKit forces.
+ */
+export async function updateTimeBlockEvent(
+  eventId: string,
+  fields: { title: string; endDate: Date }
+): Promise<boolean> {
+  if (Platform.OS !== 'ios') return false;
+  try {
+    await calendar().updateEventAsync(
+      eventId,
+      { title: fields.title, endDate: fields.endDate },
+      { futureEvents: false }
+    );
+    return true;
+  } catch {
+    return false;
   }
 }

@@ -65,6 +65,7 @@ import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
+import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { ORDINAL_OPTIONS } from '../utils/recurrenceLabels';
 import { ordinal } from '../utils/ordinal';
 
@@ -1320,8 +1321,8 @@ export function QuickAddModal({
                     <TouchableOpacity
                       key={seg.key}
                       style={[
-                        styles.priorityChip,
-                        active && styles.priorityChipActive,
+                        styles.segmentChip,
+                        active && styles.segmentChipActive,
                         active && { borderColor: segColor, backgroundColor: segColor + '22' },
                       ]}
                       onPress={() => toggleSegment(seg.key)}
@@ -1344,31 +1345,14 @@ export function QuickAddModal({
 
           {activePanel === 'priority' && (
             <View style={styles.panel}>
-              <View style={styles.presetRow}>
-                {([0, 1, 2, 3, 4] as Priority[]).map(p => (
-                  <TouchableOpacity
-                    key={p}
-                    style={[
-                      styles.priorityChip,
-                      priority === p && styles.priorityChipActive,
-                      priority === p && p > 0 && { borderColor: PRIORITY_COLORS[p], backgroundColor: PRIORITY_COLORS[p] + '22' },
-                    ]}
-                    onPress={() => {
-                      haptics.tap();
-                      setPriority(p);
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    {p > 0 && <View style={[styles.priorityChipDot, { backgroundColor: PRIORITY_COLORS[p] }]} />}
-                    <Text style={[
-                      styles.presetChipText,
-                      priority === p && styles.presetChipTextActive,
-                      priority === p && p > 0 && { color: PRIORITY_COLORS[p] },
-                    ]}>
-                      {PRIORITY_LABELS_SHORT[p]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={styles.segmentRow}>
+                <SegmentedControl
+                  label="Priority"
+                  value={priority}
+                  onChange={setPriority}
+                  columns={3}
+                  options={PRIORITY_SEGMENTS}
+                />
               </View>
             </View>
           )}
@@ -2218,7 +2202,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     minWidth: 110,
   },
-  priorityChip: {
+  // The time-of-day chips, and only those since priority moved to a track: a
+  // row of toggles rather than one field, so it stays pills — and the tint is
+  // the segment's own colour, which a raised grey segment would drop.
+  segmentChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -2229,13 +2216,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  priorityChipActive: {
+  segmentChipActive: {
     backgroundColor: colors.bgQuaternary,
-  },
-  priorityChipDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
   },
   selectedTagsRow: {
     flexDirection: 'row',

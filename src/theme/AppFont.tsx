@@ -105,6 +105,27 @@ function applyFontPatch() {
 // ThemeContext, so the swap is in place well before the first render.
 applyFontPatch();
 
+/**
+ * Loads a font's faces before the app renders its first frame, so the tree
+ * mounts already knowing the right family instead of painting the system
+ * font and swapping to it a few frames later. Meant to be awaited before
+ * `AppFontProvider` mounts (see `App.tsx`); it shares `loadedFonts` with the
+ * provider's own effect, so a font loaded here is simply already-loaded by
+ * the time that effect runs and never re-fetches it.
+ */
+export async function preloadAppFont(id: AppFont): Promise<void> {
+  if (id === 'system' || loadedFonts.has(id)) return;
+
+  try {
+    await Font.loadAsync(FONT_ASSETS[id]);
+    loadedFonts.add(id);
+  } catch (e) {
+    // Stay on the system font — AppFontProvider's own effect will retry and
+    // hit the same warning path if this also fails there.
+    console.warn(`Could not preload the ${id} font`, e);
+  }
+}
+
 export function AppFontProvider({ children }: { children: React.ReactNode }) {
   const appFont = useSettingsStore(s => s.appFont);
   const [, onFontLoaded] = useReducer((n: number) => n + 1, 0);
