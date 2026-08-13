@@ -19,6 +19,8 @@ import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useRecipeStore } from './useRecipeStore';
 import { cookTaskDraft, cookTaskFields, cookTaskNeedsUpdate, wantsCookTask } from '../utils/mealTasks';
+import { liveGeneratedTask } from '../utils/generatedTasks';
+import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { generateId } from '../utils/id';
 import { normalizeScale } from '../utils/recipeScale';
 import {
@@ -761,16 +763,16 @@ function resolveEntry(get: () => MealPlanStore, id: string): MealPlanEntry | nul
 
 // ─── Cook tasks (#1402) ─────────────────────────────────────────────────────
 //
-// The meal plan is the master and the task is the replica; these three helpers
-// are every write that crosses the line. The projection rules themselves —
-// which meals qualify, what the task says, which fields the meal owns — are in
-// utils/mealTasks so jest can reach them.
+// The meal plan is the master and the task is the replica; these helpers are
+// every write that crosses the line. The projection rules themselves — which
+// meals qualify, what the task says, which fields the meal owns — are in
+// utils/mealTasks so jest can reach them, and the create/update/delete
+// machinery they feed is shared with the other three generators in
+// store/generatedTaskSync (#1524).
 
 /** This meal's live cook task, if it has one. */
 function liveCookTaskFor(entryId: string): Task | undefined {
-  return useTaskStore
-    .getState()
-    .tasks.find(t => t.mealEntryId === entryId && !t.completed && !t.archived);
+  return liveGeneratedTask(useTaskStore.getState().tasks, 'mealCook', entryId);
 }
 
 /**
@@ -781,42 +783,26 @@ function liveCookTaskFor(entryId: string): Task | undefined {
  * (that's what cooked it) or is deliberately outstanding, and either way the
  * night has happened — re-dating or re-titling the task at that point edits
  * history. This is also what stops a completed cook task from being replaced
- * by a fresh one on the next edit.
+ * by a fresh one on the next edit. It's the one gate `reconcileGeneratedTask`
+ * knows nothing about, because "cooked" is a fact about a meal.
  *
  * **It never spawns a second task for one meal**, even when the existing one
- * is completed or archived: the check for "does one already exist" is
- * deliberately wider than the one for "which one do I update". A meal that
- * gained a duplicate cook task on every edit is the failure mode the old,
- * unlinked prep tasks actually had.
+ * is completed or archived — that's `blocksOnFinished`, and cook tasks are the
+ * only generator that sets it. A meal is one event; see `hasAnyGeneratedTask`
+ * for why a grocery item and a leftover answer the opposite way.
  */
 function reconcileCookTask(entry: MealPlanEntry): void {
   if (entry.cookedAt) return;
 
-  const { tasks, addTask, updateTask, deleteTask } = useTaskStore.getState();
   const { mealCookTasks, mealCookTaskCategory } = useSettingsStore.getState();
-  const existing = liveCookTaskFor(entry.id);
-  const wanted = wantsCookTask(entry, mealCookTasks);
-
-  if (!wanted) {
-    // Only the live one goes. A completed cook task is a record of a thing
-    // that was done, and turning the option off is not a claim it wasn't.
-    if (existing) deleteTaskQuietly(existing.id);
-    return;
-  }
-
-  if (existing) {
-    // skipPostponeCount: a cook task's date is the meal's date, not a schedule
-    // the user picked for the task — dragging Tuesday's dinner to Friday moves
-    // this row along with it, and that isn't the user ducking anything. See
-    // utils/postpone.ts.
-    if (cookTaskNeedsUpdate(existing, entry)) {
-      updateTask(existing.id, cookTaskFields(entry), { skipPostponeCount: true });
-    }
-    return;
-  }
-
-  if (tasks.some(t => t.mealEntryId === entry.id)) return;
-  addTask(cookTaskDraft(entry, mealCookTaskCategory));
+  reconcileGeneratedTask({
+    kind: 'mealCook',
+    sourceId: entry.id,
+    wanted: wantsCookTask(entry, mealCookTasks),
+    drift: existing => (cookTaskNeedsUpdate(existing, entry) ? cookTaskFields(entry) : null),
+    draft: () => cookTaskDraft(entry, mealCookTaskCategory),
+    blocksOnFinished: true,
+  });
 }
 
 /**
@@ -829,26 +815,7 @@ function reconcileCookTask(entry: MealPlanEntry): void {
  * Logbook, the same rule deleteGroup keeps for a stack's history.
  */
 function dropCookTask(entryId: string): void {
-  const existing = liveCookTaskFor(entryId);
-  if (existing) deleteTaskQuietly(existing.id);
-}
-
-/**
- * Deletes a cook task without arming shake-to-undo.
- *
- * `deleteTask` registers a "Task deleted" undo, which is right when a user
- * deletes a task and wrong for every delete in this file: these are
- * consequences of a meal-plan action that registers its own undo, and that
- * undo puts the task back by reconciling. Two competing entries for one
- * gesture is the least of it — `bulkDeleteEntries` deliberately clears the
- * queue because its confirm dialog says "This can't be undone", and a stray
- * task-store entry surviving that would make the promise a lie, which is
- * exactly the failure that store's own doc comment warns about.
- */
-function deleteTaskQuietly(taskId: string): void {
-  const store = useTaskStore.getState();
-  store.deleteTask(taskId);
-  store.setLastAction(null);
+  dropGeneratedTask('mealCook', entryId);
 }
 
 /**
@@ -865,6 +832,11 @@ function syncCookTaskCompletion(entryId: string, cooked: boolean): void {
     if (live) completeTask(live.id);
     return;
   }
-  const done = tasks.find(t => t.mealEntryId === entryId && t.completed && !t.archived);
+  // Deliberately not liveGeneratedTask: this one wants the *completed* task, to
+  // untick it. Archived rows stay excluded — see liveGeneratedTask's note.
+  const done = tasks.find(
+    t => t.generatedKind === 'mealCook' && t.generatedSourceId === entryId
+      && t.completed && !t.archived
+  );
   if (done) uncompleteTask(done.id);
 }

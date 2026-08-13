@@ -6,6 +6,7 @@ import {
   mealPlanNudgeSuppressed,
   hasLiveMealPlanNudgeTask,
 } from '../utils/mealPlanNudge';
+import type { Task } from '../types';
 
 // mealPlanNudge reaches dateUtils/mealPlan for dayKeyOf/describeWeekRange,
 // which reach the settings store for dayResetTime — which nothing here
@@ -119,8 +120,9 @@ describe('mealPlanNudgeSuppressed', () => {
 });
 
 describe('hasLiveMealPlanNudgeTask', () => {
-  const nudgeTask = (overrides: Record<string, unknown> = {}) => ({
-    linkUrl: MEAL_PLAN_NUDGE_LINK_URL,
+  const nudgeTask = (overrides: Partial<Task> = {}): Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'> => ({
+    generatedKind: 'mealPlanNudge',
+    generatedSourceId: null,
     completed: false,
     archived: false,
     ...overrides,
@@ -142,15 +144,22 @@ describe('hasLiveMealPlanNudgeTask', () => {
     expect(hasLiveMealPlanNudgeTask([nudgeTask({ archived: true })])).toBe(false);
   });
 
-  it('ignores tasks that link elsewhere, live or not', () => {
-    expect(hasLiveMealPlanNudgeTask([nudgeTask({ linkUrl: 'https://example.com' })])).toBe(false);
-    expect(hasLiveMealPlanNudgeTask([nudgeTask({ linkUrl: null })])).toBe(false);
+  it('ignores tasks no generator wrote, live or not', () => {
+    // The link alone used to be the marker, so a hand-written task pointing at
+    // the meal plan counted as the nudge's own. It no longer does.
+    expect(hasLiveMealPlanNudgeTask([nudgeTask({ generatedKind: null })])).toBe(false);
+  });
+
+  it('ignores a task another generator wrote', () => {
+    expect(
+      hasLiveMealPlanNudgeTask([nudgeTask({ generatedKind: 'mealCook', generatedSourceId: 'm-1' })])
+    ).toBe(false);
   });
 
   it('is true if any one task among several is a live nudge task', () => {
     expect(
       hasLiveMealPlanNudgeTask([
-        nudgeTask({ linkUrl: null }),
+        nudgeTask({ generatedKind: null }),
         nudgeTask({ completed: true }),
         nudgeTask(),
       ])

@@ -17,6 +17,7 @@ import {
   sortLeftovers,
 } from '../utils/leftovers';
 import { useUpTaskDraft, useUpTaskFields, useUpTaskNeedsUpdate, wantsUseUpTask } from '../utils/leftoverTasks';
+import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 
@@ -120,45 +121,25 @@ interface LeftoverStore {
 // it exists — are in utils/leftoverTasks so jest can reach them. Same shape
 // as reconcileUseUpTask/dropUseUpTask in useGroceryStore.ts.
 
-/** This leftover's live use-up task, if it has one. */
-function liveUseUpTaskFor(leftoverId: string): Task | undefined {
-  return useTaskStore
-    .getState()
-    .tasks.find(t => t.leftoverId === leftoverId && !t.completed && !t.archived);
-}
-
 /**
  * Brings this leftover's use-up task into line: creates it, updates it, or
- * removes it, depending on what the leftover now says.
+ * removes it, depending on what the leftover now says. The create/update/delete
+ * machinery is shared with the other three generators (store/generatedTaskSync,
+ * #1524); what's decided here is only what a leftover wants.
+ *
+ * No `blocksOnFinished`, for the reason groceries don't have it either: a
+ * container logged today is not last week's container, even where the two share
+ * a title.
  */
 function reconcileLeftoverTask(leftover: Leftover): void {
-  const { addTask, updateTask, deleteTask, setLastAction } = useTaskStore.getState();
   const { leftoverUseUpTasks, leftoverUseUpTaskCategory } = useSettingsStore.getState();
-  const existing = liveUseUpTaskFor(leftover.id);
-  const wanted = wantsUseUpTask(leftover, leftoverUseUpTasks);
-
-  if (!wanted) {
-    // Only the live one goes. A completed use-up task records something that
-    // was done, and the leftover going stale-but-unnoticed is not a claim it
-    // wasn't.
-    if (existing) {
-      // deleteTask arms shake-to-undo, which is right when a user deletes a
-      // task and wrong here: this is a consequence of a leftover reconcile,
-      // and there is no undo anywhere in the fridge card for it to belong to.
-      deleteTask(existing.id);
-      setLastAction(null);
-    }
-    return;
-  }
-
-  if (existing) {
-    if (useUpTaskNeedsUpdate(existing, leftover)) {
-      updateTask(existing.id, useUpTaskFields(leftover), { skipPostponeCount: true });
-    }
-    return;
-  }
-
-  addTask(useUpTaskDraft(leftover, leftoverUseUpTaskCategory));
+  reconcileGeneratedTask({
+    kind: 'leftoverUseUp',
+    sourceId: leftover.id,
+    wanted: wantsUseUpTask(leftover, leftoverUseUpTasks),
+    drift: existing => (useUpTaskNeedsUpdate(existing, leftover) ? useUpTaskFields(leftover) : null),
+    draft: () => useUpTaskDraft(leftover, leftoverUseUpTaskCategory),
+  });
 }
 
 /**
@@ -171,11 +152,7 @@ function reconcileLeftoverTask(leftover: Leftover): void {
  * leftover must not erase the Logbook.
  */
 function dropLeftoverTask(leftoverId: string): void {
-  const existing = liveUseUpTaskFor(leftoverId);
-  if (!existing) return;
-  const { deleteTask, setLastAction } = useTaskStore.getState();
-  deleteTask(existing.id);
-  setLastAction(null);
+  dropGeneratedTask('leftoverUseUp', leftoverId);
 }
 
 export const useLeftoverStore = create<LeftoverStore>((set, get) => ({

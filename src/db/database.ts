@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, Task, Category, GroceryItem, ItemShopLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemShopLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
@@ -534,11 +534,10 @@ export function initDatabase(): void {
     // pins in exactly the order it left them, and only a drag (or a fresh pin,
     // which stamps max+1) ever writes a non-zero rank. See Task.pinnedOrder.
     'ALTER TABLE tasks ADD COLUMN pinned_order INTEGER NOT NULL DEFAULT 0',
-    // NULL on every task that already exists, which is exactly right: a task
-    // nobody projected from a meal isn't one. Nullable TEXT with no constraint,
-    // like blocked_by_id and meal_plan_entries.leftover_id — foreign keys are
-    // off in expo-sqlite, and readers resolve-or-shrug anyway. See
-    // Task.mealEntryId.
+    // Superseded by generated_kind/generated_source_id at the end of this
+    // array, which is backfilled from it below. Kept declared because the
+    // migrations array only appends and a legacy install still has rows here;
+    // nothing writes it any more.
     'ALTER TABLE tasks ADD COLUMN meal_entry_id TEXT',
     // Deliberately nullable with NO default, unlike every other boolean in this
     // schema (INTEGER NOT NULL DEFAULT 0). NULL is a third state meaning "the
@@ -581,8 +580,7 @@ export function initDatabase(): void {
     // cook_task is: NULL is the third state ("the setting decides"), and a
     // DEFAULT 0 would record every item in the catalog as an explicit refusal.
     'ALTER TABLE grocery_items ADD COLUMN use_up_task INTEGER',
-    // NULL on every task that already exists — a task nobody projected from a
-    // grocery item isn't one. Same shape as meal_entry_id above.
+    // Superseded by generated_kind/generated_source_id, same as meal_entry_id.
     'ALTER TABLE tasks ADD COLUMN grocery_item_id TEXT',
     // NULL on every existing row — nobody has a rule for a feature that didn't
     // exist, and NULL is what "off" already means for this field.
@@ -621,15 +619,23 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN deadline_on_calendar INTEGER NOT NULL DEFAULT 0',
     // NULL until the first successful device write. See Task.calendarEventId.
     'ALTER TABLE tasks ADD COLUMN calendar_event_id TEXT',
-    // NULL on every task that already exists — a task nobody projected from a
-    // leftover isn't one. Same shape as meal_entry_id/grocery_item_id above.
-    // See Task.leftoverId.
+    // Superseded by generated_kind/generated_source_id, same as the two above.
     'ALTER TABLE tasks ADD COLUMN leftover_id TEXT',
     // Nullable with no default, for exactly the reason grocery_items.
     // use_up_task is: NULL is the third state ("the setting decides"), and a
     // DEFAULT 0 would record every leftover already in the fridge as an
     // explicit refusal. See Leftover.useUpTask.
     'ALTER TABLE leftovers ADD COLUMN use_up_task INTEGER',
+    // The one pair that replaced meal_entry_id / grocery_item_id / leftover_id
+    // above, once a fourth generator would have meant a fourth column (#1524).
+    // NULL on every task a person typed. See Task.generatedKind.
+    //
+    // The three old columns stay declared and readable but are no longer
+    // written — the same disposition task_groups.completed_at has, and for the
+    // same reason: the migrations array only appends, so there is no dropping
+    // them, and a backfilled row is the only thing that ever needed to be read.
+    'ALTER TABLE tasks ADD COLUMN generated_kind TEXT',
+    'ALTER TABLE tasks ADD COLUMN generated_source_id TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -640,6 +646,38 @@ export function initDatabase(): void {
   // seen as of their creation. New rows always insert with seen_at set, so
   // this only ever touches legacy rows and is a no-op after the first run.
   try { db.runSync('UPDATE tasks SET seen_at = created_at WHERE seen_at IS NULL'); } catch (_) {}
+
+  // Backfill generated_kind/generated_source_id from the three per-generator
+  // columns they replaced, same shape as the seen_at backfill above: guarded on
+  // the new column being NULL, so it touches only legacy rows and is a no-op
+  // from the second launch onwards. Nothing writes the old columns any more, so
+  // a row that misses this pass would read as a task nobody generated — the
+  // meal would spawn a second cook task, and the first would stop being
+  // rewritten when the meal moved.
+  for (const [kind, column] of [
+    ['mealCook', 'meal_entry_id'],
+    ['groceryUseUp', 'grocery_item_id'],
+    ['leftoverUseUp', 'leftover_id'],
+  ] as const) {
+    try {
+      db.runSync(
+        `UPDATE tasks SET generated_kind = ?, generated_source_id = ${column}
+         WHERE generated_kind IS NULL AND ${column} IS NOT NULL`,
+        [kind]
+      );
+    } catch (_) { /* column never existed on this install */ }
+  }
+  // The nudge had no back-pointer at all: it was recognised by its link, which
+  // is what `hasLiveMealPlanNudgeTask` used to match on. Anything carrying that
+  // link is what the old check would have counted, so this preserves the
+  // dedupe rule exactly — including for a task the user happened to write with
+  // the same link, which the old rule also counted.
+  try {
+    db.runSync(
+      `UPDATE tasks SET generated_kind = 'mealPlanNudge'
+       WHERE generated_kind IS NULL AND link_url = 'dundundun://mealplan'`
+    );
+  } catch (_) {}
 
   // One-time migration: populate categories table from legacy category_registry setting
   const catCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM categories')?.n ?? 0;
@@ -942,9 +980,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     blockedById: (row.blocked_by_id as string | null) ?? null,
     deliverableKind: (row.deliverable_kind as DeliverableKind | null) ?? null,
     deliverableValue: (row.deliverable_value as string | null) ?? null,
-    mealEntryId: (row.meal_entry_id as string | null) ?? null,
-    groceryItemId: (row.grocery_item_id as string | null) ?? null,
-    leftoverId: (row.leftover_id as string | null) ?? null,
+    generatedKind: (row.generated_kind as GeneratedKind | null) ?? null,
+    generatedSourceId: (row.generated_source_id as string | null) ?? null,
     pendingImport: parsePendingImport(row.pending_import),
     postponeCount: (row.postpone_count as number) ?? 0,
     postponeMuted: Boolean(row.postpone_muted),
@@ -971,11 +1008,11 @@ export function dbInsertTask(task: Task): void {
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
-      target_unit, phone_number, email_address, allow_overshoot, pinned_order, meal_entry_id,
-      grocery_item_id, leftover_id, postpone_count, postpone_muted, drifting_since,
+      target_unit, phone_number, email_address, allow_overshoot, pinned_order, generated_kind,
+      generated_source_id, postpone_count, postpone_muted, drifting_since,
       extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally,
       deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1010,9 +1047,8 @@ export function dbInsertTask(task: Task): void {
       task.emailAddress ?? null,
       task.allowOvershoot ? 1 : 0,
       task.pinnedOrder,
-      task.mealEntryId ?? null,
-      task.groceryItemId ?? null,
-      task.leftoverId ?? null,
+      task.generatedKind ?? null,
+      task.generatedSourceId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
       task.driftingSince ?? null,
@@ -1041,8 +1077,8 @@ export function dbUpdateTask(task: Task): void {
       archived=?, archived_at=?, project_id=?, link_url=?,
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
-      target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, meal_entry_id=?,
-      grocery_item_id=?, leftover_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
+      target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, generated_kind=?,
+      generated_source_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
       extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?,
       deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?
     WHERE id=?`,
@@ -1080,9 +1116,8 @@ export function dbUpdateTask(task: Task): void {
       task.emailAddress ?? null,
       task.allowOvershoot ? 1 : 0,
       task.pinnedOrder,
-      task.mealEntryId ?? null,
-      task.groceryItemId ?? null,
-      task.leftoverId ?? null,
+      task.generatedKind ?? null,
+      task.generatedSourceId ?? null,
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
       task.driftingSince ?? null,

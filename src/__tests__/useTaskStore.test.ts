@@ -244,9 +244,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   blockedById: null,
   deliverableKind: null,
   deliverableValue: null,
-  mealEntryId: null,
-  groceryItemId: null,
-  leftoverId: null,
+  generatedKind: null,
+  generatedSourceId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
   pendingImport: null,
@@ -2192,7 +2191,16 @@ describe('checkMealPlanNudge', () => {
     const s = settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03' });
     useSettingsStore.getState.mockReturnValue(s);
     useTaskStore.setState({
-      tasks: [makeTask({ id: 'nudge-1', title: 'Plan meals for 10 – 16 Aug', linkUrl: 'dundundun://mealplan' })],
+      // generatedKind, not the linkUrl this used to be recognised by. A legacy
+      // row carrying only the link is backfilled to exactly this by the
+      // migration in initDatabase, so the set that blocks a second nudge is
+      // unchanged; what a bare link no longer does is claim to be the app's.
+      tasks: [makeTask({
+        id: 'nudge-1',
+        title: 'Plan meals for 10 – 16 Aug',
+        linkUrl: 'dundundun://mealplan',
+        generatedKind: 'mealPlanNudge',
+      })],
     });
 
     useTaskStore.getState().checkMealPlanNudge();
@@ -6868,7 +6876,7 @@ describe('deleting a use-up task', () => {
 
   it('records the item\'s opt-out, so the next purchase doesn\'t hand it back', () => {
     seedItem();
-    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', groceryItemId: 'g-1' });
+    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', generatedKind: 'groceryUseUp', generatedSourceId: 'g-1' });
 
     useTaskStore.getState().deleteTask(task.id);
 
@@ -6877,7 +6885,7 @@ describe('deleting a use-up task', () => {
 
   it('undo clears the opt-out again, and leaves the restored task alone', () => {
     seedItem();
-    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', groceryItemId: 'g-1' });
+    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', generatedKind: 'groceryUseUp', generatedSourceId: 'g-1' });
     useTaskStore.getState().deleteTask(task.id);
 
     useTaskStore.getState().lastAction!.undo();

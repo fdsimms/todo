@@ -116,7 +116,7 @@ jest.mock('../store/useSettingsStore', () => ({
 
 /** The live use-up task for an item, as the store's own helper finds it. */
 const useUpTaskFor = (itemId: string) =>
-  mockTaskState.tasks.find(t => t.groceryItemId === itemId && !t.completed && !t.archived);
+  mockTaskState.tasks.find(t => t.generatedSourceId === itemId && !t.completed && !t.archived);
 
 let seq = 0;
 function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
@@ -2306,7 +2306,7 @@ describe('use-up tasks', () => {
     useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
     useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-24');
 
-    expect(mockTaskState.tasks.filter(t => t.groceryItemId === spinach.id)).toHaveLength(1);
+    expect(mockTaskState.tasks.filter(t => t.generatedSourceId === spinach.id)).toHaveLength(1);
     expect(new Date(useUpTaskFor(spinach.id)!.dueDate!).getDate()).toBe(23);
     // The item's date is not a schedule the user picked, so moving it doesn't
     // count as a reschedule.
@@ -2391,14 +2391,14 @@ describe('use-up tasks', () => {
       const spinach = makeItem({ name: 'spinach', onList: true, checked: true });
       seed([spinach]);
       mockTaskState.tasks.push({
-        id: 'old', title: 'Use up spinach', groceryItemId: spinach.id, completed: true, archived: false,
+        id: 'old', title: 'Use up spinach', generatedKind: 'groceryUseUp', generatedSourceId: spinach.id, completed: true, archived: false,
       } as never);
       (dbFinishGroceryShopping as jest.Mock).mockReturnValue([spinach.id]);
 
       useGroceryStore.getState().finishShopping();
 
       expect(useUpTaskFor(spinach.id)).toBeDefined();
-      expect(mockTaskState.tasks.filter(t => t.groceryItemId === spinach.id)).toHaveLength(2);
+      expect(mockTaskState.tasks.filter(t => t.generatedSourceId === spinach.id)).toHaveLength(2);
     });
   });
 });

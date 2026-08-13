@@ -1,0 +1,134 @@
+import type { Task, TaskDraft } from '../types';
+import {
+  hasAnyGeneratedTask,
+  liveGeneratedTask,
+  type GeneratedKind,
+} from '../utils/generatedTasks';
+import { useTaskStore } from './useTaskStore';
+
+/**
+ * The write half of the generated-task mechanism — the reconcile every
+ * generator used to keep its own copy of.
+ *
+ * `src/utils/generatedTasks.ts` holds the pure half (the kinds, the registry,
+ * the opt-out precedence, the "is there one already" lookups) and stays
+ * testable without a store. This module is what actually creates, updates and
+ * deletes rows, so it lives in `src/store/` next to the three stores that call
+ * it — `useMealPlanStore`, `useGroceryStore` and `useLeftoverStore`, each of
+ * which had a `reconcile*Task` / `drop*Task` pair that differed only in which
+ * field it read and which settings it looked up.
+ *
+ * The shape all three had, and the one written here once:
+ *
+ * 1. Not wanted → delete the live task if there is one, quietly, and stop.
+ * 2. Wanted, one exists → rewrite the source-owned fields, but only if they
+ *    have actually drifted.
+ * 3. Wanted, none exists → create it.
+ *
+ * The caller supplies the parts that are genuinely its own: whether the source
+ * wants a task at all, which fields the source owns, and the draft to create.
+ * Nothing about a meal, a grocery item or a leftover is known here.
+ */
+
+/**
+ * Deleting a generated task without arming shake-to-undo.
+ *
+ * `deleteTask` records an undoable action, which is right when a person deletes
+ * a task and wrong here: this delete is a consequence of a meal being moved or
+ * a leftover being eaten, and there is no undo in the kitchen for it to belong
+ * to. A delete the user didn't just perform, sitting under their next shake, is
+ * the same failure the completed-task purge avoids by not going through
+ * `bulkDeleteTasks`.
+ *
+ * It also means the opt-out block in `deleteTask` still runs, which is exactly
+ * what's wanted — see the note on `reconcileGeneratedTask` below.
+ */
+export function deleteGeneratedTaskQuietly(taskId: string): void {
+  const store = useTaskStore.getState();
+  store.deleteTask(taskId);
+  store.setLastAction(null);
+}
+
+export interface ReconcileGeneratedOptions {
+  kind: GeneratedKind;
+  /** The row this task is projected from; null for a generator with no source. */
+  sourceId: string | null;
+  /** The caller's answer to "should this source have a task", already decided. */
+  wanted: boolean;
+  /**
+   * The fields the source owns, for an existing task that has drifted — or
+   * null when nothing has changed, which is how a caller says "leave it alone".
+   *
+   * Passing null rather than writing unconditionally is worth the awkwardness:
+   * a reconcile runs on every mutation of its source, several of which (a
+   * recipe scale change, a re-sort within a slot, a rename the task doesn't
+   * chase) change nothing the task shows. A no-op write would still hit SQLite,
+   * still replace the object in the store, and still re-render every list
+   * holding it.
+   */
+  drift: (existing: Task) => Partial<Task> | null;
+  /** The full draft for a task that doesn't exist yet, back-pointer included. */
+  draft: () => Partial<TaskDraft>;
+  /**
+   * Whether a *finished* task for this source blocks a new one.
+   *
+   * `true` for cook tasks and false for the rest, and the difference is the
+   * generator's meaning rather than an inconsistency to iron out — see
+   * `hasAnyGeneratedTask`. A meal is one event; a grocery item and a leftover
+   * are rows that come round again.
+   */
+  blocksOnFinished?: boolean;
+}
+
+/**
+ * Bring this source's generated task into line with the source.
+ *
+ * **A delete here writes the source's opt-out**, because it goes through
+ * `useTaskStore.deleteTask`, which stamps `false` on whatever the task was
+ * generated from. That is right for a delete the *user* performs and wrong for
+ * one a reconcile performs — so step 1 below is reached only when the source
+ * has already said no (the setting is off, the date was cleared, the leftover
+ * was eaten), and writing "no" onto a row that already means no is a no-op the
+ * store's own equality guard drops. The one path that must not write it is a
+ * source being deleted outright, which is why `dropGeneratedTask` exists
+ * separately and why its callers run it *after* the source row is gone.
+ */
+export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void {
+  const { kind, sourceId, wanted, drift, draft, blocksOnFinished = false } = options;
+  const { tasks, addTask, updateTask } = useTaskStore.getState();
+  const existing = liveGeneratedTask(tasks, kind, sourceId);
+
+  if (!wanted) {
+    // Only the live one goes. A completed generated task is a record of a thing
+    // that was done, and the source changing its mind is not a claim it wasn't.
+    if (existing) deleteGeneratedTaskQuietly(existing.id);
+    return;
+  }
+
+  if (existing) {
+    const updates = drift(existing);
+    // skipPostponeCount: this row's date is the source's date, not a schedule
+    // the user picked for the task — dragging Tuesday's dinner to Friday moves
+    // this row with it, and a fresher bag moving a use-by date out is not the
+    // user ducking anything. See utils/postpone.ts.
+    if (updates) updateTask(existing.id, updates, { skipPostponeCount: true });
+    return;
+  }
+
+  if (blocksOnFinished && hasAnyGeneratedTask(tasks, kind, sourceId)) return;
+  addTask(draft());
+}
+
+/**
+ * Drop this source's live generated task, without deciding anything.
+ *
+ * Separate from `reconcileGeneratedTask` because the callers are answering a
+ * different question: the source is *gone* (a meal removed, a grocery item
+ * deleted, a leftover eaten), so there is nothing to reconcile against and a
+ * live "Use up spinach" pointing at a row the user has just forgotten is a
+ * chore about nothing.
+ */
+export function dropGeneratedTask(kind: GeneratedKind, sourceId: string | null): void {
+  const existing = liveGeneratedTask(useTaskStore.getState().tasks, kind, sourceId);
+  if (existing) deleteGeneratedTaskQuietly(existing.id);
+}

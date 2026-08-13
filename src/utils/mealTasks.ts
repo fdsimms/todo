@@ -1,5 +1,6 @@
 import type { MealPlanEntry, MealSlot, TaskDraft, TimeOfDay } from '../types';
 import { dayKeyToDate } from './dateUtils';
+import { generatedBy, wantsGeneratedTask } from './generatedTasks';
 import { resolveOffsetDate } from './templateUtils';
 
 /**
@@ -50,27 +51,23 @@ export const MEAL_SLOT_SEGMENTS: Record<MealSlot, TimeOfDay[]> = {
 /**
  * Whether this meal should have a cook task, given the global setting.
  *
- * Three inputs collapse to one answer here so no caller re-derives it:
+ * The precedence — an explicit per-meal answer beats the setting, in both
+ * directions — is `wantsGeneratedTask`'s, shared with the other generators.
+ * What's written here is only the part that makes a *meal* qualify:
  *
- * 1. **An explicit per-meal answer always wins**, in both directions. `true`
- *    spawns a task even with the setting off ("I do want reminding about this
- *    one"), `false` suppresses it even with the setting on — and `false` is
- *    also what deleting the task records, which is why an explicit no has to
- *    outrank the setting rather than be re-decided every reconcile.
- * 2. **Recipe-backed only, by default.** This is the whole reason the default
+ * 1. **Recipe-backed only, by default.** This is the whole reason the default
  *    is worth having: a Quest protein shake and a pot of frijoles were the two
  *    rows that used to get identical weight, and only one of them is work. A
  *    recipe is the app's own evidence that a meal is something you *make*, so
  *    it does the job a per-slot filter would do and does it more honestly —
  *    pancakes from a recipe qualify, a dinner typed as "takeaway" doesn't.
- * 3. **A leftover is never work by default.** Pointing at the fridge is the
+ * 2. **A leftover is never work by default.** Pointing at the fridge is the
  *    opposite of a thing to cook, and a night that plans to eat Tuesday's
  *    chilli should not acquire a chore. It stays overridable, for the reheat
  *    nobody wants to forget.
  */
 export function wantsCookTask(entry: MealPlanEntry, enabled: boolean): boolean {
-  if (entry.cookTask !== null && entry.cookTask !== undefined) return entry.cookTask;
-  return enabled && !!entry.recipeId && !entry.leftoverId;
+  return wantsGeneratedTask(entry.cookTask, enabled, !!entry.recipeId && !entry.leftoverId);
 }
 
 /**
@@ -127,7 +124,7 @@ export function cookTaskDraft(
   entry: MealPlanEntry,
   category: string | null = null
 ): Partial<TaskDraft> {
-  return { ...cookTaskFields(entry), mealEntryId: entry.id, category };
+  return { ...cookTaskFields(entry), ...generatedBy('mealCook', entry.id), category };
 }
 
 /**
