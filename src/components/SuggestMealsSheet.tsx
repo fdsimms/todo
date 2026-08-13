@@ -703,7 +703,7 @@ export function SuggestMealsSheet({
             <View style={styles.root}>
               <View style={styles.header}>
                 <SheetHeaderButton label="Close" role="cancel" onPress={() => setPreviewRecipe(null)} minWidth={72} />
-                <Text style={styles.headerTitle} numberOfLines={1}>{previewRecipe.name}</Text>
+                <Text style={styles.headerTitle}>{previewRecipe.name}</Text>
                 <SheetHeaderButton
                   label={selected.has(`recipe:${previewRecipe.id}`) ? 'Selected' : 'Select'}
                   role="confirm"
