@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Platform, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { ProgressBar } from './ProgressBar';
+import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 
 interface Props {
   /** "Prep" or "Cook" — drives the idle/counting-down copy ("Prep for 15m", "Time this cook"). */
@@ -22,6 +23,8 @@ interface Props {
   onToggle: () => void;
   onLog: () => void;
   onReset: () => void;
+  /** Logs a time typed in directly, for whoever timed it on a stove clock instead of this one. */
+  onLogManual: (minutes: number) => void;
 }
 
 /**
@@ -35,12 +38,20 @@ interface Props {
  */
 export function RecipeTimerRow({
   verb, targetMinutes, running, paused, inProgress, ready,
-  elapsedSeconds, remainingSeconds, progress, summary, onToggle, onLog, onReset,
+  elapsedSeconds, remainingSeconds, progress, summary, onToggle, onLog, onReset, onLogManual,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const hasTarget = targetMinutes !== null;
   const idleText = verb === 'Cook' ? 'Time this cook' : 'Time prep';
+  const [manualMinutes, setManualMinutes] = useState('');
+
+  const submitManual = () => {
+    const minutes = parseInt(manualMinutes, 10);
+    if (!Number.isFinite(minutes) || minutes <= 0) return;
+    onLogManual(minutes);
+    setManualMinutes('');
+  };
 
   const headerText = hasTarget
     ? ready
@@ -103,6 +114,34 @@ export function RecipeTimerRow({
           </>
         )}
       </View>
+      {!inProgress && (
+        <View style={styles.manualRow}>
+          <Text style={styles.manualLabel}>or log a time</Text>
+          <TextInput
+            style={styles.manualInput}
+            value={manualMinutes}
+            onChangeText={text => setManualMinutes(text.replace(/[^0-9]/g, ''))}
+            keyboardType="number-pad"
+            placeholder="min"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={4}
+            returnKeyType="done"
+            onSubmitEditing={submitManual}
+            inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+            accessibilityLabel={`${verb} time in minutes`}
+          />
+          <TouchableOpacity
+            onPress={submitManual}
+            disabled={!manualMinutes}
+            hitSlop={8}
+            style={[styles.timerSecondaryBtn, !manualMinutes && styles.manualLogBtnDisabled]}
+            accessibilityRole="button"
+            accessibilityLabel={`Log this ${verb.toLowerCase()} time`}
+          >
+            <Ionicons name="checkmark" size={iconSize.sm} color={manualMinutes ? colors.accent : colors.textTertiary} />
+          </TouchableOpacity>
+        </View>
+      )}
       {!!summary && <Text style={styles.timerSummary}>{summary}</Text>}
     </View>
   );
@@ -156,6 +195,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  manualRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  manualLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    flex: 1,
+  },
+  manualInput: {
+    minWidth: 44,
+    height: 28,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgTertiary,
+    color: colors.text,
+    fontSize: font.sm,
+    textAlign: 'right',
+  },
+  manualLogBtnDisabled: {
+    opacity: 0.5,
   },
   timerSummary: {
     color: colors.textTertiary,

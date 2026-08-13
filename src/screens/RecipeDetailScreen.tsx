@@ -101,10 +101,12 @@ export function RecipeDetailScreen() {
   const pauseCookTimer = useRecipeStore(s => s.pauseCookTimer);
   const resetCookTimer = useRecipeStore(s => s.resetCookTimer);
   const stopCookTimer = useRecipeStore(s => s.stopCookTimer);
+  const logManualCookTime = useRecipeStore(s => s.logManualCookTime);
   const startPrepTimer = useRecipeStore(s => s.startPrepTimer);
   const pausePrepTimer = useRecipeStore(s => s.pausePrepTimer);
   const resetPrepTimer = useRecipeStore(s => s.resetPrepTimer);
   const stopPrepTimer = useRecipeStore(s => s.stopPrepTimer);
+  const logManualPrepTime = useRecipeStore(s => s.logManualPrepTime);
   const addComponent = useRecipeStore(s => s.addComponent);
   const removeComponent = useRecipeStore(s => s.removeComponent);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
@@ -233,6 +235,11 @@ export function RecipeDetailScreen() {
     resetCookTimer(recipe.id);
   };
 
+  const handleLogManualCookTime = async (minutes: number) => {
+    await haptics.success();
+    logManualCookTime(recipe.id, minutes);
+  };
+
   const prepHasTarget = hasPrepTimer(recipe);
   const prepElapsedSeconds = prepTimerElapsed(recipe, nowTick);
   const prepRemainingSeconds = prepHasTarget ? prepTimerRemaining(recipe, nowTick) : 0;
@@ -261,6 +268,11 @@ export function RecipeDetailScreen() {
   const handleResetPrepTimer = async () => {
     await haptics.warning();
     resetPrepTimer(recipe.id);
+  };
+
+  const handleLogManualPrepTime = async (minutes: number) => {
+    await haptics.success();
+    logManualPrepTime(recipe.id, minutes);
   };
 
   const submitDraft = () => {
@@ -825,6 +837,7 @@ export function RecipeDetailScreen() {
           onToggle={handlePrepTimerToggle}
           onLog={handleLogPrepTime}
           onReset={handleResetPrepTimer}
+          onLogManual={handleLogManualPrepTime}
         />
         <RecipeTimerRow
           verb="Cook"
@@ -840,6 +853,7 @@ export function RecipeDetailScreen() {
           onToggle={handleCookTimerToggle}
           onLog={handleLogCookTime}
           onReset={handleResetCookTimer}
+          onLogManual={handleLogManualCookTime}
         />
 
         <Text style={styles.sectionLabel}>Ingredients</Text>
