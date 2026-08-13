@@ -851,6 +851,9 @@ export function MealPlanScreen() {
                         selectionMode={selectionMode}
                         selected={selectedIds.has(entry.id)}
                         onSwipeSelect={id => enterSelectionMode(id)}
+                        // Matches styles.card, so the swipe panel is uncovered
+                        // by the row rather than showing through it.
+                        surface={colors.bgSecondary}
                       />
                     </React.Fragment>
                   ))}
