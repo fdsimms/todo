@@ -177,10 +177,15 @@ interface RecipeStore {
   /** The prep-timer counterpart of logManualCookTime, logging through applyMeasuredPrepTime. */
   logManualPrepTime: (id: string, minutes: number) => void;
 
-  /** Appends one typed line. Null when it parses to nothing or is already there. */
-  addIngredient: (recipeId: string, line: string) => RecipeIngredient | null;
-  /** Appends a pasted block. Returns how many were new. */
-  addIngredientsFromText: (recipeId: string, raw: string) => number;
+  /**
+   * Appends one typed line. Null when it parses to nothing or is already
+   * there. `section` stamps the same heading onto the new row that
+   * `RecipeIngredientSheet`'s Section field writes by hand — the editor's add
+   * field passes whatever section is currently selected there.
+   */
+  addIngredient: (recipeId: string, line: string, section?: string | null) => RecipeIngredient | null;
+  /** Appends a pasted block. Returns how many were new. `section` as above, applied to every new line. */
+  addIngredientsFromText: (recipeId: string, raw: string, section?: string | null) => number;
   /**
    * Merges already-structured ingredients — e.g. from AI recipe extraction —
    * bypassing makeIngredient's text parse, since these already arrived as
@@ -561,10 +566,10 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, ...applyMeasuredPrepTime(minutes, recipe) });
   },
 
-  addIngredient(recipeId, line) {
+  addIngredient(recipeId, line, section = null) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return null;
-    const ingredient = makeIngredient(line);
+    const ingredient = makeIngredient(line, section);
     if (!ingredient) return null;
     const merged = mergeIngredients(recipe.ingredients, [ingredient]);
     if (merged.length === recipe.ingredients.length) return null;
@@ -572,10 +577,10 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     return ingredient;
   },
 
-  addIngredientsFromText(recipeId, raw) {
+  addIngredientsFromText(recipeId, raw, section = null) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return 0;
-    const merged = mergeIngredients(recipe.ingredients, ingredientsFromText(raw));
+    const merged = mergeIngredients(recipe.ingredients, ingredientsFromText(raw, section));
     const added = merged.length - recipe.ingredients.length;
     if (added === 0) return 0;
     save(set, { ...recipe, ingredients: merged });
