@@ -1868,18 +1868,19 @@ export interface ContextRow {
   kind: 'event' | 'meal';
   title: string;
   /**
-   * The right-hand caption — "4:15 PM", "All day", "Now", "Dinner". A single
-   * string rather than a time plus a formatter, because the four cases don't
-   * share a format and the row would otherwise need to know which it had.
+   * The caption under the title — "4:15 PM", "All day", "Now", "Dinner". A
+   * single string rather than a time plus a formatter, because the four cases
+   * don't share a format and the row would otherwise need to know which it had.
+   * All four say *when*, which is what lets the row caption them with one glyph.
    */
   caption: string;
   /** Which category section this files under; null = the header-less loose group. */
   category: string | null;
   /**
    * True only while an event is actually running. The one emphasis in the
-   * treatment (primary title, accent caption) and deliberately the only one —
-   * everything else here is secondary text, or the rows stop being context and
-   * start competing with the tasks they sit among.
+   * treatment (medium-weight title, accent caption) and deliberately the only
+   * one — the row is otherwise drawn exactly as a task is, so anything further
+   * would make a running event louder than the work it sits among.
    */
   now: boolean;
 }
