@@ -1142,9 +1142,22 @@ export function MealPlanScreen() {
           ListHeaderComponent={
             selectionMode ? null : (
               <>
+                {/* First on the page, above today as well as the week: the
+                    fridge is what should be eaten before anything new is
+                    planned, so it's read before today's meals rather than
+                    after them. It renders nothing at all when empty (see
+                    LeftoversCard), so an empty fridge still opens on today. */}
+                <LeftoversCard
+                  leftovers={leftovers}
+                  onPress={l => setEditingLeftoverId(l.id)}
+                  onPlan={l => setPlanningLeftover(l)}
+                  onAdd={() => setLoggingLeftover({})}
+                  onHistory={() => { haptics.tap(); setHistoryVisible(true); }}
+                  drag={fridgeDragHandlers}
+                />
                 {/*
-                  Today, first — a copy of its row(s) the same way Pinned
-                  Tasks puts a copy of a pinned task above Today's own
+                  Today, above the week — a copy of its row(s) the same way
+                  Pinned Tasks puts a copy of a pinned task above Today's own
                   category sections (both stay live; ticking either one does
                   the same thing). The week always renders Sunday→Saturday
                   below, so whichever day today happens to fall on, it would
@@ -1207,17 +1220,6 @@ export function MealPlanScreen() {
                   </View>
                 )}
 
-                {/* Above the week rather than beside it: the fridge is what should
-                    be eaten before anything new is planned, and it renders nothing
-                    at all when empty (see LeftoversCard). */}
-                <LeftoversCard
-                  leftovers={leftovers}
-                  onPress={l => setEditingLeftoverId(l.id)}
-                  onPlan={l => setPlanningLeftover(l)}
-                  onAdd={() => setLoggingLeftover({})}
-                  onHistory={() => { haptics.tap(); setHistoryVisible(true); }}
-                  drag={fridgeDragHandlers}
-                />
                 {/*
                   The two things you do to a *week* rather than to a meal, in
                   one row above it. "Add week to list" used to live in the
