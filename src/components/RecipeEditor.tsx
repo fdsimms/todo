@@ -20,6 +20,9 @@ import {
   RECIPE_SOURCE_TYPE_LABELS,
   RECIPE_PAGE_MAX_LENGTH,
   RECIPE_TAG_MAX_LENGTH,
+  LEFTOVER_KEEP_DAYS_DEFAULT,
+  LEFTOVER_KEEP_DAYS_MAX,
+  LEFTOVER_KEEP_DAYS_MIN,
 } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { recipesUsing } from '../utils/recipeComponents';
@@ -31,6 +34,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatDuration } from '../utils/effort';
+import { describeKeepDays } from '../utils/leftovers';
 import { CollapsibleField } from './CollapsibleField';
 import { CountStepper } from './CountStepper';
 import { distinctRecipeValues, filterRecipeSuggestions, formatServingsRange, totalMinutes } from '../utils/recipeUtils';
@@ -74,6 +78,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const setSourcePage = useRecipeStore(s => s.setSourcePage);
   const setServings = useRecipeStore(s => s.setServings);
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
+  const setLeftoverKeepDays = useRecipeStore(s => s.setLeftoverKeepDays);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const setPrepMinutes = useRecipeStore(s => s.setPrepMinutes);
   const setMealType = useRecipeStore(s => s.setMealType);
@@ -95,8 +100,10 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [tagsOpen, setTagsOpen] = useState(false);
   const [addingTag, setAddingTag] = useState(false);
   const [newTag, setNewTag] = useState('');
+  const [leftoverKeepDays, setLeftoverKeepDaysDraft] = useState<number | null>(null);
   const [servingsOpen, setServingsOpen] = useState(false);
   const [yieldOpen, setYieldOpen] = useState(false);
+  const [leftoverKeepOpen, setLeftoverKeepOpen] = useState(false);
   const [estimatedMinutes, setEstimatedMinutesDraft] = useState<number | null>(null);
   const [prepMinutes, setPrepMinutesDraft] = useState<number | null>(null);
   const [durationOpen, setDurationOpen] = useState(false);
@@ -159,6 +166,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setServingsDraft(recipe.servings);
     setServingsMaxDraft(recipe.servingsMax);
     setRecipeYieldDraft(recipe.recipeYield ?? '');
+    setLeftoverKeepDaysDraft(recipe.leftoverKeepDays);
     setMealTypeDraft(recipe.mealType);
     setTagsDraft(recipe.tags);
     setTagsOpen(false);
@@ -166,6 +174,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setNewTag('');
     setServingsOpen(false);
     setYieldOpen(false);
+    setLeftoverKeepOpen(false);
     setEstimatedMinutesDraft(recipe.estimatedMinutes);
     setPrepMinutesDraft(recipe.prepMinutes);
     setDurationOpen(false);
@@ -193,6 +202,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setSourcePage(recipe.id, sourcePage);
     setServings(recipe.id, servings, servingsMax);
     setRecipeYield(recipe.id, recipeYield);
+    setLeftoverKeepDays(recipe.id, leftoverKeepDays);
     setEstimatedMinutes(recipe.id, estimatedMinutes);
     setPrepMinutes(recipe.id, prepMinutes);
     setMealType(recipe.id, mealType);
@@ -346,6 +356,40 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             returnKeyType="done"
             accessibilityLabel="Recipe yield"
           />
+        )}
+        <EditorRow
+          icon="snow-outline"
+          label="Leftovers keep"
+          value={leftoverKeepOpen
+            ? undefined
+            : (leftoverKeepDays === null ? undefined : describeKeepDays(leftoverKeepDays))}
+          hint={`How long this dish keeps in the fridge. Logging its leftovers starts at this many days instead of the usual ${LEFTOVER_KEEP_DAYS_DEFAULT}.`}
+          expanded={leftoverKeepOpen}
+          onPress={() => { animateLayout(); setLeftoverKeepOpen(v => !v); }}
+          onClear={leftoverKeepDays !== null
+            ? () => { setLeftoverKeepDaysDraft(null); setLeftoverKeepOpen(false); }
+            : undefined}
+        />
+        {leftoverKeepOpen && (
+          <View style={styles.stepperRow}>
+            <CountStepper
+              value={leftoverKeepDays}
+              onChange={setLeftoverKeepDaysDraft}
+              min={LEFTOVER_KEEP_DAYS_MIN}
+              max={LEFTOVER_KEEP_DAYS_MAX}
+              // Stepping *below* the floor clears it back to the standard
+              // window. Unlike Serves, the floor itself can't double as "no
+              // opinion" — "Same day" is a real thing to say about a dish (see
+              // LEFTOVER_KEEP_DAYS_MIN), so it takes one more press to get past.
+              allowNull
+              emptyLabel="—"
+              // The same shape LeftoverSheet's keep-for stepper uses, so the two
+              // controls that set this number read alike.
+              format={n => (n === 0 ? 'Same day' : `${n}d`)}
+              label="Leftovers keep"
+              describeValue={n => (n === null ? 'not set' : describeKeepDays(n))}
+            />
+          </View>
         )}
         <CollapsibleField
           label="Meal type"

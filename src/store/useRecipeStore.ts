@@ -22,6 +22,7 @@ import {
   remapIngredientKeyIn,
 } from '../utils/recipeUtils';
 import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
+import { clampKeepDays } from '../utils/leftovers';
 import { normalizeRecipeTags } from '../utils/recipeTags';
 import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 
@@ -77,6 +78,16 @@ interface RecipeStore {
   setServings: (id: string, servings: number | null, servingsMax?: number | null) => void;
   /** What the recipe makes when a person-count doesn't fit — "3 cups", "2 dozen cookies". */
   setRecipeYield: (id: string, recipeYield: string | null) => void;
+  /**
+   * How long this dish's leftovers keep. null hands the question back to the
+   * standard window, which is what every recipe says until told otherwise.
+   *
+   * Clamped to the stepper's own range rather than validated, the same call
+   * setServings makes. **Changes nothing already in the fridge** — see
+   * leftoverKeepDaysFor: this is the number the log sheet opens on, not a rule
+   * applied to containers whose day was decided when they went in.
+   */
+  setLeftoverKeepDays: (id: string, days: number | null) => void;
   /**
    * Sets or clears a recipe's attached photo — `uri` is a file already saved
    * by `pickRecipeImage` (src/utils/recipePhoto.ts); this call just records
@@ -299,6 +310,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       servings: null,
       servingsMax: null,
       recipeYield: null,
+      leftoverKeepDays: null,
       imagePath: null,
       mealType: null,
       tags: [],
@@ -407,6 +419,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return;
     const clean = cleanRecipeSource(recipeYield ?? '');
     save(set, { ...recipe, recipeYield: clean || null });
+  },
+
+  setLeftoverKeepDays(id, days) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, leftoverKeepDays: days === null ? null : clampKeepDays(days) });
   },
 
   setImage(id, uri) {

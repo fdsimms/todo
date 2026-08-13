@@ -47,7 +47,7 @@ import {
 import { LeftoverSheet, type LeftoverSeed } from '../components/LeftoverSheet';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { FridgeHistorySheet } from '../components/FridgeHistorySheet';
-import { isLiveLeftover, leftoverPartsFor, mealTitleForLeftover } from '../utils/leftovers';
+import { isLiveLeftover, leftoverKeepDaysFor, leftoverPartsFor, mealTitleForLeftover } from '../utils/leftovers';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -768,6 +768,10 @@ export function MealPlanScreen() {
       recipeId: entry.recipeId,
       sourceEntryId: entry.id,
       parts: leftoverPartsFor(title, recipe, recipesById, { chosen: entry.recipeChoices }),
+      // What the dish itself says it keeps for, so the usual log is still one
+      // tap for a recipe that lasts a week rather than a stepper to correct
+      // every time. A free-text meal has no recipe to ask and falls back.
+      keepDays: leftoverKeepDaysFor(recipe),
     });
   };
 

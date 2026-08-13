@@ -28,7 +28,7 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
 import { isUsingDemoDatabase } from '../db/database';
-import { RECIPE_MEAL_TYPES } from '../types';
+import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
 import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
 import { cheapestShopFor, describeShopPrices, shopPricesFor } from '../utils/groceryPrice';
@@ -641,6 +641,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.estimatedMinutes && r.prepMinutes)).toBe(true);
     expect(recipes.some(r => r.servings && r.servingsMax)).toBe(true);
     expect(recipes.some(r => r.recipeYield)).toBe(true);
+    // Both ends of the leftovers dial — one dish that keeps longer than the
+    // standard window and one that keeps less — plus the many that say nothing.
+    expect(recipes.some(r => (r.leftoverKeepDays ?? 0) > LEFTOVER_KEEP_DAYS_DEFAULT)).toBe(true);
+    expect(recipes.some(r => r.leftoverKeepDays !== null && r.leftoverKeepDays < LEFTOVER_KEEP_DAYS_DEFAULT)).toBe(true);
+    expect(recipes.some(r => r.leftoverKeepDays === null)).toBe(true);
     expect(recipes.some(r => r.prepTasks.some(p => p.reminderOffsetMinutes !== null))).toBe(true);
     expect(recipes.some(r => r.cookCount > 1 && r.lastCookedAt)).toBe(true);
     expect(recipes.some(r => r.timerStartedAt)).toBe(true);

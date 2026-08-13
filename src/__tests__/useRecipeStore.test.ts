@@ -6,6 +6,7 @@ import {
   dbDeleteRecipe,
 } from '../db/database';
 import type { Recipe, RecipeIngredient } from '../types';
+import { LEFTOVER_KEEP_DAYS_MAX } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
@@ -28,6 +29,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     servings: null,
     servingsMax: null,
     recipeYield: null,
+    leftoverKeepDays: null,
     imagePath: null,
     mealType: null,
     tags: [],
@@ -225,6 +227,33 @@ describe('field setters', () => {
 
     useRecipeStore.getState().setRecipeYield(r.id, null);
     expect(useRecipeStore.getState().recipeById(r.id)!.recipeYield).toBeNull();
+  });
+
+  it('sets and clears the leftover keep-for window', () => {
+    const r = makeRecipe('Mash');
+    seed([r]);
+
+    useRecipeStore.getState().setLeftoverKeepDays(r.id, 5);
+    expect(useRecipeStore.getState().recipeById(r.id)!.leftoverKeepDays).toBe(5);
+
+    // Zero is a real answer — a dish that has to be eaten the day it's made —
+    // so only null hands the question back to the standard window.
+    useRecipeStore.getState().setLeftoverKeepDays(r.id, 0);
+    expect(useRecipeStore.getState().recipeById(r.id)!.leftoverKeepDays).toBe(0);
+
+    useRecipeStore.getState().setLeftoverKeepDays(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.leftoverKeepDays).toBeNull();
+  });
+
+  it('clamps a keep-for window into the sayable range', () => {
+    const r = makeRecipe('Mash');
+    seed([r]);
+
+    useRecipeStore.getState().setLeftoverKeepDays(r.id, 500);
+    expect(useRecipeStore.getState().recipeById(r.id)!.leftoverKeepDays).toBe(LEFTOVER_KEEP_DAYS_MAX);
+
+    useRecipeStore.getState().setLeftoverKeepDays(r.id, -4);
+    expect(useRecipeStore.getState().recipeById(r.id)!.leftoverKeepDays).toBe(0);
   });
 
   it('sets and clears the meal type', () => {

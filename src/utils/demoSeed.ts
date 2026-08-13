@@ -561,6 +561,7 @@ function seedRecipes(): DemoRecipes {
     setSourcePage,
     setEstimatedMinutes,
     setPrepMinutes,
+    setLeftoverKeepDays,
     toggleFavorite,
     markCooked,
     startCookTimer,
@@ -576,6 +577,10 @@ function seedRecipes(): DemoRecipes {
   setServings(mash.id, 4);
   setEstimatedMinutes(mash.id, 25);
   setPrepMinutes(mash.id, 10);
+  // Keeps longer than the standard three days, so the tub of mash in the fridge
+  // below is on the window its own recipe asked for. The salmon takes the other
+  // end of the dial — a dish can say either.
+  setLeftoverKeepDays(mash.id, 5);
 
   const roasties = newRecipe('Roast potatoes');
   addIngredientsFromText(
@@ -731,6 +736,8 @@ function seedRecipes(): DemoRecipes {
   setTags(salmon.id, ['weeknight']);
   setServings(salmon.id, 2);
   setEstimatedMinutes(salmon.id, 25);
+  // Fish, so the log sheet opens on one day rather than three.
+  setLeftoverKeepDays(salmon.id, 1);
   // The website attribution shape: a person and a publication, independently.
   setSourceUrl(salmon.id, 'https://www.example-recipes.com/lemon-garlic-salmon');
   setAuthor(salmon.id, 'Alison Roman');
@@ -1163,7 +1170,9 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     keepDays: 3,
   });
   // A component's leftover points at the component's own recipe, not at the
-  // dinner it was part of: this is a tub of mash, not a tub of steak.
+  // dinner it was part of: this is a tub of mash, not a tub of steak. Five days
+  // because that's what the mash recipe says its leftovers keep — the number the
+  // log sheet would have opened on.
   logLeftover({
     title: 'Mashed potatoes',
     recipeId: recipes.mash,

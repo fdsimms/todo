@@ -73,6 +73,19 @@ export interface LeftoverSeed {
    * or none leaves the sheet exactly as it was.
    */
   parts?: LeftoverPart[];
+  /**
+   * What the "Keep for" stepper opens on, when the dish has an opinion — see
+   * Recipe.leftoverKeepDays. Omitted (a hand-logged container, or a recipe that
+   * never said) falls to LEFTOVER_KEEP_DAYS_DEFAULT, which is what every open
+   * did before this existed.
+   *
+   * **The whole meal's number, not the ticked parts'.** The sheet writes one
+   * window for everything ticked (they came out of the same oven), so following
+   * the ticks would mean a stepper that moves under a finger that has already
+   * adjusted it — and the number on screen is exactly what gets stored either
+   * way, which is the property worth keeping.
+   */
+  keepDays?: number;
 }
 
 /** One container to log: what to call it, and what it was made from. */
@@ -204,7 +217,7 @@ export function LeftoverSheet({
     // whatever the last one was left on.
     setTitle(leftover?.title ?? seed?.title ?? '');
     setDraftDaysAgo(0);
-    setDraftKeepDays(LEFTOVER_KEEP_DAYS_DEFAULT);
+    setDraftKeepDays(seed?.keepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT);
     // The whole dish and nothing else, so the composed case costs the same one
     // tap the simple one does. Falls back to the first part for a seed that
     // somehow carries only components.

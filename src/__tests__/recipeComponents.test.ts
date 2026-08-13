@@ -63,6 +63,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     createdAt: '2026-01-01T00:00:00.000Z',
     servingsMax: null,
     recipeYield: null,
+    leftoverKeepDays: null,
     imagePath: null,
     estimatedMinutes: null,
     timerStartedAt: null,

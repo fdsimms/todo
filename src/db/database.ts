@@ -670,6 +670,11 @@ export function initDatabase(): void {
     // The brand-level negative, and the only thing a brand rule filters on.
     // NULL is unknown and always counts. See ItemShopLink.brandUnavailableAt.
     'ALTER TABLE grocery_item_shops ADD COLUMN brand_unavailable_at TEXT',
+    // NULL for every existing recipe, which is what "use the standard three
+    // days" already meant before a recipe could say otherwise — so nothing is
+    // backfilled and no leftover already in the fridge moves. See
+    // Recipe.leftoverKeepDays.
+    'ALTER TABLE recipes ADD COLUMN leftover_keep_days INTEGER',
     // The change-tracking column every synced table carries. Generated from
     // SYNC_TRACKED_TABLES rather than written out thirteen times, so a table
     // added to that list can't be left without one. See db/syncTracking.ts.
@@ -2130,6 +2135,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     servings: (row.servings as number) ?? null,
     servingsMax: (row.servings_max as number) ?? null,
     recipeYield: (row.recipe_yield as string) ?? null,
+    leftoverKeepDays: (row.leftover_keep_days as number) ?? null,
     imagePath: (row.image_path as string) ?? null,
     // Unrecognised reads as null (untagged), not a guessed value — unlike
     // MealSlot's dinner fallback below, an unset meal type is itself a valid,
@@ -2171,15 +2177,16 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, servings, servings_max, recipe_yield, image_path, meal_type, tags, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at,
+      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, servings, servings_max, recipe_yield, leftover_keep_days, image_path, meal_type, tags, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
        prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
       recipe.sourceType ?? null, recipe.sourcePage ?? null,
       recipe.servings ?? null, recipe.servingsMax ?? null, recipe.recipeYield ?? null,
+      recipe.leftoverKeepDays ?? null,
       recipe.imagePath ?? null, recipe.mealType ?? null,
       JSON.stringify(recipe.tags),
       JSON.stringify(recipe.ingredients),
@@ -2197,7 +2204,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, servings=?, servings_max=?, recipe_yield=?, image_path=?, meal_type=?, tags=?, ingredients=?, components=?, prep_tasks=?,
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, servings=?, servings_max=?, recipe_yield=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, components=?, prep_tasks=?,
        favorite=?, sort_order=?, cook_count=?, last_cooked_at=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
        prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?
@@ -2207,6 +2214,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
       recipe.sourceType ?? null, recipe.sourcePage ?? null,
       recipe.servings ?? null, recipe.servingsMax ?? null, recipe.recipeYield ?? null,
+      recipe.leftoverKeepDays ?? null,
       recipe.imagePath ?? null, recipe.mealType ?? null,
       JSON.stringify(recipe.tags),
       JSON.stringify(recipe.ingredients),
