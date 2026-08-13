@@ -1,4 +1,4 @@
 {
-  "message": "Meal plan opens with today's day expanded and the rest of the week collapsed, so today doesn't get buried under Sunday through Thursday",
+  "message": "Meal plan now shows today's meals in their own card at the top, so today doesn't get buried on a Friday or Saturday. The rest of the week collapses to make room.",
   "date": "2026-08-13"
 }
