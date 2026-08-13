@@ -7,6 +7,7 @@ import { displayTitleFor, isHiddenForVacation } from './visibilityUtils';
 import { agendaCounts, agendaBody, nextAgendaTime } from './dailyAgenda';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isAlarmKitAvailable, requestAlarmAuthorization, scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
+import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, taskAlarmUuid } from './alarmChain';
 
 export { isAlarmKitAvailable, requestAlarmAuthorization };
 
@@ -15,7 +16,20 @@ export { isAlarmKitAvailable, requestAlarmAuthorization };
 // Android, web, Expo Go) it silently falls back to a plain notification
 // rather than dropping the reminder.
 function usesAlarmKit(task: Task): boolean {
-  return task.reminderKind === 'alarm' && isAlarmKitAvailable();
+  return (task.reminderKind === 'alarm' || task.reminderKind === 'persistent') && isAlarmKitAvailable();
+}
+
+/**
+ * How many times this task's reminder rings.
+ *
+ * A 'persistent' reminder that has fallen back to a plain notification rings
+ * once, like every other notification: the fallback is a *notification*, and
+ * twelve of them five minutes apart is a push-notification storm, not a
+ * quieter version of an alarm. The loudness of this kind comes from AlarmKit's
+ * alert, and where that isn't available the honest degrade is one reminder.
+ */
+function ringCountFor(task: Task): number {
+  return task.reminderKind === 'persistent' && usesAlarmKit(task) ? ALARM_MAX_RINGS : 1;
 }
 
 // ─── Quiet hours ─────────────────────────────────────────────────────────────
@@ -134,11 +148,30 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
     // 'notification' (or vice versa) must never leave a stale entry behind
     // in the backend it no longer uses.
     await Notifications.cancelScheduledNotificationAsync(task.id).catch(() => {});
-    await scheduleNativeAlarm(task.id, triggerDate, displayTitleFor(task) || 'Task reminder');
+    // Clear the previous chain before laying down the new one. Shortening a
+    // persistent reminder to a plain alarm otherwise leaves rings 1..11 of the
+    // old chain scheduled, and they'd ring against a task with nothing left
+    // pointing at them — an alarm no cancel path can name is the one failure
+    // this feature genuinely cannot ship with.
+    await cancelAlarmChain(task.id);
+
+    const title = displayTitleFor(task) || 'Task reminder';
+    const { quietHoursStart: qStart, quietHoursEnd: qEnd } = useSettingsStore.getState();
+    const times = alarmChainTimes(triggerDate, ringCountFor(task));
+
+    for (let i = 0; i < times.length; i++) {
+      // Repeats that run into quiet hours are dropped, not deferred — the
+      // opposite call to the first ring above, and the same one
+      // scheduleTimerAlarm makes. Deferring them would stack the remainder of
+      // the chain onto the window's close, so a 3am chain silenced at 3am
+      // would fire its leftover rings back to back at 7am.
+      if (isWithinQuietHours(times[i], qStart, qEnd)) break;
+      await scheduleNativeAlarm(taskAlarmUuid(task.id, i), times[i], title);
+    }
     return;
   }
 
-  await cancelNativeAlarm(task.id).catch(() => {});
+  await cancelAlarmChain(task.id);
   await Notifications.cancelScheduledNotificationAsync(task.id).catch(() => {});
   await Notifications.scheduleNotificationAsync({
     identifier: task.id,
@@ -155,9 +188,28 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
   });
 }
 
+/**
+ * Cancel every alarm a task could be holding.
+ *
+ * Deliberately uninformed: it names all `ALARM_MAX_RINGS` ids without knowing
+ * (or being able to know) which kind the reminder was, because the caller
+ * usually only has an id — and because the two ways of being wrong are not
+ * symmetric. Cancelling an alarm that was never scheduled is a no-op AlarmKit
+ * already swallows; *failing* to cancel one leaves a task ringing every five
+ * minutes with the task it belonged to already gone. The calls go out together
+ * rather than in sequence, and on every platform without AlarmKit the bridge
+ * short-circuits before touching native at all, so the loop costs nothing off
+ * an iOS 26 device.
+ */
+async function cancelAlarmChain(taskId: string): Promise<void> {
+  await Promise.all(
+    alarmChainIds(taskId, ALARM_MAX_RINGS).map(id => cancelNativeAlarm(id).catch(() => {}))
+  );
+}
+
 export async function cancelTaskReminder(taskId: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(taskId).catch(() => {});
-  await cancelNativeAlarm(taskId).catch(() => {});
+  await cancelAlarmChain(taskId);
 }
 
 // iOS caps pending local notification requests at 64.

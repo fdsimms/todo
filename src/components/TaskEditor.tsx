@@ -2482,9 +2482,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             node: (
               <>
             <EditorRow
-              icon={reminderKind === 'alarm' ? 'alarm' : 'notifications'}
+              icon={reminderKind === 'persistent' ? 'repeat' : reminderKind === 'alarm' ? 'alarm' : 'notifications'}
               label="Remind me"
-              hint={reminderKind === 'alarm' ? 'Ring an alarm at this time' : 'Send a notification at this time'}
+              hint={
+                reminderKind === 'persistent'
+                  ? 'Ring an alarm from this time until the task is completed'
+                  : reminderKind === 'alarm'
+                    ? 'Ring an alarm at this time'
+                    : 'Send a notification at this time'
+              }
               value={reminderTime ? `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}` : undefined}
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderTouched(true); } : undefined}

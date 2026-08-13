@@ -301,6 +301,21 @@ export function seedDemoData(): void {
     effort: 1,
   });
 
+  // The reminder kind that keeps ringing until the task is ticked off. Seeded
+  // because a reminder kind is invisible until something uses it — the editor
+  // shows 'Until done' as one pill of three, and nothing else says the app can
+  // do this. It rings as a real alarm only on iOS 26+; elsewhere the row still
+  // reads correctly, it just falls back to one notification.
+  addTask({
+    title: 'Take antibiotics',
+    notes: 'Set to keep ringing until it is ticked off.',
+    category: 'Health',
+    dueDate: addDays(today, 1).toISOString(),
+    reminderTime: setHours(addDays(today, 1), 8).toISOString(),
+    reminderKind: 'persistent',
+    effort: 1,
+  });
+
   // --- Unscheduled (organized, but no date) --------------------------------
   addTask({
     title: 'Deep clean the garage',

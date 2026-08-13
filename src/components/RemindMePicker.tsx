@@ -10,6 +10,7 @@ import {
   ScrollView,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { ALARM_RING_INTERVAL_MINUTES } from '../utils/alarmChain';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import { addMonths } from 'date-fns/addMonths';
@@ -281,11 +282,35 @@ export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCan
                         size={16}
                         color={selectedKind === 'alarm' ? colors.onAccent : colors.textSecondary}
                       />
-                      <Text style={[styles.kindLabel, selectedKind === 'alarm' && styles.kindLabelSelected]}>
+                      <Text style={[styles.kindLabel, selectedKind === 'alarm' && styles.kindLabelSelected]} numberOfLines={1}>
                         Alarm
                       </Text>
                     </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.kindOption, selectedKind === 'persistent' && styles.kindOptionSelected]}
+                      onPress={() => setSelectedKind('persistent')}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel="Alarm until done"
+                      accessibilityState={{ selected: selectedKind === 'persistent' }}
+                    >
+                      <Ionicons
+                        name="repeat"
+                        size={16}
+                        color={selectedKind === 'persistent' ? colors.onAccent : colors.textSecondary}
+                      />
+                      <Text style={[styles.kindLabel, selectedKind === 'persistent' && styles.kindLabelSelected]} numberOfLines={1}>
+                        Until done
+                      </Text>
+                    </TouchableOpacity>
                   </View>
+                  <Text style={styles.kindHint}>
+                    {selectedKind === 'persistent'
+                      ? `Rings every ${ALARM_RING_INTERVAL_MINUTES} minutes for up to an hour, until you complete the task.`
+                      : selectedKind === 'alarm'
+                        ? 'Rings once, even if your phone is silent.'
+                        : 'Shows a notification at this time.'}
+                  </Text>
                 </View>
                 <View style={styles.sectionGap} />
               </>
@@ -507,6 +532,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
+  },
+  kindHint: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    marginTop: spacing.xs,
   },
   kindLabelSelected: {
     color: colors.onAccent,

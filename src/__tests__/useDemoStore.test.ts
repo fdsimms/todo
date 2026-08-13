@@ -339,6 +339,15 @@ describe('demo mode', () => {
     expect(withPhone.length).toBeGreaterThan(0);
   });
 
+  it('seeds a reminder that keeps ringing until the task is completed', () => {
+    useDemoStore.getState().enterDemoMode();
+    const persistent = useTaskStore.getState().tasks.filter(t => t.reminderKind === 'persistent');
+
+    expect(persistent.length).toBeGreaterThan(0);
+    // A reminder kind only means anything with a time attached to it.
+    expect(persistent.every(t => t.reminderTime !== null)).toBe(true);
+  });
+
   // The Decisions block on a project's screen has nothing to render unless a
   // project actually holds an answered decision, so without this the feature
   // reads as one the app doesn't have.
