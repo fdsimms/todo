@@ -703,7 +703,7 @@ export function SuggestMealsSheet({
             <View style={styles.root}>
               <View style={styles.header}>
                 <SheetHeaderButton label="Close" role="cancel" onPress={() => setPreviewRecipe(null)} minWidth={72} />
-                <Text style={styles.headerTitle} numberOfLines={1}>{previewRecipe.name}</Text>
+                <Text style={styles.headerTitle}>{previewRecipe.name}</Text>
                 <SheetHeaderButton
                   label={selected.has(`recipe:${previewRecipe.id}`) ? 'Selected' : 'Select'}
                   role="confirm"
@@ -757,12 +757,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     borderBottomWidth: border.hairline,
     borderBottomColor: colors.separator,
   },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  headerTitle: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
+    textAlign: 'center',
+  },
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
