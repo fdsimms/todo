@@ -195,7 +195,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
   const confirmPrune = () => {
     Alert.alert(
       `Forget ${pruneable.length} unused ${pruneable.length === 1 ? 'item' : 'items'}?`,
-      `${pruneable.map(i => i.name).slice(0, 6).join(', ')}${pruneable.length > 6 ? '…' : ''}\n\nThese have never been bought and haven't been added in months — usually typos. This can't be undone.`,
+      `${pruneable.map(i => i.name).slice(0, 6).join(', ')}${pruneable.length > 6 ? '…' : ''}\n\nThese have never been bought and haven't been added in months, usually typos. This can't be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {

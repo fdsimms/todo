@@ -277,7 +277,7 @@ export function TemplatesScreen() {
           <EmptyState
             icon="copy-outline"
             title="No templates yet"
-            subtitle="Create a reusable stack of tasks — like a pre-vacation checklist — and add them all in one tap"
+            subtitle="Create a reusable stack of tasks (like a pre-vacation checklist) and add them all in one tap"
             actionLabel="Create template"
             onAction={() => setQuickAddVisible(true)}
             bottomOffset={tabBarHeight}

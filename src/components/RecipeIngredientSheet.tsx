@@ -264,7 +264,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setName(catalogSuggestion); }}
             accessibilityRole="button"
-            accessibilityLabel={`Use "${catalogSuggestion}" instead — it's already in your catalog`}
+            accessibilityLabel={`Use "${catalogSuggestion}" instead, it's already in your catalog`}
           >
             <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.accent} />
             <View style={styles.suggestionBody}>
@@ -329,7 +329,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             onPress={() => { haptics.tap(); setEditingItemId(catalogItem.id); }}
             accessibilityRole="button"
             accessibilityLabel={`${catalogItem.name}${catalogSummary ? `, ${catalogSummary}` : ''}`}
-            accessibilityHint="Double tap to edit the grocery item — its brand, stores, pantry and substitutes"
+            accessibilityHint="Double tap to edit the grocery item: its brand, stores, pantry and substitutes"
           >
             <Ionicons name="cart-outline" size={iconSize.md} color={colors.accent} />
             <View style={styles.catalogBody}>

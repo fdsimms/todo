@@ -234,7 +234,7 @@ const CONTAINER_LABELS: Record<TemplateContainer, string> = {
 
 const CONTAINER_NOTES: Record<TemplateContainer, string> = {
   none: 'Tasks are added loose, and the run name only fills in {blanks}.',
-  stack: 'Tasks are headed by a stack named after the run — best for most templates.',
+  stack: 'Tasks are headed by a stack named after the run. Best for most templates.',
   project: 'Tasks go in a project named after the run, dated by the two anchors. Best for long, multi-week ones.',
 };
 

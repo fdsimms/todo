@@ -78,7 +78,7 @@ function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceho
   const fills = hasPlaceholders ? ', and fills in the blanks below' : '';
   if (container === 'project') {
     return upgraded
-      ? `Names the project these tasks land in — this template's groups become stacks inside it${fills}`
+      ? `Names the project these tasks land in. This template's groups become stacks inside it${fills}`
       : `Names the project these tasks land in, dated by the anchors above${fills}`;
   }
   if (container === 'stack') return `Names the stack these tasks land in${fills}`;

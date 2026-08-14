@@ -282,8 +282,8 @@ describe('scaleServings', () => {
 
 describe('describeUnscaled', () => {
   it('names the lines the arithmetic skipped', () => {
-    expect(describeUnscaled(1, 2)).toBe("1 ingredient couldn't be scaled automatically — adjust by eye");
-    expect(describeUnscaled(3, 2)).toBe("3 ingredients couldn't be scaled automatically — adjust by eye");
+    expect(describeUnscaled(1, 2)).toBe("1 ingredient couldn't be scaled automatically. Adjust by eye");
+    expect(describeUnscaled(3, 2)).toBe("3 ingredients couldn't be scaled automatically. Adjust by eye");
   });
 
   it('says nothing when there is nothing to say', () => {

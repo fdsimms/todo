@@ -226,7 +226,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
   return (
     <SettingsSection
       label="Tasks the app adds"
-      footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again — the meal, the grocery item or the leftover it came from remembers your answer."
+      footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again. The meal, the grocery item or the leftover it came from remembers your answer."
     >
       {GENERATED_KIND_LIST.map((spec, i) => {
         const on = enabledOf(spec.kind);

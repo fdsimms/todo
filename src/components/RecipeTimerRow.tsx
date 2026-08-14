@@ -112,7 +112,7 @@ export function RecipeTimerRow({
             hitSlop={8}
             style={styles.timerSecondaryBtn}
             accessibilityRole="button"
-            accessibilityLabel={`Done — log this ${verb.toLowerCase()} time`}
+            accessibilityLabel={`Done, log this ${verb.toLowerCase()} time`}
           >
             <Ionicons name="checkmark" size={iconSize.sm} color={colors.textSecondary} />
           </TouchableOpacity>

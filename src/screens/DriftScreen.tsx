@@ -102,7 +102,7 @@ export function DriftScreen() {
           haptics.warning();
           Alert.alert(
             'Archive this task?',
-            `"${displayTitleFor(task)}" moves to Archived. Nothing is deleted — you can restore it from there whenever you like.`,
+            `"${displayTitleFor(task)}" moves to Archived. Nothing is deleted, and you can restore it from there whenever you like.`,
             [
               { text: 'Cancel', style: 'cancel' },
               {

@@ -185,7 +185,7 @@ export function CalendarPicker({
                 value={nlText}
                 onChangeText={onNlChange}
                 onSubmitEditing={confirm}
-                placeholder='Type a date — "next monday", "in 3 days"…'
+                placeholder='Type a date, like "next monday" or "in 3 days"'
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="none"

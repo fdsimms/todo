@@ -222,7 +222,7 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
           {...keyboardScroll.props}
         >
           <RecipeSourcePicker
-            intro="Photograph a cookbook page or paste a recipe, and it’ll be added to your recipe box — name, servings and all."
+            intro="Photograph a cookbook page or paste a recipe, and it’ll be added to your recipe box: name, servings and all."
             mode={input.mode}
             onChangeMode={input.setMode}
             text={input.text}

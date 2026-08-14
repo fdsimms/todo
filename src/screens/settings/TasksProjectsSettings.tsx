@@ -155,7 +155,7 @@ export function TasksProjectsSettings() {
               label="End date"
               hint={vacationEnd
                 ? 'Turns off automatically on this day'
-                : 'Optional — turn off manually if not set'}
+                : 'Optional. Turn off manually if not set'}
               value={vacationEnd ? format(new Date(vacationEnd), 'MMM d, yyyy') : 'None'}
               onPress={() => setShowVacationEndPicker(true)}
               accessibilityLabel="Vacation end date"
@@ -203,7 +203,7 @@ export function TasksProjectsSettings() {
       {Platform.OS === 'ios' && (
         <SettingsSection
           label="Timers"
-          footer="Requires iOS 17. Ends the moment you pause, stop, or (for a task) complete it — resuming starts a fresh one."
+          footer="Requires iOS 17. Ends the moment you pause, stop, or (for a task) complete it. Resuming starts a fresh one."
         >
           <SettingsRow
             icon="phone-portrait-outline"
@@ -228,7 +228,7 @@ export function TasksProjectsSettings() {
           label="Suggest an action after repeated reschedules"
           hint={postponeCheckEnabled
             ? `Shows a suggestion once you've moved a task ${postponeCheckThreshold} times`
-            : 'Off — reschedule a task as many times as you like with no prompt'}
+            : 'Off. Reschedule a task as many times as you like with no prompt'}
           toggle={postponeCheckEnabled}
           onPress={() => setPostponeCheckEnabled(!postponeCheckEnabled)}
         />
@@ -271,7 +271,7 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Feature areas"
-        footer="Turning this off hides the groceries, recipes and meal plan screens, the cook tasks and meal reminders that come with them, and their settings. Nothing is deleted — your lists, recipes and planned meals are kept, and turning it back on returns everything as you left it."
+        footer="Turning this off hides the groceries, recipes and meal plan screens, the cook tasks and meal reminders that come with them, and their settings. Nothing is deleted. Your lists, recipes and planned meals are kept, and turning it back on returns everything as you left it."
       >
         <SettingsRow
           icon="cart-outline"
@@ -290,7 +290,7 @@ export function TasksProjectsSettings() {
       <>
       <SettingsSection
         label="Meals on Today"
-        footer="A meal with no cook task behind it — a leftover, a takeaway, a dinner you typed — shows as a row in the list, filed under the same category as cook tasks. Cook tasks themselves are under Tasks the app adds, below."
+        footer="A meal with no cook task behind it (a leftover, a takeaway, a dinner you typed) shows as a row in the list, filed under the same category as cook tasks. Cook tasks themselves are under Tasks the app adds, below."
       >
         {/* A toggle rather than a track of two: one bounded choice with two
             answers is what a switch is for, and the two shapes this used to
@@ -302,7 +302,7 @@ export function TasksProjectsSettings() {
           label="Show the day's meals"
           hint={mealsOnToday === 'inline'
             ? 'As rows in the task list, with the cook tasks'
-            : 'Nothing — meals stay on the Meal plan tab'}
+            : 'Nothing. Meals stay on the Meal plan tab'}
           toggle={mealsOnToday === 'inline'}
           onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}
           accessibilityLabel="Show the day's meals"
@@ -325,7 +325,7 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Recipe & grocery amounts"
-        footer="Only what's shown changes — recipes and the grocery list keep the amounts that were typed, and editing one shows it as written. Converted amounts are rounded, and marked with ≈. Counts, container sizes like &quot;14 oz can&quot;, and amounts with no number are left alone."
+        footer="Only what's shown changes. Recipes and the grocery list keep the amounts that were typed, and editing one shows it as written. Converted amounts are rounded, and marked with ≈. Counts, container sizes like &quot;14 oz can&quot;, and amounts with no number are left alone."
       >
         <SettingsRow
           icon="swap-horizontal-outline"
@@ -407,7 +407,7 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="New tasks"
-        footer="What a fresh task starts with, and where quick-add files it before you type anything. None of these override a value you actually pick — typing a date in quick-add still wins over the destination below."
+        footer="What a fresh task starts with, and where quick-add files it before you type anything. None of these override a value you actually pick. Typing a date in quick-add still wins over the destination below."
       >
         <SettingsRow icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own" value={newTaskCategoryOptions.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
         <View style={styles.pillGroupRow}>
@@ -487,7 +487,7 @@ export function TasksProjectsSettings() {
           icon="notifications-outline"
           iconColor={defaultProjectNudgeCadenceDays > 0 ? colors.accent : undefined}
           label="Default nudge cadence"
-          hint="What a new project starts with. Never by default — this doesn't touch projects you've already created, and each one can still override it."
+          hint="What a new project starts with. Never by default. This doesn't touch projects you've already created, and each one can still override it."
           value={describeCadence(defaultProjectNudgeCadenceDays)}
           tight
         />

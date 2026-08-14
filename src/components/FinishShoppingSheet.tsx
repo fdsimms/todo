@@ -346,7 +346,7 @@ export function FinishShoppingSheet({
                         onPress={() => toggleUnavailable(row.id)}
                         accessibilityRole="checkbox"
                         accessibilityState={{ checked: ticked }}
-                        accessibilityLabel={`${row.name} — ${selectedShop.name} didn’t have it`}
+                        accessibilityLabel={`${row.name}: ${selectedShop.name} didn’t have it`}
                       >
                         <View style={[styles.check, ticked && styles.checkOn]}>
                           {ticked && (
@@ -399,7 +399,7 @@ export function FinishShoppingSheet({
               <Text style={styles.note}>
                 {unavailable.length > 0
                   ? `Filed as “not at ${selectedShop.name}”, so planning your next trip sends you somewhere else for ${unavailable.length === 1 ? 'it' : 'them'}. Buying ${unavailable.length === 1 ? 'it' : 'one'} there later clears it.`
-                  : 'Leave them unchecked if you simply didn’t get to them — that’s the usual reason, and it’s what nothing checked means.'}
+                  : 'Leave them unchecked if you simply didn’t get to them. That’s the usual reason, and it’s what nothing checked means.'}
               </Text>
             </>
           )}

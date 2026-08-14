@@ -77,7 +77,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
     if (support.capability === 'none' || support.capability === 'unsupported') {
       Alert.alert(
         'Nothing to unlock with',
-        `Set up ${support.label} or a passcode for this device in the Settings app first — without one there'd be no way back into the app.`
+        `Set up ${support.label} or a passcode for this device in the Settings app first. Without one there'd be no way back into the app.`
       );
       return;
     }
@@ -101,7 +101,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
     <>
       <SettingsSection
         label="App lock"
-        footer={`Everything the app knows sits on this device, so an unlocked phone is the only thing between someone and your whole task list. This puts ${lockLabel} in front of it — with your device passcode as the fallback, the same as anywhere else. The grace period is there so switching to Messages and back doesn't ask again.`}
+        footer={`Everything the app knows sits on this device, so an unlocked phone is the only thing between someone and your whole task list. This puts ${lockLabel} in front of it, with your device passcode as the fallback, the same as anywhere else. The grace period is there so switching to Messages and back doesn't ask again.`}
       >
         <SettingsRow
           icon={appLockEnabled ? 'lock-closed-outline' : 'lock-open-outline'}
@@ -110,7 +110,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           hint={
             lockSupport && lockSupport.capability !== 'biometric' && !appLockEnabled
               ? lockSupport.capability === 'passcode'
-                ? `No ${lockSupport.label} enrolled — the lock would ask for this device's passcode`
+                ? `No ${lockSupport.label} enrolled. The lock would ask for this device's passcode`
                 : `Set up ${lockSupport.label} or a passcode in the Settings app first`
               : appLockEnabled
                 ? 'Asks when you open the app, and when you come back to it'
@@ -174,7 +174,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
 
       <SettingsSection
         label="AI features"
-        footer="Turn any of these off if you'd rather they never call out to Anthropic, or pick a different model per feature — a faster, cheaper model for quick suggestions, or a stronger one where it's worth the extra cost."
+        footer="Turn any of these off if you'd rather they never call out to Anthropic, or pick a different model per feature: a faster, cheaper model for quick suggestions, or a stronger one where it's worth the extra cost."
       >
         {aiFeaturesFor(kitchenEnabled).map((feature, i) => {
           const config = aiFeatureConfig[feature.id];

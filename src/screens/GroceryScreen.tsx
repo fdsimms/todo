@@ -814,7 +814,7 @@ export function GroceryScreen() {
             title="Nothing on the list"
             subtitle={
               catalogCount > 0
-                ? 'Everything you’ve bought before is a tap away — or start typing and it’ll come up.'
+                ? 'Everything you’ve bought before is a tap away, or start typing and it’ll come up.'
                 : 'Tap + to add what you need. Paste a whole list and each line becomes an item.'
             }
             actionLabel={catalogCount > 0 ? 'Buy again' : 'Add an item'}

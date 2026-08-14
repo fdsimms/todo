@@ -305,7 +305,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
             />
           </View>
           <Text style={styles.identityHint}>
-            {taskCount === 1 ? '1 task' : `${taskCount} tasks`} in this category. Tap the icon to pick an emoji — one stands in for the category everywhere it's shown.
+            {taskCount === 1 ? '1 task' : `${taskCount} tasks`} in this category. Tap the icon to pick an emoji. One stands in for the category everywhere it's shown.
           </Text>
 
           <Text style={styles.groupLabel}>VISIBILITY</Text>
@@ -415,7 +415,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
               <Ionicons name="color-wand-outline" size={18} color={excludeFromPins ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Skip in suggested pins</Text>
-                <Text style={styles.optionHint}>Keeps these out of suggested pins — you can still pin them by hand</Text>
+                <Text style={styles.optionHint}>Keeps these out of suggested pins. You can still pin them by hand</Text>
               </View>
               <View style={[styles.toggle, excludeFromPins && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, excludeFromPins && styles.toggleKnobOn]} />

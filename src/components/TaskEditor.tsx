@@ -1929,7 +1929,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     chainItems.length > 1
                       ? `Step ${chainIndex + 1} of ${chainItems.length}`
                       : chainItems.length === 1
-                        ? '1 step — add one more'
+                        ? '1 step, add one more'
                         : 'No steps yet'
                   }
                   // Shown whenever the field is open, on or off — the moment
@@ -1940,7 +1940,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   // (#791), and gated the Repeat-interplay sentence on Chain
                   // being *off*, so a chain with Repeat off never saw it either.
                   hint={
-                    'Step through a list of items, one per completion — finishing one reveals the next.'
+                    'Step through a list of items, one per completion. Finishing one reveals the next.'
                     + (recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : '')
                   }
                   expanded={fieldOpen('chainSteps', true)}
@@ -2120,7 +2120,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           {recurrenceType === 'none'
                             ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
                             : chainStepOnSchedule
-                              ? 'One step per repeat — the chain rotates through its steps rather than running straight through.'
+                              ? 'One step per repeat. The chain rotates through its steps rather than running straight through.'
                               : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
                         </Text>
                       </View>
@@ -2136,8 +2136,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           const prefix = 'Tap a number to set the current position.';
                           if (chainIndex === chainItems.length - 1) {
                             return recurrenceType === 'none'
-                              ? `${prefix} This is the last step — the chain ends here.`
-                              : `${prefix} Last step — the chain starts over on the next repeat.`;
+                              ? `${prefix} This is the last step. The chain ends here.`
+                              : `${prefix} Last step. The chain starts over on the next repeat.`;
                           }
                           return `${prefix} Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`;
                         })()}
@@ -2211,7 +2211,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="calendar-number-outline"
               label="More dates"
-              hint="The same task on several days — each date can be checked off separately"
+              hint="The same task on several days. Each date can be checked off separately"
               value={
                 extraDates.length > 0
                   ? `${extraDates.length + (dueDate ? 1 : 0)} dates · ${extraDates.map(d => format(d, 'MMM d')).join(', ')}`
@@ -2258,7 +2258,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="flag-outline"
               label="Deadline"
-              hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'A target date to hit — separate from Date' : undefined}
+              hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'A target date to hit, separate from Date' : undefined}
               value={
                 deadlineOffsetDays !== null
                   ? (deadline ? `${formatDeadlineDate(deadline.toISOString())} (${describeDeadlineOffset(deadlineOffsetDays)})` : 'Set a Date first')
@@ -2585,7 +2585,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   </Text>
                   <Text style={styles.optionHint}>
                     {!savedEstimateMinutes
-                      ? 'Set an estimate or effort first — a block needs a length'
+                      ? 'Set an estimate or effort first. A block needs a length'
                       : timeBlockEventId
                       ? 'Opens the event to move, resize or delete it'
                       : `Blocks out ${formatDuration(savedEstimateMinutes)} in your calendar to do this`}
@@ -2831,7 +2831,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           <CollapsibleField
             label="Category"
             summary={category ? categoryLabel(category, categories) : undefined}
-            hint="One home for the task — drives the Categories screen and its filters."
+            hint="One home for the task. Drives the Categories screen and its filters."
             expanded={fieldOpen('category')}
             onToggle={() => toggleField('category')}
             // A stack owns its members' category, so there's nothing to pick
@@ -3451,7 +3451,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Streak</Text>
                     <Text style={styles.optionHint}>
-                      {task.streakCount > 0 ? `${task.streakCount} day streak — tap to correct` : 'No streak yet'}
+                      {task.streakCount > 0 ? `${task.streakCount} day streak, tap to correct` : 'No streak yet'}
                     </Text>
                   </View>
                   <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
@@ -3587,8 +3587,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     <Text style={styles.optionLabel}>Archive</Text>
                     <Text style={styles.optionHint}>
                       {task.archived
-                        ? 'Hidden from every list — resuming resets your streak'
-                        : 'Hide indefinitely, keeping history — find it later in Archived'}
+                        ? 'Hidden from every list. Resuming resets your streak'
+                        : 'Hide indefinitely, keeping history. Find it later in Archived'}
                     </Text>
                   </View>
                   <View style={[styles.toggle, task.archived && styles.toggleOn]}>

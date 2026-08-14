@@ -459,7 +459,7 @@ export function RecipeToListSheet({
                                   activeOpacity={interaction.activeOpacity}
                                   onPress={() => markAlreadyHave(row)}
                                   accessibilityRole="button"
-                                  accessibilityLabel={`Already have ${row.name} — skip it and remember it for next time`}
+                                  accessibilityLabel={`Already have ${row.name}, skip it and remember it for next time`}
                                 >
                                   <Text style={styles.haveButtonText}>Already have it</Text>
                                 </TouchableOpacity>

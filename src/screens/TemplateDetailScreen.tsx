@@ -362,7 +362,7 @@ export function TemplateDetailScreen() {
           <EmptyState
             icon="list-outline"
             title="No items yet"
-            subtitle="Tap + to add a task — then tap it in the list to set dates, tags and more"
+            subtitle="Tap + to add a task. Then tap it in the list to set dates, tags and more"
             actionLabel={anthropicApiKey ? 'Suggest tasks with AI' : undefined}
             onAction={anthropicApiKey ? () => { haptics.tap(); setSuggestVisible(true); } : undefined}
           />

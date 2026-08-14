@@ -196,7 +196,7 @@ export function CalendarSettings() {
   return (
     <SettingsSection
       label="Calendar"
-      footer="Reads the calendars you pick, so the app knows what else is on a day. Nothing is added, changed or deleted — this is read-only. A Google calendar shows up here once the account is added in the Settings app under Calendar › Accounts; it's read the same way as any other calendar. An event marked Free, and anything lasting all day, doesn't count as time taken."
+      footer="Reads the calendars you pick, so the app knows what else is on a day. Nothing is added, changed or deleted. This is read-only. A Google calendar shows up here once the account is added in the Settings app under Calendar › Accounts; it's read the same way as any other calendar. An event marked Free, and anything lasting all day, doesn't count as time taken."
     >
       <SettingsRow
         icon="calendar-outline"
@@ -224,9 +224,9 @@ export function CalendarSettings() {
             }
             label="Calendar access"
             hint={
-              permission === 'granted' ? 'Allowed — this app can read the calendars below'
+              permission === 'granted' ? 'Allowed. This app can read the calendars below'
               : permission === 'denied' ? 'Blocked. Nothing can be read until you turn it back on for this app.'
-              : permission === 'undetermined' ? 'Not enabled yet — nothing can be read until you allow it'
+              : permission === 'undetermined' ? 'Not enabled yet. Nothing can be read until you allow it'
               : permission === 'unsupported' ? 'Not available on this platform'
               : 'Checking…'
             }
