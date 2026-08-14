@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a stack's header and tasks dimming twice — and so looking darker than the rest of the list — while a task elsewhere is expanded",
+  "date": "2026-08-14"
+}
