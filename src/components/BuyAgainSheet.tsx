@@ -30,6 +30,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
+import { GroceryItemSheet } from './GroceryItemSheet';
 import { haptics } from '../utils/haptics';
 import type { GroceryItem } from '../types';
 
@@ -61,6 +62,10 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
   const [shopFilter, setShopFilter] = useState<string | null>(null);
+  // Nested rather than a sibling — a Modal presents from its React parent's
+  // view controller, so a sibling would ask this sheet's own presenter for a
+  // second presentation while this one is up. Same call PantrySheet makes.
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Nothing carries over between openings — a stale selection from last week
   // is a way to add things you didn't mean to.
@@ -69,6 +74,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
       setSelected(new Set());
       setQuery('');
       setShopFilter(null);
+      setEditingId(null);
     }
   }, [visible]);
 
@@ -207,26 +213,47 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
     // you just filtered to, which is a column of the same word.
     const usual = shopFilter ? null : primaryShopFor(item, itemShops, shops);
     return (
-      <TouchableOpacity
-        style={styles.row}
-        activeOpacity={interaction.activeOpacity}
-        onPress={() => toggle(item.id)}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: isSelected }}
-        accessibilityLabel={item.name}
-      >
-        <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>
-          {isSelected && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-        </View>
-        <View style={styles.body}>
-          <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-          <Text style={styles.meta} numberOfLines={1}>
-            {item.aisle}
-            {item.purchaseCount > 0 && ` · bought ${item.purchaseCount}×`}
-            {!!usual && ` · ${usual.name}`}
-          </Text>
-        </View>
-      </TouchableOpacity>
+      <View style={styles.row}>
+        <TouchableOpacity
+          style={styles.rowTapZone}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => toggle(item.id)}
+          // Long-press still opens the same edit sheet as the ellipsis beside
+          // it — same convention GroceryRow uses for its own rows, so a
+          // catalog item is reachable for editing (brand, aisle, substitutes,
+          // pantry) without leaving this sheet to do it from the list first.
+          onLongPress={() => { haptics.tap(); setEditingId(item.id); }}
+          delayLongPress={interaction.delayLongPress}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: isSelected }}
+          accessibilityLabel={item.name}
+          accessibilityHint="Long press to edit"
+        >
+          <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>
+            {isSelected && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+          </View>
+          <View style={styles.body}>
+            <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+            <Text style={styles.meta} numberOfLines={1}>
+              {item.aisle}
+              {item.purchaseCount > 0 && ` · bought ${item.purchaseCount}×`}
+              {!!usual && ` · ${usual.name}`}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Long-press still opens the same sheet, but nothing on screen says
+            so — same quiet trailing target GroceryRow uses for its rows. */}
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); setEditingId(item.id); }}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${item.name}`}
+        >
+          <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -328,6 +355,12 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
             />
           }
         />
+
+        <GroceryItemSheet
+          visible={!!editingId}
+          itemId={editingId}
+          onClose={() => setEditingId(null)}
+        />
       </View>
     </Modal>
   );
@@ -388,6 +421,12 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
       paddingVertical: 12,
       paddingHorizontal: spacing.md,
+    },
+    rowTapZone: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
     },
     checkbox: {
       width: CHECKBOX_SIZE,

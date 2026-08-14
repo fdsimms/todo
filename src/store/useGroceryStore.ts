@@ -553,6 +553,10 @@ function newItemRow(fields: {
     variant: null,
     aisle: fields.aisle,
     quantity: fields.quantity ?? null,
+    // Never true from this path — a fresh row's quantity, if any, came from
+    // whatever the caller typed or parsed, not from addFromPlan's recipe-owned
+    // write, which always goes through setQuantity's fromRecipe option instead.
+    quantityFromRecipe: false,
     note: fields.note ?? '',
     onList: fields.onList,
     checked: false,
@@ -821,6 +825,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // Only overwrite the quantity when this add actually carried one;
         // typing "milk" to re-add shouldn't wipe the "2 gal" set last week.
         quantity: quantity ?? existing.quantity,
+        // A quantity typed here is the user's own — see
+        // GroceryItem.quantityFromRecipe — so it takes ownership exactly like
+        // setQuantity does. Left alone when nothing was typed, so a re-add
+        // with no amount doesn't strip a still-standing recipe ownership.
+        quantityFromRecipe: quantity ? false : existing.quantityFromRecipe,
         // Same rule the quantity above follows, and for the same reason:
         // re-adding a known item without saying why must not wipe the note
         // that's been on it since last time.
@@ -987,7 +996,20 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           { registerUndo: false }
         );
         if (row.aisle && !get().rememberedAisleFor(row.name)) get().setAisle(item.id, row.aisle);
-        if (row.quantity) get().setQuantity(item.id, row.quantity);
+        // A cooking amount is a lower bound for one shop, not the row's
+        // standing preference — see GroceryItem.quantityFromRecipe. Written
+        // directly rather than through setQuantity, which always hands
+        // ownership to the user; only an empty or already recipe-owned slot
+        // is overwritten, so a hand-set "2 bags" outranks this week's
+        // "3/4 cup" and a recipe never overwrites what the user set.
+        if (row.quantity) {
+          const current = get().itemById(item.id);
+          if (current && (!current.quantity || current.quantityFromRecipe)) {
+            const withQuantity = { ...current, quantity: row.quantity, quantityFromRecipe: true };
+            dbUpdateGroceryItem(withQuantity);
+            set(s => ({ items: s.items.map(i => (i.id === withQuantity.id ? withQuantity : i)) }));
+          }
+        }
         added.push(get().itemById(item.id) ?? item);
       }
     });
@@ -1056,7 +1078,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const item = get().items.find(i => i.id === id);
     if (!item) return;
     const trimmed = quantity?.trim() ?? '';
-    const updated = { ...item, quantity: trimmed || null };
+    // The user's own edit always takes ownership — see
+    // GroceryItem.quantityFromRecipe — even when this clears the field: a
+    // blank slot is exactly what addFromPlan treats as free to write into.
+    const updated = { ...item, quantity: trimmed || null, quantityFromRecipe: false };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
@@ -1455,7 +1480,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       get().deleteItem(id);
       return;
     }
-    const updated = { ...item, onList: false, checked: false };
+    // Taking the row off the list ends that shop's claim just as finishing
+    // does — see GroceryItem.quantityFromRecipe.
+    const updated = {
+      ...item,
+      onList: false,
+      checked: false,
+      quantity: item.quantityFromRecipe ? null : item.quantity,
+      quantityFromRecipe: false,
+    };
     dbUpdateGroceryItem(updated);
     set(s => ({
       items: s.items.map(i => (i.id === id ? updated : i)),
@@ -1475,7 +1508,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         toDelete.push(item.id);
         continue;
       }
-      toUpdate.push({ ...item, onList: false, checked: false });
+      toUpdate.push({
+        ...item,
+        onList: false,
+        checked: false,
+        quantity: item.quantityFromRecipe ? null : item.quantity,
+        quantityFromRecipe: false,
+      });
     }
     if (toDelete.length > 0) get().deleteItems(toDelete);
     if (toUpdate.length === 0) return;
@@ -1654,6 +1693,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 lastPurchasedAt: purchasedAt,
                 onHandUntil: onHandUntilById[i.id] ?? i.onHandUntil,
                 expiresAt: expiresAtById[i.id] ?? i.expiresAt,
+                // Mirrors the db's own CASE: the shop it was for has happened,
+                // so a recipe-owned quantity doesn't outlive it. A hand-set one
+                // survives untouched.
+                quantity: i.quantityFromRecipe ? null : i.quantity,
+                quantityFromRecipe: false,
                 // Only the rows the user priced. Everything else keeps the
                 // price and the stamp it already had — see the db's own note.
                 ...(priceById[i.id] !== undefined

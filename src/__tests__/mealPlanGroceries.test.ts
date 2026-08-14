@@ -107,6 +107,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     variant: null,
     aisle: 'Other',
     quantity: null,
+    quantityFromRecipe: false,
     note: '',
     onList: false,
     checked: false,

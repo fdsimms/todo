@@ -135,6 +135,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     variant: null,
     aisle: OTHER_AISLE,
     quantity: null,
+    quantityFromRecipe: false,
     note: '',
     onList: false,
     checked: false,
@@ -625,6 +626,22 @@ describe('finishShopping', () => {
     const [, onHandUntilById] = (dbFinishGroceryShopping as jest.Mock).mock.calls[0];
     expect(Object.keys(onHandUntilById)).toHaveLength(1);
   });
+
+  it('clears a recipe-owned quantity, but leaves a hand-set one alone', () => {
+    const rice = makeItem({ name: 'Rice', onList: true, checked: true, quantity: '3/4 cup', quantityFromRecipe: true });
+    const flour = makeItem({ name: 'Flour', onList: true, checked: true, quantity: '2 bags', quantityFromRecipe: false });
+    seed([rice, flour]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([rice.id, flour.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    const riceAfter = useGroceryStore.getState().itemById(rice.id)!;
+    expect(riceAfter.quantity).toBeNull();
+    expect(riceAfter.quantityFromRecipe).toBe(false);
+
+    const flourAfter = useGroceryStore.getState().itemById(flour.id)!;
+    expect(flourAfter.quantity).toBe('2 bags');
+  });
 });
 
 describe('clearList', () => {
@@ -761,6 +778,18 @@ describe('list membership', () => {
 
     expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
     expect(useGroceryStore.getState().items[0].purchaseCount).toBe(9);
+  });
+
+  it('removeFromList clears a recipe-owned quantity, but leaves a hand-set one alone', () => {
+    const rice = makeItem({ name: 'Rice', onList: true, quantity: '3/4 cup', quantityFromRecipe: true });
+    const flour = makeItem({ name: 'Flour', onList: true, quantity: '2 bags', quantityFromRecipe: false });
+    seed([rice, flour]);
+
+    useGroceryStore.getState().removeFromList(rice.id);
+    useGroceryStore.getState().removeFromList(flour.id);
+
+    expect(useGroceryStore.getState().itemById(rice.id)!.quantity).toBeNull();
+    expect(useGroceryStore.getState().itemById(flour.id)!.quantity).toBe('2 bags');
   });
 
   it('addExistingMany only touches rows that are off the list', () => {
@@ -1904,6 +1933,50 @@ describe('addFromPlan', () => {
     // The quantity the user set survives — this is the overwrite addByName
     // already refuses to do, held to across the plan path too.
     expect(useGroceryStore.getState().itemById(milk.id)!.quantity).toBe('2 gal');
+  });
+
+  it('marks a quantity it writes as recipe-owned, and never overwrites a hand-set one', () => {
+    // Rice with no quantity yet — the plan is free to write into it.
+    const rice = makeItem({ name: 'Rice', onList: false, quantity: null });
+    // Flour already carries the user's own "2 bags" — off list, so addFromPlan
+    // would otherwise re-list and overwrite it (issue #1581's second symptom).
+    const flour = makeItem({ name: 'Flour', onList: false, quantity: '2 bags' });
+    seed([rice, flour]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Rice', quantity: '3/4 cup', aisle: 'Pantry' },
+      { name: 'Flour', quantity: '2 lb', aisle: 'Pantry' },
+    ]);
+
+    const riceAfter = useGroceryStore.getState().itemById(rice.id)!;
+    expect(riceAfter.quantity).toBe('3/4 cup');
+    expect(riceAfter.quantityFromRecipe).toBe(true);
+
+    const flourAfter = useGroceryStore.getState().itemById(flour.id)!;
+    expect(flourAfter.quantity).toBe('2 bags');
+    expect(flourAfter.quantityFromRecipe).toBe(false);
+  });
+
+  it('ends the full trace with no quantity: recipe add, finish, months later a bare re-add', () => {
+    const rice = makeItem({ name: 'Rice', onList: false, quantity: null });
+    seed([rice]);
+
+    // 1. Add "Weeknight stir-fry" — rice gets a recipe-owned quantity.
+    useGroceryStore.getState().addFromPlan([{ name: 'Rice', quantity: '3/4 cup', aisle: 'Pantry' }]);
+    expect(useGroceryStore.getState().itemById(rice.id)!.quantity).toBe('3/4 cup');
+
+    // 2. Finish the shop — a recipe-owned quantity doesn't survive it.
+    // The add put rice back on the list; check it off, same as buying it.
+    useGroceryStore.getState().toggleChecked(rice.id);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([rice.id]);
+    useGroceryStore.getState().finishShopping();
+    expect(useGroceryStore.getState().itemById(rice.id)!.quantity).toBeNull();
+    expect(useGroceryStore.getState().itemById(rice.id)!.quantityFromRecipe).toBe(false);
+
+    // 3 & 4. Months later, type "rice" with no quantity — it comes back bare,
+    // not still saying "3/4 cup".
+    useGroceryStore.getState().addByName('Rice');
+    expect(useGroceryStore.getState().itemById(rice.id)!.quantity).toBeNull();
   });
 
   it('never un-checks a row already in the trolley', () => {

@@ -24,6 +24,7 @@ function makeItem(overrides: Partial<GroceryItem> = {}): GroceryItem {
     variant: null,
     aisle: 'Dairy',
     quantity: null,
+    quantityFromRecipe: false,
     note: '',
     onList: true,
     checked: false,
