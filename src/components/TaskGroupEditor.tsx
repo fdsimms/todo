@@ -267,7 +267,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   if (!group) return null;
 
   return (
-    <>
     <EditorSheet
       visible={visible}
       onRequestClose={saveAndClose}
@@ -276,6 +275,20 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       scrollEnabled={!draggingChild}
+      /*
+        Inside this sheet's own Modal, not beside it — the same call PantrySheet
+        makes about GroceryItemSheet. A Modal presents from the view controller
+        its React parent belongs to, so a sibling asks the *screen's* controller
+        to present a second sheet while this one is already up: iOS refuses, and
+        tapping a task in the list did nothing at all.
+      */
+      footer={
+        <TaskEditor
+          visible={!!editingTask}
+          task={editingTask}
+          onClose={() => setEditingTask(null)}
+        />
+      }
       header={
         <>
           <SheetHeaderButton label="Done" onPress={saveAndClose} />
@@ -491,12 +504,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
         </View>
       </View>
     </EditorSheet>
-    <TaskEditor
-      visible={!!editingTask}
-      task={editingTask}
-      onClose={() => setEditingTask(null)}
-    />
-    </>
   );
 }
 

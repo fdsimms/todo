@@ -6,6 +6,7 @@ import {
   fabCancelCircle,
   fabCircle,
   fabGlyphSize,
+  FAB_SIZE,
   type FabDragHandlers,
   type FabMenuItem,
 } from './Fab';
@@ -74,7 +75,7 @@ interface MiniFabProps {
  * bounds. What must *not* differ is the look, so the circle, the cancel
  * recolour and the glyph size all come from Fab.tsx.
  *
- * ## Why it claims the touch on touch-down
+ * ## Why it claims the touch on touch-down, and tells the caller there and then
  *
  * The card sits inside the editor sheet's ScrollView, and a native scroll view
  * only stands down for a JS responder that is one of its *ancestors*
@@ -85,6 +86,18 @@ interface MiniFabProps {
  * PaintSelection makes for its checkbox gutter, and it carries the same
  * deliberate cost: **you cannot scroll the sheet by starting a drag on this
  * button.** It's 36pt, and every other pixel of the card scrolls as before.
+ *
+ * Claiming the touch is not on its own enough, though, and this used to stop
+ * there. Read that `superview` walk again: it starts at the *scroll view* and
+ * goes up, so a JS responder anywhere inside it — this button included — is
+ * never found, and the scroll view goes on cancelling content touches exactly
+ * as if nobody had claimed anything. The only thing that actually stands it
+ * down is `scrollEnabled`, which is why `SortableList` demands it. So `onStart`
+ * fires on **grant**, not on the first travelled point: reporting it from
+ * `beginDrag` left the flag to land at `tapMoveThreshold` (10pt), which is also
+ * roughly where UIScrollView's pan begins — a race the drag lost about as often
+ * as it won. A touch that turns out to be a tap takes it back through
+ * `onCancel` on release.
  *
  * The consequence is that `PressableScale` never becomes the responder, so the
  * two things it would have provided are hand-rolled here: the press scale, and
@@ -155,7 +168,9 @@ export function MiniFab({
     };
 
     // Promotes a candidate tap into a drag, once the finger has travelled far
-    // enough that it can't be one.
+    // enough that it can't be one. The caller was already told at grant (see
+    // the docblock) — what's left here is everything the *user* should only see
+    // once the gesture is unambiguously a drag.
     const beginDrag = () => {
       draggingRef.current = true;
       leftHomeRef.current = false;
@@ -164,7 +179,6 @@ export function MiniFab({
       Animated.timing(wellOpacity, {
         toValue: 1, duration: animation.duration.fast, useNativeDriver: true,
       }).start();
-      dragRef.current?.onStart();
     };
 
     return PanResponder.create({
@@ -177,6 +191,10 @@ export function MiniFab({
         draggingRef.current = false;
         leftHomeRef.current = false;
         setPressed(true);
+        // Before the finger has moved a point: this is what switches the
+        // enclosing ScrollView off, and it has to be off before that scroll
+        // view's own pan can begin. Nothing the user can see happens yet.
+        dragRef.current?.onStart();
       },
       onPanResponderMove: (e, g) => {
         if (!dragRef.current) return;
@@ -196,7 +214,11 @@ export function MiniFab({
           settle();
           return;
         }
-        // Never travelled: this was a tap all along.
+        // Never travelled far enough to be a drag, so take back the `onStart`
+        // that grant fired — the caller is holding a scroll view switched off
+        // for a gesture that turned out to be a tap (or a wander that stayed
+        // under the threshold, which never became a drag either).
+        dragRef.current?.onCancel();
         if (Math.hypot(g.dx, g.dy) <= interaction.tapMoveThreshold) {
           haptics.impactLight();
           onPressRef.current();
@@ -204,10 +226,8 @@ export function MiniFab({
       },
       onPanResponderTerminate: () => {
         setPressed(false);
-        if (draggingRef.current) {
-          dragRef.current?.onCancel();
-          settle();
-        }
+        dragRef.current?.onCancel();
+        if (draggingRef.current) settle();
       },
     });
   }, [dragX, dragY, pressScale, pressOpacity, wellOpacity]);
@@ -278,6 +298,13 @@ interface MiniFabMenuProps extends Omit<MiniFabProps, 'onPress'> {
  * than a stack with two members has. Measuring once on tap is enough because
  * the Modal covers the sheet, so nothing can scroll the button out from under
  * its own menu while it's open.
+ *
+ * **The open menu is the standard size, not this button's size.** Only the
+ * resting button is 36pt, and only because it shares a card with the rows; once
+ * the menu is up it's the same full-screen Modal Today opens, so it's drawn at
+ * `FAB_SIZE` with the same pills. The close button grows over the resting one
+ * rather than beside it — both are pinned to the same bottom corner of the
+ * button's box, and a 56pt circle in that corner covers the 36pt one whole.
  */
 export function MiniFabMenu({ items, onSelect, size = MINI_FAB_SIZE, ...rest }: MiniFabMenuProps) {
   const hand = useSettingsStore(s => s.fabHand);
@@ -324,14 +351,13 @@ export function MiniFabMenu({ items, onSelect, size = MINI_FAB_SIZE, ...rest }: 
         anim={anim}
         onSelect={key => { haptics.tap(); close(() => onSelect(key)); }}
         onDismiss={() => close()}
-        size={size}
+        size={FAB_SIZE}
         anchor={{
           bottom: anchor.bottom,
           left: anchor.left,
           right: anchor.right,
           alignItems: hand === 'left' ? 'flex-start' : 'flex-end',
         }}
-        compact
       />
     </>
   );

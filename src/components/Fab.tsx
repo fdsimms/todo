@@ -364,8 +364,6 @@ interface FabMenuOverlayProps {
   onDismiss: () => void;
   anchor: FabMenuAnchor;
   size: number;
-  /** Tighter pills for the in-card button, whose menu opens mid-sheet. */
-  compact?: boolean;
 }
 
 /**
@@ -378,16 +376,21 @@ interface FabMenuOverlayProps {
  * completion callback, so a sheet the selection opens isn't racing this Modal's
  * dismissal). Only the anchor differs — the screen version hangs off a corner,
  * the in-card one off wherever the button measured itself to be.
+ *
+ * The pills and the close button are one size everywhere, deliberately: an open
+ * menu is a full-screen Modal over a backdrop wherever it was opened from, so
+ * the card the in-card button sits in is no longer constraining anything. The
+ * in-card menu used to draw itself scaled to its own 36pt button (40pt pills,
+ * `font.sm`), which made the same two choices read a third smaller than the
+ * identical menu on Today for no reason a person could see.
  */
 export function FabMenuOverlay({
-  items, visible, anim, onSelect, onDismiss, anchor, size, compact,
+  items, visible, anim, onSelect, onDismiss, anchor, size,
 }: FabMenuOverlayProps) {
   const colors = useColors();
   const { shadows } = useTheme();
   const hand = useFabHand();
   const styles = useMemo(() => makeStyles(colors, hand), [colors, hand]);
-
-  const gap = compact ? spacing.sm : spacing.md;
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onDismiss}>
@@ -412,20 +415,18 @@ export function FabMenuOverlay({
               style={{
                 opacity: anim,
                 transform: [{ translateY }, { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }],
-                marginBottom: gap,
+                marginBottom: spacing.md,
               }}
             >
               <PressableScale
-                style={[styles.menuItem, compact && styles.menuItemCompact, shadows.fab]}
+                style={[styles.menuItem, shadows.fab]}
                 pressScale={0.95}
                 onPress={() => onSelect(item.key)}
                 accessibilityRole="button"
                 accessibilityLabel={item.label}
               >
-                <Ionicons name={item.icon} size={compact ? 18 : 20} color={colors.onAccent} />
-                <Text style={[styles.menuItemText, compact && styles.menuItemTextCompact]}>
-                  {item.label}
-                </Text>
+                <Ionicons name={item.icon} size={20} color={colors.onAccent} />
+                <Text style={styles.menuItemText}>{item.label}</Text>
               </PressableScale>
             </Animated.View>
           );
@@ -567,15 +568,8 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     backgroundColor: colors.accent,
     shadowColor: colors.accent,
   },
-  // Scaled to the 36pt button the way the 52pt pill is scaled to the 56pt one.
-  menuItemCompact: {
-    paddingHorizontal: spacing.md, height: 40,
-  },
   menuItemText: {
     color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold,
-  },
-  menuItemTextCompact: {
-    fontSize: font.sm,
   },
   dragRow: {
     // Reversed on the left so the drop label still trails *into* the screen

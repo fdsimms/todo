@@ -8,6 +8,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Props {
   visible: boolean;
@@ -43,6 +44,37 @@ interface Props {
  * editor sheet (TaskEditor, TaskGroupEditor, ProjectEditor, TemplateEditor,
  * TemplateItemEditor) opens with — see issue #758 for the byte-identical
  * lines this replaces.
+ *
+ * ## Why this is `fullScreen` and not the page sheet it used to be (#1182)
+ *
+ * A page sheet is presented by a `UISheetPresentationController`, which owns
+ * the pull-down dismissal pan — on its *container* view, an ancestor of the
+ * modal's content. Every RN `Modal` gets its own touch handler attached to the
+ * modal view controller's root view (`RCTFabricModalHostViewController`), and
+ * that handler **destroys its own in-flight touches** the moment it has to
+ * arbitrate with a recognizer from outside that view
+ * (`RCTSurfaceTouchHandler`'s `canBePreventedByGestureRecognizer` → `![other.view
+ * isDescendantOfView:self.view]` → `_cancelTouches`). RN does it deliberately,
+ * for native recognizers "like iOS 13 modals that can be pulled down".
+ *
+ * So every JS drag inside an editor died: the row lifted, followed the finger
+ * for a moment, then snapped back on `onPanResponderTerminate`. Both directions,
+ * because UIKit asks about simultaneous recognition while both recognizers are
+ * still merely *tracking* — the sheet's pan need never begin, and on an upward
+ * drag nothing visibly moved at all.
+ *
+ * **`scrollEnabled` can't save it, and don't go back to trying.** Fabric's
+ * `RCTScrollViewComponentView._shouldDisableScrollInteraction` walks the scroll
+ * view's *ancestors*, so a JS responder inside it never makes it stand down —
+ * switching the scroll off is genuinely required (see `SortableList`), but an
+ * iOS sheet defers its dismissal pan to the sheet's scroll view, so switching it
+ * off is also what frees that pan to arbitrate immediately. Scroll on, the
+ * scroll cancels the touch; scroll off, the sheet does. Inside a page sheet the
+ * drag loses both ways, which is why three audits of the wiring found nothing.
+ *
+ * What that costs: swipe-down-to-close (every editor already has Done in its
+ * header, and closing that way skipped the save), and the inset card look. What
+ * it buys is that every drag in every editor works at all.
  */
 export function EditorSheet({
   visible,
@@ -57,16 +89,27 @@ export function EditorSheet({
   footer,
   scrollEnabled = true,
 }: Props) {
+  const insets = useSafeAreaInsets();
+
   return (
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="pageSheet"
+      presentationStyle="fullScreen"
       onRequestClose={onRequestClose}
       onShow={onShow}
     >
       <KeyboardAvoidingView style={rootStyle} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={headerStyle}>{header}</View>
+        {/*
+          The page sheet used to start below the status bar for us. Held on a
+          wrapper rather than folded into headerStyle because each editor passes
+          its own header padding, and this has to be added to whatever that is
+          rather than replace it. No background of its own — it sits on the
+          root's, which is what the header sat on before.
+        */}
+        <View style={{ paddingTop: insets.top }}>
+          <View style={headerStyle}>{header}</View>
+        </View>
 
         <ScrollView
           style={scrollStyle}
