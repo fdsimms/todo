@@ -26,7 +26,7 @@ import { aisleForName } from '../utils/groceryAisles';
 import { splitAlternativeNames, suggestShorterCatalogName } from '../utils/groceryParse';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
-import { sectionsOf } from '../utils/recipeSections';
+import { allSectionsOf } from '../utils/recipeSections';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 import { SegmentedControl } from './SegmentedControl';
@@ -65,6 +65,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const recipeIngredients = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.ingredients ?? [])
   );
+  const recipeEmptySections = useRecipeStore(
+    useShallow(s => s.recipes.find(r => r.id === recipeId)?.emptySections ?? [])
+  );
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
@@ -87,11 +90,15 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     return labels;
   }, [recipeIngredients, ingredient?.id]);
 
-  // Every section this recipe already uses, in list order. Same idea as the
+  // Every heading this recipe already has, in list order — including one
+  // declared with nothing under it yet (Recipe.emptySections). Same idea as the
   // choice labels above and for the same reason: a section is a *string* shared
   // across rows, so typing it again by hand is how one recipe ends up with "For
   // the cake" and "For the Cake" as two headings.
-  const existingSections = useMemo(() => sectionsOf(recipeIngredients), [recipeIngredients]);
+  const existingSections = useMemo(
+    () => allSectionsOf(recipeIngredients, recipeEmptySections),
+    [recipeIngredients, recipeEmptySections]
+  );
 
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');

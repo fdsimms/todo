@@ -1,3 +1,5 @@
+import { RECIPE_SECTION_MAX_LENGTH } from '../types';
+
 /**
  * Sections, as a thing you drag into rather than a string you retype.
  *
@@ -15,7 +17,26 @@
  * but the dragged row moves, and a recipe with no sections at all is untouched
  * by any of it, since every row's section is null and adopting null changes
  * nothing.
+ *
+ * `Recipe.emptySections` is the one heading state that isn't a row property —
+ * see the field's own note for why declaring a heading ahead of any ingredient
+ * needs a second, small list rather than reusing this one.
  */
+
+/** Tolerates a null column, a corrupt blob, or a shape from a newer app version. */
+export function parseEmptySections(raw: unknown): string[] {
+  if (!raw) return [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw as string); } catch { return []; }
+  if (!Array.isArray(parsed)) return [];
+  const out: string[] = [];
+  for (const entry of parsed) {
+    if (typeof entry !== 'string') continue;
+    const cleaned = entry.trim().slice(0, RECIPE_SECTION_MAX_LENGTH);
+    if (cleaned && !out.includes(cleaned)) out.push(cleaned);
+  }
+  return out;
+}
 
 /** Anything the drop rule can act on: identity plus the label it carries. */
 export interface SectionedRow {
@@ -97,4 +118,20 @@ export function sectionsOf(rows: readonly SectionedRow[]): string[] {
     if (row.section && !seen.includes(row.section)) seen.push(row.section);
   }
   return seen;
+}
+
+/**
+ * Every heading a recipe has to offer — the sections its rows already use, in
+ * list order, followed by any declared-but-empty headings (`Recipe.emptySections`)
+ * that no row has adopted yet. Pickers (the Section field, the sticky heading
+ * input) read this instead of `sectionsOf` alone so a heading created ahead of
+ * its ingredients is choosable before anything's filed under it.
+ */
+export function allSectionsOf(
+  rows: readonly SectionedRow[],
+  emptySections: readonly string[],
+): string[] {
+  const used = sectionsOf(rows);
+  const usedSet = new Set(used);
+  return [...used, ...emptySections.filter(s => !usedSet.has(s))];
 }

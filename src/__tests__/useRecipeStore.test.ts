@@ -34,6 +34,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     mealType: null,
     tags: [],
     ingredients: [],
+    emptySections: [],
     components: [],
     prepTasks: [],
     favorite: false,
@@ -367,6 +368,88 @@ describe('ingredients', () => {
 
     expect(useRecipeStore.getState().addIngredientsFromText(r.id, 'garlic')).toBe(0);
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('addEmptySection / removeEmptySection', () => {
+  it('declares a heading with nothing under it yet', () => {
+    const r = makeRecipe('Cake');
+    seed([r]);
+
+    expect(useRecipeStore.getState().addEmptySection(r.id, ' For serving ')).toBe(true);
+    expect(useRecipeStore.getState().recipeById(r.id)!.emptySections).toEqual(['For serving']);
+  });
+
+  it('refuses a blank name', () => {
+    const r = makeRecipe('Cake');
+    seed([r]);
+
+    expect(useRecipeStore.getState().addEmptySection(r.id, '   ')).toBe(false);
+    expect(useRecipeStore.getState().recipeById(r.id)!.emptySections).toEqual([]);
+  });
+
+  it('refuses a heading a row already uses', () => {
+    const r = makeRecipe('Cake', {
+      ingredients: [{
+        id: 'i1', name: 'Flour', nameKey: 'flour', quantity: '', aisle: null, prep: null,
+        purpose: null, section: 'For the cake', choiceGroup: null,
+      }],
+    });
+    seed([r]);
+
+    expect(useRecipeStore.getState().addEmptySection(r.id, 'For the cake')).toBe(false);
+  });
+
+  it('refuses a heading already declared', () => {
+    const r = makeRecipe('Cake');
+    seed([r]);
+    useRecipeStore.getState().addEmptySection(r.id, 'For serving');
+
+    expect(useRecipeStore.getState().addEmptySection(r.id, 'For serving')).toBe(false);
+    expect(useRecipeStore.getState().recipeById(r.id)!.emptySections).toEqual(['For serving']);
+  });
+
+  it('un-declares a heading', () => {
+    const r = makeRecipe('Cake');
+    seed([r]);
+    useRecipeStore.getState().addEmptySection(r.id, 'For serving');
+
+    useRecipeStore.getState().removeEmptySection(r.id, 'For serving');
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.emptySections).toEqual([]);
+  });
+
+  it('is a no-op for a heading that was never declared', () => {
+    const r = makeRecipe('Cake');
+    seed([r]);
+    jest.clearAllMocks();
+
+    useRecipeStore.getState().removeEmptySection(r.id, 'Never declared');
+
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('prunes a declared heading the moment a row adopts the same label', () => {
+    const r = makeRecipe('Cake');
+    seed([r]);
+    useRecipeStore.getState().addEmptySection(r.id, 'For serving');
+
+    useRecipeStore.getState().addIngredient(r.id, 'Candles', 'For serving');
+
+    const recipe = useRecipeStore.getState().recipeById(r.id)!;
+    expect(recipe.emptySections).toEqual([]);
+    expect(recipe.ingredients[0].section).toBe('For serving');
+  });
+
+  it('leaves other declared headings alone when one gets used', () => {
+    const r = makeRecipe('Cake');
+    seed([r]);
+    useRecipeStore.getState().addEmptySection(r.id, 'For serving');
+    useRecipeStore.getState().addEmptySection(r.id, 'For the frosting');
+
+    useRecipeStore.getState().addIngredient(r.id, 'Candles', 'For serving');
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.emptySections).toEqual(['For the frosting']);
   });
 });
 

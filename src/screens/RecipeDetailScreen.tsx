@@ -44,6 +44,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
 import { describeCookTime, describePrepTime, describeRecipe, totalMinutes } from '../utils/recipeUtils';
+import { allSectionsOf } from '../utils/recipeSections';
 import { describeUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
@@ -93,6 +94,8 @@ export function RecipeDetailScreen() {
   const reorderIngredients = useRecipeStore(s => s.reorderIngredients);
   const bulkRemoveIngredients = useRecipeStore(s => s.bulkRemoveIngredients);
   const bulkSetIngredientAisle = useRecipeStore(s => s.bulkSetIngredientAisle);
+  const addEmptySection = useRecipeStore(s => s.addEmptySection);
+  const removeEmptySection = useRecipeStore(s => s.removeEmptySection);
   const toggleFavorite = useRecipeStore(s => s.toggleFavorite);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
@@ -419,6 +422,14 @@ export function RecipeDetailScreen() {
     }
     return headers;
   }, [recipe.ingredients]);
+
+  // Every heading this recipe already has, real or declared — what the sticky
+  // field's "declare this as a heading now" button checks against so it can't
+  // offer to redeclare one that already exists.
+  const allSections = useMemo(
+    () => allSectionsOf(recipe.ingredients, recipe.emptySections),
+    [recipe.ingredients, recipe.emptySections]
+  );
 
   // The same display-only treatment for choice groups: the *first* row of each
   // group opens a heading, and is also the group's default (see
@@ -913,7 +924,7 @@ export function RecipeDetailScreen() {
           />
         )}
 
-        {recipe.ingredients.length === 0 && components.length === 0 ? (
+        {recipe.ingredients.length === 0 && components.length === 0 && recipe.emptySections.length === 0 ? (
           <Text style={styles.hint}>
             Type one ingredient at a time, or paste a whole list — “2 lb chicken thighs”
             keeps the quantity out of the name so the list stays tidy.
@@ -933,6 +944,40 @@ export function RecipeDetailScreen() {
                 own Components section (which stays the place to remove one or
                 set a choice-group default). */}
             {components.map(resolved => renderComponent(resolved, true))}
+            {/* A heading declared ahead of anything to put under it — see
+                Recipe.emptySections. Trailing rather than interleaved: it has
+                no row of its own to claim a position in the list, and the
+                order that places real headings doesn't apply to one with
+                nothing in it yet. Tapping it loads the heading into the
+                sticky field below so typing the first ingredient for it is
+                one tap away; the × un-declares it outright. */}
+            {recipe.emptySections.map(name => (
+              <View key={`empty-section-${name}`} style={styles.emptySectionRow}>
+                <TouchableOpacity
+                  style={styles.emptySectionBody}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => {
+                    haptics.tap();
+                    setSectionDraft(name);
+                    draftInputRef.current?.focus();
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${name}, no ingredients yet`}
+                  accessibilityHint="Double tap to start adding ingredients under this heading"
+                >
+                  <Text style={styles.emptySectionTitle}>{name}</Text>
+                  <Text style={styles.emptySectionHint}>Nothing here yet</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); animateLayout(); removeEmptySection(recipe.id, name); }}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${name} heading`}
+                >
+                  <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
         )}
 
@@ -949,7 +994,12 @@ export function RecipeDetailScreen() {
             frosting" is how a recipe with several sections actually gets
             typed in, and it needs no cleanup — leave it blank to file plain.
             Rows already on the list are moved between headings by dragging
-            them, which is what the hint below says. */}
+            them, which is what the hint below says.
+
+            The + declares whatever's typed as a heading on its own, with
+            nothing under it yet (Recipe.emptySections) — so sketching "For
+            the cake" / "For the frosting" before typing a single ingredient
+            works, not just filing rows into a heading as you go. */}
         <View style={styles.sectionDraftRow}>
           <Ionicons name="albums-outline" size={iconSize.sm} color={colors.textTertiary} />
           <TextInput
@@ -963,6 +1013,21 @@ export function RecipeDetailScreen() {
             autoCapitalize="words"
             accessibilityLabel="Section for new ingredients"
           />
+          {!!sectionDraft.trim() && !allSections.includes(sectionDraft.trim()) && (
+            <TouchableOpacity
+              onPress={() => {
+                if (addEmptySection(recipe.id, sectionDraft)) {
+                  haptics.success();
+                  animateLayout();
+                }
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Add "${sectionDraft.trim()}" as a heading now, with nothing under it yet`}
+            >
+              <Ionicons name="add-circle" size={iconSize.sm} color={colors.accent} />
+            </TouchableOpacity>
+          )}
           {!!sectionDraft && (
             <TouchableOpacity
               onPress={() => setSectionDraft('')}
@@ -981,6 +1046,13 @@ export function RecipeDetailScreen() {
         {ingredientSectionHeaders.size > 0 && (
           <Text style={styles.inputHint}>
             Drag an ingredient under a heading to move it there.
+          </Text>
+        )}
+        {/* Shown exactly when the + above is — the moment it's actionable,
+            not as permanent clutter for recipes nobody splits into sections. */}
+        {!!sectionDraft.trim() && !allSections.includes(sectionDraft.trim()) && (
+          <Text style={styles.inputHint}>
+            Add this as a heading now, before you've typed anything under it.
           </Text>
         )}
 
@@ -1301,6 +1373,35 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
+  },
+  // A declared-but-empty heading (Recipe.emptySections) — same row shape as
+  // `ingredient` below so it reads as a row of this card, not a caption above
+  // one, but with nothing to show past its own name.
+  emptySectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  emptySectionBody: {
+    flex: 1,
+    gap: 1,
+  },
+  // Same treatment as ingredientSectionHeader, minus the padding that style
+  // bakes in for sitting directly in the card — this one nests inside
+  // emptySectionBody instead.
+  emptySectionTitle: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  emptySectionHint: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontStyle: 'italic',
   },
   ingredient: {
     flexDirection: 'row',

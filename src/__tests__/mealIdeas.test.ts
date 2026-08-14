@@ -37,6 +37,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     mealType: null,
     tags: [],
     ingredients: [],
+    emptySections: [],
     components: [],
     prepTasks: [],
     favorite: false,

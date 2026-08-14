@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
   dbInsertRecipe,
@@ -25,7 +25,7 @@ import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
 import { clampKeepDays } from '../utils/leftovers';
 import { normalizeRecipeTags } from '../utils/recipeTags';
 import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
-import { resolveSectionDrop } from '../utils/recipeSections';
+import { resolveSectionDrop, sectionsOf } from '../utils/recipeSections';
 
 /**
  * The recipe library.
@@ -239,6 +239,17 @@ interface RecipeStore {
   bulkSetIngredientAisle: (recipeId: string, ingredientIds: string[], aisle: string | null) => void;
 
   /**
+   * Declares a heading with nothing filed under it yet, so it's choosable
+   * from the Section field and the sticky heading input before any ingredient
+   * carries it. False on a blank name or one that's already a heading here,
+   * real or declared. `save()` prunes an entry the moment a row actually
+   * adopts the same label — see Recipe.emptySections.
+   */
+  addEmptySection: (recipeId: string, name: string) => boolean;
+  /** Un-declares a heading that never got anything under it. */
+  removeEmptySection: (recipeId: string, name: string) => void;
+
+  /**
    * References `componentRecipeId` as a part of `recipeId` — the shared
    * "mashed potatoes" inside two different dinners.
    *
@@ -321,6 +332,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       mealType: null,
       tags: [],
       ingredients: [],
+      emptySections: [],
       components: [],
       prepTasks: [],
       favorite: false,
@@ -714,6 +726,23 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, ingredients });
   },
 
+  addEmptySection(recipeId, name) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return false;
+    const cleaned = name.trim().slice(0, RECIPE_SECTION_MAX_LENGTH).trim();
+    if (!cleaned) return false;
+    if (sectionsOf(recipe.ingredients).includes(cleaned)) return false;
+    if (recipe.emptySections.includes(cleaned)) return false;
+    save(set, { ...recipe, emptySections: [...recipe.emptySections, cleaned] });
+    return true;
+  },
+
+  removeEmptySection(recipeId, name) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe || !recipe.emptySections.includes(name)) return;
+    save(set, { ...recipe, emptySections: recipe.emptySections.filter(s => s !== name) });
+  },
+
   reorderIngredients(recipeId, ids) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return;
@@ -834,8 +863,21 @@ type SetRecipes = (fn: (s: { recipes: Recipe[] }) => { recipes: Recipe[] }) => v
  * Write-then-patch. Every mutation above is a whole-row update — the row holds
  * its ingredients as a blob, so there is no such thing as a partial write here
  * — which makes one helper honest rather than a premature abstraction.
+ *
+ * Also the one place `emptySections` is reconciled against `ingredients`,
+ * rather than every mutator that can assign a `section` doing it itself: a
+ * declared heading is only ever meant to bridge the gap until a real row
+ * carries the label, so the moment one does, the declaration is redundant and
+ * dropped. Cheap to check unconditionally — most saves carry no declared
+ * sections at all.
  */
 function save(set: SetRecipes, recipe: Recipe): void {
-  dbUpdateRecipe(recipe);
-  set(s => ({ recipes: s.recipes.map(r => (r.id === recipe.id ? recipe : r)) }));
+  const next = recipe.emptySections.length === 0 ? recipe : {
+    ...recipe,
+    emptySections: recipe.emptySections.filter(
+      name => !recipe.ingredients.some(i => i.section === name)
+    ),
+  };
+  dbUpdateRecipe(next);
+  set(s => ({ recipes: s.recipes.map(r => (r.id === next.id ? next : r)) }));
 }

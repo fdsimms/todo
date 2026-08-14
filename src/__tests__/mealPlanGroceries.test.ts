@@ -55,6 +55,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     mealType: null,
     tags: [],
     ingredients,
+    emptySections: [],
     components: [],
     prepTasks: [],
     favorite: false,

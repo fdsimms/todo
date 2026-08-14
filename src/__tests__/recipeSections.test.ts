@@ -1,4 +1,10 @@
-import { resolveSectionDrop, sectionsOf, type SectionedRow } from '../utils/recipeSections';
+import {
+  allSectionsOf,
+  parseEmptySections,
+  resolveSectionDrop,
+  sectionsOf,
+  type SectionedRow,
+} from '../utils/recipeSections';
 
 const row = (id: string, section: string | null = null): SectionedRow => ({ id, section });
 
@@ -87,5 +93,40 @@ describe('sectionsOf', () => {
 
   it('is empty for a recipe with no sections', () => {
     expect(sectionsOf([row('a'), row('b')])).toEqual([]);
+  });
+});
+
+describe('allSectionsOf', () => {
+  it('appends declared-but-empty headings after the ones rows already use', () => {
+    const rows = [row('a', 'For the cake'), row('b', null)];
+    expect(allSectionsOf(rows, ['For serving', 'For the cake']))
+      .toEqual(['For the cake', 'For serving']);
+  });
+
+  it('is just the declared list when no row has a section yet', () => {
+    expect(allSectionsOf([row('a'), row('b')], ['For serving'])).toEqual(['For serving']);
+  });
+
+  it('is just the used sections when nothing is declared', () => {
+    const rows = [row('a', 'For the cake')];
+    expect(allSectionsOf(rows, [])).toEqual(['For the cake']);
+  });
+});
+
+describe('parseEmptySections', () => {
+  it('parses a stored JSON array', () => {
+    expect(parseEmptySections('["For serving","For the cake"]'))
+      .toEqual(['For serving', 'For the cake']);
+  });
+
+  it('tolerates a null column, garbage, and a non-array shape', () => {
+    expect(parseEmptySections(null)).toEqual([]);
+    expect(parseEmptySections('not json')).toEqual([]);
+    expect(parseEmptySections('{"a":1}')).toEqual([]);
+  });
+
+  it('drops non-strings, trims, and dedupes', () => {
+    expect(parseEmptySections(JSON.stringify(['  For serving  ', 'For serving', 42, ''])))
+      .toEqual(['For serving']);
   });
 });

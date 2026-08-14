@@ -73,6 +73,7 @@ function recipe(id: string, name: string): Recipe {
     mealType: null,
     tags: [],
     ingredients: [],
+    emptySections: [],
     components: [],
     prepTasks: [],
     favorite: false,

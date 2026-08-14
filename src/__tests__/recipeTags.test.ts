@@ -30,6 +30,7 @@ function recipe(name: string, tags: string[] = []): Recipe {
     mealType: null,
     tags,
     ingredients: [],
+    emptySections: [],
     components: [],
     prepTasks: [],
     favorite: false,

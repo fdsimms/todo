@@ -805,6 +805,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.ingredients.some(i => i.section))).toBe(true);
     expect(recipes.some(r => r.ingredients.some(i => i.prep))).toBe(true);
     expect(recipes.some(r => r.ingredients.some(i => i.purpose))).toBe(true);
+    // A heading declared ahead of anything filed under it — see Recipe.emptySections.
+    expect(recipes.some(r => r.emptySections.length > 0)).toBe(true);
   });
 
   it('seeds recipe duration, cook history, attribution and a live timer', () => {
