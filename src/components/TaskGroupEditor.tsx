@@ -25,6 +25,7 @@ import { CollapsibleField } from './CollapsibleField';
 import { MiniFabList } from './MiniFabList';
 import { EditorSheet } from './EditorSheet';
 import { InlineAction } from './InlineAction';
+import { PinIcon } from './PinIcon';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TaskEditor } from './TaskEditor';
 import type { FabMenuItem } from './Fab';
@@ -73,6 +74,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
   const applyGroupCategory = useTaskStore(s => s.applyGroupCategory);
+  const pinGroup = useTaskStore(s => s.pinGroup);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const updateTask = useTaskStore(s => s.updateTask);
   const updateGroup = useTaskGroupStore(s => s.updateGroup);
@@ -131,6 +133,17 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const members = group ? groupRosterOf(group.id) : [];
   const dueToday = members.filter(isRelevantToGroupToday);
   const doneToday = dueToday.filter(c => c.completed).length;
+
+  // Same roster pinGroup itself acts on — completed occurrences aren't
+  // members any more (see groupRoster) and can't be pinned.
+  const pinEligible = members.filter(c => !c.completed);
+  const allPinned = pinEligible.length > 0 && pinEligible.every(c => c.pinned);
+
+  const handlePin = () => {
+    if (!group || pinEligible.length === 0) return;
+    haptics.tap();
+    pinGroup(group.id);
+  };
 
   /**
    * Moves a just-added task to the seam the add button was dropped on.
@@ -293,9 +306,25 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
         <>
           <SheetHeaderButton label="Done" onPress={saveAndClose} />
           <Text style={styles.headerTitle}>{isNew ? 'New Stack' : 'Edit Stack'}</Text>
-          <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete stack">
-            <Ionicons name="trash-outline" size={20} color={colors.red} />
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={handlePin}
+              disabled={pinEligible.length === 0}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: pinEligible.length === 0, selected: allPinned }}
+              accessibilityLabel={`${allPinned ? 'Unpin' : 'Pin'} all tasks in ${group.title}`}
+            >
+              <PinIcon
+                filled={allPinned}
+                size={20}
+                color={pinEligible.length === 0 ? colors.textTertiary : (allPinned ? colors.orange : colors.textSecondary)}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete stack">
+              <Ionicons name="trash-outline" size={20} color={colors.red} />
+            </TouchableOpacity>
+          </View>
         </>
       }
     >
@@ -515,6 +544,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 80 },
   titleInput: {

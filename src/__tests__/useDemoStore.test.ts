@@ -269,6 +269,23 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // Every other pinned row in the seed is a single task, so nothing else
+  // would catch a later edit that dropped the pinGroup call or unpinned a
+  // member — the stack editor's pin-all button would read as untested.
+  it('seeds a stack pinned as a whole, via pinGroup rather than a lone pinned task', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+    const { groups } = useTaskGroupStore.getState();
+
+    const supplements = groups.find(g => g.title === 'Supplements');
+    expect(supplements).toBeDefined();
+    const members = tasks.filter(t => t.groupId === supplements!.id && !t.completed);
+    expect(members.length).toBeGreaterThan(0);
+    expect(members.every(t => t.pinned)).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // The month grid's one distinctive mark is a dot for an occurrence that has
   // no row yet, and only a fixed-schedule recurrence with a due date produces
   // one (see canProject). Nothing else in the seed asserts that combination
