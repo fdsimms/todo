@@ -699,6 +699,15 @@ plumbing through the recipes JSON blob.
   default state of nearly every item, so reading it as "you haven't got this" would
   caption the whole app on nothing. Consequently the recipe ingredient row is silent by
   default — no standing "or margarine" — and you go and ask instead.
+- **The first read is a caption, never a category.** `classifyPlanned` sets
+  `ClassifiedIngredient.reason` to `describeSubstitutesOnHand`'s "you have margarine" on a
+  **`needToBuy`** row whose linked substitute `probablyHaveReason` answers for — and leaves
+  the row exactly where it was. Moving it to `probablyHave` is the tempting version and the
+  broken one: those rows arrive **pre-unticked** in both add-to-list sheets, so folding a
+  substitute in is how you come home without butter because the app decided margarine
+  counted. `reason` now has two producers, told apart by the row's own category; the wording
+  lives in one helper because the shelf (#1567) and the recipe row (#1573) want the same
+  sentence.
 - **Authoring is the ask, not the field.** Links are hand-authored, and nobody
   hand-authors data for a caption they've never seen, so `SubstituteSheet` (opened from
   the field's "Add substitute") is the funnel and `GroceryItemSheet`'s field is where you

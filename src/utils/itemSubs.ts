@@ -1,5 +1,6 @@
 import type { GroceryItem, ItemSubLink } from '../types';
 import { scaleQuantity, splitLeadingAmount, unitKey } from './recipeScale';
+import { probablyHaveReason } from './grocerySuggest';
 
 /**
  * Substitutes — the read side of the item-to-item links.
@@ -179,4 +180,46 @@ export function substituteQuantity(
   // untouched, not the unusable ratio.
   const scaled = scaleQuantity(ratioTo, factor);
   return scaled.scaled ? { text: scaled.text, converted: true } : unchanged;
+}
+
+/**
+ * The substitutes for an item that the app currently thinks you have.
+ *
+ * **Both halves have to be known**, which is what keeps this quiet: a link
+ * whose substitute the app has no pantry opinion about says nothing, the same
+ * silence rule `tripMarkerFor` runs on. `probablyHaveReason` is the single
+ * source of the "have it" opinion — an explicit assertion, a staple, or the
+ * cadence guess — and this deliberately adds no second rule of its own. In
+ * particular it doesn't drop a substitute that's on the shopping list: an item
+ * can be both recently bought and back on the list, and `PantrySheet` already
+ * treats that as on hand.
+ */
+export function substitutesOnHand(
+  itemId: string,
+  links: readonly ItemSubLink[],
+  items: readonly GroceryItem[],
+  now: Date
+): Substitute[] {
+  return substitutesFor(itemId, links, items).filter(
+    s => probablyHaveReason(s.item, now) !== null
+  );
+}
+
+/**
+ * "you have margarine" — why a row you still need to buy is worth a second
+ * look before you go.
+ *
+ * One function owning the phrasing, the way `describeShops` does, because the
+ * same sentence is wanted at the shelf and on a recipe row. Plain and literal:
+ * what's in the cupboard, not a rescue.
+ *
+ * Lower-cased and joined with "or" up to the same two-name limit the collapsed
+ * summary uses, then a count — this lands in a row subtitle, which is one line.
+ */
+export function describeSubstitutesOnHand(subs: readonly Substitute[]): string | null {
+  if (subs.length === 0) return null;
+  if (subs.length <= NAME_LIMIT) {
+    return `you have ${subs.map(s => s.item.name.toLowerCase()).join(' or ')}`;
+  }
+  return `you have ${subs.length} substitutes`;
 }
