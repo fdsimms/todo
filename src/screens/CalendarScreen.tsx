@@ -390,9 +390,14 @@ function cellLabel(day: Date, bucket: DayBucket | undefined): string {
   const date = format(day, 'MMMM d');
   if (!bucket || bucket.marks.length === 0) return date;
   const parts = bucket.dots.map(dot => {
-    const count = bucket.marks.filter(m => m.kind === dot.kind).length;
     const noun = dot.kind === 'due' ? 'due' : dot.kind === 'deadline' ? 'deadline' : 'returning';
-    return dot.state === 'projected' ? `${count} expected ${noun}` : `${count} ${noun}`;
+    if (dot.state === 'projected') {
+      const count = bucket.marks.filter(m => m.kind === dot.kind).length;
+      return `${count} expected ${noun}`;
+    }
+    if (dot.state === 'done') return `${noun} done`;
+    const count = bucket.marks.filter(m => m.kind === dot.kind && !m.projected && !m.completed).length;
+    return `${count} ${noun}`;
   });
   return `${date}, ${parts.join(', ')}`;
 }

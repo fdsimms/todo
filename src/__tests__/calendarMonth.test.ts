@@ -516,4 +516,15 @@ describe('summarizeDay', () => {
   it('leaves expected occurrences out of the count', () => {
     expect(summarizeDay(detail({ expected: [{ taskId: 'a', title: 'Bins out' }] }))).toBe('');
   });
+
+  it('does not count completed rows as still due', () => {
+    const done = makeTask({ completed: true });
+    const outstanding = makeTask({});
+    expect(summarizeDay(detail({ due: [done, outstanding], deadline: [done] }))).toBe('1 due');
+  });
+
+  it('renders nothing once every row on the day is complete', () => {
+    const done = makeTask({ completed: true });
+    expect(summarizeDay(detail({ due: [done, done], deadline: [done] }))).toBe('');
+  });
 });
