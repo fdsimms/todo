@@ -25,6 +25,7 @@ import { resolveGroceryTokens, splitAlternativeNames } from '../utils/groceryPar
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
+import { describeProduct } from '../utils/groceryProduct';
 import { generateId } from '../utils/id';
 
 interface Props {
@@ -35,6 +36,13 @@ interface Props {
    */
   onAdded?: (items: GroceryItem[]) => void;
 }
+
+/**
+ * The field's own height, fixed rather than sized by its content: the results
+ * block below is positioned off it, and the whole point of that block being out
+ * of flow is that neither piece moves as you type.
+ */
+const FIELD_HEIGHT = 48 + border.sm * 2;
 
 /** Lets the sheet focus the field once its entrance animation has settled. */
 export interface GroceryAddFieldHandle {
@@ -211,6 +219,12 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     [addManyFromText, onAdded, status]
   );
 
+  // Everything the field can grow — the parsed-token chips, the either/or
+  // offer, the paste status, the matches — or nothing at all.
+  const hasTokenChips =
+    !!tokens && (tokens.quantityAccepted || tokens.prepAccepted || tokens.purposeAccepted);
+  const hasResults = hasTokenChips || !!alternatives || !!status || suggestions.length > 0;
+
   return (
     <View style={styles.wrap}>
       <View style={[styles.field, focused && styles.fieldFocused]}>
@@ -254,11 +268,22 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
         )}
       </View>
 
+      {/* Out of flow, and that's the fix rather than a layout preference. The
+          sheet holding this field centres its card, so anything that grows
+          *under* the field pushes the field itself up — half the growth goes
+          each way. Typing "s" put three matches on screen and moved the field
+          out from under the cursor mid-word; a token chip appearing at the
+          fourth character did it again by a smaller amount. Absolute here, the
+          field is nailed to the top of the card and everything the typing
+          reveals opens downwards over the backdrop. It carries its own surface
+          because it is no longer inside the card's rounded rect. */}
+      {hasResults && (
+      <View style={styles.results}>
       {/* Live preview of the split commit would produce, so it's a visible
           decision rather than something the parser did silently. Each token
           it pulled out of the text gets its own chip; tapping × keeps that
           exact piece in the name instead — see resolveGroceryTokens. */}
-      {!!tokens && (tokens.quantityAccepted || tokens.prepAccepted || tokens.purposeAccepted) && (
+      {hasTokenChips && (
         <View style={styles.tokenRow}>
           <View style={styles.tokenChips}>
             {tokens.quantityAccepted && (
@@ -333,32 +358,46 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       {!!status && <Text style={styles.status}>{status}</Text>}
 
       {suggestions.length > 0 && (
-        // In flow rather than absolutely positioned: inside the sheet there is
-        // no list underneath to reflow, and the card growing downwards is the
-        // thing that reads as "here are the matches". The pinned version had to
-        // float this over the aisles to stop them jumping as you typed.
         <View style={styles.matches}>
           <ScrollView keyboardShouldPersistTaps="handled" style={styles.matchesScroll}>
-            {suggestions.map(({ item, onList }) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.suggestion}
-                activeOpacity={interaction.activeOpacity}
-                onPress={() => commit(item.name)}
-                accessibilityRole="button"
-                accessibilityLabel={`Add ${item.name}${onList ? ', already on the list' : ''}`}
-              >
-                <Text style={styles.suggestionName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.suggestionAisle} numberOfLines={1}>{item.aisle}</Text>
-                {onList && (
-                  <View style={styles.onListPill}>
-                    <Text style={styles.onListText}>On list</Text>
+            {suggestions.map(({ item, onList }) => {
+              // Which one to reach for, on the row that offers it. The catalog
+              // has carried a brand and a variant for a while and this — the
+              // one screen where you pick an item by name — was still showing
+              // the bare name, so "Oatly oat milk" and plain oat milk looked
+              // like the same row until it was already on the list.
+              const product = describeProduct(item);
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.suggestion}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => commit(item.name)}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    [`Add ${item.name}`, product, item.aisle, onList ? 'already on the list' : null]
+                      .filter(Boolean).join(', ')
+                  }
+                >
+                  <View style={styles.suggestionBody}>
+                    <Text style={styles.suggestionName} numberOfLines={1}>{item.name}</Text>
+                    {!!product && (
+                      <Text style={styles.suggestionProduct} numberOfLines={1}>{product}</Text>
+                    )}
                   </View>
-                )}
-              </TouchableOpacity>
-            ))}
+                  <Text style={styles.suggestionAisle} numberOfLines={1}>{item.aisle}</Text>
+                  {onList && (
+                    <View style={styles.onListPill}>
+                      <Text style={styles.onListText}>On list</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
+      )}
+      </View>
       )}
     </View>
   );
@@ -367,12 +406,28 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     wrap: {
+      // No gap: the one child in flow is the field, and everything else hangs
+      // off `results` below at a fixed offset from it.
+      position: 'relative',
+    },
+    // Pinned under the field rather than stacked after it — see the note at the
+    // call site. `FIELD_HEIGHT` has to stay in step with `field`'s own height,
+    // which is why that one is explicit rather than sized by its content.
+    results: {
+      position: 'absolute',
+      top: FIELD_HEIGHT + spacing.sm,
+      left: 0,
+      right: 0,
       gap: spacing.xs,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.sm,
     },
     field: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
+      height: FIELD_HEIGHT,
       // Tertiary, not secondary: the sheet card behind it is already secondary,
       // and a field the same colour as its card is a field you can't see.
       backgroundColor: colors.bgTertiary,
@@ -458,7 +513,12 @@ function makeStyles(colors: Colors) {
       overflow: 'hidden',
     },
     matchesScroll: {
-      maxHeight: 220,
+      // Four rows before it scrolls. Sized against the smallest screen the app
+      // runs on rather than the roomiest: the block hangs off a card 64pt from
+      // the top and opens downward, so on an SE with the keyboard up this is
+      // what keeps the last match above it. Five matches is the cap
+      // rankGrocerySuggestions applies anyway, so the fifth is one short scroll.
+      maxHeight: 176,
     },
     suggestion: {
       flexDirection: 'row',
@@ -469,11 +529,20 @@ function makeStyles(colors: Colors) {
       borderBottomWidth: border.thin,
       borderBottomColor: colors.separator,
     },
-    suggestionName: {
+    suggestionBody: {
       flex: 1,
+      gap: 1,
+    },
+    suggestionName: {
       fontSize: font.md,
       fontWeight: fontWeight.medium,
       color: colors.text,
+    },
+    // The same clause GroceryRow puts under a name on the list, in the same
+    // words — describeProduct owns the wording so the two can't drift.
+    suggestionProduct: {
+      fontSize: font.xs,
+      color: colors.textSecondary,
     },
     suggestionAisle: {
       fontSize: font.xs,

@@ -281,6 +281,13 @@ const LEADING_PREP_SPLIT = new RegExp(
 export function splitPrep(name: string): { name: string; prep: string | null } {
   const trimmed = name.trim();
 
+  // "chicken, beef, or lamb" is a list of options, not a name and a prep
+  // clause. Taking the comma here would store "chicken" with "beef, or lamb"
+  // hanging off it as prep, which loses two of the three things the line names
+  // *and* puts the split suggestion out of reach — see looksLikeAlternativeList
+  // for why only the Oxford-comma form qualifies.
+  if (looksLikeAlternativeList(trimmed)) return { name: trimmed, prep: null };
+
   const match = PREP_SPLIT.exec(trimmed);
   if (match) {
     const [, core, prep] = match;
@@ -389,6 +396,49 @@ const NOT_AN_ALTERNATIVE = new Set([
 const MAX_ALTERNATIVES = 4;
 
 /**
+ * A comma immediately before the "or" — "serrano, jalapeño, or habanero".
+ *
+ * This is what licenses treating a line's *other* commas as list separators
+ * rather than as the prep clause `PREP_SPLIT` reads them as, and it's a
+ * punctuation convention rather than a guess about the words — exactly the
+ * argument PREP_SPLIT itself makes. Without it there is nothing to tell
+ * "chicken, beef, or lamb" (three things to choose between) from "onion, red or
+ * white" (one thing and a note about it), since both are a comma, some words,
+ * an "or" and some more words.
+ *
+ * The cost is that "limes, lemons or grapefruit" — the same list without the
+ * Oxford comma — is left to the plain "or" split, which reads it as two
+ * options. That's a suggestion the user can decline, where mis-splitting a prep
+ * clause would quietly cost the name.
+ */
+const OXFORD_OR = /,\s*or\s+/i;
+
+/**
+ * Splits on commas *and* whole-word "or", the list form OXFORD_OR licenses.
+ * The optional "or" after the comma is what keeps ", or habanero" one
+ * separator rather than a comma followed by a part called "or habanero"; the
+ * trailing `\s+` in it is also what keeps ", orange juice" a plain comma.
+ */
+const LIST_SEPARATOR = /\s*,\s*(?:or\s+)?|\s+or\s+/i;
+
+/**
+ * Words that mean a comma-separated part is a note about the thing rather than
+ * another thing — "black beans, drained and rinsed or canned". Matched against
+ * the part's first word, the same shape NOT_AN_ALTERNATIVE uses.
+ *
+ * Deliberately wider than LEADING_PREP_WORDS above, and it can afford to be:
+ * that list decides what to *take out* of a name, so a wrong entry costs the
+ * first word of the name. This one only decides whether to offer a split at
+ * all, so a wrong entry costs a suggestion nobody sees.
+ */
+const PREP_CLAUSE_WORDS = new Set([
+  'minced', 'chopped', 'diced', 'crushed', 'grated', 'sliced', 'shredded', 'ground',
+  'peeled', 'seeded', 'stemmed', 'trimmed', 'halved', 'quartered', 'cubed', 'julienned',
+  'drained', 'rinsed', 'washed', 'melted', 'softened', 'thawed', 'toasted', 'divided',
+  'room', 'plus', 'preferably', 'optional', 'packed', 'sifted', 'beaten', 'zested', 'juiced',
+]);
+
+/**
  * "cheddar or manchego" → `['cheddar', 'manchego']`, and null for anything that
  * isn't a genuine either/or.
  *
@@ -414,22 +464,49 @@ const MAX_ALTERNATIVES = 4;
  * Matches "or" only as a whole word, so "oregano" and "orange" are safe.
  * Deliberately does not split on "/": a slash is a fraction far more often than
  * a choice here ("1/2 tsp"), and "salt/pepper" usually means both.
+ *
+ * **Commas count as separators too, but only in the Oxford-comma form** — see
+ * OXFORD_OR. "serrano, jalapeño, or habanero" is three options; "onion, red or
+ * white" is left alone.
  */
 export function splitAlternativeNames(name: string): string[] | null {
   const trimmed = name.trim();
   if (!trimmed) return null;
-  const parts = trimmed.split(/\s+or\s+/i).map(part => part.trim());
+  const asList = OXFORD_OR.test(trimmed);
+  const parts = trimmed
+    .split(asList ? LIST_SEPARATOR : /\s+or\s+/i)
+    .map(part => part.trim())
+    .filter(part => part.length > 0);
   if (parts.length < 2 || parts.length > MAX_ALTERNATIVES) return null;
   // Every part has to stand on its own as something to buy.
   if (parts.some(part => !/[a-z]/i.test(part))) return null;
   // A hedge about quantity reads exactly like a choice up to this point.
-  if (parts.slice(1).some(part => NOT_AN_ALTERNATIVE.has(part.split(/\s+/)[0].toLowerCase()))) {
-    return null;
-  }
+  if (parts.slice(1).some(part => NOT_AN_ALTERNATIVE.has(firstWord(part)))) return null;
+  // A prep clause caught by the comma split is a note about the first part, not
+  // a further option. Only reachable in list form — the plain "or" split never
+  // looks inside a comma clause.
+  if (asList && parts.some(part => PREP_CLAUSE_WORDS.has(firstWord(part)))) return null;
   // Two spellings of one thing aren't two things to choose between.
   const keys = parts.map(groceryNameKey);
   if (new Set(keys).size !== keys.length) return null;
   return parts;
+}
+
+function firstWord(part: string): string {
+  return part.split(/\s+/)[0].toLowerCase();
+}
+
+/**
+ * Whether a line reads as a comma-separated list of alternatives, which is the
+ * one case `splitPrep` has to stand down for: "chicken, beef, or lamb" would
+ * otherwise become the name "chicken" with "beef, or lamb" as its prep, and the
+ * split this app wants to offer would never be reachable.
+ *
+ * Narrow on purpose — the plain "or" form ("cheddar or manchego") has no comma
+ * for splitPrep to take, so it isn't this function's business.
+ */
+export function looksLikeAlternativeList(name: string): boolean {
+  return OXFORD_OR.test(name) && splitAlternativeNames(name) !== null;
 }
 
 /**

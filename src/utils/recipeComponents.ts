@@ -131,6 +131,34 @@ export interface ChoiceResolution {
    * *task* must leave this off, or the user buys both sides.
    */
   allOptions?: boolean;
+  /**
+   * Ingredient groups whose options should *all* come through, named by
+   * `choiceGroupKey` — "I'll decide which pepper when I'm standing in front of
+   * them".
+   *
+   * Narrower than `allOptions` in two ways that are the whole point. It names
+   * groups one at a time rather than switching the rule off wholesale, and it
+   * **only ever affects ingredients**: an ingredient names a row you can put in
+   * a trolley, so its options map exactly onto `GroceryItem.choiceGroup`, which
+   * already resolves destructively at the shelf. A *component* names a dish, and
+   * "mash or roast" undecided would mean two dishes' worth of lines on the list
+   * with nothing that could ever take one set back off. So `activeComponents`
+   * ignores this and the picker only offers it on ingredient groups.
+   *
+   * Every reader that turns a recipe into *tasks* leaves it unset, for the same
+   * reason `allOptions` does — a prep step for the road not taken is a task
+   * nobody asked for.
+   */
+  undecided?: readonly string[];
+}
+
+/**
+ * Names one either/or slot across a plan — the recipe whose list holds the
+ * group, plus the label. Scoped by recipe because two recipes in one week can
+ * both call their group "Cheese" while posing entirely different questions.
+ */
+export function choiceGroupKey(recipeId: string, label: string): string {
+  return `${recipeId}:${label}`;
 }
 
 /** Anything that can be an either/or option: it has an id and a group label. */
@@ -158,16 +186,35 @@ interface Groupable {
 function activeIn<T extends Groupable>(
   list: readonly T[],
   resolution?: ChoiceResolution,
+  /** Labels within `list` left open — see ChoiceResolution.undecided. */
+  undecided?: ReadonlySet<string>,
 ): T[] {
   if (resolution?.allOptions) return [...list];
   const groups = groupOptions(list);
   if (groups.size === 0) return [...list];
   const chosen = new Set(resolution?.chosen ?? []);
   const winners = new Set<string>();
-  for (const options of groups.values()) {
+  for (const [label, options] of groups) {
+    if (undecided?.has(label)) {
+      for (const option of options) winners.add(option.id);
+      continue;
+    }
     winners.add((options.find(o => chosen.has(o.id)) ?? options[0]).id);
   }
   return list.filter(row => !row.choiceGroup || winners.has(row.id));
+}
+
+/** The labels of `recipe`'s own ingredient groups the resolution leaves open. */
+function undecidedLabelsOf(recipe: Recipe, resolution?: ChoiceResolution): Set<string> | undefined {
+  if (!resolution?.undecided?.length) return undefined;
+  const keys = new Set(resolution.undecided);
+  const labels = new Set<string>();
+  for (const ingredient of recipe.ingredients) {
+    if (ingredient.choiceGroup && keys.has(choiceGroupKey(recipe.id, ingredient.choiceGroup))) {
+      labels.add(ingredient.choiceGroup);
+    }
+  }
+  return labels.size > 0 ? labels : undefined;
 }
 
 /** The components a meal of `recipe` actually cooks under `resolution`. */
@@ -191,7 +238,7 @@ export function activeIngredients(
   recipe: Recipe,
   resolution?: ChoiceResolution,
 ): RecipeIngredient[] {
-  return activeIn(recipe.ingredients, resolution);
+  return activeIn(recipe.ingredients, resolution, undecidedLabelsOf(recipe, resolution));
 }
 
 /** label → its rows, in list order. Empty for a list with no alternatives. */

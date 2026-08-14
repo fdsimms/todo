@@ -88,7 +88,7 @@ export function PrepTaskSheet({ visible, recipeId, prepTask, onClose }: Props) {
           style={styles.input}
           value={title}
           onChangeText={setTitle}
-          placeholder="Marinate the chicken"
+          placeholder="e.g. Marinate the chicken"
           placeholderTextColor={colors.textTertiary}
           maxLength={TITLE_MAX_LENGTH}
           accessibilityLabel="Prep task title"

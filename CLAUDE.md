@@ -37,6 +37,20 @@ offers you a way out" should instead be something like "Reschedule threshold" /
 "Show the suggestion after moving a task this many times." This applies to settings rows,
 empty states, hints, alerts, and patch notes alike.
 
+**A placeholder that gives an example starts with "e.g.".** Placeholder text is `textTertiary`,
+which is also the hint colour, so a bare example sitting in a field reads as a value already
+saved — "margaritas, dusting…", "Low fat, 4%, crunchy…" and "Pepper, Cheese…" all did, and #1613
+was someone looking at a form they thought they'd already filled in. A trailing "…" doesn't fix
+it; the two characters at the *front* do, because that's where the eye lands. A placeholder that
+merely names the field ("Recipe name", "Add an ingredient", "Search recipes") needs nothing —
+it can't be mistaken for a value because it isn't one.
+
+**And say what a field means where the field is, not in terms of the data model.** "Alternative
+for" over a text box holding a *grouping key* was unanswerable without knowing that the first
+option of a pair has to be filed as an alternative for itself. If a label only makes sense once
+you've read the type, it's the wrong label — name the state the user is choosing between
+("Always needed" / "One of a choice") and let the control carry the mechanism.
+
 ## GitHub issue labels
 
 When creating an issue, apply exactly four labels from these fixed sets (verbatim strings — don't
@@ -126,6 +140,8 @@ Start from this table instead of searching. Most work lands in one of these file
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see Grocery either/or below |
 | "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see Substitutes below |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
+| "serrano or jalapeño", decided at the shelf | `ChoiceResolution.undecided` in `src/utils/recipeComponents.ts` — see Deciding at the shelf below |
+| which heading an ingredient sits under | `src/utils/recipeSections.ts` — see Sections below |
 | halving or doubling a recipe | `src/utils/recipeScale.ts` — see Scaling below |
 | showing amounts in metric or US units | `src/utils/unitConvert.ts` — see Unit conversion below |
 
@@ -862,6 +878,56 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   edit the recipe. `RecipeToListSheet.initialChoices` seeds them from the entry when the shop is a
   follow-up to cooking one. The week-level `AddWeekToListSheet` deliberately has no chips of its
   own: it aggregates many recipes, and each entry already carries its own answers.
+
+### Deciding at the shelf — an ingredient choice that survives onto the list
+
+"Which pepper" is a question you can only really answer in front of the peppers, and until
+`ChoiceResolution.undecided` the add-to-list sheet made you answer it at the kitchen table. Both
+halves of the mechanism already existed — a recipe's alternatives (`RecipeIngredient.choiceGroup`)
+and the list's own either/or (`GroceryItem.choiceGroup`, resolved destructively by ticking one) —
+so this is the wire between them, not a third system.
+
+- **`undecided` names ingredient groups, never component ones.** An ingredient's options are rows,
+  and `resolveChoice` can take the losers back off the list with one tick. A component's options are
+  two dishes' worth of lines with nothing that could ever un-add the set you didn't cook, so
+  `activeComponents` ignores the field and `RecipeToListSheet` only offers the chip on
+  `kind === 'ingredient'` groups.
+- **A group is keyed by `choiceGroupKey(recipeId, label)`**, because a week can hold two recipes
+  that both call their group "Cheese" while posing entirely different questions. Labels alone would
+  merge them.
+- **The label is translated, not carried.** `addFromPlan` mints one opaque `generateId()` per key
+  *per call* — the lifetime of one trolley. Storing "Chili:Pepper" on the rows would put a recipe's
+  heading into a list that renders no headings (see `GroceryItem.choiceGroup`), and would silently
+  merge two shops of the same recipe weeks apart.
+- **A row wanted outright beats a row wanted as an option.** `classifyPlanned` takes the *first*
+  non-null group across a merged row's contributors, so a line something else needs unconditionally
+  can't arrive on the list as half a choice.
+- **Nothing about it is written back to the recipe**, the same rule the existing picks follow: an
+  ad-hoc shop isn't attached to a meal, so there's nothing for "I'll decide later" to be a fact
+  about. It lives in sheet state and dies with the sheet.
+
+### Sections (`recipeSections.ts`) — the heading an ingredient sits under
+
+`RecipeIngredient.section` is a label on a flat list, and `RecipeDetailScreen` opens a heading
+wherever a row's section differs from the row before it — so **the order already decides the
+grouping**. Only the label didn't move with a dragged row, which is why filing one used to mean
+opening it and retyping the heading, spelled exactly.
+
+- **A dragged row adopts the section it lands in** (`resolveSectionDrop`, applied inside
+  `reorderIngredients` so it's one write and never a frame of the row in its new place under its old
+  heading). Same rule Today's category drag uses.
+- **Except when it's still touching its own section**, which is the half a plain "take the row
+  above's" rule gets wrong — on the commonest drag there is. Reordering the frosting's cream above
+  its sugar makes cream the first frosting row, so the row above it belongs to the cake; adopting
+  that would silently move it. So: neighbours agree → that's the answer; they disagree → your own
+  section wins if it matches either of them; only a row touching neither is genuinely being re-filed.
+- **It declines anything that isn't one reinsertion.** Both arrays have to be identical once the
+  moved row is removed from each, or it returns null rather than guessing which row was the subject.
+- **An empty section isn't representable, and that's the model, not a gap.** A section is a string on
+  ingredients, so there is nowhere for one with no rows to live. Naming a section therefore happens
+  on a row — the picker in `RecipeIngredientSheet`, or the sticky heading field above the add row —
+  and everything else is dragged under it. Giving `Recipe` a `sections` array to hold empty ones is
+  a second list to keep in step with the labels the rows carry, for a state that lasts one gesture.
 
 ### Scaling (`recipeScale.ts`) — halving and doubling a recipe
 

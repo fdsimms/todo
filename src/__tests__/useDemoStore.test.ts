@@ -537,6 +537,30 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     ).toBe(true);
   });
 
+  it('seeds an either/or on the list, from a recipe choice left for the shelf', () => {
+    const { items } = useGroceryStore.getState();
+    const grouped = items.filter(i => i.onList && i.choiceGroup);
+
+    // Two rows, one group: without this the grocery half of either/or reads as
+    // a feature the app doesn't have (#1572).
+    expect(grouped.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(grouped.map(i => i.choiceGroup)).size).toBe(1);
+
+    // An opaque id, not the recipe's label — a grocery row renders no heading
+    // for a group (see GroceryItem.choiceGroup).
+    expect(grouped[0].choiceGroup).not.toContain('Chile');
+
+    // It came off a recipe whose ingredients are alternatives, which is the
+    // whole path: the recipe poses the question and the shelf answers it.
+    expect(grouped.every(i => i.sourceRecipeId)).toBe(true);
+    const source = useRecipeStore.getState().recipes.find(r => r.id === grouped[0].sourceRecipeId);
+    expect(source!.ingredients.filter(i => i.choiceGroup).length).toBeGreaterThanOrEqual(2);
+
+    // Each option is its own clean catalog name, never one row called
+    // "serrano or jalapeño".
+    expect(grouped.every(i => !/\bor\b/.test(i.nameKey))).toBe(true);
+  });
+
   it('seeds substitutes in both directions', () => {
     const { items, itemSubs } = useGroceryStore.getState();
 

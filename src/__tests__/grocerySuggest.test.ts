@@ -61,6 +61,21 @@ describe('rankGrocerySuggestions', () => {
     expect(rankGrocerySuggestions('   ', items, NOW)).toEqual([]);
   });
 
+  it('does not match everything on a bare "s"', () => {
+    // The plural stem of "s" is the empty string, which every name starts
+    // with — so this used to offer the whole catalog, ranked by familiarity.
+    const items = [
+      makeItem({ name: 'Bread', purchaseCount: 20, lastPurchasedAt: daysAgo(1) }),
+      makeItem({ name: 'Spinach', purchaseCount: 1, lastPurchasedAt: daysAgo(40) }),
+    ];
+    expect(rankGrocerySuggestions('s', items, NOW).map(s => s.item.name)).toEqual(['Spinach']);
+  });
+
+  it('still tolerates a plural query past one character', () => {
+    const items = [makeItem({ name: 'Banana' })];
+    expect(rankGrocerySuggestions('bananas', items, NOW).map(s => s.item.name)).toEqual(['Banana']);
+  });
+
   it('prefers a prefix match over a substring one', () => {
     const items = [
       makeItem({ name: 'Buttermilk', purchaseCount: 5, lastPurchasedAt: daysAgo(1) }),
