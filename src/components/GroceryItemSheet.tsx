@@ -707,7 +707,7 @@ export function GroceryItemSheet({
           {!!item.brand && (
             <>
               <View style={styles.brandStrictRow}>
-                <PillGroup options={brandStrictOptions} noun="option" />
+                <PillGroup options={brandStrictOptions} noun="option" surface="page" />
               </View>
               <Text style={styles.hint}>
                 {item.brandStrict
@@ -763,7 +763,7 @@ export function GroceryItemSheet({
           <Text style={styles.label}>{linkedShops.length > 0 ? 'PRICE AT' : 'PRICE'}</Text>
           {linkedShops.length > 0 && (
             <View style={styles.priceTargets}>
-              <PillGroup options={priceTargetOptions} noun="store" />
+              <PillGroup options={priceTargetOptions} noun="store" surface="page" />
             </View>
           )}
           <View style={styles.priceField}>
