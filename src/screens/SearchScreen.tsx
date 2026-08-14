@@ -16,12 +16,14 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
-import type { Task } from '../types';
-import type { SearchResult } from '../utils/fuzzySearch';
-import { fuzzySearch } from '../utils/fuzzySearch';
-import { displayTitleFor } from '../utils/visibilityUtils';
+import { TaskGroupEditor } from '../components/TaskGroupEditor';
+import type { Task, TaskGroup } from '../types';
+import type { SearchResult, GroupSearchResult } from '../utils/fuzzySearch';
+import { fuzzySearch, searchGroups } from '../utils/fuzzySearch';
+import { displayTitleFor, groupRoster } from '../utils/visibilityUtils';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { tagColor } from '../utils/tagColor';
 import { useColors } from '../theme/ThemeContext';
@@ -148,12 +150,68 @@ function SearchResultItem({ result, onPress, styles, colors }: {
   );
 }
 
+function StackResultItem({ result, onPress, styles, colors }: {
+  result: GroupSearchResult;
+  onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  const { group, titleMatches, memberTitles, memberCount } = result;
+  const memberLabel = memberCount === 0
+    ? 'No tasks yet'
+    : `${memberCount} ${memberCount === 1 ? 'task' : 'tasks'}`;
+  // The rest of the roster, past the three memberTitles already fetched —
+  // never rendered as a hard count past that many, since fuzzySearch's own
+  // preview is already capped there.
+  const preview = memberTitles.length > 0
+    ? memberTitles.join(', ') + (memberCount > memberTitles.length ? '…' : '')
+    : null;
+
+  const a11yLabel = [group.title, memberLabel, preview ? `including ${preview}` : null]
+    .filter(Boolean).join(', ');
+
+  return (
+    <TouchableOpacity
+      style={styles.resultRow}
+      onPress={onPress}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      accessibilityHint="Double tap to open stack"
+    >
+      <View style={styles.statusIcon}>
+        <View style={[styles.stackIcon, { backgroundColor: colors.accentSubtle }]}>
+          <Ionicons name="layers-outline" size={iconSize.sm} color={colors.accent} />
+        </View>
+      </View>
+
+      <View style={styles.resultContent}>
+        <HighlightedText
+          text={group.title}
+          ranges={titleMatches}
+          style={styles.resultTitle}
+          highlightStyle={styles.highlight}
+          numberOfLines={2}
+        />
+
+        <View style={styles.resultMeta}>
+          <Text style={styles.metaText}>{memberLabel}</Text>
+          {preview && (
+            <Text style={styles.notesPreview} numberOfLines={1}>{preview}</Text>
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 export function SearchScreen() {
   const insets = useSafeAreaInsets();
   const route = useRoute<any>();
   const tabBarHeight = useBottomTabBarHeight();
   const tasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(s => s.projects);
+  const groups = useTaskGroupStore(s => s.groups);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -162,6 +220,8 @@ export function SearchScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
+  const [groupEditorVisible, setGroupEditorVisible] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   // Handed a query by quick search (see QuickSearchModal's footer row).
@@ -217,6 +277,24 @@ export function SearchScreen() {
     [projects]
   );
 
+  // Same collapse StacksScreen uses for its own rows: the roster (one entry
+  // per series, no completion tombstones), never the raw groupId-matching
+  // rows — see groupRoster.
+  const rosterByGroupId = useMemo(() => {
+    const children = new Map<string, Task[]>();
+    for (const t of tasks) {
+      if (!t.groupId) continue;
+      const list = children.get(t.groupId);
+      if (list) list.push(t);
+      else children.set(t.groupId, [t]);
+    }
+    const rosters = new Map<string, Task[]>();
+    for (const [groupId, list] of children) {
+      rosters.set(groupId, groupRoster(list));
+    }
+    return rosters;
+  }, [tasks]);
+
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
 
   const results: SearchResult[] = useMemo(
@@ -224,16 +302,29 @@ export function SearchScreen() {
     [tasks, debouncedQuery, projectNamesById]
   );
 
+  const groupResults: GroupSearchResult[] = useMemo(
+    () => searchGroups(groups, debouncedQuery, rosterByGroupId),
+    [groups, debouncedQuery, rosterByGroupId]
+  );
+
   const activeResults = results.filter(r => !r.task.completed);
   const completedResults = results.filter(r => r.task.completed);
 
   type ListItem =
     | { type: 'sectionHeader'; label: string }
-    | { type: 'result'; result: SearchResult };
+    | { type: 'result'; result: SearchResult }
+    | { type: 'groupResult'; result: GroupSearchResult };
 
   const listData: ListItem[] = useMemo(() => {
-    if (results.length === 0) return [];
+    if (results.length === 0 && groupResults.length === 0) return [];
     const items: ListItem[] = [];
+    // Stacks lead: a title match on a stack is almost always a navigational
+    // lookup ("where's my packing list"), so it surfaces before the task
+    // results rather than being buried under Active/Completed.
+    if (groupResults.length > 0) {
+      items.push({ type: 'sectionHeader', label: 'Stacks' });
+      groupResults.forEach(r => items.push({ type: 'groupResult', result: r }));
+    }
     if (activeResults.length > 0) {
       items.push({ type: 'sectionHeader', label: 'Active' });
       activeResults.forEach(r => items.push({ type: 'result', result: r }));
@@ -243,11 +334,16 @@ export function SearchScreen() {
       completedResults.forEach(r => items.push({ type: 'result', result: r }));
     }
     return items;
-  }, [results]);
+  }, [results, groupResults]);
 
   const openTask = (task: Task) => {
     setEditingTask(task);
     setEditorVisible(true);
+  };
+
+  const openGroup = (group: TaskGroup) => {
+    setEditingGroup(group);
+    setGroupEditorVisible(true);
   };
 
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
@@ -265,6 +361,16 @@ export function SearchScreen() {
         </View>
       );
     }
+    if (item.type === 'groupResult') {
+      return (
+        <StackResultItem
+          result={item.result}
+          onPress={() => openGroup(item.result.group)}
+          styles={styles}
+          colors={colors}
+        />
+      );
+    }
     return (
       <SearchResultItem
         result={item.result}
@@ -275,7 +381,7 @@ export function SearchScreen() {
     );
   };
 
-  const showEmpty = query.trim().length > 0 && results.length === 0;
+  const showEmpty = query.trim().length > 0 && results.length === 0 && groupResults.length === 0;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -306,19 +412,21 @@ export function SearchScreen() {
             key="no-results"
             icon="search-outline"
             title="No results"
-            subtitle={`No todos match "${query}"`}
+            subtitle={`Nothing matches "${query}"`}
             actionLabel="Create task"
             onAction={() => setQuickAddVisible(true)}
             bottomOffset={tabBarHeight}
           />
         ) : query.trim().length === 0 ? (
-          <EmptyState key="prompt" icon="search-outline" title="Find any todo" subtitle="Search active and completed todos" bottomOffset={tabBarHeight} />
+          <EmptyState key="prompt" icon="search-outline" title="Find any todo" subtitle="Search active tasks, completed tasks, and stacks" bottomOffset={tabBarHeight} />
         ) : (
           <FlatList
             data={listData}
-            keyExtractor={(item, i) =>
-              item.type === 'sectionHeader' ? `h-${item.label}` : item.result.task.id
-            }
+            keyExtractor={(item, i) => {
+              if (item.type === 'sectionHeader') return `h-${item.label}`;
+              if (item.type === 'groupResult') return `g-${item.result.group.id}`;
+              return item.result.task.id;
+            }}
             renderItem={renderItem}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
@@ -331,6 +439,12 @@ export function SearchScreen() {
         task={editingTask}
         initialDraft={editorInitialDraft}
         onClose={() => { setEditorVisible(false); setEditorInitialDraft(null); }}
+      />
+
+      <TaskGroupEditor
+        visible={groupEditorVisible}
+        group={editingGroup}
+        onClose={() => { setGroupEditorVisible(false); setEditingGroup(null); }}
       />
 
       <QuickAddModal
@@ -394,6 +508,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   checkboxDone: {
     backgroundColor: colors.green,
     borderColor: colors.green,
+  },
+  // Same slot the checkbox sits in, for a stack result's icon badge.
+  stackIcon: {
+    width: CHECKBOX_SIZE,
+    height: CHECKBOX_SIZE,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   resultContent: { flex: 1, gap: 3 },
   resultTitle: {
