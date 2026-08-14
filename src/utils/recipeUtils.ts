@@ -1112,3 +1112,30 @@ export function suggestRecipesForEmptyNight(
     .slice(0, limit)
     .map(x => x.recipe);
 }
+
+// A token that is nothing but a web address. Anchored at both ends, so a line
+// of prose that happens to contain a link ("adapted from https://…, but I use
+// less salt") isn't one — the same both-ends discipline mealPlanGroceries'
+// WHOLE_QUANTITY uses, and for the same reason: this decides whether to refuse
+// something, so it has to be sure.
+const BARE_URL = /^(https?:\/\/|www\.)\S+$/i;
+
+/**
+ * Whether pasted text is *only* links — the case the recipe importers have to
+ * refuse rather than run.
+ *
+ * The importers send what you paste straight to the model, which has no way to
+ * open a page: handed a bare URL it does the only thing it can and writes a
+ * plausible recipe from the words in the address, which arrives looking exactly
+ * like a successful import (#1607). That's the worst failure this app has —
+ * silently invented data the user has no reason to distrust — so it's blocked
+ * up front rather than defended against downstream.
+ *
+ * Deliberately requires *every* non-empty line to be a bare address. A real
+ * paste from a recipe site is prose and quantities with a URL somewhere in it,
+ * and that must go through untouched.
+ */
+export function looksLikeBareUrl(text: string): boolean {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  return lines.length > 0 && lines.every(line => BARE_URL.test(line));
+}

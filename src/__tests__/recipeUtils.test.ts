@@ -37,6 +37,7 @@ import {
   pantryCoverageForRecipe,
   describePantryCoverage,
   formatServingsRange,
+  looksLikeBareUrl,
 } from '../utils/recipeUtils';
 import type { GroceryItem, ItemSubLink, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 
@@ -1647,5 +1648,31 @@ describe('formatServingsRange', () => {
 
   it('renders a range when the max exceeds the low end', () => {
     expect(formatServingsRange(4, 6)).toBe('4-6');
+  });
+});
+
+describe('looksLikeBareUrl', () => {
+  it('recognises a pasted link on its own', () => {
+    expect(looksLikeBareUrl('https://cooking.nytimes.com/recipes/1020000-chili')).toBe(true);
+    expect(looksLikeBareUrl('  http://example.com/x  ')).toBe(true);
+    expect(looksLikeBareUrl('www.seriouseats.com/best-chili')).toBe(true);
+  });
+
+  it('recognises several links pasted together', () => {
+    expect(looksLikeBareUrl('https://a.com/one\n\nhttps://b.com/two')).toBe(true);
+  });
+
+  it('lets a real paste through even when it mentions a link', () => {
+    expect(looksLikeBareUrl('Chili\n2 cans black beans\nadapted from https://a.com')).toBe(false);
+    expect(looksLikeBareUrl('adapted from https://a.com, but with less salt')).toBe(false);
+  });
+
+  it('is false for nothing at all, so an empty box is not an error', () => {
+    expect(looksLikeBareUrl('')).toBe(false);
+    expect(looksLikeBareUrl('   \n  ')).toBe(false);
+  });
+
+  it('is false for ordinary text', () => {
+    expect(looksLikeBareUrl('2 cups flour')).toBe(false);
   });
 });

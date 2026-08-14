@@ -21,6 +21,7 @@ import {
   type Colors,
 } from '../theme';
 import { haptics } from '../utils/haptics';
+import { looksLikeBareUrl } from '../utils/recipeUtils';
 import type { RecipePhoto, RecipePhotoSource } from '../utils/recipePhoto';
 
 export type RecipeInputMode = 'paste' | 'photo';
@@ -71,7 +72,11 @@ export function RecipeSourcePicker({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const ready = mode === 'paste' ? !!text.trim() : !!photo;
+  // A pasted link is the one input that has to be refused rather than run —
+  // see looksLikeBareUrl. Nothing here can open a page, and the model handed an
+  // address writes a recipe out of the words in it.
+  const bareUrl = mode === 'paste' && looksLikeBareUrl(text);
+  const ready = mode === 'paste' ? !!text.trim() && !bareUrl : !!photo;
 
   const renderTab = (value: RecipeInputMode, label: string, icon: React.ComponentProps<typeof Ionicons>['name']) => {
     const active = mode === value;
@@ -175,6 +180,19 @@ export function RecipeSourcePicker({
         </View>
       )}
 
+      {bareUrl && (
+        <View style={styles.warning}>
+          <Ionicons name="alert-circle-outline" size={iconSize.sm} color={colors.warning} />
+          <View style={styles.warningBody}>
+            <Text style={styles.warningTitle}>That's a link, not a recipe</Text>
+            <Text style={styles.warningDetail}>
+              dundundun can't open a web page. Open the link, copy the ingredients and method,
+              and paste those here — or photograph the page instead.
+            </Text>
+          </View>
+        </View>
+      )}
+
       <TouchableOpacity
         style={[styles.runBtn, !ready && styles.runBtnOff]}
         activeOpacity={interaction.activeOpacity}
@@ -196,6 +214,25 @@ function makeStyles(colors: Colors) {
       color: colors.textTertiary,
       fontSize: font.sm,
       paddingBottom: spacing.xs,
+    },
+    warning: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+      backgroundColor: colors.warningBg,
+      borderRadius: radius.md,
+      padding: spacing.sm,
+    },
+    warningBody: { flex: 1, gap: 2 },
+    warningTitle: {
+      color: colors.text,
+      fontSize: font.sm,
+      fontWeight: fontWeight.semibold,
+    },
+    warningDetail: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      lineHeight: font.xs * 1.4,
     },
     tabs: { flexDirection: 'row', gap: spacing.xs },
     tab: {
