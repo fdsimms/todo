@@ -536,10 +536,37 @@ describe('addStructuredIngredients', () => {
     const c = useRecipeStore.getState().addIngredient(r.id, 'Parsley')!;
 
     // A stale list naming only two must not delete the third.
-    useRecipeStore.getState().reorderIngredients(r.id, [c.id, a.id]);
+    useRecipeStore.getState().reorderIngredients(r.id, [c.id, a.id], new Map());
 
     expect(useRecipeStore.getState().recipeById(r.id)!.ingredients.map(i => i.id))
       .toEqual([c.id, a.id, b.id]);
+  });
+
+  it('applies the caller-resolved section for every ingredient in one write', () => {
+    const r = makeRecipe('Cake');
+    seed([r]);
+    const a = useRecipeStore.getState().addIngredient(r.id, 'Flour')!;
+    const b = useRecipeStore.getState().addIngredient(r.id, 'Cream cheese')!;
+
+    useRecipeStore.getState().reorderIngredients(
+      r.id, [a.id, b.id],
+      new Map([[a.id, 'For the cake'], [b.id, 'For the frosting']]),
+    );
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.find(i => i.id === a.id)!.section).toBe('For the cake');
+    expect(ingredients.find(i => i.id === b.id)!.section).toBe('For the frosting');
+  });
+
+  it('leaves a row\'s section untouched when the caller has no opinion for it', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addIngredient(r.id, 'Garlic')!;
+    useRecipeStore.getState().updateIngredient(r.id, a.id, { section: 'For the sauce' });
+
+    useRecipeStore.getState().reorderIngredients(r.id, [a.id], new Map());
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.ingredients[0].section).toBe('For the sauce');
   });
 });
 

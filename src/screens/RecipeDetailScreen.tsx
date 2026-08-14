@@ -26,7 +26,7 @@ import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { PressableScale } from '../components/PressableScale';
-import { SortableList } from '../components/SortableList';
+import { SortableList, type SortableRenderItem } from '../components/SortableList';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { RecipeEditor } from '../components/RecipeEditor';
 import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
@@ -44,7 +44,8 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
 import { describeCookTime, describePrepTime, describeRecipe, totalMinutes } from '../utils/recipeUtils';
-import { allSectionsOf } from '../utils/recipeSections';
+import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
+import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
@@ -77,6 +78,11 @@ import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse'
 type RootStackParamList = {
   RecipeDetail: { recipeId: string };
 };
+
+/** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
+type MergedIngredientRow =
+  | { kind: 'ingredient'; id: string; ingredient: RecipeIngredient }
+  | { kind: 'heading'; id: string; name: string; empty: boolean };
 
 export function RecipeDetailScreen() {
   const insets = useSafeAreaInsets();
@@ -148,15 +154,13 @@ export function RecipeDetailScreen() {
 
   const [draft, setDraft] = useState('');
   // What new ingredients are filed under, until changed or cleared — the add
-  // field's own equivalent of RecipeIngredientSheet's Section field, so a
-  // section can be started here instead of only discoverable by editing a
-  // row after the fact.
-  //
-  // Free text where that sheet has a picker, and that asymmetry is deliberate:
-  // this field is used while typing a recipe *in*, when the heading being named
-  // is usually one the recipe doesn't have yet, and a picker over the sections
-  // so far would be a control that's empty exactly when it's first needed.
-  // Re-filing a row that already exists is the sheet's job, or a drag.
+  // field's own equivalent of RecipeIngredientSheet's Section field. A picker
+  // now, like that one, over the headings this recipe already has — it used
+  // to be free text, on the theory that a picker would be empty exactly when
+  // someone first needed it, but "New section" (below) is what actually
+  // fills that gap, so there's no longer a reason to let a typo here mint a
+  // heading nothing else can find. Re-filing a row that already exists is the
+  // sheet's job, or a drag.
   const [sectionDraft, setSectionDraft] = useState('');
   // The standalone "declare a heading with nothing under it yet" field, up by
   // the Ingredients label — see Recipe.emptySections. Deliberately not the
@@ -435,22 +439,39 @@ export function RecipeDetailScreen() {
     options.push({ text: 'Cancel', style: 'cancel' });
     Alert.alert('Recipe Photo', undefined, options);
   };
-  // Which ingredients open a new section heading — the first row (in stored
-  // order) whose section differs from the row right before it. A label on a
-  // flat list rather than a nested groups type, so this is display-only: the
-  // underlying array (and every non-UI reader of it) stays exactly what it
-  // was. Keyed off recipe.ingredients rather than SortableList's mid-drag
-  // order, so a header doesn't flicker as a row is dragged past it — it only
-  // moves once the drop actually commits.
-  const ingredientSectionHeaders = useMemo(() => {
-    const headers = new Map<string, string>();
+  // The ingredients list, plus one marker per heading it has — populated ones
+  // where a row's section first differs from the row before it, and every
+  // declared-but-empty one (Recipe.emptySections) trailing at the end. This is
+  // what SortableList actually drags over: a heading is a row in this list,
+  // not a caption inferred from a row's own label, which is what makes an
+  // empty heading a real drop target and not just static text. See
+  // sectionsFromMergedOrder for how a drag commit turns back into
+  // per-ingredient `section` values.
+  const mergedIngredientRows = useMemo(() => {
+    const rows: MergedIngredientRow[] = [];
     let prevSection: string | null = null;
     for (const ing of recipe.ingredients) {
-      if (ing.section && ing.section !== prevSection) headers.set(ing.id, ing.section);
+      if (ing.section && ing.section !== prevSection) {
+        rows.push({ kind: 'heading', id: `heading:${ing.section}`, name: ing.section, empty: false });
+      }
+      rows.push({ kind: 'ingredient', id: ing.id, ingredient: ing });
       prevSection = ing.section;
     }
-    return headers;
-  }, [recipe.ingredients]);
+    for (const name of recipe.emptySections) {
+      rows.push({ kind: 'heading', id: `heading:${name}`, name, empty: true });
+    }
+    return rows;
+  }, [recipe.ingredients, recipe.emptySections]);
+
+  // The row currently under the drag, by id — set from SortableList's
+  // onHoverChange so an empty heading can light up as a live drop target the
+  // same way row-shifting already signals a target among populated ones. Only
+  // empty headings read it (see renderHeadingRow): a populated one already
+  // gets that feedback for free from the rows around it visibly opening a gap.
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
+  const handleIngredientHoverChange = (index: number | null) => {
+    setHoveredRowId(index === null ? null : mergedIngredientRows[index]?.id ?? null);
+  };
 
   // Every heading this recipe already has, real or declared — what "New
   // section" checks the typed name against so it can't redeclare one that
@@ -541,9 +562,9 @@ export function RecipeDetailScreen() {
     const convertedResult = convertQuantity(scaledResult.text, unitSystem);
     const scaledQuantity = convertedResult.text;
     const scaledHere = scaledResult.scaled || convertedResult.converted;
-    const sectionHeader = ingredientSectionHeaders.get(ingredient.id);
-    // A line can open both: the section it belongs to, then the either/or slot
-    // it fills within that section.
+    // A line can open both: the section it belongs to (now its own row in the
+    // merged list, not rendered here — see renderHeadingRow), then the either/or
+    // slot it fills within that section.
     const choiceHeader = ingredientGroups.headers.get(ingredient.id);
     const choiceGroup = ingredient.choiceGroup;
     const isChoiceDefault = ingredientGroups.defaults.has(ingredient.id);
@@ -551,7 +572,6 @@ export function RecipeDetailScreen() {
     const splitInto = splittableCounts.get(ingredient.id);
     return (
       <View>
-        {!!sectionHeader && <Text style={styles.ingredientSectionHeader}>{sectionHeader}</Text>}
         {/* Its own treatment, deliberately not the section heading's. The two
             said entirely different things — "these belong to the frosting"
             versus "buy exactly one of these" — in identical uppercase grey,
@@ -656,6 +676,68 @@ export function RecipeDetailScreen() {
         </TouchableOpacity>
       </View>
     );
+  };
+
+  // A heading row in the merged list — populated (plain caption, matching
+  // what used to render inline above an ingredient row) or declared-empty
+  // (Recipe.emptySections: a real drop target, so it's a whole row rather than
+  // a caption, with a hover-lit state and its own remove). Neither wires up
+  // `drag`: a heading doesn't move by being picked up, only ingredients do.
+  const renderHeadingRow = (row: Extract<MergedIngredientRow, { kind: 'heading' }>) => {
+    if (!row.empty) {
+      return <Text style={styles.ingredientSectionHeader}>{row.name}</Text>;
+    }
+    const isTarget = hoveredRowId === row.id;
+    return (
+      <View style={[styles.emptySectionRow, isTarget && styles.emptySectionRowTarget]}>
+        <TouchableOpacity
+          style={styles.emptySectionBody}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => {
+            haptics.tap();
+            setSectionDraft(row.name);
+            draftInputRef.current?.focus();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`${row.name}, no ingredients yet`}
+          accessibilityHint="Double tap to start adding ingredients under this heading, or drag a row here"
+        >
+          <Text style={[styles.emptySectionTitle, isTarget && styles.emptySectionTitleTarget]}>
+            {row.name}
+          </Text>
+          <Text style={[styles.emptySectionHint, isTarget && styles.emptySectionHintTarget]}>
+            {isTarget ? 'Drop here' : 'Nothing here yet — drag a row here'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); animateLayout(); removeEmptySection(recipe.id, row.name); }}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${row.name} heading`}
+        >
+          <Ionicons name="close" size={iconSize.sm} color={isTarget ? colors.accent : colors.textTertiary} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderMergedRow: SortableRenderItem<MergedIngredientRow> = (row, displayIndex, drag, isDragging) =>
+    row.kind === 'heading'
+      ? renderHeadingRow(row)
+      : renderIngredient(row.ingredient, displayIndex, drag, isDragging);
+
+  // A drag commit hands back the whole merged order; sectionsFromMergedOrder
+  // is the one-pass walk that turns "which heading marker precedes this row"
+  // into per-ingredient sections, and reorderIngredients applies both the new
+  // order and those sections in a single write.
+  const handleMergedReorder = (rows: MergedIngredientRow[]) => {
+    const entries: SectionListEntry[] = rows.map(row =>
+      row.kind === 'heading' ? { kind: 'heading', name: row.name } : { kind: 'row', id: row.id }
+    );
+    const sectionById = sectionsFromMergedOrder(entries);
+    const ids = rows.filter((r): r is Extract<MergedIngredientRow, { kind: 'ingredient' }> => r.kind === 'ingredient')
+      .map(r => r.id);
+    reorderIngredients(recipe.id, ids, sectionById);
   };
 
   // A component row opens the recipe it points at, so the shared part is one
@@ -996,19 +1078,20 @@ export function RecipeDetailScreen() {
           />
         )}
 
-        {recipe.ingredients.length === 0 && components.length === 0 && recipe.emptySections.length === 0 ? (
+        {mergedIngredientRows.length === 0 && components.length === 0 ? (
           <Text style={styles.hint}>
             Type one ingredient at a time, or paste a whole list — “2 lb chicken thighs”
             keeps the quantity out of the name so the list stays tidy.
           </Text>
         ) : (
           <View style={styles.card}>
-            {recipe.ingredients.length > 0 && (
+            {mergedIngredientRows.length > 0 && (
               <SortableList
-                data={recipe.ingredients}
-                onReorder={next => reorderIngredients(recipe.id, next.map(i => i.id))}
+                data={mergedIngredientRows}
+                onReorder={handleMergedReorder}
                 onDragStateChange={setDragging}
-                renderItem={renderIngredient}
+                onHoverChange={handleIngredientHoverChange}
+                renderItem={renderMergedRow}
               />
             )}
             {/* Marked so a shared part reads as part of this recipe from the
@@ -1016,40 +1099,6 @@ export function RecipeDetailScreen() {
                 own Components section (which stays the place to remove one or
                 set a choice-group default). */}
             {components.map(resolved => renderComponent(resolved, true))}
-            {/* A heading declared ahead of anything to put under it — see
-                Recipe.emptySections. Trailing rather than interleaved: it has
-                no row of its own to claim a position in the list, and the
-                order that places real headings doesn't apply to one with
-                nothing in it yet. Tapping it loads the heading into the
-                sticky field below so typing the first ingredient for it is
-                one tap away; the × un-declares it outright. */}
-            {recipe.emptySections.map(name => (
-              <View key={`empty-section-${name}`} style={styles.emptySectionRow}>
-                <TouchableOpacity
-                  style={styles.emptySectionBody}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => {
-                    haptics.tap();
-                    setSectionDraft(name);
-                    draftInputRef.current?.focus();
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${name}, no ingredients yet`}
-                  accessibilityHint="Double tap to start adding ingredients under this heading"
-                >
-                  <Text style={styles.emptySectionTitle}>{name}</Text>
-                  <Text style={styles.emptySectionHint}>Nothing here yet</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => { haptics.tap(); animateLayout(); removeEmptySection(recipe.id, name); }}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${name} heading`}
-                >
-                  <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-                </TouchableOpacity>
-              </View>
-            ))}
           </View>
         )}
 
@@ -1058,49 +1107,43 @@ export function RecipeDetailScreen() {
             the arithmetic for rather than assuming it did. */}
         {!!unscaledNote && <Text style={styles.scaleNote}>{unscaledNote}</Text>}
 
-        {/* Sets a heading for ingredients added below, the same "section" field
-            RecipeIngredientSheet has always had — just reachable from the add
-            flow itself instead of only by opening an existing row afterward.
-            Free text and sticky rather than a one-shot prompt: typing "For the
-            cake" once, adding those lines, then changing it to "For the
-            frosting" is how a recipe with several sections actually gets
-            typed in, and it needs no cleanup — leave it blank to file plain.
-            Rows already on the list are moved between headings by dragging
-            them, which is what the hint below says.
-
-            Deliberately just this one job. Declaring a heading with nothing
-            under it yet is "New section" above, its own action — the first
-            pass folded that into this field too and it read as one field
-            doing two unrelated things depending on which tiny icon you hit. */}
-        <View style={styles.sectionDraftRow}>
-          <Ionicons name="albums-outline" size={iconSize.sm} color={colors.textTertiary} />
-          <TextInput
-            style={styles.sectionDraftInput}
-            value={sectionDraft}
-            onChangeText={setSectionDraft}
-            placeholder="Heading for what you add below"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={RECIPE_SECTION_MAX_LENGTH}
-            returnKeyType="done"
-            autoCapitalize="words"
-            accessibilityLabel="Section for new ingredients"
-          />
-          {!!sectionDraft && (
-            <TouchableOpacity
-              onPress={() => setSectionDraft('')}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel="Clear section"
-            >
-              <Ionicons name="close-circle" size={iconSize.sm} color={colors.textTertiary} />
-            </TouchableOpacity>
-          )}
-        </View>
+        {/* Which heading newly-typed ingredients below file under — a picker
+            over headings this recipe already has, not a field you type a new
+            one into. That used to be free text, on the theory that a picker
+            would be empty exactly when it's first needed; "New section" above
+            removed that problem, so the picker can be the only way in and a
+            typo can no longer mint a heading nothing else matches. Rows
+            already on the list are moved between headings by dragging them,
+            which is what the hint below says. */}
+        {allSections.length > 0 && (
+          <View style={styles.sectionPickerWrap}>
+            <Text style={styles.inputHint}>New ingredients below go under:</Text>
+            <PillGroup
+              noun="section"
+              surface="page"
+              options={[
+                {
+                  key: '__none__',
+                  label: 'No section',
+                  pinned: true,
+                  selected: !sectionDraft,
+                  onPress: () => { haptics.tap(); setSectionDraft(''); },
+                },
+                ...allSections.map(name => ({
+                  key: name,
+                  label: name,
+                  selected: sectionDraft === name,
+                  onPress: () => { haptics.tap(); setSectionDraft(name); },
+                })),
+              ]}
+            />
+          </View>
+        )}
         {/* Only once there's a heading to drag under. Sections are a label on a
             flat list, so the order *is* the grouping — this is the one place
             that's worth saying out loud, since nothing about a row suggests
             dragging it changes which heading it sits below. */}
-        {ingredientSectionHeaders.size > 0 && (
+        {allSections.length > 0 && (
           <Text style={styles.inputHint}>
             Drag an ingredient under a heading to move it there.
           </Text>
@@ -1435,15 +1478,31 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
   },
-  // A declared-but-empty heading (Recipe.emptySections) — same row shape as
-  // `ingredient` below so it reads as a row of this card, not a caption above
-  // one, but with nothing to show past its own name.
+  // A declared-but-empty heading (Recipe.emptySections). Dashed and inset,
+  // unlike an ordinary row, so it reads as a slot rather than a line of the
+  // recipe — the same signal an empty state elsewhere in the app gives with a
+  // dashed outline, here doing double duty as "this is a real drop target,"
+  // not just "there's nothing here yet".
   emptySectionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
+    marginHorizontal: spacing.sm,
+    marginVertical: spacing.xs,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.separator,
+  },
+  // The live drop-target state, set from SortableList's onHoverChange while a
+  // dragged ingredient sits over this heading — the same feedback a populated
+  // heading gets for free from its neighbours visibly opening a gap, made
+  // explicit here since an empty heading has no neighbours of its own to move.
+  emptySectionRowTarget: {
+    backgroundColor: colors.accentSubtle,
+    borderColor: colors.accent,
   },
   emptySectionBody: {
     flex: 1,
@@ -1459,10 +1518,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
+  emptySectionTitleTarget: {
+    color: colors.accent,
+  },
   emptySectionHint: {
     color: colors.textTertiary,
     fontSize: font.xs,
     fontStyle: 'italic',
+  },
+  emptySectionHintTarget: {
+    color: colors.accent,
+    fontStyle: 'normal',
+    fontWeight: fontWeight.semibold,
   },
   ingredient: {
     flexDirection: 'row',
@@ -1594,22 +1661,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     marginTop: spacing.xs,
   },
-  // Quieter than addInput below it — this sets where an ingredient files,
-  // not the ingredient itself, so it reads as a modifier on the row beneath
-  // rather than a second thing to fill in.
-  sectionDraftRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
+  // Wraps the "new ingredients file under" picker so its caption and pills
+  // read as one control, the same shape addSectionWrap gives its own field.
+  sectionPickerWrap: {
     marginTop: spacing.md,
-    paddingHorizontal: spacing.xs,
-  },
-  sectionDraftInput: {
-    flex: 1,
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
-    paddingVertical: 6,
   },
   addRow: {
     flexDirection: 'row',

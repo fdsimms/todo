@@ -25,7 +25,7 @@ import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
 import { clampKeepDays } from '../utils/leftovers';
 import { normalizeRecipeTags } from '../utils/recipeTags';
 import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
-import { resolveSectionDrop, sectionsOf } from '../utils/recipeSections';
+import { sectionsOf } from '../utils/recipeSections';
 
 /**
  * The recipe library.
@@ -228,11 +228,18 @@ interface RecipeStore {
   ) => number;
   removeIngredient: (recipeId: string, ingredientId: string) => void;
   /**
-   * The new order, and — because the order is what decides which section a row
-   * renders under — the re-filing that goes with it. See `resolveSectionDrop`
-   * for exactly when a dragged row changes section and when it keeps its own.
+   * The new order, and the section every ingredient now belongs to —
+   * `sectionById` is already resolved by the caller from an explicit heading
+   * position (`RecipeDetailScreen`'s merged ingredient+heading list fed to
+   * `SortableList`; see `sectionsFromMergedOrder`), not guessed here. An id
+   * missing from the map keeps that ingredient's current section, the same
+   * "stale caller can't delete data" rule `ids` itself follows.
    */
-  reorderIngredients: (recipeId: string, ids: string[]) => void;
+  reorderIngredients: (
+    recipeId: string,
+    ids: string[],
+    sectionById: ReadonlyMap<string, string | null>,
+  ) => void;
   /** Removes several ingredients from one recipe at once — the bulk form of removeIngredient. */
   bulkRemoveIngredients: (recipeId: string, ingredientIds: string[]) => void;
   /** Files several ingredients from one recipe into the same aisle at once. */
@@ -743,7 +750,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, emptySections: recipe.emptySections.filter(s => s !== name) });
   },
 
-  reorderIngredients(recipeId, ids) {
+  reorderIngredients(recipeId, ids, sectionById) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return;
     const byId = new Map(recipe.ingredients.map(i => [i.id, i]));
@@ -754,15 +761,14 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const rest = recipe.ingredients.filter(i => !named.has(i.id));
     const next = [...ordered, ...rest];
 
-    // Dragging a row under a heading is how it joins that section — the order
-    // was already what decides which section a row renders in, so leaving the
-    // label behind is what made the heading appear to teleport past the row.
     // One write, not two: a reorder followed by a separate re-file is a frame
-    // of the list with the row in its new place and its old heading.
-    const drop = resolveSectionDrop(recipe.ingredients, next);
-    const ingredients = drop
-      ? next.map(i => (i.id === drop.id ? { ...i, section: drop.section } : i))
-      : next;
+    // of the list with the row in its new place and its old heading. The
+    // section is whatever the caller already resolved; a missing entry keeps
+    // the row's current section rather than clearing it.
+    const ingredients = next.map(i => {
+      const section = sectionById.get(i.id);
+      return section === undefined || section === i.section ? i : { ...i, section };
+    });
 
     save(set, { ...recipe, ingredients });
   },

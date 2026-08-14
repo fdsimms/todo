@@ -65,6 +65,17 @@ interface Props<T extends { id: string }> {
    */
   onDragStateChange?: (dragging: boolean) => void;
   /**
+   * Called with the index of the row currently under the drag (the slot the
+   * dragged row would land in if released now), or `null` once nothing is
+   * dragging. Purely additive — omitted, nothing about the drag changes — for
+   * a caller that wants to style a *different* row while it's the live drop
+   * target (a heading a row is about to join, say) rather than styling the
+   * dragged row itself, which `isActive` already covers. Mirrors
+   * `ReorderableList`'s `onHoverChange`, but with the payload this list's
+   * callers actually need instead of a bare tick.
+   */
+  onHoverChange?: (hoverIndex: number | null) => void;
+  /**
    * Style for the slot left behind while a row is being dragged. Same role as
    * ReorderableList's prop of the same name; omitted, the slot is just an
    * empty gap.
@@ -114,6 +125,7 @@ export function SortableList<T extends { id: string }>({
   renderItem,
   onDragOut,
   onDragStateChange,
+  onHoverChange,
   placeholderStyle,
   metricsRef,
 }: Props<T>) {
@@ -153,6 +165,7 @@ export function SortableList<T extends { id: string }>({
   const onReorderRef = useRef(onReorder);
   const onDragOutRef = useRef(onDragOut);
   const onDragStateChangeRef = useRef(onDragStateChange);
+  const onHoverChangeRef = useRef(onHoverChange);
   const heightsRef = useRef<Map<string, number>>(new Map());
   const topsRef = useRef<Map<string, number>>(new Map());
   // translateY per row, owned here so they can be cleared synchronously at the
@@ -171,6 +184,7 @@ export function SortableList<T extends { id: string }>({
   useEffect(() => { onReorderRef.current = onReorder; }, [onReorder]);
   useEffect(() => { onDragOutRef.current = onDragOut; }, [onDragOut]);
   useEffect(() => { onDragStateChangeRef.current = onDragStateChange; }, [onDragStateChange]);
+  useEffect(() => { onHoverChangeRef.current = onHoverChange; }, [onHoverChange]);
 
   // The parent has caught up; its data is the source of truth again.
   useEffect(() => {
@@ -281,6 +295,7 @@ export function SortableList<T extends { id: string }>({
     setHoverIndex(next);
     animateRowsForHover(next);
     haptics.dragTick();
+    onHoverChangeRef.current?.(next);
   };
 
   /** Released far enough past either end of the list to mean "take it out". */
@@ -302,6 +317,7 @@ export function SortableList<T extends { id: string }>({
     setActiveIndex(null);
     setHoverIndex(null);
     onDragStateChangeRef.current?.(false);
+    onHoverChangeRef.current?.(null);
     // The overlay's animated values are deliberately left where they are: the
     // native view obeys setValue immediately while React unmounts the card a
     // frame later, so zeroing them here flashes the card back at its drag-start
@@ -389,6 +405,7 @@ export function SortableList<T extends { id: string }>({
     // has moved yet at this point. Callers must NOT add their own.
     haptics.impactMedium();
     onDragStateChangeRef.current?.(true);
+    onHoverChangeRef.current?.(index);
   };
 
   const panResponder = useRef(

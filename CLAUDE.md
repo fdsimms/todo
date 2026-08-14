@@ -918,26 +918,56 @@ so this is the wire between them, not a third system.
 
 ### Sections (`recipeSections.ts`) — the heading an ingredient sits under
 
-`RecipeIngredient.section` is a label on a flat list, and `RecipeDetailScreen` opens a heading
-wherever a row's section differs from the row before it — so **the order already decides the
-grouping**. Only the label didn't move with a dragged row, which is why filing one used to mean
-opening it and retyping the heading, spelled exactly.
+`RecipeIngredient.section` is a label on a flat list, not a nested groups type. A *populated*
+heading is still only ever inferred — `RecipeDetailScreen` opens one wherever a row's section
+differs from the row before it, so **the order already decides the grouping** for any heading that
+has rows. Filing a row into one is nothing but moving it: no separate re-file step, no membership
+list to keep in sync with the order.
 
-- **A dragged row adopts the section it lands in** (`resolveSectionDrop`, applied inside
-  `reorderIngredients` so it's one write and never a frame of the row in its new place under its old
-  heading). Same rule Today's category drag uses.
-- **Except when it's still touching its own section**, which is the half a plain "take the row
-  above's" rule gets wrong — on the commonest drag there is. Reordering the frosting's cream above
-  its sugar makes cream the first frosting row, so the row above it belongs to the cake; adopting
-  that would silently move it. So: neighbours agree → that's the answer; they disagree → your own
-  section wins if it matches either of them; only a row touching neither is genuinely being re-filed.
-- **It declines anything that isn't one reinsertion.** Both arrays have to be identical once the
-  moved row is removed from each, or it returns null rather than guessing which row was the subject.
-- **An empty section isn't representable, and that's the model, not a gap.** A section is a string on
-  ingredients, so there is nowhere for one with no rows to live. Naming a section therefore happens
-  on a row — the picker in `RecipeIngredientSheet`, or the sticky heading field above the add row —
-  and everything else is dragged under it. Giving `Recipe` a `sections` array to hold empty ones is
-  a second list to keep in step with the labels the rows carry, for a state that lasts one gesture.
+**A heading with nothing under it yet is the one case that model can't represent on its own**,
+which is what `Recipe.emptySections: string[]` is for — headings declared ahead of any ingredient,
+independent of the row-label inference above. `addEmptySection`/`removeEmptySection`
+(`useRecipeStore`) write it; `useRecipeStore`'s `save()` is the one place that reconciles it against
+`ingredients`, pruning any name a real row has come to carry — so a declared heading is redundant
+the instant something's actually filed under it, and every mutator that can touch `section` gets
+that pruning for free rather than each having to remember to call it. `allSectionsOf` is
+`sectionsOf` (labels rows use) plus whatever's still declared-and-empty, in that order — pickers
+(`RecipeIngredientSheet`'s Section field, the sticky heading field, "New section"'s own duplicate
+check) read this, not `sectionsOf` alone, so a heading created ahead of its ingredients is
+choosable before anything's filed under it.
+
+- **Declaring a heading is its own control, "New section" up by the Ingredients label — not folded
+  into the add-ingredient flow.** The first pass put a `+` on the sticky heading field itself
+  (typing a name there already meant "what new ingredients get filed under"), which made one field
+  do two unrelated jobs depending on which tiny icon got tapped, and buried section-creation inside
+  a flow it has nothing to do with. "New section" reveals its own one-off field (closes itself if
+  left empty, same convention `PillGroup`'s "New …" fields use) and is the only way to mint a
+  heading; the sticky field went back to being a picker over headings that already exist, same as
+  `RecipeIngredientSheet`'s Section field — it used to be free text, on the theory that a picker
+  would be empty exactly when someone first needed it, but that gap is what "New section" now
+  fills, so a typo there can no longer mint a heading nothing else can find.
+- **An empty heading is a real drop target, not a static caption.** `RecipeDetailScreen` builds one
+  *merged* list for its ingredients `SortableList` — every ingredient row plus one marker per
+  heading, populated or empty, at the position it renders — so a heading is something a row can be
+  dropped next to whether or not it has members yet. Headings don't wire up `drag` themselves (only
+  ingredients move by being picked up); a dragged ingredient released next to one joins it.
+- **`sectionsFromMergedOrder` is the whole derivation, and it's a five-line walk.** Once a heading
+  is an explicit marker at a real position in the list, "which section does this row belong to"
+  stops being an inference problem — it's whatever marker precedes it, full stop. This replaced
+  `resolveSectionDrop`, a ~40-line heuristic that existed only because a *populated* heading used to
+  be nothing but two adjacent rows' labels meeting, which made "which neighbour wins" a genuine
+  question (reordering the frosting's cream above its sugar makes cream the first frosting row, so
+  the row above it is the cake's — pulling cream into the cake over that would have been wrong).
+  With an explicit marker in the list there's nothing left to disagree about, and the reorder
+  handler recomputes every row's section fresh on every commit rather than diffing before/after to
+  guess which one row moved.
+- **`SortableList` grew one additive prop for this: `onHoverChange(index | null)`.** A populated
+  heading already signals "you're about to join me" for free, from the rows around it visibly
+  opening a gap — an empty heading has no neighbours of its own to move, so it has no such
+  feedback unless something says so explicitly. The callback fires from the exact lines that already
+  update the internal hover state, mirroring `ReorderableList`'s same-named prop but with the
+  payload this list's caller actually needs. Nothing about the drag itself changes for a caller that
+  doesn't pass it.
 
 ### Scaling (`recipeScale.ts`) — halving and doubling a recipe
 
