@@ -2502,6 +2502,19 @@ export function dbDeleteRecipe(id: string): void {
   db.runSync('DELETE FROM recipes WHERE id = ?', [id]);
 }
 
+/**
+ * Repoints a single recipe's saved image at a new file, or clears it.
+ *
+ * Narrower than `dbUpdateRecipe` on purpose: this exists for restoring a
+ * backup (see DataResetSettings.tsx), where the row's other columns already
+ * landed verbatim via `dbReplaceAllData` and only `image_path` needs
+ * rewriting — to wherever the image bytes the backup carried actually got
+ * written on *this* device, which is never the origin device's own path.
+ */
+export function dbSetRecipeImagePath(id: string, imagePath: string | null): void {
+  db.runSync('UPDATE recipes SET image_path = ? WHERE id = ?', [imagePath, id]);
+}
+
 // ─── Meal plan ──────────────────────────────────────────────────────────────
 
 function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {

@@ -1,0 +1,4 @@
+{
+  "message": "Recipe photos are now included in exported backups and brought back on restore. Backups taken before this only carried the recipe data, so restoring one of those still leaves a recipe's photo blank",
+  "date": "2026-08-14"
+}

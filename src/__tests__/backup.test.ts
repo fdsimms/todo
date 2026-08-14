@@ -33,6 +33,17 @@ describe('buildBackup', () => {
     expect(backup.tables.projects).toEqual([]);
   });
 
+  it('defaults images to empty when none are given', () => {
+    expect(build({ tasks: [] }).images).toEqual({});
+  });
+
+  it('carries embedded recipe photo bytes through', () => {
+    const backup = buildBackup({ recipes: [] }, {
+      appVersion: '1.2.3', exportedAt: EXPORTED_AT, images: { 'abc.jpg': 'QUJD' },
+    });
+    expect(backup.images).toEqual({ 'abc.jpg': 'QUJD' });
+  });
+
   // The one thing a backup must never contain: it's a file the user is about
   // to send somewhere, and the key is a live billing credential.
   it('strips the API key out of the settings table', () => {
@@ -169,6 +180,29 @@ describe('parseBackup', () => {
 
   it('accepts an older format version', () => {
     expect(parseBackup(JSON.stringify({ format: 0, tables: {} })).ok).toBe(true);
+  });
+
+  it('defaults images to empty when the file has none — an older backup', () => {
+    const result = parseBackup(JSON.stringify({ format: 1, tables: {} }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.backup.images).toEqual({});
+  });
+
+  it('carries embedded image data through', () => {
+    const result = parseBackup(JSON.stringify({ format: 1, tables: {}, images: { 'abc.jpg': 'QUJD' } }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.backup.images).toEqual({ 'abc.jpg': 'QUJD' });
+  });
+
+  it('rejects a non-object images field', () => {
+    expect(parseBackup(JSON.stringify({ format: 1, tables: {}, images: ['a'] })).ok).toBe(false);
+    expect(parseBackup(JSON.stringify({ format: 1, tables: {}, images: 'nope' })).ok).toBe(false);
+  });
+
+  it('rejects an images map holding a non-string value', () => {
+    const result = parseBackup(JSON.stringify({ format: 1, tables: {}, images: { 'abc.jpg': 42 } }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/image data/);
   });
 });
 

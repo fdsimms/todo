@@ -13,6 +13,16 @@
  * added to the schema and not yet threaded into the model would be silently
  * dropped from every backup taken before it was. Raw rows make the round trip
  * lossless by default and mean a new column needs no work here at all.
+ *
+ * One thing a table row can't carry is a recipe's photo: `Recipe.imagePath` is
+ * a `file://` URI into the app's document directory (src/utils/recipePhoto.ts),
+ * and that path is meaningless off the device that wrote it — a fresh install
+ * gets a new container, so even restoring to the *same* phone after a reinstall
+ * left every recipe pointing at a file that no longer existed. `images` is the
+ * one place this format steps outside "raw row" to carry the actual bytes,
+ * keyed by the filename rather than the full path so a restore can write them
+ * wherever the current device's document directory happens to be and repoint
+ * `image_path` at that, not at the origin device's own layout.
  */
 
 /**
@@ -48,6 +58,8 @@ export interface Backup {
   appVersion: string;
   exportedAt: string;
   tables: Record<string, BackupRow[]>;
+  /** Recipe photo bytes, base64-encoded and keyed by filename — see the note above. */
+  images: Record<string, string>;
 }
 
 export type ParseResult =
@@ -75,7 +87,7 @@ export function redactSettings(rows: BackupRow[]): BackupRow[] {
 
 export function buildBackup(
   tables: Record<string, BackupRow[]>,
-  opts: { appVersion: string; exportedAt: Date }
+  opts: { appVersion: string; exportedAt: Date; images?: Record<string, string> }
 ): Backup {
   const safe: Record<string, BackupRow[]> = {};
   for (const [table, rows] of Object.entries(tables)) {
@@ -86,6 +98,7 @@ export function buildBackup(
     appVersion: opts.appVersion,
     exportedAt: opts.exportedAt.toISOString(),
     tables: safe,
+    images: opts.images ?? {},
   };
 }
 
@@ -147,6 +160,16 @@ export function parseBackup(text: string): ParseResult {
     tables[table] = rows as BackupRow[];
   }
 
+  // Optional and defaulted rather than required: a backup taken before this
+  // shipped, or one holding no recipe photos, simply has none to restore.
+  let images: Record<string, string> = {};
+  if (raw.images !== undefined) {
+    if (!isPlainObject(raw.images) || !Object.values(raw.images).every(v => typeof v === 'string')) {
+      return { ok: false, error: 'That backup\'s image data is damaged.' };
+    }
+    images = raw.images as Record<string, string>;
+  }
+
   return {
     ok: true,
     backup: {
@@ -154,6 +177,7 @@ export function parseBackup(text: string): ParseResult {
       appVersion: typeof raw.appVersion === 'string' ? raw.appVersion : 'unknown',
       exportedAt: typeof raw.exportedAt === 'string' ? raw.exportedAt : '',
       tables,
+      images,
     },
   };
 }
