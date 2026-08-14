@@ -1,5 +1,6 @@
 import type { GroceryItem, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
+import { choiceGroupKey } from '../utils/recipeComponents';
 import {
   collectPlannedIngredients,
   plannedIngredientsForRecipe,
@@ -241,8 +242,8 @@ describe('plannedIngredientsForRecipe', () => {
   it('maps each ingredient, tagged with the recipe as its own source', () => {
     const ragu = recipe('Ragù', [ing('Onions', { quantity: '2' }), ing('Garlic', { quantity: '3 cloves' })]);
     expect(plannedIngredientsForRecipe(ragu)).toEqual([
-      { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù' },
-      { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù' },
+      { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù', choiceGroup: null },
+      { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù', choiceGroup: null },
     ]);
   });
 
@@ -303,14 +304,81 @@ describe('plannedIngredientsForRecipe', () => {
     ]);
     const planned = plannedIngredientsForRecipe(cake);
     expect(planned).toEqual([
-      { name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, source: 'Layer Cake', recipeId: cake.id, recipeTitle: 'Layer Cake' },
-      { name: 'Butter', nameKey: 'butter', quantity: '1 cup', aisle: null, source: 'Layer Cake', recipeId: cake.id, recipeTitle: 'Layer Cake' },
+      { name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, source: 'Layer Cake', recipeId: cake.id, recipeTitle: 'Layer Cake', choiceGroup: null },
+      { name: 'Butter', nameKey: 'butter', quantity: '1 cup', aisle: null, source: 'Layer Cake', recipeId: cake.id, recipeTitle: 'Layer Cake', choiceGroup: null },
     ]);
     expect(planned.some(p => 'section' in p)).toBe(false);
   });
 
   it('is empty for a recipe with no ingredients', () => {
     expect(plannedIngredientsForRecipe(recipe('Toast', []))).toEqual([]);
+  });
+
+  describe('a choice left for the shelf', () => {
+    const chiliWithPeppers = () => recipe('Chili', [
+      ing('Beans'),
+      ing('Serrano', { choiceGroup: 'Pepper' }),
+      ing('Jalapeño', { choiceGroup: 'Pepper' }),
+    ]);
+
+    it('resolves to the default when nothing is left undecided', () => {
+      const chili = chiliWithPeppers();
+      const planned = plannedIngredientsForRecipe(chili);
+      expect(planned.map(p => p.name)).toEqual(['Beans', 'Serrano']);
+      expect(planned.every(p => p.choiceGroup === null)).toBe(true);
+    });
+
+    it('brings every option through, each tagged with the group', () => {
+      const chili = chiliWithPeppers();
+      const key = choiceGroupKey(chili.id, 'Pepper');
+      const planned = plannedIngredientsForRecipe(chili, undefined, { undecided: [key] });
+      expect(planned.map(p => [p.name, p.choiceGroup])).toEqual([
+        ['Beans', null],
+        ['Serrano', key],
+        ['Jalapeño', key],
+      ]);
+    });
+
+    it('leaves the recipe\'s other groups resolved', () => {
+      const chili = chiliWithPeppers();
+      chili.ingredients.push(
+        ing('Cheddar', { choiceGroup: 'Cheese' }),
+        ing('Manchego', { choiceGroup: 'Cheese' }),
+      );
+      const planned = plannedIngredientsForRecipe(chili, undefined, {
+        undecided: [choiceGroupKey(chili.id, 'Pepper')],
+      });
+      expect(planned.map(p => p.name)).toEqual(['Beans', 'Serrano', 'Jalapeño', 'Cheddar']);
+    });
+
+    it('is scoped to the recipe, so a component\'s same-named group is untouched', () => {
+      const salsa = recipe('Salsa', [
+        ing('Poblano', { choiceGroup: 'Pepper' }),
+        ing('Ancho', { choiceGroup: 'Pepper' }),
+      ]);
+      const chili = chiliWithPeppers();
+      chili.components = [{ id: 'c1', recipeId: salsa.id, name: 'Salsa', choiceGroup: null }];
+      const byId = new Map([[chili.id, chili], [salsa.id, salsa]]);
+      const planned = plannedIngredientsForRecipe(chili, byId, {
+        undecided: [choiceGroupKey(chili.id, 'Pepper')],
+      });
+      expect(planned.map(p => p.name)).toEqual(['Beans', 'Serrano', 'Jalapeño', 'Poblano']);
+    });
+
+    it('does not open a component group — that would be two dishes, not two rows', () => {
+      const mash = recipe('Mash', [ing('Potatoes')]);
+      const roast = recipe('Roast potatoes', [ing('Oil')]);
+      const steak = recipe('Steak dinner', [ing('Steak')]);
+      steak.components = [
+        { id: 'c-mash', recipeId: mash.id, name: 'Mash', choiceGroup: 'Side' },
+        { id: 'c-roast', recipeId: roast.id, name: 'Roast potatoes', choiceGroup: 'Side' },
+      ];
+      const byId = new Map([[steak.id, steak], [mash.id, mash], [roast.id, roast]]);
+      const planned = plannedIngredientsForRecipe(steak, byId, {
+        undecided: [choiceGroupKey(steak.id, 'Side')],
+      });
+      expect(planned.map(p => p.name)).toEqual(['Steak', 'Potatoes']);
+    });
   });
 
   it('includes a component\'s ingredients, each sourced to the recipe it\'s written on', () => {
@@ -452,7 +520,7 @@ describe('classifyPlanned', () => {
     const planned = [{ name: 'Saffron', nameKey: 'saffron', quantity: '1 pinch', aisle: null, source: 'Tue Paella' }];
     const rows = classifyPlanned(planned, [], now);
     expect(rows).toEqual([
-      { nameKey: 'saffron', name: 'Saffron', aisle: null, quantity: '1 pinch', sources: ['Tue Paella'], category: 'needToBuy', known: false, reason: null, sourceRecipeId: null, sourceRecipeTitle: null },
+      { nameKey: 'saffron', name: 'Saffron', aisle: null, quantity: '1 pinch', sources: ['Tue Paella'], category: 'needToBuy', known: false, reason: null, choiceGroup: null, sourceRecipeId: null, sourceRecipeTitle: null },
     ]);
   });
 

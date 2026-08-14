@@ -25,6 +25,7 @@ import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
 import { clampKeepDays } from '../utils/leftovers';
 import { normalizeRecipeTags } from '../utils/recipeTags';
 import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
+import { resolveSectionDrop } from '../utils/recipeSections';
 
 /**
  * The recipe library.
@@ -226,6 +227,11 @@ interface RecipeStore {
     choiceGroup: string,
   ) => number;
   removeIngredient: (recipeId: string, ingredientId: string) => void;
+  /**
+   * The new order, and — because the order is what decides which section a row
+   * renders under — the re-filing that goes with it. See `resolveSectionDrop`
+   * for exactly when a dragged row changes section and when it keeps its own.
+   */
   reorderIngredients: (recipeId: string, ids: string[]) => void;
   /** Removes several ingredients from one recipe at once — the bulk form of removeIngredient. */
   bulkRemoveIngredients: (recipeId: string, ingredientIds: string[]) => void;
@@ -717,7 +723,19 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     // being dropped — a stale id list must not delete ingredients.
     const named = new Set(ordered.map(i => i.id));
     const rest = recipe.ingredients.filter(i => !named.has(i.id));
-    save(set, { ...recipe, ingredients: [...ordered, ...rest] });
+    const next = [...ordered, ...rest];
+
+    // Dragging a row under a heading is how it joins that section — the order
+    // was already what decides which section a row renders in, so leaving the
+    // label behind is what made the heading appear to teleport past the row.
+    // One write, not two: a reorder followed by a separate re-file is a frame
+    // of the list with the row in its new place and its old heading.
+    const drop = resolveSectionDrop(recipe.ingredients, next);
+    const ingredients = drop
+      ? next.map(i => (i.id === drop.id ? { ...i, section: drop.section } : i))
+      : next;
+
+    save(set, { ...recipe, ingredients });
   },
 
   addComponent(recipeId, componentRecipeId, choiceGroup = null) {

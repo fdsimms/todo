@@ -77,6 +77,7 @@ import {
   deferPastQuietHours,
 } from '../utils/notifications';
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
+import { setDemoModeActive } from '../utils/demoState';
 
 const FUTURE = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 const PAST   = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -1005,5 +1006,57 @@ describe('rescheduleAllReminders restores the agenda it just cancelled', () => {
     const ids = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(c => c[0].identifier);
     expect(ids).toContain('with-reminder');
     expect(ids).toContain('daily-agenda');
+  });
+});
+
+// ─── demo mode ────────────────────────────────────────────────────────────
+//
+// A demo task is seeded through the normal addTask action, which schedules a
+// real device notification or AlarmKit alarm for any reminder it's given —
+// but a demo task only ever lives in the scratch database demo mode swaps
+// back out, so an alarm scheduled for one would keep ringing on the device
+// with no task left in the app that can reference it. isDemoModeActive() is
+// what stops it from ever being scheduled in the first place.
+
+describe('demo mode suppresses scheduling', () => {
+  afterEach(() => setDemoModeActive(false));
+
+  it('does not schedule a plain task reminder', async () => {
+    setDemoModeActive(true);
+    await scheduleTaskReminder(makeTask({ reminderTime: FUTURE }));
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule a persistent "ring until done" AlarmKit chain', async () => {
+    mockAlarmKitAvailable = true;
+    setDemoModeActive(true);
+    await scheduleTaskReminder(makeTask({ reminderTime: FUTURE, reminderKind: 'persistent' }));
+    expect(scheduleNativeAlarm).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule a timer alarm', async () => {
+    setDemoModeActive(true);
+    await scheduleTimerAlarm(
+      makeTask({ id: 'timer-demo', timedMinutes: 15, timerStartedAt: new Date().toISOString() })
+    );
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule the daily agenda', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    setDemoModeActive(true);
+    await scheduleDailyAgenda([dueOnAgendaDay()]);
+    expect(agendaCall()).toBeUndefined();
+  });
+
+  it('resumes scheduling normally once demo mode is cleared', async () => {
+    setDemoModeActive(true);
+    await scheduleTaskReminder(makeTask({ id: 'during-demo', reminderTime: FUTURE }));
+    setDemoModeActive(false);
+    await scheduleTaskReminder(makeTask({ id: 'after-demo', reminderTime: FUTURE }));
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+    expect(
+      (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0].identifier
+    ).toBe('after-demo');
   });
 });

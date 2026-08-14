@@ -147,8 +147,13 @@ export function RecipeDetailScreen() {
   // What new ingredients are filed under, until changed or cleared — the add
   // field's own equivalent of RecipeIngredientSheet's Section field, so a
   // section can be started here instead of only discoverable by editing a
-  // row after the fact. Free text, not a picker: nothing enumerates the
-  // sections a recipe has, the same way nothing enumerates aisle names.
+  // row after the fact.
+  //
+  // Free text where that sheet has a picker, and that asymmetry is deliberate:
+  // this field is used while typing a recipe *in*, when the heading being named
+  // is usually one the recipe doesn't have yet, and a picker over the sections
+  // so far would be a control that's empty exactly when it's first needed.
+  // Re-filing a row that already exists is the sheet's job, or a drag.
   const [sectionDraft, setSectionDraft] = useState('');
   const [pickingImage, setPickingImage] = useState(false);
   const draftInputRef = useRef<TextInput>(null);
@@ -507,14 +512,30 @@ export function RecipeDetailScreen() {
     return (
       <View>
         {!!sectionHeader && <Text style={styles.ingredientSectionHeader}>{sectionHeader}</Text>}
+        {/* Its own treatment, deliberately not the section heading's. The two
+            said entirely different things — "these belong to the frosting"
+            versus "buy exactly one of these" — in identical uppercase grey,
+            which is most of why a choice group read as another section that
+            had somehow acquired a suffix. A tinted inline label with the same
+            branch glyph the split suggestion uses reads as a rule about the
+            rows under it. */}
         {!!choiceHeader && (
-          <Text style={styles.ingredientSectionHeader}>{choiceHeader} · choose one</Text>
+          <View style={styles.choiceHeader}>
+            <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
+            <Text style={styles.choiceHeaderText} numberOfLines={1}>
+              Choose one · {choiceHeader}
+            </Text>
+          </View>
         )}
         <TouchableOpacity
           style={[
             styles.ingredient,
             isDragging && styles.ingredientDragging,
             selectionMode && selected && styles.ingredientSelected,
+            // Every option of a group, not just the first: the header only
+            // opens at the top of one, so without this the second and third
+            // options read as ordinary lines you buy as well.
+            !!choiceGroup && styles.ingredientChoice,
           ]}
           activeOpacity={interaction.activeOpacity}
           onPress={() => {
@@ -616,10 +637,15 @@ export function RecipeDetailScreen() {
     return (
       <View key={resolved.component.id}>
         {!!groupHeader && (
-          <Text style={styles.ingredientSectionHeader}>{groupHeader} · choose one</Text>
+          <View style={styles.choiceHeader}>
+            <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
+            <Text style={styles.choiceHeaderText} numberOfLines={1}>
+              Choose one · {groupHeader}
+            </Text>
+          </View>
         )}
         <TouchableOpacity
-          style={styles.ingredient}
+          style={[styles.ingredient, !!group && styles.ingredientChoice]}
           activeOpacity={target ? interaction.activeOpacity : 1}
           disabled={!target}
           onPress={() => {
@@ -830,38 +856,44 @@ export function RecipeDetailScreen() {
         {totalTimeMinutes != null && (
           <Text style={styles.totalTimeSummary}>Total time {formatDuration(totalTimeMinutes)}</Text>
         )}
-        <RecipeTimerRow
-          verb="Prep"
-          targetMinutes={recipe.prepMinutes}
-          running={prepRunning}
-          paused={prepPaused}
-          inProgress={prepInProgress}
-          ready={prepReady}
-          elapsedSeconds={prepElapsedSeconds}
-          remainingSeconds={prepRemainingSeconds}
-          progress={prepProgress}
-          summary={prepTimeSummary}
-          onToggle={handlePrepTimerToggle}
-          onLog={handleLogPrepTime}
-          onReset={handleResetPrepTimer}
-          onLogManual={handleLogManualPrepTime}
-        />
-        <RecipeTimerRow
-          verb="Cook"
-          targetMinutes={recipe.estimatedMinutes}
-          running={cookRunning}
-          paused={cookPaused}
-          inProgress={cookInProgress}
-          ready={cookReady}
-          elapsedSeconds={cookElapsedSeconds}
-          remainingSeconds={cookRemainingSeconds}
-          progress={cookProgress}
-          summary={cookTimeSummary}
-          onToggle={handleCookTimerToggle}
-          onLog={handleLogCookTime}
-          onReset={handleResetCookTimer}
-          onLogManual={handleLogManualCookTime}
-        />
+        {/* One card holding both, where each used to be a card of its own —
+            see RecipeTimerRow. Two stopwatches are one subject, and stacked as
+            two separate cards they read as two of the recipe's facts. */}
+        <View style={styles.timerCard}>
+          <RecipeTimerRow
+            verb="Prep"
+            targetMinutes={recipe.prepMinutes}
+            running={prepRunning}
+            paused={prepPaused}
+            inProgress={prepInProgress}
+            ready={prepReady}
+            elapsedSeconds={prepElapsedSeconds}
+            remainingSeconds={prepRemainingSeconds}
+            progress={prepProgress}
+            summary={prepTimeSummary}
+            onToggle={handlePrepTimerToggle}
+            onLog={handleLogPrepTime}
+            onReset={handleResetPrepTimer}
+            onLogManual={handleLogManualPrepTime}
+          />
+          <View style={styles.timerDivider} />
+          <RecipeTimerRow
+            verb="Cook"
+            targetMinutes={recipe.estimatedMinutes}
+            running={cookRunning}
+            paused={cookPaused}
+            inProgress={cookInProgress}
+            ready={cookReady}
+            elapsedSeconds={cookElapsedSeconds}
+            remainingSeconds={cookRemainingSeconds}
+            progress={cookProgress}
+            summary={cookTimeSummary}
+            onToggle={handleCookTimerToggle}
+            onLog={handleLogCookTime}
+            onReset={handleResetCookTimer}
+            onLogManual={handleLogManualCookTime}
+          />
+        </View>
 
         <Text style={styles.sectionLabel}>Ingredients</Text>
 
@@ -915,14 +947,16 @@ export function RecipeDetailScreen() {
             Free text and sticky rather than a one-shot prompt: typing "For the
             cake" once, adding those lines, then changing it to "For the
             frosting" is how a recipe with several sections actually gets
-            typed in, and it needs no cleanup — leave it blank to file plain. */}
+            typed in, and it needs no cleanup — leave it blank to file plain.
+            Rows already on the list are moved between headings by dragging
+            them, which is what the hint below says. */}
         <View style={styles.sectionDraftRow}>
           <Ionicons name="albums-outline" size={iconSize.sm} color={colors.textTertiary} />
           <TextInput
             style={styles.sectionDraftInput}
             value={sectionDraft}
             onChangeText={setSectionDraft}
-            placeholder="Section (optional), e.g. “For the cake”"
+            placeholder="Heading for what you add below"
             placeholderTextColor={colors.textTertiary}
             maxLength={RECIPE_SECTION_MAX_LENGTH}
             returnKeyType="done"
@@ -940,6 +974,15 @@ export function RecipeDetailScreen() {
             </TouchableOpacity>
           )}
         </View>
+        {/* Only once there's a heading to drag under. Sections are a label on a
+            flat list, so the order *is* the grouping — this is the one place
+            that's worth saying out loud, since nothing about a row suggests
+            dragging it changes which heading it sits below. */}
+        {ingredientSectionHeaders.size > 0 && (
+          <Text style={styles.inputHint}>
+            Drag an ingredient under a heading to move it there.
+          </Text>
+        )}
 
         <View style={styles.addRow}>
           <TextInput
@@ -1234,6 +1277,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
   },
+  // Both timers, one card. The card owns the padding and the rows own their
+  // own vertical rhythm, so the two sit as a pair rather than as two facts.
+  timerCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  timerDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.separator,
+  },
   // A component heading ("For the cake") inside the ingredients card — same
   // uppercase treatment as sectionLabel, just scoped to sit above a run of
   // rows rather than the whole list.
@@ -1290,6 +1345,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
     marginTop: 2,
+  },
+  choiceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  choiceHeaderText: {
+    flex: 1,
+    color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+  },
+  // A rule down the leading edge, not a fill: a brighter card surface is what
+  // this app uses for pressed and dragged (see TaskGroupHeader's note), so
+  // tinting these rows would read as three rows stuck in a selected state.
+  // The rule says "these go together" without claiming anything else.
+  ingredientChoice: {
+    borderLeftWidth: 2,
+    borderLeftColor: colors.accent,
   },
   // Tinted pill rather than a line of accent text, because it is a control and
   // controls in this app get a shape (see the InlineAction note in CLAUDE.md).

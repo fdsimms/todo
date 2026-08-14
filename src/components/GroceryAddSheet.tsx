@@ -1,9 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  Keyboard,
   Modal,
-  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -30,9 +28,9 @@ interface Props {
 }
 
 /**
- * The quick-add sheet behind this screen's FAB — same centered card, entrance
- * spring, backdrop and keyboard glide as QuickAddNameSheet, so the corner
- * behaves like every other list screen's.
+ * The quick-add sheet behind this screen's FAB — same card, entrance spring and
+ * backdrop as QuickAddNameSheet, so the corner behaves like every other list
+ * screen's.
  *
  * What it does *not* copy is closing on submit. A grocery list is entered in
  * bursts of ten, and a sheet that dismissed itself per item would cost ten
@@ -40,6 +38,18 @@ interface Props {
  * this sheet stays up until you're done. That's the whole reason this screen
  * used to have a pinned field and no FAB — the burst is preserved here, the
  * divergent chrome isn't.
+ *
+ * **Nor does it copy the centred resting place, and that's the other
+ * divergence with a reason (#1605).** Those sheets hold one field and are the
+ * same size the whole time they're up; this one grows a matches list, a row of
+ * parsed-token chips and an either/or offer as you type. Centred, half of every
+ * one of those appearing pushed the field itself upward — the field moved out
+ * from under the cursor at the second or third character of nearly every item.
+ * So the card is anchored near the top, `GroceryAddField` hangs everything it
+ * reveals below the field out of flow, and between them nothing on screen moves
+ * while you type. The keyboard glide went with it: at this height there is no
+ * keyboard to get out of the way of, and a card that slid on `keyboardWillShow`
+ * was one more thing moving under the same finger.
  */
 export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props) {
   const colors = useColors();
@@ -51,28 +61,7 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
   const translateYAnim = useRef(new Animated.Value(16)).current;
   const sheetOpacity = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
-  // The card glides to its new centered resting spot on its own spring rather
-  // than tracking the keyboard 1:1 — same as the other quick adds.
-  const keyboardOffsetAnim = useRef(new Animated.Value(0)).current;
-
   const [addedCount, setAddedCount] = useState(0);
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, e => {
-      const height = e.endCoordinates?.height ?? 0;
-      Animated.spring(keyboardOffsetAnim, {
-        toValue: -height / 2, ...animation.spring.smooth, useNativeDriver: true,
-      }).start();
-    });
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      Animated.spring(keyboardOffsetAnim, {
-        toValue: 0, ...animation.spring.smooth, useNativeDriver: true,
-      }).start();
-    });
-    return () => { showSub.remove(); hideSub.remove(); };
-  }, []);
 
   useEffect(() => {
     if (!visible) return;
@@ -81,7 +70,6 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
     translateYAnim.setValue(16);
     sheetOpacity.setValue(0);
     backdropOpacity.setValue(0);
-    keyboardOffsetAnim.setValue(0);
     Animated.parallel([
       Animated.spring(scaleAnim, { toValue: 1, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -114,14 +102,14 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
-      <View style={styles.centeredContainer} pointerEvents="box-none">
+      <View style={styles.topContainer} pointerEvents="box-none">
         <Animated.View
           style={[
             styles.sheet,
             shadows.sheet,
             {
               opacity: sheetOpacity,
-              transform: [{ scale: scaleAnim }, { translateY: Animated.add(translateYAnim, keyboardOffsetAnim) }],
+              transform: [{ scale: scaleAnim }, { translateY: translateYAnim }],
             },
           ]}
         >
@@ -152,11 +140,14 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
-  centeredContainer: {
+  // Top-anchored, not centred — see the component note. The offset clears the
+  // notch on every device the app runs on and leaves the rest of the space to
+  // what typing reveals below the field.
+  topContainer: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: spacing.xl * 2,
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
   },
   sheet: {
     backgroundColor: colors.bgSecondary,

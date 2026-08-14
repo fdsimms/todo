@@ -25,7 +25,7 @@ import {
   type ClassifiedIngredient,
   type PlanCategory,
 } from '../utils/mealPlanGroceries';
-import { applyChoice, recipeChoiceGroups } from '../utils/recipeComponents';
+import { alternativeCaptions, applyChoice, choiceGroupKey, recipeChoiceGroups } from '../utils/recipeComponents';
 import { normalizeScale } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from './RecipeScaleChips';
@@ -126,7 +126,17 @@ export function RecipeToListSheet({
   // fact about — MealPlanEntry.recipeChoices is where a lasting one lives.
   // It starts empty, which is every group on its default.
   const [choices, setChoices] = useState<string[]>([]);
-  const choiceKey = choices.join('|');
+
+  // Groups this shop is deliberately not answering — "I'll pick whichever
+  // pepper they have". Held exactly like `choices` above and written nowhere,
+  // but it survives further than a pick does: the options go on the list as one
+  // either/or (GroceryItem.choiceGroup), so ticking one at the shelf is what
+  // finally answers the question, and the pantry is stamped with what was
+  // actually bought.
+  //
+  // Ingredient groups only — see ChoiceResolution.undecided.
+  const [undecided, setUndecided] = useState<string[]>([]);
+  const choiceKey = `${choices.join('|')}#${undecided.join('|')}`;
 
   // Same contract as `choices` above, and for the same reason: an ad-hoc shop
   // isn't attached to a meal, so there's nothing for "I'm making a double batch"
@@ -141,12 +151,20 @@ export function RecipeToListSheet({
   const classified = useMemo(() => {
     if (!recipe) return [];
     return classifyPlanned(
-      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices }, scale),
+      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices, undecided }, scale),
       items,
       new Date(),
       itemSubs
     );
   }, [recipe, recipesById, items, itemSubs, choiceKey, scale]);
+
+  // "or jalapeño" on each option of a group left open, so a row in Need to buy
+  // reads as one of a pair rather than as a second thing to buy. Keyed on
+  // nameKey, which is what identifies a classified row.
+  const alternativeNotes = useMemo(
+    () => alternativeCaptions(classified.map(r => ({ id: r.nameKey, choiceGroup: r.choiceGroup, name: r.name }))),
+    [classified],
+  );
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {
@@ -164,6 +182,7 @@ export function RecipeToListSheet({
   useEffect(() => {
     if (!visible) return;
     setChoices(initialChoices ? [...initialChoices] : []);
+    setUndecided([]);
     setScale(normalizeScale(initialScale));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -231,6 +250,7 @@ export function RecipeToListSheet({
         // actually tapped is the honest answer for that case.
         sourceRecipeId: r.sourceRecipeId ?? recipe.id,
         sourceRecipeTitle: r.sourceRecipeTitle ?? recipe.name,
+        choiceGroup: r.choiceGroup,
       }));
 
     if (rows.length === 0) { onClose(); return; }
@@ -281,33 +301,64 @@ export function RecipeToListSheet({
 
         {choiceGroups.length > 0 && (
           <View style={styles.choices}>
-            {choiceGroups.map(group => (
-              <View key={`${group.recipe.id}:${group.label}`} style={styles.choiceGroup}>
-                <Text style={styles.sectionLabel}>{group.label}</Text>
-                <View style={styles.choiceChips}>
-                  {group.options.map(option => {
-                    const on = option.id === group.active.id;
-                    const name = option.name || 'Deleted recipe';
-                    return (
+            {choiceGroups.map(group => {
+              const key = choiceGroupKey(group.recipe.id, group.label);
+              const open = undecided.includes(key);
+              return (
+                <View key={key} style={styles.choiceGroup}>
+                  <Text style={styles.sectionLabel}>{group.label}</Text>
+                  <View style={styles.choiceChips}>
+                    {group.options.map(option => {
+                      const on = !open && option.id === group.active.id;
+                      const name = option.name || 'Deleted recipe';
+                      return (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[styles.choiceChip, on && styles.choiceChipOn]}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => {
+                            haptics.tap();
+                            setUndecided(prev => prev.filter(k => k !== key));
+                            setChoices(prev => applyChoice(prev, group, option.id));
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: on }}
+                          accessibilityLabel={`${group.label}: ${name}`}
+                        >
+                          <Text style={[styles.choiceChipText, on && styles.choiceChipTextOn]}>{name}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                    {/* Ingredients only. A component group names a dish, and
+                        two dishes' worth of lines on the list is not something
+                        one tick at the shelf could ever take back off — see
+                        ChoiceResolution.undecided. */}
+                    {group.kind === 'ingredient' && (
                       <TouchableOpacity
-                        key={option.id}
-                        style={[styles.choiceChip, on && styles.choiceChipOn]}
+                        style={[styles.choiceChip, open && styles.choiceChipOn]}
                         activeOpacity={interaction.activeOpacity}
                         onPress={() => {
                           haptics.tap();
-                          setChoices(prev => applyChoice(prev, group, option.id));
+                          setUndecided(prev => (open ? prev.filter(k => k !== key) : [...prev, key]));
                         }}
                         accessibilityRole="button"
-                        accessibilityState={{ selected: on }}
-                        accessibilityLabel={`${group.label}: ${name}`}
+                        accessibilityState={{ selected: open }}
+                        accessibilityLabel={`${group.label}: put both on the list and decide at the shop`}
                       >
-                        <Text style={[styles.choiceChipText, on && styles.choiceChipTextOn]}>{name}</Text>
+                        <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
+                          Decide at the shop
+                        </Text>
                       </TouchableOpacity>
-                    );
-                  })}
+                    )}
+                  </View>
+                  {open && (
+                    <Text style={styles.choiceHint}>
+                      All {group.options.length} go on the list. Tick the one you get and the rest come off.
+                    </Text>
+                  )}
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
@@ -349,6 +400,11 @@ export function RecipeToListSheet({
                       {rows.map((row, i) => {
                         const on = interactive && ticked.has(row.nameKey);
                         const subtitle = row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null);
+                        // Its own line rather than folded into the subtitle:
+                        // the subtitle says why the row is here, this says the
+                        // row is one of a set, and a row you read as ordinary is
+                        // a row you buy all of.
+                        const alternativeNote = alternativeNotes.get(row.nameKey);
                         const canMarkHave = category === 'needToBuy' && row.known;
                         // Shown in the reader's units; what gets written to the
                         // list is still row.quantity, as the recipe wrote it.
@@ -365,7 +421,8 @@ export function RecipeToListSheet({
                                 accessibilityRole="checkbox"
                                 accessibilityState={{ checked: on, disabled: !interactive }}
                                 accessibilityLabel={
-                                  [row.name, shownQuantity, subtitle, !interactive ? 'already in your cart' : null]
+                                  [row.name, shownQuantity, subtitle, alternativeNote,
+                                   !interactive ? 'already in your cart' : null]
                                     .filter(Boolean)
                                     .join(', ')
                                 }
@@ -383,6 +440,11 @@ export function RecipeToListSheet({
                                   </Text>
                                   {!!subtitle && (
                                     <Text style={styles.sources} numberOfLines={1}>{subtitle}</Text>
+                                  )}
+                                  {!!alternativeNote && (
+                                    <Text style={styles.alternativeNote} numberOfLines={1}>
+                                      {alternativeNote}
+                                    </Text>
                                   )}
                                 </View>
                                 {!!shownQuantity && (
@@ -470,6 +532,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   choiceChipOn: { backgroundColor: colors.accent },
   choiceChipText: { color: colors.textSecondary, fontSize: font.sm },
   choiceChipTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
+  choiceHint: { color: colors.textTertiary, fontSize: font.xs },
   section: { gap: spacing.xs },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -526,6 +589,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   nameDisabled: { color: colors.textSecondary },
   sources: { fontSize: font.xs, color: colors.textTertiary },
+  // Accent, where `sources` above is grey: this one is the difference between
+  // one shop and two, so it has to survive a glance down a list of ten rows.
+  // Same treatment the recipe screen gives its own "or manchego".
+  alternativeNote: { fontSize: font.xs, color: colors.accent, fontWeight: fontWeight.medium },
   qtyPill: {
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,

@@ -1920,6 +1920,73 @@ describe('addFromPlan', () => {
     expect(useGroceryStore.getState().itemById(eggs.id)!.checked).toBe(true);
   });
 
+  it('puts the options of one choice group on the list as an either/or', () => {
+    seed([]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Beans', quantity: '2 cans', aisle: 'Pantry' },
+      { name: 'Serrano', quantity: '2', aisle: 'Produce', choiceGroup: 'r1:Pepper' },
+      { name: 'Jalapeño', quantity: '2', aisle: 'Produce', choiceGroup: 'r1:Pepper' },
+    ]);
+
+    const beans = useGroceryStore.getState().itemByNameKey('beans')!;
+    const serrano = useGroceryStore.getState().itemByNameKey('serrano')!;
+    const jalapeno = useGroceryStore.getState().itemByNameKey('jalapeno')!;
+
+    expect(beans.choiceGroup).toBeNull();
+    expect(serrano.choiceGroup).toBeTruthy();
+    expect(jalapeno.choiceGroup).toBe(serrano.choiceGroup);
+    // Opaque, not the recipe's label — a grocery row renders no heading for a
+    // group, and two shops of one recipe must not merge weeks apart.
+    expect(serrano.choiceGroup).not.toBe('r1:Pepper');
+  });
+
+  it('gives two different groups two different ids', () => {
+    seed([]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Serrano', quantity: '', aisle: null, choiceGroup: 'r1:Pepper' },
+      { name: 'Jalapeño', quantity: '', aisle: null, choiceGroup: 'r1:Pepper' },
+      { name: 'Cheddar', quantity: '', aisle: null, choiceGroup: 'r1:Cheese' },
+      { name: 'Manchego', quantity: '', aisle: null, choiceGroup: 'r1:Cheese' },
+    ]);
+
+    const get = (key: string) => useGroceryStore.getState().itemByNameKey(key)!.choiceGroup;
+    expect(get('serrano')).toBe(get('jalapeno'));
+    expect(get('cheddar')).toBe(get('manchego'));
+    expect(get('serrano')).not.toBe(get('cheddar'));
+  });
+
+  it('ticking one option at the shelf takes the others off the list', () => {
+    seed([]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Serrano', quantity: '', aisle: null, choiceGroup: 'r1:Pepper' },
+      { name: 'Jalapeño', quantity: '', aisle: null, choiceGroup: 'r1:Pepper' },
+    ]);
+
+    const serrano = useGroceryStore.getState().itemByNameKey('serrano')!;
+    useGroceryStore.getState().toggleChecked(serrano.id);
+
+    expect(useGroceryStore.getState().itemByNameKey('serrano')!.checked).toBe(true);
+    expect(useGroceryStore.getState().itemByNameKey('jalapeno')?.onList ?? false).toBe(false);
+  });
+
+  it('leaves a row already on the list out of a new either/or', () => {
+    const serrano = makeItem({ name: 'Serrano', onList: true });
+    seed([serrano]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Serrano', quantity: '', aisle: null, choiceGroup: 'r1:Pepper' },
+      { name: 'Jalapeño', quantity: '', aisle: null, choiceGroup: 'r1:Pepper' },
+    ]);
+
+    // It was already wanted outright; addFromPlan reports it and touches
+    // nothing, which is exactly what keeps a mid-shop add from rewriting the
+    // trolley.
+    expect(useGroceryStore.getState().itemById(serrano.id)!.choiceGroup).toBeNull();
+  });
+
   it('lets a filing the user made outrank the plan-supplied aisle', () => {
     seed([], { aisleOverrides: { nduja: 'Deli' } });
 

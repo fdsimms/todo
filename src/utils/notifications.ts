@@ -10,6 +10,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { nudgeReminderPastMeeting } from './reminderNudge';
 import { isAlarmKitAvailable, requestAlarmAuthorization, scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, taskAlarmUuid } from './alarmChain';
+import { isDemoModeActive } from './demoState';
 
 export { isAlarmKitAvailable, requestAlarmAuthorization };
 
@@ -135,6 +136,11 @@ export async function getNotificationPermission(): Promise<NotificationPermissio
 }
 
 export async function scheduleTaskReminder(task: Task): Promise<void> {
+  // Demo tasks are seeded through this same store action, but a real native
+  // notification or AlarmKit alarm is a side effect on the device, not on the
+  // scratch database demo mode swaps back out — so it must never fire for a
+  // task nobody but the demo will ever see again.
+  if (isDemoModeActive()) return;
   if (!task.reminderTime || task.completed || task.archived) return;
   let triggerDate = new Date(task.reminderTime);
   if (triggerDate <= new Date()) return;
@@ -320,6 +326,7 @@ const DAILY_AGENDA_ID = 'daily-agenda';
  */
 export async function scheduleDailyAgenda(tasks: Task[]): Promise<void> {
   await cancelDailyAgenda();
+  if (isDemoModeActive()) return;
 
   const { dailyAgendaEnabled, dailyAgendaTime, dayResetTime } = useSettingsStore.getState();
   if (!dailyAgendaEnabled) return;
@@ -355,6 +362,7 @@ const timerAlarmId = (taskId: string): string => `timer:${taskId}`;
  * lands correctly whether the timer was just started or resumed part-way.
  */
 export async function scheduleTimerAlarm(task: Task): Promise<void> {
+  if (isDemoModeActive()) return;
   await cancelTimerAlarm(task.id);
   if (task.completed || task.archived) return;
   if (!isTimedTask(task) || !isTimerRunning(task)) return;

@@ -4,7 +4,7 @@ import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
 import { probablyHaveReason } from './grocerySuggest';
 import { describeSubstitutesOnHand, substitutesOnHand } from './itemSubs';
-import { flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
+import { choiceGroupKey, flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
 import {
   formatQuantityAmount,
   inflectUnit,
@@ -51,6 +51,19 @@ export interface PlannedIngredient {
    */
   recipeId?: string;
   recipeTitle?: string;
+  /**
+   * The either/or slot this line is one option of, as a `choiceGroupKey`, when
+   * the shopper chose to decide at the shelf rather than at add time (see
+   * ChoiceResolution.undecided). Null — the common case — means the line is the
+   * only option that came through, either because it was never a choice or
+   * because one was already picked.
+   *
+   * It travels as far as `GroceryItem.choiceGroup`, where it becomes an opaque
+   * id and the list takes over: ticking one option at the shop takes the others
+   * off. So the *label* is deliberately not carried past here — a grocery list
+   * renders no heading for a group, and `GroceryItem.choiceGroup` says why.
+   */
+  choiceGroup?: string | null;
 }
 
 /**
@@ -136,6 +149,7 @@ export function plannedIngredientsForRecipe(
   scale = 1,
 ): PlannedIngredient[] {
   const factor = normalizeScale(scale);
+  const undecided = new Set(resolution?.undecided ?? []);
   return flattenRecipeIngredients(recipe, recipesById, resolution).map(flat => ({
     name: flat.ingredient.name,
     nameKey: flat.ingredient.nameKey,
@@ -152,7 +166,24 @@ export function plannedIngredientsForRecipe(
     source: flat.recipe.name,
     recipeId: flat.recipe.id,
     recipeTitle: flat.recipe.name,
+    choiceGroup: groupKeyIfUndecided(flat.recipe.id, flat.ingredient.choiceGroup, undecided),
   }));
+}
+
+/**
+ * The key an option carries onto the list, or null. Only a group the caller
+ * actually left open gets one — a group already answered contributes its one
+ * winner, which is an ordinary row and must not arrive on the list looking like
+ * half a choice.
+ */
+function groupKeyIfUndecided(
+  recipeId: string,
+  label: string | null,
+  undecided: ReadonlySet<string>,
+): string | null {
+  if (!label) return null;
+  const key = choiceGroupKey(recipeId, label);
+  return undecided.has(key) ? key : null;
 }
 
 // A whole string that is nothing but an amount and an optional unit word. The
@@ -295,6 +326,15 @@ export interface ClassifiedIngredient {
    */
   reason: string | null;
   /**
+   * `PlannedIngredient.choiceGroup`, carried through — the either/or slot this
+   * row is one option of, for a shopper who left the choice for the shelf.
+   *
+   * Rows sharing one of these are alternatives, so a sheet renders them as a
+   * set and `addFromPlan` puts them on the list under one opaque
+   * `GroceryItem.choiceGroup`.
+   */
+  choiceGroup: string | null;
+  /**
    * The single recipe behind this row, when there is one — null once a row
    * has merged ingredients from more than one recipe, since crediting either
    * one over the other would be a guess. See PlannedRow.sourceRecipeId.
@@ -386,7 +426,13 @@ export function classifyPlanned(
       }
     }
 
-    rows.push({ nameKey: key, name, aisle, quantity, sources, category, known: !!match, reason, sourceRecipeId, sourceRecipeTitle });
+    // The first group any contributor names, not the last: a line wanted both
+    // as an option and outright is wanted outright, and letting the second
+    // occurrence overwrite a null would put a row on the list as half a choice
+    // that something else needs unconditionally.
+    const choiceGroup = group.find(g => g.choiceGroup)?.choiceGroup ?? null;
+
+    rows.push({ nameKey: key, name, aisle, quantity, sources, category, known: !!match, reason, choiceGroup, sourceRecipeId, sourceRecipeTitle });
   }
   return rows;
 }

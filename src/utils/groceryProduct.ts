@@ -1,4 +1,6 @@
-import type { GroceryItem } from '../types';
+import type { GroceryItem, ItemSubLink } from '../types';
+import { probablyHaveReason } from './grocerySuggest';
+import { describeSubstitutes, substitutesFor } from './itemSubs';
 
 /**
  * What names the product beyond the item's own name — the brand and the variant
@@ -38,4 +40,48 @@ export function describeProduct(
   // the line reads as qualifying that name — the same trust in the words that
   // lets "Not at Safeway" and "Usually Trader Joe's" share one treatment.
   return brand ?? variant;
+}
+
+/**
+ * What the app already knows about a catalog row, in one line — the answer to
+ * "is this the same thing as the item on my list?" asked from the recipe side.
+ *
+ * Written for `RecipeIngredientSheet`'s catalog card, which exists because an
+ * ingredient *is* a grocery item that isn't on a list yet (`nameKey` is the
+ * bridge) and nothing had ever shown what was on the other side of it.
+ *
+ * Every clause is a fact the user's own record backs, and each is separated by
+ * "·" precisely because they must not be read as one statement — the same call
+ * `describeShops` makes about a trailing negative. Stores are deliberately not
+ * among them: that read needs the shop rows and the links, and the item sheet
+ * one tap away says it properly rather than in a fragment.
+ *
+ * Null when there is genuinely nothing to say, which is the honest answer for a
+ * row that has only ever been typed once. The caller renders the name alone.
+ */
+export function describeCatalogItem(
+  item: GroceryItem,
+  subs: readonly ItemSubLink[],
+  items: readonly GroceryItem[],
+  now: Date,
+): string | null {
+  const parts: string[] = [];
+
+  const product = describeProduct(item);
+  if (product) parts.push(product);
+
+  if (item.onList) parts.push(item.checked ? 'in your cart' : 'on your list');
+
+  // The pantry's own words, verbatim — the same line the item sheet and a week
+  // plan show. A second phrasing here is a second thing to keep true.
+  const pantry = probablyHaveReason(item, now);
+  if (pantry) parts.push(pantry);
+  else if (item.purchaseCount > 0) {
+    parts.push(`bought ${item.purchaseCount} ${item.purchaseCount === 1 ? 'time' : 'times'}`);
+  }
+
+  const substitutes = describeSubstitutes(substitutesFor(item.id, subs, items));
+  if (substitutes) parts.push(`or ${substitutes}`);
+
+  return parts.length > 0 ? parts.join(' · ') : null;
 }

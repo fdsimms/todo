@@ -1127,11 +1127,19 @@ function seedGroceries(recipes: DemoRecipes): void {
   // The aisles come from the ingredient rows the sheet reviewed, not from the
   // lexicon — "red bell pepper" would otherwise land under Baking & Spices on
   // its last token, and "serrano chile" is a name the lexicon has never heard.
+  // The chile is the recipe's either/or, and it's on the list as one: this is
+  // the shop where "Decide at the shop" was picked instead of answering
+  // serrano-or-jalapeño at the kitchen table, so both rows are here under one
+  // choiceGroup and ticking either at the shelf takes the other off. It's the
+  // only place the grocery half of either/or shows up in the demo (#1572), and
+  // the reason it's seeded through addFromPlan rather than addByName is that
+  // this is exactly the path a recipe takes to get there.
   addFromPlan([
-    { name: 'Chicken breast', quantity: '2', aisle: 'Meat & Seafood' },
-    { name: 'Red bell pepper', quantity: '1', aisle: 'Produce' },
-    { name: 'Soy sauce', quantity: '2 tbsp', aisle: 'Pantry' },
-    { name: 'Serrano chile', quantity: '1', aisle: 'Produce' },
+    { name: 'Chicken breast', quantity: '2', aisle: 'Meat & Seafood', choiceGroup: null },
+    { name: 'Red bell pepper', quantity: '1', aisle: 'Produce', choiceGroup: null },
+    { name: 'Soy sauce', quantity: '2 tbsp', aisle: 'Pantry', choiceGroup: null },
+    { name: 'Serrano chile', quantity: '1', aisle: 'Produce', choiceGroup: `${recipes.stirFry}:Chile` },
+    { name: 'Jalapeno', quantity: '1', aisle: 'Produce', choiceGroup: `${recipes.stirFry}:Chile` },
   ].map(row => ({
     ...row,
     sourceRecipeId: recipes.stirFry,
