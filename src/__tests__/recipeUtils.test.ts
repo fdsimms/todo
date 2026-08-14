@@ -38,7 +38,7 @@ import {
   describePantryCoverage,
   formatServingsRange,
 } from '../utils/recipeUtils';
-import type { GroceryItem, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
+import type { GroceryItem, ItemSubLink, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 
 // recipeUtils now reaches mealPlanGroceries.ts (for countLikelyInPantry) and,
 // through it, mealPlan.ts → dateUtils.ts → the settings store — which
@@ -594,15 +594,29 @@ describe('describeRecipe', () => {
 
   it('inserts the pantry count between the ingredient count and servings, singularising one', () => {
     const withServings = recipe('G', { ingredients: [ing('Salt'), ing('Pepper')], servings: 2 });
-    expect(describeRecipe(withServings, 1)).toBe('2 ingredients · 1 likely in pantry · serves 2');
-    expect(describeRecipe(withServings, 6)).toBe('2 ingredients · 6 likely in pantry · serves 2');
+    expect(describeRecipe(withServings, { probablyHave: 1, viaSubstitute: 0 }))
+      .toBe('2 ingredients · 1 likely in pantry · serves 2');
+    expect(describeRecipe(withServings, { probablyHave: 6, viaSubstitute: 0 }))
+      .toBe('2 ingredients · 6 likely in pantry · serves 2');
   });
 
-  it('omits the pantry phrase for a null, undefined or zero count', () => {
+  it('omits the pantry phrase for a null, undefined or all-zero count', () => {
     const r = recipe('H', { ingredients: [ing('Salt')] });
     expect(describeRecipe(r)).toBe('1 ingredient');
     expect(describeRecipe(r, null)).toBe('1 ingredient');
-    expect(describeRecipe(r, 0)).toBe('1 ingredient');
+    expect(describeRecipe(r, { probablyHave: 0, viaSubstitute: 0 })).toBe('1 ingredient');
+  });
+
+  // #1568 — reported as its own clause, never folded into "likely in pantry".
+  it('adds the substitute clause independently of the direct pantry count', () => {
+    const r = recipe('I', { ingredients: [ing('Salt'), ing('Pepper')] });
+    expect(describeRecipe(r, { probablyHave: 6, viaSubstitute: 1 }))
+      .toBe('2 ingredients · 6 likely in pantry · 1 with a substitute');
+    expect(describeRecipe(r, { probablyHave: 6, viaSubstitute: 2 }))
+      .toBe('2 ingredients · 6 likely in pantry · 2 with a substitute');
+    // Even with nothing directly on hand, a substitute-only recipe still says so.
+    expect(describeRecipe(r, { probablyHave: 0, viaSubstitute: 1 }))
+      .toBe('2 ingredients · 1 with a substitute');
   });
 
   it('adds the duration only when set, after servings and before attribution', () => {
@@ -1184,6 +1198,11 @@ function item(name: string, overrides: Partial<GroceryItem> & { nameKey?: string
   } as GroceryItem;
 }
 
+// #1568 — a substitute link, for the "counts as covered" tests below.
+function sub(itemId: string, subItemId: string): ItemSubLink {
+  return { itemId, subItemId, note: null, createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null };
+}
+
 describe('scoreRecipeAgainstCatalog', () => {
   const now = new Date(2026, 7, 12); // 12 Aug 2026
 
@@ -1298,6 +1317,53 @@ describe('scoreRecipeAgainstCatalog', () => {
         .toBeGreaterThan(scoreRecipeAgainstCatalog(poorlyStocked, stockedItems, now));
     });
   });
+
+  // #1568 — a substitute-covered ingredient counts for less than a direct
+  // match. It can't change `matched`/`coverage` at all (a link can only exist
+  // between two rows that are already catalog items, so an ingredient with no
+  // catalog row can never carry one) — what it can fix is a stale or
+  // never-bought row's contribution to the recency average.
+  describe('via a substitute', () => {
+    const daysAgo = (n: number) => new Date(now.getTime() - n * 86_400_000).toISOString();
+
+    it('scores a stale row higher when its linked substitute is genuinely on hand', () => {
+      const r = recipe('Cake', { ingredients: [ing('Butter', { nameKey: 'butter' })] });
+      const butter = item('Butter', { nameKey: 'butter', purchaseCount: 0 }); // never bought — a 0.5 wash
+      const margarine = item('Margarine', {
+        nameKey: 'margarine', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(1),
+      });
+      const withoutLink = scoreRecipeAgainstCatalog(r, [butter, margarine], now);
+      const withLink = scoreRecipeAgainstCatalog(r, [butter, margarine], now, undefined, [sub(butter.id, margarine.id)]);
+      expect(withLink).toBeGreaterThan(withoutLink);
+    });
+
+    it('never lets a substitute-only recipe outrank the same recipe genuinely fresh', () => {
+      const r = recipe('Cake', { ingredients: [ing('Butter', { nameKey: 'butter' })] });
+      const staleButter = item('Butter', { nameKey: 'butter', purchaseCount: 0 });
+      const freshButter = item('Butter', {
+        nameKey: 'butter', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(1),
+      });
+      const margarine = item('Margarine', {
+        nameKey: 'margarine', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(1),
+      });
+      const viaSubstitute = scoreRecipeAgainstCatalog(r, [staleButter, margarine], now, undefined, [
+        sub(staleButter.id, margarine.id),
+      ]);
+      const direct = scoreRecipeAgainstCatalog(r, [freshButter], now);
+      expect(direct).toBeGreaterThan(viaSubstitute);
+    });
+
+    it('does not affect coverage — an ingredient with no catalog row can never carry a link', () => {
+      const r = recipe('Ragù', {
+        ingredients: [ing('Onions', { nameKey: 'onions' }), ing('Saffron', { nameKey: 'saffron' })],
+      });
+      const items = [item('Onions', { nameKey: 'onions' })];
+      // A link naming a row that doesn't exist is inert — resolve-or-shrug,
+      // same as every other cross-row pointer in this feature.
+      expect(scoreRecipeAgainstCatalog(r, items, now, undefined, [sub('saffron-row-that-does-not-exist', items[0].id)]))
+        .toBe(scoreRecipeAgainstCatalog(r, items, now));
+    });
+  });
 });
 
 describe('countLikelyInPantry', () => {
@@ -1331,7 +1397,7 @@ describe('countLikelyInPantry', () => {
         ing('Saffron', { nameKey: 'saffron' }),
       ],
     });
-    expect(countLikelyInPantry(r, [milk, onions], now)).toBe(1);
+    expect(countLikelyInPantry(r, [milk, onions], now)).toEqual({ probablyHave: 1, viaSubstitute: 0 });
   });
 
   it('counts a component\'s ingredients when given the library', () => {
@@ -1345,7 +1411,66 @@ describe('countLikelyInPantry', () => {
     });
 
     expect(countLikelyInPantry(steak, [milk], now)).toBeNull();
-    expect(countLikelyInPantry(steak, [milk], now, new Map([[steak.id, steak], [mash.id, mash]]))).toBe(1);
+    expect(countLikelyInPantry(steak, [milk], now, new Map([[steak.id, steak], [mash.id, mash]]))).toEqual({ probablyHave: 1, viaSubstitute: 0 });
+  });
+
+  // #1568 — an ingredient with no pantry match of its own, whose linked
+  // substitute the app thinks is on hand, counts as its own clause.
+  describe('via a substitute', () => {
+    it('counts an ingredient covered only through a linked substitute', () => {
+      const butter = item('Butter', { nameKey: 'butter', purchaseCount: 0 });
+      const margarine = item('Margarine', {
+        nameKey: 'margarine', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+      });
+      const r = recipe('Cake', { ingredients: [ing('Butter', { nameKey: 'butter' })] });
+      expect(countLikelyInPantry(r, [butter, margarine], now, undefined, [sub(butter.id, margarine.id)]))
+        .toEqual({ probablyHave: 0, viaSubstitute: 1 });
+    });
+
+    it('reports both counts, never folded into one', () => {
+      const butter = item('Butter', { nameKey: 'butter', purchaseCount: 0 });
+      const margarine = item('Margarine', {
+        nameKey: 'margarine', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+      });
+      const milk = item('Milk', { nameKey: 'milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10) });
+      const r = recipe('Cake', {
+        ingredients: [ing('Butter', { nameKey: 'butter' }), ing('Milk', { nameKey: 'milk' })],
+      });
+      expect(countLikelyInPantry(r, [butter, margarine, milk], now, undefined, [sub(butter.id, margarine.id)]))
+        .toEqual({ probablyHave: 1, viaSubstitute: 1 });
+    });
+
+    it('does not read the link backwards', () => {
+      // The link says "instead of butter, margarine" — needing margarine with
+      // butter on hand is the other direction, which nobody asserted.
+      const butter = item('Butter', {
+        nameKey: 'butter', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+      });
+      const margarine = item('Margarine', { nameKey: 'margarine', purchaseCount: 0 });
+      const r = recipe('Toast', { ingredients: [ing('Margarine', { nameKey: 'margarine' })] });
+      expect(countLikelyInPantry(r, [butter, margarine], now, undefined, [sub(butter.id, margarine.id)]))
+        .toBeNull();
+    });
+
+    it('says nothing when the app has no opinion about the substitute either', () => {
+      const butter = item('Butter', { nameKey: 'butter', purchaseCount: 0 });
+      const margarine = item('Margarine', { nameKey: 'margarine', purchaseCount: 0 });
+      const r = recipe('Cake', { ingredients: [ing('Butter', { nameKey: 'butter' })] });
+      expect(countLikelyInPantry(r, [butter, margarine], now, undefined, [sub(butter.id, margarine.id)]))
+        .toBeNull();
+    });
+
+    it('does not double count an ingredient that is already a direct pantry match', () => {
+      const butter = item('Butter', {
+        nameKey: 'butter', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+      });
+      const margarine = item('Margarine', {
+        nameKey: 'margarine', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+      });
+      const r = recipe('Cake', { ingredients: [ing('Butter', { nameKey: 'butter' })] });
+      expect(countLikelyInPantry(r, [butter, margarine], now, undefined, [sub(butter.id, margarine.id)]))
+        .toEqual({ probablyHave: 1, viaSubstitute: 0 });
+    });
   });
 });
 
@@ -1359,12 +1484,12 @@ describe('pantryCoverageForRecipe', () => {
 
   it('is all-zero with a null percent for a recipe with no ingredients', () => {
     expect(pantryCoverageForRecipe(recipe('Toast', { ingredients: [] }), [], now))
-      .toEqual({ total: 0, catalogMatches: 0, probablyHave: 0, percent: null });
+      .toEqual({ total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null });
   });
 
   it('has a null percent when nothing in the recipe has ever been added to the catalog', () => {
     const r = recipe('Ragù', { ingredients: [ing('Saffron', { nameKey: 'saffron' })] });
-    expect(pantryCoverageForRecipe(r, [], now)).toEqual({ total: 1, catalogMatches: 0, probablyHave: 0, percent: null });
+    expect(pantryCoverageForRecipe(r, [], now)).toEqual({ total: 1, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null });
   });
 
   it('is a real 0%, not null, when the catalog knows the ingredient but has no purchase history for it', () => {
@@ -1372,7 +1497,7 @@ describe('pantryCoverageForRecipe', () => {
     // cadence to trust, so it can't read as probably-have.
     const saffron = item('Saffron', { nameKey: 'saffron', purchaseCount: 0 });
     const r = recipe('Ragù', { ingredients: [ing('Saffron', { nameKey: 'saffron' })] });
-    expect(pantryCoverageForRecipe(r, [saffron], now)).toEqual({ total: 1, catalogMatches: 1, probablyHave: 0, percent: 0 });
+    expect(pantryCoverageForRecipe(r, [saffron], now)).toEqual({ total: 1, catalogMatches: 1, probablyHave: 0, viaSubstitute: 0, percent: 0 });
   });
 
   it('computes a percentage over the whole recipe, not just the catalog matches', () => {
@@ -1387,7 +1512,7 @@ describe('pantryCoverageForRecipe', () => {
       ],
     });
     const coverage = pantryCoverageForRecipe(r, [milk], now);
-    expect(coverage).toEqual({ total: 4, catalogMatches: 1, probablyHave: 1, percent: 25 });
+    expect(coverage).toEqual({ total: 4, catalogMatches: 1, probablyHave: 1, viaSubstitute: 0, percent: 25 });
   });
 
   it('folds a composed recipe\'s components in, given the library', () => {
@@ -1400,26 +1525,48 @@ describe('pantryCoverageForRecipe', () => {
 
     // Standing alone, the parent doesn't even see the mash's milk.
     expect(pantryCoverageForRecipe(steak, [milk], now))
-      .toEqual({ total: 1, catalogMatches: 0, probablyHave: 0, percent: null });
+      .toEqual({ total: 1, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null });
 
     expect(pantryCoverageForRecipe(steak, [milk], now, new Map([[steak.id, steak], [mash.id, mash]])))
-      .toEqual({ total: 2, catalogMatches: 1, probablyHave: 1, percent: 50 });
+      .toEqual({ total: 2, catalogMatches: 1, probablyHave: 1, viaSubstitute: 0, percent: 50 });
+  });
+
+  // #1568 — viaSubstitute is counted, but percent stays a direct-match-only
+  // number: a substitute is real (user-authored) but not the same fact.
+  it('counts a substitute-covered line without folding it into percent', () => {
+    const butter = item('Butter', { nameKey: 'butter', purchaseCount: 0 });
+    const margarine = item('Margarine', {
+      nameKey: 'margarine', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+    });
+    const r = recipe('Cake', {
+      ingredients: [ing('Butter', { nameKey: 'butter' }), ing('Eggs', { nameKey: 'eggs' })],
+    });
+    expect(pantryCoverageForRecipe(r, [butter, margarine], now, undefined, [sub(butter.id, margarine.id)]))
+      .toEqual({ total: 2, catalogMatches: 1, probablyHave: 0, viaSubstitute: 1, percent: 0 });
   });
 });
 
 describe('describePantryCoverage', () => {
   it('is null for a recipe with no ingredients', () => {
-    expect(describePantryCoverage({ total: 0, catalogMatches: 0, probablyHave: 0, percent: null })).toBeNull();
+    expect(describePantryCoverage({ total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null })).toBeNull();
   });
 
   it('names the degraded state rather than showing 0% when there\'s no catalog history at all', () => {
-    expect(describePantryCoverage({ total: 3, catalogMatches: 0, probablyHave: 0, percent: null }))
+    expect(describePantryCoverage({ total: 3, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null }))
       .toBe('No purchase history for these yet');
   });
 
   it('renders the fraction, including a real 0, once there is history to judge from', () => {
-    expect(describePantryCoverage({ total: 4, catalogMatches: 1, probablyHave: 1, percent: 25 })).toBe('1/4 likely on hand');
-    expect(describePantryCoverage({ total: 1, catalogMatches: 1, probablyHave: 0, percent: 0 })).toBe('0/1 likely on hand');
+    expect(describePantryCoverage({ total: 4, catalogMatches: 1, probablyHave: 1, viaSubstitute: 0, percent: 25 })).toBe('1/4 likely on hand');
+    expect(describePantryCoverage({ total: 1, catalogMatches: 1, probablyHave: 0, viaSubstitute: 0, percent: 0 })).toBe('0/1 likely on hand');
+  });
+
+  // #1568 — the trailing clause, never folded into the fraction.
+  it('appends the substitute clause on its own, whatever the base state is', () => {
+    expect(describePantryCoverage({ total: 4, catalogMatches: 1, probablyHave: 1, viaSubstitute: 1, percent: 25 }))
+      .toBe('1/4 likely on hand · 1 with a substitute');
+    expect(describePantryCoverage({ total: 4, catalogMatches: 1, probablyHave: 1, viaSubstitute: 2, percent: 25 }))
+      .toBe('1/4 likely on hand · 2 with a substitute');
   });
 });
 
@@ -1437,6 +1584,23 @@ describe('suggestRecipesForEmptyNight', () => {
     });
     const items = [item('Ingredient 0', { nameKey: 'ingredient-0' })];
     expect(suggestRecipesForEmptyNight([r], items, now)).toEqual([]);
+  });
+
+  // #1568 — a substitute link can only ever exist between two rows that are
+  // already catalog items, so it never grows the denominator a name with no
+  // catalog row at all is missing from. It's a nudge to the ranking of
+  // recipes that already clear the floor, never a way past the floor itself.
+  it('does not let a substitute link push a recipe over the coverage floor', () => {
+    const r = recipe('Mostly missing', {
+      ingredients: Array.from({ length: 11 }, (_, i) => ing(`Ingredient ${i}`, { nameKey: `ingredient-${i}` })),
+    });
+    const items = [
+      item('Ingredient 0', { nameKey: 'ingredient-0' }),
+      item('Ingredient 1', { nameKey: 'ingredient-1' }),
+    ];
+    expect(
+      suggestRecipesForEmptyNight([r], items, now, 3, [sub(items[0].id, items[1].id)])
+    ).toEqual([]);
   });
 
   it('ranks full coverage above partial', () => {

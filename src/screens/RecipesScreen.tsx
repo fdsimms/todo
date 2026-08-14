@@ -40,6 +40,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import {
   cleanRecipeName,
   countLikelyInPantry,
+  type LikelyInPantryCount,
   describeCookHistory,
   describeRecipe,
   flattenRecipeMealTypeSections,
@@ -105,6 +106,7 @@ export function RecipesScreen() {
   const recipeFavoritesOnly = useSettingsStore(s => s.recipeFavoritesOnly);
   const setRecipeFavoritesOnly = useSettingsStore(s => s.setRecipeFavoritesOnly);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
 
   const { planRecipe, offerPrepTasks } = usePlanMeal();
   // The recipe whose day is being picked; null closes the sheet.
@@ -253,13 +255,13 @@ export function RecipesScreen() {
   const pantryCounts = useMemo(() => {
     const now = new Date();
     const byId = recipeMap(recipes);
-    const map = new Map<string, number>();
+    const map = new Map<string, LikelyInPantryCount>();
     for (const recipe of visible) {
-      const count = countLikelyInPantry(recipe, groceryItems, now, byId);
+      const count = countLikelyInPantry(recipe, groceryItems, now, byId, itemSubs);
       if (count !== null) map.set(recipe.id, count);
     }
     return map;
-  }, [visible, recipes, groceryItems]);
+  }, [visible, recipes, groceryItems, itemSubs]);
 
   // "Favorite"/"Unfavorite" flips direction based on the selection itself, the
   // same way the grocery bulk bar's Check/Uncheck does — a selection that's
