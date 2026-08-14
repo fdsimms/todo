@@ -147,8 +147,13 @@ export function RecipeDetailScreen() {
   // What new ingredients are filed under, until changed or cleared — the add
   // field's own equivalent of RecipeIngredientSheet's Section field, so a
   // section can be started here instead of only discoverable by editing a
-  // row after the fact. Free text, not a picker: nothing enumerates the
-  // sections a recipe has, the same way nothing enumerates aisle names.
+  // row after the fact.
+  //
+  // Free text where that sheet has a picker, and that asymmetry is deliberate:
+  // this field is used while typing a recipe *in*, when the heading being named
+  // is usually one the recipe doesn't have yet, and a picker over the sections
+  // so far would be a control that's empty exactly when it's first needed.
+  // Re-filing a row that already exists is the sheet's job, or a drag.
   const [sectionDraft, setSectionDraft] = useState('');
   const [pickingImage, setPickingImage] = useState(false);
   const draftInputRef = useRef<TextInput>(null);
@@ -855,39 +860,39 @@ export function RecipeDetailScreen() {
             see RecipeTimerRow. Two stopwatches are one subject, and stacked as
             two separate cards they read as two of the recipe's facts. */}
         <View style={styles.timerCard}>
-        <RecipeTimerRow
-          verb="Prep"
-          targetMinutes={recipe.prepMinutes}
-          running={prepRunning}
-          paused={prepPaused}
-          inProgress={prepInProgress}
-          ready={prepReady}
-          elapsedSeconds={prepElapsedSeconds}
-          remainingSeconds={prepRemainingSeconds}
-          progress={prepProgress}
-          summary={prepTimeSummary}
-          onToggle={handlePrepTimerToggle}
-          onLog={handleLogPrepTime}
-          onReset={handleResetPrepTimer}
-          onLogManual={handleLogManualPrepTime}
-        />
-        <View style={styles.timerDivider} />
-        <RecipeTimerRow
-          verb="Cook"
-          targetMinutes={recipe.estimatedMinutes}
-          running={cookRunning}
-          paused={cookPaused}
-          inProgress={cookInProgress}
-          ready={cookReady}
-          elapsedSeconds={cookElapsedSeconds}
-          remainingSeconds={cookRemainingSeconds}
-          progress={cookProgress}
-          summary={cookTimeSummary}
-          onToggle={handleCookTimerToggle}
-          onLog={handleLogCookTime}
-          onReset={handleResetCookTimer}
-          onLogManual={handleLogManualCookTime}
-        />
+          <RecipeTimerRow
+            verb="Prep"
+            targetMinutes={recipe.prepMinutes}
+            running={prepRunning}
+            paused={prepPaused}
+            inProgress={prepInProgress}
+            ready={prepReady}
+            elapsedSeconds={prepElapsedSeconds}
+            remainingSeconds={prepRemainingSeconds}
+            progress={prepProgress}
+            summary={prepTimeSummary}
+            onToggle={handlePrepTimerToggle}
+            onLog={handleLogPrepTime}
+            onReset={handleResetPrepTimer}
+            onLogManual={handleLogManualPrepTime}
+          />
+          <View style={styles.timerDivider} />
+          <RecipeTimerRow
+            verb="Cook"
+            targetMinutes={recipe.estimatedMinutes}
+            running={cookRunning}
+            paused={cookPaused}
+            inProgress={cookInProgress}
+            ready={cookReady}
+            elapsedSeconds={cookElapsedSeconds}
+            remainingSeconds={cookRemainingSeconds}
+            progress={cookProgress}
+            summary={cookTimeSummary}
+            onToggle={handleCookTimerToggle}
+            onLog={handleLogCookTime}
+            onReset={handleResetCookTimer}
+            onLogManual={handleLogManualCookTime}
+          />
         </View>
 
         <Text style={styles.sectionLabel}>Ingredients</Text>

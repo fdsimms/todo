@@ -221,9 +221,9 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
 
   // Everything the field can grow — the parsed-token chips, the either/or
   // offer, the paste status, the matches — or nothing at all.
-  const hasResults =
-    !!tokens && (tokens.quantityAccepted || tokens.prepAccepted || tokens.purposeAccepted)
-    || !!alternatives || !!status || suggestions.length > 0;
+  const hasTokenChips =
+    !!tokens && (tokens.quantityAccepted || tokens.prepAccepted || tokens.purposeAccepted);
+  const hasResults = hasTokenChips || !!alternatives || !!status || suggestions.length > 0;
 
   return (
     <View style={styles.wrap}>
@@ -283,7 +283,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           decision rather than something the parser did silently. Each token
           it pulled out of the text gets its own chip; tapping × keeps that
           exact piece in the name instead — see resolveGroceryTokens. */}
-      {!!tokens && (tokens.quantityAccepted || tokens.prepAccepted || tokens.purposeAccepted) && (
+      {hasTokenChips && (
         <View style={styles.tokenRow}>
           <View style={styles.tokenChips}>
             {tokens.quantityAccepted && (
@@ -513,7 +513,12 @@ function makeStyles(colors: Colors) {
       overflow: 'hidden',
     },
     matchesScroll: {
-      maxHeight: 200,
+      // Four rows before it scrolls. Sized against the smallest screen the app
+      // runs on rather than the roomiest: the block hangs off a card 64pt from
+      // the top and opens downward, so on an SE with the keyboard up this is
+      // what keeps the last match above it. Five matches is the cap
+      // rankGrocerySuggestions applies anyway, so the fifth is one short scroll.
+      maxHeight: 176,
     },
     suggestion: {
       flexDirection: 'row',
