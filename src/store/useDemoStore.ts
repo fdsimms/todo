@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { switchToDemoDatabase, switchToRealDatabase } from '../db/database';
 import { seedDemoData } from '../utils/demoSeed';
+import { setDemoModeActive } from '../utils/demoState';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 
@@ -26,6 +27,12 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
 
   enterDemoMode() {
     if (get().active) return;
+    // Set before anything else touches the task store: seedDemoData below
+    // goes through the normal addTask action, and that action schedules a
+    // real device notification/alarm for any reminder it's given. Demo rows
+    // live only in the scratch database, so a scheduled alarm for one would
+    // outlive it — this flag is what stops that scheduling from happening.
+    setDemoModeActive(true);
     switchToDemoDatabase();
     // Creates the tables in the scratch file and reloads every data store
     // from it — which also cancels the real reminders, since initialize()
@@ -37,6 +44,9 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
 
   exitDemoMode() {
     if (!get().active) return;
+    // Cleared before the reload below, so the real reminders it schedules
+    // from the real database aren't silently skipped by the same guard.
+    setDemoModeActive(false);
     switchToRealDatabase();
     // Same startup order as App.tsx: tasks first (it re-runs initDatabase
     // and reschedules the real reminders), then settings — which discards
