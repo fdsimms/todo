@@ -12,6 +12,7 @@ import {
   extractRecipe,
   suggestMealIdeas,
   suggestMealIngredients,
+  suggestSubstitutes,
   describeAIError,
 } from '../services/aiSuggestions';
 import { MAX_MEAL_IDEAS } from '../utils/mealIdeas';
@@ -26,6 +27,7 @@ const TEST_AI_FEATURE_CONFIG = {
   groceryAisles: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   recipeExtraction: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   mealIdeas: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+  substitutes: { enabled: true, model: 'claude-haiku-4-5-20251001' },
 };
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -936,5 +938,101 @@ describe('suggestMealIngredients', () => {
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     expect(body.messages[0].content as string).toContain('feed 4');
+  });
+});
+
+// ============================================================================
+// suggestSubstitutes (#1578)
+// ============================================================================
+
+describe('suggestSubstitutes', () => {
+  it('throws when no API key is configured', async () => {
+    jest.spyOn(require('../store/useSettingsStore').useSettingsStore, 'getState').mockReturnValueOnce({
+      anthropicApiKey: '',
+      aiFeatureConfig: TEST_AI_FEATURE_CONFIG,
+    });
+    await expect(suggestSubstitutes('Butter', [])).rejects.toThrow('No API key configured');
+  });
+
+  it('throws when the feature is disabled', async () => {
+    jest.spyOn(require('../store/useSettingsStore').useSettingsStore, 'getState').mockReturnValueOnce({
+      anthropicApiKey: 'test-key-does-not-hit-network',
+      aiFeatureConfig: {
+        ...TEST_AI_FEATURE_CONFIG,
+        substitutes: { enabled: false, model: 'claude-haiku-4-5-20251001' },
+      },
+    });
+    const spy = jest.spyOn(global, 'fetch');
+    await expect(suggestSubstitutes('Butter', [])).rejects.toThrow('AI feature disabled');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('makes no network call for an empty item name', async () => {
+    const spy = jest.spyOn(global, 'fetch');
+    await expect(suggestSubstitutes('   ', [])).resolves.toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('returns validated suggestions, ratio and all', async () => {
+    mockFetchOnce(
+      toolUseResponse('suggest_substitutes', {
+        substitutes: [
+          { name: 'Margarine' },
+          { name: 'Garlic powder', ratio_from: '1 clove', ratio_to: '1/4 tsp' },
+        ],
+      })
+    );
+    await expect(suggestSubstitutes('Butter', [])).resolves.toEqual([
+      { name: 'Margarine', ratioFrom: null, ratioTo: null },
+      { name: 'Garlic powder', ratioFrom: '1 clove', ratioTo: '1/4 tsp' },
+    ]);
+  });
+
+  it('drops a suggestion naming two ingredients', async () => {
+    mockFetchOnce(
+      toolUseResponse('suggest_substitutes', {
+        substitutes: [{ name: 'Milk + lemon juice' }, { name: 'Sour cream' }],
+      })
+    );
+    await expect(suggestSubstitutes('Buttermilk', [])).resolves.toEqual([
+      { name: 'Sour cream', ratioFrom: null, ratioTo: null },
+    ]);
+  });
+
+  it('excludes the item itself and whatever it already links to', async () => {
+    mockFetchOnce(
+      toolUseResponse('suggest_substitutes', {
+        substitutes: [{ name: 'Butter' }, { name: 'Margarine' }, { name: 'Ghee' }],
+      })
+    );
+    await expect(suggestSubstitutes('Butter', ['Margarine'])).resolves.toEqual([
+      { name: 'Ghee', ratioFrom: null, ratioTo: null },
+    ]);
+  });
+
+  it('throws when the response contains no tool_use block', async () => {
+    mockFetchOnce({ content: [{ type: 'text', text: 'hi' }] });
+    await expect(suggestSubstitutes('Butter', [])).rejects.toThrow('No suggestions returned');
+  });
+
+  it('throws on a non-OK HTTP response', async () => {
+    mockFetchOnce({}, 401);
+    await expect(suggestSubstitutes('Butter', [])).rejects.toThrow('API error 401');
+  });
+
+  it('names the item and excluded names in the request', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(toolUseResponse('suggest_substitutes', { substitutes: [] })),
+    } as Response);
+
+    await suggestSubstitutes('Butter', ['Margarine']);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content as string;
+    expect(content).toContain('Butter');
+    expect(content).toContain('Margarine');
+    expect(body.tool_choice).toEqual({ type: 'tool', name: 'suggest_substitutes' });
   });
 });

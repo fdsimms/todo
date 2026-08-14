@@ -12,6 +12,10 @@ import {
   clampIdeaCount, dedupeMealIdeas, MAX_MEAL_IDEAS, MIN_MEAL_IDEAS,
   type MealIdea, type RawMealIdea,
 } from '../utils/mealIdeas';
+import {
+  dedupeSuggestedSubstitutes, MAX_SUGGESTED_SUBSTITUTES,
+  type RawSuggestedSubstitute, type SuggestedSubstitute,
+} from '../utils/substituteSuggestions';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 
@@ -791,4 +795,80 @@ export async function suggestMealIngredients(
   if (!input) throw new Error('No suggestions returned');
 
   return parseExtractedItems(input.items, availableAisles);
+}
+
+// ─── Substitute suggestions (#1578) ─────────────────────────────────────────
+
+/**
+ * Proposes what to use instead of a grocery item — the AI half of "what can I
+ * use instead?" (#1578). Additive only: `SubstituteSheet`'s offline "from your
+ * items" search is a complete answer on its own, and this just puts a
+ * best-guess list on top of it when a key is configured.
+ *
+ * `dedupeSuggestedSubstitutes` is what turns the raw response into offerable
+ * rows — dropping anything naming more than one ingredient, capping the
+ * count, and dropping whatever `excludedNames` already names (the item
+ * itself, and whatever it's already linked to).
+ */
+export async function suggestSubstitutes(
+  itemName: string,
+  excludedNames: string[],
+): Promise<SuggestedSubstitute[]> {
+  const { apiKey, model } = requireFeature('substitutes');
+
+  const name = itemName.trim().slice(0, GROCERY_NAME_MAX_LENGTH);
+  if (!name) return [];
+  const excluded = excludedNames.map(n => n.trim()).filter(Boolean);
+
+  const data = await callAnthropic({
+    max_tokens: 600,
+    tools: [{
+      name: 'suggest_substitutes',
+      description: 'Suggest common grocery items that could stand in for another when it\'s unavailable',
+      input_schema: {
+        type: 'object',
+        properties: {
+          substitutes: {
+            type: 'array',
+            description: `Up to ${MAX_SUGGESTED_SUBSTITUTES} single-item stand-ins for "${name}", best first.`,
+            items: {
+              type: 'object',
+              properties: {
+                name: {
+                  type: 'string',
+                  description: 'A single grocery item, e.g. "Margarine". Never two items joined by "and"/"+"/a slash — a combination is a recipe, not a substitute.',
+                },
+                ratio_from: {
+                  type: 'string',
+                  description: `Optional. An amount of "${name}" this conversion is written for, e.g. "1 clove". Omit entirely unless the two really do have a stable, statable ratio.`,
+                },
+                ratio_to: {
+                  type: 'string',
+                  description: 'Optional. The equivalent amount of the substitute, e.g. "1/4 tsp". Give both ratio fields or neither.',
+                },
+              },
+              required: ['name'],
+            },
+          },
+        },
+        required: ['substitutes'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'suggest_substitutes' },
+    messages: [{
+      role: 'user',
+      content: [
+        `What could a home cook use instead of "${name}" when it's not available?`,
+        'Only genuinely common substitutes an ordinary cook would recognise — not an ingredient list for making it from scratch, and not a stretch.',
+        'Each suggestion must be a single grocery item on its own, never a combination of two.',
+        excluded.length > 0 ? `Already recorded — don't repeat: ${excluded.join(', ')}.` : '',
+      ].filter(Boolean).join('\n\n'),
+    }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { substitutes?: RawSuggestedSubstitute[] } | undefined;
+  if (!input?.substitutes) throw new Error('No suggestions returned');
+
+  return dedupeSuggestedSubstitutes(input.substitutes, [name, ...excluded]);
 }

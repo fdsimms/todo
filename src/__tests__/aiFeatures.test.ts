@@ -16,7 +16,7 @@ describe('AI features', () => {
 });
 
 describe('aiFeaturesFor', () => {
-  it('drops the three kitchen features when the area is off', () => {
+  it('drops the kitchen features when the area is off', () => {
     expect(aiFeaturesFor(false).map(f => f.id)).toEqual(['taskBreakdown', 'templateSuggestions']);
   });
 

@@ -4,10 +4,12 @@
 // on grocery-aisle sorting shouldn't have to choose one setting for both.
 
 export type AiFeatureId =
-  | 'taskBreakdown' | 'templateSuggestions' | 'groceryAisles' | 'recipeExtraction' | 'mealIdeas';
+  | 'taskBreakdown' | 'templateSuggestions' | 'groceryAisles' | 'recipeExtraction' | 'mealIdeas'
+  | 'substitutes';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'groceryAisles', 'recipeExtraction', 'mealIdeas',
+  'substitutes',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -67,6 +69,12 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     hint: 'Invents new meals for empty nights, and drafts a shopping list for one you accept',
     kitchen: true,
   },
+  {
+    id: 'substitutes',
+    label: 'Substitute suggestions',
+    hint: 'Proposes what to use instead of a grocery item when you ask',
+    kitchen: true,
+  },
 ];
 
 /**
@@ -96,5 +104,6 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     groceryAisles: { enabled: true, model: DEFAULT_AI_MODEL },
     recipeExtraction: { enabled: true, model: DEFAULT_AI_MODEL },
     mealIdeas: { enabled: true, model: DEFAULT_AI_MODEL },
+    substitutes: { enabled: true, model: DEFAULT_AI_MODEL },
   };
 }

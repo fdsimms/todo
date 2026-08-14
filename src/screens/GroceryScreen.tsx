@@ -133,6 +133,12 @@ export function GroceryScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
   const [tripOpen, setTripOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Which field the item sheet should open pre-expanded to — the swap glyph's
+  // whole point is skipping the ellipsis-then-scroll-to-Substitutes path an
+  // ordinary open leaves at null.
+  const [editingInitialField, setEditingInitialField] = useState<
+    'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | null
+  >(null);
   const [aiMode, setAiMode] = useState<GroceryAIMode | null>(null);
   const [recipeSourceOpen, setRecipeSourceOpen] = useState(false);
   const [recipeToAdd, setRecipeToAdd] = useState<Recipe | null>(null);
@@ -404,6 +410,13 @@ export function GroceryScreen() {
 
   const handleEdit = useCallback((id: string) => {
     haptics.tap();
+    setEditingInitialField(null);
+    setEditingId(id);
+  }, []);
+
+  const handleOpenSubstitutes = useCallback((id: string) => {
+    haptics.tap();
+    setEditingInitialField('substitutes');
     setEditingId(id);
   }, []);
 
@@ -668,6 +681,7 @@ export function GroceryScreen() {
           item={row.item}
           onToggle={handleToggle}
           onEdit={handleEdit}
+          onOpenSubstitutes={handleOpenSubstitutes}
           // Nothing in the cart is draggable: that section is a record of the
           // trolley, not a place to file something (see groceryDragRange).
           // Reordering is off while selecting too — the long press that would
@@ -688,7 +702,7 @@ export function GroceryScreen() {
         />
       );
     },
-    [styles, colors, cartOpen, handleToggle, handleEdit, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, recipeIds, openRecipe, alternativeCaptionById, storeMarkers]
+    [styles, colors, cartOpen, handleToggle, handleEdit, handleOpenSubstitutes, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, recipeIds, openRecipe, alternativeCaptionById, storeMarkers]
   );
 
   return (
@@ -879,9 +893,14 @@ export function GroceryScreen() {
       <GroceryItemSheet
         visible={editingId !== null}
         itemId={editingId}
-        onClose={() => setEditingId(null)}
+        initialField={editingInitialField ?? undefined}
+        onClose={() => {
+          setEditingId(null);
+          setEditingInitialField(null);
+        }}
         onOpenRecipe={recipeId => {
           setEditingId(null);
+          setEditingInitialField(null);
           openRecipe(recipeId);
         }}
         recipeExists={recipeId => recipeIds.has(recipeId)}
