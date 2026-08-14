@@ -76,13 +76,27 @@ describe('agendaCounts', () => {
     expect(agendaCounts([], DAY, '00:00')).toEqual({ due: 0, carriedOver: 0, deadlines: 0 });
   });
 
-  // dayResetTime moves which calendar day a timestamp belongs to, and the
-  // agenda has to agree with the rest of the app about that.
-  it('honours a late dayResetTime when deciding which day a task is on', () => {
-    // 1 AM on the 7th, with the day flipping at 2 AM, is still the 6th.
+  // dueDate/deadline are stored anchors, not "now" moments — a plain
+  // date-only pick lands at local midnight (see getLogicalToday), which
+  // carries no meaning of its own and must not be read as "still
+  // yesterday" just because it's earlier than dayResetTime, the same rule
+  // isTaskVisible/getEffectiveTaskDate already follow via getTaskDayStart.
+  it('does not roll a midnight-anchored dueDate back a day under a late dayResetTime', () => {
+    const task = makeTask({ dueDate: new Date(2026, 7, 6, 0, 0).toISOString() });
+    const counts = agendaCounts([task], DAY, '02:00');
+    expect(counts.due).toBe(1);
+    expect(counts.carriedOver).toBe(0);
+  });
+
+  it('does not roll a midnight-anchored deadline back a day under a late dayResetTime', () => {
+    const task = makeTask({ deadline: new Date(2026, 7, 6, 0, 0).toISOString() });
+    expect(agendaCounts([task], DAY, '02:00').deadlines).toBe(1);
+  });
+
+  it('still excludes a task genuinely due the next day', () => {
     const task = makeTask({ dueDate: new Date(2026, 7, 7, 1, 0).toISOString() });
-    expect(agendaCounts([task], DAY, '02:00').due).toBe(1);
-    expect(agendaCounts([task], DAY, '00:00').due).toBe(0);
+    expect(agendaCounts([task], DAY, '02:00').due).toBe(0);
+    expect(agendaCounts([task], DAY, '02:00').carriedOver).toBe(0);
   });
 });
 
