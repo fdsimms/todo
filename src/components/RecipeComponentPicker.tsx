@@ -88,7 +88,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
           <EmptyState
             icon="restaurant-outline"
             title="No other recipes"
-            subtitle="Save the shared part as its own recipe first — then it can be used inside this one"
+            subtitle="Save the shared part as its own recipe first. Then it can be used inside this one"
           />
         ) : (
           <>

@@ -130,7 +130,7 @@ export function parseBackup(text: string): ParseResult {
   }
 
   if (typeof raw.format !== 'number' || !Number.isInteger(raw.format)) {
-    return { ok: false, error: "That file doesn't look like a backup — it has no format version." };
+    return { ok: false, error: "That file doesn't look like a backup. It has no format version." };
   }
 
   // Refusing a newer file is the whole point of carrying a version: a future

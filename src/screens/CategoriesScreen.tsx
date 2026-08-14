@@ -61,7 +61,7 @@ export function CategoriesScreen() {
         <EmptyState
           icon="folder-open-outline"
           title="No categories yet"
-          subtitle="Group tasks by the part of life they belong to — work, health, errands — and give each one its own visibility schedule"
+          subtitle="Group tasks by the part of life they belong to (work, health, errands) and give each one its own visibility schedule"
           actionLabel="New category"
           onAction={() => setQuickAddVisible(true)}
           bottomOffset={tabBarHeight}

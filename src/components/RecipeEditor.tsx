@@ -339,7 +339,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           icon="restaurant-outline"
           label="Yield"
           value={yieldOpen ? undefined : (recipeYield.trim() || undefined)}
-          hint="What it makes, when a serving count isn't the right unit — “3 cups”, “2 dozen cookies”, “1 loaf”."
+          hint="What it makes, when a serving count isn't the right unit, e.g. “3 cups”, “2 dozen cookies”, “1 loaf”."
           expanded={yieldOpen}
           onPress={() => { animateLayout(); setYieldOpen(v => !v); }}
           onClear={recipeYield.trim() ? () => { setRecipeYieldDraft(''); setYieldOpen(false); } : undefined}
@@ -423,7 +423,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         <CollapsibleField
           label="Tags"
           summary={tags.length > 0 ? tags.join(', ') : undefined}
-          hint="Free-form labels — “weeknight”, “vegetarian”, “thai”. Filter the recipe box by them, and combine two to narrow it."
+          hint="Free-form labels, like “weeknight”, “vegetarian”, “thai”. Filter the recipe box by them, and combine two to narrow it."
           expanded={tagsOpen}
           onToggle={() => setTagsOpen(v => !v)}
         >
@@ -486,7 +486,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           icon="alarm-outline"
           label="Prep time"
           value={prepOpen ? undefined : (prepMinutes !== null ? formatDuration(prepMinutes) : undefined)}
-          hint="Chopping, marinating, mise en place — before the cook clock starts. Its own timer on the recipe page, independent of the cook timer."
+          hint="Chopping, marinating, mise en place, all before the cook clock starts. Its own timer on the recipe page, independent of the cook timer."
           expanded={prepOpen}
           onPress={() => { animateLayout(); setPrepOpen(v => !v); }}
           onClear={prepMinutes !== null ? () => { setPrepMinutesDraft(null); setPrepOpen(false); } : undefined}
@@ -510,7 +510,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           icon="time-outline"
           label="Cook time"
           value={durationOpen ? undefined : (estimatedMinutes !== null ? formatDuration(estimatedMinutes) : undefined)}
-          hint="How long this takes once the cook clock starts — doubles as the cook timer's countdown on the recipe page."
+          hint="How long this takes once the cook clock starts. Doubles as the cook timer's countdown on the recipe page."
           expanded={durationOpen}
           onPress={() => { animateLayout(); setDurationOpen(v => !v); }}
           onClear={estimatedMinutes !== null ? () => { setEstimatedMinutesDraft(null); setDurationOpen(false); } : undefined}
@@ -542,7 +542,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           icon="person-outline"
           label="Author"
           value={authorOpen ? undefined : (author.trim() || undefined)}
-          hint="Who it's from — a person, not a publication."
+          hint="Who it's from: a person, not a publication."
           expanded={authorOpen}
           onPress={() => { animateLayout(); setAuthorOpen(v => !v); }}
           onClear={author.trim() ? () => { setAuthorDraft(''); setAuthorOpen(false); } : undefined}
@@ -580,7 +580,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           icon="newspaper-outline"
           label="Source"
           value={sourceOpen ? undefined : (source.trim() || undefined)}
-          hint="Where it's from — a site, a magazine, a cookbook."
+          hint="Where it's from: a site, a magazine, a cookbook."
           expanded={sourceOpen}
           onPress={() => { animateLayout(); setSourceOpen(v => !v); }}
           onClear={source.trim() ? () => { setSourceDraft(''); setSourceOpen(false); } : undefined}

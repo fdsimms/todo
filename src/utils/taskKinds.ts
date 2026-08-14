@@ -33,7 +33,7 @@ export const TASK_KIND_META: {
   /** What picking it does, in one line. See `typeSummary` for the set-up version. */
   hint: string;
 }[] = [
-  { key: 'task', label: 'Standard', icon: 'checkbox-outline', hint: 'An ordinary task — check it off once.' },
+  { key: 'task', label: 'Standard', icon: 'checkbox-outline', hint: 'An ordinary task. Check it off once.' },
   { key: 'timed', label: 'Timed', icon: 'timer-outline', hint: 'Counts down a set time once you start it.' },
   { key: 'target', label: 'Daily target', icon: 'speedometer-outline', hint: 'Log it several times a day.' },
   { key: 'chain', label: 'Chain', icon: 'git-commit-outline', hint: 'Steps through a list one at a time.' },
@@ -186,8 +186,8 @@ export function typeSummary(type: TaskKind, v: TypeValues): string | null {
         : 'Log it several times a day. Repeats daily, and only shows up when you fall behind.';
     case 'chain':
       return v.chainItems.length > 0
-        ? `${v.chainItems.length} step${v.chainItems.length === 1 ? '' : 's'}, one per completion — finishing one reveals the next.`
-        : 'Steps through a list one at a time — finishing one reveals the next.';
+        ? `${v.chainItems.length} step${v.chainItems.length === 1 ? '' : 's'}, one per completion. Finishing one reveals the next.`
+        : 'Steps through a list one at a time. Finishing one reveals the next.';
   }
 }
 

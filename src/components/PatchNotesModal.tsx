@@ -222,7 +222,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
               maxToRenderPerBatch={16}
               initialNumToRender={16}
               removeClippedSubviews
-              ListEmptyComponent={<Text style={styles.emptyText}>All caught up — nothing left to review.</Text>}
+              ListEmptyComponent={<Text style={styles.emptyText}>All caught up. Nothing left to review.</Text>}
             />
           </View>
 

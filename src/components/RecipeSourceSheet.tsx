@@ -108,7 +108,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
             </View>
             <View style={styles.rowInfo}>
               <Text style={styles.rowName}>Import a new recipe</Text>
-              <Text style={styles.rowHint}>Paste text or a photo — not saved to your recipe box</Text>
+              <Text style={styles.rowHint}>Paste text or a photo. Not saved to your recipe box</Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>

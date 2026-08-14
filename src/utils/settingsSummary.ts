@@ -100,7 +100,7 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
       s.calendarReadEnabled && s.calendarIds.length > 0 && (
         s.calendarIds.length === 1 ? 'Reading 1 calendar' : `Reading ${s.calendarIds.length} calendars`
       ),
-    ) || 'Off — say “Hey Siri, remind me to…”',
+    ) || 'Off. Say “Hey Siri, remind me to…”',
 
     tasksProjects: line(
       s.vacationMode && 'Vacation on',

@@ -125,7 +125,7 @@ describe('settingsSummaries', () => {
     // Reading the flag alone would advertise an import that isn't running.
     const off = summarise({ groceryImportEnabled: true, kitchenEnabled: false });
     expect(off.capture).not.toContain('Groceries');
-    expect(off.capture).toBe('Off — say “Hey Siri, remind me to…”');
+    expect(off.capture).toBe('Off. Say “Hey Siri, remind me to…”');
   });
 
   it('leaves the Inbox half of the capture line alone', () => {
@@ -148,6 +148,6 @@ describe('settingsSummaries', () => {
     // and claiming a read that isn't happening is the failure to avoid.
     const none = summarise({ calendarReadEnabled: true, calendarIds: [] });
     expect(none.capture).not.toContain('Reading');
-    expect(none.capture).toBe('Off — say “Hey Siri, remind me to…”');
+    expect(none.capture).toBe('Off. Say “Hey Siri, remind me to…”');
   });
 });

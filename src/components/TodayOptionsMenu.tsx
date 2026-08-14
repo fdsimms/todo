@@ -106,7 +106,7 @@ export function TodayOptionsMenu({
                   <Text style={[styles.optionLabel, styles.optionLabelActive]}>Lighten today</Text>
                   <Text style={styles.optionHint}>
                     {plannedLabel
-                      ? `${plannedLabel} planned — move some of it to a better day`
+                      ? `${plannedLabel} planned. Move some of it to a better day`
                       : 'Move some of today to a better day'}
                   </Text>
                 </View>
@@ -136,7 +136,7 @@ export function TodayOptionsMenu({
               </Text>
               <Text style={styles.optionHint}>
                 {quietProjectCount > 0
-                  ? `${quietProjectCount} project${quietProjectCount === 1 ? '' : 's'} gone quiet — bring something in`
+                  ? `${quietProjectCount} project${quietProjectCount === 1 ? '' : 's'} gone quiet. Bring something in`
                   : 'Bring the next thing from a quiet project into today'}
               </Text>
             </View>

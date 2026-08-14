@@ -167,7 +167,7 @@ export function TagsScreen() {
             <EmptyState
               icon="pricetag"
               title="No tags yet"
-              subtitle="Tags cut across categories — one task can carry as many as you like"
+              subtitle="Tags cut across categories. One task can carry as many as you like"
               actionLabel="New tag"
               onAction={() => setQuickAddVisible(true)}
               bottomOffset={tabBarHeight}

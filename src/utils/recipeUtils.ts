@@ -488,7 +488,7 @@ export function describeAttribution(recipe: Recipe): string | null {
   const sourceLabel = recipe.source && recipe.sourceType === 'cookbook' && recipe.sourcePage
     ? `${recipe.source}, p. ${recipe.sourcePage}`
     : recipe.source;
-  if (recipe.author && sourceLabel) return `by ${recipe.author} — ${sourceLabel}`;
+  if (recipe.author && sourceLabel) return `by ${recipe.author}, ${sourceLabel}`;
   if (recipe.author) return `by ${recipe.author}`;
   if (sourceLabel) return sourceLabel;
   return recipe.sourceName || null;

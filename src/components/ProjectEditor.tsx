@@ -269,7 +269,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         />
       </View>
       <Text style={styles.sectionFooter}>
-        Optional. If the target date passes before the project's done, nothing happens automatically — it's just flagged so you can decide what to do.
+        Optional. If the target date passes before the project's done, nothing happens automatically. It's just flagged so you can decide what to do.
       </Text>
 
       <View style={[styles.card, { marginTop: spacing.lg }]}>
@@ -287,7 +287,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <Text style={styles.optionHint}>
               {nudgeOptIn
                 ? 'Can appear in the gone-quiet nudge and "Pull from projects"'
-                : 'Never appears in the gone-quiet nudge or "Pull from projects" — off by default for a list you\'re not scheduling from'}
+                : 'Never appears in the gone-quiet nudge or "Pull from projects", off by default for a list you\'re not scheduling from'}
             </Text>
           </View>
           <View style={[styles.toggle, nudgeOptIn && styles.toggleOn]}>
@@ -307,7 +307,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <CollapsibleField
               label="Nudge me"
               summary={describeCadence(nudgeCadenceDays)}
-              hint="How long this project can sit with nothing scheduled before it offers you the next thing. Take it to zero for Never."
+              hint="How long a project can sit with nothing scheduled before the gone-quiet nudge picks it up. Take it to zero for Never."
               expanded={cadenceOpen}
               onToggle={() => setCadenceOpen(v => !v)}
             >
@@ -390,7 +390,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <Text style={styles.optionLabel}>Do these in order</Text>
             <Text style={styles.optionHint}>
               {sequential
-                ? 'Only the top task is open — the rest unlock as you finish'
+                ? 'Only the top task is open. The rest unlock as you finish'
                 : 'Any task in this project can be done whenever'}
             </Text>
           </View>

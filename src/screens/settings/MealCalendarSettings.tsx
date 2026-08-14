@@ -114,7 +114,7 @@ export function MealCalendarSettings() {
   return (
     <SettingsSection
       label="Meals on your calendar"
-      footer="Adds an all-day event for each planned meal to the calendar you pick here, named for its slot — “Dinner: Lemon garlic salmon”. Meals planned from now on, not the ones already in the plan. The meal plan is always the one that's right; moving or deleting the event on the device doesn't change it."
+      footer="Adds an all-day event for each planned meal to the calendar you pick here, named for its slot, e.g. “Dinner: Lemon garlic salmon”. Meals planned from now on, not the ones already in the plan. The meal plan is always the one that's right; moving or deleting the event on the device doesn't change it."
     >
       <SettingsRow
         icon="calendar-outline"
@@ -122,7 +122,7 @@ export function MealCalendarSettings() {
         label="Write meals to"
         hint={summary
           ? `Adds an all-day event to “${summary}”`
-          : missing ? undefined : 'Off — no meal is added to any calendar'}
+          : missing ? undefined : 'Off. No meal is added to any calendar'}
         value={summary ?? undefined}
         expanded={pickerOpen}
         onPress={() => { if (permission === 'granted') togglePicker(); else onOpen(); }}

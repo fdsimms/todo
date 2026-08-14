@@ -382,7 +382,7 @@ export async function scheduleTimerAlarm(task: Task): Promise<void> {
     identifier: timerAlarmId(task.id),
     content: {
       title: 'Time’s up',
-      body: `${displayTitleFor(task) || 'Your task'} — ready to complete`,
+      body: `${displayTitleFor(task) || 'Your task'} is ready to complete`,
       data: { taskId: task.id },
       sound: true,
     },

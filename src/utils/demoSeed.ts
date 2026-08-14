@@ -75,7 +75,7 @@ export function seedDemoData(): void {
   // --- Today ---------------------------------------------------------------
   addTask({
     title: 'Send the Q3 roadmap to Priya',
-    notes: 'Draft is in the shared folder — just needs the headcount slide.',
+    notes: 'Draft is in the shared folder, just needs the headcount slide.',
     category: 'Work',
     priority: 4,
     effort: 2,
@@ -107,7 +107,7 @@ export function seedDemoData(): void {
 
   const meditate = addTask({
     title: 'Ten minutes of quiet',
-    notes: 'Streaks survive a vacation — this one is paused while Vacation mode is on.',
+    notes: 'Streaks survive a vacation. This one is paused while Vacation mode is on.',
     category: 'Health',
     recurrenceType: 'daily',
     vacationPause: true,
@@ -165,7 +165,7 @@ export function seedDemoData(): void {
 
   addTask({
     title: 'Swing by the farmers market',
-    notes: 'Only worth doing between 8 and 1 — after that the good stalls are gone.',
+    notes: 'Only worth doing between 8 and 1, after that the good stalls are gone.',
     category: 'Errands',
     dueDate: today.toISOString(),
     windowStart: '08:00',
@@ -301,7 +301,7 @@ export function seedDemoData(): void {
   });
 
   addTask({
-    title: 'Dentist — 2:40pm',
+    title: 'Dentist at 2:40pm',
     category: 'Health',
     dueDate: addDays(today, 5).toISOString(),
     reminderTime: setHours(addDays(today, 5), 13).toISOString(),
@@ -326,7 +326,7 @@ export function seedDemoData(): void {
   // --- Unscheduled (organized, but no date) --------------------------------
   addTask({
     title: 'Deep clean the garage',
-    notes: 'Effort is a size, not a time estimate — this one is an XL.',
+    notes: 'Effort is a size, not a time estimate. This one is an XL.',
     category: 'Home',
     effort: 6,
     priority: 1,

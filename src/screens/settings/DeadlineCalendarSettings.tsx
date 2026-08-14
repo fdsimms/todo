@@ -116,7 +116,7 @@ export function DeadlineCalendarSettings() {
   return (
     <SettingsSection
       label="Deadlines on your calendar"
-      footer="Adds an all-day event for a task's deadline to the calendar you pick here — only for tasks with “Add to calendar” turned on in their own editor, never every deadline in the app. The task's own deadline is always the one that's right; moving or deleting the event on the device doesn't change it."
+      footer="Adds an all-day event for a task's deadline to the calendar you pick here, only for tasks with “Add to calendar” turned on in their own editor, never every deadline in the app. The task's own deadline is always the one that's right; moving or deleting the event on the device doesn't change it."
     >
       <SettingsRow
         icon="calendar-outline"
@@ -124,7 +124,7 @@ export function DeadlineCalendarSettings() {
         label="Write deadlines to"
         hint={summary
           ? `Adds an all-day event to “${summary}”`
-          : missing ? undefined : 'Off — no deadline is added to any calendar'}
+          : missing ? undefined : 'Off. No deadline is added to any calendar'}
         value={summary ?? undefined}
         expanded={pickerOpen}
         onPress={() => { if (permission === 'granted') togglePicker(); else onOpen(); }}

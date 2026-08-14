@@ -140,7 +140,7 @@ export function NotificationSettings() {
     <>
     <SettingsSection
       label="Notifications"
-      footer="Reminders and the agenda are delivered by the system, so they need its permission. The agenda counts what's due, carried over from earlier days, and deadlined for that day. Nothing is sent on a day with none of those — an empty summary isn't worth a notification. It's rebuilt each time you open the app, so leaving the app closed for days pauses it rather than sending a stale count."
+      footer="Reminders and the agenda are delivered by the system, so they need its permission. The agenda counts what's due, carried over from earlier days, and deadlined for that day. Nothing is sent on a day with none of those. An empty summary isn't worth a notification. It's rebuilt each time you open the app, so leaving the app closed for days pauses it rather than sending a stale count."
     >
       {/* Nothing surfaced the permission before, so a declined prompt
           just looked like reminders were broken. */}
@@ -153,9 +153,9 @@ export function NotificationSettings() {
         }
         label="Reminders"
         hint={
-          notifPermission === 'granted' ? 'Allowed — reminders will arrive'
+          notifPermission === 'granted' ? 'Allowed. Reminders will arrive'
           : notifPermission === 'denied' ? 'Blocked. Reminders you set will never arrive until you turn them back on for this app.'
-          : notifPermission === 'undetermined' ? 'Not enabled yet — reminders you set won’t arrive until you allow them'
+          : notifPermission === 'undetermined' ? 'Not enabled yet. Reminders you set won’t arrive until you allow them'
           : notifPermission === 'unsupported' ? 'Not available on this platform'
           : 'Checking…'
         }
@@ -289,14 +289,14 @@ export function NotificationSettings() {
 
     <SettingsSection
         label="Default reminder"
-        footer="Only kicks in when a task is given an actual start time (its time window), not just a due date or a morning/afternoon/evening slot — a reminder before the day even resets isn't useful. Never overrides a reminder you set or cleared yourself."
+        footer="Only kicks in when a task is given an actual start time (its time window), not just a due date or a morning/afternoon/evening slot. A reminder before the day even resets isn't useful. Never overrides a reminder you set or cleared yourself."
       >
         <SettingsRow
           icon="alarm-outline"
           iconColor={defaultReminderLeadMinutes === null ? undefined : colors.accent}
           label="Remind me before"
           hint={defaultReminderLeadMinutes === null
-            ? 'Off — set Remind Me by hand on each task'
+            ? 'Off. Set Remind Me by hand on each task'
             : `New start times get a reminder ${DEFAULT_REMINDER_LEAD_OPTIONS.find(o => o.value === defaultReminderLeadMinutes)?.label.toLowerCase() ?? ''} early`}
           tight
         />

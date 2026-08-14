@@ -535,29 +535,29 @@ export function describePullEmpty(state: PullEmptyState): string {
 
   switch (state.reason) {
     case 'vacation':
-      return 'Vacation mode is on — project nudges are paused until you turn it off.';
+      return 'Vacation mode is on. Project nudges are paused until you turn it off.';
     case 'no-projects':
       return 'No projects yet. Tasks filed under one can be pulled in from here.';
     case 'nudge-excluded':
       return count === total
         ? 'No project is included in nudges yet. Open a project and turn on “Include in nudges” to have it show up here.'
-        : `${projects(count)} of ${total} aren't included in nudges — turn on “Include in nudges” on one to have it show up here.${rest}`;
+        : `${projects(count)} of ${total} aren't included in nudges. Turn on “Include in nudges” on one to have it show up here.${rest}`;
     case 'cadence-off':
       return count === total
         ? 'No project is set to be nudged yet. Open a project and set “Nudge me” to have it show up here.'
-        : `${projects(count)} of ${total} aren't set to be nudged — set “Nudge me” on one to include it.${rest}`;
+        : `${projects(count)} of ${total} aren't set to be nudged. Set “Nudge me” on one to include it.${rest}`;
     case 'too-soon':
       return state.daysUntilQuiet !== undefined
-        ? `Nothing has been quiet long enough yet — the next one is due in ${state.daysUntilQuiet} day${state.daysUntilQuiet === 1 ? '' : 's'}.`
+        ? `Nothing has been quiet long enough yet. The next one is due in ${state.daysUntilQuiet} day${state.daysUntilQuiet === 1 ? '' : 's'}.`
         : 'Nothing has been quiet long enough yet.';
     case 'declined-today':
       // Only reachable from a 'nudge'-mode diagnosis — the sheet asks in 'ask'
       // mode, where a change of mind is honoured (see classifyProject).
       return count === total
-        ? 'You cleared what was scheduled today — nothing new until tomorrow.'
+        ? 'You cleared what was scheduled today. Nothing new until tomorrow.'
         : `${projects(count)} of ${total} had today's suggestion cleared.${rest}`;
     case 'auto-scheduled':
-      return `${count === 1 ? 'One quiet project is' : `${projects(count)} are quiet and`} on auto-schedule — the next task gets dated without you.${rest}`;
+      return `${count === 1 ? 'One quiet project is' : `${projects(count)} are quiet and`} on auto-schedule. The next task gets dated without you.${rest}`;
     case 'has-schedule':
       return count === total
         ? 'Every project has something scheduled.'
