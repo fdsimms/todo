@@ -224,7 +224,7 @@ export function PantrySheet({ visible, onClose }: Props) {
               subtitle={
                 typed
                   ? 'Nothing you probably have goes by that name. Add it above to say you do.'
-                  : 'Finish a shop and what you bought turns up here. Type a name above to add something you already have.'
+                  : 'Finish a shopping trip and what you bought turns up here. Type a name above to add something you already have.'
               }
             />
           }

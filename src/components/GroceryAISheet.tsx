@@ -232,7 +232,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       return (
         <ScrollView contentContainerStyle={styles.pasteWrap} keyboardShouldPersistTaps="handled">
           <RecipeSourcePicker
-            intro="Paste a recipe or photograph the page. You’ll get back what to buy, named the way a shop labels it rather than the way the recipe chops it."
+            intro="Paste a recipe or photograph the page. You’ll get back what to buy, named the way a store labels it rather than the way the recipe chops it."
             mode={recipeInput.mode}
             onChangeMode={recipeInput.setMode}
             text={recipeInput.text}

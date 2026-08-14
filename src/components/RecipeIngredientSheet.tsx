@@ -420,7 +420,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           <Text style={styles.hint}>
             Every line is needed unless it's one of a choice. Two lines in the same group —
             “Serrano” and “Jalapeño” both under “Pepper” — mean you buy one of them, picked
-            when you add the recipe to your list or left open until you're at the shop.
+            when you add the recipe to your list or left open until you're at the store.
           </Text>
         )}
       </View>
