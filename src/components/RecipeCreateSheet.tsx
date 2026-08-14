@@ -32,6 +32,7 @@ import {
 } from '../services/aiSuggestions';
 import { normalizeIngredient, cleanRecipeName, formatServingsRange } from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
+import { aisleForName } from '../utils/groceryAisles';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
@@ -69,6 +70,7 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const setServings = useRecipeStore(s => s.setServings);
@@ -135,7 +137,18 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
 
   const editIngredient = (index: number, patch: Partial<Pick<RecipeGroceryItem, 'name' | 'quantity'>>) => {
     haptics.success();
-    setIngredients(prev => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+    setIngredients(prev => prev.map((row, i) => {
+      if (i !== index) return row;
+      const next = { ...row, ...patch };
+      // A renamed line is renamed for filing purposes too — "chicken breast"
+      // filed under Meat is wrong once the row says "tofu". Same precedence
+      // RecipeIngredientSheet's own aisle picker defaults to: the user's own
+      // filing first, then the offline lexicon, then Other.
+      if (patch.name !== undefined) {
+        next.aisle = rememberedAisleFor(patch.name) ?? aisleForName(patch.name) ?? 'Other';
+      }
+      return next;
+    }));
   };
 
   // Checked as they type rather than on tap, so the way out ("Open it", or just
