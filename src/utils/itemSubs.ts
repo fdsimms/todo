@@ -223,3 +223,24 @@ export function describeSubstitutesOnHand(subs: readonly Substitute[]): string |
   }
   return `you have ${subs.length} substitutes`;
 }
+
+/**
+ * What the finish-shopping sheet's "got something else instead?" follow-up is
+ * allowed to write — a rule restated here so it's covered by a test rather
+ * than trusted to the sheet.
+ *
+ * `substituteFor` maps an item id to what the trip answered for it. Only a
+ * row that is **both** ticked unavailable **and** answered survives: an
+ * unticked row's answer (stale from before it was un-ticked) is dropped, and
+ * a row with no answer is dropped too — skipping the follow-up is silent, the
+ * same rule the unavailable ticks themselves follow.
+ */
+export function resolveShoppingSubstitutes(
+  unavailableIds: readonly string[],
+  substituteFor: Readonly<Record<string, string>>
+): Array<{ itemId: string; subItemId: string }> {
+  const unavailable = new Set(unavailableIds);
+  return Object.entries(substituteFor)
+    .filter(([itemId, subItemId]) => unavailable.has(itemId) && !!subItemId)
+    .map(([itemId, subItemId]) => ({ itemId, subItemId }));
+}

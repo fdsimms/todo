@@ -21,6 +21,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { PillGroup } from './PillGroup';
 import { haptics } from '../utils/haptics';
 import { lastPriceFor as lastPriceForItem, parsePriceInput, priceToInput } from '../utils/groceryPrice';
+import { resolveShoppingSubstitutes } from '../utils/itemSubs';
 import { SHOP_NAME_MAX_LENGTH } from '../types';
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
@@ -44,7 +45,8 @@ interface Props {
   onFinished: (
     shopId: string | null,
     unavailableIds: string[],
-    priceById: Record<string, number>
+    priceById: Record<string, number>,
+    substitutes: Array<{ itemId: string; subItemId: string }>
   ) => void;
 }
 
@@ -75,6 +77,18 @@ interface Props {
  * only exists once a store is named (a claim needs somebody to be about), and
  * clearing that choice clears the ticks with it rather than quietly refiling
  * them against the next store. Finish works untouched, exactly as before.
+ *
+ * **A row just ticked unavailable can name what came home instead.** This is
+ * the only moment the app can learn a substitute from what actually happened
+ * rather than from a declaration — everywhere else in that system waits for
+ * the user to go and say so in the item sheet. It unfolds under the row
+ * itself rather than opening anything, is restricted to what the trip
+ * actually bought (`purchased`, the only honest set), and follows the same
+ * silence rule as the tick above it: nothing is picked by default, and
+ * skipping it writes nothing. Changing the store clears these answers along
+ * with the ticks — "got margarine instead" is an answer about Safeway's
+ * shelves, not Costco's. `resolveShoppingSubstitutes` is what turns the
+ * sheet's per-row answers into the pairs actually worth writing.
  *
  * **Prices are the third question and follow the same rules**, with one
  * difference: they're asked whether or not a store is named. "They didn't have
@@ -110,6 +124,10 @@ export function FinishShoppingSheet({
   // Leftovers the store didn't have. Ids rather than an index set, so a list
   // that changes underneath the sheet can't shift the answers onto other rows.
   const [unavailable, setUnavailable] = useState<string[]>([]);
+  // What came home instead, keyed by the unavailable item's id — a purchased
+  // item's id, or absent when the follow-up was left alone. Resolved down to
+  // what's actually writable at Finish time by resolveShoppingSubstitutes.
+  const [substituteFor, setSubstituteFor] = useState<Record<string, string>>({});
   // Prices exactly as typed, keyed by item id — parsed on Finish rather than on
   // every keystroke, so a half-typed "4." is a field mid-edit and not a
   // rejected value flashing an error at someone holding a receipt.
@@ -142,9 +160,11 @@ export function FinishShoppingSheet({
 
   // A "they didn't have it" is about one named store, so changing the store
   // throws the answers away rather than refiling them. Includes the reset
-  // above, which is the same rule at the start of a trip.
+  // above, which is the same rule at the start of a trip. The substitute
+  // follow-up is about the same store, so it goes with them.
   useEffect(() => {
     setUnavailable([]);
+    setSubstituteFor({});
   }, [selected]);
 
   /** Returning the message rejects the name and holds the field open. */
@@ -164,13 +184,37 @@ export function FinishShoppingSheet({
       const minor = parsePriceInput(text);
       if (minor !== null) priceById[id] = minor;
     }
-    onFinished(selected, selected ? unavailable : [], priceById);
+    onFinished(
+      selected,
+      selected ? unavailable : [],
+      priceById,
+      selected ? resolveShoppingSubstitutes(unavailable, substituteFor) : []
+    );
   };
 
   const selectedShop = selected ? shops.find(s => s.id === selected) ?? null : null;
   const toggleUnavailable = (id: string) => {
     haptics.tap();
     setUnavailable(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+    // An un-ticked row isn't unavailable any more, so whatever it was answered
+    // with stops meaning anything — drop it rather than leave it to reappear
+    // if the row gets ticked again later in the same sheet.
+    setSubstituteFor(prev => {
+      if (!(id in prev)) return prev;
+      const { [id]: _, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  // A single pick per row, not a multi-select: tapping the already-chosen
+  // item clears the answer, same toggle shape the store pills use.
+  const toggleSubstitute = (itemId: string, subItemId: string) => {
+    haptics.tap();
+    setSubstituteFor(prev =>
+      prev[itemId] === subItemId
+        ? Object.fromEntries(Object.entries(prev).filter(([id]) => id !== itemId))
+        : { ...prev, [itemId]: subItemId }
+    );
   };
 
   const countLabel = `${checkedCount} ${checkedCount === 1 ? 'item comes' : 'items come'} off the list`;
@@ -268,25 +312,47 @@ export function FinishShoppingSheet({
               <View style={styles.card}>
                 {leftover.map((row, i) => {
                   const ticked = unavailable.includes(row.id);
+                  const chosen = substituteFor[row.id] ?? null;
                   return (
-                    <TouchableOpacity
-                      key={row.id}
-                      style={[styles.row, i > 0 && styles.rowDivided]}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => toggleUnavailable(row.id)}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: ticked }}
-                      accessibilityLabel={`${row.name} — ${selectedShop.name} didn’t have it`}
-                    >
-                      <View style={[styles.check, ticked && styles.checkOn]}>
-                        {ticked && (
-                          <Ionicons name="close" size={iconSize.sm} color={colors.onAccent} />
-                        )}
-                      </View>
-                      <Text style={styles.rowTitle} numberOfLines={1}>
-                        {row.name}
-                      </Text>
-                    </TouchableOpacity>
+                    <View key={row.id}>
+                      <TouchableOpacity
+                        style={[styles.row, i > 0 && styles.rowDivided]}
+                        activeOpacity={interaction.activeOpacity}
+                        onPress={() => toggleUnavailable(row.id)}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: ticked }}
+                        accessibilityLabel={`${row.name} — ${selectedShop.name} didn’t have it`}
+                      >
+                        <View style={[styles.check, ticked && styles.checkOn]}>
+                          {ticked && (
+                            <Ionicons name="close" size={iconSize.sm} color={colors.onAccent} />
+                          )}
+                        </View>
+                        <Text style={styles.rowTitle} numberOfLines={1}>
+                          {row.name}
+                        </Text>
+                      </TouchableOpacity>
+
+                      {/* Optional, and only once there's something it could
+                          possibly name — a trip that bought nothing has
+                          nothing to offer here. */}
+                      {ticked && purchased.length > 0 && (
+                        <View style={styles.substituteWrap}>
+                          <Text style={styles.substituteLabel}>Got something else instead?</Text>
+                          <PillGroup
+                            noun="item"
+                            surface="card"
+                            limit={6}
+                            options={purchased.map(p => ({
+                              key: p.id,
+                              label: p.name,
+                              selected: chosen === p.id,
+                              onPress: () => toggleSubstitute(row.id, p.id),
+                            }))}
+                          />
+                        </View>
+                      )}
+                    </View>
                   );
                 })}
               </View>
@@ -397,6 +463,14 @@ function makeStyles(colors: Colors) {
     },
     rowDivided: { borderTopWidth: border.hairline, borderTopColor: colors.separator },
     rowTitle: { flex: 1, color: colors.text, fontSize: font.md },
+    // Sits under its row rather than opening anything — no divider of its own,
+    // so it reads as part of the row it's answering for, not a new one.
+    substituteWrap: {
+      paddingHorizontal: spacing.md,
+      paddingBottom: spacing.md,
+      gap: spacing.sm,
+    },
+    substituteLabel: { fontSize: font.sm, color: colors.textTertiary },
     priceName: { flex: 1, gap: 2 },
     rowQuantity: { color: colors.textTertiary, fontSize: font.sm },
     // A bordered box rather than a bare input: it's the only thing on this
