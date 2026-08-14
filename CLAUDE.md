@@ -37,6 +37,16 @@ offers you a way out" should instead be something like "Reschedule threshold" /
 "Show the suggestion after moving a task this many times." This applies to settings rows,
 empty states, hints, alerts, and patch notes alike.
 
+**American English, not British.** Britishisms had crept into copy across the app — "tick"/
+"ticked" instead of "check off"/"checked", "trolley" instead of "cart", "Practise" instead of
+"Practice", "autumn" instead of "fall", "fortnight" instead of "two weeks" — cleaned up in
+#1635. Anything a user sees (UI text, hints, accessibility labels, alerts, patch notes,
+demo-mode content) should read in American English; if you're not sure which side of the
+Atlantic a word or spelling falls on, check before using it. This is scoped to user-facing
+text only — the codebase's comments and test descriptions have long used British spelling and
+phrasing (colour, behaviour, labelled, organised, and so on) as their own established internal
+style, and that's a separate, deliberate thing; don't go rewrite comments to "fix" this.
+
 ## GitHub issue labels
 
 When creating an issue, apply exactly four labels from these fixed sets (verbatim strings — don't
