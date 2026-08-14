@@ -614,12 +614,24 @@ export function TodayScreen() {
   // sub-view, even if the screen was left showing Later (e.g. switched to
   // Search, then back). tabPress fires whether or not the tab was already
   // focused, unlike useFocusEffect.
+  //
+  // Pressing it while Today is already the tab *and* the sub-view means there
+  // is nowhere left to go, so it scrolls the list back to the top instead —
+  // the standard second-tap-on-the-active-tab gesture. The other sub-views
+  // need no equivalent: each renders its own list, so switching back to Today
+  // mounts that list fresh at offset 0. Deliberately gated on isFocused() —
+  // arriving from another tab is a plain switch, and yanking the list the user
+  // left mid-scroll back to the top isn't part of that.
   useEffect(() => {
     const unsubscribe = navigation.addListener('tabPress' as never, () => {
+      if (navigation.isFocused() && viewMode === 'today') {
+        todayRowScroller.current?.scrollToTop();
+        return;
+      }
       setViewMode('today');
     });
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, viewMode]);
 
   // Tapping the Today widget navigates here programmatically (resetToToday()
   // in src/navigation/navigationRef.ts), which doesn't fire tabPress. The param
