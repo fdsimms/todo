@@ -23,6 +23,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
+import { PillGroup } from './PillGroup';
 import { useShallow } from 'zustand/react/shallow';
 import type { Priority, Effort, TimeOfDay, RecurrenceType, Task, ChainItem } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
@@ -1578,30 +1579,28 @@ export function QuickAddModal({
 
           {activePanel === 'category' && (
             <View style={styles.panel}>
-              <View style={styles.presetRow}>
-                <TouchableOpacity
-                  style={[styles.presetChip, category === null && styles.presetChipActive]}
-                  onPress={() => setCategory(null)}
-                  activeOpacity={interaction.activeOpacity}
-                >
-                  <Text style={[styles.presetChipText, category === null && styles.presetChipTextActive]}>None</Text>
-                </TouchableOpacity>
-                {allCategories.map(cat => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[styles.presetChip, category === cat && styles.presetChipActive]}
-                    onPress={() => {
+              <PillGroup
+                noun="category"
+                surface="page"
+                options={[
+                  {
+                    key: '__none__',
+                    label: 'None',
+                    selected: category === null,
+                    pinned: true,
+                    onPress: () => setCategory(null),
+                  },
+                  ...allCategories.map(cat => ({
+                    key: cat,
+                    label: categoryLabel(cat, categories),
+                    selected: category === cat,
+                    onPress: () => {
                       haptics.tap();
                       setCategory(prev => prev === cat ? null : cat);
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Text style={[styles.presetChipText, category === cat && styles.presetChipTextActive]}>
-                      {categoryLabel(cat, categories)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+                    },
+                  })),
+                ]}
+              />
             </View>
           )}
 
