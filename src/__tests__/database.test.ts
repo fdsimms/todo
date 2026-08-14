@@ -55,6 +55,9 @@ import {
   dbDeleteGroceryItem,
   dbFinishGroceryShopping,
   dbGetAllItemShopLinks,
+  dbGetAllItemSubLinks,
+  dbSetItemSubLink,
+  dbDeleteItemSubLink,
   dbClearGroceryList,
   dbGetGroceryAisleOrder,
   dbGetGroceryAisleOverrides,
@@ -1833,6 +1836,59 @@ describe('grocery items', () => {
     dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
     dbDeleteGroceryItem('g1');
     expect(dbGetAllGroceryItems()).toEqual([]);
+  });
+
+  describe('substitute links', () => {
+    const link = (itemId: string, subItemId: string, note: string | null = null) => ({
+      itemId,
+      subItemId,
+      note,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    beforeEach(() => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Butter', nameKey: 'butter' }));
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Margarine', nameKey: 'margarine' }));
+    });
+
+    it('round-trips a link and its note', () => {
+      dbSetItemSubLink(link('g1', 'g2', 'Not for baking'));
+      expect(dbGetAllItemSubLinks()).toEqual([
+        { itemId: 'g1', subItemId: 'g2', note: 'Not for baking', createdAt: '2026-01-01T00:00:00.000Z' },
+      ]);
+    });
+
+    it('upserts the note without minting a second row or moving the stamp', () => {
+      dbSetItemSubLink(link('g1', 'g2', 'Not for baking'));
+      dbSetItemSubLink({ ...link('g1', 'g2', 'Frying only'), createdAt: '2026-09-09T00:00:00.000Z' });
+
+      const rows = dbGetAllItemSubLinks();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].note).toBe('Frying only');
+      expect(rows[0].createdAt).toBe('2026-01-01T00:00:00.000Z');
+    });
+
+    it('keeps the two directions apart', () => {
+      dbSetItemSubLink(link('g1', 'g2'));
+      dbSetItemSubLink(link('g2', 'g1'));
+      expect(dbGetAllItemSubLinks()).toHaveLength(2);
+
+      dbDeleteItemSubLink('g1', 'g2');
+      expect(dbGetAllItemSubLinks()).toEqual([expect.objectContaining({ itemId: 'g2', subItemId: 'g1' })]);
+    });
+
+    // Hand-written, because expo-sqlite has foreign keys off — ON DELETE
+    // CASCADE would silently do nothing. Both directions, since the deleted
+    // row can be either half of a pair.
+    it('cascades on item delete, from both sides', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g3', name: 'Olive oil', nameKey: 'olive oil' }));
+      dbSetItemSubLink(link('g1', 'g2'));
+      dbSetItemSubLink(link('g3', 'g2'));
+
+      dbDeleteGroceryItem('g2');
+
+      expect(dbGetAllItemSubLinks()).toEqual([]);
+    });
   });
 
   it('orders by sort_order', () => {

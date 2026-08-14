@@ -18,6 +18,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
 import { pantryEntries } from '../utils/grocerySuggest';
+import { substitutesFor } from '../utils/itemSubs';
 import { taskKindOf } from '../utils/taskKinds';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { extraTaskRule } from '../utils/extraTask';
@@ -525,6 +526,35 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(
       items.some(i => !i.onList && i.inCatalog && i.purchaseCount === 0 && !i.lastAddedAt)
     ).toBe(true);
+  });
+
+  it('seeds substitutes in both directions', () => {
+    const { items, itemSubs } = useGroceryStore.getState();
+
+    // Nothing infers one of these, so a demo with none reads as an app that
+    // hasn't got the feature — they're invisible until something is linked.
+    const butter = items.find(i => i.name === 'Butter');
+    const margarine = items.find(i => i.nameKey === 'margarine');
+    expect(butter && margarine).toBeTruthy();
+
+    const oneWay = substitutesFor(butter!.id, itemSubs, items);
+    expect(oneWay.map(s => s.item.id)).toEqual([margarine!.id]);
+    // The asymmetric case, and the caveat that stands in for a per-recipe scope.
+    expect(oneWay[0].isMutual).toBe(false);
+    expect(oneWay[0].link.note).toBeTruthy();
+    expect(substitutesFor(margarine!.id, itemSubs, items)).toEqual([]);
+
+    // ...and the symmetric one, which is two rows rather than a flag.
+    const milk = items.find(i => i.name === 'Milk')!;
+    const mutual = substitutesFor(milk.id, itemSubs, items);
+    expect(mutual).toHaveLength(1);
+    expect(mutual[0].isMutual).toBe(true);
+    expect(substitutesFor(mutual[0].item.id, itemSubs, items)[0].item.id).toBe(milk.id);
+
+    // Linking promotes both rows, so neither stand-in can be deleted by the
+    // seed's own clearList on the way past.
+    expect(margarine!.inCatalog).toBe(true);
+    expect(mutual[0].item.inCatalog).toBe(true);
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {

@@ -31,6 +31,8 @@ import { PillGroup, type PillGroupOption } from './PillGroup';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
+import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
+import { SubstituteSheet } from './SubstituteSheet';
 import {
   cheapestShopFor,
   describePriceContext,
@@ -83,7 +85,7 @@ interface Props {
    * a sheet that opens with a section unfolded for no reason is the progressive
    * disclosure these editors exist to avoid.
    */
-  initialField?: 'aisle' | 'stores' | 'pantry' | 'useBy';
+  initialField?: 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes';
 }
 
 /**
@@ -136,6 +138,8 @@ export function GroceryItemSheet({
   const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
   const clearItemUnavailable = useGroceryStore(s => s.clearItemUnavailable);
   const addShop = useGroceryStore(s => s.addShop);
+  const items = useGroceryStore(useShallow(s => s.items));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
 
   const [name, setName] = useState('');
   const [quantity, setQuantityText] = useState('');
@@ -153,9 +157,14 @@ export function GroceryItemSheet({
   // it, which is how a price is taken back.
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
   const [nameError, setNameError] = useState<string | null>(null);
+  // Which substitute sheet is up, if any: 'add' opens the picker, an item id
+  // opens that link for review. Null closes it.
+  const [subSheet, setSubSheet] = useState<'add' | string | null>(null);
   // One picker open at a time, like every other editor in the app — see the
   // progressive-disclosure note in CLAUDE.md.
-  const [openField, setOpenField] = useState<'aisle' | 'stores' | 'pantry' | 'useBy' | null>(null);
+  const [openField, setOpenField] = useState<
+    'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | null
+  >(null);
 
   useEffect(() => {
     if (visible && item) {
@@ -168,10 +177,11 @@ export function GroceryItemSheet({
       setPriceEdits({});
       setNameError(null);
       setOpenField(initialField ?? null);
+      setSubSheet(null);
     }
   }, [visible, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggleField = (field: 'aisle' | 'stores' | 'pantry' | 'useBy') =>
+  const toggleField = (field: 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes') =>
     setOpenField(current => (current === field ? null : field));
   const closeField = () => {
     animateLayout();
@@ -279,6 +289,8 @@ export function GroceryItemSheet({
   // only place in the app those claims can be seen and taken back.
   const notStocked = new Set(unavailableShopsFor(item.id, itemShops, shops).map(s => s.id));
   const summary = describeShops(item, itemShops, shops);
+  const substitutes = substitutesFor(item.id, itemSubs, items);
+  const substitutesSummary = describeSubstitutes(substitutes);
 
   // Prices: two lines, never more. What the stored number was for, and the
   // store-by-store list with the one comparison that's safe to state tagged
@@ -894,6 +906,59 @@ export function GroceryItemSheet({
                 />
               </View>
             </CollapsibleField>
+
+            <View style={styles.separator} />
+
+            {/* Rows rather than a PillGroup, unlike the three fields above. A
+                pill can only express membership, and a substitute also carries
+                a note and a direction — with pills you'd have to tap each lit
+                one to find out whether it says anything at all. A grid was
+                mocked alongside this and dropped. */}
+            <CollapsibleField
+              label="Substitutes"
+              summary={substitutesSummary ?? undefined}
+              emptySummary="None"
+              hint={`If there’s no ${item.name.toLowerCase()}, what you’d use instead. Saved on this item, so every recipe calling for it can use it.`}
+              expanded={openField === 'substitutes'}
+              onToggle={() => toggleField('substitutes')}
+            >
+              {substitutes.map((sub, i) => (
+                <TouchableOpacity
+                  key={sub.item.id}
+                  style={[styles.subRow, i > 0 && styles.subRowDivided]}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => {
+                    haptics.tap();
+                    setSubSheet(sub.item.id);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${sub.item.name}${sub.link.note ? `, ${sub.link.note}` : ''}`}
+                  accessibilityHint="Opens this substitute, where you can edit or remove it"
+                >
+                  <View style={styles.subBody}>
+                    <Text style={styles.subName} numberOfLines={1}>{sub.item.name}</Text>
+                    {/* The note and the direction share one sub-line: they're
+                        both qualifications of the name above, and two lines of
+                        tertiary grey under every row reads as a paragraph. */}
+                    {!!subCaption(sub) && (
+                      <Text style={styles.subMeta} numberOfLines={1}>{subCaption(sub)}</Text>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                </TouchableOpacity>
+              ))}
+              <InlineAction
+                label="Add substitute"
+                icon="swap-horizontal"
+                variant="neutral"
+                onPress={() => {
+                  haptics.tap();
+                  setSubSheet('add');
+                }}
+                style={styles.subAdd}
+                accessibilityLabel={`Add a substitute for ${item.name}`}
+              />
+            </CollapsibleField>
           </View>
 
           {/* The per-item half of the setting, and the only place it can be
@@ -984,8 +1049,31 @@ export function GroceryItemSheet({
           {!!summary && <Text style={styles.footnote}>{summary}.</Text>}
         </ScrollView>
       </View>
+
+      {/* Rendered inside this Modal rather than beside it, for the reason
+          PantrySheet nests this sheet: a Modal presents from the view
+          controller its React parent belongs to, so a sibling would be asking
+          the screen's controller to present a second sheet while this one is
+          already up. */}
+      <SubstituteSheet
+        visible={subSheet !== null}
+        itemId={item.id}
+        editingSubItemId={subSheet === 'add' ? null : subSheet}
+        onClose={() => setSubSheet(null)}
+      />
     </Modal>
   );
+}
+
+/**
+ * The row's sub-line: the caveat, then the direction. Both are qualifications
+ * of the name above them, and "both ways" is worth saying because the link is
+ * directional — without it there's no way to tell a pair the user ticked from
+ * one they didn't, short of opening the other item.
+ */
+function subCaption(sub: Substitute): string | null {
+  const parts = [sub.link.note, sub.isMutual ? 'both ways' : null].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : null;
 }
 
 function makeStyles(colors: Colors) {
@@ -1001,6 +1089,21 @@ function makeStyles(colors: Colors) {
       borderBottomColor: colors.separator,
     },
     headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+    subRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      paddingVertical: spacing.sm + 2,
+    },
+    // Between rows only, so the first one sits flush under the field's hint
+    // the way the pill grids in the fields above do.
+    subRowDivided: { borderTopWidth: border.hairline, borderTopColor: colors.separator },
+    subBody: { flex: 1 },
+    subName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
+    subMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    // Clears the last row, and gives the field's own bottom padding something
+    // to sit under rather than jamming the pill against the separator below.
+    subAdd: { marginTop: spacing.sm, alignSelf: 'flex-start' },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
     label: {
       fontSize: font.xs,
