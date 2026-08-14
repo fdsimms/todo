@@ -14,6 +14,11 @@ jest.mock('../utils/calendarSync', () => ({
   deleteCalendarEvent: (...args: unknown[]) => mockDelete(...args),
 }));
 
+let mockDemoActive = false;
+jest.mock('../utils/demoState', () => ({
+  isDemoModeActive: () => mockDemoActive,
+}));
+
 import { mealEventTitle, mealEventFields, syncMealEvent } from '../utils/mealCalendarSync';
 
 const BASE: MealPlanEntry = {
@@ -36,6 +41,7 @@ const entry = (overrides: Partial<MealPlanEntry> = {}): MealPlanEntry => ({ ...B
 
 beforeEach(() => {
   mockSettings = { mealCalendarId: 'cal-1' };
+  mockDemoActive = false;
   mockCreate.mockReset().mockResolvedValue('evt-new');
   mockUpdate.mockReset().mockResolvedValue(true);
   mockDelete.mockReset().mockResolvedValue(undefined);
@@ -131,5 +137,17 @@ describe('syncMealEvent', () => {
   it('returns null when the device write fails, so the next reconcile retries', async () => {
     mockCreate.mockResolvedValue(null);
     expect(await syncMealEvent(entry())).toBeNull();
+  });
+
+  it('never touches the device calendar while demo mode is active', async () => {
+    // #1629 — demo mode seeds a week of meals through the real planMeal
+    // action, and without this guard every one of them would write a real
+    // all-day event to whatever calendar the user had picked before
+    // switching demo mode on.
+    mockDemoActive = true;
+    expect(await syncMealEvent(entry({ calendarEventId: 'evt-1' }))).toBeNull();
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
   });
 });

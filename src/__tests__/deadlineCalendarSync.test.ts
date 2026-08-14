@@ -18,6 +18,11 @@ jest.mock('../utils/calendarSync', () => ({
   deleteCalendarEvent: (...args: unknown[]) => mockDeleteDeadlineEvent(...args),
 }));
 
+let mockDemoActive = false;
+jest.mock('../utils/demoState', () => ({
+  isDemoModeActive: () => mockDemoActive,
+}));
+
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 
 const BASE: Task = {
@@ -112,6 +117,7 @@ function makeTask(overrides: Partial<Task>): Task {
 beforeEach(() => {
   jest.clearAllMocks();
   mockSettings = { deadlineCalendarId: 'cal-1' };
+  mockDemoActive = false;
 });
 
 describe('syncDeadlineEvent', () => {
@@ -217,5 +223,19 @@ describe('syncDeadlineEvent', () => {
     const task = makeTask({ deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', title: '' });
     await syncDeadlineEvent(task);
     expect(mockCreateDeadlineEvent).toHaveBeenCalledWith('cal-1', expect.objectContaining({ title: 'Deadline' }));
+  });
+
+  it('never touches the device calendar while demo mode is active', async () => {
+    // #1629's sibling: latent today since demo-seeded tasks never set
+    // deadlineOnCalendar, but a future seed change shouldn't get a free
+    // pass to write a real device event just because this guard is missing.
+    mockDemoActive = true;
+    const task = makeTask({
+      deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', calendarEventId: 'evt-1',
+    });
+    expect(await syncDeadlineEvent(task)).toBeNull();
+    expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
+    expect(mockUpdateDeadlineEvent).not.toHaveBeenCalled();
+    expect(mockDeleteDeadlineEvent).not.toHaveBeenCalled();
   });
 });

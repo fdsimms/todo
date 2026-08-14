@@ -494,7 +494,11 @@ export function getStreakOutcome(
 ): 'same-day' | 'continued' | 'reset' {
   if (task.recurrenceType === 'none' || !task.streakDate) return 'reset';
 
-  const lastDay = getDayStart(new Date(task.streakDate), dayResetTime);
+  // streakDate is a stored anchor (stamped from a previous getCurrentDayStart()
+  // call, or shifted by hand in TaskEditor) rather than a fresh "now" moment —
+  // getTaskDayStart is the one that doesn't second-guess it if dayResetTime
+  // has changed since it was written. Only "now" itself uses getDayStart.
+  const lastDay = getTaskDayStart(new Date(task.streakDate), dayResetTime);
   const todayDay = getDayStart(new Date(), dayResetTime);
   const daysBetween = differenceInCalendarDays(todayDay, lastDay);
   if (daysBetween <= 0) return 'same-day';

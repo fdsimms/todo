@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the daily agenda notification undercounting tasks for anyone with a day-reset time other than midnight",
+  "date": "2026-08-14"
+}

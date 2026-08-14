@@ -191,7 +191,15 @@ export function GroceryItemSheet({
   };
 
   if (!item) {
-    return <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose} />;
+    // Themed even though there's nothing to show: this branch renders while
+    // the sheet is closing too (onClose nulls itemId in the same update that
+    // flips visible to false), and an unstyled Modal here defaults to a
+    // native white background, flashing behind the close animation (#1618).
+    return (
+      <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+        <View style={styles.root} />
+      </Modal>
+    );
   }
 
   const linkFor = (shopId: string) =>

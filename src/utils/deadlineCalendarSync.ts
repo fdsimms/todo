@@ -2,6 +2,7 @@ import type { Task } from '../types';
 import { displayTitleFor } from './visibilityUtils';
 import { createAllDayEvent, updateAllDayEvent, deleteCalendarEvent } from './calendarSync';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { isDemoModeActive } from './demoState';
 
 /**
  * What a task's deadline should look like on the device calendar right now,
@@ -17,6 +18,12 @@ import { useSettingsStore } from '../store/useSettingsStore';
  * the task is the caller's job.
  */
 export async function syncDeadlineEvent(task: Task): Promise<string | null> {
+  // Same guard notifications.ts uses — demo-seeded tasks currently never set
+  // deadlineOnCalendar, so this is latent rather than reachable today, but a
+  // future seed change or a real deadline mutation while demo mode happens
+  // to be on shouldn't get a free pass to write a real device event.
+  if (isDemoModeActive()) return null;
+
   const { deadlineCalendarId } = useSettingsStore.getState();
 
   // Off, no target calendar picked, no deadline to show, or the task is

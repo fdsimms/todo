@@ -55,7 +55,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, getDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/parseTaskInput';
@@ -871,7 +871,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       newStreakDate = null;
     } else if (task.streakDate) {
       const delta = clamped - task.streakCount;
-      const shifted = addDays(getDayStart(new Date(task.streakDate), dayResetTime), delta);
+      // streakDate is a stored anchor, not a fresh "now" moment — getTaskDayStart
+      // is the one that doesn't second-guess it if dayResetTime has changed
+      // since it was written (see getStreakOutcome in dateUtils.ts).
+      const shifted = addDays(getTaskDayStart(new Date(task.streakDate), dayResetTime), delta);
       newStreakDate = (shifted > yesterday ? yesterday : shifted).toISOString();
     } else {
       newStreakDate = yesterday.toISOString();

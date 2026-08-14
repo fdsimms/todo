@@ -1,6 +1,6 @@
 import { isSameDay } from 'date-fns/isSameDay';
 import type { Task } from '../types';
-import { getDayStart } from './dateUtils';
+import { getDayStart, getTaskDayStart } from './dateUtils';
 import { hhmmToDate } from './clockTime';
 
 /**
@@ -50,14 +50,20 @@ export function agendaCounts(tasks: Task[], targetDay: Date, dayResetTime: strin
   for (const task of tasks) {
     if (task.completed || task.archived || task.parentId) continue;
 
+    // dueDate/deadline are stored anchors, not "now" moments — a plain
+    // date-only pick lands at local midnight (see getLogicalToday), which is
+    // earlier than any non-default dayResetTime. getDayStart's early-morning
+    // rollback would then read a task dated for the target day as belonging
+    // to the day before, undercounting "due" and dropping "deadlines"
+    // entirely for anyone who's moved dayResetTime off midnight.
     if (task.dueDate) {
-      const day = getDayStart(new Date(task.dueDate), dayResetTime);
+      const day = getTaskDayStart(new Date(task.dueDate), dayResetTime);
       if (isSameDay(day, target)) due++;
       else if (day < target) carriedOver++;
     }
 
     if (task.deadline) {
-      const day = getDayStart(new Date(task.deadline), dayResetTime);
+      const day = getTaskDayStart(new Date(task.deadline), dayResetTime);
       if (isSameDay(day, target)) deadlines++;
     }
   }
