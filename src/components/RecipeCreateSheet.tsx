@@ -27,12 +27,15 @@ import {
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
-import { extractRecipe, describeAIError, type ExtractedRecipe } from '../services/aiSuggestions';
+import {
+  extractRecipe, describeAIError, type ExtractedRecipe, type RecipeGroceryItem,
+} from '../services/aiSuggestions';
 import { normalizeIngredient, cleanRecipeName, formatServingsRange } from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
+import { ExtractedIngredientRow } from './ExtractedIngredientRow';
 import { useRecipePhotoSource } from '../hooks/useRecipePhotoSource';
 import { haptics } from '../utils/haptics';
 
@@ -74,6 +77,10 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<ExtractedRecipe | null>(null);
+  // A working copy of extracted.ingredients, edited in place before Create
+  // (#1608) — extracted itself is left untouched, since its .name/.servings
+  // fields are still read straight off it below.
+  const [ingredients, setIngredients] = useState<RecipeGroceryItem[]>([]);
   const [name, setName] = useState('');
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const [applyServings, setApplyServings] = useState(true);
@@ -88,6 +95,7 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
     setLoading(false);
     setError(null);
     setExtracted(null);
+    setIngredients([]);
     setName('');
     setAccepted(new Set());
     setApplyServings(true);
@@ -105,6 +113,7 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
     try {
       const result = await extractRecipe(source, [...aisleOrder]);
       setExtracted(result);
+      setIngredients(result.ingredients);
       setName(result.name);
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
       setApplyServings(result.servings !== null);
@@ -116,13 +125,17 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
   }, [source, aisleOrder]);
 
   const toggle = (index: number) => {
-    haptics.tap();
     setAccepted(prev => {
       const next = new Set(prev);
       if (next.has(index)) next.delete(index);
       else next.add(index);
       return next;
     });
+  };
+
+  const editIngredient = (index: number, patch: Partial<Pick<RecipeGroceryItem, 'name' | 'quantity'>>) => {
+    haptics.success();
+    setIngredients(prev => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   };
 
   // Checked as they type rather than on tap, so the way out ("Open it", or just
@@ -144,7 +157,7 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
       if (existing) { onClose(); onCreated(existing.id); }
       return;
     }
-    const chosen = extracted.ingredients
+    const chosen = ingredients
       .filter((_, i) => accepted.has(i))
       .map(item => normalizeIngredient(item))
       .filter((i): i is NonNullable<typeof i> => i !== null);
@@ -213,7 +226,7 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
       );
     }
 
-    if (extracted.ingredients.length === 0 && !extracted.name) {
+    if (ingredients.length === 0 && !extracted.name) {
       return (
         <View style={styles.centered}>
           <EmptyState
@@ -264,7 +277,9 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
           )}
         </View>
 
-        <Text style={styles.intro}>Untick anything you don't want added.</Text>
+        <Text style={styles.intro}>
+          Untick anything you don't want added, or tap a name or amount to change it.
+        </Text>
 
         {extracted.servings !== null && (
           <TouchableOpacity
@@ -287,38 +302,22 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
           </TouchableOpacity>
         )}
 
-        {extracted.ingredients.map((row, i) => {
-          const on = accepted.has(i);
+        {ingredients.map((row, i) => {
           // A new heading whenever this row's section differs from the one
           // right before it — same display-only grouping RecipeDetailScreen
           // does over the saved list, run here over the preview instead.
-          const prevSection = i > 0 ? extracted.ingredients[i - 1].section : null;
+          const prevSection = i > 0 ? ingredients[i - 1].section : null;
           const sectionHeader = row.section && row.section !== prevSection ? row.section : null;
           return (
-            <React.Fragment key={`${row.name}-${i}`}>
-              {!!sectionHeader && <Text style={styles.sectionHeader}>{sectionHeader}</Text>}
-              <TouchableOpacity
-                style={styles.row}
-                activeOpacity={interaction.activeOpacity}
-                onPress={() => toggle(i)}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: on }}
-                accessibilityLabel={`${row.name}, ${row.aisle}`}
-              >
-                <View style={[styles.checkbox, on && styles.checkboxOn]}>
-                  {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-                </View>
-                <View style={styles.body}>
-                  <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
-                  <Text style={styles.meta} numberOfLines={1}>{row.aisle}</Text>
-                </View>
-                {!!row.quantity && (
-                  <View style={styles.qtyPill}>
-                    <Text style={styles.qtyText} numberOfLines={1}>{row.quantity}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </React.Fragment>
+            <ExtractedIngredientRow
+              key={`${row.name}-${i}`}
+              row={row}
+              checked={accepted.has(i)}
+              onToggle={() => toggle(i)}
+              onEditName={name => editIngredient(i, { name })}
+              onEditQuantity={quantity => editIngredient(i, { quantity })}
+              sectionHeader={sectionHeader}
+            />
           );
         })}
       </ScrollView>
@@ -370,16 +369,6 @@ function makeStyles(colors: Colors) {
       paddingBottom: spacing.sm,
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
-    sectionHeader: {
-      color: colors.textSecondary,
-      fontSize: font.xs,
-      fontWeight: fontWeight.semibold,
-      letterSpacing: 0.8,
-      textTransform: 'uppercase',
-      paddingHorizontal: spacing.md,
-      paddingTop: spacing.sm,
-      paddingBottom: spacing.xs,
-    },
     pasteWrap: { padding: spacing.md, gap: spacing.md },
     photoError: { color: colors.red, fontSize: font.sm, textAlign: 'center' },
     nameCard: {
@@ -437,13 +426,5 @@ function makeStyles(colors: Colors) {
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
-    qtyPill: {
-      backgroundColor: colors.bgTertiary,
-      borderRadius: radius.sm,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 3,
-      maxWidth: 96,
-    },
-    qtyText: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   });
 }
