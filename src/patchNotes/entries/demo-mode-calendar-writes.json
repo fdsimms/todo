@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where turning on demo mode could write real events to your device calendar for the seeded meals",
+  "date": "2026-08-14"
+}

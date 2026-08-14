@@ -3,6 +3,7 @@ import { MEAL_SLOT_LABELS } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { createAllDayEvent, updateAllDayEvent, deleteCalendarEvent } from './calendarSync';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { isDemoModeActive } from './demoState';
 
 /**
  * What a planned meal should look like on the device calendar right now, and
@@ -86,6 +87,12 @@ export function mealEventFields(entry: MealPlanEntry): { title: string; date: Da
  * skips them because there is nothing to cook, which is a different question.
  */
 export async function syncMealEvent(entry: MealPlanEntry): Promise<string | null> {
+  // Same guard notifications.ts uses: demo mode seeds a full week of meals
+  // through the real planMeal action, and without this every one of them
+  // would write a real all-day event to whatever calendar the user had
+  // picked before switching demo mode on.
+  if (isDemoModeActive()) return null;
+
   const { mealCalendarId } = useSettingsStore.getState();
 
   // No target calendar picked — the event (if one exists) goes away, and
