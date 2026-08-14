@@ -1,5 +1,5 @@
-import { fuzzySearch, mergeRanges } from '../utils/fuzzySearch';
-import type { Task } from '../types';
+import { fuzzySearch, mergeRanges, searchGroups } from '../utils/fuzzySearch';
+import type { Task, TaskGroup } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00', vacationMode: false }) },
@@ -364,5 +364,62 @@ describe('fuzzySearch', () => {
       expect(results[0].task.id).toBe('1');
       expect(results[1].task.id).toBe('2');
     });
+  });
+});
+
+const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
+  id: 'g1',
+  title: 'Morning routine',
+  notes: '',
+  tags: [],
+  category: null,
+  sortOrder: 1,
+  collapsed: true,
+  ...overrides,
+});
+
+describe('searchGroups', () => {
+  it('returns nothing for an empty query', () => {
+    expect(searchGroups([makeGroup()], '', new Map())).toEqual([]);
+  });
+
+  it('matches a stack by title', () => {
+    const group = makeGroup({ title: 'Packing list' });
+    const results = searchGroups([group], 'packing', new Map());
+    expect(results).toHaveLength(1);
+    expect(results[0].group.id).toBe(group.id);
+    expect(results[0].titleMatches).toEqual([[0, 7]]);
+  });
+
+  it('excludes a stack whose title does not match', () => {
+    const results = searchGroups([makeGroup({ title: 'Packing list' })], 'zzz', new Map());
+    expect(results).toEqual([]);
+  });
+
+  it('ranks an exact-prefix title match above a fuzzy one', () => {
+    const exact = makeGroup({ id: 'a', title: 'Trip packing' });
+    const fuzzy = makeGroup({ id: 'b', title: 'Pick a cool king' }); // contains p-a-c-k-i-n-g out of order density
+    const results = searchGroups([fuzzy, exact], 'packing', new Map());
+    expect(results[0].group.id).toBe('a');
+  });
+
+  it('previews up to three roster members and reports the full count', () => {
+    const group = makeGroup({ id: 'g1', title: 'Packing list' });
+    const roster = [
+      makeTask({ id: 't1', title: 'Passport' }),
+      makeTask({ id: 't2', title: 'Charger' }),
+      makeTask({ id: 't3', title: 'Toothbrush' }),
+      makeTask({ id: 't4', title: 'Sunscreen' }),
+    ];
+    const results = searchGroups([group], 'packing', new Map([[group.id, roster]]));
+    expect(results[0].memberTitles).toEqual(['Passport', 'Charger', 'Toothbrush']);
+    expect(results[0].memberCount).toBe(4);
+  });
+
+  it('reports an empty preview for a stack with no roster', () => {
+    const group = makeGroup({ title: 'Packing list' });
+    const results = searchGroups([group], 'packing', new Map());
+    expect(results[0].memberTitles).toEqual([]);
+    expect(results[0].memberCount).toBe(0);
   });
 });
