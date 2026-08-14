@@ -350,7 +350,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
             Add as either/or — {alternatives.join(' or ')}?
           </Text>
           <Text style={styles.altSuggestionHint}>
-            Tick one at the shop and the rest come off.
+            Tick one at the store and the rest come off.
           </Text>
         </TouchableOpacity>
       )}

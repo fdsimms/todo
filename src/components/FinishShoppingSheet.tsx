@@ -264,7 +264,7 @@ export function FinishShoppingSheet({
 
           <Text style={styles.label}>WHERE DID YOU SHOP?</Text>
           <Text style={styles.hint}>
-            Optional. Naming a store is what lets you see which shop has which items later.
+            Optional. Naming a store is what lets you see which store has which items later.
           </Text>
 
           {/* The store list has no ceiling — it's entirely user-built — so the

@@ -673,7 +673,7 @@ export function GroceryItemSheet({
           {!!alternativeNames && (
             <View style={styles.choiceBlock}>
               <Text style={styles.hint}>
-                Either/or with {alternativeNames}. Tick one at the shop and the
+                Either/or with {alternativeNames}. Tick one at the store and the
                 rest come off the list.
               </Text>
               <InlineAction
@@ -821,7 +821,7 @@ export function GroceryItemSheet({
             <CollapsibleField
               label="Aisle"
               summary={item.aisle}
-              hint="Groups this item on your list, in the order you walk the shop."
+              hint="Groups this item on your list, in the order you walk the store."
               expanded={openField === 'aisle'}
               onToggle={() => toggleField('aisle')}
             >
@@ -839,7 +839,7 @@ export function GroceryItemSheet({
               label="Stores"
               summary={storesSummary}
               emptySummary="Any"
-              hint="Tap a store to say you can get this there, again to say they don’t have it. Finishing a shop marks them for you."
+              hint="Tap a store to say you can get this there, again to say they don’t have it. Finishing a shopping trip marks them for you."
               expanded={openField === 'stores'}
               onToggle={() => toggleField('stores')}
             >
@@ -902,7 +902,7 @@ export function GroceryItemSheet({
                   : undefined
               }
               emptySummary="None"
-              hint="The day this should be used up by. Finishing a shop fills it in for things that go off, and the use-up task is dated from it."
+              hint="The day this should be used up by. Finishing a shopping trip fills it in for things that go off, and the use-up task is dated from it."
               expanded={openField === 'useBy'}
               onToggle={() => toggleField('useBy')}
             >
