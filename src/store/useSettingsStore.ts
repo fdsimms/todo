@@ -4,8 +4,8 @@ import type { ThemeMode } from '../theme';
 import { DEFAULT_APP_FONT, isAppFont, type AppFont } from '../theme/fonts';
 import type { SortOption, RecipeSortOption, Priority, Effort, TimeOfDay } from '../types';
 import {
-  CURRENCY_SYMBOLS,
   DEFAULT_CURRENCY_SYMBOL,
+  CURRENCY_SYMBOL_MAX_LENGTH,
   GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   GROCERY_USE_UP_LEAD_DAYS_MAX,
   GROCERY_USE_UP_LEAD_DAYS_MIN,
@@ -291,6 +291,13 @@ interface SettingsStore {
   // newTaskDefaults.category; a name that no longer exists resolves to no
   // category, same as any other stale category reference here.
   mealCookTaskCategory: string | null;
+  // Whether marking a meal cooked can offer to restock the ingredients it used
+  // that aren't on the list — see CookedOfferBanner and MealPlanScreen's
+  // restockOffer. Defaults on: the offer is already gated on the app being
+  // able to name known items missing from the list (see #1481), so this is a
+  // toggle for someone who never shops from a recipe, not a fix for a bad
+  // default.
+  restockOfferEnabled: boolean;
   // Whether a grocery item with a use-by date gets a "Use up X" task a few days
   // before it. Off by default and deliberately so: this is the one feature here
   // that can put rows on a task list off the back of a shopping trip, and a
@@ -497,6 +504,7 @@ interface SettingsStore {
   setCurrencySymbol: (symbol: string) => void;
   setMealCookTasks: (on: boolean) => void;
   setMealCookTaskCategory: (category: string | null) => void;
+  setRestockOfferEnabled: (on: boolean) => void;
   setSortOption: (sort: SortOption) => void;
   setFilterPriorities: (priorities: Priority[]) => void;
   setFilterEfforts: (efforts: Effort[]) => void;
@@ -581,6 +589,7 @@ const DEFAULT_SETTINGS = {
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
   mealCookTaskCategory: null,
+  restockOfferEnabled: true,
   groceryUseUpTasks: false,
   groceryUseUpLeadDays: GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   groceryUseUpTaskCategory: null,
@@ -656,6 +665,22 @@ export const DEFAULT_REMINDER_LEAD_OPTIONS: { value: number | null; label: strin
  * same failure mode as parseRetentionDays: a garbled value must not start
  * silently attaching reminders to tasks that never asked for one.
  */
+/**
+ * A validated length stands in for the old closed allowlist (#1476) — the
+ * property that matters is "can't render garbage", not "is one of four
+ * symbols". Trimmed, non-empty, no internal whitespace (a price glued to a
+ * multi-word string is unreadable the same way an over-long one is), and no
+ * longer than CURRENCY_SYMBOL_MAX_LENGTH. Anything that fails falls back to
+ * the default rather than being stored malformed.
+ */
+function parseCurrencySymbol(raw: string | null): string {
+  const trimmed = raw?.trim() ?? '';
+  if (!trimmed || trimmed.length > CURRENCY_SYMBOL_MAX_LENGTH || /\s/.test(trimmed)) {
+    return DEFAULT_CURRENCY_SYMBOL;
+  }
+  return trimmed;
+}
+
 function parseDefaultReminderLeadMinutes(raw: string | null): number | null {
   if (!raw) return null;
   const n = Number(raw);
@@ -809,6 +834,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
   mealCookTaskCategory: null,
+  restockOfferEnabled: true,
   groceryUseUpTasks: false,
   groceryUseUpLeadDays: GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   groceryUseUpTaskCategory: null,
@@ -906,11 +932,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const storedUnitSystem = dbGetSetting('unitSystem') as UnitSystem | null;
     const unitSystem: UnitSystem =
       storedUnitSystem && UNIT_SYSTEMS.includes(storedUnitSystem) ? storedUnitSystem : 'asWritten';
-    const storedCurrency = dbGetSetting('currencySymbol');
-    const currencySymbol =
-      storedCurrency && CURRENCY_SYMBOLS.includes(storedCurrency)
-        ? storedCurrency
-        : DEFAULT_CURRENCY_SYMBOL;
+    const currencySymbol = parseCurrencySymbol(dbGetSetting('currencySymbol'));
     // Defaults on, like hapticsEnabled — but unlike it, "on" here is a change
     // for an existing install rather than a preservation of what it had. It's
     // safe to default on anyway because nothing is backfilled: no cook task
@@ -920,6 +942,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // '' persists as "no category", matching how newTaskDefaults.category reads.
     const storedCookCategory = dbGetSetting('mealCookTaskCategory');
     const mealCookTaskCategory = storedCookCategory ? storedCookCategory : null;
+    // Defaults on, same reading as mealCookTasks above.
+    const restockOfferEnabled = dbGetSetting('restockOfferEnabled') !== 'false';
     // `=== 'true'`, the safe reading of a missing row: this one defaults OFF,
     // and an install that predates it has a catalog full of items whose next
     // trip would otherwise start writing tasks nobody asked for.
@@ -1027,7 +1051,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -1288,10 +1312,13 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   },
 
   setCurrencySymbol(symbol: string) {
-    // Clamped to the known list: this string is concatenated straight into
-    // every price the app renders, so an arbitrary one is a way to make every
-    // total unreadable with no way back from inside the feature.
-    const next = CURRENCY_SYMBOLS.includes(symbol) ? symbol : DEFAULT_CURRENCY_SYMBOL;
+    // Validated rather than clamped to a known list (#1476) — the UI already
+    // rejects a bad value with a message and keeps the field open, so this is
+    // the defensive floor for any other caller: this string is concatenated
+    // straight into every price the app renders, and an unbounded one is a
+    // way to make every total unreadable with no way back from inside the
+    // feature.
+    const next = parseCurrencySymbol(symbol);
     dbSetSetting('currencySymbol', next);
     set({ currencySymbol: next });
   },
@@ -1312,6 +1339,14 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setMealCookTaskCategory(category: string | null) {
     dbSetSetting('mealCookTaskCategory', category ?? '');
     set({ mealCookTaskCategory: category });
+  },
+
+  // Leaves an offer already standing when this is switched off mid-flight
+  // exactly where it is — see the note by setMealCookTasks. The flag is only
+  // consulted when a meal is marked cooked, not retroactively.
+  setRestockOfferEnabled(on: boolean) {
+    dbSetSetting('restockOfferEnabled', on ? 'true' : 'false');
+    set({ restockOfferEnabled: on });
   },
 
   // Turning this off deliberately leaves the use-up tasks already spawned

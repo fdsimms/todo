@@ -1235,13 +1235,21 @@ export interface ItemSubLink {
 export const GROCERY_PRICE_MINOR_MAX = 1_000_000;
 
 /**
- * The symbols a price can be shown with. A closed list rather than free text or
- * a locale lookup: this string is concatenated into every rendered price, and
- * the feature needs to render a number correctly, not to know about money.
- * There is one currency at a time and nothing converts between them.
+ * One-tap presets for the currency symbol, not a closed list any more (#1476)
+ * — a dozen doesn't cover everyone shopping in something else, so the setting
+ * itself takes any short string. Kept here anyway: this string is concatenated
+ * into every rendered price, so a validated length is what stands between a
+ * real symbol and a total nobody can read, not membership in this array. There
+ * is one currency at a time and nothing converts between them.
  */
-export const CURRENCY_SYMBOLS: readonly string[] = ['$', '£', '€', '¥'];
+export const CURRENCY_SYMBOLS: readonly string[] = [
+  '$', '£', '€', '¥', '₹', '₩', 'R$', 'zł', 'kr', '₽', '₺', '₴',
+];
 export const DEFAULT_CURRENCY_SYMBOL = '$';
+// 1–3 characters, matching the longest preset above ("R$"/"zł"/"kr") — long
+// enough for everyone's symbol, short enough that it can't make a price
+// unreadable.
+export const CURRENCY_SYMBOL_MAX_LENGTH = 3;
 
 // Shorter than a grocery item's: this is a chip label that has to sit in a row
 // of other chips in a sheet, not a list row that owns its width.

@@ -24,8 +24,10 @@ import {
   type Colors,
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { buyAgainItems, catalogPruneCandidates, rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { itemIdsForShop, itemCountsByShop, primaryShopFor } from '../utils/groceryShops';
+import { formatPrice, describePriceContext, lastPriceFor } from '../utils/groceryPrice';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
@@ -58,6 +60,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const addExistingMany = useGroceryStore(s => s.addExistingMany);
   const deleteItems = useGroceryStore(s => s.deleteItems);
+  const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
@@ -212,6 +215,12 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
     // Suppressed while a store filter is on: every row would name the store
     // you just filtered to, which is a column of the same word.
     const usual = shopFilter ? null : primaryShopFor(item, itemShops, shops);
+    // Which price: the active store's own, if it has one, otherwise the
+    // item's — same precedence the finish sheet already uses. Not shown at
+    // all where nothing's ever been paid, rather than a "$0.00" that reads
+    // as a real number.
+    const priceMinor = lastPriceFor(item, shopFilter, itemShops);
+    const priceContext = priceMinor !== null ? describePriceContext(item, now) : null;
     return (
       <View style={styles.row}>
         <TouchableOpacity
@@ -238,8 +247,16 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
               {item.aisle}
               {item.purchaseCount > 0 && ` · bought ${item.purchaseCount}×`}
               {!!usual && ` · ${usual.name}`}
+              {!!priceContext && ` · ${priceContext}`}
             </Text>
           </View>
+          {priceMinor !== null && (
+            <View style={styles.pricePill}>
+              <Text style={styles.priceText} numberOfLines={1}>
+                {formatPrice(priceMinor, currencySymbol)}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
 
         {/* Long-press still opens the same sheet, but nothing on screen says
@@ -441,6 +458,18 @@ function makeStyles(colors: Colors) {
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
+    // Same treatment GroceryRow gives its quantity pill.
+    pricePill: {
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+    },
+    priceText: {
+      fontSize: font.sm,
+      fontWeight: fontWeight.semibold,
+      color: colors.textSecondary,
+    },
     pruneWrap: { alignItems: 'center', marginTop: spacing.lg },
     // Sits directly on the sheet's root colors.bg, where the default neutral
     // tint (bgTertiary) is nearly indistinguishable from it.

@@ -231,6 +231,7 @@ export function MealPlanScreen() {
   // #1063's gate. Without a key the suggestion sheet is exactly the offline
   // one it has always been — the ranking below is deliberately ungated.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
   // Any date inside the week on screen. Paging moves the anchor, never the days.
   const [anchor, setAnchor] = useState(() => new Date());
 
@@ -718,7 +719,7 @@ export function MealPlanScreen() {
     // restockRows is what it can defend, since on a dish cooked for the first
     // time every line looks unbought, which is how this arrived asking to buy
     // the salt and pepper. See its note, and CookedOfferBanner's.
-    if (!recipe) return;
+    if (!recipe || !restockOfferEnabled) return;
     setRestockOffer({ recipe, choices: entry.recipeChoices, scale: entry.recipeScale });
   };
 

@@ -29,7 +29,7 @@ import {
 import {
   DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD,
 } from '../../utils/postpone';
-import { CURRENCY_SYMBOLS } from '../../types';
+import { CURRENCY_SYMBOLS, CURRENCY_SYMBOL_MAX_LENGTH } from '../../types';
 
 const EXPIRED_TASK_GRACE_SEGMENTS: SegmentOption<ExpiredTaskGraceDays>[] =
   EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
@@ -58,13 +58,6 @@ const UNIT_SYSTEM_OPTIONS: SegmentOption<UnitSystem>[] = [
   { value: 'metric', label: 'Metric' },
   { value: 'us', label: 'US' },
 ];
-// The symbol only. Prices are stored as plain numbers and nothing converts
-// between currencies — see src/utils/groceryPrice.ts.
-const CURRENCY_OPTIONS: SegmentOption<string>[] = CURRENCY_SYMBOLS.map(symbol => ({
-  value: symbol,
-  label: symbol,
-}));
-
 export function TasksProjectsSettings() {
   const vacationMode = useSettingsStore(s => s.vacationMode);
   const setVacationMode = useSettingsStore(s => s.setVacationMode);
@@ -89,6 +82,8 @@ export function TasksProjectsSettings() {
   const setKitchenEnabled = useSettingsStore(s => s.setKitchenEnabled);
   const mealsOnToday = useSettingsStore(s => s.mealsOnToday);
   const setMealsOnToday = useSettingsStore(s => s.setMealsOnToday);
+  const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
+  const setRestockOfferEnabled = useSettingsStore(s => s.setRestockOfferEnabled);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const setUnitSystem = useSettingsStore(s => s.setUnitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
@@ -312,6 +307,15 @@ export function TasksProjectsSettings() {
           onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}
           accessibilityLabel="Show the day's meals"
         />
+        <SettingsRow
+          icon="basket-outline"
+          iconColor={restockOfferEnabled ? colors.accent : undefined}
+          label="Restock after cooking"
+          hint="When you mark a meal cooked, offer to add its ingredients back to your list."
+          toggle={restockOfferEnabled}
+          onPress={() => setRestockOfferEnabled(!restockOfferEnabled)}
+          accessibilityLabel="Restock after cooking"
+        />
       </SettingsSection>
 
       <GeneratedTasksSection
@@ -349,13 +353,38 @@ export function TasksProjectsSettings() {
           hint="The symbol grocery prices are shown with"
           tight
         />
-        <SettingsSegments
-          attached
-          options={CURRENCY_OPTIONS}
-          selected={currencySymbol}
-          onSelect={setCurrencySymbol}
-          accessibilityLabelFor={o => `Currency: ${o.label}`}
-        />
+        <View style={styles.pillGroupRow}>
+          <PillGroup
+            noun="symbol"
+            filterPlaceholder="Find or type a symbol…"
+            createMaxLength={CURRENCY_SYMBOL_MAX_LENGTH}
+            onCreate={raw => {
+              const trimmed = raw.trim();
+              if (!trimmed) return 'Enter a symbol.';
+              if (/\s/.test(trimmed)) return 'No spaces in a symbol.';
+              setCurrencySymbol(trimmed);
+            }}
+            options={[
+              // A custom symbol already in use has no pill of its own among
+              // the presets below, so it gets a pinned one — otherwise
+              // setting it once would make it vanish from its own picker.
+              ...(CURRENCY_SYMBOLS.includes(currencySymbol) ? [] : [{
+                key: '__current__',
+                label: currencySymbol,
+                pinned: true,
+                selected: true,
+                onPress: () => {},
+              }]),
+              ...CURRENCY_SYMBOLS.map(symbol => ({
+                key: symbol,
+                label: symbol,
+                selected: currencySymbol === symbol,
+                accessibilityLabel: `Currency: ${symbol}`,
+                onPress: () => { haptics.tap(); setCurrencySymbol(symbol); },
+              })),
+            ]}
+          />
+        </View>
       </SettingsSection>
       </>
       )}
