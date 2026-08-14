@@ -367,7 +367,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
                   ? 'Everything you buy at this store is already on the list.'
                   : query.trim()
                     ? 'Everything matching is already on the list.'
-                    : 'Finish a shop and the things you bought turn up here, best-first.'
+                    : 'Finish a shopping trip and the things you bought turn up here, best-first.'
               }
             />
           }

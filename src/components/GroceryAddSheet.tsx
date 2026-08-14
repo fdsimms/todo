@@ -66,6 +66,10 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
   useEffect(() => {
     if (!visible) return;
     setAddedCount(0);
+    // The field stays mounted across opens (a Modal hides rather than
+    // unmounts), so a line left typed when the sheet was cancelled — see
+    // `confirm` below — would otherwise still be sitting there next open.
+    fieldRef.current?.discardPending();
     scaleAnim.setValue(0.95);
     translateYAnim.setValue(16);
     sheetOpacity.setValue(0);
@@ -83,7 +87,6 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
   }, [visible]);
 
   const dismiss = () => {
-    fieldRef.current?.commitPending();
     Animated.parallel([
       Animated.timing(scaleAnim, { toValue: 0.95, duration: 120, useNativeDriver: true }),
       Animated.timing(sheetOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
@@ -93,6 +96,17 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
       sheetOpacity.setValue(0);
       onClose();
     });
+  };
+
+  // "Done" is the one explicit confirm — see #1169, it must not silently drop
+  // whatever's typed. Tapping the backdrop (or the Android back gesture) is
+  // the cancel gesture every other sheet in the app treats it as (QuickAddModal
+  // included, which this field's own behaviour otherwise copies verbatim), so
+  // it must not commit an item nobody asked to add — see #1169's own fix
+  // committing on every close, not just Done, for why this needs its own path.
+  const confirm = () => {
+    fieldRef.current?.commitPending();
+    dismiss();
   };
 
   return (
@@ -122,7 +136,7 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
                 ? `Added ${addedCount} ${addedCount === 1 ? 'item' : 'items'}${seedAisle ? ` to ${seedAisle}` : ''}`
                 : seedAisle ? `Add to ${seedAisle}` : 'Add to the list'}
             </Text>
-            <SheetHeaderButton label="Done" onPress={dismiss} />
+            <SheetHeaderButton label="Done" onPress={confirm} />
           </View>
 
           <GroceryAddField

@@ -343,10 +343,10 @@ export function RecipeToListSheet({
                         }}
                         accessibilityRole="button"
                         accessibilityState={{ selected: open }}
-                        accessibilityLabel={`${group.label}: put both on the list and decide at the shop`}
+                        accessibilityLabel={`${group.label}: put both on the list and decide at the store`}
                       >
                         <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
-                          Decide at the shop
+                          Decide at the store
                         </Text>
                       </TouchableOpacity>
                     )}

@@ -52,6 +52,7 @@ import {
   type RecipeListItem,
 } from '../utils/recipeUtils';
 import { recipeMap } from '../utils/recipeComponents';
+import { resolveRecipeImagePath } from '../utils/recipePhoto';
 import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } from '../utils/recipeTags';
 import { tagColor } from '../utils/tagColor';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -368,7 +369,7 @@ export function RecipesScreen() {
             />
           </View>
         ) : recipe.imagePath ? (
-          <Image source={{ uri: recipe.imagePath }} style={styles.thumb} />
+          <Image source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }} style={styles.thumb} />
         ) : (
           <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
             <Ionicons name="restaurant-outline" size={18} color={colors.accent} />

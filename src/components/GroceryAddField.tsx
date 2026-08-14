@@ -47,8 +47,15 @@ const FIELD_HEIGHT = 48 + border.sm * 2;
 /** Lets the sheet focus the field once its entrance animation has settled. */
 export interface GroceryAddFieldHandle {
   focus: () => void;
-  /** Commits whatever's currently typed, same as pressing return — so closing the sheet doesn't silently drop it. */
+  /** Commits whatever's currently typed, same as pressing return — so tapping "Done" doesn't silently drop it. */
   commitPending: () => void;
+  /**
+   * Clears whatever's typed without adding it. The sheet keeps this field
+   * mounted across opens (a `Modal` hides rather than unmounts), so a line
+   * left in progress when the sheet was cancelled would otherwise still be
+   * sitting there — half-typed and stale — the next time it opens.
+   */
+  discardPending: () => void;
 }
 
 /**
@@ -175,10 +182,19 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     commit(text, { name: tokens.name, quantity: tokens.quantity, note: tokens.note });
   }, [tokens, text, commit]);
 
+  const discardPending = useCallback(() => {
+    setText('');
+    setStatus(null);
+    setRejectedQuantity(null);
+    setRejectedPrep(null);
+    setRejectedPurpose(null);
+  }, []);
+
   useImperativeHandle(ref, () => ({
     focus: () => inputRef.current?.focus(),
     commitPending: submit,
-  }), [submit]);
+    discardPending,
+  }), [submit, discardPending]);
 
   /**
    * Multi-line paste, without making this a multiline input.
@@ -350,7 +366,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
             Add as either/or — {alternatives.join(' or ')}?
           </Text>
           <Text style={styles.altSuggestionHint}>
-            Tick one at the shop and the rest come off.
+            Tick one at the store and the rest come off.
           </Text>
         </TouchableOpacity>
       )}
@@ -359,7 +375,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
 
       {suggestions.length > 0 && (
         <View style={styles.matches}>
-          <ScrollView keyboardShouldPersistTaps="handled" style={styles.matchesScroll}>
+          <ScrollView keyboardShouldPersistTaps="handled" bounces={false} style={styles.matchesScroll}>
             {suggestions.map(({ item, onList }) => {
               // Which one to reach for, on the row that offers it. The catalog
               // has carried a brand and a variant for a while and this — the

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns/format';
 import {
   Modal,
@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Alert,
+  type LayoutChangeEvent,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -71,6 +72,9 @@ const PRICE_INPUT_MAX_LENGTH = 8;
  */
 const ITEM_PRICE_KEY = 'item';
 
+/** The five collapsible fields in the "More" card, in the order they render. */
+type CollapsibleFieldKey = 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes';
+
 interface Props {
   visible: boolean;
   itemId: string | null;
@@ -91,7 +95,7 @@ interface Props {
    * a sheet that opens with a section unfolded for no reason is the progressive
    * disclosure these editors exist to avoid.
    */
-  initialField?: 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes';
+  initialField?: CollapsibleFieldKey;
 }
 
 /**
@@ -169,9 +173,28 @@ export function GroceryItemSheet({
   const [subSheet, setSubSheet] = useState<'add' | string | null>(null);
   // One picker open at a time, like every other editor in the app — see the
   // progressive-disclosure note in CLAUDE.md.
-  const [openField, setOpenField] = useState<
-    'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | null
-  >(null);
+  const [openField, setOpenField] = useState<CollapsibleFieldKey | null>(null);
+  // Where `initialField`'s section actually lands once it's laid out — the
+  // card and the field within it each report their own y through onLayout,
+  // and the field the caller asked for isn't visible on a card this long
+  // (Aisle/Stores/Pantry/Use by/Substitutes stacked below Name/Brand/
+  // Variant/Quantity/Price/Note) without scrolling to it ourselves.
+  // null, not 0: a child's onLayout isn't guaranteed to fire after its
+  // parent's, so 0 would read as "the card starts at the top" and scroll to
+  // the wrong offset if the field's own callback lands first.
+  const cardYRef = useRef<number | null>(null);
+  const fieldYRefs = useRef<Partial<Record<CollapsibleFieldKey, number>>>({});
+  const pendingScrollField = useRef<CollapsibleFieldKey | null>(null);
+
+  const maybeScrollToInitialField = () => {
+    const field = pendingScrollField.current;
+    if (!field || cardYRef.current === null) return;
+    const fieldY = fieldYRefs.current[field];
+    if (fieldY === undefined) return;
+    const y = Math.max(0, cardYRef.current + fieldY - spacing.md);
+    keyboardScroll.ref.current?.scrollTo?.({ y, animated: false });
+    pendingScrollField.current = null;
+  };
 
   useEffect(() => {
     if (visible && item) {
@@ -185,6 +208,9 @@ export function GroceryItemSheet({
       setNameError(null);
       setOpenField(initialField ?? null);
       setSubSheet(null);
+      cardYRef.current = null;
+      fieldYRefs.current = {};
+      pendingScrollField.current = initialField ?? null;
     }
   }, [visible, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -209,7 +235,7 @@ export function GroceryItemSheet({
     [existingVariants, variant]
   );
 
-  const toggleField = (field: 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes') =>
+  const toggleField = (field: CollapsibleFieldKey) =>
     setOpenField(current => (current === field ? null : field));
   const closeField = () => {
     animateLayout();
@@ -699,7 +725,7 @@ export function GroceryItemSheet({
           {!!alternativeNames && (
             <View style={styles.choiceBlock}>
               <Text style={styles.hint}>
-                Either/or with {alternativeNames}. Tick one at the shop and the
+                Either/or with {alternativeNames}. Tick one at the store and the
                 rest come off the list.
               </Text>
               <InlineAction
@@ -875,110 +901,136 @@ export function GroceryItemSheet({
               three grids used to render in full — sixteen aisles and one pill
               per store — which pushed the name/quantity/note fields this sheet
               exists to edit off the first screen. */}
-          <View style={styles.card}>
-            <CollapsibleField
-              label="Aisle"
-              summary={item.aisle}
-              hint="Groups this item on your list, in the order you walk the shop."
-              expanded={openField === 'aisle'}
-              onToggle={() => toggleField('aisle')}
-            >
-              <PillGroup
-                options={aisleOptions}
-                noun="aisle"
-                onCreate={handleCreateAisle}
-                filterPlaceholder="Find or add an aisle…"
-              />
-            </CollapsibleField>
-
-            <View style={styles.separator} />
-
-            <CollapsibleField
-              label="Stores"
-              summary={storesSummary}
-              emptySummary="Any"
-              hint="Tap a store to say you can get this there, again to say they don’t have it. Finishing a shop marks them for you."
-              expanded={openField === 'stores'}
-              onToggle={() => toggleField('stores')}
-            >
-              <PillGroup options={shopOptions} noun="store" onCreate={handleCreateShop} />
-              {/* Only while a brand rule is actually in force. Without one
-                  these claims would be recording evidence nothing reads, and
-                  the sheet is already dense — the pills above are what a person
-                  comes to Stores for. */}
-              {item.brandStrict && !!item.brand && (
-                <View style={styles.brandAtBlock}>
-                  <Text style={styles.label}>
-                    {`Haven’t got ${item.brand}`.toUpperCase()}
-                  </Text>
-                  <PillGroup options={brandNegativeOptions} noun="store" />
-                  {/* The rule that makes the whole feature safe, said where
-                      someone is about to rely on it. */}
-                  <Text style={styles.hint}>
-                    Only what you’ve marked here is left out. A store you haven’t
-                    marked still counts — shops carry several brands, so getting a
-                    different one somewhere isn’t knowing they haven’t got yours.
-                  </Text>
-                </View>
-              )}
-            </CollapsibleField>
-
-            <View style={styles.separator} />
-
-            <CollapsibleField
-              label="Pantry"
-              summary={
-                item.isStaple
-                  ? 'Always have it'
-                  : onHandFuture
-                    ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
-                    : onHandPast
-                      ? 'Out of it'
-                      : undefined
-              }
-              emptySummary="Automatic"
-              hint={
-                item.isStaple
-                  ? 'Treated as on hand at all times, and kept out of the way in its own group when a recipe adds ingredients to the list.'
-                  : onHandPast
-                    ? 'Marked out of it — won’t show as probably-have until you buy it again.'
-                    : 'Decided automatically from purchase history when this comes up in a week plan.'
-              }
-              expanded={openField === 'pantry'}
-              onToggle={() => toggleField('pantry')}
-            >
-              <PillGroup options={pantryOptions} noun="state" />
-            </CollapsibleField>
-
-            <View style={styles.separator} />
-
-            <CollapsibleField
-              label="Use by"
-              summary={
-                item.expiresAt
-                  ? `${format(dayKeyToDate(item.expiresAt), 'd MMM')} · ${describeExpiry(item.expiresAt)}`
-                  : undefined
-              }
-              emptySummary="None"
-              hint="The day this should be used up by. Finishing a shop fills it in for things that go off, and the use-up task is dated from it."
-              expanded={openField === 'useBy'}
-              onToggle={() => toggleField('useBy')}
-            >
-              <View style={styles.stepperRow}>
-                <Text style={styles.stepperHint}>Days from today</Text>
-                <CountStepper
-                  value={expiryDays}
-                  onChange={pickExpiryDays}
-                  min={0}
-                  max={GROCERY_EXPIRY_DAYS_MAX}
-                  allowNull
-                  emptyLabel="None"
-                  format={n => (n === 0 ? 'Today' : `${n}d`)}
-                  label="Use by"
-                  describeValue={n => (n === null ? 'No use-by date' : n === 0 ? 'Use by today' : `${n} days from today`)}
+          <View
+            style={styles.card}
+            onLayout={(e: LayoutChangeEvent) => {
+              cardYRef.current = e.nativeEvent.layout.y;
+              maybeScrollToInitialField();
+            }}
+          >
+            <View onLayout={(e: LayoutChangeEvent) => {
+              fieldYRefs.current.aisle = e.nativeEvent.layout.y;
+              maybeScrollToInitialField();
+            }}>
+              <CollapsibleField
+                label="Aisle"
+                summary={item.aisle}
+                hint="Groups this item on your list, in the order you walk the store."
+                expanded={openField === 'aisle'}
+                onToggle={() => toggleField('aisle')}
+              >
+                <PillGroup
+                  options={aisleOptions}
+                  noun="aisle"
+                  onCreate={handleCreateAisle}
+                  filterPlaceholder="Find or add an aisle…"
                 />
-              </View>
-            </CollapsibleField>
+              </CollapsibleField>
+            </View>
+
+            <View style={styles.separator} />
+
+            <View onLayout={(e: LayoutChangeEvent) => {
+              fieldYRefs.current.stores = e.nativeEvent.layout.y;
+              maybeScrollToInitialField();
+            }}>
+              <CollapsibleField
+                label="Stores"
+                summary={storesSummary}
+                emptySummary="Any"
+                hint="Tap a store to say you can get this there, again to say they don’t have it. Finishing a shopping trip marks them for you."
+                expanded={openField === 'stores'}
+                onToggle={() => toggleField('stores')}
+              >
+                <PillGroup options={shopOptions} noun="store" onCreate={handleCreateShop} />
+                {/* Only while a brand rule is actually in force. Without one
+                    these claims would be recording evidence nothing reads, and
+                    the sheet is already dense — the pills above are what a person
+                    comes to Stores for. */}
+                {item.brandStrict && !!item.brand && (
+                  <View style={styles.brandAtBlock}>
+                    <Text style={styles.label}>
+                      {`Haven’t got ${item.brand}`.toUpperCase()}
+                    </Text>
+                    <PillGroup options={brandNegativeOptions} noun="store" />
+                    {/* The rule that makes the whole feature safe, said where
+                        someone is about to rely on it. */}
+                    <Text style={styles.hint}>
+                      Only what you’ve marked here is left out. A store you haven’t
+                      marked still counts — shops carry several brands, so getting a
+                      different one somewhere isn’t knowing they haven’t got yours.
+                    </Text>
+                  </View>
+                )}
+              </CollapsibleField>
+            </View>
+
+            <View style={styles.separator} />
+
+            <View onLayout={(e: LayoutChangeEvent) => {
+              fieldYRefs.current.pantry = e.nativeEvent.layout.y;
+              maybeScrollToInitialField();
+            }}>
+              <CollapsibleField
+                label="Pantry"
+                summary={
+                  item.isStaple
+                    ? 'Always have it'
+                    : onHandFuture
+                      ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
+                      : onHandPast
+                        ? 'Out of it'
+                        : undefined
+                }
+                emptySummary="Automatic"
+                hint={
+                  item.isStaple
+                    ? 'Treated as on hand at all times, and kept out of the way in its own group when a recipe adds ingredients to the list.'
+                    : onHandPast
+                      ? 'Marked out of it — won’t show as probably-have until you buy it again.'
+                      : 'Decided automatically from purchase history when this comes up in a week plan.'
+                }
+                expanded={openField === 'pantry'}
+                onToggle={() => toggleField('pantry')}
+              >
+                <PillGroup options={pantryOptions} noun="state" />
+              </CollapsibleField>
+            </View>
+
+            <View style={styles.separator} />
+
+            <View onLayout={(e: LayoutChangeEvent) => {
+              fieldYRefs.current.useBy = e.nativeEvent.layout.y;
+              maybeScrollToInitialField();
+            }}>
+              <CollapsibleField
+                label="Use by"
+                summary={
+                  item.expiresAt
+                    ? `${format(dayKeyToDate(item.expiresAt), 'd MMM')} · ${describeExpiry(item.expiresAt)}`
+                    : undefined
+                }
+                emptySummary="None"
+                hint="The day this should be used up by. Finishing a shopping trip fills it in for things that go off, and the use-up task is dated from it."
+                expanded={openField === 'useBy'}
+                onToggle={() => toggleField('useBy')}
+              >
+                <View style={styles.stepperRow}>
+                  <Text style={styles.stepperHint}>Days from today</Text>
+                  <CountStepper
+                    value={expiryDays}
+                    onChange={pickExpiryDays}
+                    min={0}
+                    max={GROCERY_EXPIRY_DAYS_MAX}
+                    allowNull
+                    emptyLabel="None"
+                    format={n => (n === 0 ? 'Today' : `${n}d`)}
+                    label="Use by"
+                    describeValue={n => (n === null ? 'No use-by date' : n === 0 ? 'Use by today' : `${n} days from today`)}
+                  />
+                </View>
+              </CollapsibleField>
+            </View>
 
             <View style={styles.separator} />
 
@@ -987,51 +1039,56 @@ export function GroceryItemSheet({
                 a note and a direction — with pills you'd have to tap each lit
                 one to find out whether it says anything at all. A grid was
                 mocked alongside this and dropped. */}
-            <CollapsibleField
-              label="Substitutes"
-              summary={substitutesSummary ?? undefined}
-              emptySummary="None"
-              hint={`If there’s no ${item.name.toLowerCase()}, what you’d use instead. Saved on this item, so every recipe calling for it can use it.`}
-              expanded={openField === 'substitutes'}
-              onToggle={() => toggleField('substitutes')}
-            >
-              {substitutes.map((sub, i) => (
-                <TouchableOpacity
-                  key={sub.item.id}
-                  style={[styles.subRow, i > 0 && styles.subRowDivided]}
-                  activeOpacity={interaction.activeOpacity}
+            <View onLayout={(e: LayoutChangeEvent) => {
+              fieldYRefs.current.substitutes = e.nativeEvent.layout.y;
+              maybeScrollToInitialField();
+            }}>
+              <CollapsibleField
+                label="Substitutes"
+                summary={substitutesSummary ?? undefined}
+                emptySummary="None"
+                hint={`If there’s no ${item.name.toLowerCase()}, what you’d use instead. Saved on this item, so every recipe calling for it can use it.`}
+                expanded={openField === 'substitutes'}
+                onToggle={() => toggleField('substitutes')}
+              >
+                {substitutes.map((sub, i) => (
+                  <TouchableOpacity
+                    key={sub.item.id}
+                    style={[styles.subRow, i > 0 && styles.subRowDivided]}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => {
+                      haptics.tap();
+                      setSubSheet(sub.item.id);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${sub.item.name}${sub.link.note ? `, ${sub.link.note}` : ''}`}
+                    accessibilityHint="Opens this substitute, where you can edit or remove it"
+                  >
+                    <View style={styles.subBody}>
+                      <Text style={styles.subName} numberOfLines={1}>{sub.item.name}</Text>
+                      {/* The note and the direction share one sub-line: they're
+                          both qualifications of the name above, and two lines of
+                          tertiary grey under every row reads as a paragraph. */}
+                      {!!subCaption(sub) && (
+                        <Text style={styles.subMeta} numberOfLines={1}>{subCaption(sub)}</Text>
+                      )}
+                    </View>
+                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                ))}
+                <InlineAction
+                  label="Add substitute"
+                  icon="swap-horizontal"
+                  variant="neutral"
                   onPress={() => {
                     haptics.tap();
-                    setSubSheet(sub.item.id);
+                    setSubSheet('add');
                   }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${sub.item.name}${sub.link.note ? `, ${sub.link.note}` : ''}`}
-                  accessibilityHint="Opens this substitute, where you can edit or remove it"
-                >
-                  <View style={styles.subBody}>
-                    <Text style={styles.subName} numberOfLines={1}>{sub.item.name}</Text>
-                    {/* The note and the direction share one sub-line: they're
-                        both qualifications of the name above, and two lines of
-                        tertiary grey under every row reads as a paragraph. */}
-                    {!!subCaption(sub) && (
-                      <Text style={styles.subMeta} numberOfLines={1}>{subCaption(sub)}</Text>
-                    )}
-                  </View>
-                  <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-                </TouchableOpacity>
-              ))}
-              <InlineAction
-                label="Add substitute"
-                icon="swap-horizontal"
-                variant="neutral"
-                onPress={() => {
-                  haptics.tap();
-                  setSubSheet('add');
-                }}
-                style={styles.subAdd}
-                accessibilityLabel={`Add a substitute for ${item.name}`}
-              />
-            </CollapsibleField>
+                  style={styles.subAdd}
+                  accessibilityLabel={`Add a substitute for ${item.name}`}
+                />
+              </CollapsibleField>
+            </View>
           </View>
 
           {/* The per-item half of the setting, and the only place it can be
