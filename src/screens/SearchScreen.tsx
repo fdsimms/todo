@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Platform,
   KeyboardAvoidingView,
+  AppState,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute } from '@react-navigation/native';
@@ -185,6 +186,25 @@ export function SearchScreen() {
     return () => clearTimeout(timer);
   }, [handledQueryAt]);
 
+  // KeyboardAvoidingView only checks the keyboard's real state once, in its
+  // own componentDidMount — after that it trusts keyboardWillShow/
+  // keyboardWillHide to stay correctly paired for as long as it's mounted.
+  // This screen never unmounts (it's a persistent tab), and iOS can drop or
+  // duplicate one of those notifications across a background/foreground
+  // cycle, leaving its bottom padding stuck applied for a keyboard that
+  // isn't actually up any more — which shoves the results/EmptyState area
+  // up under the search bar, sometimes for a frame and sometimes for good,
+  // since nothing else ever tells it to recheck. Remounting on resume
+  // re-runs that mount-time check against the keyboard's real state.
+  const [keyboardResyncKey, setKeyboardResyncKey] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') setKeyboardResyncKey(k => k + 1);
+    });
+    return () => sub.remove();
+  }, []);
+
   const projectNamesById = useMemo(
     () => new Map(projects.map(p => [p.id, p.title])),
     [projects]
@@ -270,6 +290,7 @@ export function SearchScreen() {
           reach. KeyboardAvoidingView pads the bottom by the keyboard's
           height, so EmptyState re-centers above it instead. */}
       <KeyboardAvoidingView
+        key={keyboardResyncKey}
         style={styles.keyboardAvoiding}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
