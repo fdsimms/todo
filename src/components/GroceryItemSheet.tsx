@@ -44,7 +44,12 @@ import {
   priceToInput,
   shopPricesFor,
 } from '../utils/groceryPrice';
-import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
+import {
+  defaultOnHandUntil,
+  OUT_OF_IT_UNTIL,
+  distinctGroceryValues,
+  filterGrocerySuggestions,
+} from '../utils/grocerySuggest';
 import { describeExpiry, expiryDaysFromNow, expiryKeyFor } from '../utils/groceryShelfLife';
 import { wantsUseUpTask } from '../utils/groceryExpiry';
 import { dayKeyToDate } from '../utils/dateUtils';
@@ -208,6 +213,27 @@ export function GroceryItemSheet({
       pendingScrollField.current = initialField ?? null;
     }
   }, [visible, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Distinct brands/variants already typed elsewhere in the catalog, so a
+  // repeat ("Trader Joe's", "low fat") is one tap instead of retyping it —
+  // same idea as RecipeEditor's Author/Source suggestions, computed from the
+  // items that are actually there rather than a fixed lexicon.
+  const existingBrands = useMemo(
+    () => distinctGroceryValues(items, item?.id, i => i.brand),
+    [items, item?.id]
+  );
+  const brandSuggestions = useMemo(
+    () => filterGrocerySuggestions(existingBrands, brand),
+    [existingBrands, brand]
+  );
+  const existingVariants = useMemo(
+    () => distinctGroceryValues(items, item?.id, i => i.variant),
+    [items, item?.id]
+  );
+  const variantSuggestions = useMemo(
+    () => filterGrocerySuggestions(existingVariants, variant),
+    [existingVariants, variant]
+  );
 
   const toggleField = (field: CollapsibleFieldKey) =>
     setOpenField(current => (current === field ? null : field));
@@ -730,6 +756,22 @@ export function GroceryItemSheet({
             maxLength={GROCERY_BRAND_MAX_LENGTH}
             accessibilityLabel="Brand"
           />
+          {brandSuggestions.length > 0 && (
+            <View style={styles.suggestionChips}>
+              {brandSuggestions.map(value => (
+                <TouchableOpacity
+                  key={value}
+                  style={styles.suggestionChip}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => setBrandText(value)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use brand ${value}`}
+                >
+                  <Text style={styles.suggestionChipText} numberOfLines={1}>{value}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
           <Text style={styles.hint}>
             Shown on the list so you know which one to get.
           </Text>
@@ -771,6 +813,22 @@ export function GroceryItemSheet({
             maxLength={GROCERY_VARIANT_MAX_LENGTH}
             accessibilityLabel="Variant"
           />
+          {variantSuggestions.length > 0 && (
+            <View style={styles.suggestionChips}>
+              {variantSuggestions.map(value => (
+                <TouchableOpacity
+                  key={value}
+                  style={styles.suggestionChip}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => setVariantText(value)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use variant ${value}`}
+                >
+                  <Text style={styles.suggestionChipText} numberOfLines={1}>{value}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
           <Text style={styles.hint}>
             Shown on the list, after the brand.
           </Text>
@@ -1201,6 +1259,29 @@ function makeStyles(colors: Colors) {
       height: 44,
     },
     inputError: { borderColor: colors.red },
+    // Brand/Variant's "pick a value already used elsewhere" chip row, same
+    // treatment as RecipeEditor's Author/Source suggestions. Margin on both
+    // sides: the input above has no marginBottom of its own, and neither does
+    // the hint text below.
+    suggestionChips: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.xs,
+      marginTop: spacing.xs,
+      marginBottom: spacing.xs,
+    },
+    suggestionChip: {
+      backgroundColor: colors.bgSunken,
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      maxWidth: 220,
+    },
+    suggestionChipText: {
+      color: colors.textSecondary,
+      fontSize: font.sm,
+      fontWeight: fontWeight.medium,
+    },
     // The same box as `input`, with the currency symbol living inside it so the
     // field reads as money before anything is typed into it.
     priceField: {

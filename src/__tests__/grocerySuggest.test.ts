@@ -8,6 +8,8 @@ import {
   defaultOnHandUntil,
   pantryEntries,
   buildPantrySections,
+  distinctGroceryValues,
+  filterGrocerySuggestions,
 } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { GroceryItem } from '../types';
@@ -402,5 +404,53 @@ describe('buildPantrySections', () => {
   it('is empty rather than unfiltered when nothing matches', () => {
     const items = [marked('Rice', 'Pantry')];
     expect(buildPantrySections(items, ['Pantry'], NOW, 'saffron')).toEqual([]);
+  });
+});
+
+// ─── distinctGroceryValues / filterGrocerySuggestions ───────────────────────
+
+describe('distinctGroceryValues', () => {
+  it('dedupes and sorts the values already typed on other items', () => {
+    const items = [
+      makeItem({ name: 'Milk', brand: 'Organic Valley' }),
+      makeItem({ name: 'Cheese', brand: 'Kirkland' }),
+      makeItem({ name: 'Yogurt', brand: 'Organic Valley' }),
+    ];
+    expect(distinctGroceryValues(items, undefined, i => i.brand)).toEqual([
+      'Kirkland',
+      'Organic Valley',
+    ]);
+  });
+
+  it('drops items with no value set', () => {
+    const items = [makeItem({ name: 'Milk', brand: 'Kirkland' }), makeItem({ name: 'Bread' })];
+    expect(distinctGroceryValues(items, undefined, i => i.brand)).toEqual(['Kirkland']);
+  });
+
+  it('excludes the item being edited, so it never suggests only its own value', () => {
+    const edited = makeItem({ name: 'Milk', brand: 'Kirkland' });
+    const items = [edited, makeItem({ name: 'Cheese', brand: 'Organic Valley' })];
+    expect(distinctGroceryValues(items, edited.id, i => i.brand)).toEqual(['Organic Valley']);
+  });
+});
+
+describe('filterGrocerySuggestions', () => {
+  const values = ['Kirkland', 'Organic Valley', "Trader Joe's"];
+
+  it('returns everything for an empty query', () => {
+    expect(filterGrocerySuggestions(values, '')).toEqual(values);
+  });
+
+  it('matches by substring, case-insensitively', () => {
+    expect(filterGrocerySuggestions(values, 'organic')).toEqual(['Organic Valley']);
+  });
+
+  it('excludes an exact match — nothing to suggest over what is already typed', () => {
+    expect(filterGrocerySuggestions(values, 'Kirkland')).toEqual([]);
+  });
+
+  it('caps at 8', () => {
+    const many = Array.from({ length: 12 }, (_, i) => `Brand ${i}`);
+    expect(filterGrocerySuggestions(many, '')).toHaveLength(8);
   });
 });
