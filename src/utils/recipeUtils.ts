@@ -1,4 +1,4 @@
-import type { GroceryItem, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
+import type { GroceryItem, ItemSubLink, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
 import {
   RECIPE_CHOICE_GROUP_MAX_LENGTH,
   RECIPE_MEAL_TYPES,
@@ -16,6 +16,7 @@ import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep, splitP
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
+import { substitutesOnHand } from './itemSubs';
 import { formatDuration } from './effort';
 import {
   countChoiceAware,
@@ -304,12 +305,29 @@ export function formatServings(recipe: Recipe): string | null {
 }
 
 /**
- * "Breakfast · 8 ingredients · 1 component · 6 likely in pantry · serves 4-6 ·
- * NYT Cooking" — the recipe row's subtitle. `likelyInPantry` is optional and
- * omitted (both the param and, given a falsy count, the phrase) rather than
- * ever rendering "0 likely in pantry" — see `countLikelyInPantry`. The meal
- * type leads, ahead of the ingredient count, since it's the fact someone
- * scanning the list is most likely browsing by (see RecipeMealType).
+ * `countLikelyInPantry`'s return shape (#1568) — two counts, never folded into
+ * one number. `probablyHave` is a direct pantry match; `viaSubstitute` is an
+ * ingredient with no pantry match of its own whose linked substitute the app
+ * currently thinks is on hand. Reporting them separately is what keeps a
+ * substitute link — which is user-authored, not a guess — from reading like
+ * one anyway: a coverage number that can't be taken apart is indistinguishable
+ * from the deleted `likelyItemIds` bucket's kind of invention, however honest
+ * its inputs are. See `describeRecipe` and `describePantryCoverage`, which
+ * both render the two as separate clauses rather than summing them.
+ */
+export interface LikelyInPantryCount {
+  probablyHave: number;
+  viaSubstitute: number;
+}
+
+/**
+ * "Breakfast · 8 ingredients · 1 component · 6 likely in pantry · 1 with a
+ * substitute · serves 4-6 · NYT Cooking" — the recipe row's subtitle.
+ * `likelyInPantry` is optional and each clause is omitted independently on a
+ * falsy count, rather than ever rendering "0 likely in pantry" — see
+ * `countLikelyInPantry`. The meal type leads, ahead of the ingredient count,
+ * since it's the fact someone scanning the list is most likely browsing by
+ * (see RecipeMealType).
  *
  * The ingredient count is the recipe's *own* lines, never the flattened total,
  * because it has to agree with the list the detail screen puts on screen right
@@ -317,7 +335,7 @@ export function formatServings(recipe: Recipe): string | null {
  * ingredients" alone would read as the whole shop for a dish that's mostly its
  * parts.
  */
-export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): string {
+export function describeRecipe(recipe: Recipe, likelyInPantry?: LikelyInPantryCount | null): string {
   // Choice-aware, so "serrano or jalapeño" reads as the one pepper a meal of
   // this actually buys — see countChoiceAware.
   const count = countChoiceAware(recipe.ingredients);
@@ -326,8 +344,11 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): 
   parts.push(count === 1 ? '1 ingredient' : `${count} ingredients`);
   const components = describeComponents(recipe);
   if (components) parts.push(components);
-  if (likelyInPantry) {
-    parts.push(likelyInPantry === 1 ? '1 likely in pantry' : `${likelyInPantry} likely in pantry`);
+  if (likelyInPantry?.probablyHave) {
+    parts.push(likelyInPantry.probablyHave === 1 ? '1 likely in pantry' : `${likelyInPantry.probablyHave} likely in pantry`);
+  }
+  if (likelyInPantry?.viaSubstitute) {
+    parts.push(likelyInPantry.viaSubstitute === 1 ? '1 with a substitute' : `${likelyInPantry.viaSubstitute} with a substitute`);
   }
   const servings = formatServings(recipe);
   if (servings) parts.push(`serves ${servings}`);
@@ -343,22 +364,26 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): 
  * How many of a recipe's ingredients grocerySuggest's pantry guess would call
  * "probably have" — the same `classifyPlanned` signal RecipeToListSheet and
  * AddWeekToListSheet already use to pre-collapse their "Probably have"
- * section, reused here rather than re-deriving it, and reduced to a count for
- * the recipe list row. Null (never 0) when there's nothing worth showing: no
- * ingredients, or nothing in the catalog reads as still on hand.
+ * section, reused here rather than re-deriving it, and reduced to two counts
+ * for the recipe list row. Null (never both-zero) when there's nothing worth
+ * showing: no ingredients, or nothing in the catalog reads as still on hand
+ * and nothing is covered via a substitute either.
  *
  * `recipesById` counts a composed recipe's components in, so the number means
  * the same thing the "Add ingredients to list" sheet will show. Optional for
- * the same reason plannedIngredientsForRecipe's is.
+ * the same reason plannedIngredientsForRecipe's is. `itemSubs` is optional and
+ * empty by default: with no links there's nothing to add to the direct count.
  */
 export function countLikelyInPantry(
   recipe: Recipe,
   items: readonly GroceryItem[],
   now: Date,
   recipesById?: ReadonlyMap<string, Recipe>,
-): number | null {
-  const coverage = pantryCoverageForRecipe(recipe, items, now, recipesById);
-  return coverage.probablyHave > 0 ? coverage.probablyHave : null;
+  itemSubs: readonly ItemSubLink[] = [],
+): LikelyInPantryCount | null {
+  const coverage = pantryCoverageForRecipe(recipe, items, now, recipesById, itemSubs);
+  if (coverage.probablyHave === 0 && coverage.viaSubstitute === 0) return null;
+  return { probablyHave: coverage.probablyHave, viaSubstitute: coverage.viaSubstitute };
 }
 
 /**
@@ -379,6 +404,17 @@ export interface PantryCoverage {
   catalogMatches: number;
   /** How many lines `classifyPlanned` currently calls "probably have" — grocerySuggest's pantry guess, or an explicit `onHandUntil` assertion. */
   probablyHave: number;
+  /**
+   * Ingredient lines with no pantry match of their own (`needToBuy`) whose
+   * linked substitute the app currently thinks is on hand — `classifyPlanned`
+   * already answers this via `row.reason` (#1566), so this reads that rather
+   * than re-deriving it. Counted separately from `probablyHave` and never
+   * folded into `percent`, per #1568: a substitute-covered ingredient is real
+   * (every link is user-authored) but isn't the same fact as a direct match,
+   * and a number that can't be taken apart reads like a guess even when it
+   * isn't one.
+   */
+  viaSubstitute: number;
   /** `probablyHave / total` as a whole-number percentage. Null when there's nothing to compute it from: no ingredients, or none of them has ever been added to the grocery catalog. */
   percent: number | null;
 }
@@ -392,25 +428,28 @@ export interface PantryCoverage {
  *
  * `recipesById` folds a composed recipe's components in, same as
  * `countLikelyInPantry` — a dish that's mostly its parts must not read as
- * fully unjudged just because its own two lines are.
+ * fully unjudged just because its own two lines are. `itemSubs` is optional
+ * and empty by default, matching every other reader of these links.
  */
 export function pantryCoverageForRecipe(
   recipe: Recipe,
   items: readonly GroceryItem[],
   now: Date,
   recipesById?: ReadonlyMap<string, Recipe>,
+  itemSubs: readonly ItemSubLink[] = [],
 ): PantryCoverage {
   const planned = plannedIngredientsForRecipe(recipe, recipesById);
-  if (planned.length === 0) return { total: 0, catalogMatches: 0, probablyHave: 0, percent: null };
+  if (planned.length === 0) return { total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null };
 
-  const classified = classifyPlanned(planned, items, now);
+  const classified = classifyPlanned(planned, items, now, itemSubs);
   const total = classified.length;
   const itemKeys = new Set(items.map(i => i.nameKey));
   const catalogMatches = classified.filter(row => itemKeys.has(row.nameKey)).length;
   const probablyHave = classified.filter(row => row.category === 'probablyHave').length;
+  const viaSubstitute = classified.filter(row => row.category === 'needToBuy' && row.reason !== null).length;
   const percent = catalogMatches > 0 ? Math.round((probablyHave / total) * 100) : null;
 
-  return { total, catalogMatches, probablyHave, percent };
+  return { total, catalogMatches, probablyHave, viaSubstitute, percent };
 }
 
 /**
@@ -421,12 +460,18 @@ export function pantryCoverageForRecipe(
  * The no-catalog-match case is worded as a state, not a number: a bare "0/7"
  * there would read as "you have none of this" when the honest answer is
  * "we've never seen these ingredients bought, so we can't guess" — the
- * graceful-degradation case #1103 asks for.
+ * graceful-degradation case #1103 asks for. `viaSubstitute` rides as its own
+ * trailing clause either way, never folded into the fraction in front of it —
+ * same shape `describeShops` uses for a trailing negative-evidence clause.
  */
 export function describePantryCoverage(coverage: PantryCoverage): string | null {
   if (coverage.total === 0) return null;
-  if (coverage.catalogMatches === 0) return 'No purchase history for these yet';
-  return `${coverage.probablyHave}/${coverage.total} likely on hand`;
+  const base = coverage.catalogMatches === 0
+    ? 'No purchase history for these yet'
+    : `${coverage.probablyHave}/${coverage.total} likely on hand`;
+  if (coverage.viaSubstitute === 0) return base;
+  const clause = coverage.viaSubstitute === 1 ? '1 with a substitute' : `${coverage.viaSubstitute} with a substitute`;
+  return `${base} · ${clause}`;
 }
 
 /**
@@ -923,11 +968,21 @@ function suggestionNovelty(recipe: Pick<Recipe, 'lastCookedAt'>, now: Date): num
  * "shares one ingredient with it" — see `suggestRecipesForEmptyNight`. */
 const MIN_SUGGESTION_COVERAGE = 0.5;
 
+// How strongly a substitute-covered ingredient contributes to the recency
+// average, relative to a genuine direct purchase (1.0). Less than a direct
+// match, per #1568 — two recipes, one fully stocked and one stocked only via
+// substitutes, must not rank equally — but still a real credit: an unpurchased
+// or long-stale catalog row already contributes ~0.5 on its own (a wash, not
+// a penalty — see purchaseRecency), so this only matters, and only helps,
+// when the substitute genuinely beats that.
+const SUBSTITUTE_RECENCY_CREDIT = 0.75;
+
 function catalogCoverage(
   recipe: Recipe,
   items: readonly GroceryItem[],
   now: Date,
   recipesById?: ReadonlyMap<string, Recipe>,
+  itemSubs: readonly ItemSubLink[] = [],
 ): { matched: number; total: number; coverage: number; avgRecency: number } {
   // Coverage has to be measured over everything the dish actually needs — a
   // parent with two ingredients of its own would otherwise score as a night's
@@ -947,7 +1002,18 @@ function catalogCoverage(
     const item = byKey.get(ingredient.nameKey);
     if (!item) continue;
     matched += 1;
-    recencySum += purchaseRecency(item, now);
+    // `matched` (hence `coverage`) is existence-only and unaffected by
+    // substitutes — a link can only exist between two rows that are already
+    // catalog items (see linkItemSub), so an ingredient with no catalog row
+    // at all can never carry one anyway; there is nothing here to credit that
+    // isn't already counted. What a substitute *can* fix is a row that exists
+    // but reads as stale or never-bought: its own recency is a wash (0.5) or
+    // worse, while a linked substitute the app currently thinks is on hand is
+    // a real, if lesser, signal that this line is actually coverable tonight.
+    const own = purchaseRecency(item, now);
+    const subs = substitutesOnHand(item.id, itemSubs, items, now);
+    const recency = subs.length > 0 ? Math.max(own, SUBSTITUTE_RECENCY_CREDIT) : own;
+    recencySum += recency;
   }
   return {
     matched,
@@ -962,8 +1028,9 @@ export function scoreRecipeAgainstCatalog(
   items: readonly GroceryItem[],
   now: Date,
   recipesById?: ReadonlyMap<string, Recipe>,
+  itemSubs: readonly ItemSubLink[] = [],
 ): number {
-  const { matched, coverage, avgRecency } = catalogCoverage(recipe, items, now, recipesById);
+  const { matched, coverage, avgRecency } = catalogCoverage(recipe, items, now, recipesById, itemSubs);
   if (matched === 0) return 0;
   const catalogFit = coverage * (0.5 + 0.5 * avgRecency);
   return catalogFit * suggestionNovelty(recipe, now);
@@ -987,12 +1054,13 @@ export function suggestRecipesForEmptyNight(
   items: readonly GroceryItem[],
   now: Date,
   limit = 3,
+  itemSubs: readonly ItemSubLink[] = [],
 ): Recipe[] {
   const byId = recipeMap(recipes);
   return recipes
-    .map(recipe => ({ recipe, ...catalogCoverage(recipe, items, now, byId) }))
+    .map(recipe => ({ recipe, ...catalogCoverage(recipe, items, now, byId, itemSubs) }))
     .filter(x => x.coverage >= MIN_SUGGESTION_COVERAGE)
-    .map(x => ({ recipe: x.recipe, score: scoreRecipeAgainstCatalog(x.recipe, items, now, byId) }))
+    .map(x => ({ recipe: x.recipe, score: scoreRecipeAgainstCatalog(x.recipe, items, now, byId, itemSubs) }))
     .sort((a, b) => b.score - a.score || a.recipe.name.localeCompare(b.recipe.name))
     .slice(0, limit)
     .map(x => x.recipe);

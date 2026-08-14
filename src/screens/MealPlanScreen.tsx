@@ -285,6 +285,7 @@ export function MealPlanScreen() {
   // leftovers too, so it calls planMeal directly and only shares the offer.
   const { offerPrepTasks } = usePlanMeal();
   const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
 
   // The day being planned; null when the picker is closed.
   const [planningDay, setPlanningDay] = useState<string | null>(null);
@@ -1012,8 +1013,8 @@ export function MealPlanScreen() {
   // reading out from under them mid-flow. The week decides whether the shelf is
   // *offered* (canSuggestMeals), never what is on it.
   const mealSuggestions = useMemo(
-    () => suggestRecipesForEmptyNight(recipes, groceryItems, new Date(), 5),
-    [recipes, groceryItems]
+    () => suggestRecipesForEmptyNight(recipes, groceryItems, new Date(), 5, itemSubs),
+    [recipes, groceryItems, itemSubs]
   );
 
   // Recipes made often and made recently — the comfort-food half of the
@@ -1035,10 +1036,10 @@ export function MealPlanScreen() {
     const byId = recipeMap(recipes);
     const map = new Map<string, PantryCoverage>();
     for (const recipe of mealSuggestions) {
-      map.set(recipe.id, pantryCoverageForRecipe(recipe, groceryItems, new Date(), byId));
+      map.set(recipe.id, pantryCoverageForRecipe(recipe, groceryItems, new Date(), byId, itemSubs));
     }
     return map;
-  }, [mealSuggestions, recipes, groceryItems]);
+  }, [mealSuggestions, recipes, groceryItems, itemSubs]);
 
   // Offered whenever there's a night to fill and something to fill it with —
   // a ranked recipe, or a key for the generation half to invent one (#1063).

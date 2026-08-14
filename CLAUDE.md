@@ -744,6 +744,23 @@ plumbing through the recipes JSON blob.
   is the forward one swapped**, not copied: the reverse row describes the *other* item's own
   unit on its own left, or a both-ways garlic↔garlic-powder link would claim a clove
   converts to a further clove.
+- **A substitute-covered ingredient counts toward "what can I make", as its own clause,
+  never folded into the direct-match number** (`recipeUtils.LikelyInPantryCount.viaSubstitute`,
+  `PantryCoverage.viaSubstitute`, #1568). "6 likely in pantry · 1 with a substitute", never
+  silently "7 likely in pantry" — the same discipline `describeShops` uses for a trailing
+  clause it can't sum into the number in front of it, and what keeps a user-authored (hence
+  real) link from reading like a guess anyway once it's inside a coverage number nobody can
+  take apart. **`countLikelyInPantry` reuses `classifyPlanned`'s own `reason` field** (#1566)
+  rather than re-deriving "is a linked substitute on hand" — a `needToBuy` row with a
+  non-null `reason` already *is* that answer. `scoreRecipeAgainstCatalog`'s `coverage`
+  fraction is untouched by any of this: a substitute link can only ever exist between two
+  rows that are already catalog items (`linkItemSub` requires both), so an ingredient with
+  no catalog row at all — the case `coverage`'s existence check is blind to — can never carry
+  one either; there's nothing there to credit that isn't already counted. What a substitute
+  *can* still fix is `avgRecency`: a catalog row that's stale or never bought contributes a
+  neutral 0.5 wash on its own, and a linked substitute genuinely on hand lifts that (capped
+  below a fresh direct purchase, so **the fully-stocked recipe still wins**) rather than
+  leaving a coverable line reading as no better than an unstocked one.
 
 ### Composed recipes (`Recipe.components`) — one recipe used inside another
 

@@ -21,6 +21,13 @@ import { pantryEntries } from '../utils/grocerySuggest';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
 import { flattenRecipeIngredients } from '../utils/recipeComponents';
+import {
+  countLikelyInPantry,
+  describePantryCoverage,
+  describeRecipe,
+  pantryCoverageForRecipe,
+  scoreRecipeAgainstCatalog,
+} from '../utils/recipeUtils';
 import { taskKindOf } from '../utils/taskKinds';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { extraTaskRule } from '../utils/extraTask';
@@ -610,6 +617,32 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(butterRow.reason).toBe('you have margarine');
     // The whole safety argument: it still has to be bought.
     expect(butterRow.category).toBe('needToBuy');
+  });
+
+  it('counts that same substitute-covered butter toward "what can I make" (#1568)', () => {
+    // Same link, same state as the caption test above — the same Butter →
+    // Margarine facts are what #1568's readers count toward, no new seed
+    // writes needed for this capability to already be visible.
+    const { items, itemSubs } = useGroceryStore.getState();
+    const recipes = useRecipeStore.getState().recipes;
+    const recipesById = new Map(recipes.map(r => [r.id, r]));
+    const usesButter = recipes.find(r =>
+      flattenRecipeIngredients(r, recipesById).some(f => f.ingredient.nameKey === 'butter')
+    )!;
+
+    const count = countLikelyInPantry(usesButter, items, new Date(), recipesById, itemSubs);
+    expect(count?.viaSubstitute).toBeGreaterThanOrEqual(1);
+
+    const coverage = pantryCoverageForRecipe(usesButter, items, new Date(), recipesById, itemSubs);
+    expect(coverage.viaSubstitute).toBeGreaterThanOrEqual(1);
+    expect(describeRecipe(usesButter, count)).toContain('with a substitute');
+    expect(describePantryCoverage(coverage)).toContain('with a substitute');
+
+    // Never a free ride to a higher score than the same recipe would earn if
+    // butter itself were genuinely fresh — the fully-stocked read still wins.
+    const scoreWithSub = scoreRecipeAgainstCatalog(usesButter, items, new Date(), recipesById, itemSubs);
+    const scoreWithoutSub = scoreRecipeAgainstCatalog(usesButter, items, new Date(), recipesById);
+    expect(scoreWithSub).toBeGreaterThanOrEqual(scoreWithoutSub);
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {
