@@ -51,6 +51,7 @@ export function seedDemoData(): void {
     addNewGroupedTask,
     addExistingToProject,
     addTag,
+    pinGroup,
   } = useTaskStore.getState();
   const { addCategory, setCategoryEmoji } = useCategoryStore.getState();
   const { createProject } = useProjectStore.getState();
@@ -266,6 +267,9 @@ export function seedDemoData(): void {
   addNewGroupedTask(supplements.id, 'Omega-3');
   const iron = addNewGroupedTask(supplements.id, 'Iron');
   updateTask(iron.id, { timeSegments: ['evening'] });
+  // Pinned as a whole via the stack editor's pin button, so the Pinned Tasks
+  // block shows a copy of all three alongside the lone pinned task above.
+  pinGroup(supplements.id);
 
   // --- Later (deferred / future-dated) -------------------------------------
   addTask({
