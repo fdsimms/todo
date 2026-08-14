@@ -327,6 +327,24 @@ describe('splitPrep', () => {
   it('does not split a whitelisted word with nothing following it', () => {
     expect(splitPrep('Minced')).toEqual({ name: 'Minced', prep: null });
   });
+
+  it('stands down for a comma list of alternatives, so the split stays reachable', () => {
+    expect(splitPrep('chicken, beef, or lamb')).toEqual({
+      name: 'chicken, beef, or lamb',
+      prep: null,
+    });
+  });
+
+  it('still takes the comma when the clause is prep, "or" and all', () => {
+    expect(splitPrep('black beans, drained and rinsed, or canned')).toEqual({
+      name: 'black beans',
+      prep: 'drained and rinsed, or canned',
+    });
+    expect(splitPrep('onion, red or white')).toEqual({
+      name: 'onion',
+      prep: 'red or white',
+    });
+  });
 });
 
 // ─── splitPurpose ────────────────────────────────────────────────────────────
@@ -618,5 +636,30 @@ describe('splitAlternativeNames', () => {
     // why "butter or olive oil" makes distributing the trailing word unsafe.
     expect(splitAlternativeNames('chicken or vegetable stock')).toEqual(['chicken', 'vegetable stock']);
     expect(splitAlternativeNames('butter or olive oil')).toEqual(['butter', 'olive oil']);
+  });
+
+  it('reads a comma list as options when the Oxford comma is there', () => {
+    expect(splitAlternativeNames('serrano, jalapeño, or habanero'))
+      .toEqual(['serrano', 'jalapeño', 'habanero']);
+    expect(splitAlternativeNames('limes, lemons, or grapefruit'))
+      .toEqual(['limes', 'lemons', 'grapefruit']);
+  });
+
+  it('leaves commas alone without the Oxford comma, since they read as prep', () => {
+    // One onion with a note about which kind, not three things to choose from.
+    expect(splitAlternativeNames('onion, red or white')).toEqual(['onion, red', 'white']);
+    // Without the ", or" there is nothing to tell a list from a prep clause.
+    expect(splitAlternativeNames('limes, lemons or grapefruit'))
+      .toEqual(['limes, lemons', 'grapefruit']);
+  });
+
+  it('declines a comma list whose parts are prep, not options', () => {
+    expect(splitAlternativeNames('black beans, drained and rinsed, or canned')).toBeNull();
+    expect(splitAlternativeNames('butter, melted, or margarine')).toBeNull();
+  });
+
+  it('still applies its other refusals to a comma list', () => {
+    expect(splitAlternativeNames('a, b, c, d, or e')).toBeNull();
+    expect(splitAlternativeNames('garlic, Garlic, or garlic')).toBeNull();
   });
 });

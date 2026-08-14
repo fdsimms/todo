@@ -597,6 +597,19 @@ export interface PlannedRow {
    */
   sourceRecipeId?: string | null;
   sourceRecipeTitle?: string | null;
+  /**
+   * The either/or slot this row is one option of, as the recipe-side key
+   * `choiceGroupKey` mints — see ClassifiedIngredient.choiceGroup. Rows sharing
+   * one land on the list under a single opaque `GroceryItem.choiceGroup`, so
+   * ticking one at the shelf takes the others off.
+   *
+   * **The key is translated, never stored.** A recipe's group label is a
+   * heading over its ingredient list; a grocery row has nowhere to render one,
+   * and two shops of the same recipe must not merge into one group weeks apart.
+   * `addFromPlan` mints a fresh id per key per call, which is exactly the
+   * lifetime of "this trolley".
+   */
+  choiceGroup?: string | null;
 }
 
 export interface PlanAddResult {
@@ -937,6 +950,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const alreadyOnList: GroceryItem[] = [];
     const skippedInCart: GroceryItem[] = [];
 
+    // One opaque id per incoming key, minted here rather than carried from the
+    // recipe — see PlannedRow.choiceGroup. A group whose options all resolve to
+    // rows already on the list mints an id nothing uses, which is harmless.
+    const groupIds = new Map<string, string>();
+    const groupIdFor = (key: string) => {
+      const existing = groupIds.get(key);
+      if (existing) return existing;
+      const minted = generateId();
+      groupIds.set(key, minted);
+      return minted;
+    };
+
     // One transaction rather than N: a ten-ingredient recipe is ten inserts and
     // as many updates, and a half-applied recipe is a worse outcome than a
     // failed one. Same shape as applyTemplate's single dbTransaction.
@@ -950,10 +975,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
         // Passing the bare name, not "2 lb chicken thighs": the quantity is
         // already split out on the ingredient, and re-parsing it here would
-        // run the guesswork twice.
+        // run the guesswork twice. The override exists only to carry the
+        // either/or through; without one it stays undefined so addByName parses
+        // exactly as it always has.
         const item = get().addByName(
           row.name,
-          undefined,
+          row.choiceGroup
+            ? { ...parseGroceryInput(row.name), choiceGroup: groupIdFor(row.choiceGroup) }
+            : undefined,
           row.sourceRecipeId ? { recipeId: row.sourceRecipeId, recipeTitle: row.sourceRecipeTitle ?? '' } : undefined,
           { registerUndo: false }
         );

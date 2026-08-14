@@ -45,7 +45,12 @@ function matchWeight(nameKey: string, queryKey: string): number {
   // Plural tolerance lives HERE and not in groceryNameKey, where merging two
   // shelf items would be permanent. Typing "banana" should still find
   // "bananas"; getting it wrong here costs one keystroke.
-  if (queryKey.endsWith('s') && nameKey.startsWith(queryKey.slice(0, -1))) return 2;
+  // The length guard is load-bearing: a bare "s" has an empty stem, and
+  // `startsWith('')` is true of every name in the catalog — so typing the first
+  // letter of "spinach" offered bread, eggs and everything else at weight 2,
+  // ranked purely by familiarity. A one-character query has no plural to be
+  // tolerant of.
+  if (queryKey.length > 1 && queryKey.endsWith('s') && nameKey.startsWith(queryKey.slice(0, -1))) return 2;
   if (nameKey.startsWith(`${queryKey}s`)) return 3;
   return 0;
 }
