@@ -1422,20 +1422,23 @@ export function TodayScreen() {
   // Every row per section, for the count a collapsed header shows: task rows,
   // context rows, and each stack's currently-visible children (the same
   // subset `visibleGroupItems` hands the tray itself, so a collapsed header's
-  // total matches what expanding it would show). This can't come from
-  // sectionTaskIds — that map deliberately drops a whole section the moment
-  // it hits a group item (see its own doc comment: a collapsed header must
-  // not strand a stack's tray), which would silently drop every task row
-  // sharing that category from the header's count too. And context rows have
-  // to be counted separately from sectionTaskIds regardless — that map feeds
+  // total matches what expanding it would show). Built from `listItems` —
+  // before collapse/focus/hideCategories run — deliberately unlike
+  // `sectionTaskIds` below: applyCategoryCollapse strips every task/group/
+  // context row out of a *collapsed* section, so reading off `data` would
+  // always report a collapsed header's own count as 0, stack or no stack.
+  // This also can't come from sectionTaskIds even pre-collapse — that map
+  // deliberately drops a whole section the moment it hits a group item (see
+  // its own doc comment: a collapsed header must not strand a stack's tray),
+  // which would silently drop every task row sharing that category from the
+  // count too, and it never counted context rows to begin with (it feeds
   // CompletionCollapse, which animates a header out with the rows being
-  // ticked off, and counting context rows there would have a header waiting
-  // on rows that can never complete.
+  // ticked off — a header shouldn't wait on rows that can never complete).
   const sectionDisplayCounts = useMemo(() => {
     const visibleCountByGroupId = new Map(visibleGroupItems.map(g => [g.group.id, g.children.length]));
     const counts = new Map<string, number>();
     let label: string | null = null;
-    for (const item of data) {
+    for (const item of listItems) {
       if (item.type === 'header') {
         label = item.label;
         counts.set(label, 0);
@@ -1449,7 +1452,7 @@ export function TodayScreen() {
       }
     }
     return counts;
-  }, [data, visibleGroupItems]);
+  }, [listItems, visibleGroupItems]);
 
   // Local copy of data fed to ReorderableList. onReorder writes the settled
   // grouped layout here immediately so the list doesn't flash back to the
