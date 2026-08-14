@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
-import type { ContextRow, Task, TaskGroup, TaskTemplate, Category } from '../types';
+import type { ContextRow, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday } from '../utils/visibilityUtils';
 import { isRealCompletion } from '../utils/missed';
 import { isToday } from 'date-fns/isToday';
@@ -33,6 +33,7 @@ import {
   laterTaskOrder,
   LATER_TODAY_LABEL,
   laterSections as computeLaterSections,
+  laterDropZones,
   visibleLaterSections as computeVisibleLaterSections,
   laterTodaySections as computeLaterTodaySections,
   applyCategoryCollapse as applyCategoryCollapseTo,
@@ -293,9 +294,11 @@ function AddTaskFabWithDropLabel({
       case 'joinGroup': return `Add to ${intent.groupTitle.trim() || 'stack'}`;
       case 'pin': return 'New pinned task';
       case 'insert':
-        return intent.category
-          ? `New task in ${categoryLabel(intent.category, categories)}`
-          : 'New task here';
+        return intent.schedule
+          ? `New task on ${intent.schedule.label}`
+          : intent.category
+            ? `New task in ${categoryLabel(intent.category, categories)}`
+            : 'New task here';
       default: return null;
     }
   });
@@ -728,8 +731,11 @@ export function TodayScreen() {
     // Position it only if it actually landed in the list it was dropped on: the
     // sheet can push a task out of Today entirely (a defer date, no date at
     // all), and then the spot it was dropped at isn't somewhere it can go.
-    if (placed && destination === 'today' && dropped?.kind === 'insert') {
-      placeCreatedTask(task, dropped);
+    if (placed && dropped?.kind === 'insert') {
+      if (destination === 'today') placeCreatedTask(task, dropped);
+      else if (destination === 'later') placeCreatedLaterTask(task, dropped);
+      else if (destination === 'unscheduled') placeCreatedUnscheduledTask(task, dropped);
+      else placeCreatedInboxTask(task, dropped);
     }
     if (destination !== viewMode) setViewMode(destination);
 
@@ -745,9 +751,12 @@ export function TodayScreen() {
       const index = unscheduledTasks.findIndex(t => t.id === task.id);
       if (index >= 0) setPendingUnscheduledJump({ index, n: jumpCount.current++ });
     } else {
-      // A freshly-created task is never a stack member (quick-add has no way
-      // to set groupId), so it's always a loose 'task' entry here.
-      const index = inboxData.findIndex(item => item.type === 'task' && item.task.id === task.id);
+      // A drag onto a stack row (see placeCreatedInboxTask) makes the task a
+      // member rather than a loose row — jump to the stack's own row then,
+      // since the member itself isn't independently indexed in this list.
+      const index = task.groupId
+        ? inboxData.findIndex(item => item.type === 'group' && item.group.id === task.groupId)
+        : inboxData.findIndex(item => item.type === 'task' && item.task.id === task.id);
       if (index >= 0) setPendingInboxJump({ index, n: jumpCount.current++ });
     }
     flashTask(task.id);
@@ -1487,7 +1496,16 @@ export function TodayScreen() {
   // it — the label on the button, the highlight on a stack — subscribe.
   const fabIntentChannel = useFabIntentChannel();
   const [quickAddSeed, setQuickAddSeed] = useState<
-    { category?: string | null; groupId?: string; pinned?: boolean } | undefined
+    | {
+        category?: string | null;
+        groupId?: string;
+        pinned?: boolean;
+        dueDate?: string | null;
+        timeSegments?: TimeOfDay[];
+        windowStart?: string | null;
+        windowEnd?: string | null;
+      }
+    | undefined
   >(undefined);
   const [quickAddSeedLabel, setQuickAddSeedLabel] = useState<string | null>(null);
   // The drop that opened the sheet, read once when the task comes back.
@@ -1544,6 +1562,32 @@ export function TodayScreen() {
     return map;
   }, [todayListData]);
 
+  // Inbox tasks carry no category by definition (isInboxTask), so every row's
+  // zone is uncategorized — a stack row joins it (mirroring Today's own
+  // 'group' zone), a loose task only marks a sort position.
+  const inboxZoneByKey = useMemo(() => {
+    const map = new Map<string, DropZone>();
+    inboxData.forEach(item => {
+      const key = listItemKey(item);
+      if (item.type === 'group') {
+        map.set(key, { kind: 'group', key, groupId: item.group.id, groupTitle: item.group.title, category: null });
+      } else if (item.type === 'task') {
+        map.set(key, { kind: 'task', key, category: null });
+      }
+    });
+    return map;
+  }, [inboxData]);
+
+  // Flattest of the four sub-views — no headers, no stacks, so every row is
+  // the same 'task' zone kind, sort-position only.
+  const unscheduledZoneByKey = useMemo(() => {
+    const map = new Map<string, DropZone>();
+    unscheduledTasks.forEach(task => {
+      map.set(task.id, { kind: 'task', key: task.id, category: null });
+    });
+    return map;
+  }, [unscheduledTasks]);
+
   /**
    * Give the freshly created task the position it was dropped at.
    *
@@ -1574,6 +1618,48 @@ export function TodayScreen() {
     reorderWithCategoryUpdates(taskOrders, categoryUpdates);
   };
 
+  /**
+   * Later's counterpart to placeCreatedTask — splice the new row into the
+   * flattened day/segment list at the drop point and hand the whole thing to
+   * reorderTasks, the same commit a finished row drag runs (see the
+   * ReorderableList's own onReorder just below).
+   */
+  const placeCreatedLaterTask = (task: Task, intent: Extract<FabDropIntent, { kind: 'insert' }>) => {
+    // The date the sheet actually committed wins, same rule as Today's
+    // category check — a date changed in the sheet means the task belongs
+    // wherever that lands it, not where the button was dropped.
+    if (!intent.schedule || (task.dueDate ?? null) !== intent.schedule.dueDate) return;
+    const anchor = laterDraggableData.findIndex(item => item.key === intent.anchorKey);
+    if (anchor < 0) return;
+
+    const spliced = [...laterDraggableData];
+    spliced.splice(intent.before ? anchor : anchor + 1, 0, { type: 'task', task, key: task.id });
+    setLaterDraggableData(spliced);
+    reorderTasks(laterTaskOrder(spliced));
+  };
+
+  /** Shared by Inbox and Unscheduled: splice the new task's id into a flat id
+   * order and hand it to reorderTasks — no categories, no stacks, nothing
+   * resolveDrop's machinery is for. */
+  const placeCreatedInFlatOrder = (ids: string[], anchorId: string, taskId: string, before: boolean) => {
+    const anchor = ids.indexOf(anchorId);
+    if (anchor < 0) return;
+    const spliced = [...ids];
+    spliced.splice(before ? anchor : anchor + 1, 0, taskId);
+    reorderTasks(spliced);
+  };
+
+  const placeCreatedInboxTask = (task: Task, intent: Extract<FabDropIntent, { kind: 'insert' }>) => {
+    const ids = inboxData.flatMap(item =>
+      item.type === 'group' ? item.children.map(c => c.id) : item.type === 'task' ? [item.task.id] : [],
+    );
+    placeCreatedInFlatOrder(ids, intent.anchorKey, task.id, intent.before);
+  };
+
+  const placeCreatedUnscheduledTask = (task: Task, intent: Extract<FabDropIntent, { kind: 'insert' }>) => {
+    placeCreatedInFlatOrder(unscheduledTasks.map(t => t.id), intent.anchorKey, task.id, intent.before);
+  };
+
   const openQuickAddForDrop = (intent: FabDropIntent) => {
     // Dropped back on the button: the drag is the whole of what happened, so
     // no sheet, and nothing left armed for the next tap (see closeQuickAdd).
@@ -1595,10 +1681,22 @@ export function TodayScreen() {
         setQuickAddSeedLabel('Pinned');
         break;
       case 'insert':
-        setQuickAddSeed({ category: intent.category });
-        setQuickAddSeedLabel(
-          intent.category ? categoryLabel(intent.category, categories) : 'This spot',
-        );
+        if (intent.schedule) {
+          // A Later day/time section — seeds the same fields the row's own
+          // reschedule action writes (see ScheduleInfo).
+          setQuickAddSeed({
+            dueDate: intent.schedule.dueDate,
+            timeSegments: intent.schedule.timeSegments as TimeOfDay[],
+            windowStart: intent.schedule.windowStart,
+            windowEnd: intent.schedule.windowEnd,
+          });
+          setQuickAddSeedLabel(intent.schedule.label);
+        } else {
+          setQuickAddSeed({ category: intent.category });
+          setQuickAddSeedLabel(
+            intent.category ? categoryLabel(intent.category, categories) : 'This spot',
+          );
+        }
         break;
       case 'plain':
         setQuickAddSeed(undefined);
@@ -2395,6 +2493,16 @@ export function TodayScreen() {
     setLaterDraggableData(laterData);
   }, [laterData]);
 
+  // One zone per row, keyed the same way ReorderableList's own keyExtractor
+  // reads them (item.key) — see laterDropZones for what a header/subheader/
+  // task zone each carry.
+  const laterZoneByKey = useMemo(() => {
+    const zones = laterDropZones(laterDraggableData);
+    const map = new Map<string, DropZone>();
+    laterDraggableData.forEach((item, i) => map.set(item.key, zones[i]));
+    return map;
+  }, [laterDraggableData]);
+
   const handleLaterEndReached = useCallback(() => {
     setLaterTaskLimit(limit => limit + LATER_TASK_PAGE_SIZE);
   }, []);
@@ -2569,7 +2677,11 @@ export function TodayScreen() {
         <FabDropZoneProvider
           ref={dropZonesRef}
           onIntentChange={fabIntentChannel.publish}
-          scroller={todayScrollControl}
+          // Only Today's own ReorderableList hands this ref a live
+          // DragScroller (scrollControlRef, below) — Later/Unscheduled/Inbox
+          // don't wire autoscroll yet (#807's own note), so the drag simply
+          // doesn't scroll their lists rather than driving a stale Today ref.
+          scroller={viewMode === 'today' ? todayScrollControl : undefined}
         >
         {viewMode === 'later' && (
           <ReorderableList
@@ -2578,16 +2690,16 @@ export function TodayScreen() {
             data={laterDraggableData}
             keyExtractor={item => item.key}
             renderItem={({ item, drag, isActive }) => {
+              let content: React.ReactNode;
               if (item.type === 'header') {
-                return (
+                content = (
                   <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
                     <Text style={styles.sectionHeaderText}>{item.label}</Text>
                     <SpotlightScrim />
                   </Pressable>
                 );
-              }
-              if (item.type === 'subheader') {
-                return (
+              } else if (item.type === 'subheader') {
+                content = (
                   <Pressable style={styles.laterSubHeader} onPress={() => setExpandedTaskId(null)}>
                     <View
                       style={[
@@ -2599,33 +2711,39 @@ export function TodayScreen() {
                     <SpotlightScrim />
                   </Pressable>
                 );
+              } else {
+                const subs = subtasksByParent.get(item.task.id) ?? NO_SUBTASKS;
+                content = (
+                  <TaskItem
+                    task={item.task}
+                    onPress={handleRowPress}
+                    expanded={expandedTaskId === item.task.id}
+                    spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
+                    onEdit={handleRowEdit}
+                    subtaskCount={subs.items.length}
+                    subtaskDoneCount={subs.doneCount}
+                    subtasks={subs.items}
+                    onSubtaskDragStateChange={setDraggingSubtask}
+                    drag={selectionMode || !drag ? undefined : drag}
+                    isActive={isActive}
+                    selectionMode={selectionMode}
+                    selected={selectedIds.has(item.task.id)}
+                    onSelect={toggleSelection}
+                    onSwipeSelect={handleRowSwipeSelect}
+                    hideTodayLabel
+                    showCategory
+                    showProject
+                    showGroup
+                    showActions={false}
+                    highlighted={item.task.id === flashTaskId}
+                  />
+                );
               }
-              const subs = subtasksByParent.get(item.task.id) ?? NO_SUBTASKS;
-              return (
-                <TaskItem
-                  task={item.task}
-                  onPress={handleRowPress}
-                  expanded={expandedTaskId === item.task.id}
-                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
-                  onEdit={handleRowEdit}
-                  subtaskCount={subs.items.length}
-                  subtaskDoneCount={subs.doneCount}
-                  subtasks={subs.items}
-                  onSubtaskDragStateChange={setDraggingSubtask}
-                  drag={selectionMode || !drag ? undefined : drag}
-                  isActive={isActive}
-                  selectionMode={selectionMode}
-                  selected={selectedIds.has(item.task.id)}
-                  onSelect={toggleSelection}
-                  onSwipeSelect={handleRowSwipeSelect}
-                  hideTodayLabel
-                  showCategory
-                  showProject
-                  showGroup
-                  showActions={false}
-                  highlighted={item.task.id === flashTaskId}
-                />
-              );
+              // Row drags of their own take the responder, same reasoning as
+              // Today's renderItem: the dragged row's floating overlay copy
+              // must not steal the real row's registered slot.
+              const zone = isActive ? null : laterZoneByKey.get(item.key) ?? null;
+              return <FabDropZone zone={zone}>{content}</FabDropZone>;
             }}
             onDragBegin={() => setExpandedTaskId(null)}
             onHoverChange={haptics.dragTick}
@@ -2862,25 +2980,27 @@ export function TodayScreen() {
             renderItem={({ item }) => {
               const subs = subtasksByParent.get(item.id) ?? NO_SUBTASKS;
               return (
-                <TaskItem
-                  task={item}
-                  onPress={handleRowPress}
-                  expanded={expandedTaskId === item.id}
-                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
-                  onEdit={handleRowEdit}
-                  subtaskCount={subs.items.length}
-                  subtaskDoneCount={subs.doneCount}
-                  subtasks={subs.items}
-                  onSubtaskDragStateChange={setDraggingSubtask}
-                  selectionMode={selectionMode}
-                  selected={selectedIds.has(item.id)}
-                  onSelect={toggleSelection}
-                  onSwipeSelect={handleRowSwipeSelect}
-                  hideTodayLabel
-                  showCategory
-                  showProject
-                  highlighted={item.id === flashTaskId}
-                />
+                <FabDropZone zone={unscheduledZoneByKey.get(item.id) ?? null}>
+                  <TaskItem
+                    task={item}
+                    onPress={handleRowPress}
+                    expanded={expandedTaskId === item.id}
+                    spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
+                    onEdit={handleRowEdit}
+                    subtaskCount={subs.items.length}
+                    subtaskDoneCount={subs.doneCount}
+                    subtasks={subs.items}
+                    onSubtaskDragStateChange={setDraggingSubtask}
+                    selectionMode={selectionMode}
+                    selected={selectedIds.has(item.id)}
+                    onSelect={toggleSelection}
+                    onSwipeSelect={handleRowSwipeSelect}
+                    hideTodayLabel
+                    showCategory
+                    showProject
+                    highlighted={item.id === flashTaskId}
+                  />
+                </FabDropZone>
               );
             }}
             contentContainerStyle={
@@ -2939,13 +3059,16 @@ export function TodayScreen() {
               }, 100);
             }}
             {...inboxScroll.props}
-            renderItem={({ item }) =>
-              item.type === 'group'
-                ? renderInboxGroup(item.group, item.children)
-                : item.type === 'task'
-                  ? renderInboxTask(item.task)
-                  : null
-            }
+            renderItem={({ item }) => {
+              const content =
+                item.type === 'group'
+                  ? renderInboxGroup(item.group, item.children)
+                  : item.type === 'task'
+                    ? renderInboxTask(item.task)
+                    : null;
+              if (content === null) return null;
+              return <FabDropZone zone={inboxZoneByKey.get(listItemKey(item)) ?? null}>{content}</FabDropZone>;
+            }}
             contentContainerStyle={
               inboxTasks.length === 0
                 ? styles.emptyContainer
@@ -2992,10 +3115,7 @@ export function TodayScreen() {
             disabled={spotlightActive}
             opacity={fabOpacity}
             onSelect={handleAddMenuSelect}
-            // Only Today resolves a drop to anything; the other sub-views leave
-            // the button tap-only rather than accepting a drag that can't mean
-            // anything when it lands.
-            drag={viewMode === 'today' ? fabDrag : undefined}
+            drag={fabDrag}
           />
         )}
 

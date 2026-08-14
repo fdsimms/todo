@@ -31,11 +31,28 @@
  * out loud; the actual category assignment on commit still comes from
  * resolveDrop reading the new row's spliced-in position, so the two can't drift.
  */
+/**
+ * The schedule fields a drop onto a Later day/time section would seed —
+ * riding along on a `task`/`header` zone rather than being a zone kind of its
+ * own, so the same midpoint-split/whole-row resolution those already have
+ * applies unchanged. `dueDate` is the same field the row's own reschedule
+ * action (WhenPicker) writes, for consistency with the one other "pick a day
+ * for this task" gesture in the app.
+ */
+export interface ScheduleInfo {
+  dueDate: string;
+  timeSegments: string[];
+  windowStart: string | null;
+  windowEnd: string | null;
+  /** The section's own display text ("Thursday", "Thursday · Morning") — named on the quick-add sheet's seed chip. */
+  label: string;
+}
+
 export type DropZone =
   /** An ordinary row that splits into above/below — a task on Today, a project on Projects. */
-  | { kind: 'task'; key: string; category: string | null }
+  | { kind: 'task'; key: string; category: string | null; schedule?: ScheduleInfo }
   /** A category header. Its own label is its category. */
-  | { kind: 'header'; key: string; category: string | null }
+  | { kind: 'header'; key: string; category: string | null; schedule?: ScheduleInfo }
   | { kind: 'group'; key: string; groupId: string; groupTitle: string; category: string | null }
   /** A row of the pinned run at the top of Today, when anything is pinned. */
   | { kind: 'pinned'; key: string }
@@ -66,7 +83,7 @@ export interface ZoneRect {
  * anchor survives the list changing underneath in a way an index doesn't.
  */
 export type FabDropIntent =
-  | { kind: 'insert'; anchorKey: string; before: boolean; category: string | null }
+  | { kind: 'insert'; anchorKey: string; before: boolean; category: string | null; schedule?: ScheduleInfo }
   | { kind: 'joinGroup'; groupId: string; groupTitle: string; category: string | null }
   | { kind: 'pin' }
   /** Released over a meal-plan day band — plan a meal on `dayKey`. */
@@ -179,13 +196,14 @@ export function resolveFabDrop(
         category: zone.category,
       };
     case 'header':
-      return { kind: 'insert', anchorKey: zone.key, before: false, category: zone.category };
+      return { kind: 'insert', anchorKey: zone.key, before: false, category: zone.category, schedule: zone.schedule };
     case 'task':
       return {
         kind: 'insert',
         anchorKey: zone.key,
         before: y < (hit.top + hit.bottom) / 2,
         category: zone.category,
+        schedule: zone.schedule,
       };
   }
 }

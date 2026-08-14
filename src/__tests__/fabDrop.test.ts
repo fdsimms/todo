@@ -158,6 +158,23 @@ describe('resolveFabDrop', () => {
     expect(resolveFabDrop(dayZone, 305)).toEqual(expected);
     expect(resolveFabDrop(dayZone, 415)).toEqual(expected);
   });
+
+  // Later's day/time sections ride on the ordinary header/task zones (see
+  // laterDropZones in taskGrouping.ts) rather than a kind of their own, so a
+  // schedule payload just has to survive the same midpoint-split/whole-row
+  // resolution those already have.
+  it('carries a schedule payload through a header or task hit unchanged', () => {
+    const schedule = { dueDate: '2026-08-13T00:00:00.000Z', timeSegments: [], windowStart: null, windowEnd: null, label: 'Thursday' };
+    const headerZone = zone({ kind: 'header', key: 'h-Thu', category: null, schedule }, 300, 340);
+    expect(resolveFabDrop(headerZone, 310)).toEqual({
+      kind: 'insert', anchorKey: 'h-Thu', before: false, category: null, schedule,
+    });
+
+    const taskZone = zone({ kind: 'task', key: 't-1', category: null, schedule }, 344, 396);
+    expect(resolveFabDrop(taskZone, 350)).toEqual({
+      kind: 'insert', anchorKey: 't-1', before: true, category: null, schedule,
+    });
+  });
 });
 
 describe('targetKey', () => {
