@@ -359,7 +359,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
 
       {suggestions.length > 0 && (
         <View style={styles.matches}>
-          <ScrollView keyboardShouldPersistTaps="handled" style={styles.matchesScroll}>
+          <ScrollView keyboardShouldPersistTaps="handled" bounces={false} style={styles.matchesScroll}>
             {suggestions.map(({ item, onList }) => {
               // Which one to reach for, on the row that offers it. The catalog
               // has carried a brand and a variant for a while and this — the
