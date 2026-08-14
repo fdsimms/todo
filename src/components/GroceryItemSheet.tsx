@@ -24,6 +24,7 @@ import {
   type Colors,
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
@@ -99,6 +100,7 @@ export function GroceryItemSheet({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const item = useGroceryStore(s => (itemId ? s.items.find(i => i.id === itemId) ?? null : null));
   const clearChoice = useGroceryStore(s => s.clearChoice);
@@ -611,7 +613,12 @@ export function GroceryItemSheet({
           <SheetHeaderButton label="Save" onPress={handleSave} minWidth={64} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          ref={keyboardScroll.ref}
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           <Text style={styles.label}>NAME</Text>
           <TextInput
             style={[styles.input, !!nameError && styles.inputError]}
