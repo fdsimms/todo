@@ -255,6 +255,7 @@ export const TaskItem = React.memo(function TaskItem({
   // TaskItem is mounted once per row, not re-created per render.
   const {
     completeTask,
+    uncompleteTask,
     beginCompletionAnimation,
     cancelCompletionAnimation,
     logQuotaUnit,
@@ -371,7 +372,16 @@ export const TaskItem = React.memo(function TaskItem({
     if (anthropicApiKey) setShowBreakdown(true);
     else onEdit?.(task.id);
   };
-  const [completing, setCompleting] = useState(false);
+  // Elsewhere in the app a TaskItem only ever mounts for a task that's still
+  // incomplete — completing it live is the only way `completing` becomes
+  // true, so it's always paired with an in-flight animation. Calendar breaks
+  // that assumption on purpose (a day's list has to show what was already
+  // done that day), so this seeds true for a task handed in already
+  // completed — otherwise the checkbox rendered an empty circle for a task
+  // the store already has marked done. `completingRef` (below) stays false
+  // in that case, which is what tells the tap handler apart: no animation is
+  // in flight to cancel, so a tap has to reverse the real completion instead.
+  const [completing, setCompleting] = useState(task.completed);
   // A completion that started from the daily-target meter rather than the
   // checkbox: the row keeps its meter for the animation instead of swapping in
   // a checkmark, and `toppedOut` marks the moment the fill reaches the brim.
@@ -411,7 +421,12 @@ export const TaskItem = React.memo(function TaskItem({
   const completingRef = useRef(false);
   const completeAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const circleScale = useRef(new Animated.Value(1)).current;
-  const checkScale = useRef(new Animated.Value(0)).current;
+  // A row can mount already completed — Calendar keeps completed rows in its
+  // day list, where every other screen filters them out before TaskItem ever
+  // sees them (see the note on `completing` below). Starting the glyph's
+  // scale at rest rather than 0 is what keeps the checkmark from mounting
+  // invisible on those rows.
+  const checkScale = useRef(new Animated.Value(task.completed ? 1 : 0)).current;
   // Counter-scales the checkmark glyph against circleScale's pop, so the
   // glyph's rendered size never exceeds its native rasterized size even
   // while the circle around it balloons to CIRCLE_POP_SCALE.
@@ -1223,6 +1238,16 @@ export const TaskItem = React.memo(function TaskItem({
     restoreFromCompletion(task);
   };
 
+  // The counterpart for a row that mounted already completed (or whose
+  // completion animation already handed off to the store — see the
+  // `completingRef` check at the tap site): there's no local animation left
+  // to cancel, so the only way back is the real store undo, the same one
+  // Logbook's checkbox uses.
+  const handleUncompletePersisted = async () => {
+    await haptics.tap();
+    uncompleteTask(task.id);
+  };
+
   const handleTitleTap = () => {
     if (selectionMode) { onSelect?.(task.id); return; }
     setTitleEdit(task.title);
@@ -1259,7 +1284,7 @@ export const TaskItem = React.memo(function TaskItem({
       <TouchableOpacity
         onPress={
           selectionMode ? () => onSelect?.(task.id)
-          : completing ? handleUndoComplete
+          : completing ? (completingRef.current ? handleUndoComplete : handleUncompletePersisted)
           : showQuotaMeter ? handleQuotaTap
           : handleComplete
         }

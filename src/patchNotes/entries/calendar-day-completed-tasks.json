@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: the calendar's day view now shows completed tasks as checked, and its due/deadline count no longer includes them.",
+  "date": "2026-08-14"
+}

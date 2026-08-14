@@ -384,14 +384,19 @@ export function dayDetail(
 /**
  * "3 due · 1 deadline" — the one-line summary above a day's detail.
  *
- * Counts real rows only. The expected lines caption themselves right below and
- * folding them in here would put a number on the day that no list under it
- * accounts for.
+ * Counts real, *outstanding* rows — the same "still work to do" reading the
+ * grid's own dots and `DayBucket.outstanding` already give a day, so a day
+ * you've cleared says so instead of reporting every row that ever landed on
+ * it as if none were done. The expected lines caption themselves right below
+ * and folding them in here would put a number on the day that no list under
+ * it accounts for.
  */
 export function summarizeDay(detail: DayDetail): string {
   const parts: string[] = [];
-  if (detail.due.length > 0) parts.push(`${detail.due.length} due`);
-  if (detail.deadline.length > 0) parts.push(`${detail.deadline.length} deadline${detail.deadline.length === 1 ? '' : 's'}`);
+  const due = detail.due.filter(t => !t.completed).length;
+  const deadline = detail.deadline.filter(t => !t.completed).length;
+  if (due > 0) parts.push(`${due} due`);
+  if (deadline > 0) parts.push(`${deadline} deadline${deadline === 1 ? '' : 's'}`);
   if (detail.defer.length > 0) parts.push(`${detail.defer.length} returning`);
   return parts.join(' · ');
 }
