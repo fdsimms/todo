@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Recipe } from '../types';
 import { RECIPE_CHOICE_GROUP_MAX_LENGTH } from '../types';
@@ -7,10 +7,13 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import type { ResolvedComponent } from '../utils/recipeComponents';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
+import { SegmentedControl } from './SegmentedControl';
+import { PillGroup } from './PillGroup';
 
 interface Props {
   visible: boolean;
@@ -24,13 +27,15 @@ interface Props {
  * Makes one component an either/or alternative: "Side — mashed potatoes or
  * roasted potatoes", of which a given meal cooks one.
  *
- * **The label is the grouping**, so this is a text field with the recipe's
- * existing labels offered as pills rather than a picker over some separate list
- * of groups. Same shape as the ingredient sheet's Section field one card up, and
- * for the same reason: a group has no existence apart from the components filed
- * under it, so there is nothing to create or delete — typing "Side" on a second
- * component is what makes the two alternatives, and clearing it on the last one
- * is what dissolves the group.
+ * **The label is the grouping**, so this is a closed on/off track — the same
+ * `SegmentedControl` + `PillGroup` pair the ingredient sheet's own alternatives
+ * card uses — with the recipe's existing labels offered as pills rather than a
+ * picker over some separate list of groups: a group has no existence apart from
+ * the components filed under it, so there is nothing to create or delete.
+ * Deliberately not a bare "Alternative for" text field any more — that box held
+ * a *grouping key*, which meant the first component in a pair had to be filed
+ * as an alternative for itself, a question nobody could answer without knowing
+ * the data model.
  */
 export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Props) {
   const colors = useColors();
@@ -40,9 +45,17 @@ export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Pr
   const makeComponentDefault = useRecipeStore(s => s.makeComponentDefault);
 
   const [label, setLabel] = useState('');
+  // Held apart from the label for the same reason the ingredient sheet keeps
+  // them separate: "one of a choice, group not named yet" is a real state, and
+  // deriving this from the label would snap the control straight back to
+  // "Always included" the moment someone opens the picker with no groups yet.
+  const [choiceOn, setChoiceOn] = useState(false);
 
   useEffect(() => {
-    if (component) setLabel(component.component.choiceGroup ?? '');
+    if (component) {
+      setLabel(component.component.choiceGroup ?? '');
+      setChoiceOn(!!component.component.choiceGroup);
+    }
   }, [component?.component.id, visible]);
 
   // The recipe's other labels, so joining an existing group is a tap and can't
@@ -92,47 +105,76 @@ export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Pr
       }
     >
       <View style={styles.sectionCard}>
-        <Text style={styles.groupLabel}>Alternative for</Text>
-        <TextInput
-          style={styles.input}
-          value={label}
-          onChangeText={setLabel}
-          placeholder="Side"
-          placeholderTextColor={colors.textTertiary}
-          maxLength={RECIPE_CHOICE_GROUP_MAX_LENGTH}
-          autoCapitalize="sentences"
-          accessibilityLabel="Choice group"
+        <Text style={styles.groupLabel}>Alternatives</Text>
+        <SegmentedControl
+          label="Alternatives"
+          value={choiceOn ? 'choice' : 'always'}
+          onChange={next => {
+            haptics.tap();
+            animateLayout();
+            setChoiceOn(next === 'choice');
+            if (next === 'always') setLabel('');
+            // Joining the recipe's only existing group is the overwhelmingly
+            // common intent, and it saves a tap — same call the ingredient
+            // sheet's own version of this toggle makes.
+            else if (!label) setLabel(existingLabels[0] ?? '');
+          }}
+          options={[
+            { value: 'always', label: 'Always included' },
+            { value: 'choice', label: 'One of a choice' },
+          ]}
         />
-        <View style={styles.pillRow}>
-          <TouchableOpacity
-            style={[styles.pill, !clean && styles.pillActive]}
-            activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); setLabel(''); }}
-            accessibilityRole="button"
-            accessibilityState={{ selected: !clean }}
-            accessibilityLabel="Always included"
-          >
-            <Text style={[styles.pillText, !clean && styles.pillTextActive]}>Always included</Text>
-          </TouchableOpacity>
-          {existingLabels.map(existing => (
-            <TouchableOpacity
-              key={existing}
-              style={[styles.pill, clean === existing && styles.pillActive]}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => { haptics.tap(); setLabel(existing); }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: clean === existing }}
-              accessibilityLabel={existing}
-            >
-              <Text style={[styles.pillText, clean === existing && styles.pillTextActive]}>{existing}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <Text style={styles.hint}>
-          Components sharing a label are alternatives — a meal cooks one of them, and only
-          that one gets shopped for. Leave it on “Always included” for a part that's in every
-          time.
-        </Text>
+        {choiceOn ? (
+          <>
+            <PillGroup
+              noun="group"
+              surface="card"
+              filterPlaceholder="Find or name a group…"
+              createMaxLength={RECIPE_CHOICE_GROUP_MAX_LENGTH}
+              onCreate={value => {
+                const cleaned = cleanChoiceGroup(value);
+                if (!cleaned) return 'Give the group a name.';
+                setLabel(cleaned);
+              }}
+              options={[
+                // A group named on this component and nowhere else yet has no
+                // pill of its own in the list below, so it gets a pinned one —
+                // otherwise the label just typed is stored and invisible.
+                ...(!clean || existingLabels.includes(clean)
+                  ? []
+                  : [{
+                      key: '__current__',
+                      label: clean,
+                      pinned: true,
+                      selected: true,
+                      onPress: () => {},
+                    }]),
+                ...existingLabels.map(existing => ({
+                  key: existing,
+                  label: existing,
+                  selected: clean === existing,
+                  onPress: () => { haptics.tap(); setLabel(existing); },
+                })),
+              ]}
+            />
+            {!clean ? (
+              <Text style={styles.hint}>
+                Name the group these alternatives share — “Side”, “Sauce”. Every component
+                under it is one way of filling the same slot.
+              </Text>
+            ) : (
+              <Text style={styles.hint}>
+                Components sharing “{clean}” are alternatives — a meal cooks one of them, and
+                only that one gets shopped for.
+              </Text>
+            )}
+          </>
+        ) : (
+          <Text style={styles.hint}>
+            Every component is included unless it's one of a choice. Two components in the
+            same group mean a meal cooks one of them, picked when it's planned.
+          </Text>
+        )}
       </View>
 
       {!!clean && (
@@ -200,12 +242,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  input: { color: colors.text, fontSize: font.md, minHeight: 36 },
-  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, paddingVertical: spacing.xs },
-  pill: { backgroundColor: colors.bgTertiary, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: 6 },
-  pillActive: { backgroundColor: colors.accent },
-  pillText: { color: colors.textSecondary, fontSize: font.sm },
-  pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.medium },
   defaultRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
   defaultText: { color: colors.text, fontSize: font.sm },
   defaultActionText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium },

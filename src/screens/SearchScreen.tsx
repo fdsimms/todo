@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
@@ -184,6 +184,13 @@ export function SearchScreen() {
     const timer = setTimeout(() => inputRef.current?.focus(), 0);
     return () => clearTimeout(timer);
   }, [handledQueryAt]);
+
+  // This screen stays mounted in the tab navigator, so a query left over from
+  // the last visit would otherwise still be sitting there next time the tab
+  // opens — same "reset on the way out" CalendarScreen uses for its expanded
+  // row. Cleared on blur rather than on focus so a handoff from quick search
+  // (the `at` effect above) never races this and gets its own query wiped.
+  useFocusEffect(useCallback(() => () => setQuery(''), []));
 
   const projectNamesById = useMemo(
     () => new Map(projects.map(p => [p.id, p.title])),
