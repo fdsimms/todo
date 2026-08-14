@@ -53,6 +53,14 @@ interface Props {
    */
   onOpenRecipe?: (recipeId: string) => void;
   /**
+   * Opens this item straight into its Substitutes field ("what can I use
+   * instead?", #1578). A recipe ingredient row reaches the same field by
+   * tapping the row at all, so it earns no glyph of its own — this row's tap
+   * renames inline instead, which buys nothing, so the glyph is what makes
+   * the field reachable without going through the ellipsis first.
+   */
+  onOpenSubstitutes?: (id: string) => void;
+  /**
    * "or pears" — this row's live either/or siblings, computed by the screen
    * (only it has the whole list) and absent for an ordinary row. Its own line
    * rather than folded into the note: at the shelf it's the difference between
@@ -99,6 +107,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   onSelect,
   onSwipeSelect,
   onOpenRecipe,
+  onOpenSubstitutes,
   alternatives,
   storeMarker,
 }: Props) {
@@ -277,6 +286,22 @@ export const GroceryRow = React.memo(function GroceryRow({
           </View>
         )}
       </TouchableOpacity>
+
+      {/* Tertiary grey, like the ellipsis beside it — this edits the row too,
+          just straight to one field of it. Left of the recipe button (which
+          leaves for another screen and is accent for that reason) and the
+          ellipsis (which opens the same sheet at its top). */}
+      {!selectionMode && !!onOpenSubstitutes && (
+        <TouchableOpacity
+          onPress={() => onOpenSubstitutes(item.id)}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`What can I use instead of ${item.name}?`}
+        >
+          <Ionicons name="swap-horizontal-outline" size={iconSize.sm} color={colors.textTertiary} />
+        </TouchableOpacity>
+      )}
 
       {/* The way back to what put this on the list. A trailing glyph rather
           than a tappable caption, because the caption is inside the rename tap

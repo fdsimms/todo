@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Modal,
   StyleSheet,
@@ -11,11 +12,15 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { groceryNameKey } from '../utils/groceryParse';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { scaleQuantity, splitLeadingAmount } from '../utils/recipeScale';
+import { probablyHaveReason } from '../utils/grocerySuggest';
+import type { SuggestedSubstitute } from '../utils/substituteSuggestions';
+import { suggestSubstitutes, describeAIError } from '../services/aiSuggestions';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 import { haptics } from '../utils/haptics';
 import { EmptyState } from './EmptyState';
@@ -44,10 +49,16 @@ interface Props {
  * care is what fills the table; the item sheet's field is where you *review*
  * what you already answered.
  *
- * This is the offline half of #1578: a search over your own catalog that also
- * adds. The AI-suggested section lands on top of it there, and is additive by
- * construction — the app can't require an API key, so with no key what remains
+ * The offline half (#1578) is a search over your own catalog that also adds —
+ * always there, key or none. **Suggested** sits on top of it, fetched on open
+ * rather than behind a button (opening this sheet *is* the ask), and is
+ * additive by construction: no key or the `substitutes` AI feature off, and
+ * the section is simply absent — the app can't require a key, so what remains
  * has to be a working answer to "what instead?", just not a proposed one.
+ * Picking a suggestion mints or finds its catalog row the same way typing one
+ * in does, and seeds the ratio fields when the model offered one. The two
+ * lists never repeat each other — a name already in Suggested is filtered out
+ * of the catalog search below it.
  *
  * **Nothing is written until Add**, the shape `GroceryAISheet` and
  * `RecipeExtractSheet` already use.
@@ -61,6 +72,8 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
   const linkItemSub = useGroceryStore(s => s.linkItemSub);
   const unlinkItemSub = useGroceryStore(s => s.unlinkItemSub);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
+  const apiKey = useSettingsStore(s => s.anthropicApiKey);
+  const substitutesFeature = useSettingsStore(s => s.aiFeatureConfig.substitutes);
 
   const item = items.find(i => i.id === itemId) ?? null;
   const editing = editingSubItemId !== null;
@@ -71,6 +84,9 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
   const [bothWays, setBothWays] = useState(false);
   const [ratioFrom, setRatioFrom] = useState('');
   const [ratioTo, setRatioTo] = useState('');
+  const [suggested, setSuggested] = useState<SuggestedSubstitute[]>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   const existing = useMemo(
     () => (itemId ? substitutesFor(itemId, itemSubs, items) : []),
@@ -93,10 +109,39 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, editingSubItemId]);
 
+  // Fetch on open, not behind a Suggest button — opening this sheet *is* the
+  // ask. Only in picker mode (reviewing a link has nothing to suggest), and
+  // only with a key and the feature on: "no fetch when the feature is off or
+  // there's no key" is the whole safety argument for firing this
+  // automatically at all. One-shot per opening, same reasoning as the seeding
+  // effect above — a link written while this is up must not restart the call.
+  useEffect(() => {
+    if (!visible || editing || !item) return;
+    if (!apiKey || !substitutesFeature?.enabled) return;
+    let cancelled = false;
+    setSuggested([]);
+    setSuggestError(null);
+    setSuggestLoading(true);
+    const excluded = [item.name, ...existing.map(s => s.item.name)];
+    suggestSubstitutes(item.name, excluded)
+      .then(result => { if (!cancelled) setSuggested(result); })
+      .catch(e => { if (!cancelled) setSuggestError(describeAIError(e)); })
+      .finally(() => { if (!cancelled) setSuggestLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, editingSubItemId, itemId]);
+
   const picked = items.find(i => i.id === pickedId) ?? null;
 
   const typed = query.trim();
   const typedKey = groceryNameKey(typed) || typed.toLowerCase();
+
+  // What Suggested is already offering, so From your items doesn't repeat it
+  // — the same two items in both sections read as a bug, not a coincidence.
+  const suggestedKeys = useMemo(
+    () => new Set(suggested.map(s => groceryNameKey(s.name) || s.name.toLowerCase())),
+    [suggested]
+  );
 
   // Everything already linked is out, and so is the item itself — offering
   // butter as a substitute for butter, or margarine a second time, reads as
@@ -108,12 +153,12 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
 
   const results = useMemo(() => {
     if (!itemId) return [];
-    const pool = items.filter(i => !taken.has(i.id));
+    const pool = items.filter(i => !taken.has(i.id) && !suggestedKeys.has(i.nameKey));
     const matches = typed
       ? pool.filter(i => i.nameKey.includes(typedKey) || i.name.toLowerCase().includes(typed.toLowerCase()))
       : pool;
     return matches.slice().sort((a, b) => a.name.localeCompare(b.name));
-  }, [items, itemId, taken, typed, typedKey]);
+  }, [items, itemId, taken, typed, typedKey, suggestedKeys]);
 
   // The field both filters and adds, the way `PantrySheet`'s and `PillGroup`'s
   // do: what the search can't find is exactly what you're offered the chance
@@ -129,6 +174,24 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
     haptics.success();
     setPickedId(created.id);
     setQuery('');
+  };
+
+  // Picking a suggestion mints or finds its catalog row exactly like typing
+  // it in would, then seeds the ratio fields if the model offered one — a
+  // suggested ratio is a starting point, not applied until Add, same as
+  // everything else on this sheet.
+  const handlePickSuggested = (s: SuggestedSubstitute) => {
+    const created = ensureCatalogItem(s.name);
+    if (!created) {
+      haptics.error();
+      return;
+    }
+    haptics.success();
+    setPickedId(created.id);
+    if (s.ratioFrom && s.ratioTo) {
+      setRatioFrom(s.ratioFrom);
+      setRatioTo(s.ratioTo);
+    }
   };
 
   // The unit the ratio actually constrains on — named back at the user so the
@@ -360,6 +423,47 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
               recipe calling for it can use your answer.
             </Text>
 
+            {/* AI is additive, never required: absent with no key or the
+                feature off, and never the only way to answer even when it's
+                there — see the fetch effect above. */}
+            {!!apiKey && !!substitutesFeature?.enabled
+              && (suggestLoading || suggested.length > 0 || !!suggestError) && (
+              <>
+                <Text style={styles.label}>SUGGESTED</Text>
+                {suggestLoading && (
+                  <ActivityIndicator style={styles.suggestSpinner} color={colors.textTertiary} />
+                )}
+                {!!suggestError && <Text style={styles.suggestError}>{suggestError}</Text>}
+                {suggested.map(s => {
+                  const resolvedKey = groceryNameKey(s.name) || s.name.toLowerCase();
+                  const resolved = items.find(it => it.nameKey === resolvedKey);
+                  const onHand = resolved ? probablyHaveReason(resolved, new Date()) : null;
+                  return (
+                    <TouchableOpacity
+                      key={s.name}
+                      style={styles.row}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => handlePickSuggested(s)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Use ${s.name} instead of ${item.name}`}
+                    >
+                      <Text style={styles.rowName} numberOfLines={1}>{s.name}</Text>
+                      {!!s.ratioFrom && !!s.ratioTo && (
+                        <Text style={styles.rowMeta} numberOfLines={1}>
+                          {s.ratioFrom} → {s.ratioTo}
+                        </Text>
+                      )}
+                      {!!onHand && (
+                        <Text style={styles.rowMeta} numberOfLines={1}>
+                          {onHand}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </>
+            )}
+
             <View style={styles.searchWrap}>
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
               <TextInput
@@ -472,6 +576,8 @@ function makeStyles(colors: Colors) {
     },
     rowName: { color: colors.text, fontSize: font.md },
     rowMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    suggestSpinner: { marginBottom: spacing.sm },
+    suggestError: { color: colors.textTertiary, fontSize: font.sm, marginBottom: spacing.sm },
     footnote: {
       color: colors.textTertiary,
       fontSize: font.xs,
