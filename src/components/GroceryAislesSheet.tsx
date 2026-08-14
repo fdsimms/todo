@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../theme/ThemeContext';
 import {
   spacing,
@@ -69,6 +70,7 @@ type Tab = 'aisles' | 'stores';
  */
 export function GroceryAislesSheet({ visible, onClose }: Props) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
@@ -196,9 +198,11 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
     setNewAisle('');
   };
 
+  // fullScreen, not a page sheet: the sheet's own pull-down pan cancels the JS
+  // touches this list's drag runs on. See EditorSheet's note (#1182).
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.root}>
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+      <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
           <Text style={styles.headerTitle}>Aisles &amp; stores</Text>

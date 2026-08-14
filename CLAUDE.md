@@ -1168,6 +1168,27 @@ matching ones open regardless of the fold. Three decisions worth not re-deriving
 
 **A `SortableList` rendered inside a scrollable must turn that scrollable off for the duration of a drag** — pass `onDragStateChange` and wire it to the container's `scrollEnabled` (see `TaskGroupEditor`, or `draggingStackChild` in `TodayScreen`). Without it the drag doesn't happen at all: a native scroll view only stands down for a JS responder that is one of its **ancestors** (`_shouldDisableScrollInteraction` walks `superview`, not the subtree), and `SortableList`'s responder is a descendant — so the scroll claims the touch on the first finger move and the row is put straight back down. `ReorderableList` is immune because it owns the scroll view it drags inside of and sets `scrollEnabled` itself. The inline subtask list in `TaskItem` can't reach its own container, so it re-exposes the flag as the `onSubtaskDragStateChange` prop — **every screen rendering a `TaskItem` has to pass it** (a `useState` setter, so the row's memo still holds) and add it to its list's `scrollEnabled`, or subtask drag is silently dead on that screen.
 
+**A drag cannot live inside a `presentationStyle="pageSheet"` Modal, and that's why `EditorSheet`
+is `fullScreen`** (#1182). A page sheet is presented by a `UISheetPresentationController`, which
+owns the pull-down dismissal pan — on its *container* view, an ancestor of the modal's content.
+Every RN `Modal` gets its own touch handler on the modal view controller's root view
+(`RCTFabricModalHostViewController`), and that handler **destroys its own in-flight touches** the
+moment it has to arbitrate with a recognizer from outside that view (`RCTSurfaceTouchHandler`:
+`canBePreventedByGestureRecognizer` → `![other.view isDescendantOfView:self.view]` →
+`_cancelTouches`). It's deliberate on RN's part, aimed at native recognizers "like iOS 13 modals
+that can be pulled down". The symptom is unmistakable and cost three inconclusive audits: the row
+lifts, follows the finger for a moment, then snaps back on `onPanResponderTerminate`, in both
+directions, with nothing else on screen moving — UIKit asks about simultaneous recognition while
+both recognizers are merely *tracking*, so the sheet's pan need never begin.
+
+**`scrollEnabled` is not a way out of that, so don't go back to trying.** Switching the scroll off
+is genuinely required (above), but an iOS sheet defers its dismissal pan to the sheet's scroll
+view — so switching it off is also what frees that pan to arbitrate immediately. Scroll on, the
+scroll cancels the touch; scroll off, the sheet does. Inside a page sheet the drag loses both
+ways. A sheet that holds a drag list is `fullScreen` with a `useSafeAreaInsets().top` inset in
+place of the page sheet's own (`EditorSheet`, `CategoryOrderSheet`, `GroceryAislesSheet`); the
+other ~20 page sheets hold no drag and are left alone.
+
 Both lists fire the drag-lift haptic themselves (`startDrag`), so callers must not add their own.
 
 **Today's category headers are not draggable, and that isn't an oversight.** Reordering the

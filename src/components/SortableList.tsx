@@ -57,6 +57,11 @@ interface Props<T extends { id: string }> {
    * It is also what keeps the floating card honest: the card is positioned in
    * this container's own coordinates and the finger is tracked in page
    * coordinates, which stay in step only while nothing scrolls underneath.
+   *
+   * It is **not** sufficient inside a `presentationStyle="pageSheet"` Modal,
+   * where the sheet's own pull-down pan cancels the touch instead — and
+   * switching the scroll off is what frees it to. Any sheet holding one of
+   * these lists has to be `fullScreen`; see `EditorSheet`'s note (#1182).
    */
   onDragStateChange?: (dragging: boolean) => void;
   /**
