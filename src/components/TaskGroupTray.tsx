@@ -40,8 +40,14 @@ export function TaskGroupTray({ children }: Props) {
 
   return (
     <View style={styles.tray}>
-      {children}
-      {/* A separate clipped overlay rather than `overflow: hidden` on the tray
+      {/* Drawn *under* the children, so it dims only the tray surface they
+          don't cover — its padding and the gaps between the cards. The header
+          and every row are opaque and paint their own scrim already (that's how
+          they recede in step with the rest of the screen), so a layer on top of
+          them here would dim those pixels a second time and the whole stack
+          would read darker than the list around it.
+
+          A separate clipped view rather than `overflow: hidden` on the tray
           itself — the tray can't clip its own children, since TaskGroupBody's
           drag-out lets a child's floating card cross the tray's edge on its
           way out of the stack (see the `dragging` prop there). This layer only
@@ -49,6 +55,7 @@ export function TaskGroupTray({ children }: Props) {
       <View style={styles.scrimClip} pointerEvents="none">
         <SpotlightScrim />
       </View>
+      {children}
     </View>
   );
 }
