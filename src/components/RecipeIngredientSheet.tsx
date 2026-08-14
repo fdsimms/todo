@@ -25,9 +25,12 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { aisleForName } from '../utils/groceryAisles';
 import { splitAlternativeNames, suggestShorterCatalogName } from '../utils/groceryParse';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
+import { describeCatalogItem } from '../utils/groceryProduct';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
+import { SegmentedControl } from './SegmentedControl';
 import { PillGroup } from './PillGroup';
+import { GroceryItemSheet } from './GroceryItemSheet';
 
 interface Props {
   visible: boolean;
@@ -37,13 +40,20 @@ interface Props {
 }
 
 /**
- * One ingredient: what to buy, how much, and — only if you disagree with where
- * it'd otherwise land — which aisle.
+ * One ingredient line: what to buy, how much, which part of the recipe it
+ * belongs to, and whether it's one of a choice.
  *
- * The aisle grid opens on "Wherever it usually goes", which is the honest
- * default and the one that stays right as the user's own filings change. An
- * explicit choice here is an override that travels with the recipe, so the
- * collapsed row names what will actually happen rather than leaving it blank.
+ * **An ingredient is a grocery item that isn't on a list yet**, and this sheet
+ * is where that stops being a claim in a doc comment. `nameKey` has always been
+ * the bridge, but nothing here ever showed what was on the other side of it —
+ * so the same cottage cheese had a brand, a store and a substitute in one place
+ * and was a bare string in the other. The catalog card below names the row this
+ * line resolves to and opens it, so the brand to reach for and the substitute
+ * you'd accept are set once, from either end.
+ *
+ * Everything else is progressive disclosure in the shape the editors use: the
+ * fields that are always worth seeing, then the two labels — section and
+ * alternatives — that most lines never carry.
  */
 export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }: Props) {
   const colors = useColors();
@@ -57,6 +67,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const catalogKeys = useMemo(
     () => new Set(groceryItems.map(i => i.nameKey)),
     [groceryItems]
@@ -75,6 +86,18 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     return labels;
   }, [recipeIngredients, ingredient?.id]);
 
+  // Every section this recipe already uses, in list order. Same derivation as
+  // the choice labels above and for the same reason: a section is a *string*
+  // shared across rows, so typing it again by hand is how one recipe ends up
+  // with "For the cake" and "For the Cake" as two headings.
+  const existingSections = useMemo(() => {
+    const labels: string[] = [];
+    for (const other of recipeIngredients) {
+      if (other.section && !labels.includes(other.section)) labels.push(other.section);
+    }
+    return labels;
+  }, [recipeIngredients]);
+
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
   const [prep, setPrep] = useState('');
@@ -82,6 +105,11 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const [section, setSection] = useState('');
   const [choiceGroup, setChoiceGroup] = useState('');
   const [aisle, setAisle] = useState<string | null>(null);
+  // Nested rather than a sibling: a Modal presents from its React parent's view
+  // controller, so a sibling would ask this sheet's own presenter for a second
+  // presentation while this one is up. Same call PantrySheet makes, and it's
+  // what keeps this sheet underneath while the item is edited.
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ingredient) return;
@@ -92,7 +120,26 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setSection(ingredient.section ?? '');
     setChoiceGroup(ingredient.choiceGroup ?? '');
     setAisle(ingredient.aisle);
+    setEditingItemId(null);
   }, [ingredient]);
+
+  // The catalog row this line resolves to. Above the early return, like every
+  // other hook here — an ingredient sheet with nothing to edit still has to run
+  // the same hooks in the same order.
+  const catalogItem = useMemo(
+    () => (ingredient ? groceryItems.find(i => i.nameKey === ingredient.nameKey) ?? null : null),
+    [groceryItems, ingredient]
+  );
+
+  // Who this line is currently an alternative to, by name. The label alone is
+  // an abstraction ("Pepper"); the siblings are the thing it actually means.
+  const siblingNames = useMemo(() => {
+    const label = cleanChoiceGroup(choiceGroup);
+    if (!label || !ingredient) return [];
+    return recipeIngredients
+      .filter(other => other.id !== ingredient.id && other.choiceGroup === label)
+      .map(other => other.name);
+  }, [recipeIngredients, ingredient, choiceGroup]);
 
   const saveAndClose = () => {
     if (!ingredient) { onClose(); return; }
@@ -130,11 +177,17 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // stock" needs a human to finish it.
   const alternatives = splitAlternativeNames(name);
 
+  const catalogSummary = catalogItem
+    ? describeCatalogItem(catalogItem, itemSubs, groceryItems, new Date())
+    : null;
+
+  const grouped = !!cleanChoiceGroup(choiceGroup);
+
   const acceptSplit = () => {
     if (!ingredient || !alternatives) return;
     // The label defaults to the line as written — the one name guaranteed to
     // exist, to be unique among this recipe's groups, and to mean something to
-    // whoever typed it. It's a plain text field in the card below if not.
+    // whoever typed it. It's editable from the group picker below if not.
     const created = splitIngredientAlternatives(
       recipeId, ingredient.id, alternatives, name.trim()
     );
@@ -166,7 +219,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           style={styles.input}
           value={name}
           onChangeText={setName}
-          placeholder="Ingredient"
+          placeholder="e.g. chicken thighs"
           placeholderTextColor={colors.textTertiary}
           maxLength={GROCERY_NAME_MAX_LENGTH}
           autoCapitalize="none"
@@ -191,7 +244,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
                   splitAlternativeNames. */}
               <Text style={styles.suggestionDetail}>{alternatives.join('  ·  ')}</Text>
               <Text style={styles.suggestionDetail}>
-                You'll pick one when you add this to your list.
+                Each becomes its own line. You pick one when you add this to your list.
               </Text>
             </View>
           </TouchableOpacity>
@@ -211,105 +264,199 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             </View>
           </TouchableOpacity>
         )}
-      </View>
 
-      <View style={styles.sectionCard}>
+        <View style={styles.separator} />
+
         <Text style={styles.groupLabel}>How much</Text>
         <TextInput
           style={styles.input}
           value={quantity}
           onChangeText={setQuantity}
-          placeholder="2 lb, 1 bunch, a pinch"
+          placeholder="e.g. 2 lb"
           placeholderTextColor={colors.textTertiary}
           maxLength={GROCERY_QUANTITY_MAX_LENGTH}
           accessibilityLabel="Quantity"
         />
-      </View>
 
-      <View style={styles.sectionCard}>
+        <View style={styles.separator} />
+
         <Text style={styles.groupLabel}>Prep</Text>
         <TextInput
           style={styles.input}
           value={prep}
           onChangeText={setPrep}
-          placeholder="peeled and sliced, room temperature…"
+          placeholder="e.g. peeled and sliced"
           placeholderTextColor={colors.textTertiary}
           maxLength={PREP_MAX_LENGTH}
           accessibilityLabel="Prep instructions"
         />
-      </View>
+        <Text style={styles.hint}>What to do to it. Shown on the recipe, never on your list.</Text>
 
-      <View style={styles.sectionCard}>
+        <View style={styles.separator} />
+
         <Text style={styles.groupLabel}>For</Text>
         <TextInput
           style={styles.input}
           value={purpose}
           onChangeText={setPurpose}
-          placeholder="margaritas, dusting…"
+          placeholder="e.g. margaritas"
           placeholderTextColor={colors.textTertiary}
           maxLength={PREP_MAX_LENGTH}
           accessibilityLabel="Purpose"
         />
-        <Text style={styles.groupLabel}>Section</Text>
-        <TextInput
-          style={styles.input}
-          value={section}
-          onChangeText={setSection}
-          placeholder="For the cake, For the frosting…"
-          placeholderTextColor={colors.textTertiary}
-          maxLength={RECIPE_SECTION_MAX_LENGTH}
-          accessibilityLabel="Recipe section"
-        />
         <Text style={styles.hint}>
-          Groups this with other ingredients under the same heading, for recipes with more
-          than one component. Leave it blank to keep the ingredient ungrouped.
+          Why it's on the list, when the same ingredient does two jobs — “flour, for dusting”.
         </Text>
       </View>
 
+      {/* The other half of this line's identity. See the component note: the
+          bridge has always existed, this is the first place it's visible. */}
       <View style={styles.sectionCard}>
-        <Text style={styles.groupLabel}>Alternative for</Text>
-        <TextInput
-          style={styles.input}
-          value={choiceGroup}
-          onChangeText={setChoiceGroup}
-          placeholder="Pepper, Cheese…"
-          placeholderTextColor={colors.textTertiary}
-          maxLength={RECIPE_CHOICE_GROUP_MAX_LENGTH}
-          accessibilityLabel="Alternative for"
-        />
-        <View style={styles.pillRow}>
+        <Text style={styles.groupLabel}>In your groceries</Text>
+        {catalogItem ? (
           <TouchableOpacity
-            style={[styles.pill, !cleanChoiceGroup(choiceGroup) && styles.pillActive]}
+            style={styles.catalogRow}
             activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); setChoiceGroup(''); }}
+            onPress={() => { haptics.tap(); setEditingItemId(catalogItem.id); }}
             accessibilityRole="button"
-            accessibilityState={{ selected: !cleanChoiceGroup(choiceGroup) }}
-            accessibilityLabel="Always needed"
+            accessibilityLabel={`${catalogItem.name}${catalogSummary ? `, ${catalogSummary}` : ''}`}
+            accessibilityHint="Double tap to edit the grocery item — its brand, stores, pantry and substitutes"
           >
-            <Text style={[styles.pillText, !cleanChoiceGroup(choiceGroup) && styles.pillTextActive]}>
-              Always needed
-            </Text>
+            <Ionicons name="cart-outline" size={iconSize.md} color={colors.accent} />
+            <View style={styles.catalogBody}>
+              <Text style={styles.catalogName} numberOfLines={1}>{catalogItem.name}</Text>
+              {!!catalogSummary && (
+                <Text style={styles.catalogMeta} numberOfLines={2}>{catalogSummary}</Text>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
           </TouchableOpacity>
-          {otherChoiceGroups.map(existing => (
-            <TouchableOpacity
-              key={existing}
-              style={[styles.pill, cleanChoiceGroup(choiceGroup) === existing && styles.pillActive]}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => { haptics.tap(); setChoiceGroup(existing); }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: cleanChoiceGroup(choiceGroup) === existing }}
-              accessibilityLabel={existing}
-            >
-              <Text style={[styles.pillText, cleanChoiceGroup(choiceGroup) === existing && styles.pillTextActive]}>
-                {existing}
+        ) : (
+          <Text style={styles.hint}>
+            Not in your groceries yet. It's added the first time you put this on a list, and
+            then it can carry a brand, a store, a price and what you'd accept instead.
+          </Text>
+        )}
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.groupLabel}>Alternatives</Text>
+        {/* A closed two-way question about this line, so a track rather than
+            the free-text box this used to be. That box was labelled
+            "Alternative for" and held a *grouping key*, which meant the first
+            option of a pair had to be filed as an alternative for itself —
+            a question nobody could answer without knowing the data model. */}
+        <SegmentedControl
+          label="Alternatives"
+          value={grouped ? 'choice' : 'always'}
+          onChange={next => {
+            haptics.tap();
+            animateLayout();
+            if (next === 'always') setChoiceGroup('');
+            // Joining the recipe's only existing group is the overwhelmingly
+            // common intent, and it saves a tap. With none, the picker below
+            // opens on its "New group" field.
+            else if (!grouped) setChoiceGroup(otherChoiceGroups[0] ?? '');
+          }}
+          options={[
+            { value: 'always', label: 'Always needed' },
+            { value: 'choice', label: 'One of a choice' },
+          ]}
+        />
+        {grouped ? (
+          <>
+            <PillGroup
+              noun="group"
+              surface="card"
+              filterPlaceholder="Find or name a group…"
+              createMaxLength={RECIPE_CHOICE_GROUP_MAX_LENGTH}
+              onCreate={label => {
+                const cleaned = cleanChoiceGroup(label);
+                if (!cleaned) return 'Give the group a name.';
+                setChoiceGroup(cleaned);
+              }}
+              options={[
+                ...(otherChoiceGroups.includes(cleanChoiceGroup(choiceGroup) ?? '')
+                  ? []
+                  : [{
+                      key: '__current__',
+                      label: cleanChoiceGroup(choiceGroup) ?? '',
+                      pinned: true,
+                      selected: true,
+                      onPress: () => {},
+                    }]),
+                ...otherChoiceGroups.map(label => ({
+                  key: label,
+                  label,
+                  selected: cleanChoiceGroup(choiceGroup) === label,
+                  onPress: () => { haptics.tap(); setChoiceGroup(label); },
+                })),
+              ].filter(o => o.label)}
+            />
+            {siblingNames.length > 0 ? (
+              <Text style={styles.hint}>
+                You'll buy this <Text style={styles.hintStrong}>or</Text>{' '}
+                {siblingNames.join(' or ')} — never both.
               </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+            ) : (
+              <Text style={styles.hint}>
+                Nothing else is in this group yet. Put another ingredient in “
+                {cleanChoiceGroup(choiceGroup)}” and the two become alternatives.
+              </Text>
+            )}
+          </>
+        ) : (
+          <Text style={styles.hint}>
+            Every line is needed unless it's one of a choice. Two lines in the same group —
+            “Serrano” and “Jalapeño” both under “Pepper” — mean you buy one of them, picked
+            when you add the recipe to your list or left open until you're at the shop.
+          </Text>
+        )}
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.groupLabel}>Section</Text>
+        {/* A picker over the sections this recipe already has, not a text field
+            that had to be spelled identically each time — that's how one recipe
+            ends up with "For the cake" and "For the Cake" as two headings. */}
+        <PillGroup
+          noun="section"
+          surface="card"
+          filterPlaceholder="Find or name a section…"
+          createMaxLength={RECIPE_SECTION_MAX_LENGTH}
+          onCreate={label => {
+            const cleaned = label.trim().slice(0, RECIPE_SECTION_MAX_LENGTH);
+            if (!cleaned) return 'Give the section a name.';
+            setSection(cleaned);
+          }}
+          options={[
+            {
+              key: '__none__',
+              label: 'No section',
+              pinned: true,
+              selected: !section.trim(),
+              onPress: () => { haptics.tap(); animateLayout(); setSection(''); },
+            },
+            ...(existingSections.includes(section.trim()) || !section.trim()
+              ? []
+              : [{
+                  key: '__current__',
+                  label: section.trim(),
+                  pinned: true,
+                  selected: true,
+                  onPress: () => {},
+                }]),
+            ...existingSections.map(label => ({
+              key: label,
+              label,
+              selected: section.trim() === label,
+              onPress: () => { haptics.tap(); setSection(label); },
+            })),
+          ]}
+        />
         <Text style={styles.hint}>
-          Ingredients sharing a label are alternatives — “Serrano” and “Jalapeño” both filed
-          under “Pepper”, and you pick which one when you add the recipe to your list. Only the
-          one you pick gets bought, and each keeps its own name in your catalog.
+          Puts this under a heading on the recipe — “For the cake”, “For the frosting”. It
+          changes nothing about your shopping list.
         </Text>
       </View>
 
@@ -321,6 +468,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             default behind a disclosure makes it look unavailable. */}
         <PillGroup
           noun="aisle"
+          surface="card"
           filterPlaceholder="Find an aisle…"
           options={[
             {
@@ -344,6 +492,12 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           follows wherever you file the item later.
         </Text>
       </View>
+
+      <GroceryItemSheet
+        visible={editingItemId !== null}
+        itemId={editingItemId}
+        onClose={() => setEditingItemId(null)}
+      />
     </EditorSheet>
   );
 }
@@ -386,6 +540,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.sm,
     gap: spacing.xs,
   },
+  // The four fields of "what the line says" are one card now rather than four,
+  // so the sheet opens on the whole line instead of on a stack of boxes; these
+  // keep them from running together inside it.
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.separator,
+    marginVertical: spacing.xs,
+  },
   groupLabel: {
     color: colors.textSecondary,
     fontSize: font.xs,
@@ -425,32 +587,33 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.xs,
   },
-  pillRow: {
+  catalogRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
+    alignItems: 'center',
+    gap: spacing.sm,
     paddingVertical: spacing.xs,
   },
-  pill: {
-    backgroundColor: colors.bgTertiary,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+  catalogBody: {
+    flex: 1,
+    gap: 2,
   },
-  pillActive: {
-    backgroundColor: colors.accent,
-  },
-  pillText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-  },
-  pillTextActive: {
-    color: colors.onAccent,
+  catalogName: {
+    color: colors.text,
+    fontSize: font.md,
     fontWeight: fontWeight.medium,
+  },
+  catalogMeta: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    lineHeight: font.xs * 1.4,
   },
   hint: {
     color: colors.textTertiary,
     fontSize: font.xs,
     lineHeight: font.xs * 1.4,
+  },
+  hintStrong: {
+    color: colors.textSecondary,
+    fontWeight: fontWeight.semibold,
   },
 });

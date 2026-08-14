@@ -4,6 +4,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { formatDuration, formatStopwatch } from '../utils/effort';
+import { animateLayout } from '../utils/layoutAnimation';
+import { haptics } from '../utils/haptics';
 import { ProgressBar } from './ProgressBar';
 import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 
@@ -28,13 +30,24 @@ interface Props {
 }
 
 /**
- * One timer card — start/pause, log, reset, and a countdown or stopwatch
- * header, depending on whether a target duration is set. Shared by
- * RecipeDetailScreen's prep and cook timers (#recipe-metadata-improvements):
- * they're two independent instances of exactly this UI, targeting
- * Recipe.prepMinutes/prepTimer* vs. estimatedMinutes/timer* respectively, and
- * duplicating this much JSX+styling per timer is the thing worth avoiding,
- * not the two call sites themselves.
+ * One timer — start/pause, log, reset, and a countdown or stopwatch header,
+ * depending on whether a target duration is set. Shared by RecipeDetailScreen's
+ * prep and cook timers: they're two independent instances of exactly this UI,
+ * targeting Recipe.prepMinutes/prepTimer* vs. estimatedMinutes/timer*.
+ *
+ * **One row, not a card** (#1612). Each of these used to be a full card with a
+ * header, an action row, a permanently-visible "or log a time" field and a
+ * summary line — four stacked rows apiece, so two of them put roughly a third
+ * of a phone screen of stopwatch chrome above the ingredients on *every*
+ * recipe, including the great majority that have never been timed and have no
+ * duration set. The caller stacks them in one card now, and everything past
+ * "start it / how long is left" is behind the row's own disclosure:
+ * progressive disclosure, the same shape every editor here uses.
+ *
+ * What deliberately stays on the collapsed row is the pair of controls a cook
+ * needs with their hands full — the start/pause button, and while a timer is
+ * running the tick that logs it. Typing a time in from the stove clock is the
+ * one that can afford a tap first.
  */
 export function RecipeTimerRow({
   verb, targetMinutes, running, paused, inProgress, ready,
@@ -45,12 +58,14 @@ export function RecipeTimerRow({
   const hasTarget = targetMinutes !== null;
   const idleText = verb === 'Cook' ? 'Time this cook' : 'Time prep';
   const [manualMinutes, setManualMinutes] = useState('');
+  const [expanded, setExpanded] = useState(false);
 
   const submitManual = () => {
     const minutes = parseInt(manualMinutes, 10);
     if (!Number.isFinite(minutes) || minutes <= 0) return;
     onLogManual(minutes);
     setManualMinutes('');
+    setExpanded(false);
   };
 
   const headerText = hasTarget
@@ -68,17 +83,51 @@ export function RecipeTimerRow({
         : idleText;
 
   return (
-    <View style={styles.timerCard}>
-      <View style={styles.timerHeader}>
-        <Ionicons
-          name={ready ? 'checkmark-circle' : 'timer-outline'}
-          size={16}
-          color={ready ? colors.green : colors.accent}
-        />
-        <Text style={styles.timerHeaderText} numberOfLines={1}>{headerText}</Text>
-      </View>
-      {hasTarget && <ProgressBar progress={progress} height={4} />}
-      <View style={styles.timerActions}>
+    <View style={styles.timerRow}>
+      <View style={styles.headerLine}>
+        <TouchableOpacity
+          style={styles.headerTap}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); animateLayout(); setExpanded(v => !v); }}
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          accessibilityLabel={`${verb} timer, ${headerText}`}
+          accessibilityHint="Double tap for the time it usually takes, and to log one by hand"
+        >
+          <Ionicons
+            name={ready ? 'checkmark-circle' : 'timer-outline'}
+            size={16}
+            color={ready ? colors.green : colors.accent}
+          />
+          <Text style={styles.timerHeaderText} numberOfLines={1}>{headerText}</Text>
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={12}
+            color={colors.textTertiary}
+          />
+        </TouchableOpacity>
+        {inProgress && (
+          <TouchableOpacity
+            onPress={onLog}
+            hitSlop={8}
+            style={styles.timerSecondaryBtn}
+            accessibilityRole="button"
+            accessibilityLabel={`Done — log this ${verb.toLowerCase()} time`}
+          >
+            <Ionicons name="checkmark" size={iconSize.sm} color={colors.textSecondary} />
+          </TouchableOpacity>
+        )}
+        {inProgress && (
+          <TouchableOpacity
+            onPress={onReset}
+            hitSlop={8}
+            style={styles.timerSecondaryBtn}
+            accessibilityRole="button"
+            accessibilityLabel={`Reset ${verb.toLowerCase()} timer`}
+          >
+            <Ionicons name="refresh" size={iconSize.sm} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={[styles.timerBtn, running && styles.timerBtnRunning]}
           activeOpacity={interaction.activeOpacity}
@@ -91,70 +140,61 @@ export function RecipeTimerRow({
           <Ionicons name={running ? 'pause' : 'play'} size={12} color={colors.onAccent} />
           <Text style={styles.timerBtnText}>{running ? 'Pause' : paused ? 'Resume' : 'Start'}</Text>
         </TouchableOpacity>
-        {inProgress && (
-          <>
-            <TouchableOpacity
-              onPress={onLog}
-              hitSlop={8}
-              style={styles.timerSecondaryBtn}
-              accessibilityRole="button"
-              accessibilityLabel={`Done — log this ${verb.toLowerCase()} time`}
-            >
-              <Ionicons name="checkmark" size={iconSize.sm} color={colors.textSecondary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onReset}
-              hitSlop={8}
-              style={styles.timerSecondaryBtn}
-              accessibilityRole="button"
-              accessibilityLabel={`Reset ${verb.toLowerCase()} timer`}
-            >
-              <Ionicons name="refresh" size={iconSize.sm} color={colors.textTertiary} />
-            </TouchableOpacity>
-          </>
-        )}
       </View>
-      {!inProgress && (
-        <View style={styles.manualRow}>
-          <Text style={styles.manualLabel}>or log a time</Text>
-          <TextInput
-            style={styles.manualInput}
-            value={manualMinutes}
-            onChangeText={text => setManualMinutes(text.replace(/[^0-9]/g, ''))}
-            keyboardType="number-pad"
-            placeholder="min"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={4}
-            returnKeyType="done"
-            onSubmitEditing={submitManual}
-            inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-            accessibilityLabel={`${verb} time in minutes`}
-          />
-          <TouchableOpacity
-            onPress={submitManual}
-            disabled={!manualMinutes}
-            hitSlop={8}
-            style={[styles.timerSecondaryBtn, !manualMinutes && styles.manualLogBtnDisabled]}
-            accessibilityRole="button"
-            accessibilityLabel={`Log this ${verb.toLowerCase()} time`}
-          >
-            <Ionicons name="checkmark" size={iconSize.sm} color={manualMinutes ? colors.accent : colors.textTertiary} />
-          </TouchableOpacity>
+      {/* Only while something is actually counting: an untouched bar at 0% on
+          every recipe is the chrome this row exists to cut. */}
+      {hasTarget && inProgress && <ProgressBar progress={progress} height={4} />}
+      {expanded && (
+        <View style={styles.details}>
+          {!!summary && <Text style={styles.timerSummary}>{summary}</Text>}
+          {!inProgress && (
+            <View style={styles.manualRow}>
+              <Text style={styles.manualLabel}>or log a time</Text>
+              <TextInput
+                style={styles.manualInput}
+                value={manualMinutes}
+                onChangeText={text => setManualMinutes(text.replace(/[^0-9]/g, ''))}
+                keyboardType="number-pad"
+                placeholder="min"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={4}
+                returnKeyType="done"
+                onSubmitEditing={submitManual}
+                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                accessibilityLabel={`${verb} time in minutes`}
+              />
+              <TouchableOpacity
+                onPress={submitManual}
+                disabled={!manualMinutes}
+                hitSlop={8}
+                style={[styles.timerSecondaryBtn, !manualMinutes && styles.manualLogBtnDisabled]}
+                accessibilityRole="button"
+                accessibilityLabel={`Log this ${verb.toLowerCase()} time`}
+              >
+                <Ionicons name="checkmark" size={iconSize.sm} color={manualMinutes ? colors.accent : colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       )}
-      {!!summary && <Text style={styles.timerSummary}>{summary}</Text>}
     </View>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  timerCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.md,
-    padding: spacing.md,
+  timerRow: {
+    paddingVertical: spacing.sm,
+    gap: spacing.xs,
+  },
+  headerLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
   },
-  timerHeader: {
+  // The whole label is the disclosure target, so the tap has a row-width
+  // surface rather than a chevron a cook has to aim at.
+  headerTap: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
@@ -165,11 +205,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
     fontVariant: ['tabular-nums'],
-  },
-  timerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
   },
   timerBtn: {
     flexDirection: 'row',
@@ -195,6 +230,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  details: {
+    gap: spacing.xs,
   },
   manualRow: {
     flexDirection: 'row',

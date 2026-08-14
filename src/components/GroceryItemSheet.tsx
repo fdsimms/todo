@@ -731,7 +731,7 @@ export function GroceryItemSheet({
             style={styles.input}
             value={variant}
             onChangeText={setVariantText}
-            placeholder="Low fat, 4%, crunchy…"
+            placeholder="e.g. low fat, 4%, crunchy"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
             maxLength={GROCERY_VARIANT_MAX_LENGTH}
@@ -746,7 +746,7 @@ export function GroceryItemSheet({
             style={styles.input}
             value={quantity}
             onChangeText={setQuantityText}
-            placeholder="2 lb, x3, a bunch…"
+            placeholder="e.g. 2 lb, x3, a bunch"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
             maxLength={GROCERY_QUANTITY_MAX_LENGTH}
@@ -799,7 +799,7 @@ export function GroceryItemSheet({
             style={styles.input}
             value={note}
             onChangeText={setNoteText}
-            placeholder="The blue cap one"
+            placeholder="e.g. the blue cap one"
             placeholderTextColor={colors.textTertiary}
             maxLength={GROCERY_NAME_MAX_LENGTH}
             accessibilityLabel="Note"

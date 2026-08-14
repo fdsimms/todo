@@ -350,7 +350,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             value={recipeYield}
             onChangeText={setRecipeYieldDraft}
             onSubmitEditing={() => Keyboard.dismiss()}
-            placeholder="3 cups, 2 dozen cookies…"
+            placeholder="e.g. 3 cups, or 2 dozen cookies"
             placeholderTextColor={colors.textTertiary}
             maxLength={RECIPE_SOURCE_MAX_LENGTH}
             returnKeyType="done"
@@ -450,7 +450,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
                 onChangeText={setNewTag}
                 onSubmitEditing={addTagFromInput}
                 onBlur={addTagFromInput}
-                placeholder="tag name"
+                placeholder="e.g. weeknight"
                 placeholderTextColor={colors.textTertiary}
                 maxLength={RECIPE_TAG_MAX_LENGTH}
                 returnKeyType="done"
@@ -553,7 +553,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             value={author}
             onChangeText={setAuthorDraft}
             onSubmitEditing={() => Keyboard.dismiss()}
-            placeholder="Alison Roman…"
+            placeholder="e.g. Alison Roman"
             placeholderTextColor={colors.textTertiary}
             maxLength={RECIPE_SOURCE_MAX_LENGTH}
             returnKeyType="done"
@@ -613,7 +613,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             value={source}
             onChangeText={setSourceDraft}
             onSubmitEditing={() => Keyboard.dismiss()}
-            placeholder="NYT Cooking, Bon Appétit…"
+            placeholder="e.g. NYT Cooking"
             placeholderTextColor={colors.textTertiary}
             maxLength={RECIPE_SOURCE_MAX_LENGTH}
             returnKeyType="done"
@@ -628,7 +628,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
               value={sourcePage}
               onChangeText={setSourcePageDraft}
               onSubmitEditing={() => Keyboard.dismiss()}
-              placeholder="142"
+              placeholder="e.g. 142"
               placeholderTextColor={colors.textTertiary}
               maxLength={RECIPE_PAGE_MAX_LENGTH}
               returnKeyType="done"
@@ -683,7 +683,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           style={styles.notesInput}
           value={notes}
           onChangeText={setNotesDraft}
-          placeholder="Method, timings, what you'd change"
+          placeholder="Method, timings, what you'd change next time"
           placeholderTextColor={colors.textTertiary}
           multiline
           textAlignVertical="top"
