@@ -114,6 +114,7 @@ export function RecipeToListSheet({
   const unitSystem = useSettingsStore(s => s.unitSystem);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
 
@@ -142,9 +143,10 @@ export function RecipeToListSheet({
     return classifyPlanned(
       plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices }, scale),
       items,
-      new Date()
+      new Date(),
+      itemSubs
     );
-  }, [recipe, recipesById, items, choiceKey, scale]);
+  }, [recipe, recipesById, items, itemSubs, choiceKey, scale]);
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {

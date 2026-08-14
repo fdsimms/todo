@@ -1,4 +1,10 @@
-import { describeSubstitutes, substituteForItems, substitutesFor } from '../utils/itemSubs';
+import {
+  describeSubstitutes,
+  describeSubstitutesOnHand,
+  substituteForItems,
+  substitutesFor,
+  substitutesOnHand,
+} from '../utils/itemSubs';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import type { GroceryItem, ItemSubLink } from '../types';
@@ -143,5 +149,65 @@ describe('describeSubstitutes', () => {
         ])
       )
     ).toBe('3 substitutes');
+  });
+});
+
+describe('substitutesOnHand', () => {
+  const NOW = new Date('2026-08-14T12:00:00.000Z');
+  const onHand = (i: GroceryItem) => ({ ...i, onHandUntil: '2026-09-01T00:00:00.000Z' });
+  const outOf = (i: GroceryItem) => ({ ...i, onHandUntil: '2026-01-01T00:00:00.000Z' });
+
+  it('keeps only the substitutes the app thinks you have', () => {
+    const items = [butter, onHand(margarine), ghee];
+    const links = [sub(butter.id, margarine.id), sub(butter.id, ghee.id)];
+    expect(substitutesOnHand(butter.id, links, items, NOW).map(s => s.item.name)).toEqual([
+      'Margarine',
+    ]);
+  });
+
+  it('says nothing when the app has no opinion — ignorance is not absence', () => {
+    // The default state of nearly every item, which is why this must not be
+    // read as "you have not got it".
+    const links = [sub(butter.id, margarine.id)];
+    expect(substitutesOnHand(butter.id, links, ITEMS, NOW)).toEqual([]);
+  });
+
+  it('drops one the user has marked out of', () => {
+    const links = [sub(butter.id, margarine.id)];
+    expect(substitutesOnHand(butter.id, links, [butter, outOf(margarine)], NOW)).toEqual([]);
+  });
+
+  it('counts a staple, which needs no purchase history', () => {
+    const links = [sub(butter.id, ghee.id)];
+    const items = [butter, { ...ghee, isStaple: true }];
+    expect(substitutesOnHand(butter.id, links, items, NOW).map(s => s.item.name)).toEqual(['Ghee']);
+  });
+});
+
+describe('describeSubstitutesOnHand', () => {
+  const NOW = new Date('2026-08-14T12:00:00.000Z');
+  const onHand = (i: GroceryItem) => ({ ...i, onHandUntil: '2026-09-01T00:00:00.000Z' });
+
+  const line = (subNames: GroceryItem[]) =>
+    describeSubstitutesOnHand(
+      substitutesOnHand(
+        butter.id,
+        subNames.map((s, i) => sub(butter.id, s.id, { createdAt: `2026-0${i + 1}-01T00:00:00.000Z` })),
+        [butter, ...subNames.map(onHand)],
+        NOW
+      )
+    );
+
+  it('is silent with nothing on hand', () => {
+    expect(describeSubstitutesOnHand([])).toBeNull();
+  });
+
+  it('names one and two, lower-cased for a sentence', () => {
+    expect(line([margarine])).toBe('you have margarine');
+    expect(line([margarine, ghee])).toBe('you have margarine or ghee');
+  });
+
+  it('counts past two, since this lands in a one-line row subtitle', () => {
+    expect(line([margarine, ghee, oil])).toBe('you have 3 substitutes');
   });
 });
