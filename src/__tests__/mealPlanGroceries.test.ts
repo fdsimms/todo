@@ -468,6 +468,99 @@ describe('classifyPlanned', () => {
     expect(row.reason).toBe('bought 3× · last on 2 Aug');
   });
 
+  // #1566 — the substitute caption. The category deliberately does not move:
+  // a probablyHave row arrives pre-unticked in both add-to-list sheets, so
+  // folding a substitute into it is how you come home without butter.
+  describe('substitute captions', () => {
+    const onHand = (name: string) =>
+      item({ name, onList: false, onHandUntil: new Date(2026, 8, 1).toISOString() });
+    const sub = (itemId: string, subItemId: string) => ({
+      itemId,
+      subItemId,
+      note: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      ratioFrom: null,
+      ratioTo: null,
+    });
+    const plannedButter = [
+      { name: 'Butter', nameKey: 'butter', quantity: '100 g', aisle: null, source: 'Wed Cake' },
+    ];
+
+    it('says what is in the cupboard without moving the row', () => {
+      const butter = item({ name: 'Butter', onList: false });
+      const margarine = onHand('Margarine');
+      const row = classifyPlanned(plannedButter, [butter, margarine], now, [
+        sub(butter.id, margarine.id),
+      ])[0];
+
+      expect(row.category).toBe('needToBuy');
+      expect(row.reason).toBe('you have margarine');
+    });
+
+    it('stays silent when the app has no pantry opinion about the substitute', () => {
+      // The default state of nearly every item — ignorance, not absence.
+      const butter = item({ name: 'Butter', onList: false });
+      const margarine = item({ name: 'Margarine', onList: false });
+      const row = classifyPlanned(plannedButter, [butter, margarine], now, [
+        sub(butter.id, margarine.id),
+      ])[0];
+
+      expect(row.reason).toBeNull();
+    });
+
+    it('does not read a link backwards', () => {
+      // The link says "instead of butter, margarine". Needing margarine with
+      // butter in the cupboard is the other direction, which nobody asserted.
+      const butter = onHand('Butter');
+      const margarine = item({ name: 'Margarine', onList: false });
+      const planned = [
+        { name: 'Margarine', nameKey: 'margarine', quantity: '', aisle: null, source: 'Wed Cake' },
+      ];
+      const row = classifyPlanned(planned, [butter, margarine], now, [
+        sub(butter.id, margarine.id),
+      ])[0];
+
+      expect(row.category).toBe('needToBuy');
+      expect(row.reason).toBeNull();
+
+      // ...and the reverse row is what makes it sayable.
+      const mutual = classifyPlanned(planned, [butter, margarine], now, [
+        sub(butter.id, margarine.id),
+        sub(margarine.id, butter.id),
+      ])[0];
+      expect(mutual.reason).toBe('you have butter');
+    });
+
+    it('leaves probablyHave\'s own reason alone', () => {
+      // Precedence: the row never reaches the needToBuy branch, so the pantry
+      // opinion that put it there is what it keeps saying.
+      const butter = onHand('Butter');
+      const margarine = onHand('Margarine');
+      const row = classifyPlanned(plannedButter, [butter, margarine], now, [
+        sub(butter.id, margarine.id),
+      ])[0];
+
+      expect(row.category).toBe('probablyHave');
+      expect(row.reason).toBe('marked as on hand');
+    });
+
+    it('says nothing for a name with no catalog row of its own', () => {
+      const planned = [
+        { name: 'Saffron', nameKey: 'saffron', quantity: '', aisle: null, source: 'Tue Paella' },
+      ];
+      expect(classifyPlanned(planned, [], now, [])[0].reason).toBeNull();
+    });
+
+    it('still offers the row on a restock', () => {
+      const butter = item({ name: 'Butter', onList: false });
+      const margarine = onHand('Margarine');
+      const rows = classifyPlanned(plannedButter, [butter, margarine], now, [
+        sub(butter.id, margarine.id),
+      ]);
+      expect(restockRows(rows)).toHaveLength(1);
+    });
+  });
+
   it('classifies a known catalog row that is off the list as needToBuy, not probablyHave', () => {
     const items = [item({ name: 'Flour', onList: false, inCatalog: true })];
     const planned = [{ name: 'Flour', nameKey: 'flour', quantity: '', aisle: null, source: 'Wed Bread' }];

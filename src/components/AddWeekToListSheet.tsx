@@ -73,13 +73,14 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
   const unitSystem = useSettingsStore(s => s.unitSystem);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const stampAddedToList = useMealPlanStore(s => s.stampAddedToList);
 
   const classified = useMemo(() => {
     const planned = collectPlannedIngredients(entries, recipesById, range);
-    return classifyPlanned(planned, items, new Date());
-  }, [entries, recipesById, range, items]);
+    return classifyPlanned(planned, items, new Date(), itemSubs);
+  }, [entries, recipesById, range, items, itemSubs]);
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {

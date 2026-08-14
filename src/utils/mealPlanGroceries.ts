@@ -1,8 +1,9 @@
 import { format } from 'date-fns/format';
-import type { GroceryItem, MealPlanEntry, Recipe } from '../types';
+import type { GroceryItem, ItemSubLink, MealPlanEntry, Recipe } from '../types';
 import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
 import { probablyHaveReason } from './grocerySuggest';
+import { describeSubstitutesOnHand, substitutesOnHand } from './itemSubs';
 import { flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
 import {
   formatQuantityAmount,
@@ -276,7 +277,22 @@ export interface ClassifiedIngredient {
    * the two (see the table above), and `restockRows` is what splits them.
    */
   known: boolean;
-  /** Set only for `probablyHave` — grocerySuggest.probablyHaveReason's "bought 6× · last on 12 Jul". */
+  /**
+   * Why this row says what it says. Two producers, and which one wrote it is
+   * told by the row's own category:
+   *
+   * - `probablyHave` — `grocerySuggest.probablyHaveReason`'s "bought 6× ·
+   *   last on 12 Jul", the pantry opinion that put the row in that category.
+   * - `needToBuy` — `itemSubs.describeSubstitutesOnHand`'s "you have
+   *   margarine": a substitute the user linked to this item is one the app
+   *   thinks is in the cupboard.
+   *
+   * The second one deliberately **does not move the row**. A `probablyHave`
+   * row arrives pre-unticked in both add-to-list sheets, so folding a
+   * substitute into that category is how you come home without butter because
+   * the app decided margarine counted. The row is offered exactly as before;
+   * it just says what else is already there.
+   */
   reason: string | null;
   /**
    * The single recipe behind this row, when there is one — null once a row
@@ -317,7 +333,14 @@ export interface ClassifiedIngredient {
 export function classifyPlanned(
   planned: readonly PlannedIngredient[],
   items: readonly GroceryItem[],
-  now: Date
+  now: Date,
+  /**
+   * The substitute links, for the "you have margarine" caption on a row you
+   * still need to buy. Optional and empty by default: with none linked there
+   * is nothing to say, which is also every caller's behaviour before this
+   * existed.
+   */
+  itemSubs: readonly ItemSubLink[] = []
 ): ClassifiedIngredient[] {
   const byKey = new Map<string, GroceryItem>();
   for (const item of items) byKey.set(item.nameKey, item);
@@ -354,6 +377,13 @@ export function classifyPlanned(
       category = 'probablyHave';
     } else {
       category = 'needToBuy';
+      // Says what's in the cupboard; does not decide anything. A name with no
+      // catalog row can carry no links, so this is only ever asked of a known
+      // row — and it stays ticked to buy either way, which is the whole safety
+      // argument (see ClassifiedIngredient.reason).
+      if (match) {
+        reason = describeSubstitutesOnHand(substitutesOnHand(match.id, itemSubs, items, now));
+      }
     }
 
     rows.push({ nameKey: key, name, aisle, quantity, sources, category, known: !!match, reason, sourceRecipeId, sourceRecipeTitle });
