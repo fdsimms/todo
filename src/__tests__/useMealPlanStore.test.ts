@@ -181,6 +181,7 @@ function recipeWith(name: string, ingredientNames: string[]): Recipe {
       id: `${name}-i${i}`, name: n, nameKey: groceryNameKey(n),
       quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: null,
     })),
+    emptySections: [],
     components: [],
   } as unknown as Recipe;
 }

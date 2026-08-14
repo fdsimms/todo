@@ -1524,6 +1524,14 @@ export interface Recipe {
   // itself up rather than a name to maintain.
   tags: string[];
   ingredients: RecipeIngredient[];
+  // Headings declared with nothing filed under them yet — see recipeSections.ts.
+  // A section otherwise only exists as the `section` string on an ingredient
+  // row, so an empty one has nowhere to live without this; entries here are
+  // pruned the moment a row actually carries the same label, so this never
+  // duplicates what `sectionsOf(ingredients)` already reports. Empty for
+  // every recipe that's never had a heading declared ahead of its ingredients,
+  // which is most of them.
+  emptySections: string[];
   // The recipes this one is partly made of — see RecipeComponent. Empty for
   // every recipe that isn't composed, which is most of them; the ingredient
   // list is still where a plain recipe lives.

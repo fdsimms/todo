@@ -80,6 +80,7 @@ function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): 
     mealType: null,
     tags: [],
     ingredients: [],
+    emptySections: [],
     components: [],
     prepTasks: [],
     favorite: false,

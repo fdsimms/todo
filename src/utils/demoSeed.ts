@@ -553,6 +553,7 @@ function seedRecipes(): DemoRecipes {
   const {
     addIngredientsFromText,
     updateIngredient,
+    addEmptySection,
     addComponent,
     addPrepTask,
     updatePrepTask,
@@ -682,6 +683,10 @@ function seedRecipes(): DemoRecipes {
     const id = ingredientIdNamed(cake.id, name);
     if (id) updateIngredient(cake.id, id, { section });
   });
+  // Nobody's decided on a garnish yet — a heading declared ahead of anything
+  // filed under it (Recipe.emptySections), so it shows up on the recipe with
+  // nothing under it until something is.
+  addEmptySection(cake.id, 'For serving');
   setRecipeYield(cake.id, '1 9-inch cake');
   setServings(cake.id, 12);
   setEstimatedMinutes(cake.id, 45);

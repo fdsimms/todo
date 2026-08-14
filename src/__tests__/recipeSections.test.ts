@@ -1,77 +1,61 @@
-import { resolveSectionDrop, sectionsOf, type SectionedRow } from '../utils/recipeSections';
+import {
+  allSectionsOf,
+  parseEmptySections,
+  sectionsFromMergedOrder,
+  sectionsOf,
+  type SectionedRow,
+  type SectionListEntry,
+} from '../utils/recipeSections';
 
 const row = (id: string, section: string | null = null): SectionedRow => ({ id, section });
 
-/** Moves `id` to `to` (index in the resulting array), the way one drag does. */
-function move(rows: readonly SectionedRow[], id: string, to: number): SectionedRow[] {
-  const next = rows.filter(r => r.id !== id);
-  next.splice(to, 0, rows.find(r => r.id === id)!);
-  return next;
-}
-
-describe('resolveSectionDrop', () => {
+describe('sectionsFromMergedOrder', () => {
   const cake = 'For the cake';
   const frosting = 'For the frosting';
+  const heading = (name: string): SectionListEntry => ({ kind: 'heading', name });
+  const item = (id: string): SectionListEntry => ({ kind: 'row', id });
 
-  // flour, butter | sugar, cream
-  const list = [row('flour', cake), row('butter', cake), row('sugar', frosting), row('cream', frosting)];
-
-  it('files a row dragged down into the section it lands in', () => {
-    expect(resolveSectionDrop(list, move(list, 'flour', 2))).toEqual({ id: 'flour', section: frosting });
+  it('assigns every row the nearest heading before it', () => {
+    const entries = [
+      heading(cake), item('flour'), item('butter'),
+      heading(frosting), item('sugar'), item('cream'),
+    ];
+    expect(sectionsFromMergedOrder(entries)).toEqual(new Map([
+      ['flour', cake], ['butter', cake], ['sugar', frosting], ['cream', frosting],
+    ]));
   });
 
-  it('files a row dragged up into the section it lands in', () => {
-    expect(resolveSectionDrop(list, move(list, 'cream', 1))).toEqual({ id: 'cream', section: cake });
+  it('gives rows before the first heading no section', () => {
+    const entries = [item('a'), heading(cake), item('b')];
+    expect(sectionsFromMergedOrder(entries)).toEqual(new Map([['a', null], ['b', cake]]));
   });
 
-  it('takes a row dropped at the very top out of every section', () => {
-    expect(resolveSectionDrop(list, move(list, 'sugar', 0))).toEqual({ id: 'sugar', section: null });
+  it('is entirely null when the list has no headings at all', () => {
+    const entries = [item('a'), item('b')];
+    expect(sectionsFromMergedOrder(entries)).toEqual(new Map([['a', null], ['b', null]]));
   });
 
-  it('says nothing for a move inside one section', () => {
-    expect(resolveSectionDrop(list, move(list, 'butter', 0))).toBeNull();
+  it('files a row after an empty heading exactly like a populated one', () => {
+    // A declared-but-empty heading is just another marker in the same list —
+    // nothing about the derivation cares whether it started with members.
+    const entries = [heading(cake), item('flour'), heading('For serving'), item('candles')];
+    expect(sectionsFromMergedOrder(entries).get('candles')).toBe('For serving');
   });
 
-  it('keeps a row in its own section when it lands on that section\'s edge', () => {
-    // cream above sugar makes cream the *first* frosting row, so the row above
-    // it is the cake's — but it's still touching the frosting, and pulling it
-    // into the cake is not what reordering two rows means.
-    expect(resolveSectionDrop(list, move(list, 'cream', 2))).toBeNull();
-    // Same at the top of the list: butter reordered above flour is still cake.
-    expect(resolveSectionDrop(list, move(list, 'butter', 0))).toBeNull();
+  it('leaves a heading with nothing after it before the next marker unused', () => {
+    // Every ingredient moved out from under "For the frosting" — the marker is
+    // still in the list (it's up to the caller to decide whether that renders
+    // as a heading at all; this function just reports no row claimed it).
+    const entries = [heading(cake), item('flour'), heading(frosting), heading('For serving'), item('candles')];
+    const result = sectionsFromMergedOrder(entries);
+    expect([...result.values()]).not.toContain(frosting);
+    expect(result.get('candles')).toBe('For serving');
   });
 
-  it('says nothing when the order is unchanged', () => {
-    expect(resolveSectionDrop(list, [...list])).toBeNull();
-  });
-
-  it('leaves a recipe with no sections alone, whatever is dragged where', () => {
-    const plain = [row('a'), row('b'), row('c')];
-    expect(resolveSectionDrop(plain, move(plain, 'c', 0))).toBeNull();
-    expect(resolveSectionDrop(plain, move(plain, 'a', 2))).toBeNull();
-  });
-
-  it('joins the run above when it lands between two sections it is in neither of', () => {
-    const withThird = [...list, row('sprinkles', 'To finish')];
-    expect(resolveSectionDrop(withThird, move(withThird, 'sprinkles', 2)))
-      .toEqual({ id: 'sprinkles', section: cake });
-  });
-
-  it('files a row dragged to the very bottom into the last section', () => {
-    expect(resolveSectionDrop(list, move(list, 'flour', 3))).toEqual({ id: 'flour', section: frosting });
-  });
-
-  it('declines anything that is not a single reinsertion', () => {
-    expect(resolveSectionDrop(list, [])).toBeNull();
-    expect(resolveSectionDrop(list, list.slice(0, 3))).toBeNull();
-    // Two rows swapped at opposite ends is not a drag, and guessing which one
-    // was the subject is exactly what this refuses to do.
-    const shuffled = [list[3], list[1], list[2], list[0]];
-    expect(resolveSectionDrop(list, shuffled)).toBeNull();
-  });
-
-  it('declines a one-row list, which has nothing to land under', () => {
-    expect(resolveSectionDrop([row('only', cake)], [row('only', cake)])).toBeNull();
+  it('a row can move between two headings by changing which one precedes it', () => {
+    // "cream" reassigned from frosting to cake by nothing but its new position.
+    const entries = [heading(cake), item('flour'), item('cream'), heading(frosting), item('sugar')];
+    expect(sectionsFromMergedOrder(entries).get('cream')).toBe(cake);
   });
 });
 
@@ -87,5 +71,40 @@ describe('sectionsOf', () => {
 
   it('is empty for a recipe with no sections', () => {
     expect(sectionsOf([row('a'), row('b')])).toEqual([]);
+  });
+});
+
+describe('allSectionsOf', () => {
+  it('appends declared-but-empty headings after the ones rows already use', () => {
+    const rows = [row('a', 'For the cake'), row('b', null)];
+    expect(allSectionsOf(rows, ['For serving', 'For the cake']))
+      .toEqual(['For the cake', 'For serving']);
+  });
+
+  it('is just the declared list when no row has a section yet', () => {
+    expect(allSectionsOf([row('a'), row('b')], ['For serving'])).toEqual(['For serving']);
+  });
+
+  it('is just the used sections when nothing is declared', () => {
+    const rows = [row('a', 'For the cake')];
+    expect(allSectionsOf(rows, [])).toEqual(['For the cake']);
+  });
+});
+
+describe('parseEmptySections', () => {
+  it('parses a stored JSON array', () => {
+    expect(parseEmptySections('["For serving","For the cake"]'))
+      .toEqual(['For serving', 'For the cake']);
+  });
+
+  it('tolerates a null column, garbage, and a non-array shape', () => {
+    expect(parseEmptySections(null)).toEqual([]);
+    expect(parseEmptySections('not json')).toEqual([]);
+    expect(parseEmptySections('{"a":1}')).toEqual([]);
+  });
+
+  it('drops non-strings, trims, and dedupes', () => {
+    expect(parseEmptySections(JSON.stringify(['  For serving  ', 'For serving', 42, ''])))
+      .toEqual(['For serving']);
   });
 });
