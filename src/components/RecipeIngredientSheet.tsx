@@ -27,9 +27,9 @@ import { splitAlternativeNames, suggestShorterCatalogName } from '../utils/groce
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { sectionsOf } from '../utils/recipeSections';
+import { disclosureValue } from '../theme/textStyles';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
-import { SegmentedControl } from './SegmentedControl';
 import { PillGroup } from './PillGroup';
 import { GroceryItemSheet } from './GroceryItemSheet';
 
@@ -62,6 +62,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
 
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
   const splitIngredientAlternatives = useRecipeStore(s => s.splitIngredientAlternatives);
+  const renameChoiceGroup = useRecipeStore(s => s.renameChoiceGroup);
   const recipeIngredients = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.ingredients ?? [])
   );
@@ -73,19 +74,6 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     () => new Set(groceryItems.map(i => i.nameKey)),
     [groceryItems]
   );
-
-  // The recipe's other either/or labels, so joining an existing group is a tap
-  // and can't be misspelled into a lookalike group of one — the label *is* the
-  // grouping key, same as an aisle name.
-  const otherChoiceGroups = useMemo(() => {
-    const labels: string[] = [];
-    for (const other of recipeIngredients) {
-      if (other.choiceGroup && other.id !== ingredient?.id && !labels.includes(other.choiceGroup)) {
-        labels.push(other.choiceGroup);
-      }
-    }
-    return labels;
-  }, [recipeIngredients, ingredient?.id]);
 
   // Every section this recipe already uses, in list order. Same idea as the
   // choice labels above and for the same reason: a section is a *string* shared
@@ -99,12 +87,11 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const [purpose, setPurpose] = useState('');
   const [section, setSection] = useState('');
   const [choiceGroup, setChoiceGroup] = useState('');
-  // Held apart from the label rather than derived from it, because the two
-  // genuinely differ for one state: "one of a choice, group not named yet".
-  // Derived, tapping "One of a choice" on the first ingredient in a recipe with
-  // no groups would set an empty label, read back as ungrouped, and snap the
-  // control straight back — the picker below is where the group gets named.
-  const [choiceOn, setChoiceOn] = useState(false);
+  // Renaming edits every member of the group (see renameChoiceGroup), so it's
+  // its own inline field rather than the PillGroup's create box — creating
+  // there means "start a new group", not "reword this one".
+  const [editingGroupName, setEditingGroupName] = useState(false);
+  const [groupNameDraft, setGroupNameDraft] = useState('');
   const [aisle, setAisle] = useState<string | null>(null);
   // Nested rather than a sibling: a Modal presents from its React parent's view
   // controller, so a sibling would ask this sheet's own presenter for a second
@@ -120,7 +107,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setPurpose(ingredient.purpose ?? '');
     setSection(ingredient.section ?? '');
     setChoiceGroup(ingredient.choiceGroup ?? '');
-    setChoiceOn(!!ingredient.choiceGroup);
+    setEditingGroupName(false);
     setAisle(ingredient.aisle);
     setEditingItemId(null);
   }, [ingredient]);
@@ -142,6 +129,28 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       .filter(other => other.id !== ingredient.id && other.choiceGroup === label)
       .map(other => other.name);
   }, [recipeIngredients, ingredient, choiceGroup]);
+
+  const groupLabel = cleanChoiceGroup(choiceGroup);
+
+  // Writes this ingredient's own choiceGroup immediately, rather than
+  // deferring it to Done like the rest of the sheet's fields. It has to: the
+  // group is shared state with other rows (join/leave writes them the same
+  // way, right below), and renaming reads every row's *current* stored label
+  // — if this row's own change waited for Done, a rename mid-session would
+  // see it still holding the old one and miss it.
+  const applyChoiceGroup = (label: string | null) => {
+    const clean = cleanChoiceGroup(label);
+    setChoiceGroup(clean ?? '');
+    if (ingredient) updateIngredient(recipeId, ingredient.id, { choiceGroup: clean });
+  };
+
+  const commitGroupRename = () => {
+    setEditingGroupName(false);
+    const clean = cleanChoiceGroup(groupNameDraft);
+    if (!clean || clean === groupLabel) return;
+    const renamed = renameChoiceGroup(recipeId, groupLabel ?? '', clean);
+    if (renamed) setChoiceGroup(renamed);
+  };
 
   const saveAndClose = () => {
     if (!ingredient) { onClose(); return; }
@@ -182,8 +191,6 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const catalogSummary = catalogItem
     ? describeCatalogItem(catalogItem, itemSubs, groceryItems, new Date())
     : null;
-
-  const groupLabel = cleanChoiceGroup(choiceGroup);
 
   const acceptSplit = () => {
     if (!ingredient || !alternatives) return;
@@ -343,86 +350,123 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
 
       <View style={styles.sectionCard}>
         <Text style={styles.groupLabel}>Alternatives</Text>
-        {/* A closed two-way question about this line, so a track rather than
-            the free-text box this used to be. That box was labelled
-            "Alternative for" and held a *grouping key*, which meant the first
-            option of a pair had to be filed as an alternative for itself —
-            a question nobody could answer without knowing the data model. */}
-        <SegmentedControl
-          label="Alternatives"
-          value={choiceOn ? 'choice' : 'always'}
-          onChange={next => {
-            haptics.tap();
+        {/* An optional field like Section/Aisle below it, not a gate in front
+            of one. There used to be a segmented control asking "always needed
+            or one of a choice" before this ever showed — but that's a
+            question the field's own emptiness already answers, and "always"
+            read as a claim about this ingredient rather than "nothing's
+            grouped with it". A group of one — "one of a choice" selected with
+            nobody picked yet — used to be a reachable, dead-end state; it no
+            longer exists, because there's no toggle to leave in that
+            position. Picking (or creating) a sibling is the only way this
+            stops being empty. */}
+        <PillGroup
+          noun="ingredient"
+          surface="card"
+          limit={0}
+          filterPlaceholder="Find or add an ingredient…"
+          createMaxLength={GROCERY_NAME_MAX_LENGTH}
+          onCreate={raw => {
+            const typed = raw.trim().slice(0, GROCERY_NAME_MAX_LENGTH).trim();
+            if (!typed) return 'Name the ingredient.';
+            // Clones this line's quantity/prep/purpose/section/aisle onto the
+            // new row — the same default splitIngredientAlternatives already
+            // uses for "cheddar or manchego": two alternatives fill the same
+            // slot in the recipe, so sharing an amount is right far more often
+            // than not. A one-tap edit on the new row afterward covers the
+            // rest.
+            const currentName = name.trim() || ingredient.name;
+            const label = cleanChoiceGroup(groupLabel || currentName);
+            if (!label) return 'Name the ingredient.';
+            const created = splitIngredientAlternatives(
+              recipeId, ingredient.id, [currentName, typed], label
+            );
+            if (!created) return `“${typed}” is already on this recipe.`;
+            haptics.success();
             animateLayout();
-            setChoiceOn(next === 'choice');
-            if (next === 'always') setChoiceGroup('');
-            // Joining the recipe's only existing group is the overwhelmingly
-            // common intent, and it saves a tap. With none it stays unnamed and
-            // the picker below opens on its "New group" button.
-            else if (!groupLabel) setChoiceGroup(otherChoiceGroups[0] ?? '');
+            applyChoiceGroup(label);
           }}
           options={[
-            { value: 'always', label: 'Always needed' },
-            { value: 'choice', label: 'One of a choice' },
+            {
+              key: '__none__',
+              label: 'No alternatives',
+              pinned: true,
+              selected: !groupLabel,
+              onPress: () => { haptics.tap(); animateLayout(); applyChoiceGroup(null); },
+            },
+            ...recipeIngredients
+              .filter(other => other.id !== ingredient.id)
+              .map(other => {
+                const inGroup = !!groupLabel && other.choiceGroup === groupLabel;
+                return {
+                  key: other.id,
+                  label: other.name,
+                  selected: inGroup,
+                  onPress: () => {
+                    haptics.tap();
+                    // Toggling a specific sibling only ever changes that
+                    // sibling's own row — leaving one member doesn't clear
+                    // the group for whoever else is still in it.
+                    if (inGroup) {
+                      updateIngredient(recipeId, other.id, { choiceGroup: null });
+                      return;
+                    }
+                    const label = cleanChoiceGroup(
+                      groupLabel || other.choiceGroup || name.trim() || ingredient.name
+                    );
+                    if (!label) return;
+                    updateIngredient(recipeId, other.id, { choiceGroup: label });
+                    applyChoiceGroup(label);
+                  },
+                };
+              }),
           ]}
         />
-        {choiceOn ? (
-          <>
-            <PillGroup
-              noun="group"
-              surface="card"
-              filterPlaceholder="Find or name a group…"
-              createMaxLength={RECIPE_CHOICE_GROUP_MAX_LENGTH}
-              onCreate={label => {
-                const cleaned = cleanChoiceGroup(label);
-                if (!cleaned) return 'Give the group a name.';
-                setChoiceGroup(cleaned);
+        {!!groupLabel && (
+          editingGroupName ? (
+            <View style={styles.groupNameEditRow}>
+              <TextInput
+                style={styles.groupNameInput}
+                value={groupNameDraft}
+                onChangeText={setGroupNameDraft}
+                maxLength={RECIPE_CHOICE_GROUP_MAX_LENGTH}
+                autoFocus
+                autoCorrect={false}
+                onSubmitEditing={commitGroupRename}
+                onBlur={commitGroupRename}
+                accessibilityLabel="Group name"
+              />
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.groupNameRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => {
+                setGroupNameDraft(groupLabel);
+                setEditingGroupName(true);
               }}
-              options={[
-                // A group named on this line and nowhere else yet has no pill of
-                // its own in the list below, so it gets a pinned one — otherwise
-                // the label the user just typed is stored and invisible.
-                ...(!groupLabel || otherChoiceGroups.includes(groupLabel)
-                  ? []
-                  : [{
-                      key: '__current__',
-                      label: groupLabel,
-                      pinned: true,
-                      selected: true,
-                      onPress: () => {},
-                    }]),
-                ...otherChoiceGroups.map(label => ({
-                  key: label,
-                  label,
-                  selected: groupLabel === label,
-                  onPress: () => { haptics.tap(); setChoiceGroup(label); },
-                })),
-              ]}
-            />
-            {!groupLabel ? (
-              <Text style={styles.hint}>
-                Name the group these alternatives share — “Pepper”, “Cheese”. Every ingredient
-                under it is one way of filling the same slot.
-              </Text>
-            ) : siblingNames.length > 0 ? (
-              <Text style={styles.hint}>
-                You'll buy this <Text style={styles.hintStrong}>or</Text>{' '}
-                {siblingNames.join(' or ')} — never both.
-              </Text>
-            ) : (
-              <Text style={styles.hint}>
-                Nothing else is in “{groupLabel}” yet. Put another ingredient in it and the two
-                become alternatives.
-              </Text>
-            )}
-          </>
-        ) : (
-          <Text style={styles.hint}>
-            Every line is needed unless it's one of a choice. Two lines in the same group —
-            “Serrano” and “Jalapeño” both under “Pepper” — mean you buy one of them, picked
-            when you add the recipe to your list or left open until you're at the store.
-          </Text>
+              accessibilityRole="button"
+              accessibilityLabel={`Group name, ${groupLabel}`}
+              accessibilityHint="Double tap to rename — renames it for every ingredient in the group"
+            >
+              <Text style={styles.groupNameLabel}>Group name</Text>
+              <View style={styles.groupNameValueRow}>
+                <Text style={styles.groupNameValue} numberOfLines={1}>{groupLabel}</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+              </View>
+            </TouchableOpacity>
+          )
         )}
+        <Text style={styles.hint}>
+          {siblingNames.length > 0 ? (
+            <>
+              You'll buy this <Text style={styles.hintStrong}>or</Text>{' '}
+              {siblingNames.join(' or ')} — never both.
+            </>
+          ) : (
+            'You haven’t listed any alternatives for this ingredient.'
+          )}
+        </Text>
       </View>
 
       <View style={styles.sectionCard}>
@@ -626,5 +670,33 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   hintStrong: {
     color: colors.textSecondary,
     fontWeight: fontWeight.semibold,
+  },
+  groupNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+  },
+  groupNameLabel: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  groupNameValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    maxWidth: '60%',
+  },
+  groupNameValue: { ...disclosureValue(colors), flexShrink: 1 },
+  groupNameEditRow: {
+    paddingVertical: spacing.xs,
+  },
+  groupNameInput: {
+    color: colors.text,
+    fontSize: font.md,
+    minHeight: 32,
   },
 });
