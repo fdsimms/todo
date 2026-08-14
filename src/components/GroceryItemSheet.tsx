@@ -870,6 +870,24 @@ export function GroceryItemSheet({
               maxLength={PRICE_INPUT_MAX_LENGTH}
               accessibilityLabel={targetShopName ? `Last price at ${targetShopName}` : 'Last price'}
             />
+            {/* Same clear affordance as SearchField's — emptying the field is
+                already how a price gets removed on Save (see handleSave), this
+                just saves reaching for backspace on a long mistyped number. */}
+            {price.length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.tap();
+                  setPriceEdits(prev => ({ ...prev, [priceKey]: '' }));
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  targetShopName ? `Clear price at ${targetShopName}` : 'Clear price'
+                }
+              >
+                <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            )}
           </View>
           {/* What the number is *for* and how old it is — never the number
               itself, which the field above is already showing.
