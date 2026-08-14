@@ -1029,6 +1029,15 @@ function seedGroceries(recipes: DemoRecipes): void {
     linkItemSub(itemNamed('Butter').id, margarine.id, {
       note: 'Fine for frying, not for baking',
     });
+    // ...and the state that makes the link *say* something. The caption on an
+    // add-to-list row needs both halves known — the original wanted, the
+    // substitute on hand — and the seeded trips leave Butter bought, so
+    // without these two lines four recipes call for butter and nothing ever
+    // reads "you have margarine". Marked out of it rather than left to the
+    // cadence guess, which needs a row older than its purchases and so can't
+    // be seeded at all (same reason the pantry's own seed is all assertions).
+    setOnHandUntil(itemNamed('Butter').id, OUT_OF_IT_UNTIL);
+    setOnHandUntil(margarine.id, defaultOnHandUntil(margarine, new Date()));
   }
   if (oatMilk) {
     linkItemSub(itemNamed('Milk').id, oatMilk.id, { bothWays: true });

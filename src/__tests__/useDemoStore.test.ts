@@ -19,6 +19,8 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
 import { pantryEntries } from '../utils/grocerySuggest';
 import { substitutesFor } from '../utils/itemSubs';
+import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
+import { flattenRecipeIngredients } from '../utils/recipeComponents';
 import { taskKindOf } from '../utils/taskKinds';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { extraTaskRule } from '../utils/extraTask';
@@ -555,6 +557,31 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // seed's own clearList on the way past.
     expect(margarine!.inCatalog).toBe(true);
     expect(mutual[0].item.inCatalog).toBe(true);
+  });
+
+  it('seeds a substitute that actually captions a row, without moving it', () => {
+    // A link on its own says nothing — the caption needs the original wanted
+    // and the substitute on hand — so the seed has to arrange both halves or
+    // the read ships invisible.
+    const { items, itemSubs } = useGroceryStore.getState();
+    const recipes = useRecipeStore.getState().recipes;
+    const recipesById = new Map(recipes.map(r => [r.id, r]));
+    const usesButter = recipes.find(r =>
+      flattenRecipeIngredients(r, recipesById).some(f => f.ingredient.nameKey === 'butter')
+    );
+    expect(usesButter).toBeTruthy();
+
+    const rows = classifyPlanned(
+      plannedIngredientsForRecipe(usesButter!, recipesById),
+      items,
+      new Date(),
+      itemSubs
+    );
+    const butterRow = rows.find(r => r.nameKey === 'butter')!;
+
+    expect(butterRow.reason).toBe('you have margarine');
+    // The whole safety argument: it still has to be bought.
+    expect(butterRow.category).toBe('needToBuy');
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {
