@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: demo mode could schedule a real device reminder or alarm; it no longer schedules any notifications",
+  "date": "2026-08-14"
+}
