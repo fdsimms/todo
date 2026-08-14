@@ -1,6 +1,7 @@
 import {
   describeSubstitutes,
   describeSubstitutesOnHand,
+  resolveShoppingSubstitutes,
   substituteForItems,
   substituteQuantity,
   substitutesFor,
@@ -314,5 +315,28 @@ describe('describeSubstitutesOnHand', () => {
 
   it('counts past two, since this lands in a one-line row subtitle', () => {
     expect(line([margarine, ghee, oil])).toBe('you have 3 substitutes');
+  });
+});
+
+describe('resolveShoppingSubstitutes', () => {
+  it('writes nothing for an empty answer', () => {
+    expect(resolveShoppingSubstitutes([butter.id], {})).toEqual([]);
+  });
+
+  it('drops an answer for a row that was never ticked unavailable', () => {
+    // Stale from before the row was un-ticked, or an id that was never on the
+    // unavailable list at all — either way, not something to write.
+    expect(resolveShoppingSubstitutes([], { [butter.id]: margarine.id })).toEqual([]);
+  });
+
+  it('keeps an answer for a row that is ticked unavailable and answered', () => {
+    expect(resolveShoppingSubstitutes([butter.id], { [butter.id]: margarine.id })).toEqual([
+      { itemId: butter.id, subItemId: margarine.id },
+    ]);
+  });
+
+  it('only writes the ticked rows that were actually answered', () => {
+    const result = resolveShoppingSubstitutes([butter.id, oil.id], { [butter.id]: margarine.id });
+    expect(result).toEqual([{ itemId: butter.id, subItemId: margarine.id }]);
   });
 });

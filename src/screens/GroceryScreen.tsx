@@ -113,6 +113,7 @@ export function GroceryScreen() {
   const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
   const finishShopping = useGroceryStore(s => s.finishShopping);
   const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
+  const linkItemSub = useGroceryStore(s => s.linkItemSub);
   const clearList = useGroceryStore(s => s.clearList);
   const applyDrop = useGroceryStore(s => s.applyDrop);
   const shops = useGroceryStore(useShallow(s => s.shops));
@@ -450,15 +451,23 @@ export function GroceryScreen() {
   // picker, and an Alert can't hold one. It's still a confirm: nothing is
   // recorded until Finish.
   const handleFinished = useCallback(
-    (shopId: string | null, unavailableIds: string[], priceById: Record<string, number>) => {
+    (
+      shopId: string | null,
+      unavailableIds: string[],
+      priceById: Record<string, number>,
+      substitutes: Array<{ itemId: string; subItemId: string }>
+    ) => {
       setFinishOpen(false);
       animateLayout();
-      // Two writes rather than one, and they can't collide: finishShopping
+      // Three writes rather than one, and they can't collide: finishShopping
       // only touches what was ticked into the trolley, and these are precisely
-      // what wasn't. The claim goes first so it's recorded even if the trip
-      // itself finds nothing left to record.
+      // what wasn't. The claims go first so they're recorded even if the trip
+      // itself finds nothing left to record. A substitute answer is only ever
+      // about a row that was just marked unavailable, so it follows that claim
+      // rather than racing it.
       if (shopId && unavailableIds.length > 0) markItemsUnavailable(unavailableIds, shopId);
-      // The prices ride with the trip rather than being a third write: they're
+      for (const { itemId, subItemId } of substitutes) linkItemSub(itemId, subItemId);
+      // The prices ride with the trip rather than being a fourth write: they're
       // about what it bought, so they have to land on the same rows in the same
       // pass that takes them off the list.
       if (finishShopping(shopId, priceById) > 0) haptics.success();
@@ -468,7 +477,7 @@ export function GroceryScreen() {
       endTrip();
       setCartOpen(false);
     },
-    [finishShopping, markItemsUnavailable, endTrip]
+    [finishShopping, markItemsUnavailable, linkItemSub, endTrip]
   );
 
   const handleClearTrip = useCallback(() => {
