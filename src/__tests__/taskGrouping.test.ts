@@ -5,6 +5,7 @@ import {
   laterTaskOrder,
   isLaterHeader,
   laterSections,
+  laterDropZones,
   visibleLaterSections,
   laterTodaySections,
   categorySpan,
@@ -433,6 +434,7 @@ describe('resolveDrop', () => {
 // within the day to distinguish.
 const daySection = (title: string, label: string | null, segment: string | null, data: Task[]) => ({
   title,
+  dateISO: `2026-01-01T00:00:00.000Z`,
   segments: [{ label, segment, data }],
 });
 
@@ -462,6 +464,7 @@ describe('flattenLaterSections', () => {
     const flattened = flattenLaterSections([
       {
         title: 'TODAY',
+        dateISO: '2026-01-01T00:00:00.000Z',
         segments: [
           { label: 'Morning', segment: 'morning', data: [morning] },
           { label: 'Evening', segment: 'evening', data: [evening] },
@@ -483,6 +486,7 @@ describe('flattenLaterSections', () => {
     const flattened = flattenLaterSections([
       {
         title: 'TOMORROW',
+        dateISO: '2026-01-01T00:00:00.000Z',
         segments: [
           { label: 'Morning', segment: 'morning', data: [a] },
           { label: 'Evening', segment: 'evening', data: [a] },
@@ -504,6 +508,7 @@ describe('flattenLaterSections', () => {
     const flattened = flattenLaterSections([
       {
         title: 'TODAY',
+        dateISO: '2026-01-01T00:00:00.000Z',
         segments: [
           { label: 'Morning', segment: 'morning', data: [makeTask({ id: 'a' })] },
           { label: 'Evening', segment: 'evening', data: [makeTask({ id: 'b' })] },
@@ -528,6 +533,7 @@ describe('laterTaskOrder', () => {
     const flattened = flattenLaterSections([
       {
         title: 'TOMORROW',
+        dateISO: '2026-01-01T00:00:00.000Z',
         segments: [
           { label: 'Morning', segment: 'morning', data: [a, b] },
           { label: 'Evening', segment: 'evening', data: [a] },
@@ -625,11 +631,106 @@ describe('laterSections', () => {
     laterSections(input);
     expect(input.map(t => t.id)).toEqual(['a', 'b']);
   });
+
+  it('gives a near day section the calendar day its tasks surface on', () => {
+    const near = makeTask({ id: 'near', deferUntil: daysFromNow(1) });
+    const sections = laterSections([near]);
+    expect(sections[0].dateISO).not.toBeNull();
+    expect(new Date(sections[0].dateISO!).toDateString()).toBe(new Date(near.deferUntil!).toDateString());
+  });
+
+  // Past a week out, formatGroupHeader collapses to a month label (see its own
+  // comment) — so two different calendar days that land in the same distant
+  // month share one section with no single date to drop a task onto.
+  it('has no dateISO once same-month tasks have collapsed into one section', () => {
+    const now = new Date();
+    const anchor = new Date(now.getFullYear(), now.getMonth() + 2, 5, 12, 0, 0, 0);
+    const nextDay = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + 1, 12, 0, 0, 0);
+    const a = makeTask({ id: 'a', deferUntil: anchor.toISOString() });
+    const b = makeTask({ id: 'b', deferUntil: nextDay.toISOString() });
+    const sections = laterSections([a, b]);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].dateISO).toBeNull();
+  });
+});
+
+describe('laterDropZones', () => {
+  const task = makeTask({ id: 't1' });
+
+  it('gives a header zone the day it heads as a schedule payload', () => {
+    const items: ReturnType<typeof flattenLaterSections> = [
+      { type: 'header', label: 'Thursday', key: 'h-Thursday', dateISO: '2026-01-08T00:00:00.000Z' },
+      { type: 'task', task, key: 't1' },
+    ];
+    const zones = laterDropZones(items);
+    expect(zones[0]).toEqual({
+      kind: 'header',
+      key: 'h-Thursday',
+      category: null,
+      schedule: { dueDate: '2026-01-08T00:00:00.000Z', timeSegments: [], windowStart: null, windowEnd: null, label: 'Thursday' },
+    });
+  });
+
+  it('inherits the header schedule for the task rows under it', () => {
+    const items: ReturnType<typeof flattenLaterSections> = [
+      { type: 'header', label: 'Thursday', key: 'h-Thursday', dateISO: '2026-01-08T00:00:00.000Z' },
+      { type: 'task', task, key: 't1' },
+    ];
+    const zones = laterDropZones(items);
+    expect(zones[1]).toEqual({
+      kind: 'task',
+      key: 't1',
+      category: null,
+      schedule: { dueDate: '2026-01-08T00:00:00.000Z', timeSegments: [], windowStart: null, windowEnd: null, label: 'Thursday' },
+    });
+  });
+
+  it('carries a sub-header\'s own segment/window, not the day header\'s', () => {
+    const items: ReturnType<typeof flattenLaterSections> = [
+      { type: 'header', label: 'Thursday', key: 'h-Thursday', dateISO: '2026-01-08T00:00:00.000Z' },
+      {
+        type: 'subheader',
+        label: 'Morning',
+        key: 'sh-Thursday-Morning',
+        segment: 'morning',
+        dateISO: '2026-01-08T00:00:00.000Z',
+        windowStart: null,
+        windowEnd: null,
+      },
+      { type: 'task', task, key: 't1' },
+    ];
+    const zones = laterDropZones(items);
+    expect(zones[2]).toEqual({
+      kind: 'task',
+      key: 't1',
+      category: null,
+      schedule: {
+        dueDate: '2026-01-08T00:00:00.000Z',
+        timeSegments: ['morning'],
+        windowStart: null,
+        windowEnd: null,
+        label: 'Thursday · Morning',
+      },
+    });
+  });
+
+  it('gives a header/task whose day has collapsed past one-per-day a no-target rest zone', () => {
+    const items: ReturnType<typeof flattenLaterSections> = [
+      { type: 'header', label: 'September', key: 'h-September', dateISO: null },
+      { type: 'task', task, key: 't1' },
+    ];
+    const zones = laterDropZones(items);
+    expect(zones).toEqual([
+      { kind: 'rest', key: 'h-September' },
+      { kind: 'rest', key: 't1' },
+    ]);
+  });
 });
 
 describe('visibleLaterSections', () => {
   const daySection = (title: string, count: number) => ({
     title,
+    dateISO: '2026-01-01T00:00:00.000Z',
     segments: [{ label: null, segment: null, data: Array.from({ length: count }, (_, i) => makeTask({ id: `${title}-${i}` })) }],
   });
 
@@ -657,6 +758,7 @@ describe('visibleLaterSections', () => {
     const sections = [
       {
         title: 'a',
+        dateISO: '2026-01-01T00:00:00.000Z',
         segments: [
           { label: 'Morning', segment: 'morning', data: Array.from({ length: 20 }, (_, i) => makeTask({ id: `a-m-${i}` })) },
           { label: 'Evening', segment: 'evening', data: Array.from({ length: 20 }, (_, i) => makeTask({ id: `a-e-${i}` })) },

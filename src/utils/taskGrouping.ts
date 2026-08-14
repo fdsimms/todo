@@ -1,6 +1,7 @@
 import type { ContextRow, Task, TaskGroup } from '../types';
 import { getVisibleAt } from './visibilityUtils';
-import { formatGroupHeader, formatHHMM } from './dateUtils';
+import { formatGroupHeader, formatHHMM, getDayStart } from './dateUtils';
+import type { DropZone, ScheduleInfo } from './fabDrop';
 
 export type CategoryListItem =
   | { type: 'header'; label: string }
@@ -239,8 +240,16 @@ export function resolveDrop(
 }
 
 export type LaterListItem =
-  | { type: 'header'; label: string; key: string }
-  | { type: 'subheader'; label: string; key: string; segment: string | null }
+  | { type: 'header'; label: string; key: string; dateISO: string | null }
+  | {
+      type: 'subheader';
+      label: string;
+      key: string;
+      segment: string | null;
+      dateISO: string | null;
+      windowStart: string | null;
+      windowEnd: string | null;
+    }
   | { type: 'task'; task: Task; key: string };
 
 /**
@@ -258,7 +267,7 @@ export function flattenLaterSections(days: LaterDaySection[]): LaterListItem[] {
   const items: LaterListItem[] = [];
   const seen = new Map<string, number>();
   days.forEach(day => {
-    items.push({ type: 'header', label: day.title, key: `h-${day.title}` });
+    items.push({ type: 'header', label: day.title, key: `h-${day.title}`, dateISO: day.dateISO });
     const showSubheaders = day.segments.length > 1;
     day.segments.forEach(segment => {
       if (showSubheaders && segment.label) {
@@ -267,6 +276,9 @@ export function flattenLaterSections(days: LaterDaySection[]): LaterListItem[] {
           label: segment.label,
           key: `sh-${day.title}-${segment.label}`,
           segment: segment.segment,
+          dateISO: day.dateISO,
+          windowStart: segment.windowStart ?? null,
+          windowEnd: segment.windowEnd ?? null,
         });
       }
       segment.data.forEach(task => {
@@ -297,6 +309,51 @@ export function laterTaskOrder(items: LaterListItem[]): string[] {
   return ids;
 }
 
+/**
+ * The add-button drop zones for a flattened Later list, one per row — a
+ * header or subheader carries the day/segment it heads as `schedule`
+ * (dropping there seeds a task's dueDate/timeSegments/windowStart/windowEnd,
+ * same fields the row's own reschedule action writes); a task row inherits
+ * whatever section it's rendered under, so dropping on it both schedules and
+ * positions the new task at that point. A row whose day has collapsed past
+ * one-per-day (LaterDaySection.dateISO null) has no single date to seed, so
+ * it's a `rest` zone instead — registered rather than left out, so a drop
+ * squarely on it reads as "no target" (like Today's own `rest` rows) instead
+ * of reaching past it to whatever's nearest.
+ */
+export function laterDropZones(items: LaterListItem[]): DropZone[] {
+  let current: ScheduleInfo | null = null;
+  let dayLabel = '';
+  return items.map((item): DropZone => {
+    if (item.type === 'header') {
+      dayLabel = item.label;
+      current = item.dateISO
+        ? { dueDate: item.dateISO, timeSegments: [], windowStart: null, windowEnd: null, label: item.label }
+        : null;
+      return current
+        ? { kind: 'header', key: item.key, category: null, schedule: current }
+        : { kind: 'rest', key: item.key };
+    }
+    if (item.type === 'subheader') {
+      current = item.dateISO
+        ? {
+            dueDate: item.dateISO,
+            timeSegments: item.segment ? [item.segment] : [],
+            windowStart: item.windowStart,
+            windowEnd: item.windowEnd,
+            label: `${dayLabel} · ${item.label}`,
+          }
+        : null;
+      return current
+        ? { kind: 'header', key: item.key, category: null, schedule: current }
+        : { kind: 'rest', key: item.key };
+    }
+    return current
+      ? { kind: 'task', key: item.key, category: null, schedule: current }
+      : { kind: 'rest', key: item.key };
+  });
+}
+
 // Shared with the Later screen's own day/segment grouping (see laterGroupKeys
 // below) so "later today" sub-headers read the same way in both places.
 export const SEGMENT_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' };
@@ -306,19 +363,28 @@ export const SEGMENT_ORDER = ['morning', 'afternoon', 'evening', 'night'] as con
  * The Later-view sub-group(s) a task belongs under within its day — a task
  * with multiple timeSegments belongs under more than one. `segment` is the
  * raw time-segment key (for color-coding the sub-header), null for a
- * window-label or unlabeled sub-group.
+ * window-label or unlabeled sub-group. `windowStart`/`windowEnd` are the raw
+ * HH:MM values behind a window label, carried alongside the formatted text so
+ * a drop onto that sub-group can reuse them without reparsing the label.
  */
-function laterSubGroups(task: Task): { label: string | null; segment: string | null }[] {
+function laterSubGroups(
+  task: Task,
+): { label: string | null; segment: string | null; windowStart: string | null; windowEnd: string | null }[] {
   if (task.timeSegments.length > 0) {
-    return task.timeSegments.map(seg => ({ label: SEGMENT_LABELS[seg], segment: seg }));
+    return task.timeSegments.map(seg => ({
+      label: SEGMENT_LABELS[seg],
+      segment: seg,
+      windowStart: null,
+      windowEnd: null,
+    }));
   }
   if (task.windowStart) {
     const windowLabel = task.windowEnd
       ? `${formatHHMM(task.windowStart)}–${formatHHMM(task.windowEnd)}`
       : formatHHMM(task.windowStart);
-    return [{ label: windowLabel, segment: null }];
+    return [{ label: windowLabel, segment: null, windowStart: task.windowStart, windowEnd: task.windowEnd }];
   }
-  return [{ label: null, segment: null }];
+  return [{ label: null, segment: null, windowStart: null, windowEnd: null }];
 }
 
 /**
@@ -338,7 +404,21 @@ export function laterGroupKeys(task: Task, visibleAt: Date = getVisibleAt(task))
 
 export interface LaterDaySection {
   title: string;
-  segments: { label: string | null; segment: string | null; data: Task[] }[];
+  /**
+   * The calendar day this section stands for, as a canonical (day-start) ISO
+   * string — null once a section has collapsed past the one-header-per-day
+   * range (formatGroupHeader falls back to a month/year label past a week
+   * out), since a month bucket holds tasks due on several different days and
+   * a drop onto it has no single day to mean. See laterDropZones.
+   */
+  dateISO: string | null;
+  segments: {
+    label: string | null;
+    segment: string | null;
+    windowStart?: string | null;
+    windowEnd?: string | null;
+    data: Task[];
+  }[];
 }
 
 /**
@@ -349,7 +429,10 @@ export interface LaterDaySection {
  * fully separate section per segment (#1162).
  */
 export function laterSections(deferredTasks: Task[]): LaterDaySection[] {
-  const days = new Map<string, Map<string, { label: string | null; segment: string | null; data: Task[] }>>();
+  const days = new Map<
+    string,
+    { dayKeys: Set<string>; dateISO: string; segMap: Map<string, { label: string | null; segment: string | null; windowStart: string | null; windowEnd: string | null; data: Task[] }> }
+  >();
   // getVisibleAt is the expensive call in this pass — date math, a settings
   // read and a category lookup every time — so compute it once per task and
   // carry it through, rather than calling it from inside the comparator
@@ -362,17 +445,24 @@ export function laterSections(deferredTasks: Task[]): LaterDaySection[] {
     .sort((a, b) => a.visibleAt.getTime() - b.visibleAt.getTime())
     .forEach(({ task, visibleAt }) => {
       const dayLabel = formatGroupHeader(visibleAt.toISOString());
-      if (!days.has(dayLabel)) days.set(dayLabel, new Map());
-      const segments = days.get(dayLabel)!;
-      for (const { label, segment } of laterSubGroups(task)) {
+      const dayKey = getDayStart(visibleAt).toISOString();
+      if (!days.has(dayLabel)) {
+        days.set(dayLabel, { dayKeys: new Set(), dateISO: dayKey, segMap: new Map() });
+      }
+      const day = days.get(dayLabel)!;
+      day.dayKeys.add(dayKey);
+      for (const { label, segment, windowStart, windowEnd } of laterSubGroups(task)) {
         const key = label ?? '';
-        if (!segments.has(key)) segments.set(key, { label, segment, data: [] });
-        segments.get(key)!.data.push(task);
+        if (!day.segMap.has(key)) day.segMap.set(key, { label, segment, windowStart, windowEnd, data: [] });
+        day.segMap.get(key)!.data.push(task);
       }
     });
-  return Array.from(days.entries()).map(([title, segMap]) => ({
+  return Array.from(days.entries()).map(([title, day]) => ({
     title,
-    segments: Array.from(segMap.values()),
+    // Only a single-calendar-day bucket has one date to drop a task onto —
+    // see LaterDaySection.dateISO.
+    dateISO: day.dayKeys.size === 1 ? day.dateISO : null,
+    segments: Array.from(day.segMap.values()),
   }));
 }
 

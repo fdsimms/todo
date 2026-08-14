@@ -92,8 +92,20 @@ interface Props {
    * Placement handed in by a drag of the add button onto the list. `category`
    * seeds the form's own category field (so it shows, and can be changed like
    * any other); `groupId` and `pinned` ride along to addTask untouched.
+   * `dueDate`/`timeSegments` seed those same visible fields (a drop onto a
+   * Later day/time section); `windowStart`/`windowEnd` have no field of their
+   * own in this sheet, so — like `groupId`/`pinned` — they ride along
+   * untouched, only while the chip is still active.
    */
-  seed?: { category?: string | null; groupId?: string; pinned?: boolean };
+  seed?: {
+    category?: string | null;
+    groupId?: string;
+    pinned?: boolean;
+    dueDate?: string | null;
+    timeSegments?: TimeOfDay[];
+    windowStart?: string | null;
+    windowEnd?: string | null;
+  };
   /** Names the seed on a removable chip, e.g. "Errands". No chip without one. */
   seedLabel?: string | null;
   /** Which task type the sheet opens in — the add menu's Chain entry lands here. */
@@ -172,6 +184,13 @@ export function QuickAddModal({
   // screen's current sub-view, a project's "unscheduled" drop) if it named
   // one, else Settings' destination default.
   const effectiveContext = context ?? newTaskDefaults.destination;
+  // The date a fresh sheet opens with, absent a drop seed — factored out so
+  // shaking off the seed chip can revert to exactly this rather than to a
+  // second, drifting copy of the same rule.
+  const defaultDueDate = () =>
+    effectiveContext === 'later' ? getLogicalTomorrow(dayResetTime)
+    : effectiveContext === 'inbox' || effectiveContext === 'unscheduled' ? null
+    : getLogicalToday(dayResetTime);
   // Holds the task created by this sheet while its editor is open — only used
   // when newTaskDefaults.openEditorAfterQuickAdd is on (see createTask below).
   const [postCreateTask, setPostCreateTask] = useState<Task | null>(null);
@@ -249,6 +268,9 @@ export function QuickAddModal({
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
+  // No field of its own in this sheet — see the seed prop's doc comment.
+  const [windowStart, setWindowStart] = useState<string | null>(null);
+  const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [category, setCategory] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
@@ -303,11 +325,13 @@ export function QuickAddModal({
       setEstimatedMinutes(null);
       setCustomEffortText('');
       setDueDate(
-        effectiveContext === 'later' ? getLogicalTomorrow(dayResetTime)
-        : effectiveContext === 'inbox' || effectiveContext === 'unscheduled' ? null
-        : getLogicalToday(dayResetTime)
+        seedRef.current?.dueDate !== undefined
+          ? (seedRef.current.dueDate ? new Date(seedRef.current.dueDate) : null)
+          : defaultDueDate()
       );
-      setTimeSegments(newTaskDefaults.timeSegment ? [newTaskDefaults.timeSegment] : []);
+      setTimeSegments(seedRef.current?.timeSegments ?? (newTaskDefaults.timeSegment ? [newTaskDefaults.timeSegment] : []));
+      setWindowStart(seedRef.current?.windowStart ?? null);
+      setWindowEnd(seedRef.current?.windowEnd ?? null);
       setTags([]);
       // Applied after the reset rather than folded into it, so a drop's
       // category overrides the default instead of racing it.
@@ -648,6 +672,7 @@ export function QuickAddModal({
       // position splices it in afterwards, from onCreated.
       ...(seedActive && seed?.groupId ? { groupId: seed.groupId } : {}),
       ...(seedActive && seed?.pinned ? { pinned: true } : {}),
+      ...(seedActive && seed?.windowStart ? { windowStart: seed.windowStart, windowEnd: seed.windowEnd ?? null } : {}),
     });
     // Files the task exactly as before either way; the setting only decides
     // whether the sheet hands off straight into the full editor for it
@@ -958,6 +983,10 @@ export function QuickAddModal({
                   onPress={() => {
                     haptics.tap();
                     if (seed?.category && category === seed.category) setCategory(null);
+                    if (seed?.dueDate !== undefined && (dueDate?.toISOString() ?? null) === (seed.dueDate ?? null)) {
+                      setDueDate(defaultDueDate());
+                    }
+                    if (seed?.timeSegments && timeSegments === seed.timeSegments) setTimeSegments([]);
                     setSeedActive(false);
                   }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
