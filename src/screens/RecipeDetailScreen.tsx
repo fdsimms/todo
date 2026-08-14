@@ -158,6 +158,14 @@ export function RecipeDetailScreen() {
   // so far would be a control that's empty exactly when it's first needed.
   // Re-filing a row that already exists is the sheet's job, or a drag.
   const [sectionDraft, setSectionDraft] = useState('');
+  // The standalone "declare a heading with nothing under it yet" field, up by
+  // the Ingredients label — see Recipe.emptySections. Deliberately not the
+  // same state as sectionDraft above: that one tags ingredients as they're
+  // typed, this one creates a heading on its own, and conflating the two
+  // controls was the mistake the first pass at this made.
+  const [addingSection, setAddingSection] = useState(false);
+  const [newSectionName, setNewSectionName] = useState('');
+  const [sectionError, setSectionError] = useState<string | null>(null);
   const [pickingImage, setPickingImage] = useState(false);
   const draftInputRef = useRef<TextInput>(null);
   const [prepDraft, setPrepDraft] = useState('');
@@ -311,6 +319,27 @@ export function RecipeDetailScreen() {
     }, 50);
   };
 
+  const closeNewSection = () => {
+    setAddingSection(false);
+    setNewSectionName('');
+    setSectionError(null);
+  };
+
+  const submitNewSection = () => {
+    const cleaned = newSectionName.trim();
+    if (!cleaned) { closeNewSection(); return; }
+    if (allSections.includes(cleaned)) {
+      setSectionError('Already a heading on this recipe.');
+      haptics.warning();
+      return;
+    }
+    if (addEmptySection(recipe.id, newSectionName)) {
+      haptics.success();
+      animateLayout();
+      closeNewSection();
+    }
+  };
+
   const addToList = () => {
     if (shoppableCount === 0) return;
     haptics.tap();
@@ -423,9 +452,9 @@ export function RecipeDetailScreen() {
     return headers;
   }, [recipe.ingredients]);
 
-  // Every heading this recipe already has, real or declared — what the sticky
-  // field's "declare this as a heading now" button checks against so it can't
-  // offer to redeclare one that already exists.
+  // Every heading this recipe already has, real or declared — what "New
+  // section" checks the typed name against so it can't redeclare one that
+  // already exists.
   const allSections = useMemo(
     () => allSectionsOf(recipe.ingredients, recipe.emptySections),
     [recipe.ingredients, recipe.emptySections]
@@ -906,7 +935,50 @@ export function RecipeDetailScreen() {
           />
         </View>
 
-        <Text style={styles.sectionLabel}>Ingredients</Text>
+        {/* A heading you can declare on its own, with nothing filed under it
+            yet (Recipe.emptySections) — its own action up by the section
+            label, not folded into the add-ingredient flow below. Same
+            reveal-an-inline-field shape PillGroup's "New {noun}" uses: an
+            empty field blurred is someone who changed their mind, so it
+            closes itself rather than leaving a dead row behind. */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionLabel, styles.sectionLabelInline]}>Ingredients</Text>
+          {!addingSection && (
+            <InlineAction
+              label="New section"
+              icon="add"
+              onPress={() => { haptics.tap(); animateLayout(); setAddingSection(true); }}
+              accessibilityLabel="Add a new section heading"
+            />
+          )}
+        </View>
+        {addingSection && (
+          <View style={styles.addSectionWrap}>
+            <View style={styles.addRow}>
+              <TextInput
+                style={[styles.addInput, !!sectionError && styles.addInputError]}
+                value={newSectionName}
+                onChangeText={t => { setNewSectionName(t); if (sectionError) setSectionError(null); }}
+                onSubmitEditing={submitNewSection}
+                onBlur={() => { if (!newSectionName.trim()) closeNewSection(); }}
+                placeholder="e.g. For serving"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={RECIPE_SECTION_MAX_LENGTH}
+                returnKeyType="done"
+                autoCapitalize="words"
+                autoFocus
+                accessibilityLabel="New section name"
+              />
+              <InlineAction
+                label="Add"
+                icon="add"
+                onPress={submitNewSection}
+                disabled={!newSectionName.trim()}
+              />
+            </View>
+            {!!sectionError && <Text style={styles.sectionErrorText}>{sectionError}</Text>}
+          </View>
+        )}
 
         {/* Above the list rather than up by the summary: it's the quantities
             below that visibly change, and a control that far from what it
@@ -996,10 +1068,10 @@ export function RecipeDetailScreen() {
             Rows already on the list are moved between headings by dragging
             them, which is what the hint below says.
 
-            The + declares whatever's typed as a heading on its own, with
-            nothing under it yet (Recipe.emptySections) — so sketching "For
-            the cake" / "For the frosting" before typing a single ingredient
-            works, not just filing rows into a heading as you go. */}
+            Deliberately just this one job. Declaring a heading with nothing
+            under it yet is "New section" above, its own action — the first
+            pass folded that into this field too and it read as one field
+            doing two unrelated things depending on which tiny icon you hit. */}
         <View style={styles.sectionDraftRow}>
           <Ionicons name="albums-outline" size={iconSize.sm} color={colors.textTertiary} />
           <TextInput
@@ -1013,21 +1085,6 @@ export function RecipeDetailScreen() {
             autoCapitalize="words"
             accessibilityLabel="Section for new ingredients"
           />
-          {!!sectionDraft.trim() && !allSections.includes(sectionDraft.trim()) && (
-            <TouchableOpacity
-              onPress={() => {
-                if (addEmptySection(recipe.id, sectionDraft)) {
-                  haptics.success();
-                  animateLayout();
-                }
-              }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={`Add "${sectionDraft.trim()}" as a heading now, with nothing under it yet`}
-            >
-              <Ionicons name="add-circle" size={iconSize.sm} color={colors.accent} />
-            </TouchableOpacity>
-          )}
           {!!sectionDraft && (
             <TouchableOpacity
               onPress={() => setSectionDraft('')}
@@ -1046,13 +1103,6 @@ export function RecipeDetailScreen() {
         {ingredientSectionHeaders.size > 0 && (
           <Text style={styles.inputHint}>
             Drag an ingredient under a heading to move it there.
-          </Text>
-        )}
-        {/* Shown exactly when the + above is — the moment it's actionable,
-            not as permanent clutter for recipes nobody splits into sections. */}
-        {!!sectionDraft.trim() && !allSections.includes(sectionDraft.trim()) && (
-          <Text style={styles.inputHint}>
-            Add this as a heading now, before you've typed anything under it.
           </Text>
         )}
 
@@ -1339,6 +1389,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: spacing.md,
   },
+  // "Ingredients" plus "New section" — the row carries the label's own
+  // marginTop instead (see sectionLabelInline), so the two align on one line.
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+  },
+  sectionLabelInline: {
+    marginTop: 0,
+  },
   hint: {
     color: colors.textTertiary,
     fontSize: font.sm,
@@ -1554,6 +1615,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  // Wraps the "New section" reveal field so its error text sits under the
+  // whole row rather than under just the input.
+  addSectionWrap: {
+    marginTop: spacing.sm,
+  },
+  addInputError: {
+    borderWidth: 1,
+    borderColor: colors.red,
+  },
+  sectionErrorText: {
+    color: colors.red,
+    fontSize: font.xs,
     marginTop: spacing.xs,
   },
   inputHint: {
