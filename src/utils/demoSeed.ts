@@ -1034,6 +1034,18 @@ function seedGroceries(recipes: DemoRecipes): void {
     linkItemSub(itemNamed('Milk').id, oatMilk.id, { bothWays: true });
   }
 
+  // A ratio (#1573) — the issue's own motivating example, and a natural fit:
+  // several seeded recipes already call for garlic in cloves ("2 cloves
+  // garlic"), so this is a link whose ratio a demo user can actually see work
+  // by adding one of those recipes to the list.
+  const garlicPowder = ensureCatalogItem('Garlic powder');
+  if (garlicPowder) {
+    linkItemSub(itemNamed('Garlic').id, garlicPowder.id, {
+      ratioFrom: '1 clove',
+      ratioTo: '1/4 tsp',
+    });
+  }
+
   // Everything else typed above is still sitting on the list, since only what
   // a trip actually bought — or a link/unavailable claim above — came off it
   // or promoted it. Clearing parks what's already catalog and drops the rest,

@@ -1839,11 +1839,17 @@ describe('grocery items', () => {
   });
 
   describe('substitute links', () => {
-    const link = (itemId: string, subItemId: string, note: string | null = null) => ({
+    const link = (
+      itemId: string,
+      subItemId: string,
+      note: string | null = null,
+      ratio: { ratioFrom: string | null; ratioTo: string | null } = { ratioFrom: null, ratioTo: null }
+    ) => ({
       itemId,
       subItemId,
       note,
       createdAt: '2026-01-01T00:00:00.000Z',
+      ...ratio,
     });
 
     beforeEach(() => {
@@ -1854,7 +1860,10 @@ describe('grocery items', () => {
     it('round-trips a link and its note', () => {
       dbSetItemSubLink(link('g1', 'g2', 'Not for baking'));
       expect(dbGetAllItemSubLinks()).toEqual([
-        { itemId: 'g1', subItemId: 'g2', note: 'Not for baking', createdAt: '2026-01-01T00:00:00.000Z' },
+        {
+          itemId: 'g1', subItemId: 'g2', note: 'Not for baking', createdAt: '2026-01-01T00:00:00.000Z',
+          ratioFrom: null, ratioTo: null,
+        },
       ]);
     });
 
@@ -1866,6 +1875,16 @@ describe('grocery items', () => {
       expect(rows).toHaveLength(1);
       expect(rows[0].note).toBe('Frying only');
       expect(rows[0].createdAt).toBe('2026-01-01T00:00:00.000Z');
+    });
+
+    it('round-trips a ratio, and upserts it in place like the note', () => {
+      dbSetItemSubLink(link('g1', 'g2', null, { ratioFrom: '1 clove', ratioTo: '1/4 tsp' }));
+      expect(dbGetAllItemSubLinks()[0]).toMatchObject({ ratioFrom: '1 clove', ratioTo: '1/4 tsp' });
+
+      dbSetItemSubLink(link('g1', 'g2', null, { ratioFrom: '1 clove', ratioTo: '1/2 tsp' }));
+      const rows = dbGetAllItemSubLinks();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].ratioTo).toBe('1/2 tsp');
     });
 
     it('keeps the two directions apart', () => {

@@ -1185,6 +1185,30 @@ export interface ItemSubLink {
   // rather than a purchase you regret.
   note: string | null;
   createdAt: string;
+  /**
+   * "1 clove" → "1/4 tsp" — a user-typed conversion for the common case where
+   * the substitute genuinely needs a different amount, not just a different
+   * name. **Both null or both set; one alone is not a ratio.**
+   *
+   * The two things this is emphatically not: the app computing a ratio it was
+   * never told (a built-in buttermilk→milk table — still out, and staying
+   * out, same verdict as the deleted `likelyItemIds` bucket), and a claim that
+   * generalizes past the amount it was stated for (¼ tsp per clove is a linear
+   * model of something that isn't reliably linear — right at 3 cloves, wrong
+   * at 20 in a garlic-forward dish; `note` carries that caveat, this doesn't
+   * try to).
+   *
+   * Stored as the two strings the user typed, not a computed float: that's
+   * what was written, it carries both units, and it round-trips into the
+   * editor unchanged — the same instinct behind `quantity` being free text
+   * everywhere else in this app. See `itemSubs.substituteQuantity` for the
+   * one place arithmetic is done on these, and its refusals.
+   *
+   * A ratio-less link — the common case — shows no ratio anywhere. Rendering
+   * "1 : 1" as a stand-in would invent a fact the user didn't state.
+   */
+  ratioFrom: string | null;
+  ratioTo: string | null;
 }
 
 /**

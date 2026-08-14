@@ -438,7 +438,21 @@ interface GroceryStore {
   linkItemSub: (
     itemId: string,
     subItemId: string,
-    opts?: { note?: string | null; bothWays?: boolean }
+    opts?: {
+      note?: string | null;
+      bothWays?: boolean;
+      /**
+       * "1 clove" → "1/4 tsp" — pass both or neither; one alone is dropped.
+       * On `bothWays`, the reverse row gets these **swapped**
+       * (`ratioTo`→`ratioFrom`, `ratioFrom`→`ratioTo`): the forward row's
+       * ratio describes *this* item's own unit on the left, and the reverse
+       * row's has to describe the *other* item's unit on its own left, or a
+       * both-ways garlic↔garlic-powder link would have the reverse row
+       * claiming a clove converts to a further clove.
+       */
+      ratioFrom?: string | null;
+      ratioTo?: string | null;
+    }
   ) => void;
   /**
    * The catalog row for a typed name, minting one off-list if there isn't one.
@@ -1993,20 +2007,42 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (!item || !sub) return;
 
     const note = opts.note?.trim() || null;
+    // Both or neither — a ratio typed on only one side isn't a ratio; see
+    // ItemSubLink.ratioFrom.
+    const ratioFrom = opts.ratioFrom?.trim() || null;
+    const ratioTo = opts.ratioTo?.trim() || null;
+    const hasRatio = !!ratioFrom && !!ratioTo;
+
     const createdAt = new Date().toISOString();
-    const pairs: Array<[string, string]> = [[itemId, subItemId]];
+    // [itemId, subItemId, ratioFrom, ratioTo] per row written. The reverse
+    // row's ratio is the forward one **swapped**: it describes the other
+    // item's own unit on its own left, or a both-ways garlic↔garlic-powder
+    // link would have the reverse row claiming a clove converts to a clove.
+    const pairs: Array<[string, string, string | null, string | null]> = [
+      [itemId, subItemId, hasRatio ? ratioFrom : null, hasRatio ? ratioTo : null],
+    ];
     // The reverse row carries the same note: a caveat about how far the swap
     // goes ("fine for frying, not for baking") is a fact about the pair, not
     // about the direction you happened to write it from.
-    if (opts.bothWays) pairs.push([subItemId, itemId]);
+    if (opts.bothWays) {
+      pairs.push([subItemId, itemId, hasRatio ? ratioTo : null, hasRatio ? ratioFrom : null]);
+    }
 
     const written: ItemSubLink[] = [];
-    for (const [a, b] of pairs) {
+    for (const [a, b, rFrom, rTo] of pairs) {
       const existing = itemSubs.find(l => l.itemId === a && l.subItemId === b);
-      // Re-linking an existing pair is an edit of its note, so the original
-      // createdAt is kept: that stamp is what orders the list, and re-ticking
-      // "both ways" must not shuffle a row the user arranged by hand.
-      const link: ItemSubLink = { itemId: a, subItemId: b, note, createdAt: existing?.createdAt ?? createdAt };
+      // Re-linking an existing pair is an edit of its note (and ratio), so the
+      // original createdAt is kept: that stamp is what orders the list, and
+      // re-ticking "both ways" must not shuffle a row the user arranged by
+      // hand.
+      const link: ItemSubLink = {
+        itemId: a,
+        subItemId: b,
+        note,
+        createdAt: existing?.createdAt ?? createdAt,
+        ratioFrom: rFrom,
+        ratioTo: rTo,
+      };
       dbSetItemSubLink(link);
       written.push(link);
     }

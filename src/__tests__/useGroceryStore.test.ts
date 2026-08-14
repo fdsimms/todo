@@ -2974,6 +2974,69 @@ describe('substitutes', () => {
     );
   });
 
+  it('writes a ratio only when both sides are given, and drops one typed alone', () => {
+    const butter = makeItem({ name: 'Butter' });
+    const margarine = makeItem({ name: 'Margarine' });
+    seed([butter, margarine]);
+
+    useGroceryStore.getState().linkItemSub(butter.id, margarine.id, {
+      ratioFrom: '1 clove', ratioTo: '1/4 tsp',
+    });
+    expect(useGroceryStore.getState().itemSubs[0]).toMatchObject({
+      ratioFrom: '1 clove', ratioTo: '1/4 tsp',
+    });
+
+    useGroceryStore.getState().linkItemSub(butter.id, margarine.id, { ratioFrom: '1 clove' });
+    expect(useGroceryStore.getState().itemSubs[0]).toMatchObject({
+      ratioFrom: null, ratioTo: null,
+    });
+  });
+
+  it('swaps the ratio on the reverse row of a both-ways link', () => {
+    // The forward row describes garlic's own unit on the left; the reverse
+    // row has to describe garlic powder's own unit on ITS left, or it would
+    // claim a clove converts to a further clove.
+    const garlic = makeItem({ name: 'Garlic' });
+    const powder = makeItem({ name: 'Garlic powder' });
+    seed([garlic, powder]);
+
+    useGroceryStore.getState().linkItemSub(garlic.id, powder.id, {
+      ratioFrom: '1 clove', ratioTo: '1/4 tsp', bothWays: true,
+    });
+
+    const subs = useGroceryStore.getState().itemSubs;
+    expect(subs.find(l => l.itemId === garlic.id)).toMatchObject({
+      ratioFrom: '1 clove', ratioTo: '1/4 tsp',
+    });
+    expect(subs.find(l => l.itemId === powder.id)).toMatchObject({
+      ratioFrom: '1/4 tsp', ratioTo: '1 clove',
+    });
+  });
+
+  it('re-linking with the ratio omitted clears it — the row is written whole, not patched', () => {
+    // Same contract dbSetItemShopLink documents for ItemShopLink: the caller
+    // passes the row it wants to exist. SubstituteSheet relies on this by
+    // always threading the current ratio back through on Save; a caller that
+    // doesn't is choosing to clear it, the same way omitting the note would.
+    const butter = makeItem({ name: 'Butter' });
+    const margarine = makeItem({ name: 'Margarine' });
+    seed([butter, margarine], {
+      itemSubs: [{
+        itemId: butter.id, subItemId: margarine.id, note: null,
+        createdAt: '2020-01-01T00:00:00.000Z',
+        ratioFrom: '100 g', ratioTo: '110 g',
+      }],
+    });
+
+    useGroceryStore.getState().linkItemSub(butter.id, margarine.id, { note: 'Updated' });
+
+    // Omitting the ratio on a re-link clears it — the row is written whole,
+    // exactly as omitting the note would have cleared that.
+    expect(useGroceryStore.getState().itemSubs[0]).toMatchObject({
+      note: 'Updated', ratioFrom: null, ratioTo: null,
+    });
+  });
+
   it('promotes both provisional rows into the catalog', () => {
     const butter = makeItem({ name: 'Butter', onList: true, inCatalog: false });
     const margarine = makeItem({ name: 'Margarine', onList: true, inCatalog: false });
@@ -3019,6 +3082,8 @@ describe('substitutes', () => {
           subItemId: margarine.id,
           note: null,
           createdAt: '2020-01-01T00:00:00.000Z',
+          ratioFrom: null,
+          ratioTo: null,
         },
       ],
     });

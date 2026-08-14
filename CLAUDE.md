@@ -718,6 +718,23 @@ plumbing through the recipes JSON blob.
 - **One-to-many is permanently out.** "Buttermilk → milk + lemon juice" is two items both
   required, which is a recipe rather than a swap — stated in the sheet's own footer, since
   that's where someone wonders about it.
+- **A link may carry a user-typed ratio** (`ItemSubLink.ratioFrom`/`ratioTo`, "1 clove" →
+  "1/4 tsp") — a real amount conversion, not the built-in substitution table that stays
+  banned. **Both null or both set**; one alone isn't a ratio, and a ratio-less link (the
+  common case) shows no ratio anywhere rather than inventing a "1:1" stand-in.
+  `itemSubs.substituteQuantity()` applies it — and it composes `recipeScale.scaleQuantity`
+  as the arithmetic engine rather than reimplementing exact-rational math: a ratio is
+  nothing but a scale factor (how many multiples of `ratioFrom` the line names), so handing
+  that factor to `scaleQuantity(ratioTo, factor)` gets unit inflection and the container
+  refusals for free. The one seam is `scaleQuantity`'s own factor-of-1 shortcut, which
+  reports a no-op — right for its callers, wrong here, since a line naming exactly one
+  `ratioFrom` is a real conversion (`ratioTo` verbatim), not "nothing to do"; `substituteQuantity`
+  special-cases it. **Units must match through `unitKey`, or the line refuses untouched** —
+  a ratio written per clove must not silently apply to a whole bulb, and that refusal is the
+  one this feature would be untrustworthy without. **On `bothWays`, the reverse row's ratio
+  is the forward one swapped**, not copied: the reverse row describes the *other* item's own
+  unit on its own left, or a both-ways garlic↔garlic-powder link would claim a clove
+  converts to a further clove.
 
 ### Composed recipes (`Recipe.components`) — one recipe used inside another
 

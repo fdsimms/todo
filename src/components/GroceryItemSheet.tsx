@@ -1073,13 +1073,16 @@ export function GroceryItemSheet({
 }
 
 /**
- * The row's sub-line: the caveat, then the direction. Both are qualifications
- * of the name above them, and "both ways" is worth saying because the link is
- * directional — without it there's no way to tell a pair the user ticked from
- * one they didn't, short of opening the other item.
+ * The row's sub-line: the ratio, then the caveat, then the direction. All
+ * three are qualifications of the name above them — "both ways" is worth
+ * saying because the link is directional, without it there's no way to tell a
+ * pair the user ticked from one they didn't, short of opening the other item.
  */
 function subCaption(sub: Substitute): string | null {
-  const parts = [sub.link.note, sub.isMutual ? 'both ways' : null].filter(Boolean);
+  const ratio = sub.link.ratioFrom && sub.link.ratioTo
+    ? `${sub.link.ratioFrom} → ${sub.link.ratioTo}`
+    : null;
+  const parts = [ratio, sub.link.note, sub.isMutual ? 'both ways' : null].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
