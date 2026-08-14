@@ -9,7 +9,7 @@ import {
   describeTripMarker,
 } from '../utils/activeTrip';
 import { groceryNameKey } from '../utils/groceryParse';
-import type { GroceryItem, ItemShopLink, Shop } from '../types';
+import type { GroceryItem, ItemShopLink, ItemSubLink, Shop } from '../types';
 
 function makeShop(name: string, overrides: Partial<Shop> = {}): Shop {
   return {
@@ -42,6 +42,10 @@ function link(
     brandUnavailableAt: null,
     ...overrides,
   };
+}
+
+function subLink(itemId: string, subItemId: string, createdAt: string): ItemSubLink {
+  return { itemId, subItemId, note: null, createdAt, ratioFrom: null, ratioTo: null };
 }
 
 /**
@@ -337,6 +341,58 @@ describe('tripMarkerFor', () => {
       expect(tripMarkerFor(strict, links, shops, safeway)).toEqual({ kind: 'only', shop: costco });
     });
   });
+
+  // The highest-value moment for a substitute link (#1567): standing in
+  // front of the empty shelf. `subLinks`/`items` default to empty, so every
+  // call above this block — none of which passes them — still gets exactly
+  // the marker it always did; toEqual ignores an undefined `substitute`.
+  describe('a substitute clause', () => {
+    const margarine = item('margarine', { name: 'Margarine' });
+    const ghee = item('ghee', { name: 'Ghee' });
+    const butter = item('butter', { name: 'Butter' });
+    const unavailableHere = [
+      link('butter', safeway.id, 0, { unavailableAt: '2026-08-01T00:00:00.000Z' }),
+    ];
+
+    it('names the substitute on record', () => {
+      const subs = [subLink('butter', 'margarine', '2026-01-01T00:00:00.000Z')];
+      const marker = tripMarkerFor(butter, unavailableHere, shops, safeway, subs, [butter, margarine]);
+      expect(marker).toEqual({ kind: 'unavailable', shop: safeway, substitute: margarine });
+    });
+
+    it('says nothing extra when no substitute is on record', () => {
+      const marker = tripMarkerFor(butter, unavailableHere, shops, safeway);
+      expect(marker).toEqual({ kind: 'unavailable', shop: safeway });
+      expect(marker?.substitute).toBeUndefined();
+    });
+
+    it('picks the oldest link when more than one substitute is on record', () => {
+      const subs = [
+        subLink('butter', 'ghee', '2026-02-01T00:00:00.000Z'),
+        subLink('butter', 'margarine', '2026-01-01T00:00:00.000Z'),
+      ];
+      const marker = tripMarkerFor(butter, unavailableHere, shops, safeway, subs, [butter, ghee, margarine]);
+      expect(marker?.substitute?.id).toBe('margarine');
+    });
+
+    // Silence carries: a substitute on record for an item this store is *not*
+    // marked unavailable for must not leak the clause onto some other kind.
+    it('never carries a substitute on a marker that is not "unavailable"', () => {
+      const links = [link('milk', traderJoes.id, 3)];
+      const subs = [subLink('milk', 'oat-milk', '2026-01-01T00:00:00.000Z')];
+      const oatMilk = item('oat-milk', { name: 'Oat milk' });
+      const marker = tripMarkerFor(item('milk'), links, shops, safeway, subs, [item('milk'), oatMilk]);
+      expect(marker).toEqual({ kind: 'only', shop: traderJoes });
+    });
+
+    // A link naming a *different* item's substitute must not bleed onto this
+    // row just because both happen to be unavailable at the same store.
+    it('ignores a substitute link for a different item', () => {
+      const subs = [subLink('tahini', 'margarine', '2026-01-01T00:00:00.000Z')];
+      const marker = tripMarkerFor(butter, unavailableHere, shops, safeway, subs, [butter, margarine]);
+      expect(marker?.substitute).toBeUndefined();
+    });
+  });
 });
 
 describe('describeTripMarker', () => {
@@ -344,6 +400,14 @@ describe('describeTripMarker', () => {
     expect(describeTripMarker({ kind: 'unavailable', shop: safeway })).toBe('Not at Safeway');
     expect(describeTripMarker({ kind: 'only', shop: traderJoes })).toBe("Only at Trader Joe's");
     expect(describeTripMarker({ kind: 'usually', shop: traderJoes })).toBe("Usually Trader Joe's");
+  });
+
+  // Rides inside the marker that's already there, rather than a fourth line.
+  it('appends the substitute to an unavailable marker that carries one', () => {
+    const margarine = item('margarine', { name: 'Margarine' });
+    expect(
+      describeTripMarker({ kind: 'unavailable', shop: safeway, substitute: margarine })
+    ).toBe('Not at Safeway · or Margarine');
   });
 
   // Names the brand and not the store: you're standing in the shop. And not

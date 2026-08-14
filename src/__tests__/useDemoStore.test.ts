@@ -46,7 +46,7 @@ import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
 import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
 import { cheapestShopFor, describeShopPrices, shopPricesFor } from '../utils/groceryPrice';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
-import { tripMarkerFor } from '../utils/activeTrip';
+import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
 import { buildDayBuckets, canProject } from '../utils/calendarMonth';
 import { buildCalendarGrid } from '../utils/calendarGrid';
 
@@ -763,7 +763,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds a trip in progress, with rows that have something to say about it', () => {
-    const { items, itemShops, shops } = useGroceryStore.getState();
+    const { items, itemShops, shops, itemSubs } = useGroceryStore.getState();
 
     // The banner, and the only state in which the list mentions stores at all.
     const trip = useGroceryStore.getState().activeShop();
@@ -771,7 +771,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     const markers = items
       .filter(i => i.onList)
-      .map(i => tripMarkerFor(i, itemShops, shops, trip!))
+      .map(i => tripMarkerFor(i, itemShops, shops, trip!, itemSubs, items))
       .filter((m): m is NonNullable<typeof m> => !!m);
 
     // The three kinds this seed can honestly produce: the store's own negative
@@ -783,6 +783,27 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(markers.some(m => m.kind === 'withoutBrand')).toBe(true);
     // ...and most of the list still says nothing, which is the point.
     expect(markers.length).toBeLessThan(items.filter(i => i.onList).length);
+  });
+
+  it('seeds a shelf substitute on the unavailable row, tappable to swap (#1567)', () => {
+    const { items, itemShops, shops, itemSubs } = useGroceryStore.getState();
+    const trip = useGroceryStore.getState().activeShop()!;
+
+    const tortillas = items.find(i => i.name === 'Tortillas')!;
+    const cornTortillas = items.find(i => i.nameKey === 'corn tortillas')!;
+    expect(cornTortillas).toBeTruthy();
+
+    const marker = tripMarkerFor(tortillas, itemShops, shops, trip, itemSubs, items)!;
+    expect(marker.kind).toBe('unavailable');
+    expect(marker.substitute?.id).toBe(cornTortillas.id);
+    expect(describeTripMarker(marker)).toBe("Not at Trader Joe's · or Corn tortillas");
+
+    // Tapping the caption is a real swap: the substitute lands on the list
+    // carrying Tortillas off it.
+    useGroceryStore.getState().swapForSubstitute(tortillas.id, cornTortillas.id);
+    const after = useGroceryStore.getState().items;
+    expect(after.find(i => i.id === tortillas.id)?.onList).toBe(false);
+    expect(after.find(i => i.id === cornTortillas.id)?.onList).toBe(true);
   });
 
   it('seeds a recipe of every meal type, with the composed ones composed', () => {

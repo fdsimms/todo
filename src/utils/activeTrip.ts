@@ -1,5 +1,6 @@
-import type { GroceryItem, ItemShopLink, Shop } from '../types';
+import type { GroceryItem, ItemShopLink, ItemSubLink, Shop } from '../types';
 import { exclusiveShopFor, isUnavailable, lacksWantedBrand, primaryShopFor } from './groceryShops';
+import { substitutesFor } from './itemSubs';
 
 /**
  * The trip you are on right now — "I'm at this store".
@@ -149,19 +150,32 @@ export interface TripMarker {
   shop: Shop;
   /** `withoutBrand` only: the brand the item insists on. */
   wantedBrand?: string;
+  /**
+   * `unavailable` only: the oldest substitute on record for this item, if any
+   * (see itemSubs.substitutesFor). This is the highest-value moment for a
+   * substitute link — you're standing in front of the empty shelf — so the
+   * marker rides the clause rather than the row growing a fourth caption; see
+   * describeTripMarker and GroceryRow's tap-to-swap.
+   */
+  substitute?: GroceryItem;
 }
 
 export function tripMarkerFor(
   item: GroceryItem,
   links: readonly ItemShopLink[],
   shops: readonly Shop[],
-  trip: Shop
+  trip: Shop,
+  subLinks: readonly ItemSubLink[] = [],
+  items: readonly GroceryItem[] = []
 ): TripMarker | null {
   const here = links.find(l => l.itemId === item.id && l.shopId === trip.id);
   if (here) {
     // Not stocking it at all outranks not having your brand — it's the
     // stronger claim, and both are the user's own.
-    if (isUnavailable(here)) return { kind: 'unavailable', shop: trip };
+    if (isUnavailable(here)) {
+      const substitute = substitutesFor(item.id, subLinks, items)[0]?.item;
+      return { kind: 'unavailable', shop: trip, substitute };
+    }
     if (lacksWantedBrand(here, item)) {
       return { kind: 'withoutBrand', shop: trip, wantedBrand: item.brand! };
     }
@@ -192,7 +206,13 @@ export function tripMarkerFor(
 export function describeTripMarker(marker: TripMarker): string {
   switch (marker.kind) {
     case 'unavailable':
-      return `Not at ${marker.shop.name}`;
+      // Rides inside the marker that's already there rather than adding a
+      // line — a fourth caption is how the row becomes unreadable while
+      // walking. Only ever the one substitute TripMarker carries; naming a
+      // second here would say more than tapping the caption can act on.
+      return marker.substitute
+        ? `Not at ${marker.shop.name} · or ${marker.substitute.name}`
+        : `Not at ${marker.shop.name}`;
     // Names the brand rather than the store: you're standing in the store, so
     // its name is the one fact on the row you don't need. It deliberately
     // doesn't name what this shop *does* carry — the app only knows what you

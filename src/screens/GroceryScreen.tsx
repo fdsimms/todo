@@ -109,6 +109,7 @@ export function GroceryScreen() {
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const cartHoldIds = useGroceryStore(useShallow(s => s.cartHoldIds));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const toggleChecked = useGroceryStore(s => s.toggleChecked);
   const setCheckedMany = useGroceryStore(s => s.setCheckedMany);
   const setAisleMany = useGroceryStore(s => s.setAisleMany);
@@ -117,6 +118,7 @@ export function GroceryScreen() {
   const finishShopping = useGroceryStore(s => s.finishShopping);
   const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
   const linkItemSub = useGroceryStore(s => s.linkItemSub);
+  const swapForSubstitute = useGroceryStore(s => s.swapForSubstitute);
   const clearList = useGroceryStore(s => s.clearList);
   const applyDrop = useGroceryStore(s => s.applyDrop);
   const shops = useGroceryStore(useShallow(s => s.shops));
@@ -238,16 +240,22 @@ export function GroceryScreen() {
   // only the screen has the links, and a row that subscribed to them would
   // re-render every one of them on any purchase. Empty whenever no trip is
   // running, so the rows go back to exactly what they rendered before.
+  // `substituteId` rides alongside the caption only on an `unavailable`
+  // marker with a substitute on record — that's the tap-to-swap target
+  // (#1567), and its absence is what keeps every other marker's caption
+  // inert.
   const storeMarkers = useMemo(() => {
-    const out = new Map<string, string>();
+    const out = new Map<string, { text: string; substituteId?: string }>();
     if (!activeTripShop) return out;
     for (const item of items) {
       if (!item.onList) continue;
-      const marker = tripMarkerFor(item, itemShops, shops, activeTripShop);
-      if (marker) out.set(item.id, describeTripMarker(marker));
+      const marker = tripMarkerFor(item, itemShops, shops, activeTripShop, itemSubs, items);
+      if (marker) {
+        out.set(item.id, { text: describeTripMarker(marker), substituteId: marker.substitute?.id });
+      }
     }
     return out;
-  }, [activeTripShop, items, itemShops, shops]);
+  }, [activeTripShop, items, itemShops, shops, itemSubs]);
 
   const checkedCount = useMemo(() => items.filter(i => i.onList && i.checked).length, [items]);
   // What the trip is about to leave behind, in the walk order the list is in —
@@ -450,6 +458,17 @@ export function GroceryScreen() {
     setEditingInitialField('substitutes');
     setEditingId(id);
   }, []);
+
+  // "Not at Safeway · or margarine", tapped — see storeMarkers above and
+  // GroceryRow's tap-to-swap.
+  const handleSwapForSubstitute = useCallback(
+    (id: string, subId: string) => {
+      haptics.tap();
+      animateLayout();
+      swapForSubstitute(id, subId);
+    },
+    [swapForSubstitute]
+  );
 
   // "Check"/"Uncheck" flips direction based on the selection itself, the same
   // way LogbookBulkBar's incomplete action always means the opposite of what's
@@ -730,11 +749,13 @@ export function GroceryScreen() {
               : undefined
           }
           alternatives={alternativeCaptionById.get(row.item.id)}
-          storeMarker={storeMarkers.get(row.item.id)}
+          storeMarker={storeMarkers.get(row.item.id)?.text}
+          swapSubstituteId={storeMarkers.get(row.item.id)?.substituteId}
+          onSwapForSubstitute={handleSwapForSubstitute}
         />
       );
     },
-    [styles, colors, cartOpen, handleToggle, handleEdit, handleOpenSubstitutes, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, recipeIds, openRecipe, alternativeCaptionById, storeMarkers]
+    [styles, colors, cartOpen, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, recipeIds, openRecipe, alternativeCaptionById, storeMarkers]
   );
 
   return (

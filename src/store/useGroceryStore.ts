@@ -53,6 +53,7 @@ import {
 } from '../utils/groceryAisles';
 import { isTripLive, resolveActiveTrip } from '../utils/activeTrip';
 import { scheduleTripReminder, cancelTripReminder } from '../utils/notifications';
+import { substituteQuantity } from '../utils/itemSubs';
 
 /**
  * The grocery catalog, which is also the shopping list.
@@ -481,6 +482,20 @@ interface GroceryStore {
   unlinkItemSub: (itemId: string, subItemId: string) => void;
   /** The caveat — "fine for frying, not for baking". Blank clears it. */
   setItemSubNote: (itemId: string, subItemId: string, note: string) => void;
+  /**
+   * "Not at Safeway · or margarine", tapped: puts the substitute on the list
+   * and takes the original off. The original's quantity carries over —
+   * ratio-converted where the link names one, verbatim otherwise, since a
+   * cooking amount is a floor and the best answer available — and its
+   * ownership marker travels with it (see GroceryItem.quantityFromRecipe).
+   *
+   * Destructive resolution, so it follows resolveChoice's own discipline
+   * rather than a lighter version of it: snapshot both rows first, restore
+   * them exactly on undo, re-insert a provisional row if it was deleted.
+   *
+   * A no-op unless the original is actually on the list.
+   */
+  swapForSubstitute: (itemId: string, subItemId: string) => void;
   /**
    * Takes the claim back. An observed link keeps its purchases and simply stops
    * being marked; a link that was *only* the claim is deleted outright, because
@@ -2219,6 +2234,72 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         l.itemId === itemId && l.subItemId === subItemId ? next : l
       ),
     }));
+  },
+
+  swapForSubstitute(itemId, subItemId) {
+    const item = get().items.find(i => i.id === itemId);
+    const sub = get().items.find(i => i.id === subItemId);
+    if (!item || !sub || !item.onList) return;
+
+    // Snapshots taken before anything is written, so undo restores the rows
+    // themselves rather than reconstructing what they probably were — the
+    // same discipline resolveChoice uses for a destructive resolution.
+    const before = [{ ...item }, { ...sub }];
+
+    const link = get().itemSubs.find(l => l.itemId === itemId && l.subItemId === subItemId);
+    let quantity = item.quantity;
+    if (item.quantity && link?.ratioFrom && link?.ratioTo) {
+      const converted = substituteQuantity(item.quantity, link.ratioFrom, link.ratioTo);
+      if (converted.converted) quantity = converted.text;
+    }
+
+    const updatedSub: GroceryItem = {
+      ...sub,
+      onList: true,
+      checked: false,
+      quantity: quantity ?? sub.quantity,
+      quantityFromRecipe: quantity ? item.quantityFromRecipe : sub.quantityFromRecipe,
+      lastAddedAt: new Date().toISOString(),
+    };
+    dbUpdateGroceryItem(updatedSub);
+
+    // Same split removeFromList makes: a provisional row leaving the list has
+    // nothing to keep, a catalog row just comes off — and a recipe-owned
+    // quantity's claim ends with the row it was on, same as finishing does.
+    const toDelete = item.inCatalog ? null : item.id;
+    const updatedItem: GroceryItem | null = item.inCatalog
+      ? {
+          ...item,
+          onList: false,
+          checked: false,
+          quantity: item.quantityFromRecipe ? null : item.quantity,
+          quantityFromRecipe: false,
+        }
+      : null;
+    if (updatedItem) dbUpdateGroceryItem(updatedItem);
+
+    const patched = new Map<string, GroceryItem>([[updatedSub.id, updatedSub]]);
+    if (updatedItem) patched.set(updatedItem.id, updatedItem);
+    set(s => ({
+      items: s.items.map(i => patched.get(i.id) ?? i),
+      cartHoldIds: s.cartHoldIds.filter(x => x !== item.id && x !== sub.id),
+    }));
+    if (toDelete) get().deleteItems([toDelete]);
+
+    get().setLastAction({
+      label: `Swapped for ${sub.name}`,
+      undo: () => {
+        const live = new Set(get().items.map(i => i.id));
+        const restored = before.filter(i => !live.has(i.id));
+        for (const row of restored) dbInsertGroceryItem(row);
+        for (const row of before.filter(i => live.has(i.id))) dbUpdateGroceryItem(row);
+        const byId = new Map(before.map(i => [i.id, i]));
+        set(s => ({
+          items: [...s.items.map(i => byId.get(i.id) ?? i), ...restored],
+          cartHoldIds: s.cartHoldIds.filter(x => x !== item.id && x !== sub.id),
+        }));
+      },
+    });
   },
 
   markItemsUnavailable(itemIds, shopId) {
