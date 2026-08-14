@@ -73,6 +73,7 @@ const workCategory: Category = {
   scheduleEnd: '18:00',
   hideOnVacation: false,
   excludeFromPinSuggestions: false,
+  excludeFromNewTasksBanner: false,
   defaultTimeSegments: [],
   sortOrder: 1,
   emoji: null,
@@ -885,6 +886,7 @@ const eveningCategory: Category = {
   scheduleEnd: '02:00',
   hideOnVacation: false,
   excludeFromPinSuggestions: false,
+  excludeFromNewTasksBanner: false,
   defaultTimeSegments: [],
   sortOrder: 1,
   emoji: null,
@@ -960,6 +962,7 @@ const errandsCategory: Category = {
   scheduleEnd: null,
   hideOnVacation: true,
   excludeFromPinSuggestions: false,
+  excludeFromNewTasksBanner: false,
   defaultTimeSegments: [],
   sortOrder: 1,
   emoji: null,
@@ -1064,6 +1067,20 @@ describe('isTaskNew', () => {
 
   it('is false for a task only gated by windowStart (not a day-turnover cause)', () => {
     expect(isTaskNew({ ...baseTask, windowStart: '08:00', windowEnd: '13:00' })).toBe(false);
+  });
+
+  it('is false for a task whose category is excluded from the new todos banner', () => {
+    mockCategorySchedule({ ...workCategory, excludeFromNewTasksBanner: true });
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    expect(isTaskNew({ ...baseTask, category: workCategory.name, dueDate })).toBe(false);
+    mockCategorySchedule(null);
+  });
+
+  it('is unaffected by other categories being excluded from the new todos banner', () => {
+    mockCategorySchedule({ ...workCategory, excludeFromNewTasksBanner: true });
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    expect(isTaskNew({ ...baseTask, category: null, dueDate })).toBe(true);
+    mockCategorySchedule(null);
   });
 });
 

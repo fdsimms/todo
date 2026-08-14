@@ -1399,6 +1399,7 @@ describe('Categories', () => {
       scheduleEnd: '17:00',
       hideOnVacation: true,
       excludeFromPinSuggestions: true,
+      excludeFromNewTasksBanner: true,
       defaultTimeSegments: ['evening'],
       sortOrder: 3,
       emoji: '🏠',

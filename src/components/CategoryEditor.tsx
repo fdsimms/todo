@@ -69,6 +69,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const removeCategorySchedule = useCategoryStore(s => s.removeCategorySchedule);
   const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
   const setCategoryExcludeFromPinSuggestions = useCategoryStore(s => s.setCategoryExcludeFromPinSuggestions);
+  const setCategoryExcludeFromNewTasksBanner = useCategoryStore(s => s.setCategoryExcludeFromNewTasksBanner);
   const setCategoryEmoji = useCategoryStore(s => s.setCategoryEmoji);
   const setCategoryDefaultTimeSegments = useCategoryStore(s => s.setCategoryDefaultTimeSegments);
   const renameCategory = useTaskStore(s => s.renameCategory);
@@ -85,6 +86,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const [end, setEnd] = useState(DEFAULT_END);
   const [hideOnVacation, setHideOnVacation] = useState(false);
   const [excludeFromPins, setExcludeFromPins] = useState(false);
+  const [excludeFromNewBanner, setExcludeFromNewBanner] = useState(false);
   const [defaultSegments, setDefaultSegments] = useState<TimeOfDay[]>([]);
   const [segmentsOpen, setSegmentsOpen] = useState(false);
   const [picker, setPicker] = useState<'start' | 'end' | null>(null);
@@ -105,6 +107,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     setEnd(cat?.scheduleEnd ?? DEFAULT_END);
     setHideOnVacation(!!cat?.hideOnVacation);
     setExcludeFromPins(!!cat?.excludeFromPinSuggestions);
+    setExcludeFromNewBanner(!!cat?.excludeFromNewTasksBanner);
     setDefaultSegments(cat?.defaultTimeSegments ?? []);
     setSegmentsOpen(false);
     setPicker(null);
@@ -218,6 +221,9 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     }
     if (excludeFromPins !== !!cat?.excludeFromPinSuggestions) {
       setCategoryExcludeFromPinSuggestions(category, excludeFromPins);
+    }
+    if (excludeFromNewBanner !== !!cat?.excludeFromNewTasksBanner) {
+      setCategoryExcludeFromNewTasksBanner(category, excludeFromNewBanner);
     }
     if (!sameTimeSegments(defaultSegments, cat?.defaultTimeSegments ?? [])) {
       setCategoryDefaultTimeSegments(category, defaultSegments);
@@ -413,6 +419,24 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
               </View>
               <View style={[styles.toggle, excludeFromPins && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, excludeFromPins && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.sep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setExcludeFromNewBanner(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: excludeFromNewBanner }}
+              accessibilityLabel="Skip in new todos banner"
+            >
+              <Ionicons name="notifications-off-outline" size={18} color={excludeFromNewBanner ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Skip in new todos banner</Text>
+                <Text style={styles.optionHint}>Keeps these off the "new todos" banner and the new dot on their row</Text>
+              </View>
+              <View style={[styles.toggle, excludeFromNewBanner && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, excludeFromNewBanner && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
           </View>

@@ -30,6 +30,13 @@ export interface Category {
   // still be pinned by hand. For routines and errands, which are perfectly
   // real work but bad company for whatever else lands in the pinned list.
   excludeFromPinSuggestions: boolean;
+  // Keep tasks in this category from counting as "new" — no entry in the
+  // "you have X new todos" banner, and no dot on their own row (see
+  // isTaskNew). Both read the same signal, so this turns it off at the
+  // source rather than hiding it from only one of the two places it shows.
+  // For categories that surface tasks constantly (routines, recurring
+  // errands) where "new" would fire every day and stop meaning anything.
+  excludeFromNewTasksBanner: boolean;
   // The time-of-day a task created in this category starts with — a *seed*,
   // never an override. Nothing reads it after the row exists: the task's own
   // timeSegments stay the single source of truth for every visibility, sorting
