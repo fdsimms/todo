@@ -397,7 +397,7 @@ export function GroceryItemSheet({
       // where", and the one the field defaults to.
       pinned: true,
       selected: activeTarget === null,
-      accessibilityLabel: 'Price paid, without saying which store',
+      accessibilityLabel: 'Last price paid, without saying which store',
       onPress: () => {
         haptics.tap();
         setPriceTarget(null);
@@ -407,7 +407,7 @@ export function GroceryItemSheet({
       key: shop.id,
       label: shop.name,
       selected: activeTarget === shop.id,
-      accessibilityLabel: `Price at ${shop.name}`,
+      accessibilityLabel: `Last price at ${shop.name}`,
       onPress: () => {
         haptics.tap();
         setPriceTarget(shop.id);
@@ -852,7 +852,7 @@ export function GroceryItemSheet({
               third grey caption under the field is what the note below is
               already guarding against. With no linked stores there's nothing to
               choose between, so the row doesn't render at all. */}
-          <Text style={styles.label}>{linkedShops.length > 0 ? 'PRICE AT' : 'PRICE'}</Text>
+          <Text style={styles.label}>{linkedShops.length > 0 ? 'LAST PRICE AT' : 'LAST PRICE'}</Text>
           {linkedShops.length > 0 && (
             <View style={styles.priceTargets}>
               <PillGroup options={priceTargetOptions} noun="store" surface="page" />
@@ -868,7 +868,7 @@ export function GroceryItemSheet({
               placeholderTextColor={colors.textTertiary}
               keyboardType="decimal-pad"
               maxLength={PRICE_INPUT_MAX_LENGTH}
-              accessibilityLabel={targetShopName ? `Price at ${targetShopName}` : 'Price'}
+              accessibilityLabel={targetShopName ? `Last price at ${targetShopName}` : 'Last price'}
             />
           </View>
           {/* What the number is *for* and how old it is — never the number
