@@ -563,6 +563,14 @@ describe('detectContactIntent', () => {
     expect(detectContactIntent('Email the landlord')).toBe('email');
   });
 
+  it('detects a leading "Phone" as a phone intent', () => {
+    expect(detectContactIntent('Phone Kristen')).toBe('phone');
+  });
+
+  it('detects a leading "Message" as a phone intent', () => {
+    expect(detectContactIntent('Message the plumber')).toBe('phone');
+  });
+
   it('is case-insensitive', () => {
     expect(detectContactIntent('call mom')).toBe('phone');
     expect(detectContactIntent('EMAIL accounting')).toBe('email');

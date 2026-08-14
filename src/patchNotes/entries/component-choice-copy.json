@@ -1,0 +1,4 @@
+{
+  "message": "A recipe component's \"is this an alternative\" field is now a clear on/off choice instead of a free-text \"Alternative for\" box, and placeholders that could be mistaken for real values now read as examples",
+  "date": "2026-08-14"
+}

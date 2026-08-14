@@ -655,7 +655,7 @@ export type ContactIntent = 'phone' | 'email';
 
 // Only the leading word counts — "Call Kristen" is an instruction, "ask her
 // to call me back" merely mentions one mid-sentence.
-const CONTACT_INTENT_PATTERN = /^(call|text|email)\b/i;
+const CONTACT_INTENT_PATTERN = /^(call|text|email|phone|message)\b/i;
 
 /**
  * Whether a title opens with a contact verb the task has no data to back up
