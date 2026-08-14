@@ -92,6 +92,17 @@ describe('parsePriceInput', () => {
     expect(parsePriceInput('4,50')).toBe(450);
   });
 
+  it('reads a bare decimal under $1, with no leading zero required', () => {
+    // A decimal-pad keyboard doesn't insert the leading zero, so this is what
+    // typing "75 cents" actually produces.
+    expect(parsePriceInput('.75')).toBe(75);
+    expect(parsePriceInput('.5')).toBe(50);
+    expect(parsePriceInput('$.99')).toBe(99);
+    expect(parsePriceInput(',50')).toBe(50);
+    // Still refused: a bare separator names no amount at all.
+    expect(parsePriceInput('.')).toBeNull();
+  });
+
   it('refuses rather than guesses', () => {
     expect(parsePriceInput('')).toBeNull();
     expect(parsePriceInput('a fiver')).toBeNull();

@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: a grocery price under $1 typed without a leading zero (like \".75\") was silently rejected. The price field also now has a clear button, so a wrong price is one tap to remove instead of a field to backspace through by hand.",
+  "date": "2026-08-14"
+}
