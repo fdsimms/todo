@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemShopLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
@@ -261,6 +261,17 @@ export function initDatabase(): void {
       PRIMARY KEY (item_id, shop_id)
     );
 
+    -- "If there's no butter, use margarine." Directional: symmetry is two
+    -- rows, not a flag. See ItemSubLink in types for why this is item-level
+    -- rather than a second choiceGroup on the recipe.
+    CREATE TABLE IF NOT EXISTS grocery_item_subs (
+      item_id TEXT NOT NULL,
+      sub_item_id TEXT NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (item_id, sub_item_id)
+    );
+
     -- A dish, and what it takes to shop for it. The ingredients column is a
     -- JSON array rather than its own table for the reason templates.items is
     -- one: nothing outside this row holds an ingredient's id. See Recipe in
@@ -406,6 +417,10 @@ export function initDatabase(): void {
     // The store → items read (the Buy again filter). item → shops needs no
     // index: it's the leading column of the primary key.
     'CREATE INDEX IF NOT EXISTS idx_grocery_item_shops_shop ON grocery_item_shops(shop_id)',
+    // The reverse read — "what is this item a substitute *for*" — which the
+    // both-ways tick and dbDeleteGroceryItem's second cascade both need.
+    // item → substitutes needs no index: it's the leading column of the key.
+    'CREATE INDEX IF NOT EXISTS idx_grocery_item_subs_sub ON grocery_item_subs(sub_item_id)',
     // Nullable, and null is the value every existing row wants: a task nobody
     // imported from Reminders has no suggestion pending. JSON, like
     // series_defaults, because it holds a Partial<Task> rather than a scalar.
@@ -880,6 +895,7 @@ export const BACKUP_TABLES = [
   'grocery_shops',
   'grocery_items',
   'grocery_item_shops',
+  'grocery_item_subs',
   'recipes',
   // Before meal_plan_entries: an entry can point at a leftover.
   'leftovers',
@@ -1994,6 +2010,12 @@ export function dbDeleteGroceryItem(id: string): void {
   // links pointing at an item that no longer exists. Same reason
   // dbBulkDeleteTasks handles its parent_id children by hand.
   db.runSync('DELETE FROM grocery_item_shops WHERE item_id = ?', [id]);
+  // Both directions, because the link is directional: the deleted row can be
+  // either half of a pair, and a substitution naming an item that no longer
+  // exists is unreadable rather than merely orphaned. The reads shrug such a
+  // row off anyway (see substitutesFor), but leaving them would have a name
+  // reused later silently inherit a swap nobody made for it.
+  db.runSync('DELETE FROM grocery_item_subs WHERE item_id = ? OR sub_item_id = ?', [id, id]);
   db.runSync('DELETE FROM grocery_items WHERE id = ?', [id]);
 }
 
@@ -2320,6 +2342,46 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
 
 export function dbDeleteItemShopLink(itemId: string, shopId: string): void {
   db.runSync('DELETE FROM grocery_item_shops WHERE item_id = ? AND shop_id = ?', [itemId, shopId]);
+}
+
+// ─── Substitutes ────────────────────────────────────────────────────────────
+
+function rowToItemSubLink(row: Record<string, unknown>): ItemSubLink {
+  return {
+    itemId: row.item_id as string,
+    subItemId: row.sub_item_id as string,
+    note: (row.note as string) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllItemSubLinks(): ItemSubLink[] {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM grocery_item_subs');
+  return rows.map(rowToItemSubLink);
+}
+
+/**
+ * Upsert, so writing a link and editing its note share one path — the caller
+ * passes the row it wants to exist, the same contract dbSetItemShopLink has.
+ *
+ * `created_at` is deliberately part of that: re-linking a pair the user
+ * unlinked is a new fact, not a restoration of the old one.
+ */
+export function dbSetItemSubLink(link: ItemSubLink): void {
+  db.runSync(
+    `INSERT INTO grocery_item_subs (item_id, sub_item_id, note, created_at)
+     VALUES (?,?,?,?)
+     ON CONFLICT(item_id, sub_item_id)
+     DO UPDATE SET note = excluded.note`,
+    [link.itemId, link.subItemId, link.note ?? null, link.createdAt]
+  );
+}
+
+export function dbDeleteItemSubLink(itemId: string, subItemId: string): void {
+  db.runSync('DELETE FROM grocery_item_subs WHERE item_id = ? AND sub_item_id = ?', [
+    itemId,
+    subItemId,
+  ]);
 }
 
 // ─── Recipes ────────────────────────────────────────────────────────────────

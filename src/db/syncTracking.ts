@@ -67,6 +67,7 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'grocery_items', key: ['id'] },
   { name: 'grocery_shops', key: ['id'] },
   { name: 'grocery_item_shops', key: ['item_id', 'shop_id'] },
+  { name: 'grocery_item_subs', key: ['item_id', 'sub_item_id'] },
   { name: 'recipes', key: ['id'] },
   { name: 'leftovers', key: ['id'] },
   { name: 'meal_plan_entries', key: ['id'] },

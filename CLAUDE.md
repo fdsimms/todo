@@ -124,6 +124,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | what something costs, and which store is cheaper | `src/utils/groceryPrice.ts` |
 | what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see The pantry below |
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see Grocery either/or below |
+| "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see Substitutes below |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
 | halving or doubling a recipe | `src/utils/recipeScale.ts` — see Scaling below |
 | showing amounts in metric or US units | `src/utils/unitConvert.ts` — see Unit conversion below |
@@ -660,6 +661,63 @@ has no dish decision to defer — but the loser then sat there looking outstandi
 - **Unlinking lives in the item sheet, not on the row** ("Not an either/or", `clearChoice`,
   which takes the label off every member — one remaining option is not a choice). It's a
   correction, not a shopping decision: at the shelf you resolve a choice by ticking one.
+
+### Substitutes (`ItemSubLink`) — one item standing in for another
+
+**The vocabulary rule, so it can't drift: either/or on the list, alternatives on the
+recipe, substitutes on the item.** Three adjacent terms for three genuinely different
+things; settled here rather than left to be re-argued per PR.
+
+The one-line test for which you're looking at: **does the answer depend on the dish?**
+If yes it's a `choiceGroup` — both options intended, equals, decided per cooking in
+`MealPlanEntry.recipeChoices`, scoped to that recipe. If no it's a substitute — one
+intended and one tolerated, ranked rather than equal, consulted when the first isn't
+available, and it applies to every recipe naming the item. Item-level is the whole
+reason this is a system rather than a field: "I use margarine for butter" is one fact
+that reaches all twelve recipes calling for butter, and `RecipeIngredient.nameKey`
+already bridges every ingredient line to the catalog, so it gets there with no new
+plumbing through the recipes JSON blob.
+
+- **`grocery_item_subs` is shaped like `grocery_item_shops`** — a fact about a pair of
+  rows, one row per pair, bounded by how many swaps you actually name. Both cascades in
+  `dbDeleteGroceryItem` are hand-written and cover **both directions**, since FKs are
+  off and the deleted row can be either half of a pair; the reads shrug a dangling link
+  off anyway (`substitutesFor`), like every other cross-row pointer here.
+- **Directional, and symmetry is two rows.** "Milk instead of buttermilk" is not
+  "buttermilk instead of milk". A `symmetric` flag would make every reader stop and work
+  out which way the row it's holding is facing — the same reason two ingredient rows beat
+  one line reading "serrano or jalapeño". `linkItemSub`'s `bothWays` writes the pair, so
+  the common symmetric case is one tap and the asymmetric one stays expressible;
+  `Substitute.isMutual` reports it rather than storing it.
+- **Nothing infers a link, and there is no built-in substitution lexicon.** Same
+  discipline as `brandStrict` and as the deleted `likelyItemIds` bucket
+  (`shoppingTrip.ts`): the user says so, or it isn't recorded. That verdict stands.
+- **A substitute is surfaced only where there's a reason to believe it would help** —
+  the user asked, the store was marked as not stocking the original, or the original is
+  marked "out of it" *and* the substitute is on hand. Never as a general caption, and in
+  particular **`probablyHaveReason` returning null is ignorance, not absence**: it's the
+  default state of nearly every item, so reading it as "you haven't got this" would
+  caption the whole app on nothing. Consequently the recipe ingredient row is silent by
+  default — no standing "or margarine" — and you go and ask instead.
+- **Authoring is the ask, not the field.** Links are hand-authored, and nobody
+  hand-authors data for a caption they've never seen, so `SubstituteSheet` (opened from
+  the field's "Add substitute") is the funnel and `GroceryItemSheet`'s field is where you
+  *review* what you already answered. Deliberately **not** `RecipeIngredientSheet`, which
+  owns `choiceGroup` — putting substitutes there is how the two merge into one confused
+  control.
+- **The expanded field is rows, not a `PillGroup`**, unlike Aisle/Stores/Pantry beside
+  it. A pill can only express membership, and a substitute also carries a note and a
+  direction — with pills you'd tap each lit one to find out whether it says anything at
+  all. A grid was mocked alongside and dropped. The collapsed summary names up to two and
+  then falls back to a count (`describeSubstitutes`), because `disclosureValue` renders
+  `numberOfLines={1}` and a third name truncates mid-word at 390pt.
+- **Scoping is the free-text `note`, not a per-recipe override.** Margarine for butter is
+  fine in a pan and wrong in laminated pastry; an override rebuilds `choiceGroup` badly,
+  and since nothing auto-applies a substitute, a wrong one is a caption you ignore rather
+  than a purchase you regret.
+- **One-to-many is permanently out.** "Buttermilk → milk + lemon juice" is two items both
+  required, which is a recipe rather than a swap — stated in the sheet's own footer, since
+  that's where someone wonders about it.
 
 ### Composed recipes (`Recipe.components`) — one recipe used inside another
 

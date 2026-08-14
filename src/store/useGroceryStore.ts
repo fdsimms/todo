@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroceryItem, ItemShopLink, Shop } from '../types';
+import type { GroceryItem, ItemShopLink, ItemSubLink, Shop } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -17,6 +17,9 @@ import {
   dbGetAllItemShopLinks,
   dbSetItemShopLink,
   dbDeleteItemShopLink,
+  dbGetAllItemSubLinks,
+  dbSetItemSubLink,
+  dbDeleteItemSubLink,
   dbGetLastShopId,
   dbSetLastShopId,
   dbGetTripShopId,
@@ -124,6 +127,12 @@ interface GroceryStore {
    */
   shops: Shop[];
   itemShops: ItemShopLink[];
+  /**
+   * "If there's no butter, use margarine" — every substitution the user has
+   * recorded, in one flat list. Directional, so a both-ways swap is two rows;
+   * see ItemSubLink, and utils/itemSubs.ts for the reads.
+   */
+  itemSubs: ItemSubLink[];
   /** The store the last trip was finished at, if it still exists. */
   lastShopId: string | null;
   /**
@@ -413,6 +422,43 @@ interface GroceryStore {
    */
   markItemsUnavailable: (itemIds: string[], shopId: string) => void;
   /**
+   * "Instead of butter, margarine." Directional — `bothWays` writes the
+   * reverse row as well, so the common symmetric case is one tap and the
+   * asymmetric one ("milk instead of buttermilk", which doesn't run the other
+   * way) stays expressible.
+   *
+   * Promotes both rows into the catalog, exactly as `linkItemShop` and
+   * `addToPantry` do: saying what stands in for flour is a statement about
+   * flour, not about this week's list, and without it the next "Remove from
+   * list" deletes a provisional row and silently takes the substitution with
+   * it.
+   *
+   * A no-op for an item linked to itself, or for either half not existing.
+   */
+  linkItemSub: (
+    itemId: string,
+    subItemId: string,
+    opts?: { note?: string | null; bothWays?: boolean }
+  ) => void;
+  /**
+   * The catalog row for a typed name, minting one off-list if there isn't one.
+   *
+   * The neutral half of `addToPantry`: same "find or add" field shape, minus
+   * the on-hand assertion, because naming margarine as a substitute for butter
+   * says nothing about whether you have any. Returns null for a name that
+   * trims away.
+   *
+   * Off-list and in-catalog from the first moment, the one row shape
+   * `addByName` never produces — nothing is provisional about a name the user
+   * typed to record a standing fact, and there's no stint on the list for a
+   * later removal to end.
+   */
+  ensureCatalogItem: (name: string) => GroceryItem | null;
+  /** Drops one direction. The reverse row, if there is one, is left alone. */
+  unlinkItemSub: (itemId: string, subItemId: string) => void;
+  /** The caveat — "fine for frying, not for baking". Blank clears it. */
+  setItemSubNote: (itemId: string, subItemId: string, note: string) => void;
+  /**
    * Takes the claim back. An observed link keeps its purchases and simply stops
    * being marked; a link that was *only* the claim is deleted outright, because
    * clearing the stamp in place would silently turn "they don't have it" into
@@ -634,6 +680,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   hiddenAisles: [],
   shops: [],
   itemShops: [],
+  itemSubs: [],
   lastShopId: null,
   tripShopId: null,
   tripStartedAt: null,
@@ -670,6 +717,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     );
     const shops = dbGetAllGroceryShops();
     const itemShops = dbGetAllItemShopLinks();
+    const itemSubs = dbGetAllItemSubLinks();
     // Resolved against live shops rather than trusted: the setting outlives
     // the store it names, and a preselected shop that no longer exists would
     // record the next trip against nothing.
@@ -699,6 +747,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       aisleOverrides: dbGetGroceryAisleOverrides(),
       shops,
       itemShops,
+      itemSubs,
       lastShopId,
       tripShopId,
       tripStartedAt,
@@ -1408,12 +1457,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   deleteItems(ids) {
     if (ids.length === 0) return;
     const gone = new Set(ids);
-    // dbDeleteGroceryItem drops the item's shop links too; mirror that here so
-    // the in-memory copy doesn't keep links to an item that's gone.
+    // dbDeleteGroceryItem drops the item's shop and substitute links too;
+    // mirror that here so the in-memory copy doesn't keep links to an item
+    // that's gone. Substitutes are dropped from *both* sides, since the link is
+    // directional and the deleted row can be either half of a pair.
     for (const id of ids) dbDeleteGroceryItem(id);
     set(s => ({
       items: s.items.filter(i => !gone.has(i.id)),
       itemShops: s.itemShops.filter(l => !gone.has(l.itemId)),
+      itemSubs: s.itemSubs.filter(l => !gone.has(l.itemId) && !gone.has(l.subItemId)),
       cartHoldIds: s.cartHoldIds.filter(x => !gone.has(x)),
     }));
     // Not part of the SQL cascade: the task is in another table that knows
@@ -1927,6 +1979,112 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     dbDeleteItemShopLink(itemId, shopId);
     set(s => ({
       itemShops: s.itemShops.filter(l => !(l.itemId === itemId && l.shopId === shopId)),
+    }));
+  },
+
+  linkItemSub(itemId, subItemId, opts = {}) {
+    // An item is not a substitute for itself, and the picker can't be trusted
+    // to have excluded it — the sheet is opened from a row and the catalog
+    // search is over every row there is.
+    if (itemId === subItemId) return;
+    const { items, itemSubs } = get();
+    const item = items.find(i => i.id === itemId);
+    const sub = items.find(i => i.id === subItemId);
+    if (!item || !sub) return;
+
+    const note = opts.note?.trim() || null;
+    const createdAt = new Date().toISOString();
+    const pairs: Array<[string, string]> = [[itemId, subItemId]];
+    // The reverse row carries the same note: a caveat about how far the swap
+    // goes ("fine for frying, not for baking") is a fact about the pair, not
+    // about the direction you happened to write it from.
+    if (opts.bothWays) pairs.push([subItemId, itemId]);
+
+    const written: ItemSubLink[] = [];
+    for (const [a, b] of pairs) {
+      const existing = itemSubs.find(l => l.itemId === a && l.subItemId === b);
+      // Re-linking an existing pair is an edit of its note, so the original
+      // createdAt is kept: that stamp is what orders the list, and re-ticking
+      // "both ways" must not shuffle a row the user arranged by hand.
+      const link: ItemSubLink = { itemId: a, subItemId: b, note, createdAt: existing?.createdAt ?? createdAt };
+      dbSetItemSubLink(link);
+      written.push(link);
+    }
+
+    const promoted = new Map<string, GroceryItem>();
+    for (const row of [item, sub]) {
+      if (row.inCatalog) continue;
+      const next = { ...row, inCatalog: true };
+      dbUpdateGroceryItem(next);
+      promoted.set(row.id, next);
+    }
+
+    const key = (l: { itemId: string; subItemId: string }) => `${l.itemId}|${l.subItemId}`;
+    const byKey = new Map(written.map(l => [key(l), l]));
+    set(s => ({
+      itemSubs: [
+        ...s.itemSubs.map(l => byKey.get(key(l)) ?? l),
+        ...written.filter(l => !s.itemSubs.some(x => key(x) === key(l))),
+      ],
+      items: promoted.size > 0 ? s.items.map(i => promoted.get(i.id) ?? i) : s.items,
+    }));
+  },
+
+  ensureCatalogItem(raw) {
+    // Parsed like every other typed name, so "2 lb margarine" keys on
+    // "margarine" rather than minting a row no purchase can ever match. The
+    // quantity is dropped: this is a name being named, not an amount to buy.
+    const { name } = parseGroceryInput(raw);
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    // Same fallback addByName and addToPantry make for a name that normalises
+    // away ("???"): the key has to stay unique or the second such row collides
+    // on the index.
+    const key = groceryNameKey(trimmed) || trimmed.toLowerCase();
+    const existing = get().items.find(i => i.nameKey === key);
+    if (existing) {
+      // Deliberately not promoted here. The callers that need a provisional
+      // row kept — linkItemSub, linkItemShop, addToPantry — promote it
+      // themselves as part of recording their own fact, and finding a row is
+      // not by itself a reason to keep it past this week's list.
+      return existing;
+    }
+
+    const nowIso = new Date().toISOString();
+    const item = newItemRow({
+      name: trimmed,
+      nameKey: key,
+      aisle: placeAisle(get().aisleOverrides[key] ?? aisleForName(trimmed), get().aisleOrder),
+      onList: false,
+      inCatalog: true,
+      sortOrder: nextSortOrder(get().items),
+      createdAt: nowIso,
+    });
+    dbInsertGroceryItem(item);
+    set(s => ({ items: [...s.items, item] }));
+    return item;
+  },
+
+  unlinkItemSub(itemId, subItemId) {
+    // One direction only. "Margarine instead of butter" going away is not the
+    // user withdrawing "butter instead of margarine" — they're two claims, and
+    // the reverse one is shown on its own item's sheet where it can be taken
+    // back in its own right.
+    dbDeleteItemSubLink(itemId, subItemId);
+    set(s => ({
+      itemSubs: s.itemSubs.filter(l => !(l.itemId === itemId && l.subItemId === subItemId)),
+    }));
+  },
+
+  setItemSubNote(itemId, subItemId, note) {
+    const link = get().itemSubs.find(l => l.itemId === itemId && l.subItemId === subItemId);
+    if (!link) return;
+    const next: ItemSubLink = { ...link, note: note.trim() || null };
+    dbSetItemSubLink(next);
+    set(s => ({
+      itemSubs: s.itemSubs.map(l =>
+        l.itemId === itemId && l.subItemId === subItemId ? next : l
+      ),
     }));
   },
 

@@ -19,6 +19,9 @@ import {
   dbGetAllItemShopLinks,
   dbSetItemShopLink,
   dbDeleteItemShopLink,
+  dbGetAllItemSubLinks,
+  dbSetItemSubLink,
+  dbDeleteItemSubLink,
   dbGetLastShopId,
   dbSetLastShopId,
   dbGetTripShopId,
@@ -31,7 +34,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { groceryNameKey } from '../utils/groceryParse';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
 import { OUT_OF_IT_UNTIL, probablyHaveReason } from '../utils/grocerySuggest';
-import type { GroceryItem, ItemShopLink, Shop, Task } from '../types';
+import type { GroceryItem, ItemShopLink, ItemSubLink, Shop, Task } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetAllGroceryItems: jest.fn().mockReturnValue([]),
@@ -53,6 +56,9 @@ jest.mock('../db/database', () => ({
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbSetItemShopLink: jest.fn(),
   dbDeleteItemShopLink: jest.fn(),
+  dbGetAllItemSubLinks: jest.fn().mockReturnValue([]),
+  dbSetItemSubLink: jest.fn(),
+  dbDeleteItemSubLink: jest.fn(),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
   dbSetLastShopId: jest.fn(),
   dbGetTripShopId: jest.fn().mockReturnValue(null),
@@ -173,6 +179,7 @@ function seed(
     aisleOverrides?: Record<string, string>;
     shops?: Shop[];
     itemShops?: ItemShopLink[];
+    itemSubs?: ItemSubLink[];
     tripShopId?: string | null;
     tripStartedAt?: string | null;
   } = {}
@@ -184,6 +191,7 @@ function seed(
     aisleOverrides: extra.aisleOverrides ?? {},
     shops: extra.shops ?? [],
     itemShops: extra.itemShops ?? [],
+    itemSubs: extra.itemSubs ?? [],
     lastShopId: null,
     tripShopId: extra.tripShopId ?? null,
     tripStartedAt: extra.tripStartedAt ?? null,
@@ -202,6 +210,7 @@ beforeEach(() => {
   (dbClearGroceryList as jest.Mock).mockReturnValue([]);
   (dbGetAllGroceryShops as jest.Mock).mockReturnValue([]);
   (dbGetAllItemShopLinks as jest.Mock).mockReturnValue([]);
+  (dbGetAllItemSubLinks as jest.Mock).mockReturnValue([]);
   (dbGetLastShopId as jest.Mock).mockReturnValue(null);
   (dbGetTripShopId as jest.Mock).mockReturnValue(null);
   (dbGetTripStartedAt as jest.Mock).mockReturnValue(null);
@@ -2924,5 +2933,159 @@ describe('the active trip', () => {
     useGroceryStore.getState().initialize();
 
     expect(useGroceryStore.getState().tripShopId).toBeNull();
+  });
+});
+
+// ─── Substitutes ─────────────────────────────────────────────────────────────
+
+describe('substitutes', () => {
+  it('linkItemSub writes one direction', () => {
+    const butter = makeItem({ name: 'Butter' });
+    const margarine = makeItem({ name: 'Margarine' });
+    seed([butter, margarine]);
+
+    useGroceryStore.getState().linkItemSub(butter.id, margarine.id);
+
+    const subs = useGroceryStore.getState().itemSubs;
+    expect(subs).toHaveLength(1);
+    expect(subs[0]).toMatchObject({ itemId: butter.id, subItemId: margarine.id, note: null });
+    expect(dbSetItemSubLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('bothWays writes two rows rather than setting a flag', () => {
+    const butter = makeItem({ name: 'Butter' });
+    const margarine = makeItem({ name: 'Margarine' });
+    seed([butter, margarine]);
+
+    useGroceryStore.getState().linkItemSub(butter.id, margarine.id, {
+      note: 'Not for baking',
+      bothWays: true,
+    });
+
+    const subs = useGroceryStore.getState().itemSubs;
+    expect(subs).toHaveLength(2);
+    // The caveat is a fact about the pair, so it rides both rows.
+    expect(subs.every(l => l.note === 'Not for baking')).toBe(true);
+    expect(subs.map(l => [l.itemId, l.subItemId])).toEqual(
+      expect.arrayContaining([
+        [butter.id, margarine.id],
+        [margarine.id, butter.id],
+      ])
+    );
+  });
+
+  it('promotes both provisional rows into the catalog', () => {
+    const butter = makeItem({ name: 'Butter', onList: true, inCatalog: false });
+    const margarine = makeItem({ name: 'Margarine', onList: true, inCatalog: false });
+    seed([butter, margarine]);
+
+    useGroceryStore.getState().linkItemSub(butter.id, margarine.id);
+
+    expect(useGroceryStore.getState().items.every(i => i.inCatalog)).toBe(true);
+
+    // ...so the next "Remove from list" parks the row rather than deleting it
+    // and taking the substitution with it.
+    useGroceryStore.getState().removeFromList(butter.id);
+    expect(useGroceryStore.getState().items).toHaveLength(2);
+    expect(useGroceryStore.getState().itemSubs).toHaveLength(1);
+  });
+
+  it('refuses to link an item to itself', () => {
+    const butter = makeItem({ name: 'Butter' });
+    seed([butter]);
+
+    useGroceryStore.getState().linkItemSub(butter.id, butter.id);
+
+    expect(useGroceryStore.getState().itemSubs).toEqual([]);
+    expect(dbSetItemSubLink).not.toHaveBeenCalled();
+  });
+
+  it('ignores a half that does not exist', () => {
+    const butter = makeItem({ name: 'Butter' });
+    seed([butter]);
+
+    useGroceryStore.getState().linkItemSub(butter.id, 'nope');
+
+    expect(useGroceryStore.getState().itemSubs).toEqual([]);
+  });
+
+  it('re-linking an existing pair edits its note and keeps its place', () => {
+    const butter = makeItem({ name: 'Butter' });
+    const margarine = makeItem({ name: 'Margarine' });
+    seed([butter, margarine], {
+      itemSubs: [
+        {
+          itemId: butter.id,
+          subItemId: margarine.id,
+          note: null,
+          createdAt: '2020-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+
+    useGroceryStore.getState().linkItemSub(butter.id, margarine.id, { note: 'Frying only' });
+
+    const subs = useGroceryStore.getState().itemSubs;
+    expect(subs).toHaveLength(1);
+    expect(subs[0].note).toBe('Frying only');
+    // The stamp is what orders the list; an edit must not shuffle the row.
+    expect(subs[0].createdAt).toBe('2020-01-01T00:00:00.000Z');
+  });
+
+  it('unlinkItemSub drops one direction and leaves the reverse alone', () => {
+    const butter = makeItem({ name: 'Butter' });
+    const margarine = makeItem({ name: 'Margarine' });
+    seed([butter, margarine]);
+    useGroceryStore.getState().linkItemSub(butter.id, margarine.id, { bothWays: true });
+
+    useGroceryStore.getState().unlinkItemSub(butter.id, margarine.id);
+
+    expect(useGroceryStore.getState().itemSubs).toEqual([
+      expect.objectContaining({ itemId: margarine.id, subItemId: butter.id }),
+    ]);
+    expect(dbDeleteItemSubLink).toHaveBeenCalledWith(butter.id, margarine.id);
+  });
+
+  it('setItemSubNote clears the note on a blank string', () => {
+    const butter = makeItem({ name: 'Butter' });
+    const margarine = makeItem({ name: 'Margarine' });
+    seed([butter, margarine]);
+    useGroceryStore.getState().linkItemSub(butter.id, margarine.id, { note: 'Frying only' });
+
+    useGroceryStore.getState().setItemSubNote(butter.id, margarine.id, '   ');
+
+    expect(useGroceryStore.getState().itemSubs[0].note).toBeNull();
+  });
+
+  it('deleting an item drops its links from both sides', () => {
+    const butter = makeItem({ name: 'Butter' });
+    const margarine = makeItem({ name: 'Margarine' });
+    const oil = makeItem({ name: 'Olive oil' });
+    seed([butter, margarine, oil]);
+    useGroceryStore.getState().linkItemSub(butter.id, margarine.id);
+    useGroceryStore.getState().linkItemSub(oil.id, margarine.id);
+
+    useGroceryStore.getState().deleteItem(margarine.id);
+
+    expect(useGroceryStore.getState().itemSubs).toEqual([]);
+  });
+
+  it('ensureCatalogItem mints an off-list catalog row, and finds an existing one', () => {
+    seed([]);
+
+    const created = useGroceryStore.getState().ensureCatalogItem('2 lb margarine');
+    expect(created).toMatchObject({ name: 'margarine', onList: false, inCatalog: true });
+
+    // Keyed on the parsed name, so a second spelling finds the same row rather
+    // than minting one no purchase could ever match.
+    const again = useGroceryStore.getState().ensureCatalogItem('Margarine');
+    expect(again?.id).toBe(created?.id);
+    expect(useGroceryStore.getState().items).toHaveLength(1);
+  });
+
+  it('ensureCatalogItem refuses a name that trims away', () => {
+    seed([]);
+    expect(useGroceryStore.getState().ensureCatalogItem('   ')).toBeNull();
+    expect(useGroceryStore.getState().items).toEqual([]);
   });
 });

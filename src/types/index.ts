@@ -1140,6 +1140,53 @@ export interface ItemShopLink {
   brandUnavailableAt: string | null;
 }
 
+// One (item, substitute) pair — "if there's no butter, use margarine".
+//
+// Shaped like ItemShopLink above because it's the same problem: a fact about a
+// pair of rows, one row per pair, bounded by how many swaps you actually name.
+//
+// **A substitute is not an alternative**, and the distinction is the whole
+// reason this is its own thing rather than another `choiceGroup`. The one-line
+// test is whether the answer depends on the dish:
+//
+// - An *alternative* (`RecipeIngredient.choiceGroup`) lives on the recipe. Both
+//   options are intended, they're equals, and which one you make is decided per
+//   cooking (`MealPlanEntry.recipeChoices`).
+// - A *substitute* lives on the item. One is intended and one is tolerated,
+//   they're ranked rather than equal, it's consulted when the first isn't
+//   available, and it applies to every recipe naming the item.
+//
+// Item-level is what makes this a system rather than a field: "I use margarine
+// for butter" is one fact that reaches all twelve recipes calling for butter,
+// and `RecipeIngredient.nameKey` already bridges every ingredient line to the
+// catalog, so it gets there with no new plumbing through the recipes JSON.
+//
+// **Directional, and symmetry is two rows.** "Milk instead of buttermilk" is
+// not "buttermilk instead of milk". A `symmetric` flag would make every reader
+// stop and work out which way the row it's holding is facing — the same reason
+// two ingredient rows beat one line reading "serrano or jalapeño".
+//
+// **Nothing infers one.** Same discipline as `GroceryItem.brandStrict` and as
+// the deleted `likelyItemIds` bucket in shoppingTrip.ts: the user says so, or
+// it isn't recorded. There is no built-in substitution lexicon and there is not
+// going to be one.
+//
+// One-to-many is permanently out: "buttermilk → milk + lemon juice" is two
+// items both required, which is a recipe rather than a swap.
+export interface ItemSubLink {
+  // What the recipe asks for.
+  itemId: string;
+  // What you'd accept instead.
+  subItemId: string;
+  // The caveat, free text — "fine for frying, not for baking". Margarine for
+  // butter is right in a pan and wrong in laminated pastry, and this is where
+  // that goes: per-recipe scoping would rebuild `choiceGroup` badly, and since
+  // nothing auto-applies a substitute, a wrong one is a caption you ignore
+  // rather than a purchase you regret.
+  note: string | null;
+  createdAt: string;
+}
+
 /**
  * The most a price can be, in minor units — £10,000. Not a validation rule
  * anyone should hit, just the ceiling that stops a mistyped card number

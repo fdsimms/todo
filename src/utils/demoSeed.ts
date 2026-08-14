@@ -844,6 +844,8 @@ function seedGroceries(recipes: DemoRecipes): void {
     linkItemShop,
     linkItemShopMany,
     markItemsUnavailable,
+    ensureCatalogItem,
+    linkItemSub,
     setShopExcludedFromSuggestions,
     startTrip,
     itemById,
@@ -1008,6 +1010,29 @@ function seedGroceries(recipes: DemoRecipes): void {
   // shows the rule is narrow: only what you've marked drops out, so a store you
   // haven't checked still counts as somewhere you can get this.
   linkItemShop(itemNamed('Cottage cheese').id, costco.id);
+
+  // Substitutes, both shapes. Nothing infers one of these, so a demo with none
+  // reads as an app that hasn't got the feature — and they're invisible until
+  // something is linked, since a substitute is never captioned speculatively.
+  //
+  // Butter → margarine is the asymmetric case *and* the reason the note field
+  // exists: the swap is right in a pan and wrong in laminated pastry, and
+  // that's a caveat rather than a per-recipe scope. Milk ↔ oat milk is the
+  // symmetric one, which is two rows and not a flag.
+  //
+  // Both stand-ins are minted off-list rather than added to the CATALOG list
+  // above: nothing is provisional about a name typed to record a standing
+  // fact, and the clear below would drop a row that had never been bought.
+  const margarine = ensureCatalogItem('Margarine');
+  const oatMilk = ensureCatalogItem('Oat milk');
+  if (margarine) {
+    linkItemSub(itemNamed('Butter').id, margarine.id, {
+      note: 'Fine for frying, not for baking',
+    });
+  }
+  if (oatMilk) {
+    linkItemSub(itemNamed('Milk').id, oatMilk.id, { bothWays: true });
+  }
 
   // Everything else typed above is still sitting on the list, since only what
   // a trip actually bought — or a link/unavailable claim above — came off it
