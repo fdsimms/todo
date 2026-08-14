@@ -70,7 +70,7 @@ export function describeCatalogItem(
   const product = describeProduct(item);
   if (product) parts.push(product);
 
-  if (item.onList) parts.push(item.checked ? 'in your trolley' : 'on your list');
+  if (item.onList) parts.push(item.checked ? 'in your cart' : 'on your list');
 
   // The pantry's own words, verbatim — the same line the item sheet and a week
   // plan show. A second phrasing here is a second thing to keep true.

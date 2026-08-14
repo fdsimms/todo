@@ -150,7 +150,7 @@ export function seedDemoData(): void {
   // row — and so the ranking is visible: fewer moves, and a more recent start.
   const gutters = addTask({
     title: 'Clear the gutters',
-    notes: 'Before the autumn rain, ideally.',
+    notes: 'Before the fall rain, ideally.',
     category: 'Home',
     dueDate: today.toISOString(),
     priority: 1,
@@ -201,7 +201,7 @@ export function seedDemoData(): void {
   // The other two kinds the editor's Kind picker offers. Without a row apiece
   // the picker names two features demo mode can't show you.
   const piano = addTask({
-    title: 'Practise the piano',
+    title: 'Practice the piano',
     notes: 'A timed task: the row counts down once you start it.',
     category: 'Health',
     dueDate: today.toISOString(),
@@ -235,7 +235,7 @@ export function seedDemoData(): void {
   // partway through the cycle: the editor's caption then reads as a rule in
   // progress rather than one nobody has started.
   const violin = addTask({
-    title: 'Practise the violin',
+    title: 'Practice the violin',
     notes: 'Every fourth session adds a one-off task to rosin the bow.',
     category: 'Health',
     dueDate: today.toISOString(),
@@ -253,7 +253,7 @@ export function seedDemoData(): void {
   // exists on a completed row.
   addTask({
     title: 'Pick a date for the trip',
-    notes: 'Ticking this asks for the date and keeps it with the task.',
+    notes: 'Checking this off asks for the date and keeps it with the task.',
     category: 'Errands',
     dueDate: today.toISOString(),
     deliverableKind: 'date',
@@ -311,7 +311,7 @@ export function seedDemoData(): void {
   // reads correctly, it just falls back to one notification.
   addTask({
     title: 'Take antibiotics',
-    notes: 'Set to keep ringing until it is ticked off.',
+    notes: 'Set to keep ringing until it is checked off.',
     category: 'Health',
     dueDate: addDays(today, 1).toISOString(),
     reminderTime: setHours(addDays(today, 1), 8).toISOString(),
@@ -403,7 +403,7 @@ export function seedDemoData(): void {
     ['Ship the pricing changes', 'Work', 0],
     ['Pick up the dry cleaning', 'Errands', 1],
     ['Weekly review', 'Work', 1],
-    ['Call Mum', 'Home', 2],
+    ['Call Mom', 'Home', 2],
     ['Refill the prescription', 'Health', 2],
     ['Cancel the unused subscription', 'Home', 3],
     ['Fix the flaky login test', 'Work', 4],
@@ -1285,7 +1285,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   };
 
   cooked(-8, 'dinner', { title: 'Lemon garlic salmon', recipeId: recipes.salmon });
-  cooked(-6, 'dinner', { title: 'Takeaway curry' });
+  cooked(-6, 'dinner', { title: 'Takeout curry' });
   cooked(-5, 'lunch', { title: 'Turkey and avocado sandwich', recipeId: recipes.sandwich });
   const steakNight = cooked(-4, 'dinner', {
     title: 'Seared steak with potatoes',
@@ -1333,7 +1333,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   });
   // Logged by hand with no recipe behind it — half a takeaway is a leftover.
   logLeftover({
-    title: 'Takeaway curry',
+    title: 'Takeout curry',
     storedAt: subDays(today, 6).toISOString(),
     keepDays: 3,
   });

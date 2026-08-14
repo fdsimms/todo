@@ -79,7 +79,7 @@ interface Props {
 const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; collapsible: boolean }[] = [
   { category: 'needToBuy', label: 'Need to buy', interactive: true, collapsible: false },
   { category: 'alreadyOnList', label: 'Already on your list', interactive: true, collapsible: false },
-  { category: 'inTrolley', label: 'In your trolley', interactive: false, collapsible: false },
+  { category: 'inCart', label: 'In your cart', interactive: false, collapsible: false },
   { category: 'staple', label: 'Always have', interactive: true, collapsible: true },
   { category: 'probablyHave', label: 'Probably have', interactive: true, collapsible: true },
 ];
@@ -87,7 +87,7 @@ const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; c
 /**
  * Review-then-commit for one recipe, the single-recipe sibling of
  * AddWeekToListSheet — same classifyPlanned pantry-awareness (needToBuy /
- * alreadyOnList / inTrolley / probablyHave) instead of RecipeDetailScreen's
+ * alreadyOnList / inCart / probablyHave) instead of RecipeDetailScreen's
  * old blind addFromPlan over every ingredient.
  *
  * The one thing this sheet has that AddWeekToListSheet doesn't: "Already have
@@ -168,7 +168,7 @@ export function RecipeToListSheet({
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {
-      needToBuy: [], alreadyOnList: [], inTrolley: [], probablyHave: [], staple: [],
+      needToBuy: [], alreadyOnList: [], inCart: [], probablyHave: [], staple: [],
     };
     for (const row of classified) out[row.category].push(row);
     return out;
@@ -239,7 +239,7 @@ export function RecipeToListSheet({
   const handleAdd = () => {
     if (!recipe) { onClose(); return; }
     const rows: PlannedRow[] = classified
-      .filter(r => r.category !== 'inTrolley' && ticked.has(r.nameKey))
+      .filter(r => r.category !== 'inCart' && ticked.has(r.nameKey))
       .map(r => ({
         name: r.name,
         quantity: r.quantity || null,
@@ -260,7 +260,7 @@ export function RecipeToListSheet({
 
     const parts = [`Added ${result.added.length}`];
     if (result.alreadyOnList.length > 0) parts.push(`${result.alreadyOnList.length} already on your list`);
-    if (result.skippedInCart.length > 0) parts.push(`${result.skippedInCart.length} already in your trolley`);
+    if (result.skippedInCart.length > 0) parts.push(`${result.skippedInCart.length} already in your cart`);
     Alert.alert(
       result.added.length > 0 ? 'On the list' : 'Nothing to add',
       parts.join(' · ')
@@ -422,7 +422,7 @@ export function RecipeToListSheet({
                                 accessibilityState={{ checked: on, disabled: !interactive }}
                                 accessibilityLabel={
                                   [row.name, shownQuantity, subtitle, alternativeNote,
-                                   !interactive ? 'already in your trolley' : null]
+                                   !interactive ? 'already in your cart' : null]
                                     .filter(Boolean)
                                     .join(', ')
                                 }

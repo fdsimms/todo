@@ -263,7 +263,7 @@ export function RecurrencePicker({
 
       <Group
         label="Next due date"
-        hint="After completion counts from the day you tick it off, so a late task moves the whole schedule."
+        hint="After completion counts from the day you check it off, so a late task moves the whole schedule."
         styles={styles}
       >
         <SegmentedControl

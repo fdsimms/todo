@@ -318,7 +318,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               accessibilityRole="switch"
               accessibilityState={{ checked: optional }}
               accessibilityLabel="Optional"
-              accessibilityHint="Optional items start unticked when the template is applied"
+              accessibilityHint="Optional items start unchecked when the template is applied"
             >
               <Ionicons
                 name={optional ? 'help-circle' : 'help-circle-outline'}

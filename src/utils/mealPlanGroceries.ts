@@ -285,7 +285,7 @@ export function describeQuantities(quantities: readonly string[]): string {
   return quantities.length > 1 ? `×${quantities.length}` : '';
 }
 
-export type PlanCategory = 'needToBuy' | 'alreadyOnList' | 'inTrolley' | 'probablyHave' | 'staple';
+export type PlanCategory = 'needToBuy' | 'alreadyOnList' | 'inCart' | 'probablyHave' | 'staple';
 
 export interface ClassifiedIngredient {
   nameKey: string;
@@ -351,7 +351,7 @@ export interface ClassifiedIngredient {
  * |------------------|---------------------------------------------|
  * | needToBuy        | no catalog row, or known but off the list    |
  * | alreadyOnList     | on the list, unchecked                       |
- * | inTrolley         | on the list *and* checked                    |
+ * | inCart            | on the list *and* checked                    |
  * | staple            | known, off the list, and marked isStaple —   |
  * |                   | always on hand, unconditionally              |
  * | probablyHave      | known, off the list, and grocerySuggest's    |
@@ -361,7 +361,7 @@ export interface ClassifiedIngredient {
  * `staple` is checked ahead of `probablyHave` — a staple is a standing fact
  * ("I always have salt"), not a guess from recent purchases, and it needs no
  * purchase history to be true. Both are checked only for a row that's known
- * but off the list — never for one already on the list or in the trolley
+ * but off the list — never for one already on the list or in the cart
  * (already on the list this week wins, staple or not), and never for a name
  * with no catalog row at all.
  *
@@ -410,7 +410,7 @@ export function classifyPlanned(
     let category: PlanCategory;
     let reason: string | null = null;
     if (match?.onList) {
-      category = match.checked ? 'inTrolley' : 'alreadyOnList';
+      category = match.checked ? 'inCart' : 'alreadyOnList';
     } else if (match?.isStaple) {
       category = 'staple';
     } else if (match && (reason = probablyHaveReason(match, now))) {
@@ -474,7 +474,7 @@ export function restockRows(classified: readonly ClassifiedIngredient[]): Classi
  * - **`staple`** — a standing fact ("I always have salt"), deliberately not
  *   conditioned on purchase history, and asking after every cook is how the
  *   app would talk someone out of one.
- * - **`alreadyOnList` / `inTrolley`** — already being restocked. There is
+ * - **`alreadyOnList` / `inCart`** — already being restocked. There is
  *   nothing an answer here would change.
  * - **`needToBuy`** — the app doesn't think you have it, which is
  *   `restockRows`' half of the same set.

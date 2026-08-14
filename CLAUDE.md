@@ -51,6 +51,16 @@ option of a pair has to be filed as an alternative for itself. If a label only m
 you've read the type, it's the wrong label — name the state the user is choosing between
 ("Always needed" / "One of a choice") and let the control carry the mechanism.
 
+**American English, not British.** Britishisms had crept into copy across the app — "tick"/
+"ticked" instead of "check off"/"checked", "trolley" instead of "cart", "Practise" instead of
+"Practice", "autumn" instead of "fall", "fortnight" instead of "two weeks" — cleaned up in
+#1635. Anything a user sees (UI text, hints, accessibility labels, alerts, patch notes,
+demo-mode content) should read in American English; if you're not sure which side of the
+Atlantic a word or spelling falls on, check before using it. This is scoped to user-facing
+text only — the codebase's comments and test descriptions have long used British spelling and
+phrasing (colour, behaviour, labelled, organised, and so on) as their own established internal
+style, and that's a separate, deliberate thing; don't go rewrite comments to "fix" this.
+
 ## GitHub issue labels
 
 When creating an issue, apply exactly four labels from these fixed sets (verbatim strings — don't

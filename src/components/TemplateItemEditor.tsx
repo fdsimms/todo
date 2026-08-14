@@ -630,7 +630,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <Ionicons name="help-circle-outline" size={18} color={optional ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Optional</Text>
-            <Text style={styles.optionHint}>Starts unticked in the apply sheet, so it's skipped by default</Text>
+            <Text style={styles.optionHint}>Starts unchecked in the apply sheet, so it's skipped by default</Text>
           </View>
           <View style={[styles.toggle, optional && styles.toggleOn]}>
             <View style={[styles.toggleKnob, optional && styles.toggleKnobOn]} />
