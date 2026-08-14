@@ -262,7 +262,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
 
           <ScrollView contentContainerStyle={styles.body}>
             <Text style={styles.intro}>
-              Tick what you can get at {correctingShop.name}. It’s filed against the store for next
+              Check off what you can get at {correctingShop.name}. It’s filed against the store for next
               time, and this trip’s numbers update as soon as you save.
             </Text>
             {known > 0 && (
@@ -551,7 +551,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
             <View style={styles.emptyNote}>
               <Ionicons name="storefront-outline" size={iconSize.md} color={colors.textTertiary} />
               <Text style={styles.emptyText}>
-                No stores yet. Name one when you finish a shop and this starts telling you which of
+                No stores yet. Name one when you finish a trip and this starts telling you which of
                 them has what.
               </Text>
             </View>

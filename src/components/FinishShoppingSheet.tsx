@@ -248,7 +248,7 @@ export function FinishShoppingSheet({
             <View style={styles.emptyNote}>
               <Ionicons name="storefront-outline" size={iconSize.md} color={colors.textTertiary} />
               <Text style={styles.emptyText}>
-                No stores yet. Add one and this trip gets filed against it — after a shop or two,
+                No stores yet. Add one and this trip gets filed against it — after a trip or two,
                 Buy again can show you what each store carries.
               </Text>
             </View>
@@ -261,7 +261,7 @@ export function FinishShoppingSheet({
             <>
               <Text style={styles.label}>ANYTHING THEY DIDN’T HAVE?</Text>
               <Text style={styles.hint}>
-                Optional. Tick what {selectedShop.name} didn’t stock. Everything here stays on your
+                Optional. Check off what {selectedShop.name} didn’t stock. Everything here stays on your
                 list either way — this only records why.
               </Text>
 
@@ -294,7 +294,7 @@ export function FinishShoppingSheet({
               <Text style={styles.note}>
                 {unavailable.length > 0
                   ? `Filed as “not at ${selectedShop.name}”, so planning your next trip sends you somewhere else for ${unavailable.length === 1 ? 'it' : 'them'}. Buying ${unavailable.length === 1 ? 'it' : 'one'} there later clears it.`
-                  : 'Leave them unticked if you simply didn’t get to them — that’s the usual reason, and it’s what nothing ticked means.'}
+                  : 'Leave them unchecked if you simply didn’t get to them — that’s the usual reason, and it’s what nothing checked means.'}
               </Text>
             </>
           )}

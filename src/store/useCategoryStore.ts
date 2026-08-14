@@ -9,6 +9,7 @@ import {
   dbRenameCategory,
   dbSetCategoryHideOnVacation,
   dbSetCategoryExcludeFromPinSuggestions,
+  dbSetCategoryExcludeFromNewTasksBanner,
   dbSetCategoryEmoji,
   dbSetCategoryDefaultTimeSegments,
   dbBatchUpdateCategorySortOrders,
@@ -33,6 +34,7 @@ interface CategoryStore {
   removeCategorySchedule: (name: string) => void;
   setCategoryHideOnVacation: (name: string, hide: boolean) => void;
   setCategoryExcludeFromPinSuggestions: (name: string, exclude: boolean) => void;
+  setCategoryExcludeFromNewTasksBanner: (name: string, exclude: boolean) => void;
   setCategoryEmoji: (name: string, emoji: string | null) => void;
   // Only what *new* tasks in this category start with. Retroactively moving
   // the tasks that already exist is a separate, explicit act — see
@@ -122,6 +124,17 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
     set(s => ({
       categories: s.categories.map(c =>
         c.name === name ? { ...c, excludeFromPinSuggestions: exclude } : c
+      ),
+    }));
+  },
+
+  setCategoryExcludeFromNewTasksBanner(name, exclude) {
+    const cat = get().categories.find(c => c.name === name);
+    if (!cat) return;
+    dbSetCategoryExcludeFromNewTasksBanner(cat.id, exclude);
+    set(s => ({
+      categories: s.categories.map(c =>
+        c.name === name ? { ...c, excludeFromNewTasksBanner: exclude } : c
       ),
     }));
   },

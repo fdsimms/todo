@@ -745,10 +745,19 @@ export function displayTitleFor(task: Task): string {
   return activeChainStepTitle(task) ?? task.title;
 }
 
+// True when the task's category has opted out of being flagged "new" — no
+// row dot, no entry in the "new todos" banner. Mirrors isCategoryHiddenOnVacation.
+function isCategoryExcludedFromNewTasksBanner(category: string | null): boolean {
+  if (!category) return false;
+  const cat = useCategoryStore.getState().getCategoryByName(category);
+  return !!cat?.excludeFromNewTasksBanner;
+}
+
 // True for a visible task that hasn't been interacted with since it most
 // recently crossed a day-based visibility gate — drives the "new" dot.
 export function isTaskNew(task: Task): boolean {
   if (!isTaskVisible(task)) return false;
+  if (isCategoryExcludedFromNewTasksBanner(task.category)) return false;
   const becameVisibleAt = getBecameVisibleAt(task);
   if (!becameVisibleAt) return false;
   const seenAt = new Date(task.seenAt ?? task.createdAt);

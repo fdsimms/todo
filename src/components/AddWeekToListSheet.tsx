@@ -43,7 +43,7 @@ interface Props {
 const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; collapsible: boolean }[] = [
   { category: 'needToBuy', label: 'Need to buy', interactive: true, collapsible: false },
   { category: 'alreadyOnList', label: 'Already on your list', interactive: true, collapsible: false },
-  { category: 'inTrolley', label: 'In your trolley', interactive: false, collapsible: false },
+  { category: 'inCart', label: 'In your cart', interactive: false, collapsible: false },
   // Collapsed by default, same reasoning as probablyHave below: salt and
   // water aren't a decision the user asked to make on every add.
   { category: 'staple', label: 'Always have', interactive: true, collapsible: true },
@@ -62,7 +62,7 @@ const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; c
  * Ticking follows the table this feature was speced against: "Need to buy"
  * starts ticked (that's the point of the button), "Already on your list"
  * starts unticked because the only thing ticking it does is top up the
- * quantity of a row that's already there, and "In your trolley" is shown for
+ * quantity of a row that's already there, and "In your cart" is shown for
  * information but can't be toggled at all — it's already been dealt with
  * this trip.
  */
@@ -84,7 +84,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {
-      needToBuy: [], alreadyOnList: [], inTrolley: [], probablyHave: [], staple: [],
+      needToBuy: [], alreadyOnList: [], inCart: [], probablyHave: [], staple: [],
     };
     for (const row of classified) out[row.category].push(row);
     return out;
@@ -127,7 +127,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
 
   const handleAdd = () => {
     const rows: PlannedRow[] = classified
-      .filter(r => r.category !== 'inTrolley' && ticked.has(r.nameKey))
+      .filter(r => r.category !== 'inCart' && ticked.has(r.nameKey))
       .map(r => ({
         name: r.name,
         quantity: r.quantity || null,
@@ -146,7 +146,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
     // discipline describeShops and RecipeDetailScreen's addToList keep.
     const parts = [`Added ${result.added.length}`];
     if (result.alreadyOnList.length > 0) parts.push(`${result.alreadyOnList.length} already on your list`);
-    if (result.skippedInCart.length > 0) parts.push(`${result.skippedInCart.length} already in your trolley`);
+    if (result.skippedInCart.length > 0) parts.push(`${result.skippedInCart.length} already in your cart`);
     Alert.alert(
       result.added.length > 0 ? 'On the list' : 'Nothing to add',
       parts.join(' · ')
@@ -227,7 +227,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
                               accessibilityRole="checkbox"
                               accessibilityState={{ checked: on, disabled: !interactive }}
                               accessibilityLabel={
-                                [row.name, shownQuantity, subtitle, !interactive ? 'already in your trolley' : null]
+                                [row.name, shownQuantity, subtitle, !interactive ? 'already in your cart' : null]
                                   .filter(Boolean)
                                   .join(', ')
                               }
