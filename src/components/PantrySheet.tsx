@@ -27,6 +27,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
+import { PressableScale } from './PressableScale';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { haptics } from '../utils/haptics';
 
@@ -39,13 +40,19 @@ interface Props {
  * Everything the app currently thinks you already have, in one place.
  *
  * The set is `probablyHaveReason`'s and the rows show that function's own
- * wording. The one thing it writes is the assertion the item sheet's "Got it"
- * pill already writes — `addToPantry`, off the field at the top — because
+ * wording. The one thing it writes from the field at the top is the assertion
+ * the item sheet's "Got it" pill already writes — `addToPantry` — because
  * that correction was unreachable for anything with no row yet: you can only
  * open an item's sheet from the list or from Buy again, so "I have flour" was
- * unsayable until flour had been bought through the app at least once. Taking
- * it back still goes through the Pantry pills on GroceryItemSheet, which is
- * why a row here opens that sheet with them already showing (`initialField`).
+ * unsayable until flour had been bought through the app at least once.
+ *
+ * A row's trailing button is the other correction, and the one this screen
+ * exists for most: it writes exactly what `GroceryItemSheet`'s "Out of it"
+ * pill writes (`markOutOfMany`, same call `CookedUseUpSheet` batches), in one
+ * tap, with the same undo everything else in that store gets. The full row
+ * still opens `GroceryItemSheet` with the Pantry pills already showing
+ * (`initialField`) for anything past that one bit — correcting quantity,
+ * re-marking "got it," always-have-it.
  *
  * That keeps the model the one #1040 settled on — computed from what you buy,
  * corrected when it's wrong, never an inventory anybody has to keep up. The
@@ -60,6 +67,7 @@ export function PantrySheet({ visible, onClose }: Props) {
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const addToPantry = useGroceryStore(s => s.addToPantry);
+  const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
 
   const [query, setQuery] = useState('');
   const [openItemId, setOpenItemId] = useState<string | null>(null);
@@ -107,6 +115,11 @@ export function PantrySheet({ visible, onClose }: Props) {
     setQuery('');
   };
 
+  const handleMarkOut = (entry: PantryEntry) => {
+    haptics.tap();
+    if (markOutOfMany([entry.item.id]) > 0) haptics.success();
+  };
+
   const renderItem = ({ item: entry }: { item: PantryEntry }) => (
     <TouchableOpacity
       style={styles.row}
@@ -117,7 +130,7 @@ export function PantrySheet({ visible, onClose }: Props) {
       }}
       accessibilityRole="button"
       accessibilityLabel={`${entry.item.name}, ${entry.reason}`}
-      accessibilityHint="Opens the item, where you can say you're out of it"
+      accessibilityHint="Opens the item, where you can correct it further"
     >
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={1}>{entry.item.name}</Text>
@@ -126,7 +139,19 @@ export function PantrySheet({ visible, onClose }: Props) {
           {entry.item.onList && ' · on the list'}
         </Text>
       </View>
-      <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+      {/* The single most common action on this screen, one tap away rather
+          than two — see the doc comment above. Replaces the chevron, which
+          named a destination ("more is behind here") this row's tap still
+          reaches; the destination doesn't need naming twice. */}
+      <PressableScale
+        style={styles.outButton}
+        onPress={() => handleMarkOut(entry)}
+        hitSlop={8}
+        accessibilityLabel={`Mark ${entry.item.name} out`}
+        accessibilityHint="Marks it not on hand, without opening the item"
+      >
+        <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
+      </PressableScale>
     </TouchableOpacity>
   );
 
@@ -173,7 +198,7 @@ export function PantrySheet({ visible, onClose }: Props) {
         {total > 0 && !typed && (
           <Text style={styles.caption}>
             {total} {total === 1 ? 'thing' : 'things'} you probably have, worked out from what you
-            buy and what you&apos;ve marked. Tap one to say you&apos;re out of it.
+            buy and what you&apos;ve marked. Tap ✕ on one to say you&apos;re out of it.
           </Text>
         )}
 
@@ -299,5 +324,6 @@ function makeStyles(colors: Colors) {
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
+    outButton: { padding: 2 },
   });
 }
