@@ -1419,23 +1419,40 @@ export function TodayScreen() {
   // isn't told they're all leaving.
   const sectionTaskIds = useMemo(() => computeSectionTaskIds(data), [data]);
 
-  // Context rows per section, for the count a collapsed header shows. They
-  // can't come from sectionTaskIds — that's task ids, and it feeds
-  // CompletionCollapse, which animates a header out with the rows being ticked
-  // off. Counting them there would have a header waiting on rows that can
-  // never complete. Without this a collapsed Calendar Events reads "(0)",
-  // since its rows are the only thing in it.
-  const sectionContextCounts = useMemo(() => {
+  // Every row per section, for the count a collapsed header shows: task rows,
+  // context rows, and each stack's currently-visible children (the same
+  // subset `visibleGroupItems` hands the tray itself, so a collapsed header's
+  // total matches what expanding it would show). Built from `listItems` —
+  // before collapse/focus/hideCategories run — deliberately unlike
+  // `sectionTaskIds` below: applyCategoryCollapse strips every task/group/
+  // context row out of a *collapsed* section, so reading off `data` would
+  // always report a collapsed header's own count as 0, stack or no stack.
+  // This also can't come from sectionTaskIds even pre-collapse — that map
+  // deliberately drops a whole section the moment it hits a group item (see
+  // its own doc comment: a collapsed header must not strand a stack's tray),
+  // which would silently drop every task row sharing that category from the
+  // count too, and it never counted context rows to begin with (it feeds
+  // CompletionCollapse, which animates a header out with the rows being
+  // ticked off — a header shouldn't wait on rows that can never complete).
+  const sectionDisplayCounts = useMemo(() => {
+    const visibleCountByGroupId = new Map(visibleGroupItems.map(g => [g.group.id, g.children.length]));
     const counts = new Map<string, number>();
     let label: string | null = null;
-    for (const item of data) {
-      if (item.type === 'header') label = item.label;
-      else if (item.type === 'context' && label !== null) {
-        counts.set(label, (counts.get(label) ?? 0) + 1);
+    for (const item of listItems) {
+      if (item.type === 'header') {
+        label = item.label;
+        counts.set(label, 0);
+      } else if (label !== null) {
+        if (item.type === 'task' || item.type === 'context') {
+          counts.set(label, (counts.get(label) ?? 0) + 1);
+        } else if (item.type === 'group') {
+          const visibleCount = visibleCountByGroupId.get(item.group.id) ?? 0;
+          counts.set(label, (counts.get(label) ?? 0) + visibleCount);
+        }
       }
     }
     return counts;
-  }, [data]);
+  }, [listItems, visibleGroupItems]);
 
   // Local copy of data fed to ReorderableList. onReorder writes the settled
   // grouped layout here immediately so the list doesn't flash back to the
@@ -1841,7 +1858,7 @@ export function TodayScreen() {
             onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
             onLongPress={isCategory ? () => toggleCategoryFocus(item.label) : undefined}
             focused={isCategory ? focusedCategory === item.label : undefined}
-            count={isCategory ? sectionIds.length + (sectionContextCounts.get(item.label) ?? 0) : undefined}
+            count={isCategory ? sectionDisplayCounts.get(item.label) ?? 0 : undefined}
           />
         </CompletionCollapse>
       );

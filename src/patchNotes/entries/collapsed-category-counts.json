@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the count on a collapsed category header reading (0) when the category contained a stack",
+  "date": "2026-08-14"
+}
