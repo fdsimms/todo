@@ -22,7 +22,7 @@ import { PillGroup } from './PillGroup';
 import { haptics } from '../utils/haptics';
 import { lastPriceFor as lastPriceForItem, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { resolveShoppingSubstitutes } from '../utils/itemSubs';
-import { SHOP_NAME_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH } from '../types';
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
 const CHECK_SIZE = 22;
@@ -81,14 +81,20 @@ interface Props {
  * **A row just ticked unavailable can name what came home instead.** This is
  * the only moment the app can learn a substitute from what actually happened
  * rather than from a declaration — everywhere else in that system waits for
- * the user to go and say so in the item sheet. It unfolds under the row
- * itself rather than opening anything, is restricted to what the trip
- * actually bought (`purchased`, the only honest set), and follows the same
- * silence rule as the tick above it: nothing is picked by default, and
- * skipping it writes nothing. Changing the store clears these answers along
- * with the ticks — "got margarine instead" is an answer about Safeway's
- * shelves, not Costco's. `resolveShoppingSubstitutes` is what turns the
- * sheet's per-row answers into the pairs actually worth writing.
+ * the user to go and say so in the item sheet, which is exactly why it's
+ * worth capturing well here. It unfolds under the row itself rather than
+ * opening anything, offers what the trip actually bought as one-tap picks
+ * (`purchased`, the honest common case), and — via the same find-or-add
+ * `PillGroup` shape the store picker above it already uses — lets typing a
+ * name mint a catalog row for anything else, through `ensureCatalogItem`
+ * (the same "type it in" `SubstituteSheet`'s own field uses). Someone whose
+ * trolley never had the actual replacement in it, or who bought nothing at
+ * all this trip, can still say what they got. It follows the same silence
+ * rule as the tick above it: nothing is picked by default, and skipping it
+ * writes nothing. Changing the store clears these answers along with the
+ * ticks — "got margarine instead" is an answer about Safeway's shelves, not
+ * Costco's. `resolveShoppingSubstitutes` is what turns the sheet's per-row
+ * answers into the pairs actually worth writing.
  *
  * **Prices are the third question and follow the same rules**, with one
  * difference: they're asked whether or not a store is named. "They didn't have
@@ -118,6 +124,7 @@ export function FinishShoppingSheet({
   const addShop = useGroceryStore(s => s.addShop);
   const items = useGroceryStore(useShallow(s => s.items));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
+  const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
   const [selected, setSelected] = useState<string | null>(null);
@@ -217,6 +224,17 @@ export function FinishShoppingSheet({
     );
   };
 
+  // The typed-in half: what came home wasn't necessarily anything else in the
+  // trolley. Mints or finds the catalog row the same way SubstituteSheet's own
+  // add-by-name field does, then picks it — same as tapping a pill, just for a
+  // name that wasn't already one.
+  const handleCreateSubstitute = (itemId: string, name: string) => {
+    const created = ensureCatalogItem(name);
+    if (!created) return 'Enter a name.';
+    haptics.success();
+    setSubstituteFor(prev => ({ ...prev, [itemId]: created.id }));
+  };
+
   const countLabel = `${checkedCount} ${checkedCount === 1 ? 'item comes' : 'items come'} off the list`;
 
   /**
@@ -312,7 +330,14 @@ export function FinishShoppingSheet({
               <View style={styles.card}>
                 {leftover.map((row, i) => {
                   const ticked = unavailable.includes(row.id);
-                  const chosen = substituteFor[row.id] ?? null;
+                  const chosenId = substituteFor[row.id] ?? null;
+                  // A pick can be a purchased row, or a name typed into the
+                  // create field and minted on the spot — the latter isn't in
+                  // `purchased`, so it needs its own pill to show as selected.
+                  const chosenExtra =
+                    chosenId && !purchased.some(p => p.id === chosenId)
+                      ? items.find(i => i.id === chosenId)
+                      : null;
                   return (
                     <View key={row.id}>
                       <TouchableOpacity
@@ -333,22 +358,36 @@ export function FinishShoppingSheet({
                         </Text>
                       </TouchableOpacity>
 
-                      {/* Optional, and only once there's something it could
-                          possibly name — a trip that bought nothing has
-                          nothing to offer here. */}
-                      {ticked && purchased.length > 0 && (
+                      {/* Optional, and offered whether or not anything was
+                          bought this trip — the typed field means an empty
+                          trolley still has a way to answer. */}
+                      {ticked && (
                         <View style={styles.substituteWrap}>
                           <Text style={styles.substituteLabel}>Got something else instead?</Text>
                           <PillGroup
                             noun="item"
                             surface="card"
                             limit={6}
-                            options={purchased.map(p => ({
-                              key: p.id,
-                              label: p.name,
-                              selected: chosen === p.id,
-                              onPress: () => toggleSubstitute(row.id, p.id),
-                            }))}
+                            createMaxLength={GROCERY_NAME_MAX_LENGTH}
+                            onCreate={name => handleCreateSubstitute(row.id, name)}
+                            options={[
+                              ...purchased.map(p => ({
+                                key: p.id,
+                                label: p.name,
+                                selected: chosenId === p.id,
+                                onPress: () => toggleSubstitute(row.id, p.id),
+                              })),
+                              ...(chosenExtra
+                                ? [
+                                    {
+                                      key: chosenExtra.id,
+                                      label: chosenExtra.name,
+                                      selected: true,
+                                      onPress: () => toggleSubstitute(row.id, chosenExtra.id),
+                                    },
+                                  ]
+                                : []),
+                            ]}
                           />
                         </View>
                       )}
