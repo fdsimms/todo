@@ -5,13 +5,16 @@ import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useDemoStore } from '../../store/useDemoStore';
-import { dbExportTables, dbReplaceAllData } from '../../db/database';
+import { dbExportTables, dbReplaceAllData, dbSetRecipeImagePath } from '../../db/database';
 import {
   buildBackup, serializeBackup, parseBackup, summarizeBackup, backupFileName, type Backup,
 } from '../../utils/backup';
 import {
   writeBackupFile, shareBackupFile, discardBackupFile, pickBackupFile, canShare,
 } from '../../utils/backupFile';
+import {
+  recipeImageBasename, readRecipeImageBase64, writeRecipeImageFile,
+} from '../../utils/recipePhoto';
 import {
   RETENTION_OPTIONS, retentionCutoff, retentionLabel, selectPurgeableTaskIds, type RetentionDays,
 } from '../../utils/retention';
@@ -23,6 +26,33 @@ import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 
 /**
+ * Recipe photos are the one thing in a backup that isn't a table row (see the
+ * note at the top of backup.ts): `dbReplaceAllData` has already written every
+ * recipe's `image_path` back exactly as the backup held it, which is the
+ * *origin* device's path and generally not a file that exists here. This
+ * writes each embedded photo into this device's own recipe-images directory
+ * and repoints the row at that — clearing it instead when the backup has no
+ * matching bytes (an older backup taken before this shipped, or a photo that
+ * failed to read at export time), so a dangling path doesn't linger as a
+ * permanently blank image.
+ */
+function restoreRecipeImages(backup: Backup): void {
+  for (const row of backup.tables.recipes ?? []) {
+    const id = row.id;
+    const path = row.image_path;
+    if (typeof id !== 'string' || typeof path !== 'string' || !path) continue;
+
+    const basename = recipeImageBasename(path);
+    const base64 = basename ? backup.images[basename] : undefined;
+    if (basename && base64) {
+      dbSetRecipeImagePath(id, writeRecipeImageFile(basename, base64));
+    } else {
+      dbSetRecipeImagePath(id, null);
+    }
+  }
+}
+
+/**
  * Restoring rebuilds every table, so both stores have to re-read from scratch
  * afterwards. Tasks first, then settings — settings is what the visibility
  * rules read, so a task list rebuilt against the *old* day reset would be
@@ -30,6 +60,7 @@ import { makeSettingsStyles } from './settingsStyles';
  */
 function applyBackup(backup: Backup): void {
   dbReplaceAllData(backup.tables);
+  restoreRecipeImages(backup);
   useTaskStore.getState().initialize();
   useSettingsStore.getState().initialize();
 }
@@ -65,9 +96,19 @@ export function DataResetSettings() {
     let uri: string | null = null;
     try {
       const now = new Date();
-      const backup = buildBackup(dbExportTables(), {
+      const tables = dbExportTables();
+      const images: Record<string, string> = {};
+      for (const row of tables.recipes ?? []) {
+        const path = row.image_path;
+        if (typeof path !== 'string' || !path) continue;
+        const basename = recipeImageBasename(path);
+        const base64 = basename ? readRecipeImageBase64(path) : null;
+        if (basename && base64) images[basename] = base64;
+      }
+      const backup = buildBackup(tables, {
         appVersion: Constants.expoConfig?.version || '1.0.0',
         exportedAt: now,
+        images,
       });
       uri = writeBackupFile(serializeBackup(backup), backupFileName(now));
       if (!(await canShare())) {

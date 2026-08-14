@@ -262,6 +262,48 @@ export async function pickRecipeImage(source: RecipePhotoSource): Promise<Recipe
 }
 
 /**
+ * The filename a recipe image URI ends in — `recipe-images/<id>.jpg` → `<id>.jpg`.
+ * That filename is what a backup keys its embedded copy by (see backup.ts):
+ * the rest of the URI is the origin device's own document directory, which is
+ * meaningless anywhere else, but the filename `pickRecipeImage` minted is
+ * stable and portable.
+ */
+export function recipeImageBasename(uri: string): string | null {
+  const name = uri.split('/').pop();
+  return name ? name : null;
+}
+
+/**
+ * Reads a saved recipe image back out as base64, for embedding in a backup.
+ * Best effort, like `deleteRecipeImage`: a file that's gone or unreadable
+ * just means that recipe's photo doesn't travel with this export, not that
+ * the export should fail.
+ */
+export function readRecipeImageBase64(uri: string): string | null {
+  try {
+    const file = new (fileSystem().File)(uri);
+    return file.exists ? file.base64Sync() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Writes a backup's embedded image bytes into this device's own recipe-images
+ * directory and returns the `file://` URI to point `Recipe.imagePath` at.
+ * Never the URI the backup was written with — see the note in backup.ts.
+ */
+export function writeRecipeImageFile(basename: string, base64: string): string {
+  const { File } = fileSystem();
+  const dest = new File(recipeImageDirectory(), basename);
+  // A restore onto the same install a previous restore already touched lands
+  // on the same filename — overwrite rather than throw on the collision.
+  if (!dest.exists) dest.create();
+  dest.write(base64, { encoding: 'base64' });
+  return dest.uri;
+}
+
+/**
  * Deletes a recipe's saved image file, best effort. Used when the user
  * replaces or clears a recipe's image (the old file is otherwise an orphan —
  * nothing else references it) and when the recipe itself is deleted. Same

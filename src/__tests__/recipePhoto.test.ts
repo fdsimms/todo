@@ -31,6 +31,9 @@ jest.mock('expo-image-manipulator', () => ({
 const mockDelete = jest.fn();
 const mockMove = jest.fn();
 const mockDirCreate = jest.fn();
+const mockFileCreate = jest.fn();
+const mockWrite = jest.fn();
+const mockBase64Sync = jest.fn();
 // Tracks every File/Directory constructed so a test can assert what got
 // moved/deleted without the mock itself doing any real path arithmetic.
 let mockFileExists = true;
@@ -41,7 +44,10 @@ jest.mock('expo-file-system', () => {
     uris.map(u => (typeof u === 'string' ? u : (u as { uri: string }).uri)).join('/');
 
   return {
-    File: function MockFile(this: { uri: string; exists: boolean; delete: () => void; move: (dest: unknown) => void }, ...uris: unknown[]) {
+    File: function MockFile(this: {
+      uri: string; exists: boolean; delete: () => void; move: (dest: unknown) => void;
+      create: () => void; write: (content: string, options?: unknown) => void; base64Sync: () => string;
+    }, ...uris: unknown[]) {
       this.uri = joinUri(uris);
       this.exists = mockFileExists;
       this.delete = () => mockDelete(this.uri);
@@ -50,6 +56,9 @@ jest.mock('expo-file-system', () => {
         mockMove(this.uri, destUri);
         this.uri = destUri;
       };
+      this.create = () => mockFileCreate(this.uri);
+      this.write = (content: string, options?: unknown) => mockWrite(this.uri, content, options);
+      this.base64Sync = () => mockBase64Sync(this.uri);
     },
     Directory: function MockDirectory(this: { uri: string; exists: boolean; create: () => void }, ...uris: unknown[]) {
       this.uri = joinUri(uris);
@@ -57,6 +66,7 @@ jest.mock('expo-file-system', () => {
       this.create = () => mockDirCreate(this.uri);
     },
     Paths: { document: { uri: 'file:///documents' } },
+    EncodingType: { UTF8: 'utf8', Base64: 'base64' },
   };
 });
 
@@ -65,6 +75,9 @@ import {
   pickRecipePhoto,
   pickRecipeImage,
   deleteRecipeImage,
+  recipeImageBasename,
+  readRecipeImageBase64,
+  writeRecipeImageFile,
   MAX_PHOTO_EDGE,
   MAX_IMAGE_EDGE,
 } from '../utils/recipePhoto';
@@ -381,5 +394,59 @@ describe('deleteRecipeImage', () => {
     mockDelete.mockImplementation(() => { throw new Error('locked'); });
 
     expect(() => deleteRecipeImage('file:///documents/recipe-images/abc.jpg')).not.toThrow();
+  });
+});
+
+describe('recipeImageBasename', () => {
+  it('returns the filename off a recipe image URI', () => {
+    expect(recipeImageBasename('file:///documents/recipe-images/abc123.jpg')).toBe('abc123.jpg');
+  });
+
+  it('is null for a URI with nothing after the last slash', () => {
+    expect(recipeImageBasename('file:///documents/recipe-images/')).toBeNull();
+  });
+});
+
+describe('readRecipeImageBase64', () => {
+  it('reads an existing file as base64', () => {
+    mockFileExists = true;
+    mockBase64Sync.mockReturnValue('QUJD');
+
+    expect(readRecipeImageBase64('file:///documents/recipe-images/abc.jpg')).toBe('QUJD');
+  });
+
+  it('is null when the file no longer exists', () => {
+    mockFileExists = false;
+
+    expect(readRecipeImageBase64('file:///documents/recipe-images/gone.jpg')).toBeNull();
+    expect(mockBase64Sync).not.toHaveBeenCalled();
+  });
+
+  it('is null rather than throwing when the read fails', () => {
+    mockFileExists = true;
+    mockBase64Sync.mockImplementation(() => { throw new Error('corrupt'); });
+
+    expect(readRecipeImageBase64('file:///documents/recipe-images/abc.jpg')).toBeNull();
+  });
+});
+
+describe('writeRecipeImageFile', () => {
+  it('writes the bytes into the recipe-images directory and returns the new URI', () => {
+    mockFileExists = false;
+
+    const uri = writeRecipeImageFile('abc.jpg', 'QUJD');
+
+    expect(uri).toBe('file:///documents/recipe-images/abc.jpg');
+    expect(mockFileCreate).toHaveBeenCalledWith(uri);
+    expect(mockWrite).toHaveBeenCalledWith(uri, 'QUJD', { encoding: 'base64' });
+  });
+
+  it('overwrites rather than failing when the file already exists', () => {
+    mockFileExists = true;
+
+    writeRecipeImageFile('abc.jpg', 'QUJD');
+
+    expect(mockFileCreate).not.toHaveBeenCalled();
+    expect(mockWrite).toHaveBeenCalledWith('file:///documents/recipe-images/abc.jpg', 'QUJD', { encoding: 'base64' });
   });
 });
