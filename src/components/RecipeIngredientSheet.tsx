@@ -26,6 +26,7 @@ import { aisleForName } from '../utils/groceryAisles';
 import { splitAlternativeNames, suggestShorterCatalogName } from '../utils/groceryParse';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
+import { sectionsOf } from '../utils/recipeSections';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 import { SegmentedControl } from './SegmentedControl';
@@ -86,17 +87,11 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     return labels;
   }, [recipeIngredients, ingredient?.id]);
 
-  // Every section this recipe already uses, in list order. Same derivation as
-  // the choice labels above and for the same reason: a section is a *string*
-  // shared across rows, so typing it again by hand is how one recipe ends up
-  // with "For the cake" and "For the Cake" as two headings.
-  const existingSections = useMemo(() => {
-    const labels: string[] = [];
-    for (const other of recipeIngredients) {
-      if (other.section && !labels.includes(other.section)) labels.push(other.section);
-    }
-    return labels;
-  }, [recipeIngredients]);
+  // Every section this recipe already uses, in list order. Same idea as the
+  // choice labels above and for the same reason: a section is a *string* shared
+  // across rows, so typing it again by hand is how one recipe ends up with "For
+  // the cake" and "For the Cake" as two headings.
+  const existingSections = useMemo(() => sectionsOf(recipeIngredients), [recipeIngredients]);
 
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -104,6 +99,12 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const [purpose, setPurpose] = useState('');
   const [section, setSection] = useState('');
   const [choiceGroup, setChoiceGroup] = useState('');
+  // Held apart from the label rather than derived from it, because the two
+  // genuinely differ for one state: "one of a choice, group not named yet".
+  // Derived, tapping "One of a choice" on the first ingredient in a recipe with
+  // no groups would set an empty label, read back as ungrouped, and snap the
+  // control straight back — the picker below is where the group gets named.
+  const [choiceOn, setChoiceOn] = useState(false);
   const [aisle, setAisle] = useState<string | null>(null);
   // Nested rather than a sibling: a Modal presents from its React parent's view
   // controller, so a sibling would ask this sheet's own presenter for a second
@@ -119,6 +120,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setPurpose(ingredient.purpose ?? '');
     setSection(ingredient.section ?? '');
     setChoiceGroup(ingredient.choiceGroup ?? '');
+    setChoiceOn(!!ingredient.choiceGroup);
     setAisle(ingredient.aisle);
     setEditingItemId(null);
   }, [ingredient]);
@@ -181,7 +183,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     ? describeCatalogItem(catalogItem, itemSubs, groceryItems, new Date())
     : null;
 
-  const grouped = !!cleanChoiceGroup(choiceGroup);
+  const groupLabel = cleanChoiceGroup(choiceGroup);
 
   const acceptSplit = () => {
     if (!ingredient || !alternatives) return;
@@ -348,22 +350,23 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             a question nobody could answer without knowing the data model. */}
         <SegmentedControl
           label="Alternatives"
-          value={grouped ? 'choice' : 'always'}
+          value={choiceOn ? 'choice' : 'always'}
           onChange={next => {
             haptics.tap();
             animateLayout();
+            setChoiceOn(next === 'choice');
             if (next === 'always') setChoiceGroup('');
             // Joining the recipe's only existing group is the overwhelmingly
-            // common intent, and it saves a tap. With none, the picker below
-            // opens on its "New group" field.
-            else if (!grouped) setChoiceGroup(otherChoiceGroups[0] ?? '');
+            // common intent, and it saves a tap. With none it stays unnamed and
+            // the picker below opens on its "New group" button.
+            else if (!groupLabel) setChoiceGroup(otherChoiceGroups[0] ?? '');
           }}
           options={[
             { value: 'always', label: 'Always needed' },
             { value: 'choice', label: 'One of a choice' },
           ]}
         />
-        {grouped ? (
+        {choiceOn ? (
           <>
             <PillGroup
               noun="group"
@@ -376,11 +379,14 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
                 setChoiceGroup(cleaned);
               }}
               options={[
-                ...(otherChoiceGroups.includes(cleanChoiceGroup(choiceGroup) ?? '')
+                // A group named on this line and nowhere else yet has no pill of
+                // its own in the list below, so it gets a pinned one — otherwise
+                // the label the user just typed is stored and invisible.
+                ...(!groupLabel || otherChoiceGroups.includes(groupLabel)
                   ? []
                   : [{
                       key: '__current__',
-                      label: cleanChoiceGroup(choiceGroup) ?? '',
+                      label: groupLabel,
                       pinned: true,
                       selected: true,
                       onPress: () => {},
@@ -388,20 +394,25 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
                 ...otherChoiceGroups.map(label => ({
                   key: label,
                   label,
-                  selected: cleanChoiceGroup(choiceGroup) === label,
+                  selected: groupLabel === label,
                   onPress: () => { haptics.tap(); setChoiceGroup(label); },
                 })),
-              ].filter(o => o.label)}
+              ]}
             />
-            {siblingNames.length > 0 ? (
+            {!groupLabel ? (
+              <Text style={styles.hint}>
+                Name the group these alternatives share — “Pepper”, “Cheese”. Every ingredient
+                under it is one way of filling the same slot.
+              </Text>
+            ) : siblingNames.length > 0 ? (
               <Text style={styles.hint}>
                 You'll buy this <Text style={styles.hintStrong}>or</Text>{' '}
                 {siblingNames.join(' or ')} — never both.
               </Text>
             ) : (
               <Text style={styles.hint}>
-                Nothing else is in this group yet. Put another ingredient in “
-                {cleanChoiceGroup(choiceGroup)}” and the two become alternatives.
+                Nothing else is in “{groupLabel}” yet. Put another ingredient in it and the two
+                become alternatives.
               </Text>
             )}
           </>
