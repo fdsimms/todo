@@ -717,6 +717,10 @@ export function initDatabase(): void {
     // SYNC_TRACKED_TABLES rather than written out thirteen times, so a table
     // added to that list can't be left without one. See db/syncTracking.ts.
     ...updatedAtMigrations(),
+    // 0 for every existing category — nothing predating this feature was ever
+    // meant to drop out of the new-todos banner (or its per-row dot). Same
+    // naming convention as exclude_from_pin_suggestions above.
+    'ALTER TABLE categories ADD COLUMN exclude_from_new_tasks_banner INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1745,6 +1749,7 @@ function rowToCategory(row: Record<string, unknown>): Category {
     scheduleEnd: (row.schedule_end as string) ?? null,
     hideOnVacation: Boolean(row.hide_on_vacation),
     excludeFromPinSuggestions: Boolean(row.exclude_from_pin_suggestions),
+    excludeFromNewTasksBanner: Boolean(row.exclude_from_new_tasks_banner),
     defaultTimeSegments: parseTimeSegments(row.default_time_segments),
     sortOrder: row.sort_order as number,
     emoji: (row.emoji as string | null) ?? null,
@@ -1761,7 +1766,7 @@ export function dbInsertCategory(name: string): Category {
   const maxOrder = db.getFirstSync<{ m: number }>('SELECT COALESCE(MAX(sort_order), 0) AS m FROM categories')?.m ?? 0;
   const sortOrder = maxOrder + 1;
   db.runSync('INSERT INTO categories (id, name, sort_order) VALUES (?, ?, ?)', [id, name, sortOrder]);
-  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, excludeFromPinSuggestions: false, defaultTimeSegments: [], sortOrder, emoji: null };
+  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, excludeFromPinSuggestions: false, excludeFromNewTasksBanner: false, defaultTimeSegments: [], sortOrder, emoji: null };
 }
 
 export function dbBatchUpdateCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
@@ -1778,6 +1783,10 @@ export function dbSetCategoryHideOnVacation(id: string, hide: boolean): void {
 
 export function dbSetCategoryExcludeFromPinSuggestions(id: string, exclude: boolean): void {
   db.runSync('UPDATE categories SET exclude_from_pin_suggestions = ? WHERE id = ?', [exclude ? 1 : 0, id]);
+}
+
+export function dbSetCategoryExcludeFromNewTasksBanner(id: string, exclude: boolean): void {
+  db.runSync('UPDATE categories SET exclude_from_new_tasks_banner = ? WHERE id = ?', [exclude ? 1 : 0, id]);
 }
 
 export function dbSetCategoryEmoji(id: string, emoji: string | null): void {
@@ -1818,7 +1827,7 @@ export function dbDeleteCategory(name: string): void {
 // the schedule/vacation fields a deleted category carried.
 export function dbInsertCategoryRow(category: Category): void {
   db.runSync(
-    'INSERT INTO categories (id, name, schedule_days, schedule_start, schedule_end, hide_on_vacation, exclude_from_pin_suggestions, default_time_segments, sort_order, emoji) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO categories (id, name, schedule_days, schedule_start, schedule_end, hide_on_vacation, exclude_from_pin_suggestions, exclude_from_new_tasks_banner, default_time_segments, sort_order, emoji) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
     [
       category.id,
       category.name,
@@ -1827,6 +1836,7 @@ export function dbInsertCategoryRow(category: Category): void {
       category.scheduleEnd,
       category.hideOnVacation ? 1 : 0,
       category.excludeFromPinSuggestions ? 1 : 0,
+      category.excludeFromNewTasksBanner ? 1 : 0,
       category.defaultTimeSegments.length ? JSON.stringify(category.defaultTimeSegments) : null,
       category.sortOrder,
       category.emoji,

@@ -84,6 +84,7 @@ export function CategoriesScreen() {
             const scheduleLabel = formatCategorySchedule(catObj);
             const hideOnVacation = !!catObj?.hideOnVacation;
             const excludeFromPins = !!catObj?.excludeFromPinSuggestions;
+            const excludeFromNewBanner = !!catObj?.excludeFromNewTasksBanner;
             const countLabel = `${count} ${count === 1 ? 'task' : 'tasks'}`;
             // Everything the row used to show as a button now reads as one
             // quiet summary line; the "…" opens the editor that owns them.
@@ -92,6 +93,7 @@ export function CategoriesScreen() {
               scheduleLabel,
               hideOnVacation ? 'Hidden on vacation' : null,
               excludeFromPins ? 'Skipped in suggested pins' : null,
+              excludeFromNewBanner ? 'Skipped in new todos banner' : null,
             ]
               .filter(Boolean)
               .join('. ');
@@ -137,6 +139,12 @@ export function CategoriesScreen() {
                       <>
                         <Text style={styles.metaDot}>·</Text>
                         <Ionicons name="color-wand-outline" size={11} color={colors.textTertiary} />
+                      </>
+                    )}
+                    {excludeFromNewBanner && (
+                      <>
+                        <Text style={styles.metaDot}>·</Text>
+                        <Ionicons name="notifications-off-outline" size={11} color={colors.textTertiary} />
                       </>
                     )}
                   </View>
