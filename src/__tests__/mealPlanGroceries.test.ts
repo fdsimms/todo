@@ -595,10 +595,10 @@ describe('classifyPlanned', () => {
     expect(classifyPlanned(planned, items, now)[0].category).toBe('alreadyOnList');
   });
 
-  it('classifies a checked on-list row as inTrolley', () => {
+  it('classifies a checked on-list row as inCart', () => {
     const items = [item({ name: 'Eggs', onList: true, checked: true })];
     const planned = [{ name: 'Eggs', nameKey: 'eggs', quantity: '12', aisle: null, source: 'Fri Omelette' }];
-    expect(classifyPlanned(planned, items, now)[0].category).toBe('inTrolley');
+    expect(classifyPlanned(planned, items, now)[0].category).toBe('inCart');
   });
 
   it('marks a row with a catalog row known, and one without unknown', () => {
@@ -703,7 +703,7 @@ describe('restockRows', () => {
     expect(rows).toEqual([]);
   });
 
-  it('drops anything already handled — on the list, in the trolley, a staple, or probably still around', () => {
+  it('drops anything already handled — on the list, in the cart, a staple, or probably still around', () => {
     const items = [
       item({ name: 'Milk', onList: true, checked: false }),
       item({ name: 'Eggs', onList: true, checked: true }),

@@ -1387,7 +1387,7 @@ describe('countLikelyInPantry', () => {
     const milk = item('Milk', {
       nameKey: 'milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
     });
-    // Onions: on the list already, so it's alreadyOnList/inTrolley, not probablyHave.
+    // Onions: on the list already, so it's alreadyOnList/inCart, not probablyHave.
     const onions = item('Onions', { nameKey: 'onions', onList: true });
     // Saffron: no catalog row at all.
     const r = recipe('Ragù', {

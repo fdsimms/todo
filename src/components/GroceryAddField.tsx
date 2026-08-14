@@ -318,7 +318,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           accessibilityRole="button"
           accessibilityLabel={
             `Add as an either/or: ${alternatives.join(' or ')}. ` +
-            'Both go on the list and ticking one takes the others off.'
+            'Both go on the list and checking one off takes the others off.'
           }
         >
           <Text style={styles.altSuggestionText}>
