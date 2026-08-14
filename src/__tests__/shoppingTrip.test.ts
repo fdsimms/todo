@@ -3,6 +3,7 @@ import {
   summarizeTrip,
   describeShopCoverage,
   describeTripSuggestion,
+  tripSuggestionCopy,
   joinNames,
   extraStopThreshold,
   MAX_TRIP_STOPS,
@@ -625,5 +626,37 @@ describe('describeTripSuggestion', () => {
       detail: 'Likely has 3/5 items on your list: milk, bread and eggs',
       offer: null,
     });
+  });
+});
+
+// The question GroceryScreen asks to choose between TripSuggestionCard and
+// StartTripPrompt — same computation the card makes internally, reachable
+// from raw store state so the screen doesn't have to re-derive the "two
+// suggestable stores" floor a second way.
+describe('tripSuggestionCopy', () => {
+  it('matches what the card itself would compute', () => {
+    expect(tripSuggestionCopy(LIST, LINKS, SHOPS)).toEqual({
+      store: "Trader Joe's",
+      detail: 'Likely has 3/5 items on your list: milk, bread and eggs',
+      offer: null,
+    });
+  });
+
+  it('is null with fewer than two suggestable stores', () => {
+    expect(tripSuggestionCopy(LIST, LINKS, [tj])).toBeNull();
+    expect(tripSuggestionCopy(LIST, LINKS, [])).toBeNull();
+  });
+
+  it('excludes a store flagged out of suggestions from the floor', () => {
+    const amazon = makeShop('Amazon', 9, { excludeFromSuggestions: true });
+    // Only Trader Joe's is suggestable once Amazon is filtered out — same
+    // one-store floor as having never added a second shop.
+    expect(tripSuggestionCopy(LIST, LINKS, [tj, amazon])).toBeNull();
+  });
+
+  it('is null with two suggestable stores but nothing on record for either', () => {
+    const a = makeShop('A store', 1);
+    const b = makeShop('B store', 2);
+    expect(tripSuggestionCopy(LIST, [], [a, b])).toBeNull();
   });
 });

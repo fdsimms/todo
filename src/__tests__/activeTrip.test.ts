@@ -1,6 +1,9 @@
 import {
   TRIP_MAX_MS,
+  TRIP_STALE_MS,
   isTripLive,
+  isTripStale,
+  describeTripElapsed,
   resolveActiveTrip,
   tripMarkerFor,
   describeTripMarker,
@@ -116,6 +119,53 @@ describe('isTripLive', () => {
 
   it('treats a future stamp as live rather than expired', () => {
     expect(isTripLive('2026-08-12T19:00:00.000Z', NOW)).toBe(true);
+  });
+});
+
+describe('isTripStale', () => {
+  it('is false with no stamp', () => {
+    expect(isTripStale(null, NOW)).toBe(false);
+  });
+
+  it('is false for an unparseable stamp', () => {
+    expect(isTripStale('not a date', NOW)).toBe(false);
+  });
+
+  it('is false just under the threshold', () => {
+    const started = new Date(NOW.getTime() - TRIP_STALE_MS + 1000).toISOString();
+    expect(isTripStale(started, NOW)).toBe(false);
+  });
+
+  it('is true right at the threshold', () => {
+    const started = new Date(NOW.getTime() - TRIP_STALE_MS).toISOString();
+    expect(isTripStale(started, NOW)).toBe(true);
+  });
+
+  it('is true well past the threshold', () => {
+    const started = new Date(NOW.getTime() - TRIP_STALE_MS - 60 * 60 * 1000).toISOString();
+    expect(isTripStale(started, NOW)).toBe(true);
+  });
+});
+
+describe('describeTripElapsed', () => {
+  it('renders minutes under an hour', () => {
+    const started = new Date(NOW.getTime() - 24 * 60 * 1000).toISOString();
+    expect(describeTripElapsed(started, NOW)).toBe('24 min');
+  });
+
+  it('renders an exact hour with no minutes clause', () => {
+    const started = new Date(NOW.getTime() - 60 * 60 * 1000).toISOString();
+    expect(describeTripElapsed(started, NOW)).toBe('1h');
+  });
+
+  it('renders hours and minutes together', () => {
+    const started = new Date(NOW.getTime() - (60 + 42) * 60 * 1000).toISOString();
+    expect(describeTripElapsed(started, NOW)).toBe('1h 42m');
+  });
+
+  it('floors at 0 minutes for a future stamp', () => {
+    const started = new Date(NOW.getTime() + 60 * 1000).toISOString();
+    expect(describeTripElapsed(started, NOW)).toBe('0 min');
   });
 });
 

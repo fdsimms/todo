@@ -471,6 +471,28 @@ export function describeTripSuggestion(
 }
 
 /**
+ * `TripSuggestionCard`'s own copy, but reachable from raw store state rather
+ * than only from inside that component — so `GroceryScreen` can ask the same
+ * question the card asks ("do I have something to say?") to decide whether to
+ * render the card at all, or fall back to `StartTripPrompt` when the answer is
+ * no. One function rather than two call sites re-deriving `plan.coverage.length
+ * < 2`, which is exactly the kind of rule this module's own header warns
+ * about duplicating.
+ */
+export function tripSuggestionCopy(
+  items: readonly GroceryItem[],
+  itemShops: readonly ItemShopLink[],
+  shops: readonly Shop[]
+): TripSuggestionCopy | null {
+  const plan = planTrip(items, itemShops, shops);
+  // Two suggestable stores is the floor — see TripSuggestionCard's own doc
+  // comment for why one can't produce a suggestion worth naming.
+  if (plan.coverage.length < 2) return null;
+  const nameOf = new Map(items.map(i => [i.id, i.name]));
+  return describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length, nameOf);
+}
+
+/**
  * "Add Ballard Pharmacy for shampoo" — the second stop priced in the only
  * currency that matters, which is what it adds that the first one hasn't.
  *

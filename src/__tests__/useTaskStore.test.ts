@@ -158,6 +158,12 @@ jest.mock('../utils/notifications', () => ({
   scheduleTimerAlarm: jest.fn().mockResolvedValue(undefined),
   cancelTimerAlarm: jest.fn().mockResolvedValue(undefined),
   rescheduleAllTimerAlarms: jest.fn().mockResolvedValue(undefined),
+  // Not exercised by this suite's grocery-store tests (they only touch
+  // useUpTask fields), but useGroceryStore.ts imports these unconditionally —
+  // an incomplete mock would leave them undefined the moment a test does call
+  // startTrip/endTrip.
+  scheduleTripReminder: jest.fn().mockResolvedValue(undefined),
+  cancelTripReminder: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('../utils/deadlineCalendarSync', () => ({
@@ -368,7 +374,10 @@ describe('initialize', () => {
     const tasks = [makeTask()];
     (dbGetAllTasks as jest.Mock).mockReturnValue(tasks);
     useTaskStore.getState().initialize();
-    expect(rescheduleAllReminders).toHaveBeenCalledWith(tasks);
+    expect(rescheduleAllReminders).toHaveBeenCalledWith(
+      tasks,
+      { shopId: null, startedAt: null, shops: [] }
+    );
   });
 });
 

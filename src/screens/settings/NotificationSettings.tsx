@@ -9,9 +9,11 @@ import {
   requestNotificationPermissions,
   pendingReminderStats,
   scheduleDailyAgenda,
+  rescheduleTripReminder,
   MAX_PENDING_REMINDERS,
   type NotificationPermission,
 } from '../../utils/notifications';
+import { useGroceryStore } from '../../store/useGroceryStore';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
@@ -30,6 +32,8 @@ export function NotificationSettings() {
   const setDailyAgendaEnabled = useSettingsStore(s => s.setDailyAgendaEnabled);
   const dailyAgendaTime = useSettingsStore(s => s.dailyAgendaTime);
   const setDailyAgendaTime = useSettingsStore(s => s.setDailyAgendaTime);
+  const tripReminderEnabled = useSettingsStore(s => s.tripReminderEnabled);
+  const setTripReminderEnabled = useSettingsStore(s => s.setTripReminderEnabled);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const setDefaultReminderLeadMinutes = useSettingsStore(s => s.setDefaultReminderLeadMinutes);
 
@@ -136,6 +140,27 @@ export function NotificationSettings() {
     setPickerOpen(false);
   };
 
+  /**
+   * Same permission gate as the agenda toggle, for the same reason: turning
+   * this on is the one moment the user just explicitly asked for it.
+   */
+  const onToggleTripReminder = async (next: boolean) => {
+    if (next && !(await requestNotificationPermissions())) {
+      refreshNotifPermission();
+      Alert.alert(
+        'Notifications are turned off',
+        'The trip reminder needs notification permission. Turn it on for this app in the Settings app, then try again.'
+      );
+      return;
+    }
+    setTripReminderEnabled(next);
+    // Reads the flag it just set, and schedules or cancels depending on
+    // whether a trip happens to be running right now — turning this on
+    // mid-trip shouldn't wait for the next startTrip to take effect.
+    const { tripShopId, tripStartedAt, shops } = useGroceryStore.getState();
+    rescheduleTripReminder(tripShopId, tripStartedAt, shops);
+  };
+
   return (
     <>
     <SettingsSection
@@ -227,6 +252,18 @@ export function NotificationSettings() {
           )}
         </>
       )}
+
+      <View style={styles.sep} />
+      <SettingsRow
+        icon="storefront-outline"
+        iconColor={tripReminderEnabled ? colors.accent : undefined}
+        label="Trip reminder"
+        hint={tripReminderEnabled
+          ? 'One notification if a shopping trip is still running two hours after it started'
+          : 'Nothing arrives if you leave a shopping trip running'}
+        toggle={tripReminderEnabled}
+        onPress={() => onToggleTripReminder(!tripReminderEnabled)}
+      />
 
       <View style={styles.sep} />
       <SettingsRow

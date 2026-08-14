@@ -12,8 +12,10 @@ import { haptics } from '../utils/haptics';
 // The tab bar's own height, without the safe-area inset underneath it.
 // Hard-coded because this banner renders outside the tab navigator (it's a
 // sibling of the NavigationContainer, so it can sit over every screen), and
-// useBottomTabBarHeight() throws when called from there.
-const TAB_BAR_HEIGHT = 49;
+// useBottomTabBarHeight() throws when called from there. Exported for
+// PersistentTripBar, the other app-wide floating element with the same
+// constraint.
+export const TAB_BAR_HEIGHT = 49;
 
 // Always-visible marker that the list on screen isn't the user's own, and
 // the way back out. Deliberately app-wide rather than a per-screen banner:

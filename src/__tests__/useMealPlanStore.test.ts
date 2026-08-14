@@ -53,6 +53,14 @@ jest.mock('../utils/calendarSync', () => ({
   updateAllDayEvent: (...args: unknown[]) => mockUpdateAllDayEvent(...args),
 }));
 
+// useGroceryStore (real, below) imports these unconditionally for
+// startTrip/endTrip — same expo-notifications-in-node problem the task store
+// mock above exists for.
+jest.mock('../utils/notifications', () => ({
+  scheduleTripReminder: jest.fn().mockResolvedValue(undefined),
+  cancelTripReminder: jest.fn().mockResolvedValue(undefined),
+}));
+
 // The task store is mocked rather than driven for real: this suite is about
 // what the meal plan *asks* of it, and the real one drags expo-notifications
 // into a node environment. The other side of the link — a completion actually
