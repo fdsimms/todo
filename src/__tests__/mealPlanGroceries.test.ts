@@ -479,6 +479,8 @@ describe('classifyPlanned', () => {
       subItemId,
       note: null,
       createdAt: '2026-01-01T00:00:00.000Z',
+      ratioFrom: null,
+      ratioTo: null,
     });
     const plannedButter = [
       { name: 'Butter', nameKey: 'butter', quantity: '100 g', aisle: null, source: 'Wed Cake' },
