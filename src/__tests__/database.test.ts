@@ -1606,6 +1606,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     variant: null,
     aisle: 'Other',
     quantity: null,
+    quantityFromRecipe: false,
     note: '',
     onList: true,
     checked: false,
@@ -1785,6 +1786,15 @@ describe('grocery items', () => {
   it('keeps null quantity null rather than turning it into a string', () => {
     dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
     expect(dbGetAllGroceryItems()[0].quantity).toBeNull();
+  });
+
+  it('round-trips quantityFromRecipe, defaulting false for a row that never sets it', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Rice', quantity: '3/4 cup', quantityFromRecipe: true }));
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk' }));
+
+    const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i.quantityFromRecipe]));
+    expect(byId.get('g1')).toBe(true);
+    expect(byId.get('g2')).toBe(false);
   });
 
   it('stores booleans as 0/1 and reads them back as booleans', () => {

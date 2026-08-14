@@ -721,6 +721,11 @@ export function initDatabase(): void {
     // meant to drop out of the new-todos banner (or its per-row dot). Same
     // naming convention as exclude_from_pin_suggestions above.
     'ALTER TABLE categories ADD COLUMN exclude_from_new_tasks_banner INTEGER NOT NULL DEFAULT 0',
+    // 0 for every existing row — a quantity already on a row before this
+    // column existed has always behaved as the user's own, so nothing
+    // pre-existing starts getting cleared on the next finish. See
+    // GroceryItem.quantityFromRecipe.
+    'ALTER TABLE grocery_items ADD COLUMN quantity_from_recipe INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1933,6 +1938,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     variant: (row.variant as string) ?? null,
     aisle: (row.aisle as string) ?? 'Other',
     quantity: (row.quantity as string) ?? null,
+    quantityFromRecipe: Boolean(row.quantity_from_recipe),
     note: (row.note as string) ?? '',
     onList: Boolean(row.on_list),
     checked: Boolean(row.checked),
@@ -1971,13 +1977,13 @@ export function dbGetAllGroceryItems(): GroceryItem[] {
 export function dbInsertGroceryItem(item: GroceryItem): void {
   db.runSync(
     `INSERT INTO grocery_items
-      (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
+      (id, name, name_key, aisle, quantity, quantity_from_recipe, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, use_up_task,
        last_price_minor, last_priced_at, last_price_quantity, brand, brand_strict, variant)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
-      item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
+      item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
       item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
@@ -1995,7 +2001,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
 export function dbUpdateGroceryItem(item: GroceryItem): void {
   db.runSync(
     `UPDATE grocery_items SET
-       name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?, in_catalog=?,
+       name=?, name_key=?, aisle=?, quantity=?, quantity_from_recipe=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
        expires_at=?, use_up_task=?,
@@ -2003,7 +2009,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        variant=?
      WHERE id=?`,
     [
-      item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
+      item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
       item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
@@ -2081,7 +2087,9 @@ export function dbFinishGroceryShopping(
     `UPDATE grocery_items
         SET on_list = 0, checked = 0, in_catalog = 1,
             purchase_count = purchase_count + 1,
-            last_purchased_at = ?
+            last_purchased_at = ?,
+            quantity = CASE WHEN quantity_from_recipe = 1 THEN NULL ELSE quantity END,
+            quantity_from_recipe = 0
       WHERE checked = 1 AND on_list = 1`,
     [purchasedAt]
   );
