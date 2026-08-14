@@ -297,6 +297,42 @@ describe('addByName', () => {
     expect(useGroceryStore.getState().addByName('Good Culture cottage cheese').brand).toBeNull();
   });
 
+  it('takes a brand and variant from an override, same channel as quantity/note', () => {
+    // GroceryAddField's Brand/Variant chips — the one other way in besides
+    // GroceryItemSheet.
+    const item = useGroceryStore.getState().addByName('cottage cheese', {
+      name: 'cottage cheese', quantity: null, brand: 'Good Culture', variant: 'low fat',
+    });
+    expect(item.brand).toBe('Good Culture');
+    expect(item.variant).toBe('low fat');
+  });
+
+  it('never wipes an existing brand/variant when the item is re-added without one', () => {
+    const item = useGroceryStore.getState().addByName('cottage cheese', {
+      name: 'cottage cheese', quantity: null, brand: 'Good Culture', variant: 'low fat',
+    });
+
+    // Same rule quantity/note follow: a bare re-add is not an instruction to
+    // clear what's already on the row.
+    const again = useGroceryStore.getState().addByName('cottage cheese');
+    expect(again.id).toBe(item.id);
+    expect(again.brand).toBe('Good Culture');
+    expect(again.variant).toBe('low fat');
+  });
+
+  it('overwrites an existing brand/variant when the re-add explicitly carries a new one', () => {
+    const item = useGroceryStore.getState().addByName('cottage cheese', {
+      name: 'cottage cheese', quantity: null, brand: 'Good Culture', variant: 'low fat',
+    });
+
+    const again = useGroceryStore.getState().addByName('cottage cheese', {
+      name: 'cottage cheese', quantity: null, brand: 'Nancy\'s', variant: 'whole milk',
+    });
+    expect(again.id).toBe(item.id);
+    expect(again.brand).toBe('Nancy\'s');
+    expect(again.variant).toBe('whole milk');
+  });
+
   it('inserts a genuinely new item, filed by the lexicon', () => {
     const item = useGroceryStore.getState().addByName('Milk');
 

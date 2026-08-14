@@ -188,6 +188,14 @@ interface GroceryStore {
       note?: string | null;
       /** Files this row as one option of an either/or — see GroceryItem.choiceGroup. */
       choiceGroup?: string | null;
+      /**
+       * GroceryAddField's Brand/Variant chips — the one other way either field
+       * is ever set besides GroceryItemSheet. Same merge rule as quantity/note:
+       * applied only when this particular add actually carried one, so a bare
+       * re-add can't wipe what's already on the row.
+       */
+      brand?: string | null;
+      variant?: string | null;
     },
     source?: { recipeId: string; recipeTitle: string },
     /** `registerUndo: false` suppresses the per-call shake-to-undo entry — batch
@@ -532,6 +540,8 @@ function newItemRow(fields: {
   inCatalog: boolean;
   quantity?: string | null;
   note?: string | null;
+  brand?: string | null;
+  variant?: string | null;
   choiceGroup?: string | null;
   source?: { recipeId: string; recipeTitle: string };
   onHandUntil?: string | null;
@@ -540,17 +550,20 @@ function newItemRow(fields: {
     id: generateId(),
     name: fields.name,
     nameKey: fields.nameKey,
-    // Never seeded from a typed line — nothing parses a brand out of text (see
-    // GroceryItem.brand). A fresh row has no opinion until the user sets one,
-    // and addByName's `existing` branch carries an established brand through on
-    // every later re-add because it spreads the row it found.
-    brand: null,
+    // Never *parsed* out of the typed line itself (see GroceryItem.brand) —
+    // "Good Culture cottage cheese" typed as a name is still just a name. What
+    // can set this is an explicit override — GroceryAddField's own Brand chip,
+    // the same channel quantity/note already use — so it falls back to null
+    // rather than being hardcoded to it. addByName's `existing` branch carries
+    // an established brand through on every later re-add because it spreads
+    // the row it found.
+    brand: fields.brand ?? null,
     // A preference is not a rule — see GroceryItem.brandStrict. Nothing infers
     // this, including from a brand being set.
     brandStrict: false,
-    // Unparsed and uninferred exactly like the brand above, and carried through
-    // a re-add by the same spread.
-    variant: null,
+    // Unparsed exactly like the brand above, and settable the same explicit
+    // way via the Variant chip. Carried through a re-add by the same spread.
+    variant: fields.variant ?? null,
     aisle: fields.aisle,
     quantity: fields.quantity ?? null,
     // Never true from this path — a fresh row's quantity, if any, came from
@@ -805,6 +818,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const { name, quantity } = override ?? parseGroceryInput(raw);
     const note = override?.note?.trim() || null;
     const choiceGroup = override?.choiceGroup?.trim() || null;
+    const brand = override?.brand?.trim() || null;
+    const variant = override?.variant?.trim() || null;
     // A name with no letters or digits ("???") normalises to an empty key.
     // Falling back to the raw text keeps the key unique, which matters: two
     // such rows would collide on the UNIQUE index and the *second* insert
@@ -838,6 +853,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // the list makes that row one option of the new pair, but a plain
         // re-add of apples must not dissolve a pair it's already in.
         choiceGroup: choiceGroup ?? existing.choiceGroup,
+        // And again for brand/variant — GroceryAddField's chips are the only
+        // caller that ever passes these, and only when the user actually
+        // typed into one.
+        brand: brand ?? existing.brand,
+        variant: variant ?? existing.variant,
         lastAddedAt: now,
       };
       dbUpdateGroceryItem(updated);
@@ -867,6 +887,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       aisle: placeAisle(get().aisleOverrides[key] ?? aisleForName(name), get().aisleOrder),
       quantity,
       note,
+      brand,
+      variant,
       onList: true,
       // Provisional: a name nobody has bought or finished a trip with is on
       // the list, not in the catalog. removeFromList deletes it.
