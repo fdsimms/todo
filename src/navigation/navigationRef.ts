@@ -70,3 +70,15 @@ export function openQuickAddFromShortcut(): void {
     params: { resetToToday: Date.now(), openQuickAdd: Date.now() },
   });
 }
+
+// The persistent trip bar's "Finish" tap (PersistentTripBar.tsx, mounted
+// outside the tab navigator so it can float over every screen) — lands on
+// Groceries and asks it to pop FinishShoppingSheet open, same stamped-param
+// handoff openQuickAddFromShortcut uses.
+export function openFinishShoppingFromTripBar(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({
+    name: 'Groceries',
+    params: { openFinish: Date.now() },
+  });
+}

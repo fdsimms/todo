@@ -1060,7 +1060,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const tagRegistry = dbGetTagRegistry();
 
     set({ tasks, tagRegistry, initialized: true });
-    rescheduleAllReminders(tasks);
+    const { tripShopId, tripStartedAt, shops } = useGroceryStore.getState();
+    rescheduleAllReminders(tasks, { shopId: tripShopId, startedAt: tripStartedAt, shops });
     // Deliberately after the set() above, not inside useLeftoverStore's own
     // initialize(): reconciling reads useTaskStore.getState().tasks to find
     // each leftover's live task, and at the point leftovers load (just above)

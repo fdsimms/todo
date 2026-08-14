@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useCallback } from 'react';
+import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   Alert,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -102,6 +102,7 @@ export function GroceryScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
 
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
@@ -202,6 +203,18 @@ export function GroceryScreen() {
       checkTripExpiry();
     }, [checkTripExpiry])
   );
+
+  // The persistent trip bar's "Finish" tap (openFinishShoppingFromTripBar in
+  // navigationRef.ts) — this screen may not even be mounted when it's tapped,
+  // so the handoff is a stamped route param rather than a direct call, same
+  // shape Today's openQuickAdd shortcut uses. Guarded on selectionMode for the
+  // same reason the header's own Finish icon is disabled during it.
+  const [handledOpenFinish, setHandledOpenFinish] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (route.params?.openFinish === undefined || route.params.openFinish === handledOpenFinish) return;
+    setHandledOpenFinish(route.params.openFinish);
+    if (!selectionMode) setFinishOpen(true);
+  }, [route.params?.openFinish, handledOpenFinish, selectionMode]);
 
   // Computed here rather than in the row for the reason `alternatives` is:
   // only the screen has the links, and a row that subscribed to them would
@@ -554,13 +567,20 @@ export function GroceryScreen() {
 
   const handleCreateGroceryTask = useCallback(() => {
     // A store flagged "don't suggest" (Amazon: "it has everything") stays out
-    // of the sheet and out of the single-store shortcut — it's still fully
+    // of the sheet and out of the no-store shortcut below — it's still fully
     // linkable by hand elsewhere, just never the thing this button offers.
-    // With none configured, or exactly one, there's no trip to plan: the sheet
-    // would be a whole screen for a question with one answer.
+    //
+    // With none configured there's nothing to pick between, so the sheet
+    // would be a whole screen for a question with one answer — that's the
+    // only case this skips straight to a plain task. One store is still a
+    // real choice (plan a task for later, or say you're shopping there right
+    // now), so the sheet has to open for it too: with it treated the same as
+    // "none", nobody with a single default store could ever reach "Start
+    // shopping at X" — not from here, and TripSuggestionCard needs 2+ stores
+    // to suggest one at all, so there was no way in at all.
     const suggestable = shops.filter(shop => !shop.excludeFromSuggestions);
-    if (suggestable.length <= 1) {
-      createGroceryTasks(suggestable.slice(0, 1));
+    if (suggestable.length === 0) {
+      createGroceryTasks([]);
       return;
     }
     setTripOpen(true);
@@ -590,7 +610,7 @@ export function GroceryScreen() {
       icon: 'walk-outline',
       onPress: handleCreateGroceryTask,
       disabled: selectionMode,
-      accessibilityLabel: 'Create a task to go shopping',
+      accessibilityLabel: 'Shopping trip — plan for later or start one now',
     });
     list.push({
       icon: 'options-outline',

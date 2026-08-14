@@ -52,6 +52,7 @@ import {
   OTHER_AISLE,
 } from '../utils/groceryAisles';
 import { isTripLive, resolveActiveTrip } from '../utils/activeTrip';
+import { scheduleTripReminder, cancelTripReminder } from '../utils/notifications';
 
 /**
  * The grocery catalog, which is also the shopping list.
@@ -1999,6 +2000,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       tripShopId: wasTrip ? null : s.tripShopId,
       tripStartedAt: wasTrip ? null : s.tripStartedAt,
     }));
+    if (wasTrip) cancelTripReminder();
   },
 
   setShopExcludedFromSuggestions(id, excluded) {
@@ -2359,16 +2361,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // Resolved against live state for the same reason finishShopping re-resolves
     // its shop: the picker that offered this id may have been open while the
     // store was deleted somewhere else.
-    if (!get().shops.some(s => s.id === shopId)) return;
+    const shop = get().shops.find(s => s.id === shopId);
+    if (!shop) return;
     const startedAt = new Date().toISOString();
     dbSetTrip(shopId, startedAt);
     set({ tripShopId: shopId, tripStartedAt: startedAt });
+    scheduleTripReminder(shop.name, startedAt);
   },
 
   endTrip() {
     if (!get().tripShopId && !get().tripStartedAt) return;
     dbSetTrip(null, null);
     set({ tripShopId: null, tripStartedAt: null });
+    cancelTripReminder();
   },
 
   activeShop(now = new Date()) {
