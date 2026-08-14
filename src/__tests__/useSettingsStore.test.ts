@@ -962,6 +962,42 @@ describe('persisted filters', () => {
   });
 });
 
+describe('persisted recipe sort & filter', () => {
+  it('defaults to the box\'s original order and no favorites-only filter', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().recipeSortOption).toBe('default');
+    expect(useSettingsStore.getState().recipeFavoritesOnly).toBe(false);
+  });
+
+  it('round-trips a real sort option', () => {
+    useSettingsStore.getState().setRecipeSortOption('name');
+    expect(dbSetSetting).toHaveBeenCalledWith('recipeSortOption', 'name');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'recipeSortOption' ? 'name' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().recipeSortOption).toBe('name');
+  });
+
+  it('rejects a stored value that is not a recipe sort option', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'recipeSortOption' ? 'by-vibes' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().recipeSortOption).toBe('default');
+  });
+
+  it('round-trips favoritesOnly', () => {
+    useSettingsStore.getState().setRecipeFavoritesOnly(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('recipeFavoritesOnly', 'true');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'recipeFavoritesOnly' ? 'true' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().recipeFavoritesOnly).toBe(true);
+  });
+});
+
 // ─── postpone check ───
 
 describe('postpone check settings', () => {

@@ -1,4 +1,4 @@
-import type { GroceryItem, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
+import type { GroceryItem, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSortOption } from '../types';
 import {
   RECIPE_CHOICE_GROUP_MAX_LENGTH,
   RECIPE_MEAL_TYPES,
@@ -723,6 +723,46 @@ export function sortRecipesForDisplay(recipes: readonly Recipe[]): Recipe[] {
   );
 }
 
+/**
+ * The box's sort options beyond the default favorites-first order — driven by
+ * RecipeSortFilterSheet, mirroring SortFilterSheet's `sort` for tasks. Kept as
+ * one switch over RecipeSortOption (rather than a comparator per screen)
+ * because it's the one place `describeCookHistory`'s underlying fields
+ * (cookCount/lastCookedAt) get compared, and duplicating that would drift.
+ *
+ * Never-cooked recipes (`lastCookedAt: null`) sort to the *end* of either cook
+ * direction — "not cooked in a while" means "you have cooked it, and it's
+ * been a while", not "you've never made this", which `describeCookHistory`
+ * already renders as no caption at all rather than "cooked never".
+ */
+export function sortRecipesBy(recipes: readonly Recipe[], sort: RecipeSortOption): Recipe[] {
+  switch (sort) {
+    case 'name':
+      return [...recipes].sort((a, b) => a.name.localeCompare(b.name));
+    case 'cooked-recent':
+      return [...recipes].sort((a, b) => {
+        if (!a.lastCookedAt && !b.lastCookedAt) return 0;
+        if (!a.lastCookedAt) return 1;
+        if (!b.lastCookedAt) return -1;
+        return b.lastCookedAt.localeCompare(a.lastCookedAt);
+      });
+    case 'cooked-oldest':
+      return [...recipes].sort((a, b) => {
+        if (!a.lastCookedAt && !b.lastCookedAt) return 0;
+        if (!a.lastCookedAt) return 1;
+        if (!b.lastCookedAt) return -1;
+        return a.lastCookedAt.localeCompare(b.lastCookedAt);
+      });
+    case 'ingredients-asc':
+      return [...recipes].sort((a, b) => a.ingredients.length - b.ingredients.length);
+    case 'ingredients-desc':
+      return [...recipes].sort((a, b) => b.ingredients.length - a.ingredients.length);
+    case 'default':
+    default:
+      return sortRecipesForDisplay(recipes);
+  }
+}
+
 export interface RecipeMealTypeSection {
   /** null is the trailing "Untagged" section — RecipeMealType has no null member of its own. */
   mealType: RecipeMealType | null;
@@ -743,8 +783,15 @@ export interface RecipeMealTypeSection {
  *
  * A meal type with no recipes is omitted entirely rather than rendered empty,
  * same as makeCategoryGroups omitting empty categories.
+ *
+ * `sort` orders each section independently, defaulting to the favorites-first
+ * order every section used before RecipeSortFilterSheet existed — a caller
+ * that never asked for a different sort keeps exactly the layout it had.
  */
-export function groupRecipesByMealType(recipes: readonly Recipe[]): RecipeMealTypeSection[] {
+export function groupRecipesByMealType(
+  recipes: readonly Recipe[],
+  sort: (list: readonly Recipe[]) => Recipe[] = sortRecipesForDisplay,
+): RecipeMealTypeSection[] {
   const byType = new Map<string, Recipe[]>();
   recipes.forEach(recipe => {
     const key = recipe.mealType ?? '';
@@ -756,12 +803,12 @@ export function groupRecipesByMealType(recipes: readonly Recipe[]): RecipeMealTy
   RECIPE_MEAL_TYPES.forEach(mealType => {
     const list = byType.get(mealType);
     if (list && list.length > 0) {
-      sections.push({ mealType, title: RECIPE_MEAL_TYPE_LABELS[mealType], data: sortRecipesForDisplay(list) });
+      sections.push({ mealType, title: RECIPE_MEAL_TYPE_LABELS[mealType], data: sort(list) });
     }
   });
   const untagged = byType.get('');
   if (untagged && untagged.length > 0) {
-    sections.push({ mealType: null, title: 'Untagged', data: sortRecipesForDisplay(untagged) });
+    sections.push({ mealType: null, title: 'Untagged', data: sort(untagged) });
   }
   return sections;
 }

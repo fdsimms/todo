@@ -25,6 +25,7 @@ import {
   distinctRecipeValues,
   filterRecipeSuggestions,
   sortRecipesForDisplay,
+  sortRecipesBy,
   groupRecipesByMealType,
   flattenRecipeMealTypeSections,
   recipeListItemKey,
@@ -666,6 +667,50 @@ describe('sortRecipesForDisplay', () => {
   });
 });
 
+describe('sortRecipesBy', () => {
+  it('defaults to sortRecipesForDisplay for "default"', () => {
+    const a = recipe('A', { sortOrder: 1, favorite: false });
+    const b = recipe('B', { sortOrder: 0, favorite: true });
+    expect(sortRecipesBy([a, b], 'default').map(r => r.name)).toEqual(['B', 'A']);
+  });
+
+  it('sorts by name A-Z, ignoring favorite', () => {
+    const a = recipe('Banana Bread', { favorite: false });
+    const b = recipe('Apple Pie', { favorite: true });
+    expect(sortRecipesBy([a, b], 'name').map(r => r.name)).toEqual(['Apple Pie', 'Banana Bread']);
+  });
+
+  it('sorts by most recently cooked, with never-cooked trailing', () => {
+    const recent = recipe('Recent', { lastCookedAt: '2026-08-01T00:00:00.000Z' });
+    const older = recipe('Older', { lastCookedAt: '2026-07-01T00:00:00.000Z' });
+    const never = recipe('Never', { lastCookedAt: null });
+    expect(sortRecipesBy([never, older, recent], 'cooked-recent').map(r => r.name))
+      .toEqual(['Recent', 'Older', 'Never']);
+  });
+
+  it('sorts by oldest cooked, with never-cooked still trailing', () => {
+    const recent = recipe('Recent', { lastCookedAt: '2026-08-01T00:00:00.000Z' });
+    const older = recipe('Older', { lastCookedAt: '2026-07-01T00:00:00.000Z' });
+    const never = recipe('Never', { lastCookedAt: null });
+    expect(sortRecipesBy([never, recent, older], 'cooked-oldest').map(r => r.name))
+      .toEqual(['Older', 'Recent', 'Never']);
+  });
+
+  it('sorts by ingredient count, ascending and descending', () => {
+    const one = recipe('One', { ingredients: [ing('Salt')] });
+    const three = recipe('Three', { ingredients: [ing('Salt'), ing('Pepper'), ing('Oil')] });
+    expect(sortRecipesBy([three, one], 'ingredients-asc').map(r => r.name)).toEqual(['One', 'Three']);
+    expect(sortRecipesBy([one, three], 'ingredients-desc').map(r => r.name)).toEqual(['Three', 'One']);
+  });
+
+  it('does not mutate the input array', () => {
+    const list = [recipe('A', { sortOrder: 1 }), recipe('B', { sortOrder: 0 })];
+    const original = [...list];
+    sortRecipesBy(list, 'name');
+    expect(list).toEqual(original);
+  });
+});
+
 describe('groupRecipesByMealType', () => {
   it('groups into RECIPE_MEAL_TYPES order, dropping meal types with nothing in them', () => {
     const breakfast = recipe('Oatmeal', { mealType: 'breakfast', sortOrder: 0 });
@@ -694,6 +739,13 @@ describe('groupRecipesByMealType', () => {
 
   it('returns no sections for an empty recipe list', () => {
     expect(groupRecipesByMealType([])).toEqual([]);
+  });
+
+  it('sorts each section with a caller-supplied comparator instead of the favorites-first default', () => {
+    const a = recipe('Banana', { mealType: 'snack' });
+    const b = recipe('Apple', { mealType: 'snack' });
+    const sections = groupRecipesByMealType([a, b], list => sortRecipesBy(list, 'name'));
+    expect(sections[0].data.map(r => r.name)).toEqual(['Apple', 'Banana']);
   });
 });
 
