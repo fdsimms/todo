@@ -489,7 +489,7 @@ export function GroceryItemSheet({
     }
     Alert.alert(
       `${shopName} and ${item.name}`,
-      `${count} ${count === 1 ? 'purchase' : 'purchases'} recorded here. Forgetting them can’t be undone — the item and its overall count stay either way.`,
+      `${count} ${count === 1 ? 'purchase' : 'purchases'} recorded here. Forgetting them can’t be undone. The item and its overall count stay either way.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -624,7 +624,7 @@ export function GroceryItemSheet({
       selected: item.isStaple,
       accessibilityLabel: item.isStaple
         ? 'Always have it, marked as a staple. Tap to clear.'
-        : 'Always have it — mark as a staple you always keep stocked',
+        : 'Always have it, mark as a staple you always keep stocked',
       onPress: toggleStaple,
     },
     {
@@ -633,7 +633,7 @@ export function GroceryItemSheet({
       selected: onHandFuture,
       accessibilityLabel: onHandFuture
         ? 'Got it, marked on hand. Tap to clear.'
-        : 'Got it — mark as on hand',
+        : 'Got it, mark as on hand',
       onPress: onHandFuture ? clearOnHand : markGotIt,
     },
     {
@@ -642,7 +642,7 @@ export function GroceryItemSheet({
       selected: onHandPast,
       accessibilityLabel: onHandPast
         ? 'Out of it, marked not on hand. Tap to clear.'
-        : 'Out of it — mark as not on hand',
+        : 'Out of it, mark as not on hand',
       onPress: onHandPast ? clearOnHand : markOutOfIt,
     },
   ];
@@ -870,6 +870,24 @@ export function GroceryItemSheet({
               maxLength={PRICE_INPUT_MAX_LENGTH}
               accessibilityLabel={targetShopName ? `Last price at ${targetShopName}` : 'Last price'}
             />
+            {/* Same clear affordance as SearchField's — emptying the field is
+                already how a price gets removed on Save (see handleSave), this
+                just saves reaching for backspace on a long mistyped number. */}
+            {price.length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  haptics.tap();
+                  setPriceEdits(prev => ({ ...prev, [priceKey]: '' }));
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  targetShopName ? `Clear price at ${targetShopName}` : 'Clear price'
+                }
+              >
+                <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            )}
           </View>
           {/* What the number is *for* and how old it is — never the number
               itself, which the field above is already showing.
@@ -987,7 +1005,7 @@ export function GroceryItemSheet({
                   item.isStaple
                     ? 'Treated as on hand at all times, and kept out of the way in its own group when a recipe adds ingredients to the list.'
                     : onHandPast
-                      ? 'Marked out of it — won’t show as probably-have until you buy it again.'
+                      ? 'Marked out of it. Won’t show as probably-have until you buy it again.'
                       : 'Decided automatically from purchase history when this comes up in a week plan.'
                 }
                 expanded={openField === 'pantry'}

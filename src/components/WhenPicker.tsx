@@ -296,7 +296,7 @@ export function WhenPicker({
         haptics.warning();
         Alert.alert(
           'Archive this task?',
-          `"${postponeTask.title}" moves to Archived. Nothing is deleted — you can restore it from there whenever you like.`,
+          `"${postponeTask.title}" moves to Archived. Nothing is deleted, and you can restore it from there whenever you like.`,
           [
             { text: 'Cancel', style: 'cancel' },
             {

@@ -438,7 +438,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
           <Text style={styles.label}>WHICH STORES?</Text>
           <Text style={styles.hint}>
             {total === 0
-              ? 'In your own order — there’s nothing on the list to rank them by.'
+              ? 'In your own order. There’s nothing on the list to rank them by.'
               : 'Ranked by what you’ve bought where. Pick as many as the trip needs.'}
           </Text>
 
@@ -499,7 +499,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
                   way to know. */}
               <Text style={styles.footerLine}>
                 {selected.length === 0
-                  ? 'No store picked — the task won’t name one.'
+                  ? 'No store picked. The task won’t name one.'
                   : summary.covered.length === total
                     ? `${selectedNames} covers your whole list.`
                     : `${selectedNames} covers at least ${summary.covered.length} of ${total}.`}

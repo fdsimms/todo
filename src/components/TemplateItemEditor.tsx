@@ -662,7 +662,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 ? (chainItems.length > 1
                     ? `Step ${chainIndex + 1} of ${chainItems.length}`
                     : chainItems.length === 1
-                      ? '1 step — add one more'
+                      ? '1 step, add one more'
                       : 'No steps yet')
                 : undefined
             }
@@ -673,7 +673,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             // was gated on Chain being *off*, so a chain with Repeat off never
             // saw it either.
             hint={
-              'Step through a list of items, one per completion — finishing one reveals the next.'
+              'Step through a list of items, one per completion. Finishing one reveals the next.'
               + (recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : '')
             }
             expanded={fieldOpen('chainSteps', chainEnabled)}
@@ -931,7 +931,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <CollapsibleField
           label="Category"
           summary={category ? categoryLabel(category, categories) : undefined}
-          hint="One home for the task — drives the Categories screen and its filters."
+          hint="One home for the task. Drives the Categories screen and its filters."
           expanded={fieldOpen('category')}
           onToggle={() => toggleField('category')}
         >

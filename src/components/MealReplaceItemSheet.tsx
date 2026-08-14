@@ -181,7 +181,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
                 <Text style={styles.emptySub}>
                   {query.trim()
                     ? 'Nothing in your recipe box is called that.'
-                    : 'Type what to replace it with — you don’t need a recipe.'}
+                    : 'Type what to replace it with. You don’t need a recipe.'}
                 </Text>
               </View>
             ) : (

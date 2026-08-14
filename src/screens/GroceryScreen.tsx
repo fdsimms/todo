@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useCallback } from 'react';
+import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   Alert,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -38,8 +38,10 @@ import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { TripSuggestionCard } from '../components/TripSuggestionCard';
+import { StartTripPrompt } from '../components/StartTripPrompt';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { describeTripMarker, resolveActiveTrip, tripMarkerFor } from '../utils/activeTrip';
+import { tripSuggestionCopy } from '../utils/shoppingTrip';
 import { InlineAction } from '../components/InlineAction';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
@@ -102,6 +104,7 @@ export function GroceryScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
 
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
@@ -193,6 +196,22 @@ export function GroceryScreen() {
     () => resolveActiveTrip(tripShopId, tripStartedAt, shops, new Date()),
     [tripShopId, tripStartedAt, shops]
   );
+
+  // A store flagged "don't suggest" (Amazon: "it has everything") stays out of
+  // every trip-starting surface — the header action, TripSuggestionCard's
+  // floor, and StartTripPrompt below. It's still fully linkable by hand
+  // elsewhere, just never the thing any of these offer.
+  const suggestableShops = useMemo(
+    () => shops.filter(shop => !shop.excludeFromSuggestions),
+    [shops]
+  );
+  // Whichever of TripSuggestionCard / StartTripPrompt has something to say —
+  // see tripSuggestionCopy's own doc comment for why this is one shared
+  // question rather than two components each re-deriving it.
+  const hasTripSuggestion = useMemo(
+    () => tripSuggestionCopy(items, itemShops, shops) !== null,
+    [items, itemShops, shops]
+  );
   // A trip can outlive the moment it was last rendered, and the memo above
   // can't notice on its own — its inputs haven't changed. Clearing the store
   // fields is what makes an expired trip disappear rather than merely stop
@@ -202,6 +221,18 @@ export function GroceryScreen() {
       checkTripExpiry();
     }, [checkTripExpiry])
   );
+
+  // The persistent trip bar's "Finish" tap (openFinishShoppingFromTripBar in
+  // navigationRef.ts) — this screen may not even be mounted when it's tapped,
+  // so the handoff is a stamped route param rather than a direct call, same
+  // shape Today's openQuickAdd shortcut uses. Guarded on selectionMode for the
+  // same reason the header's own Finish icon is disabled during it.
+  const [handledOpenFinish, setHandledOpenFinish] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (route.params?.openFinish === undefined || route.params.openFinish === handledOpenFinish) return;
+    setHandledOpenFinish(route.params.openFinish);
+    if (!selectionMode) setFinishOpen(true);
+  }, [route.params?.openFinish, handledOpenFinish, selectionMode]);
 
   // Computed here rather than in the row for the reason `alternatives` is:
   // only the screen has the links, and a row that subscribed to them would
@@ -553,18 +584,19 @@ export function GroceryScreen() {
   );
 
   const handleCreateGroceryTask = useCallback(() => {
-    // A store flagged "don't suggest" (Amazon: "it has everything") stays out
-    // of the sheet and out of the single-store shortcut — it's still fully
-    // linkable by hand elsewhere, just never the thing this button offers.
-    // With none configured, or exactly one, there's no trip to plan: the sheet
-    // would be a whole screen for a question with one answer.
-    const suggestable = shops.filter(shop => !shop.excludeFromSuggestions);
-    if (suggestable.length <= 1) {
-      createGroceryTasks(suggestable.slice(0, 1));
+    // With no suggestable stores configured there's nothing to pick between,
+    // so the sheet would be a whole screen for a question with one answer —
+    // that's the only case this skips straight to a plain task. One store is
+    // still a real choice (plan a task for later, or say you're shopping
+    // there right now), so the sheet has to open for it too: treated the
+    // same as "none", nobody with a single default store could ever reach
+    // "Start shopping at X" from here.
+    if (suggestableShops.length === 0) {
+      createGroceryTasks([]);
       return;
     }
     setTripOpen(true);
-  }, [shops, createGroceryTasks]);
+  }, [suggestableShops, createGroceryTasks]);
 
   const actions = useMemo<ScreenHeaderAction[]>(() => {
     // Clear list is deliberately NOT here. It's destructive-looking, rarely
@@ -590,7 +622,7 @@ export function GroceryScreen() {
       icon: 'walk-outline',
       onPress: handleCreateGroceryTask,
       disabled: selectionMode,
-      accessibilityLabel: 'Create a task to go shopping',
+      accessibilityLabel: 'Shopping trip — plan for later or start one now',
     });
     list.push({
       icon: 'options-outline',
@@ -766,13 +798,24 @@ export function GroceryScreen() {
         // header can go here — see ReorderableList.ListHeaderComponent, where
         // one hung in the container silently offsets the drag math. Hidden
         // while selecting, like every header action is.
-        // The banner replaces it outright once a trip is running: the card is
-        // for deciding where to go, and the banner says you've gone. Two cards
-        // about one trip would be the "two controls for one plan" the card's
-        // own note warns about.
+        // The banner replaces both outright once a trip is running: the cards
+        // below are for deciding whether/where to go, and the banner says
+        // you've gone. Two cards about one trip would be the "two controls
+        // for one plan" TripSuggestionCard's own note warns about.
+        //
+        // Between the two starting cards: TripSuggestionCard wins whenever it
+        // has a data-backed recommendation, and StartTripPrompt is what's left
+        // for everyone it stays silent for (a single-store household above
+        // all — see StartTripPrompt's own doc comment).
         ListHeaderComponent={
-          selectionMode || activeTripShop ? null : (
-            <TripSuggestionCard onPress={() => setTripOpen(true)} />
+          selectionMode || activeTripShop ? null
+          : hasTripSuggestion ? <TripSuggestionCard onPress={() => setTripOpen(true)} />
+          : (
+            <StartTripPrompt
+              suggestable={suggestableShops}
+              onStart={handleStartTrip}
+              onOpenSheet={() => setTripOpen(true)}
+            />
           )
         }
         // Nothing in the footer applies to an empty list, and the tab-bar
@@ -814,7 +857,7 @@ export function GroceryScreen() {
             title="Nothing on the list"
             subtitle={
               catalogCount > 0
-                ? 'Everything you’ve bought before is a tap away — or start typing and it’ll come up.'
+                ? 'Everything you’ve bought before is a tap away, or start typing and it’ll come up.'
                 : 'Tap + to add what you need. Paste a whole list and each line becomes an item.'
             }
             actionLabel={catalogCount > 0 ? 'Buy again' : 'Add an item'}

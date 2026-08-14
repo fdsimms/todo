@@ -74,7 +74,7 @@ export function ArchivedScreen() {
           <EmptyState
             icon="archive-outline"
             title="No archived tasks"
-            subtitle="Pause a recurring task without losing its history — archive it from the task editor and pick back up any time."
+            subtitle="Pause a recurring task without losing its history. Archive it from the task editor and pick back up any time."
             bottomOffset={tabBarHeight}
           />
         }

@@ -113,6 +113,10 @@ jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn(),
   cancelTaskReminder: jest.fn(),
   rescheduleAllReminders: jest.fn(),
+  // The demo seed starts a trip (demoSeed.ts), which goes through
+  // useGroceryStore's real startTrip/endTrip.
+  scheduleTripReminder: jest.fn(),
+  cancelTripReminder: jest.fn(),
 }));
 
 // Same reason: useTaskStore.ts reaches calendarSync.ts (real react-native

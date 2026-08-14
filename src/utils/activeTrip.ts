@@ -52,6 +52,43 @@ export function isTripLive(startedAt: string | null, now: Date): boolean {
 }
 
 /**
+ * How long a trip runs before it's plausibly been left running rather than
+ * actively shopped — the persistent trip bar's cue to switch from a plain
+ * status ("Shopping at Costco") to a nudge ("Still at Costco?"). Well under
+ * `TRIP_MAX_MS`: the bar is meant to catch a trip on reopen, before it ages
+ * out on its own with nobody having seen it.
+ */
+export const TRIP_STALE_MS = 45 * 60 * 1000;
+
+/**
+ * Has a live trip run long enough to nudge about? Callers are expected to
+ * have already checked `isTripLive` (or gone through `resolveActiveTrip`) —
+ * this only answers the "how long" half, same split `isTripLive` itself
+ * keeps from `resolveActiveTrip`.
+ */
+export function isTripStale(startedAt: string | null, now: Date): boolean {
+  if (!startedAt) return false;
+  const started = Date.parse(startedAt);
+  if (Number.isNaN(started)) return false;
+  return now.getTime() - started >= TRIP_STALE_MS;
+}
+
+/**
+ * "24 min" / "1h 42m" — how long a trip has been running, for the persistent
+ * trip bar. Same Xh/Ym shape `formatWindowRemaining` (dateUtils.ts) renders,
+ * without its "left" suffix: that one counts down to a clock time, this
+ * counts up from a start stamp.
+ */
+export function describeTripElapsed(startedAt: string, now: Date): string {
+  const minutes = Math.max(0, Math.round((now.getTime() - Date.parse(startedAt)) / 60000));
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours > 0 && mins > 0) return `${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${mins} min`;
+}
+
+/**
  * The store you're at, or null — the one read every caller should use.
  *
  * Resolve-or-shrug on both halves, and both matter: the shop can have been

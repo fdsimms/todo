@@ -30,6 +30,7 @@ import {
   dbGetAllRecipes,
   dbUpdateRecipe,
 } from '../db/database';
+import { scheduleTripReminder, cancelTripReminder } from '../utils/notifications';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { groceryNameKey } from '../utils/groceryParse';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
@@ -118,6 +119,14 @@ jest.mock('../store/useSettingsStore', () => ({
       get groceryUseUpTaskCategory() { return mockUseUpCategory; },
     }),
   },
+}));
+
+// The active-trip tests assert against these directly; every other test just
+// needs startTrip/endTrip/deleteShop not to drag expo-notifications into this
+// node environment (see the useTaskStore mock above for the same reasoning).
+jest.mock('../utils/notifications', () => ({
+  scheduleTripReminder: jest.fn().mockResolvedValue(undefined),
+  cancelTripReminder: jest.fn().mockResolvedValue(undefined),
 }));
 
 /** The live use-up task for an item, as the store's own helper finds it. */
@@ -2964,6 +2973,7 @@ describe('the active trip', () => {
     expect(state.tripShopId).toBe(costco.id);
     expect(state.tripStartedAt).not.toBeNull();
     expect(dbSetTrip).toHaveBeenCalledWith(costco.id, state.tripStartedAt);
+    expect(scheduleTripReminder).toHaveBeenCalledWith('Costco', state.tripStartedAt);
   });
 
   it('refuses to start a trip at a store that does not exist', () => {
@@ -2973,6 +2983,7 @@ describe('the active trip', () => {
 
     expect(useGroceryStore.getState().tripShopId).toBeNull();
     expect(dbSetTrip).not.toHaveBeenCalled();
+    expect(scheduleTripReminder).not.toHaveBeenCalled();
   });
 
   it('ends a trip', () => {
@@ -2984,14 +2995,17 @@ describe('the active trip', () => {
     expect(useGroceryStore.getState().tripShopId).toBeNull();
     expect(useGroceryStore.getState().tripStartedAt).toBeNull();
     expect(dbSetTrip).toHaveBeenCalledWith(null, null);
+    expect(cancelTripReminder).toHaveBeenCalled();
   });
 
   it('ending a trip that is not running writes nothing', () => {
     seed([], { shops: [] });
+    (cancelTripReminder as jest.Mock).mockClear();
 
     useGroceryStore.getState().endTrip();
 
     expect(dbSetTrip).not.toHaveBeenCalled();
+    expect(cancelTripReminder).not.toHaveBeenCalled();
   });
 
   it('activeShop resolves a live trip', () => {
@@ -3025,6 +3039,7 @@ describe('the active trip', () => {
 
     expect(useGroceryStore.getState().tripShopId).toBeNull();
     expect(dbSetTrip).toHaveBeenCalledWith(null, null);
+    expect(cancelTripReminder).toHaveBeenCalled();
   });
 
   it('checkTripExpiry leaves a running trip alone', () => {
@@ -3046,6 +3061,7 @@ describe('the active trip', () => {
     expect(useGroceryStore.getState().tripShopId).toBeNull();
     expect(useGroceryStore.getState().tripStartedAt).toBeNull();
     expect(dbSetTrip).toHaveBeenCalledWith(null, null);
+    expect(cancelTripReminder).toHaveBeenCalled();
   });
 
   it('deleting a different store leaves the trip running', () => {
@@ -3056,11 +3072,13 @@ describe('the active trip', () => {
       tripShopId: costco.id,
       tripStartedAt: new Date().toISOString(),
     });
+    (cancelTripReminder as jest.Mock).mockClear();
 
     useGroceryStore.getState().deleteShop(safeway.id);
 
     expect(useGroceryStore.getState().tripShopId).toBe(costco.id);
     expect(dbSetTrip).not.toHaveBeenCalled();
+    expect(cancelTripReminder).not.toHaveBeenCalled();
   });
 
   it('clearing the list ends the trip', () => {

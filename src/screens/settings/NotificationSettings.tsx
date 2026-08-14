@@ -9,9 +9,11 @@ import {
   requestNotificationPermissions,
   pendingReminderStats,
   scheduleDailyAgenda,
+  rescheduleTripReminder,
   MAX_PENDING_REMINDERS,
   type NotificationPermission,
 } from '../../utils/notifications';
+import { useGroceryStore } from '../../store/useGroceryStore';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
@@ -30,6 +32,8 @@ export function NotificationSettings() {
   const setDailyAgendaEnabled = useSettingsStore(s => s.setDailyAgendaEnabled);
   const dailyAgendaTime = useSettingsStore(s => s.dailyAgendaTime);
   const setDailyAgendaTime = useSettingsStore(s => s.setDailyAgendaTime);
+  const tripReminderEnabled = useSettingsStore(s => s.tripReminderEnabled);
+  const setTripReminderEnabled = useSettingsStore(s => s.setTripReminderEnabled);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const setDefaultReminderLeadMinutes = useSettingsStore(s => s.setDefaultReminderLeadMinutes);
 
@@ -136,11 +140,32 @@ export function NotificationSettings() {
     setPickerOpen(false);
   };
 
+  /**
+   * Same permission gate as the agenda toggle, for the same reason: turning
+   * this on is the one moment the user just explicitly asked for it.
+   */
+  const onToggleTripReminder = async (next: boolean) => {
+    if (next && !(await requestNotificationPermissions())) {
+      refreshNotifPermission();
+      Alert.alert(
+        'Notifications are turned off',
+        'The trip reminder needs notification permission. Turn it on for this app in the Settings app, then try again.'
+      );
+      return;
+    }
+    setTripReminderEnabled(next);
+    // Reads the flag it just set, and schedules or cancels depending on
+    // whether a trip happens to be running right now — turning this on
+    // mid-trip shouldn't wait for the next startTrip to take effect.
+    const { tripShopId, tripStartedAt, shops } = useGroceryStore.getState();
+    rescheduleTripReminder(tripShopId, tripStartedAt, shops);
+  };
+
   return (
     <>
     <SettingsSection
       label="Notifications"
-      footer="Reminders and the agenda are delivered by the system, so they need its permission. The agenda counts what's due, carried over from earlier days, and deadlined for that day. Nothing is sent on a day with none of those — an empty summary isn't worth a notification. It's rebuilt each time you open the app, so leaving the app closed for days pauses it rather than sending a stale count."
+      footer="Reminders and the agenda are delivered by the system, so they need its permission. The agenda counts what's due, carried over from earlier days, and deadlined for that day. Nothing is sent on a day with none of those. An empty summary isn't worth a notification. It's rebuilt each time you open the app, so leaving the app closed for days pauses it rather than sending a stale count."
     >
       {/* Nothing surfaced the permission before, so a declined prompt
           just looked like reminders were broken. */}
@@ -153,9 +178,9 @@ export function NotificationSettings() {
         }
         label="Reminders"
         hint={
-          notifPermission === 'granted' ? 'Allowed — reminders will arrive'
+          notifPermission === 'granted' ? 'Allowed. Reminders will arrive'
           : notifPermission === 'denied' ? 'Blocked. Reminders you set will never arrive until you turn them back on for this app.'
-          : notifPermission === 'undetermined' ? 'Not enabled yet — reminders you set won’t arrive until you allow them'
+          : notifPermission === 'undetermined' ? 'Not enabled yet. Reminders you set won’t arrive until you allow them'
           : notifPermission === 'unsupported' ? 'Not available on this platform'
           : 'Checking…'
         }
@@ -230,6 +255,18 @@ export function NotificationSettings() {
 
       <View style={styles.sep} />
       <SettingsRow
+        icon="storefront-outline"
+        iconColor={tripReminderEnabled ? colors.accent : undefined}
+        label="Trip reminder"
+        hint={tripReminderEnabled
+          ? 'One notification if a shopping trip is still running two hours after it started'
+          : 'Nothing arrives if you leave a shopping trip running'}
+        toggle={tripReminderEnabled}
+        onPress={() => onToggleTripReminder(!tripReminderEnabled)}
+      />
+
+      <View style={styles.sep} />
+      <SettingsRow
         icon="moon-outline"
         iconColor={quietHoursEnabled ? colors.accent : undefined}
         label="Quiet hours"
@@ -289,14 +326,14 @@ export function NotificationSettings() {
 
     <SettingsSection
         label="Default reminder"
-        footer="Only kicks in when a task is given an actual start time (its time window), not just a due date or a morning/afternoon/evening slot — a reminder before the day even resets isn't useful. Never overrides a reminder you set or cleared yourself."
+        footer="Only kicks in when a task is given an actual start time (its time window), not just a due date or a morning/afternoon/evening slot. A reminder before the day even resets isn't useful. Never overrides a reminder you set or cleared yourself."
       >
         <SettingsRow
           icon="alarm-outline"
           iconColor={defaultReminderLeadMinutes === null ? undefined : colors.accent}
           label="Remind me before"
           hint={defaultReminderLeadMinutes === null
-            ? 'Off — set Remind Me by hand on each task'
+            ? 'Off. Set Remind Me by hand on each task'
             : `New start times get a reminder ${DEFAULT_REMINDER_LEAD_OPTIONS.find(o => o.value === defaultReminderLeadMinutes)?.label.toLowerCase() ?? ''} early`}
           tight
         />

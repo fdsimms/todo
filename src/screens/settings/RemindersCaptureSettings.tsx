@@ -298,7 +298,7 @@ export function RemindersCaptureSettings() {
   return (
     <SettingsSection
       label="Apple Reminders"
-      footer="Say “Hey Siri, remind me to…” and it lands here. Siri adds to whichever list is set as Default in Settings › Apps › Reminders, so point that at the list above. The title and notes come across as the task; a due date, repeat or alarm is read too, but it waits on the task in your Inbox until you accept it, so nothing schedules itself before you’ve seen it. Each reminder is deleted from the list once its task exists — turn that off and they stay put, and anything whose name you already have is skipped instead. Completed reminders are left alone either way."
+      footer="Say “Hey Siri, remind me to…” and it lands here. Siri adds to whichever list is set as Default in Settings › Apps › Reminders, so point that at the list above. The title and notes come across as the task; a due date, repeat or alarm is read too, but it waits on the task in your Inbox until you accept it, so nothing schedules itself before you’ve seen it. Each reminder is deleted from the list once its task exists. Turn that off and they stay put, and anything whose name you already have is skipped instead. Completed reminders are left alone either way."
     >
       <SettingsRow
         icon="arrow-down-circle-outline"
@@ -330,9 +330,9 @@ export function RemindersCaptureSettings() {
             }
             label="Reminders access"
             hint={
-              remindersPermission === 'granted' ? 'Allowed — this app can read and remove reminders in the list below'
+              remindersPermission === 'granted' ? 'Allowed. This app can read and remove reminders in the list below'
               : remindersPermission === 'denied' ? 'Blocked. Nothing can be imported until you turn it back on for this app.'
-              : remindersPermission === 'undetermined' ? 'Not enabled yet — nothing can be imported until you allow it'
+              : remindersPermission === 'undetermined' ? 'Not enabled yet. Nothing can be imported until you allow it'
               : remindersPermission === 'unsupported' ? 'Not available on this platform'
               : 'Checking…'
             }
@@ -435,7 +435,7 @@ export function RemindersCaptureSettings() {
             label="Delete after importing"
             hint={remindersImportDelete
               ? `Each reminder is removed from “${selectedReminderList.title}” once its task exists`
-              : 'Reminders stay in the list. One whose name already matches a task — a finished one counts — is skipped instead, so nothing is imported twice.'}
+              : 'Reminders stay in the list. One whose name already matches a task (a finished one counts) is skipped instead, so nothing is imported twice.'}
             toggle={remindersImportDelete}
             onPress={() => setRemindersImportDelete(!remindersImportDelete)}
             accessibilityLabel="Delete each reminder from the Reminders app after importing it"

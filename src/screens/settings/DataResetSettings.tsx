@@ -143,7 +143,7 @@ export function DataResetSettings() {
       const backup = result.backup;
       Alert.alert(
         'Replace everything with this backup?',
-        `The backup holds ${summarizeBackup(backup)}. Everything currently in the app — tasks, projects, stacks, templates, categories and settings — is deleted and replaced by it. This can't be undone, so export what you have first if you haven't.`,
+        `The backup holds ${summarizeBackup(backup)}. Everything currently in the app (tasks, projects, stacks, templates, categories and settings) is deleted and replaced by it. This can't be undone, so export what you have first if you haven't.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -152,11 +152,11 @@ export function DataResetSettings() {
             onPress: () => {
               try {
                 applyBackup(backup);
-                Alert.alert('Restored', `Your data now matches the backup — ${summarizeBackup(backup)}.`);
+                Alert.alert('Restored', `Your data now matches the backup: ${summarizeBackup(backup)}.`);
               } catch (e) {
                 Alert.alert(
                   'Restore failed',
-                  `${e instanceof Error ? e.message : 'Something went wrong.'} Nothing was changed — the restore is a single transaction, so your existing data is still there.`
+                  `${e instanceof Error ? e.message : 'Something went wrong.'} Nothing was changed. The restore is a single transaction, so your existing data is still there.`
                 );
               }
             },
@@ -212,7 +212,7 @@ export function DataResetSettings() {
     }
     Alert.alert(
       'Turn on demo mode?',
-      'Your tasks are hidden and replaced everywhere with a sample list. Nothing of yours is changed or deleted — turn it off to get it all back.',
+      'Your tasks are hidden and replaced everywhere with a sample list. Nothing of yours is changed or deleted. Turn it off to get it all back.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Turn on', onPress: enterDemoMode },
@@ -248,7 +248,7 @@ export function DataResetSettings() {
     <>
       <SettingsSection
         label="Backup"
-        footer="Everything lives on this device and nowhere else, so a backup is the only copy that survives losing the phone. The file holds your tasks, projects, stacks, templates, categories and settings — but never your API key, since a backup is a file you send places. Restoring replaces what's in the app rather than merging into it."
+        footer="Everything lives on this device and nowhere else, so a backup is the only copy that survives losing the phone. The file holds your tasks, projects, stacks, templates, categories and settings, but never your API key, since a backup is a file you send places. Restoring replaces what's in the app rather than merging into it."
       >
         <SettingsRow
           icon="download-outline"
@@ -281,14 +281,14 @@ export function DataResetSettings() {
           makes choosing a window here safe. */}
       <SettingsSection
         label="History"
-        footer="A task you repeat daily leaves a completed copy behind every time, and by default those are kept forever. A window trims them — permanently, along with their Logbook entries and their share of Stats, so export before shortening one. Streaks aren't affected: a streak count lives on the task still running it. Archived tasks are never touched."
+        footer="A task you repeat daily leaves a completed copy behind every time, and by default those are kept forever. A window trims them permanently, along with their Logbook entries and their share of Stats, so export before shortening one. Streaks aren't affected: a streak count lives on the task still running it. Archived tasks are never touched."
       >
         <SettingsRow
           icon="book-outline"
           iconColor={completedRetentionDays === null ? undefined : colors.accent}
           label="Keep completed tasks for"
           hint={completedRetentionDays === null
-            ? 'Forever — nothing is ever deleted on its own'
+            ? 'Forever. Nothing is ever deleted on its own'
             : `Completions older than ${retentionLabel(completedRetentionDays).toLowerCase()} are deleted at launch`}
           tight
         />
@@ -303,7 +303,7 @@ export function DataResetSettings() {
 
       <SettingsSection
         label="Demo"
-        footer="Every screen — Today, Search, Projects, Stats — switches to a sample list you can edit freely. Nothing you do while it's on touches your real tasks, and turning it off discards the sample list and brings yours back."
+        footer="Every screen (Today, Search, Projects, Stats) switches to a sample list you can edit freely. Nothing you do while it's on touches your real tasks, and turning it off discards the sample list and brings yours back."
       >
         <SettingsRow
           icon={demoActive ? 'flask' : 'flask-outline'}

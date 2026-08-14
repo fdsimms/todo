@@ -169,6 +169,10 @@ interface SettingsStore {
   // turn notifications off wholesale.
   dailyAgendaEnabled: boolean;
   dailyAgendaTime: string; // "HH:MM"
+  // The backstop for a trip left running — one notification, two hours after
+  // it started, in case the persistent trip bar isn't enough because the app
+  // isn't open to show it. Off by default, same reasoning as dailyAgendaEnabled.
+  tripReminderEnabled: boolean;
   // Lives in the device keychain, not the settings table — see
   // src/utils/secureApiKey.ts. It's held here in memory like any other setting,
   // but it arrives a tick late: initialize() is synchronous and the keychain
@@ -494,6 +498,7 @@ interface SettingsStore {
   setAppFont: (fontId: AppFont) => void;
   setDailyAgendaEnabled: (on: boolean) => void;
   setDailyAgendaTime: (time: string) => void;
+  setTripReminderEnabled: (on: boolean) => void;
   setUse24HourTime: (on: boolean) => void;
   setWeekStartsOn: (day: WeekStart) => void;
   setFabHand: (hand: FabHand) => void;
@@ -577,6 +582,7 @@ const DEFAULT_SETTINGS = {
   shakeToUndoEnabled: true,
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
+  tripReminderEnabled: false,
   autoArchiveProjectsOnComplete: false,
   postponeCheckEnabled: true,
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
@@ -811,6 +817,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   recipeFavoritesOnly: false,
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
+  tripReminderEnabled: false,
   anthropicApiKey: '',
   aiFeatureConfig: defaultAiFeatureConfig(),
   appLockEnabled: false,
@@ -900,6 +907,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const recipeFavoritesOnly = dbGetSetting('recipeFavoritesOnly') === 'true';
     const dailyAgendaEnabled = dbGetSetting('dailyAgendaEnabled') === 'true';
     const dailyAgendaTime = dbGetSetting('dailyAgendaTime') ?? '08:00';
+    const tripReminderEnabled = dbGetSetting('tripReminderEnabled') === 'true';
     const appLockEnabled = dbGetSetting('appLockEnabled') === 'true';
     const appLockGraceSeconds = parseGraceSeconds(dbGetSetting('appLockGraceSeconds'));
     // `!== 'false'` rather than `=== 'true'`: this defaults on, so an install
@@ -1051,7 +1059,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -1129,6 +1137,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setDailyAgendaTime(time: string) {
     dbSetSetting('dailyAgendaTime', time);
     set({ dailyAgendaTime: time });
+  },
+
+  setTripReminderEnabled(on: boolean) {
+    dbSetSetting('tripReminderEnabled', on ? 'true' : 'false');
+    set({ tripReminderEnabled: on });
   },
 
   setUse24HourTime(on: boolean) {

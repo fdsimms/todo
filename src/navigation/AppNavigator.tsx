@@ -30,6 +30,7 @@ import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
+import { PersistentTripBar } from '../components/PersistentTripBar';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
@@ -306,6 +307,10 @@ export default function AppNavigator() {
           and modal — demo mode isn't a place you navigate to, it's a state
           the whole app is in. */}
       <DemoBanner />
+      {/* Same placement, same reason: a trip isn't a place you navigate to
+          either, and ActiveTripBanner (GroceryScreen.tsx) already covers the
+          in-screen case — this is what's still there once you've tabbed away. */}
+      <PersistentTripBar />
     </>
   );
 }

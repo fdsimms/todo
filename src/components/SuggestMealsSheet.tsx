@@ -338,7 +338,7 @@ export function SuggestMealsSheet({
           dayIndex += 1;
         } catch (e) {
           const message = e instanceof Error && e.message === 'IDEA_NAME_EMPTY'
-            ? 'That name didn’t survive — try regenerating.'
+            ? 'That name didn’t survive. Try regenerating.'
             : e instanceof Error && e.message === 'IDEA_SAVE_FAILED'
               ? 'Couldn’t save that to your recipe box.'
               : describeAIError(e);
@@ -409,7 +409,7 @@ export function SuggestMealsSheet({
             {landedDay
               ? `Planned for ${format(landedDay, 'EEEE')}`
               : isSelected && previewDay
-                ? `Selected — will land on ${format(previewDay, 'EEEE')}`
+                ? `Selected, will land on ${format(previewDay, 'EEEE')}`
                 : describeRecipe(recipe)}
           </Text>
           {!landedDay && (pantryLabel || cookHistory) && (
@@ -479,8 +479,8 @@ export function SuggestMealsSheet({
             {landedDay
               ? `Planned for ${format(landedDay, 'EEEE')} · saved to your recipe box`
               : isSelected && previewDay
-                ? `Selected — will land on ${format(previewDay, 'EEEE')} and save to your recipe box`
-                : (idea.blurb || 'A new idea — accepting it adds it to your recipe box.')}
+                ? `Selected, will land on ${format(previewDay, 'EEEE')} and save to your recipe box`
+                : (idea.blurb || 'A new idea. Accepting it adds it to your recipe box.')}
           </Text>
           {!landedDay && (
             <View style={styles.signalRow}>
@@ -645,7 +645,7 @@ export function SuggestMealsSheet({
             <EmptyState
               icon="restaurant-outline"
               title="Nothing in this category"
-              subtitle={`No ${RECIPE_MEAL_TYPE_LABELS[filter as RecipeMealType].toLowerCase()} recipes match your catalog yet — try All.`}
+              subtitle={`No ${RECIPE_MEAL_TYPE_LABELS[filter as RecipeMealType].toLowerCase()} recipes match your catalog yet. Try All.`}
             />
           </View>
         ) : (

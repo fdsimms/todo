@@ -40,6 +40,7 @@ const DEFAULT_MOCK_SETTINGS = {
   vacationMode: false,
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
+  tripReminderEnabled: false,
   quietHoursStart: null,
   quietHoursEnd: null,
   calendarReadEnabled: false,
@@ -75,9 +76,13 @@ import {
   cancelDailyAgenda,
   isWithinQuietHours,
   deferPastQuietHours,
+  scheduleTripReminder,
+  cancelTripReminder,
+  rescheduleTripReminder,
 } from '../utils/notifications';
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { setDemoModeActive } from '../utils/demoState';
+import type { Shop } from '../types';
 
 const FUTURE = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 const PAST   = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -527,6 +532,102 @@ describe('scheduleTimerAlarm', () => {
     const running = { timedMinutes: 15, timerStartedAt: new Date().toISOString() };
     await scheduleTimerAlarm(makeTask({ ...running, completed: true }));
     await scheduleTimerAlarm(makeTask({ ...running, archived: true }));
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});
+
+const makeShop = (overrides: Partial<Shop> = {}): Shop => ({
+  id: 'shop-1',
+  name: 'Costco',
+  nameKey: 'costco',
+  sortOrder: 0,
+  createdAt: '2025-01-01T00:00:00.000Z',
+  excludeFromSuggestions: false,
+  ...overrides,
+});
+
+describe('scheduleTripReminder', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('does not schedule when the setting is off', async () => {
+    mockSettings.tripReminderEnabled = false;
+    await scheduleTripReminder('Costco', new Date().toISOString());
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('schedules two hours out, naming the store, when the setting is on', async () => {
+    mockSettings.tripReminderEnabled = true;
+    const startedAt = new Date().toISOString();
+    await scheduleTripReminder('Costco', startedAt);
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.identifier).toBe('active-trip-reminder');
+    expect(call.content.body).toContain('Costco');
+    const msOut = new Date(call.trigger.date).getTime() - Date.parse(startedAt);
+    expect(msOut).toBe(2 * 60 * 60 * 1000);
+  });
+
+  it('cancels rather than schedules once the two-hour mark has already passed', async () => {
+    mockSettings.tripReminderEnabled = true;
+    const startedAt = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    await scheduleTripReminder('Costco', startedAt);
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('suppresses rather than defers a trigger landing in quiet hours', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 1, 20, 30)); // 8:30pm
+    mockSettings.tripReminderEnabled = true;
+    mockSettings.quietHoursStart = '22:00';
+    mockSettings.quietHoursEnd = '07:00';
+    // Two hours out lands at 10:30pm — inside the window.
+    await scheduleTripReminder('Costco', new Date().toISOString());
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it('always cancels the previous one first, whatever the setting', async () => {
+    mockSettings.tripReminderEnabled = false;
+    await scheduleTripReminder('Costco', new Date().toISOString());
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('active-trip-reminder');
+  });
+});
+
+describe('cancelTripReminder', () => {
+  it('cancels the fixed identifier', async () => {
+    jest.clearAllMocks();
+    await cancelTripReminder();
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('active-trip-reminder');
+  });
+});
+
+describe('rescheduleTripReminder', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('reschedules against a live trip', async () => {
+    mockSettings.tripReminderEnabled = true;
+    const costco = makeShop();
+    const startedAt = new Date().toISOString();
+    await rescheduleTripReminder(costco.id, startedAt, [costco]);
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.content.body).toContain('Costco');
+  });
+
+  it('cancels rather than schedules when there is no active trip', async () => {
+    await rescheduleTripReminder(null, null, []);
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('active-trip-reminder');
+  });
+
+  it('cancels rather than schedules when the trip has aged out', async () => {
+    const costco = makeShop();
+    const startedAt = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+    await rescheduleTripReminder(costco.id, startedAt, [costco]);
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('cancels rather than schedules when the shop no longer exists', async () => {
+    const startedAt = new Date().toISOString();
+    await rescheduleTripReminder('gone', startedAt, []);
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 });
@@ -1006,6 +1107,26 @@ describe('rescheduleAllReminders restores the agenda it just cancelled', () => {
     const ids = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(c => c[0].identifier);
     expect(ids).toContain('with-reminder');
     expect(ids).toContain('daily-agenda');
+  });
+});
+
+// The trip reminder is the third thing that has to be put back after the same
+// blanket cancel — omitted entirely (the shape every existing call above
+// uses), it's simply left cancelled, which is right for all of them since
+// none is mid-trip.
+describe('rescheduleAllReminders restores the trip reminder it just cancelled', () => {
+  it('reschedules a live trip after the blanket cancel', async () => {
+    mockSettings.tripReminderEnabled = true;
+    const costco = makeShop();
+    const startedAt = new Date().toISOString();
+    await rescheduleAllReminders([], { shopId: costco.id, startedAt, shops: [costco] });
+    const ids = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(c => c[0].identifier);
+    expect(ids).toContain('active-trip-reminder');
+  });
+
+  it('leaves it cancelled when no trip info is passed', async () => {
+    await rescheduleAllReminders([]);
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('active-trip-reminder');
   });
 });
 

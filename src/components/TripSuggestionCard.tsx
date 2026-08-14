@@ -14,7 +14,7 @@ import {
   type Colors,
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
-import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
+import { tripSuggestionCopy } from '../utils/shoppingTrip';
 
 interface Props {
   /** Opens the trip sheet, where the ranking behind this line lives. */
@@ -56,7 +56,11 @@ interface Props {
  * suggestable store, or a suggestion with no known and no likely item, and the
  * card doesn't render — a card reading "no idea, sorry" at the top of every
  * list is worse than the silence it replaced, and a store that has nothing on
- * record is exactly the case `describeTripSuggestion` returns null for.
+ * record is exactly the case `describeTripSuggestion` returns null for. The
+ * copy behind that decision is `tripSuggestionCopy` (shoppingTrip.ts), not
+ * inlined here, so `GroceryScreen` can ask the same question to decide when to
+ * render `StartTripPrompt` instead — the plain "Start shopping" fallback for
+ * everyone this card stays silent for, a single-store household above all.
  *
  * Every number is a floor, same as in the sheet: the app knows where you've
  * bought things, not what a shop stocks. Nothing here asserts an absence.
@@ -69,18 +73,10 @@ export function TripSuggestionCard({ onPress }: Props) {
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const shops = useGroceryStore(useShallow(s => s.shops));
 
-  const plan = useMemo(() => planTrip(items, itemShops, shops), [items, itemShops, shops]);
-  const nameOf = useMemo(() => new Map(items.map(i => [i.id, i.name])), [items]);
-  const copy = useMemo(() => {
-    // Two suggestable stores is the floor. With one, "the fewest stores that
-    // cover your list" has exactly one possible answer, and the card would be
-    // reading the user the name of their only shop — which is also why the
-    // header action skips the sheet at that count.
-    if (plan.coverage.length < 2) return null;
-    // An empty selection *is* the recommendation, same call the sheet makes to
-    // pick its default — one code path for "where should I go".
-    return describeTripSuggestion(summarizeTrip([], plan).suggestion, plan.itemIds.length, nameOf);
-  }, [plan, nameOf]);
+  const copy = useMemo(
+    () => tripSuggestionCopy(items, itemShops, shops),
+    [items, itemShops, shops]
+  );
 
   if (!copy) return null;
 

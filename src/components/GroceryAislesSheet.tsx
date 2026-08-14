@@ -134,7 +134,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
     Alert.alert(
       `Delete ${name}?`,
       count > 0
-        ? `${count} ${count === 1 ? 'item is' : 'items are'} recorded as coming from here. Deleting the store forgets that — the items themselves stay. This can’t be undone.`
+        ? `${count} ${count === 1 ? 'item is' : 'items are'} recorded as coming from here. Deleting the store forgets that. The items themselves stay. This can’t be undone.`
         : 'Nothing is recorded against this store yet.',
       [
         { text: 'Cancel', style: 'cancel' },

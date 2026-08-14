@@ -11,6 +11,8 @@ import { nudgeReminderPastMeeting } from './reminderNudge';
 import { isAlarmKitAvailable, requestAlarmAuthorization, scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, taskAlarmUuid } from './alarmChain';
 import { isDemoModeActive } from './demoState';
+import { resolveActiveTrip } from './activeTrip';
+import type { Shop } from '../types';
 
 export { isAlarmKitAvailable, requestAlarmAuthorization };
 
@@ -271,7 +273,15 @@ export function pendingReminderStats(tasks: Task[], now: Date = new Date()): Pen
   return { wanted, scheduled, dropped: wanted - scheduled };
 }
 
-export async function rescheduleAllReminders(tasks: Task[]): Promise<void> {
+export async function rescheduleAllReminders(
+  tasks: Task[],
+  // Optional and destructured to plain fields (not a Shop-store read) for the
+  // same reason rescheduleTripReminder takes them raw: this file must not
+  // import useGroceryStore. Omitted entirely, every existing caller (and
+  // every test) still gets the right behavior — no active trip, so the
+  // reminder is simply left cancelled.
+  trip?: { shopId: string | null; startedAt: string | null; shops: readonly Shop[] }
+): Promise<void> {
   const now = new Date();
   await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
 
@@ -292,15 +302,18 @@ export async function rescheduleAllReminders(tasks: Task[]): Promise<void> {
   // cancelAllScheduledNotificationsAsync above is indiscriminate — it clears
   // every notification this app owns, not just the reminders this function
   // rebuilt. Anything else the app schedules has to be put back here, and
-  // there are now two such things: a timer that was running when the app was
-  // last closed would otherwise lose its alarm on cold start, and the daily
-  // agenda would simply stop happening.
+  // there are now three such things: a timer that was running when the app
+  // was last closed would otherwise lose its alarm on cold start, the daily
+  // agenda would simply stop happening, and a trip left running would lose
+  // its two-hour backstop.
   //
-  // If a third arrives, that's the signal to give each kind its own id prefix
-  // and cancel by prefix instead — the blanket cancel is only tenable while
-  // the put-it-back list is short enough to read.
+  // Three is the signal the original version of this note called out: the
+  // next one to arrive should give each kind its own id prefix and cancel by
+  // prefix instead — the blanket cancel is only tenable while the put-it-back
+  // list is short enough to read.
   await rescheduleAllTimerAlarms(tasks);
   await scheduleDailyAgenda(tasks);
+  await rescheduleTripReminder(trip?.shopId ?? null, trip?.startedAt ?? null, trip?.shops ?? []);
 }
 
 // ─── Daily agenda ────────────────────────────────────────────────────────────
@@ -382,7 +395,7 @@ export async function scheduleTimerAlarm(task: Task): Promise<void> {
     identifier: timerAlarmId(task.id),
     content: {
       title: 'Time’s up',
-      body: `${displayTitleFor(task) || 'Your task'} — ready to complete`,
+      body: `${displayTitleFor(task) || 'Your task'} is ready to complete`,
       data: { taskId: task.id },
       sound: true,
     },
@@ -403,4 +416,78 @@ export async function rescheduleAllTimerAlarms(tasks: Task[]): Promise<void> {
       await scheduleTimerAlarm(task);
     }
   }
+}
+
+// ─── Active-trip reminder ────────────────────────────────────────────────────
+
+// A fixed id, like the daily agenda: there's only ever one trip, so
+// scheduling always replaces whatever was pending rather than stacking a
+// second copy behind it.
+const TRIP_REMINDER_ID = 'active-trip-reminder';
+
+// Long enough that an ordinary shop is unambiguously over, well short of
+// TRIP_MAX_MS (activeTrip.ts) ending the trip outright — a nudge with time
+// left to act on, not a postmortem on one that already auto-expired.
+const TRIP_REMINDER_DELAY_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * The backstop for someone who's left the store (or just left the app) and
+ * forgotten to finish shopping — a single notification two hours after a
+ * trip starts, for whenever the persistent trip bar isn't enough because the
+ * app isn't open to show it. Opt-in (`tripReminderEnabled`), same reasoning
+ * as the daily agenda: a notification nobody asked for is how people turn
+ * notifications off wholesale.
+ */
+export async function scheduleTripReminder(shopName: string, startedAt: string): Promise<void> {
+  await cancelTripReminder();
+  if (isDemoModeActive()) return;
+  if (!useSettingsStore.getState().tripReminderEnabled) return;
+
+  const triggerDate = new Date(Date.parse(startedAt) + TRIP_REMINDER_DELAY_MS);
+  if (triggerDate <= new Date()) return;
+
+  // Suppressed rather than deferred, like the timer alarm: "still shopping?"
+  // is stale by the time a quiet-hours window ends, and a nudge that arrives
+  // hours after the question stopped applying is worse than none.
+  const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+  if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return;
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: TRIP_REMINDER_ID,
+    content: {
+      title: 'Still shopping?',
+      body: `Tap to wrap up your trip at ${shopName}`,
+      data: { activeTripReminder: true },
+      sound: true,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: triggerDate,
+    },
+  });
+}
+
+export async function cancelTripReminder(): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(TRIP_REMINDER_ID).catch(() => {});
+}
+
+/**
+ * Puts the trip reminder back after a blanket cancel — the same job
+ * `rescheduleAllTimerAlarms` does for timer alarms, and folded into
+ * `rescheduleAllReminders` below for the same reason. Takes the trip's raw
+ * fields rather than reading `useGroceryStore` directly, so this file never
+ * has to import the grocery store — `rescheduleAllReminders`'s one caller
+ * already has both stores in hand.
+ */
+export async function rescheduleTripReminder(
+  shopId: string | null,
+  startedAt: string | null,
+  shops: readonly Shop[]
+): Promise<void> {
+  const shop = resolveActiveTrip(shopId, startedAt, shops, new Date());
+  if (!shop || !startedAt) {
+    await cancelTripReminder();
+    return;
+  }
+  await scheduleTripReminder(shop.name, startedAt);
 }

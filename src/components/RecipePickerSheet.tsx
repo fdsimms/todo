@@ -397,7 +397,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
                   title={query.trim() ? 'No matches' : 'No recipes yet'}
                   subtitle={query.trim()
                     ? 'Nothing in your recipe box is called that.'
-                    : 'Type what you’re having — you don’t need a recipe to plan a night.'}
+                    : 'Type what you’re having. You don’t need a recipe to plan a night.'}
                 />
               </View>
             ) : (

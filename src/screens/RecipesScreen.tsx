@@ -441,7 +441,7 @@ export function RecipesScreen() {
         <EmptyState
           icon="restaurant-outline"
           title="No recipes yet"
-          subtitle="Keep what you cook here, with what it takes to shop for it — then put a whole recipe on the grocery list in one tap"
+          subtitle="Keep what you cook here, with what it takes to shop for it. Then put a whole recipe on the grocery list in one tap"
           actionLabel="New recipe"
           onAction={() => setAddVisible(true)}
           bottomOffset={tabBarHeight}

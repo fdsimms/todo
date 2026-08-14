@@ -1091,7 +1091,7 @@ describe('totalMinutes', () => {
 describe('describeAttribution', () => {
   it('prefers author + source, falling back through source, then legacy sourceName', () => {
     expect(describeAttribution(recipe('R', { author: 'Alison Roman', source: 'Nothing Fancy' })))
-      .toBe('by Alison Roman — Nothing Fancy');
+      .toBe('by Alison Roman, Nothing Fancy');
     expect(describeAttribution(recipe('R', { author: 'Alison Roman' }))).toBe('by Alison Roman');
     expect(describeAttribution(recipe('R', { source: 'NYT Cooking' }))).toBe('NYT Cooking');
     expect(describeAttribution(recipe('R', { sourceName: 'Legacy Source' }))).toBe('Legacy Source');

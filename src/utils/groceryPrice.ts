@@ -49,6 +49,10 @@ const MINOR_PER_MAJOR = 100;
  * More than two decimal places is a refusal rather than a rounding, because
  * the only way to type one is by accident and quietly turning 4.999 into 5.00
  * is how a number nobody checked ends up in a total.
+ *
+ * A leading decimal point with nothing before it ("`.75`") is read as "0.75",
+ * not refused — a decimal-pad keyboard doesn't insert the leading zero for
+ * you, so typing anything under $1 naturally lands here.
  */
 export function parsePriceInput(raw: string): number | null {
   // A leading currency symbol is dropped; a leading minus is deliberately not,
@@ -57,7 +61,8 @@ export function parsePriceInput(raw: string): number | null {
   const trimmed = raw.trim().replace(/^[^\d.,\-]+/, '').trim();
   if (!trimmed) return null;
   // One separator, either convention: "4.50" and "4,50" are the same price.
-  const normalized = trimmed.replace(',', '.');
+  let normalized = trimmed.replace(',', '.');
+  if (normalized.startsWith('.')) normalized = `0${normalized}`;
   if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
   const value = Number(normalized);
   if (!Number.isFinite(value)) return null;

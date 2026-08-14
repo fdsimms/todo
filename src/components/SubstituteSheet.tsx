@@ -332,7 +332,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
             <Text style={styles.hint}>
               {fromUnit
                 ? `Only applies to a recipe line measured in ${fromUnit}. Anything else is left as written.`
-                : `Optional — for a substitute that needs a different amount, not just a different name.`}
+                : `Optional. For a substitute that needs a different amount, not just a different name.`}
             </Text>
 
             <Text style={styles.label}>NOTE</Text>
