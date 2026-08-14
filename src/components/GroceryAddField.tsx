@@ -24,7 +24,12 @@ import { rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { resolveGroceryTokens, splitAlternativeNames } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
+import {
+  GROCERY_NAME_MAX_LENGTH,
+  GROCERY_BRAND_MAX_LENGTH,
+  GROCERY_VARIANT_MAX_LENGTH,
+  type GroceryItem,
+} from '../types';
 import { describeProduct } from '../utils/groceryProduct';
 import { generateId } from '../utils/id';
 
@@ -43,6 +48,18 @@ interface Props {
  * of flow is that neither piece moves as you type.
  */
 const FIELD_HEIGHT = 48 + border.sm * 2;
+
+/**
+ * The attribute toolbar (Brand/Variant) and its inline edit panel, sized the
+ * same explicit way FIELD_HEIGHT is — `results` is positioned off the sum of
+ * all three, and unlike the field these two are tap-driven rather than
+ * typing-driven, so they live in flow above `results` instead of inside its
+ * out-of-flow block. TOOLBAR_HEIGHT matches the chip row's own minHeight;
+ * ATTRIBUTE_PANEL_HEIGHT is given to the panel row directly rather than left
+ * to its content, for the same reason FIELD_HEIGHT is.
+ */
+const TOOLBAR_HEIGHT = interaction.pillHeight;
+const ATTRIBUTE_PANEL_HEIGHT = 40;
 
 /** Lets the sheet focus the field once its entrance animation has settled. */
 export interface GroceryAddFieldHandle {
@@ -86,6 +103,25 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const [rejectedQuantity, setRejectedQuantity] = useState<string | null>(null);
   const [rejectedPrep, setRejectedPrep] = useState<string | null>(null);
   const [rejectedPurpose, setRejectedPurpose] = useState<string | null>(null);
+
+  // Optional, set explicitly rather than parsed — see newItemRow's own note on
+  // why nothing pulls a brand out of typed text. Mirrors QuickAddModal's
+  // attribute toolbar: a chip per field, one inline panel open at a time.
+  const [brand, setBrand] = useState('');
+  const [variant, setVariant] = useState('');
+  const [activePanel, setActivePanel] = useState<'brand' | 'variant' | null>(null);
+
+  const resetAttributes = useCallback(() => {
+    setBrand('');
+    setVariant('');
+    setActivePanel(null);
+  }, []);
+
+  const togglePanel = useCallback((panel: 'brand' | 'variant') => {
+    haptics.tap();
+    animateLayout();
+    setActivePanel(prev => (prev === panel ? null : panel));
+  }, []);
 
   const suggestions = useMemo(
     () => (focused ? rankGrocerySuggestions(text, items, new Date()) : []),
@@ -143,6 +179,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     setRejectedQuantity(null);
     setRejectedPrep(null);
     setRejectedPurpose(null);
+    resetAttributes();
     // One combined undo, same reason addManyFromText combines its per-line
     // ones — otherwise only the last of the two rows would be undoable.
     const addedIds = addedItems.map(i => i.id);
@@ -151,10 +188,19 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       undo: () => removeFromListMany(addedIds),
     });
     onAdded?.(addedItems);
-  }, [alternatives, addByName, tokens, setLastAction, removeFromListMany, onAdded]);
+  }, [alternatives, addByName, tokens, setLastAction, removeFromListMany, onAdded, resetAttributes]);
 
   const commit = useCallback(
-    (raw: string, override?: { name: string; quantity: string | null; note?: string | null }) => {
+    (
+      raw: string,
+      override?: {
+        name: string;
+        quantity: string | null;
+        note?: string | null;
+        brand?: string | null;
+        variant?: string | null;
+      }
+    ) => {
       const trimmed = raw.trim();
       if (!trimmed) return;
       animateLayout();
@@ -165,15 +211,25 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       setRejectedQuantity(null);
       setRejectedPrep(null);
       setRejectedPurpose(null);
+      resetAttributes();
       onAdded?.([item]);
     },
-    [addByName, onAdded]
+    [addByName, onAdded, resetAttributes]
   );
 
   const submit = useCallback(() => {
     if (!tokens) return;
-    commit(text, { name: tokens.name, quantity: tokens.quantity, note: tokens.note });
-  }, [tokens, text, commit]);
+    commit(text, {
+      name: tokens.name,
+      quantity: tokens.quantity,
+      note: tokens.note,
+      // Only the field this add actually typed a value into — an empty chip
+      // must not overwrite an existing item's brand/variant on re-add, same
+      // rule addByName already applies to quantity and note.
+      brand: brand.trim() || null,
+      variant: variant.trim() || null,
+    });
+  }, [tokens, text, commit, brand, variant]);
 
   useImperativeHandle(ref, () => ({
     focus: () => inputRef.current?.focus(),
@@ -197,6 +253,10 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       }
 
       animateLayout();
+      // A pasted block is many rows, each parsed on its own — there's no one
+      // item left for a Brand/Variant chip typed a moment ago to apply to, so
+      // it doesn't silently carry over onto whatever's typed next either.
+      resetAttributes();
       const { added, alreadyOnList } = addManyFromText(next);
       const total = added.length + alreadyOnList.length;
       if (total === 0) {
@@ -216,7 +276,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       );
       onAdded?.(added);
     },
-    [addManyFromText, onAdded, status]
+    [addManyFromText, onAdded, status, resetAttributes]
   );
 
   // Everything the field can grow — the parsed-token chips, the either/or
@@ -224,6 +284,13 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const hasTokenChips =
     !!tokens && (tokens.quantityAccepted || tokens.prepAccepted || tokens.purposeAccepted);
   const hasResults = hasTokenChips || !!alternatives || !!status || suggestions.length > 0;
+
+  // `results` is pinned off the bottom of everything static above it — see
+  // FIELD_HEIGHT's own note. The toolbar is always there; the panel only adds
+  // to this when a chip is open.
+  const resultsTop =
+    FIELD_HEIGHT + spacing.sm + TOOLBAR_HEIGHT + spacing.sm +
+    (activePanel ? ATTRIBUTE_PANEL_HEIGHT + spacing.sm : 0);
 
   return (
     <View style={styles.wrap}>
@@ -257,6 +324,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
               setRejectedQuantity(null);
               setRejectedPrep(null);
               setRejectedPurpose(null);
+              resetAttributes();
             }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
@@ -268,6 +336,95 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
         )}
       </View>
 
+      {/* Optional, in flow like the field above it rather than out of flow
+          like `results` below — these are tap-driven, not typing-driven, so
+          nothing here reflows on every keystroke the way `results` would if
+          it lived out here. Mirrors QuickAddModal's attribute toolbar: a chip
+          per field, current value shown once set, one inline panel open at a
+          time. */}
+      <View style={styles.toolbar}>
+        <TouchableOpacity
+          style={[
+            styles.toolChip,
+            activePanel === 'brand' && styles.toolChipActive,
+            !!brand && styles.toolChipSet,
+          ]}
+          onPress={() => togglePanel('brand')}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`Brand${brand ? `: ${brand}` : ''}`}
+        >
+          <Ionicons
+            name="pricetag-outline"
+            size={iconSize.sm}
+            color={brand ? colors.accent : colors.textSecondary}
+          />
+          <Text
+            style={[styles.toolChipText, !!brand && styles.toolChipTextSet]}
+            numberOfLines={1}
+          >
+            {brand || 'Brand'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.toolChip,
+            activePanel === 'variant' && styles.toolChipActive,
+            !!variant && styles.toolChipSet,
+          ]}
+          onPress={() => togglePanel('variant')}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`Variant${variant ? `: ${variant}` : ''}`}
+        >
+          <Ionicons
+            name="layers-outline"
+            size={iconSize.sm}
+            color={variant ? colors.accent : colors.textSecondary}
+          />
+          <Text
+            style={[styles.toolChipText, !!variant && styles.toolChipTextSet]}
+            numberOfLines={1}
+          >
+            {variant || 'Variant'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {activePanel !== null && (
+        <View style={styles.attributePanel}>
+          <Ionicons
+            name={activePanel === 'brand' ? 'pricetag-outline' : 'layers-outline'}
+            size={16}
+            color={colors.textSecondary}
+          />
+          <TextInput
+            style={styles.attributeInput}
+            value={activePanel === 'brand' ? brand : variant}
+            onChangeText={activePanel === 'brand' ? setBrand : setVariant}
+            placeholder={activePanel === 'brand' ? 'Any brand' : 'e.g. low fat, 4%, crunchy'}
+            placeholderTextColor={colors.textTertiary}
+            autoCorrect={false}
+            autoCapitalize="words"
+            returnKeyType="done"
+            onSubmitEditing={() => setActivePanel(null)}
+            maxLength={activePanel === 'brand' ? GROCERY_BRAND_MAX_LENGTH : GROCERY_VARIANT_MAX_LENGTH}
+            accessibilityLabel={activePanel === 'brand' ? 'Brand' : 'Variant'}
+            autoFocus
+          />
+          {!!(activePanel === 'brand' ? brand : variant) && (
+            <TouchableOpacity
+              onPress={() => (activePanel === 'brand' ? setBrand('') : setVariant(''))}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Clear ${activePanel}`}
+            >
+              <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {/* Out of flow, and that's the fix rather than a layout preference. The
           sheet holding this field centres its card, so anything that grows
           *under* the field pushes the field itself up — half the growth goes
@@ -278,7 +435,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           reveals opens downwards over the backdrop. It carries its own surface
           because it is no longer inside the card's rounded rect. */}
       {hasResults && (
-      <View style={styles.results}>
+      <View style={[styles.results, { top: resultsTop }]}>
       {/* Live preview of the split commit would produce, so it's a visible
           decision rather than something the parser did silently. Each token
           it pulled out of the text gets its own chip; tapping × keeps that
@@ -406,22 +563,69 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     wrap: {
-      // No gap: the one child in flow is the field, and everything else hangs
-      // off `results` below at a fixed offset from it.
+      // No gap: the field, toolbar and attribute panel space themselves with
+      // their own margins, and `results` hangs off all three at a computed
+      // offset rather than sitting in flow after them.
       position: 'relative',
     },
-    // Pinned under the field rather than stacked after it — see the note at the
-    // call site. `FIELD_HEIGHT` has to stay in step with `field`'s own height,
-    // which is why that one is explicit rather than sized by its content.
+    // Pinned under everything static above it rather than stacked after it —
+    // see the note at the call site. `top` is passed in per-render as
+    // `resultsTop`, since it now also depends on whether the attribute panel
+    // is open; the constants it's built from stay in step with what's
+    // actually rendered above for the same reason FIELD_HEIGHT does.
     results: {
       position: 'absolute',
-      top: FIELD_HEIGHT + spacing.sm,
       left: 0,
       right: 0,
       gap: spacing.xs,
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
       padding: spacing.sm,
+    },
+    toolbar: {
+      flexDirection: 'row',
+      gap: spacing.xs,
+      marginTop: spacing.sm,
+    },
+    toolChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: spacing.md,
+      minHeight: interaction.pillHeight,
+      borderRadius: radius.full,
+      backgroundColor: colors.bgTertiary,
+    },
+    toolChipActive: {
+      backgroundColor: colors.bgQuaternary,
+    },
+    toolChipSet: {
+      backgroundColor: colors.accentSubtle,
+    },
+    toolChipText: {
+      color: colors.textSecondary,
+      fontSize: font.sm,
+      fontWeight: fontWeight.medium,
+      maxWidth: 130,
+    },
+    toolChipTextSet: {
+      color: colors.accent,
+    },
+    attributePanel: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      height: ATTRIBUTE_PANEL_HEIGHT,
+      marginTop: spacing.sm,
+      paddingHorizontal: spacing.xs,
+    },
+    attributeInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.sm,
+      borderBottomWidth: border.sm,
+      borderBottomColor: colors.accent,
+      paddingVertical: 4,
     },
     field: {
       flexDirection: 'row',
