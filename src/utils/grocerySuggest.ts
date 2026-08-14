@@ -340,6 +340,40 @@ export function pantryEntries(items: readonly GroceryItem[], now: Date): PantryE
 }
 
 /**
+ * Distinct, sorted values of a Brand/Variant-shaped field already typed
+ * across the catalog — the "internal catalog" behind their suggestion chips.
+ * No registry table: the items already in the catalog are the list, the same
+ * way distinctRecipeValues/allRecipeTags derive a recipe's Author/Source/tag
+ * vocabulary from the recipes themselves rather than a fixed lexicon.
+ */
+export function distinctGroceryValues(
+  items: readonly GroceryItem[],
+  excludeItemId: string | undefined,
+  field: (item: GroceryItem) => string | null
+): string[] {
+  return Array.from(
+    new Set(
+      items
+        .filter(i => i.id !== excludeItemId)
+        .map(i => field(i)?.trim())
+        .filter((s): s is string => !!s)
+    )
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Up to 8 of `values` matching `query` (substring, case-insensitive),
+ * excluding an exact match — what Brand/Variant's suggestion chips filter
+ * distinctGroceryValues() down to as the field is typed into. Mirrors
+ * filterRecipeSuggestions in recipeUtils.ts.
+ */
+export function filterGrocerySuggestions(values: readonly string[], query: string): string[] {
+  const q = query.trim().toLowerCase();
+  const matches = q ? values.filter(v => v.toLowerCase().includes(q) && v.toLowerCase() !== q) : values;
+  return matches.slice(0, 8);
+}
+
+/**
  * The pantry cut into aisles, in the same walk order the shopping list uses —
  * a kitchen isn't laid out like a shop, but the aisle is the filing the user
  * has already done, and a flat A–Z list of forty things answers nothing.
