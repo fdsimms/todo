@@ -695,6 +695,55 @@ describe('splitIngredientAlternatives', () => {
   });
 });
 
+describe('renameChoiceGroup', () => {
+  const withGroup = () => {
+    const r = makeRecipe('Salsa', {
+      ingredients: [
+        { id: 'i0', name: 'Tomatoes', nameKey: 'tomatoes', quantity: '6', aisle: null, prep: null, purpose: null, section: null, choiceGroup: null },
+        { id: 'i1', name: 'Serrano', nameKey: 'serrano', quantity: '2', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Pepper' },
+        { id: 'i2', name: 'Jalapeño', nameKey: 'jalapeno', quantity: '2', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Pepper' },
+      ],
+    });
+    seed([r]);
+    return r;
+  };
+
+  it('renames every ingredient in the group, not just one', () => {
+    const r = withGroup();
+
+    expect(useRecipeStore.getState().renameChoiceGroup(r.id, 'Pepper', 'Chili pepper')).toBe('Chili pepper');
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.map(i => i.choiceGroup)).toEqual([null, 'Chili pepper', 'Chili pepper']);
+  });
+
+  it('leaves ingredients in a different group untouched', () => {
+    const r = makeRecipe('Salsa', {
+      ingredients: [
+        { id: 'i1', name: 'Serrano', nameKey: 'serrano', quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Pepper' },
+        { id: 'i2', name: 'Cheddar', nameKey: 'cheddar', quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Cheese' },
+      ],
+    });
+    seed([r]);
+
+    useRecipeStore.getState().renameChoiceGroup(r.id, 'Pepper', 'Chili pepper');
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.find(i => i.id === 'i2')!.choiceGroup).toBe('Cheese');
+  });
+
+  it('refuses a blank name, a no-op rename, an unused label, and an unknown recipe', () => {
+    const r = withGroup();
+    (dbUpdateRecipe as jest.Mock).mockClear();
+
+    expect(useRecipeStore.getState().renameChoiceGroup(r.id, 'Pepper', '  ')).toBeNull();
+    expect(useRecipeStore.getState().renameChoiceGroup(r.id, 'Pepper', 'Pepper')).toBeNull();
+    expect(useRecipeStore.getState().renameChoiceGroup(r.id, 'Cheese', 'Cheeses')).toBeNull();
+    expect(useRecipeStore.getState().renameChoiceGroup('gone', 'Pepper', 'Chili pepper')).toBeNull();
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
 describe('setComponentChoiceGroup / makeComponentDefault', () => {
   // Steak, with mash and roast potatoes both linked — the state the user is in
   // right before saying "these two are alternatives".

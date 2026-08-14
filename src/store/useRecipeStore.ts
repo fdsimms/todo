@@ -226,6 +226,16 @@ interface RecipeStore {
     names: readonly string[],
     choiceGroup: string,
   ) => number;
+  /**
+   * Renames a choice group across every ingredient currently in it, not just
+   * the row a sheet happens to have open — a group's label is shared identity
+   * (RecipeIngredient.choiceGroup), so editing it from one member and leaving
+   * the others on the old spelling would silently split the group in two.
+   *
+   * Returns the cleaned label on success, null on a no-op (empty name, no
+   * ingredient actually carrying `oldLabel`, or the name unchanged).
+   */
+  renameChoiceGroup: (recipeId: string, oldLabel: string, newLabel: string) => string | null;
   removeIngredient: (recipeId: string, ingredientId: string) => void;
   /**
    * The new order, and — because the order is what decides which section a row
@@ -681,6 +691,22 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       ],
     });
     return rows.length;
+  },
+
+  renameChoiceGroup(recipeId, oldLabel, newLabel) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return null;
+    const clean = cleanChoiceGroup(newLabel);
+    if (!clean || clean === oldLabel) return null;
+    let touched = false;
+    const ingredients = recipe.ingredients.map(i => {
+      if (i.choiceGroup !== oldLabel) return i;
+      touched = true;
+      return { ...i, choiceGroup: clean };
+    });
+    if (!touched) return null;
+    save(set, { ...recipe, ingredients });
+    return clean;
   },
 
   removeIngredient(recipeId, ingredientId) {
