@@ -1,4 +1,5 @@
 import type { GroceryItem, ItemSubLink } from '../types';
+import { scaleQuantity, splitLeadingAmount, unitKey } from './recipeScale';
 
 /**
  * Substitutes — the read side of the item-to-item links.
@@ -107,4 +108,75 @@ export function describeSubstitutes(subs: readonly Substitute[]): string | null 
   if (subs.length === 0) return null;
   if (subs.length <= NAME_LIMIT) return subs.map(s => s.item.name).join(', ');
   return `${subs.length} substitutes`;
+}
+
+/**
+ * A recipe line's quantity, converted through a ratio — `substituteQuantity`
+ * for `"3 cloves"` through `1 clove → 1/4 tsp` is `"3/4 tsp"`.
+ *
+ * The refuse-and-flag shape every other quantity computation in this app
+ * uses (`ScaledQuantity`, `mergeQuantities`): `converted` is false whenever
+ * `text` is the *line's own* quantity, untouched.
+ */
+export interface SubstitutedQuantity {
+  /** What to render. The line's own quantity, verbatim, whenever `converted` is false. */
+  text: string;
+  converted: boolean;
+}
+
+/**
+ * Applies a ratio to a recipe line's quantity — composing `recipeScale`'s
+ * existing machinery rather than reimplementing exact-rational arithmetic: a
+ * ratio is nothing but a scale factor (how many multiples of `ratioFrom` the
+ * line names), and applying that factor to `ratioTo` is exactly what
+ * `scaleQuantity` already does — exact-rational multiply, unit inflection,
+ * the container refusals, all of it.
+ *
+ * Two refusals, both verbatim-and-flagged like every other quantity refusal
+ * in this app:
+ *
+ * - **The line's amount doesn't parse** ("a pinch of garlic") — `scaleQuantity`
+ *   rule 3, restated: nothing here guesses at what "a pinch" means.
+ * - **The units don't match**, compared through `unitKey` so inflections land
+ *   on one entry. A ratio written *per clove* applies to "3 cloves" and
+ *   **not** to "1 bulb" — this is the load-bearing refusal. Silently
+ *   rendering ¼ tsp for a whole bulb is the failure that would make the
+ *   feature untrustworthy. Both sides must actually carry a unit: two bare
+ *   counts matching on "" would apply a per-clove ratio to a line that never
+ *   named a unit at all.
+ */
+export function substituteQuantity(
+  lineQuantity: string,
+  ratioFrom: string,
+  ratioTo: string
+): SubstitutedQuantity {
+  const text = lineQuantity.trim();
+  const unchanged: SubstitutedQuantity = { text, converted: false };
+  if (!text) return unchanged;
+
+  const line = splitLeadingAmount(text);
+  const from = splitLeadingAmount(ratioFrom);
+  if (!line || !from || from.value === 0) return unchanged;
+  if (!line.rest || !from.rest || unitKey(line.rest) !== unitKey(from.rest)) return unchanged;
+
+  const factor = line.value / from.value;
+
+  // scaleQuantity treats an exact 1× as a no-op and reports it unscaled —
+  // right for its own callers (nothing to do), wrong here: an exact 1× means
+  // the line names precisely one `ratioFrom`, so the converted amount is
+  // `ratioTo` itself, verbatim — and that *is* a real conversion, not a
+  // refusal. (Every other factor is safe to hand to scaleQuantity as-is: its
+  // own denominator search absorbs the float noise from the division above,
+  // the same tolerance mergeQuantities already leans on.)
+  if (factor === 1) {
+    if (!splitLeadingAmount(ratioTo)) return unchanged;
+    return { text: ratioTo.trim(), converted: true };
+  }
+
+  // scaleQuantity's own `text` on refusal is `ratioTo` verbatim — right for
+  // its own callers (the thing they asked to scale), wrong for this one: on
+  // refusal this function's contract is to hand back the *line's* quantity
+  // untouched, not the unusable ratio.
+  const scaled = scaleQuantity(ratioTo, factor);
+  return scaled.scaled ? { text: scaled.text, converted: true } : unchanged;
 }

@@ -1,4 +1,9 @@
-import { describeSubstitutes, substituteForItems, substitutesFor } from '../utils/itemSubs';
+import {
+  describeSubstitutes,
+  substituteForItems,
+  substituteQuantity,
+  substitutesFor,
+} from '../utils/itemSubs';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import type { GroceryItem, ItemSubLink } from '../types';
@@ -46,6 +51,8 @@ function sub(
     subItemId,
     note: null,
     createdAt: '2026-01-01T00:00:00.000Z',
+    ratioFrom: null,
+    ratioTo: null,
     ...overrides,
   };
 }
@@ -143,5 +150,106 @@ describe('describeSubstitutes', () => {
         ])
       )
     ).toBe('3 substitutes');
+  });
+});
+
+describe('substituteQuantity', () => {
+  it('converts a matching-unit line through the ratio', () => {
+    // The motivating example: a clove of garlic is about 1/4 tsp of powder.
+    expect(substituteQuantity('3 cloves', '1 clove', '1/4 tsp')).toEqual({
+      text: '3/4 tsp',
+      converted: true,
+    });
+  });
+
+  it('scales past a whole number cleanly', () => {
+    expect(substituteQuantity('4 cloves', '1 clove', '1/4 tsp')).toEqual({
+      text: '1 tsp',
+      converted: true,
+    });
+  });
+
+  it('inflects the resulting unit', () => {
+    expect(substituteQuantity('4 cloves', '1 clove', '1 tsp')).toEqual({
+      text: '4 tsp',
+      converted: true,
+    });
+    expect(substituteQuantity('1 clove', '1 clove', '1 tsp')).toEqual({
+      text: '1 tsp',
+      converted: true,
+    });
+  });
+
+  it('is exact, not a decimal round-trip — a third tripled is exactly one', () => {
+    // Mirrors recipeScale's own "1/3 tripled is exactly 1, not 0.99" case,
+    // now going through a factor computed by division rather than a picked
+    // scale — see substituteQuantity's comment on why that's still safe.
+    expect(substituteQuantity('1 cup', '1/3 cup', '1 tbsp')).toEqual({
+      text: '3 tbsp',
+      converted: true,
+    });
+    expect(substituteQuantity('2/3 cup', '1/3 cup', '1 tbsp')).toEqual({
+      text: '2 tbsp',
+      converted: true,
+    });
+  });
+
+  it('handles the exact-1x identity case, which scaleQuantity itself would call a no-op', () => {
+    // The line names precisely one `ratioFrom`, so the converted amount is
+    // `ratioTo` verbatim — a real conversion, not "nothing to do".
+    expect(substituteQuantity('1 clove', '1 clove', '1/4 tsp')).toEqual({
+      text: '1/4 tsp',
+      converted: true,
+    });
+    // Reducible fractions that are the same value after GCD-reduction still
+    // hit the identity path exactly, not a near-miss.
+    expect(substituteQuantity('2/6 cup', '1/3 cup', '1 tbsp')).toEqual({
+      text: '1 tbsp',
+      converted: true,
+    });
+  });
+
+  it('refuses when the units do not match — the load-bearing case', () => {
+    // A ratio written per clove must not silently apply to a whole bulb.
+    expect(substituteQuantity('1 bulb', '1 clove', '1/4 tsp')).toEqual({
+      text: '1 bulb',
+      converted: false,
+    });
+  });
+
+  it('refuses when the line has no unit to compare at all', () => {
+    expect(substituteQuantity('3', '1 clove', '1/4 tsp')).toEqual({
+      text: '3',
+      converted: false,
+    });
+  });
+
+  it('refuses when the line amount does not parse — "a pinch of garlic" stays "a pinch"', () => {
+    expect(substituteQuantity('a pinch', '1 clove', '1/4 tsp')).toEqual({
+      text: 'a pinch',
+      converted: false,
+    });
+  });
+
+  it('refuses when the ratio itself has no parseable amount on either side', () => {
+    expect(substituteQuantity('3 cloves', 'some', '1/4 tsp')).toEqual({
+      text: '3 cloves',
+      converted: false,
+    });
+    expect(substituteQuantity('3 cloves', '1 clove', 'some')).toEqual({
+      text: '3 cloves',
+      converted: false,
+    });
+  });
+
+  it('refuses on an empty line quantity', () => {
+    expect(substituteQuantity('', '1 clove', '1/4 tsp')).toEqual({ text: '', converted: false });
+  });
+
+  it('compares units by identity, so an inflected line still matches a singular ratio', () => {
+    expect(substituteQuantity('1 clove', '1 cloves', '1/4 tsp')).toEqual({
+      text: '1/4 tsp',
+      converted: true,
+    });
   });
 });

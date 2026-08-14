@@ -18,7 +18,8 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
 import { pantryEntries } from '../utils/grocerySuggest';
-import { substitutesFor } from '../utils/itemSubs';
+import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
+import { flattenRecipeIngredients } from '../utils/recipeComponents';
 import { taskKindOf } from '../utils/taskKinds';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { extraTaskRule } from '../utils/extraTask';
@@ -555,6 +556,34 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // seed's own clearList on the way past.
     expect(margarine!.inCatalog).toBe(true);
     expect(mutual[0].item.inCatalog).toBe(true);
+  });
+
+  it('seeds a ratio that actually converts a real recipe line (#1573)', () => {
+    // The issue's own motivating example, run end to end against a real
+    // seeded recipe rather than a synthetic fixture — "2 cloves garlic" is a
+    // line that exists in the demo today, not one invented for the test.
+    const { items, itemSubs } = useGroceryStore.getState();
+    const garlic = items.find(i => i.name === 'Garlic')!;
+    const garlicPowder = items.find(i => i.nameKey === 'garlic powder')!;
+    expect(garlicPowder).toBeTruthy();
+
+    const link = substitutesFor(garlic.id, itemSubs, items)[0];
+    expect(link).toMatchObject({
+      item: expect.objectContaining({ id: garlicPowder.id }),
+      link: expect.objectContaining({ ratioFrom: '1 clove', ratioTo: '1/4 tsp' }),
+    });
+
+    const recipes = useRecipeStore.getState().recipes;
+    const recipesById = new Map(recipes.map(r => [r.id, r]));
+    const salmon = recipes.find(r => r.name === 'Lemon garlic salmon')!;
+    const garlicLine = flattenRecipeIngredients(salmon, recipesById).find(
+      f => f.ingredient.nameKey === 'garlic'
+    )!;
+    expect(garlicLine.ingredient.quantity).toBe('2 cloves');
+
+    expect(
+      substituteQuantity(garlicLine.ingredient.quantity, link.link.ratioFrom!, link.link.ratioTo!)
+    ).toEqual({ text: '1/2 tsp', converted: true });
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {

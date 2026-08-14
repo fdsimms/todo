@@ -421,6 +421,11 @@ export function initDatabase(): void {
     // both-ways tick and dbDeleteGroceryItem's second cascade both need.
     // item → substitutes needs no index: it's the leading column of the key.
     'CREATE INDEX IF NOT EXISTS idx_grocery_item_subs_sub ON grocery_item_subs(sub_item_id)',
+    // "1 clove" → "1/4 tsp" (#1573). Both null or both set — see
+    // ItemSubLink.ratioFrom — so no default and no backfill: an existing link
+    // simply has no ratio, which is the row it already was.
+    'ALTER TABLE grocery_item_subs ADD COLUMN ratio_from TEXT',
+    'ALTER TABLE grocery_item_subs ADD COLUMN ratio_to TEXT',
     // Nullable, and null is the value every existing row wants: a task nobody
     // imported from Reminders has no suggestion pending. JSON, like
     // series_defaults, because it holds a Partial<Task> rather than a scalar.
@@ -2352,6 +2357,8 @@ function rowToItemSubLink(row: Record<string, unknown>): ItemSubLink {
     subItemId: row.sub_item_id as string,
     note: (row.note as string) ?? null,
     createdAt: row.created_at as string,
+    ratioFrom: (row.ratio_from as string) ?? null,
+    ratioTo: (row.ratio_to as string) ?? null,
   };
 }
 
@@ -2369,11 +2376,20 @@ export function dbGetAllItemSubLinks(): ItemSubLink[] {
  */
 export function dbSetItemSubLink(link: ItemSubLink): void {
   db.runSync(
-    `INSERT INTO grocery_item_subs (item_id, sub_item_id, note, created_at)
-     VALUES (?,?,?,?)
+    `INSERT INTO grocery_item_subs (item_id, sub_item_id, note, created_at, ratio_from, ratio_to)
+     VALUES (?,?,?,?,?,?)
      ON CONFLICT(item_id, sub_item_id)
-     DO UPDATE SET note = excluded.note`,
-    [link.itemId, link.subItemId, link.note ?? null, link.createdAt]
+     DO UPDATE SET note = excluded.note,
+                   ratio_from = excluded.ratio_from,
+                   ratio_to = excluded.ratio_to`,
+    [
+      link.itemId,
+      link.subItemId,
+      link.note ?? null,
+      link.createdAt,
+      link.ratioFrom ?? null,
+      link.ratioTo ?? null,
+    ]
   );
 }
 

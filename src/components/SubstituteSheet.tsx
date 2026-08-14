@@ -14,7 +14,8 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { groceryNameKey } from '../utils/groceryParse';
-import { substitutesFor } from '../utils/itemSubs';
+import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
+import { scaleQuantity, splitLeadingAmount } from '../utils/recipeScale';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 import { haptics } from '../utils/haptics';
 import { EmptyState } from './EmptyState';
@@ -68,6 +69,8 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [bothWays, setBothWays] = useState(false);
+  const [ratioFrom, setRatioFrom] = useState('');
+  const [ratioTo, setRatioTo] = useState('');
 
   const existing = useMemo(
     () => (itemId ? substitutesFor(itemId, itemSubs, items) : []),
@@ -83,6 +86,8 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
     // rather than presenting a blank form over an answer that already exists.
     setNote(editingSub?.link.note ?? '');
     setBothWays(editingSub?.isMutual ?? false);
+    setRatioFrom(editingSub?.link.ratioFrom ?? '');
+    setRatioTo(editingSub?.link.ratioTo ?? '');
     // Seeding is a one-shot on open: re-running it as the store changes would
     // wipe what's being typed the moment the write lands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,9 +131,43 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
     setQuery('');
   };
 
+  // The unit the ratio actually constrains on — named back at the user so the
+  // "only applies to a recipe line measured in X" hint states the constraint
+  // it's *actually* enforcing rather than a canned sentence. Null while the
+  // left field hasn't produced a usable amount+unit yet.
+  const fromUnit = splitLeadingAmount(ratioFrom)?.rest || null;
+
+  // Two illustrative outcomes rather than the three the mock shows for
+  // garlic specifically: a believable "wrong but plausible unit" example
+  // (garlic's cloves-vs-bulbs) can't be synthesized generically for whatever
+  // item the user is naming a ratio for without guessing at units the way
+  // every refusal rule in this app already declines to. Doubling the typed
+  // `ratioFrom` itself demonstrates the arithmetic; a fixed unparseable
+  // amount demonstrates the refusal — both true for any ratio, not just this
+  // one's motivating example.
+  const previewRows = useMemo(() => {
+    if (!item || !picked || !ratioFrom.trim() || !ratioTo.trim()) return null;
+    const doubled = scaleQuantity(ratioFrom, 2);
+    if (!doubled.scaled) return null;
+
+    const build = (quantity: string, label: string) => {
+      const result = substituteQuantity(quantity, ratioFrom, ratioTo);
+      return {
+        quantity: label,
+        outcome: result.converted ? `≈${result.text} ${picked.name.toLowerCase()}` : 'left as written',
+        converted: result.converted,
+      };
+    };
+
+    return [
+      build(doubled.text, `${doubled.text} ${item.name.toLowerCase()}`),
+      build('a pinch', `a pinch of ${item.name.toLowerCase()}`),
+    ];
+  }, [item, picked, ratioFrom, ratioTo]);
+
   const handleConfirm = () => {
     if (!item || !picked) return;
-    linkItemSub(item.id, picked.id, { note, bothWays });
+    linkItemSub(item.id, picked.id, { note, bothWays, ratioFrom, ratioTo });
     // The reverse row is written by `bothWays` and taken back here, rather than
     // left standing: unticking it in this sheet has to mean the same thing as
     // never ticking it, or reviewing a link is a way to add one you can't undo.
@@ -205,6 +244,34 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
               )}
             </View>
 
+            <Text style={styles.label}>HOW MUCH</Text>
+            <View style={styles.ratioRow}>
+              <TextInput
+                style={[styles.input, styles.ratioInput]}
+                value={ratioFrom}
+                onChangeText={setRatioFrom}
+                placeholder="1 clove"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={GROCERY_NAME_MAX_LENGTH}
+                accessibilityLabel={`Amount of ${item.name} this ratio is written for`}
+              />
+              <Ionicons name="arrow-forward" size={iconSize.sm} color={colors.textTertiary} />
+              <TextInput
+                style={[styles.input, styles.ratioInput]}
+                value={ratioTo}
+                onChangeText={setRatioTo}
+                placeholder="1/4 tsp"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={GROCERY_NAME_MAX_LENGTH}
+                accessibilityLabel={`Equivalent amount of ${picked.name}`}
+              />
+            </View>
+            <Text style={styles.hint}>
+              {fromUnit
+                ? `Only applies to a recipe line measured in ${fromUnit}. Anything else is left as written.`
+                : `Optional — for a substitute that needs a different amount, not just a different name.`}
+            </Text>
+
             <Text style={styles.label}>NOTE</Text>
             <TextInput
               style={styles.input}
@@ -243,6 +310,27 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
                 </Text>
               </View>
             </TouchableOpacity>
+
+            {/* Outcomes, not rules — showing what "3 cloves" and "a pinch" turn
+                into is what should stop "the ratio doesn't work on my bulb"
+                being filed as a bug, rather than stating the refusal as a
+                sentence someone has to read and remember. */}
+            {!!previewRows && (
+              <View style={styles.previewCard}>
+                <Text style={styles.label}>PREVIEW</Text>
+                {previewRows.map((row, i) => (
+                  <View key={i} style={styles.previewRow}>
+                    <Text style={styles.previewQuantity} numberOfLines={1}>{row.quantity}</Text>
+                    <Text
+                      style={[styles.previewOutcome, !row.converted && styles.previewOutcomeMuted]}
+                      numberOfLines={1}
+                    >
+                      {row.outcome}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
 
             {editing && (
               <TouchableOpacity
@@ -420,6 +508,30 @@ function makeStyles(colors: Colors) {
       color: colors.text,
     },
     hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm },
+    ratioRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    // bgTertiary rather than the note field's bgSecondary — a step down, to
+    // read as a pair of small numeric fields rather than a paragraph field.
+    ratioInput: { flex: 1, backgroundColor: colors.bgTertiary },
+    previewCard: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      marginTop: spacing.lg,
+    },
+    previewRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
+    previewQuantity: { flex: 1, color: colors.text, fontSize: font.sm },
+    // Accent, not textTertiary — a working conversion is the answer someone
+    // opened this sheet for, so it should read at the same weight as the
+    // quantity naming it.
+    previewOutcome: { flexShrink: 1, color: colors.accent, fontSize: font.sm, textAlign: 'right' },
+    // Refused lines recede so the working case reads first, the same call the
+    // issue's own preview mock makes.
+    previewOutcomeMuted: { color: colors.textTertiary },
     toggleRow: {
       flexDirection: 'row',
       alignItems: 'center',
