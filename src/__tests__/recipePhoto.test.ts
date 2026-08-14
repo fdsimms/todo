@@ -76,6 +76,7 @@ import {
   pickRecipeImage,
   deleteRecipeImage,
   recipeImageBasename,
+  resolveRecipeImagePath,
   readRecipeImageBase64,
   writeRecipeImageFile,
   MAX_PHOTO_EDGE,
@@ -395,6 +396,14 @@ describe('deleteRecipeImage', () => {
 
     expect(() => deleteRecipeImage('file:///documents/recipe-images/abc.jpg')).not.toThrow();
   });
+
+  it('deletes at the current document directory even for a stale stored path', () => {
+    mockFileExists = true;
+
+    deleteRecipeImage('file:///old-container-uuid/documents/recipe-images/abc.jpg');
+
+    expect(mockDelete).toHaveBeenCalledWith('file:///documents/recipe-images/abc.jpg');
+  });
 });
 
 describe('recipeImageBasename', () => {
@@ -404,6 +413,32 @@ describe('recipeImageBasename', () => {
 
   it('is null for a URI with nothing after the last slash', () => {
     expect(recipeImageBasename('file:///documents/recipe-images/')).toBeNull();
+  });
+});
+
+describe('resolveRecipeImagePath', () => {
+  it('is null for null, undefined or empty', () => {
+    expect(resolveRecipeImagePath(null)).toBeNull();
+    expect(resolveRecipeImagePath(undefined)).toBeNull();
+    expect(resolveRecipeImagePath('')).toBeNull();
+  });
+
+  it('re-derives the path against the current document directory for a path already there', () => {
+    expect(resolveRecipeImagePath('file:///documents/recipe-images/abc.jpg'))
+      .toBe('file:///documents/recipe-images/abc.jpg');
+  });
+
+  // The regression this exists for: a path baked in by a since-replaced
+  // container (an old install, or a device a backup came from) still
+  // resolves to *this* launch's document directory, because only the
+  // basename is trusted.
+  it('recovers a path stamped with a stale container prefix', () => {
+    expect(resolveRecipeImagePath('file:///old-container-uuid/documents/recipe-images/abc.jpg'))
+      .toBe('file:///documents/recipe-images/abc.jpg');
+  });
+
+  it('resolves a bare basename the same way', () => {
+    expect(resolveRecipeImagePath('abc.jpg')).toBe('file:///documents/recipe-images/abc.jpg');
   });
 });
 
@@ -427,6 +462,14 @@ describe('readRecipeImageBase64', () => {
     mockBase64Sync.mockImplementation(() => { throw new Error('corrupt'); });
 
     expect(readRecipeImageBase64('file:///documents/recipe-images/abc.jpg')).toBeNull();
+  });
+
+  it('reads at the current document directory even for a stale stored path', () => {
+    mockFileExists = true;
+    mockBase64Sync.mockReturnValue('QUJD');
+
+    expect(readRecipeImageBase64('file:///old-container-uuid/documents/recipe-images/abc.jpg')).toBe('QUJD');
+    expect(mockBase64Sync).toHaveBeenCalledWith('file:///documents/recipe-images/abc.jpg');
   });
 });
 

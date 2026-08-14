@@ -274,6 +274,31 @@ export function recipeImageBasename(uri: string): string | null {
 }
 
 /**
+ * Resolves a recipe's stored image reference to a path this install can
+ * actually read.
+ *
+ * `Recipe.imagePath` was saved as the absolute `file://` URI `pickRecipeImage`
+ * returned at the moment the photo was taken, which bakes in that install's
+ * container path. Restoring a backup onto a different container already
+ * forced facing this (see backup.ts's note on `images`), but the same path
+ * isn't guaranteed to survive a plain reinstall or a dev-client rebuild on
+ * the *same* device either — the row is left pointing at a path nothing
+ * lives at any more, the `<Image>` fails to load with no error surfaced
+ * anywhere, and the hero just shows its own empty `backgroundColor`. Every
+ * reader goes through this instead of trusting the stored path verbatim: the
+ * basename `pickRecipeImage` minted is the only part of it that's actually
+ * stable, so this re-derives the full path from that basename against
+ * *this* launch's document directory, the same trick `restoreRecipeImages`
+ * already relies on for a restore.
+ */
+export function resolveRecipeImagePath(stored: string | null | undefined): string | null {
+  if (!stored) return null;
+  const basename = recipeImageBasename(stored);
+  if (!basename) return null;
+  return new (fileSystem().File)(recipeImageDirectory(), basename).uri;
+}
+
+/**
  * Reads a saved recipe image back out as base64, for embedding in a backup.
  * Best effort, like `deleteRecipeImage`: a file that's gone or unreadable
  * just means that recipe's photo doesn't travel with this export, not that
@@ -281,7 +306,9 @@ export function recipeImageBasename(uri: string): string | null {
  */
 export function readRecipeImageBase64(uri: string): string | null {
   try {
-    const file = new (fileSystem().File)(uri);
+    const resolved = resolveRecipeImagePath(uri);
+    if (!resolved) return null;
+    const file = new (fileSystem().File)(resolved);
     return file.exists ? file.base64Sync() : null;
   } catch {
     return null;
@@ -312,9 +339,10 @@ export function writeRecipeImageFile(basename: string, base64: string): string {
  * on its own if the delete fails.
  */
 export function deleteRecipeImage(uri: string | null | undefined): void {
-  if (!uri) return;
+  const resolved = resolveRecipeImagePath(uri);
+  if (!resolved) return;
   try {
-    const file = new (fileSystem().File)(uri);
+    const file = new (fileSystem().File)(resolved);
     if (file.exists) file.delete();
   } catch {
     // Best effort — see the note above.

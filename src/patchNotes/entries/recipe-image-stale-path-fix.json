@@ -1,0 +1,4 @@
+{
+  "message": "Fixed recipe photos going blank after a reinstall or update. They were saved pointing at the app's storage location at the time, which isn't guaranteed to stay the same",
+  "date": "2026-08-14"
+}

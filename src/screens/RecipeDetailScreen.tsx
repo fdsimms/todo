@@ -42,7 +42,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { pickRecipeImage, type RecipePhotoSource } from '../utils/recipePhoto';
+import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
 import { describeCookTime, describePrepTime, describeRecipe, totalMinutes } from '../utils/recipeUtils';
 import { describeUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
@@ -812,7 +812,7 @@ export function RecipeDetailScreen() {
             accessibilityLabel="Change recipe photo"
           >
             <Image
-              source={{ uri: recipe.imagePath }}
+              source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }}
               style={styles.heroImage}
               resizeMode="cover"
               accessibilityIgnoresInvertColors
