@@ -190,6 +190,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer'] },
   { id: 'mealsOnToday', groupId: 'tasksProjects', label: 'Show the day\'s meals', section: 'Meals on Today',
     keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'takeaway'], kitchen: true },
+  { id: 'restockOfferEnabled', groupId: 'tasksProjects', label: 'Restock after cooking', section: 'Meals on Today',
+    keywords: ['banner', 'ingredients', 'shopping list', 'offer'], kitchen: true },
   // The four generators, all in one section now (#1524) — they used to be three
   // sections here plus one over in Notifications. Each keeps its own entry
   // rather than collapsing to one "Tasks the app adds" row: a search index

@@ -679,6 +679,57 @@ describe('unitSystem', () => {
   });
 });
 
+describe('currencySymbol', () => {
+  it('defaults to $', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().currencySymbol).toBe('$');
+  });
+
+  it('accepts a symbol outside the preset list (#1476)', () => {
+    useSettingsStore.getState().setCurrencySymbol('₪');
+    expect(dbSetSetting).toHaveBeenCalledWith('currencySymbol', '₪');
+    expect(useSettingsStore.getState().currencySymbol).toBe('₪');
+  });
+
+  it('accepts a multi-character symbol up to the length cap', () => {
+    useSettingsStore.getState().setCurrencySymbol('R$');
+    expect(useSettingsStore.getState().currencySymbol).toBe('R$');
+  });
+
+  it('falls back to the default for a symbol over the length cap', () => {
+    useSettingsStore.getState().setCurrencySymbol('TOOLONG');
+    expect(useSettingsStore.getState().currencySymbol).toBe('$');
+  });
+
+  it('falls back to the default for whitespace or an empty string', () => {
+    useSettingsStore.getState().setCurrencySymbol('a b');
+    expect(useSettingsStore.getState().currencySymbol).toBe('$');
+    useSettingsStore.getState().setCurrencySymbol('   ');
+    expect(useSettingsStore.getState().currencySymbol).toBe('$');
+  });
+
+  it('trims surrounding whitespace', () => {
+    useSettingsStore.getState().setCurrencySymbol('  ₩  ');
+    expect(useSettingsStore.getState().currencySymbol).toBe('₩');
+  });
+
+  it('round-trips a stored custom symbol through initialize', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'currencySymbol' ? 'R$' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().currencySymbol).toBe('R$');
+  });
+
+  it('falls back to the default when the stored value is malformed', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'currencySymbol' ? 'a very long stored value' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().currencySymbol).toBe('$');
+  });
+});
+
 describe('use-up task settings', () => {
   const stored = (rows: Record<string, string>) =>
     (dbGetSetting as jest.Mock).mockImplementation((key: string) => rows[key] ?? null);
@@ -843,6 +894,30 @@ describe('timerLiveActivity', () => {
     useSettingsStore.getState().setTimerLiveActivity(false);
     expect(dbSetSetting).toHaveBeenCalledWith('timerLiveActivity', 'false');
     expect(useSettingsStore.getState().timerLiveActivity).toBe(false);
+  });
+});
+
+describe('restockOfferEnabled', () => {
+  // Same reasoning as timerLiveActivity: defaults on, since the offer itself
+  // is already gated on having something to offer (#1481) — this is a toggle
+  // for someone who never wants it, not a bad default to correct for.
+  it('defaults to on, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().restockOfferEnabled).toBe(true);
+  });
+
+  it('only turns off for an explicit "false"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'restockOfferEnabled' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().restockOfferEnabled).toBe(false);
+  });
+
+  it('round-trips through setRestockOfferEnabled', () => {
+    useSettingsStore.getState().setRestockOfferEnabled(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('restockOfferEnabled', 'false');
+    expect(useSettingsStore.getState().restockOfferEnabled).toBe(false);
   });
 });
 
