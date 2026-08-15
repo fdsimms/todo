@@ -720,12 +720,12 @@ export function GroceryItemSheet({
               >
                 <Ionicons name="restaurant-outline" size={iconSize.sm} color={colors.accent} />
                 <Text style={styles.recipeLinkText} numberOfLines={1}>
-                  recipe: {item.sourceRecipeTitle}
+                  From the recipe “{item.sourceRecipeTitle}”
                 </Text>
                 <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
               </TouchableOpacity>
             ) : (
-              <Text style={styles.hint}>recipe: {item.sourceRecipeTitle}</Text>
+              <Text style={styles.hint}>From the recipe “{item.sourceRecipeTitle}”</Text>
             )
           )}
           {/* The either/or this row is one option of, and the way out of it.
@@ -761,7 +761,7 @@ export function GroceryItemSheet({
             style={styles.input}
             value={brand}
             onChangeText={setBrandText}
-            placeholder="Any brand"
+            placeholder="e.g. Good Culture"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
             maxLength={GROCERY_BRAND_MAX_LENGTH}
