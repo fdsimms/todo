@@ -418,7 +418,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
             style={styles.attributeInput}
             value={activePanel === 'brand' ? brand : variant}
             onChangeText={activePanel === 'brand' ? setBrand : setVariant}
-            placeholder={activePanel === 'brand' ? 'Any brand' : 'e.g. low fat, 4%, crunchy'}
+            placeholder={activePanel === 'brand' ? 'e.g. Good Culture' : 'e.g. low fat, 4%, crunchy'}
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
             autoCapitalize="words"
