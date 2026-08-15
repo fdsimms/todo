@@ -133,6 +133,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     emptySections: [],
     components: [],
     prepTasks: [],
+    steps: [],
     favorite: false,
     sortOrder: recipeSeq,
     createdAt: '2026-01-01T00:00:00.000Z',

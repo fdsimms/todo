@@ -1,4 +1,4 @@
-import type { GroceryItem, ItemSubLink, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSortOption } from '../types';
+import type { GroceryItem, ItemSubLink, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSortOption, RecipeStep } from '../types';
 import {
   RECIPE_CHOICE_GROUP_MAX_LENGTH,
   RECIPE_MEAL_TYPES,
@@ -225,6 +225,26 @@ export function normalizePrepTask(raw: unknown): RecipePrepTask | null {
     reminderOffsetMinutes: typeof r.reminderOffsetMinutes === 'number' && Number.isFinite(r.reminderOffsetMinutes)
       ? Math.round(r.reminderOffsetMinutes)
       : null,
+  };
+}
+
+export function parseSteps(raw: unknown): RecipeStep[] {
+  if (!raw) return [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw as string); } catch { return []; }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map(normalizeStep).filter((s): s is RecipeStep => s !== null);
+}
+
+/** Repairs one stored step. Returns null for a row with no usable text — see normalizePrepTask. */
+export function normalizeStep(raw: unknown): RecipeStep | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Partial<RecipeStep>;
+  const text = typeof r.text === 'string' ? r.text.trim() : '';
+  if (!text) return null;
+  return {
+    id: typeof r.id === 'string' && r.id ? r.id : generateId(),
+    text,
   };
 }
 

@@ -16,7 +16,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { RecipeIngredient, RecipePrepTask } from '../types';
+import type { RecipeIngredient, RecipePrepTask, RecipeStep } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -105,6 +105,10 @@ export function RecipeDetailScreen() {
   const toggleFavorite = useRecipeStore(s => s.toggleFavorite);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
+  const addStep = useRecipeStore(s => s.addStep);
+  const updateStep = useRecipeStore(s => s.updateStep);
+  const removeStep = useRecipeStore(s => s.removeStep);
+  const reorderSteps = useRecipeStore(s => s.reorderSteps);
   const setImage = useRecipeStore(s => s.setImage);
   const startCookTimer = useRecipeStore(s => s.startCookTimer);
   const pauseCookTimer = useRecipeStore(s => s.pauseCookTimer);
@@ -173,6 +177,13 @@ export function RecipeDetailScreen() {
   const [pickingImage, setPickingImage] = useState(false);
   const draftInputRef = useRef<TextInput>(null);
   const [prepDraft, setPrepDraft] = useState('');
+  // One field does both jobs — add and edit — rather than a second sheet like
+  // PrepTaskSheet: a step is a single field, so a whole extra component would
+  // outweigh what it's editing. editingStepId null means the field is
+  // building a new step; set, it's replacing that step's text on submit.
+  const [stepDraft, setStepDraft] = useState('');
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const stepInputRef = useRef<TextInput>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<RecipeIngredient | null>(null);
   const [editingPrepTask, setEditingPrepTask] = useState<RecipePrepTask | null>(null);
@@ -390,6 +401,43 @@ export function RecipeDetailScreen() {
   const confirmRemovePrepTask = (prepTask: RecipePrepTask) => {
     animateLayout();
     removePrepTask(recipe.id, prepTask.id);
+    haptics.tap();
+  };
+
+  const submitStepDraft = () => {
+    if (!stepDraft.trim()) return;
+    animateLayout();
+    if (editingStepId) {
+      updateStep(recipe.id, editingStepId, stepDraft);
+      setEditingStepId(null);
+      haptics.tap();
+    } else {
+      const added = addStep(recipe.id, stepDraft);
+      if (added) haptics.tap();
+      else haptics.warning();
+    }
+    setStepDraft('');
+  };
+
+  const beginEditStep = (step: RecipeStep) => {
+    haptics.tap();
+    setEditingStepId(step.id);
+    setStepDraft(step.text);
+    stepInputRef.current?.focus();
+  };
+
+  const cancelEditStep = () => {
+    haptics.tap();
+    setEditingStepId(null);
+    setStepDraft('');
+  };
+
+  const confirmRemoveStep = (step: RecipeStep) => {
+    animateLayout();
+    // Editing the very step being deleted would otherwise leave the field
+    // pointed at an id that no longer resolves.
+    if (editingStepId === step.id) { setEditingStepId(null); setStepDraft(''); }
+    removeStep(recipe.id, step.id);
     haptics.tap();
   };
 
@@ -858,6 +906,45 @@ export function RecipeDetailScreen() {
     </TouchableOpacity>
   );
 
+  // Numbered by position rather than a stored index — the order lives in the
+  // array, same as ingredients and components; a stored number would be a
+  // second thing a reorder has to keep in step with the list.
+  const renderStep = (step: RecipeStep, displayIndex: number, drag: () => void) => (
+    <View
+      key={step.id}
+      style={[styles.ingredient, editingStepId === step.id && styles.stepEditing]}
+    >
+      <Text style={styles.stepNumber}>{displayIndex + 1}</Text>
+      <TouchableOpacity
+        style={styles.ingredientText}
+        activeOpacity={interaction.activeOpacity}
+        onPress={() => beginEditStep(step)}
+        accessibilityRole="button"
+        accessibilityLabel={step.text}
+        accessibilityHint="Double tap to edit"
+      >
+        <Text style={styles.ingredientName}>{step.text}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onLongPress={drag}
+        delayLongPress={interaction.delayLongPress}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel={`Reorder step ${displayIndex + 1}`}
+      >
+        <Ionicons name="reorder-three" size={iconSize.sm} color={colors.textTertiary} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => confirmRemoveStep(step)}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel={`Remove step ${displayIndex + 1}`}
+      >
+        <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <DetailHeader
@@ -973,7 +1060,13 @@ export function RecipeDetailScreen() {
             ))}
           </View>
         )}
-        {!!recipe.notes && <Text style={styles.notes}>{recipe.notes}</Text>}
+        {/* Steps below are the structured replacement for a method written into
+            notes — showing both would say the same thing twice in two
+            formats, so notes renders here only for a recipe that hasn't been
+            given steps yet. Notes itself is untouched and still edits from
+            RecipeEditor; a recipe with steps can still carry notes, they just
+            don't auto-render as the method once steps exist. */}
+        {recipe.steps.length === 0 && !!recipe.notes && <Text style={styles.notes}>{recipe.notes}</Text>}
 
         {totalTimeMinutes != null && (
           <Text style={styles.totalTimeSummary}>Total time {formatDuration(totalTimeMinutes)}</Text>
@@ -1175,6 +1268,57 @@ export function RecipeDetailScreen() {
           Quantity and unit go first, e.g. “2 cups flour” — add a comma for prep, e.g.
           “garlic, minced”
         </Text>
+
+        <Text style={styles.sectionLabel}>Steps</Text>
+
+        {recipe.steps.length === 0 ? (
+          <Text style={styles.hint}>
+            Write the method as steps instead of one block of notes, and it stays legible
+            when the recipe's scaled or shown in a different unit. Notes still works if you'd
+            rather leave it as one block.
+          </Text>
+        ) : (
+          <View style={styles.card}>
+            <SortableList
+              data={recipe.steps}
+              onReorder={reordered => reorderSteps(recipe.id, reordered.map(s => s.id))}
+              onDragStateChange={setDragging}
+              renderItem={renderStep}
+            />
+          </View>
+        )}
+
+        <View style={styles.addRow}>
+          <TextInput
+            ref={stepInputRef}
+            style={styles.addInput}
+            value={stepDraft}
+            onChangeText={setStepDraft}
+            onSubmitEditing={submitStepDraft}
+            placeholder={editingStepId ? 'Edit this step' : 'Add a step'}
+            placeholderTextColor={colors.textTertiary}
+            multiline
+            blurOnSubmit
+            returnKeyType="done"
+            accessibilityLabel={editingStepId ? 'Edit step' : 'Add a step'}
+          />
+          {editingStepId && (
+            <TouchableOpacity
+              onPress={cancelEditStep}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel editing this step"
+            >
+              <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
+            </TouchableOpacity>
+          )}
+          <InlineAction
+            label={editingStepId ? 'Save' : 'Add'}
+            icon={editingStepId ? 'checkmark' : 'add'}
+            onPress={submitStepDraft}
+            disabled={!stepDraft.trim()}
+          />
+        </View>
 
         <Text style={styles.sectionLabel}>Components</Text>
 
@@ -1546,6 +1690,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   ingredientSelected: {
     backgroundColor: colors.accent + '1A',
+  },
+  // The row currently loaded into the add/edit field below — same tint
+  // `ingredientSelected` uses, so "this is the one you're changing" reads the
+  // same way selection already does on this screen.
+  stepEditing: {
+    backgroundColor: colors.accent + '1A',
+  },
+  // Fixed width so a run of 1–20 doesn't shift the text beside it as the
+  // digit count grows; right-aligned so the numbers themselves stay flush
+  // against the text they number.
+  stepNumber: {
+    width: 20,
+    textAlign: 'right',
+    color: colors.textTertiary,
+    fontSize: font.md,
+    fontVariant: ['tabular-nums'],
   },
   // Sits at the row's top edge rather than centered, matching the row's own
   // flex-start alignment — see the note on `ingredient` above.

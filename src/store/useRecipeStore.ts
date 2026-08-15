@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType } from '../types';
+import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
@@ -306,6 +306,18 @@ interface RecipeStore {
   updatePrepTask: (recipeId: string, prepTaskId: string, patch: Partial<RecipePrepTask>) => void;
   removePrepTask: (recipeId: string, prepTaskId: string) => void;
 
+  /** Null when the text is empty. */
+  addStep: (recipeId: string, text: string) => RecipeStep | null;
+  /** Editing a step down to nothing removes it — same as leaving an add field blank never creates one. */
+  updateStep: (recipeId: string, stepId: string, text: string) => void;
+  removeStep: (recipeId: string, stepId: string) => void;
+  /**
+   * The new order. An id missing from `ids` keeps its place at the end rather
+   * than being dropped — same "stale caller can't delete data" rule
+   * reorderIngredients follows.
+   */
+  reorderSteps: (recipeId: string, ids: string[]) => void;
+
   /**
    * Follows a grocery item's rename across every recipe that referenced its old
    * key. Called by useGroceryStore.renameItem — see the note there.
@@ -352,6 +364,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       emptySections: [],
       components: [],
       prepTasks: [],
+      steps: [],
       favorite: false,
       sortOrder: maxOrder + 1,
       createdAt: new Date().toISOString(),
@@ -874,6 +887,52 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const prepTasks = recipe.prepTasks.filter(t => t.id !== prepTaskId);
     if (prepTasks.length === recipe.prepTasks.length) return;
     save(set, { ...recipe, prepTasks });
+  },
+
+  addStep(recipeId, text) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return null;
+    const clean = text.trim();
+    if (!clean) return null;
+    const step: RecipeStep = { id: generateId(), text: clean };
+    save(set, { ...recipe, steps: [...recipe.steps, step] });
+    return step;
+  },
+
+  updateStep(recipeId, stepId, text) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const clean = text.trim();
+    if (!clean) {
+      get().removeStep(recipeId, stepId);
+      return;
+    }
+    let touched = false;
+    const steps = recipe.steps.map(s => {
+      if (s.id !== stepId) return s;
+      touched = true;
+      return { ...s, text: clean };
+    });
+    if (!touched) return;
+    save(set, { ...recipe, steps });
+  },
+
+  removeStep(recipeId, stepId) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const steps = recipe.steps.filter(s => s.id !== stepId);
+    if (steps.length === recipe.steps.length) return;
+    save(set, { ...recipe, steps });
+  },
+
+  reorderSteps(recipeId, ids) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const byId = new Map(recipe.steps.map(s => [s.id, s]));
+    const ordered = ids.map(id => byId.get(id)).filter((s): s is RecipeStep => !!s);
+    const named = new Set(ordered.map(s => s.id));
+    const rest = recipe.steps.filter(s => !named.has(s.id));
+    save(set, { ...recipe, steps: [...ordered, ...rest] });
   },
 
   remapIngredientKey(fromKey, toKey) {
