@@ -9,6 +9,7 @@ import { haptics } from '../utils/haptics';
 interface Props {
   shopName: string;
   onChange: () => void;
+  onFinish: () => void;
   onClear: () => void;
 }
 
@@ -22,13 +23,21 @@ interface Props {
  * on screen reads as the app having opinions.
  *
  * It is a sibling of the list rather than its `ListHeaderComponent`, unlike
- * `TripSuggestionCard`: a mode indicator that scrolls away is one you can't
- * find when you want to turn it off, and it's the answer to "why does this row
- * say that" at the moment you're looking at the row. The two never appear
- * together — the planner card is for deciding where to go, and this says you've
+ * `StartTripPrompt`: a mode indicator that scrolls away is one you can't find
+ * when you want to turn it off, and it's the answer to "why does this row say
+ * that" at the moment you're looking at the row. The two never appear
+ * together — the prompt is for deciding where to go, and this says you've
  * gone — so the fixed height it costs is only ever paid during a shop.
+ *
+ * **Finish and Clear both live here now (#1660)**, the same pair
+ * `PersistentTripBar` offers from every other tab — ending a trip from the
+ * screen it's scoped to shouldn't mean reaching for that separately-placed
+ * control instead. Finish is the accent pill, since recording what you got is
+ * the far more common way a trip ends; Clear is the quiet icon beside it,
+ * matching the weighting `PersistentTripBar` already settled on for the same
+ * two actions.
  */
-export function ActiveTripBanner({ shopName, onChange, onClear }: Props) {
+export function ActiveTripBanner({ shopName, onChange, onFinish, onClear }: Props) {
   const colors = useColors();
   const styles = makeStyles(colors);
 
@@ -40,6 +49,11 @@ export function ActiveTripBanner({ shopName, onChange, onClear }: Props) {
   const handleChange = () => {
     haptics.tap();
     onChange();
+  };
+
+  const handleFinish = () => {
+    haptics.tap();
+    onFinish();
   };
 
   return (
@@ -58,10 +72,18 @@ export function ActiveTripBanner({ shopName, onChange, onClear }: Props) {
       </TouchableOpacity>
       <PressableScale
         style={styles.button}
+        onPress={handleFinish}
+        accessibilityLabel={`Finish shopping at ${shopName}`}
+      >
+        <Text style={styles.buttonText}>Finish</Text>
+      </PressableScale>
+      <PressableScale
+        style={styles.dismiss}
+        hitSlop={8}
         onPress={handleClear}
         accessibilityLabel={`Stop shopping at ${shopName}`}
       >
-        <Text style={styles.buttonText}>Clear</Text>
+        <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
       </PressableScale>
     </View>
   );
@@ -97,4 +119,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full,
   },
   buttonText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.bold },
+  // Same shape and weighting as PersistentTripBar's own dismiss — quiet,
+  // icon-only, next to the accent Finish pill rather than matching it.
+  dismiss: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

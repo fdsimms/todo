@@ -32,7 +32,38 @@ import { haptics } from '../utils/haptics';
  * into a corner the way that pill does, and has to sit above the whole band
  * instead. `TAB_BAR_HEIGHT + FAB_SIZE` is that band's height; the margin on
  * top is headroom, not a measurement.
+ *
+ * **A screen's own scrollable content has to reserve its own clearance —
+ * this component can't do it for them.** Sitting above the tab bar on every
+ * tab (the whole point, above) means it can just as easily float over a
+ * screen's *content* as over blank space, and unlike the small round FAB, a
+ * full-width opaque bar genuinely hides whatever row is under it rather than
+ * merely floating near a corner of it (#1660). `TRIP_BAR_CLEARANCE` is the
+ * number a screen adds to its own bottom padding while this bar is showing.
  */
+
+/**
+ * How tall the bar itself renders — the icon badge is the taller of its two
+ * children, so this is that plus the bar's own vertical padding. A constant
+ * rather than a measured layout, because the one caller that needs it
+ * (TodayScreen's list padding, below) has to reserve the space *before* this
+ * component has ever mounted to lay out — there's nothing to measure yet on
+ * a screen a trip didn't start from.
+ */
+const BAR_HEIGHT = 36 + spacing.sm * 2;
+
+/**
+ * How much bottom padding a screen's own scrollable content needs to
+ * reserve while this bar is showing, so a list's last rows rest above it
+ * rather than under it (#1660). Measured from the tab bar's own top edge,
+ * which is where a screen's content normally ends: this bar's `wrap` is
+ * offset from the *true* screen bottom by `TAB_BAR_HEIGHT + FAB_SIZE +
+ * spacing.lg`, so relative to the tab bar's top edge it only ever costs the
+ * FAB band's own clearance (`FAB_SIZE + spacing.lg`) plus its own height on
+ * top of that.
+ */
+export const TRIP_BAR_CLEARANCE = FAB_SIZE + spacing.lg + BAR_HEIGHT;
+
 export function PersistentTripBar() {
   const colors = useColors();
   const { shadows } = useTheme();

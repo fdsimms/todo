@@ -76,6 +76,9 @@ import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList, type RowScroller } from '../components/ReorderableList';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { GroupDropTarget } from '../components/GroupDropTarget';
+import { TRIP_BAR_CLEARANCE } from '../components/PersistentTripBar';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { resolveActiveTrip } from '../utils/activeTrip';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -555,8 +558,29 @@ export function TodayScreen() {
   // each needs its own ref and its own record of where it last settled.
   const unscheduledScroll = useKeyboardInsetScroll<FlatList>();
   const inboxScroll = useKeyboardInsetScroll<FlatList>();
-  // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
-  const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
+  // Whether PersistentTripBar is currently floating over this screen — the
+  // same live/expired check that component runs on its own, since Today has
+  // no other reason to know a grocery trip exists. Read fresh each render,
+  // same as GroceryScreen's own activeTripShop.
+  const tripShopId = useGroceryStore(s => s.tripShopId);
+  const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
+  const groceryShops = useGroceryStore(useShallow(s => s.shops));
+  const tripBarShowing = useMemo(
+    () => !!resolveActiveTrip(tripShopId, tripStartedAt, groceryShops, new Date()),
+    [tripShopId, tripStartedAt, groceryShops]
+  );
+  // Extra bottom padding so the last rows aren't hidden behind the floating
+  // BulkActionBar, or — while a trip is running and nothing is being
+  // selected (#1660) — PersistentTripBar, which floats over every tab and
+  // otherwise has no way to know this screen's content extends that far
+  // down. The two floating bars never show at once (selecting is a
+  // deliberate mode with its own bar; PersistentTripBar doesn't gate on it),
+  // so this is one shared reservation, not two stacked ones.
+  const extraListBottomPadding = selectionMode
+    ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm
+    : tripBarShowing
+      ? tabBarHeight + TRIP_BAR_CLEARANCE
+      : undefined;
   // "Hide everything but the pins", toggled by the eye in the pinned header.
   // Off by default and session-only: the pinned block is additive now —
   // pinning shows you a copy at the top, it doesn't take the rest of the day
@@ -2775,7 +2799,7 @@ export function TodayScreen() {
             contentContainerStyle={
               laterDraggableData.length === 0
                 ? styles.emptyContainer
-                : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+                : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
             ListEmptyComponent={
               isEmptyDatabase ? (
@@ -2960,7 +2984,7 @@ export function TodayScreen() {
               // the centering this style does is for a genuinely empty screen.
               filtered.length === 0 && data.length === 0
                 ? styles.emptyContainer
-                : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+                : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
             refreshControl={
               <RefreshControl
@@ -3023,7 +3047,7 @@ export function TodayScreen() {
             contentContainerStyle={
               unscheduledTasks.length === 0
                 ? styles.emptyContainer
-                : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+                : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
             ListEmptyComponent={
               isEmptyDatabase ? (
@@ -3089,7 +3113,7 @@ export function TodayScreen() {
             contentContainerStyle={
               inboxTasks.length === 0
                 ? styles.emptyContainer
-                : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+                : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
             ListEmptyComponent={
               isEmptyDatabase ? (
