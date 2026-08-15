@@ -3,6 +3,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 import { groceryNameKey } from './groceryParse';
 import { GROCERY_EXPIRY_DAYS_MAX } from '../types';
+import type { GroceryItem } from '../types';
 
 /**
  * How long a thing keeps, so an item bought today can be given a day to be
@@ -101,6 +102,21 @@ export function expiryKeyFor(from: Date, days: number): string {
 export function defaultExpiresAt(name: string, now: Date): string | null {
   const days = shelfLifeDaysFor(name);
   return days === null ? null : expiryKeyFor(now, days);
+}
+
+/**
+ * The use-by day a just-bought item should carry, preferring the shopper's
+ * own correction over the lexicon guess.
+ *
+ * `finishShopping` calls this instead of `defaultExpiresAt` for exactly the
+ * reason `GroceryItem.shelfLifeDays` exists: once someone has told the app
+ * "this one keeps 5 days" — whether the lexicon had an opinion or not — every
+ * later purchase should count from that, not silently fall back to a generic
+ * guess (or to nothing, for a name the lexicon has never heard of).
+ */
+export function expiresAtForPurchase(item: GroceryItem, now: Date): string | null {
+  if (item.shelfLifeDays !== null) return expiryKeyFor(now, item.shelfLifeDays);
+  return defaultExpiresAt(item.name, now);
 }
 
 /**

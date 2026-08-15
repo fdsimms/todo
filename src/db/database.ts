@@ -624,6 +624,10 @@ export function initDatabase(): void {
     // cook_task is: NULL is the third state ("the setting decides"), and a
     // DEFAULT 0 would record every item in the catalog as an explicit refusal.
     'ALTER TABLE grocery_items ADD COLUMN use_up_task INTEGER',
+    // NULL on every existing row — nobody has corrected a shelf life for a
+    // feature that didn't exist, so every item keeps deferring to the lexicon
+    // guess exactly as before. See GroceryItem.shelfLifeDays.
+    'ALTER TABLE grocery_items ADD COLUMN shelf_life_days INTEGER',
     // Superseded by generated_kind/generated_source_id, same as meal_entry_id.
     'ALTER TABLE tasks ADD COLUMN grocery_item_id TEXT',
     // NULL on every existing row — nobody has a rule for a feature that didn't
@@ -1961,6 +1965,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     choiceGroup: (row.choice_group as string) ?? null,
     isStaple: Boolean(row.is_staple),
     expiresAt: (row.expires_at as string) ?? null,
+    shelfLifeDays: (row.shelf_life_days as number) ?? null,
     lastPriceMinor: (row.last_price_minor as number) ?? null,
     lastPricedAt: (row.last_priced_at as string) ?? null,
     lastPriceQuantity: (row.last_price_quantity as string) ?? null,
@@ -1984,9 +1989,9 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, quantity_from_recipe, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
-       source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, use_up_task,
+       source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, shelf_life_days, use_up_task,
        last_price_minor, last_priced_at, last_price_quantity, brand, brand_strict, variant)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -1995,7 +2000,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
-      item.expiresAt ?? null,
+      item.expiresAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.brand ?? null, item.brandStrict ? 1 : 0, item.variant ?? null,
@@ -2009,7 +2014,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        name=?, name_key=?, aisle=?, quantity=?, quantity_from_recipe=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
-       expires_at=?, use_up_task=?,
+       expires_at=?, shelf_life_days=?, use_up_task=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?, brand=?, brand_strict=?,
        variant=?
      WHERE id=?`,
@@ -2021,7 +2026,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
-      item.expiresAt ?? null,
+      item.expiresAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.brand ?? null, item.brandStrict ? 1 : 0, item.variant ?? null,

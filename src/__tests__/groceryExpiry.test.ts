@@ -40,6 +40,7 @@ function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
     choiceGroup: null,
     isStaple: false,
     expiresAt: '2026-08-17',
+    shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,

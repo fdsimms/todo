@@ -3,12 +3,49 @@ import {
   clampExpiryDays,
   defaultExpiresAt,
   describeExpiry,
+  expiresAtForPurchase,
   expiryDaysFromNow,
   expiryKeyFor,
   shelfLifeDaysFor,
 } from '../utils/groceryShelfLife';
 import { groceryNameKey } from '../utils/groceryParse';
 import { GROCERY_EXPIRY_DAYS_MAX } from '../types';
+import type { GroceryItem } from '../types';
+
+function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
+  return {
+    id: 'item-1',
+    name: 'Spinach',
+    nameKey: 'spinach',
+    brand: null,
+    brandStrict: false,
+    variant: null,
+    aisle: 'Produce',
+    quantity: null,
+    quantityFromRecipe: false,
+    note: '',
+    onList: false,
+    checked: false,
+    inCatalog: true,
+    sortOrder: 0,
+    purchaseCount: 0,
+    lastAddedAt: null,
+    lastPurchasedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    onHandUntil: null,
+    sourceRecipeId: null,
+    sourceRecipeTitle: null,
+    choiceGroup: null,
+    isStaple: false,
+    expiresAt: null,
+    shelfLifeDays: null,
+    useUpTask: null,
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
+    ...overrides,
+  };
+}
 
 // dateUtils reaches the settings store for dayResetTime, which reaches
 // expo-sqlite — same stub leftovers.test.ts keeps for the same reason.
@@ -68,6 +105,24 @@ describe('defaultExpiresAt', () => {
 
   it('leaves an unrecognised item with no date at all', () => {
     expect(defaultExpiresAt('rice', NOW)).toBeNull();
+  });
+});
+
+describe('expiresAtForPurchase', () => {
+  it('falls back to the lexicon when the item has no override', () => {
+    expect(expiresAtForPurchase(item({ name: 'spinach', shelfLifeDays: null }), NOW)).toBe('2026-08-17');
+  });
+
+  it('uses the shopper\'s own correction ahead of the lexicon', () => {
+    expect(expiresAtForPurchase(item({ name: 'spinach', shelfLifeDays: 10 }), NOW)).toBe('2026-08-22');
+  });
+
+  it('gives a name the lexicon has never heard of a date, once the shopper has said how long it keeps', () => {
+    expect(expiresAtForPurchase(item({ name: 'homemade stock', shelfLifeDays: 4 }), NOW)).toBe('2026-08-16');
+  });
+
+  it('still leaves an unrecognised item with no override undated', () => {
+    expect(expiresAtForPurchase(item({ name: 'rice', shelfLifeDays: null }), NOW)).toBeNull();
   });
 });
 

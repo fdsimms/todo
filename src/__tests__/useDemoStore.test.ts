@@ -1029,6 +1029,17 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(useUpTasks[0].deadline).not.toBeNull();
   });
 
+  it('seeds a remembered shelf life that has not been activated yet', () => {
+    const { items } = useGroceryStore.getState();
+
+    // Cheddar isn't in the shelf-life lexicon and hasn't been bought in this
+    // seed, so the correction is recorded but there's nothing to count down
+    // from — only a real purchase turns it into an expiresAt.
+    const cheddar = items.find(i => i.nameKey === 'cheddar')!;
+    expect(cheddar.shelfLifeDays).not.toBeNull();
+    expect(cheddar.expiresAt).toBeNull();
+  });
+
   it('seeds a fridge covering every freshness state and both endings', () => {
     const { leftovers } = useLeftoverStore.getState();
     const live = leftovers.filter(isLiveLeftover);

@@ -963,6 +963,27 @@ export interface GroceryItem {
    */
   expiresAt: string | null;
   /**
+   * A remembered shelf life, in days — "spinach keeps 5 days" — kept apart
+   * from `expiresAt` on purpose: this is a fact about the *item*, and
+   * `expiresAt` is a fact about one purchase of it.
+   *
+   * Set by hand in `GroceryItemSheet` when the item isn't currently on hand
+   * (see `onHandUntil`), because there's nothing to count down from yet — the
+   * clock starts when it's actually bought. **Only a real purchase activates
+   * it**: `finishShopping` reads this as the shelf life for the row it just
+   * bought, ahead of the `groceryShelfLife.ts` lexicon guess, and stamps
+   * `expiresAt` from it. Marking "Got it" by hand deliberately does *not*
+   * consult this — "Got it" doesn't say *when*, so it could be days-old
+   * already, and guessing the countdown starts today would as often be wrong
+   * as right.
+   *
+   * Editing "Use by" while the item *is* on hand writes `expiresAt` directly,
+   * same as before this field existed, and updates this alongside it — a
+   * correction made once is remembered for next time, the same way the app
+   * already learns a purchase cadence.
+   */
+  shelfLifeDays: number | null;
+  /**
    * What you last paid for this, in whole minor units of the one currency the
    * app knows about (cents/pence) — `429`, never `4.29`. An integer because
    * this is the number a trip estimate sums, and floats accumulate a tail.

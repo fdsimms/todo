@@ -35,6 +35,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { groceryNameKey } from '../utils/groceryParse';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
 import { OUT_OF_IT_UNTIL, probablyHaveReason } from '../utils/grocerySuggest';
+import { expiryDaysFromNow } from '../utils/groceryShelfLife';
 import type { GroceryItem, ItemShopLink, ItemSubLink, Shop, Task } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -160,6 +161,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     choiceGroup: null,
     isStaple: false,
     expiresAt: null,
+    shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,
@@ -2712,6 +2714,46 @@ describe('setStaple', () => {
   });
 });
 
+describe('setShelfLifeDays', () => {
+  it('writes the given value and persists it', () => {
+    const spinach = makeItem({ name: 'Spinach' });
+    seed([spinach]);
+
+    useGroceryStore.getState().setShelfLifeDays(spinach.id, 5);
+
+    expect(useGroceryStore.getState().items[0].shelfLifeDays).toBe(5);
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: spinach.id, shelfLifeDays: 5 })
+    );
+  });
+
+  it('is a dumb setter — it never touches expiresAt or spawns a use-up task', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: 'Spinach', expiresAt: null });
+    seed([spinach]);
+
+    useGroceryStore.getState().setShelfLifeDays(spinach.id, 5);
+
+    expect(useGroceryStore.getState().items[0].expiresAt).toBeNull();
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+  });
+
+  it('clears back to null', () => {
+    const spinach = makeItem({ name: 'Spinach', shelfLifeDays: 5 });
+    seed([spinach]);
+
+    useGroceryStore.getState().setShelfLifeDays(spinach.id, null);
+
+    expect(useGroceryStore.getState().items[0].shelfLifeDays).toBeNull();
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    seed([]);
+    useGroceryStore.getState().setShelfLifeDays('gone', 5);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
 describe('either/or items (choiceGroup)', () => {
   const pair = () => {
     const apples = useGroceryStore.getState().addByName('apples', {
@@ -2929,6 +2971,32 @@ describe('use-up tasks', () => {
 
       expect(useGroceryStore.getState().items.find(i => i.id === rice.id)!.expiresAt).toBeNull();
       expect(useUpTaskFor(rice.id)).toBeUndefined();
+    });
+
+    it('prefers a remembered shelf life over the lexicon guess', () => {
+      mockUseUpTasks = true;
+      // The lexicon says spinach keeps 5 days; this shopper has corrected it.
+      const spinach = makeItem({ name: 'spinach', onList: true, checked: true, shelfLifeDays: 10 });
+      seed([spinach]);
+      (dbFinishGroceryShopping as jest.Mock).mockReturnValue([spinach.id]);
+
+      useGroceryStore.getState().finishShopping();
+
+      const stored = useGroceryStore.getState().items.find(i => i.id === spinach.id)!;
+      expect(expiryDaysFromNow(stored.expiresAt!, new Date())).toBe(10);
+    });
+
+    it('activates a remembered shelf life for a name the lexicon has never heard of', () => {
+      mockUseUpTasks = true;
+      const custom = makeItem({ name: 'homemade stock', onList: true, checked: true, shelfLifeDays: 4 });
+      seed([custom]);
+      (dbFinishGroceryShopping as jest.Mock).mockReturnValue([custom.id]);
+
+      useGroceryStore.getState().finishShopping();
+
+      const stored = useGroceryStore.getState().items.find(i => i.id === custom.id)!;
+      expect(stored.expiresAt).not.toBeNull();
+      expect(useUpTaskFor(custom.id)).toBeDefined();
     });
 
     it('re-stamps a fresh purchase rather than keeping the old bag\'s day', () => {
