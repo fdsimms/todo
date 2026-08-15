@@ -48,6 +48,23 @@ const HIDDEN = { tabBarButton: () => null };
 
 const DRAWER_TABS = new Set(['Calendar', 'Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Waiting', 'Drift', 'Archived', 'Groceries', 'Recipes', 'MealPlan']);
 
+// Every screen it's safe to reopen the app directly on: the visible bottom
+// tabs plus every drawer screen, none of which take a route param. Excludes
+// 'More' (not a real screen — its tabPress just opens the drawer) and every
+// PUSHED_ROUTES entry below (RecipeDetail, ProjectDetail, … need an id the
+// app can't invent on a cold launch). Backs the lastVisitedScreen setting
+// (useSettingsStore) so the app reopens where it was left rather than always
+// on Today — see initialRouteName below.
+const RESTORABLE_SCREENS = new Set(['Today', 'Search', 'Projects', ...DRAWER_TABS]);
+
+// The Groceries/Recipes/Meal plan hub (SideMenuDrawer's GROCERIES_HUB_TABS)
+// drops out of the drawer entirely while kitchenEnabled is off, so reopening
+// directly onto one would land somewhere the menu no longer offers a way
+// back to. Checked only on the read side below — kitchenEnabled can't change
+// out from under an *open* session onto one of these screens, since turning
+// it off removes the only way to reach them.
+const KITCHEN_SCREENS = new Set(['Groceries', 'Recipes', 'MealPlan']);
+
 // RootStack cards, not tabs. Pushing one must leave the drawer's highlight on
 // whichever tab you pushed it *from*, so these never become the active tab.
 // A new pushed route missing from here highlights nothing and blanks the
@@ -80,6 +97,7 @@ const styles = StyleSheet.create({
 });
 
 interface MainTabsProps {
+  initialRouteName: string;
   screenOptions: any;
   tabPressHaptic: { tabPress: () => void };
   menuOpen: boolean;
@@ -92,7 +110,7 @@ interface MainTabsProps {
 // re-render and recompute its derived task lists — that recompute was
 // blocking the settings modal's open animation.
 const MainTabs = React.memo(function MainTabs({
-  screenOptions, tabPressHaptic, menuOpen, accentColor, onOpenMenu,
+  initialRouteName, screenOptions, tabPressHaptic, menuOpen, accentColor, onOpenMenu,
 }: MainTabsProps) {
   const colors = useColors();
   // Recipes and meal plan live behind the drawer with no tab of their own, so
@@ -105,7 +123,7 @@ const MainTabs = React.memo(function MainTabs({
   const anyTimerRunning = useRecipeStore(state => state.recipes.some(hasRunningRecipeTimer));
   const timerRunning = kitchenEnabled && anyTimerRunning;
   return (
-    <Tab.Navigator screenOptions={screenOptions}>
+    <Tab.Navigator initialRouteName={initialRouteName} screenOptions={screenOptions}>
       <Tab.Screen
         name="Today"
         component={TodayScreen}
@@ -172,11 +190,33 @@ const MainTabs = React.memo(function MainTabs({
   );
 });
 
+// Read once, directly off the store rather than a reactive selector — this
+// only has to answer "where did we leave off" for Tab.Navigator's
+// initialRouteName, which React Navigation itself only honors on first
+// mount. Subscribing here would re-render (and, being memoized on identity,
+// re-render MainTabs) on every tab switch for the rest of the session, which
+// is exactly what MainTabs's own React.memo exists to prevent.
+function initialScreenFromSettings(): string {
+  const { lastVisitedScreen, kitchenEnabled } = useSettingsStore.getState();
+  if (!lastVisitedScreen || !RESTORABLE_SCREENS.has(lastVisitedScreen)) return 'Today';
+  if (KITCHEN_SCREENS.has(lastVisitedScreen) && !kitchenEnabled) return 'Today';
+  return lastVisitedScreen;
+}
+
 export default function AppNavigator() {
   const colors = useColors();
   const { isDark } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('Today');
+  const [initialRouteName] = useState(initialScreenFromSettings);
+  const [activeTab, setActiveTab] = useState(() =>
+    (initialRouteName === 'Today' || initialRouteName === 'Search' || initialRouteName === 'Projects')
+      ? initialRouteName
+      : 'Today'
+  );
+  // Stable function reference (Zustand actions never change identity), so
+  // selecting only this doesn't subscribe AppNavigator to lastVisitedScreen
+  // itself — see initialScreenFromSettings above.
+  const setLastVisitedScreen = useSettingsStore(s => s.setLastVisitedScreen);
   const navRef = navigationRef;
 
   const openMenu = useCallback(() => setMenuOpen(true), []);
@@ -212,11 +252,15 @@ export default function AppNavigator() {
 
   const handleStateChange = useCallback(() => {
     const currentName = navRef.current?.getCurrentRoute()?.name;
-    if (currentName && !DRAWER_TABS.has(currentName) && currentName !== 'More'
-      && !PUSHED_ROUTES.has(currentName)) {
+    if (!currentName || currentName === 'More' || PUSHED_ROUTES.has(currentName)) return;
+    // Remembered so the next cold launch reopens here instead of always on
+    // Today — every non-pushed route name is a RESTORABLE_SCREENS member,
+    // so no further check is needed on write.
+    setLastVisitedScreen(currentName);
+    if (!DRAWER_TABS.has(currentName)) {
       setActiveTab(currentName);
     }
-  }, []);
+  }, [setLastVisitedScreen]);
 
   const screenOptions = useMemo(() => ({
     headerShown: false,
@@ -249,6 +293,7 @@ export default function AppNavigator() {
           <RootStack.Screen name="MainTabs">
             {() => (
               <MainTabs
+                initialRouteName={initialRouteName}
                 screenOptions={screenOptions}
                 tabPressHaptic={tabPressHaptic}
                 menuOpen={menuOpen}

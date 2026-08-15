@@ -564,6 +564,39 @@ describe('setProjectNudgeDismissedAt', () => {
   });
 });
 
+describe('lastVisitedScreen', () => {
+  it('defaults to null when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().lastVisitedScreen).toBeNull();
+  });
+
+  it('uses the stored screen name when present', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'lastVisitedScreen' ? 'Groceries' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().lastVisitedScreen).toBe('Groceries');
+  });
+
+  it('stores and persists the screen name', () => {
+    useSettingsStore.getState().setLastVisitedScreen('Groceries');
+    expect(useSettingsStore.getState().lastVisitedScreen).toBe('Groceries');
+    expect(dbSetSetting).toHaveBeenCalledWith('lastVisitedScreen', 'Groceries');
+  });
+
+  it('clears back to null through an empty string', () => {
+    useSettingsStore.getState().setLastVisitedScreen(null);
+    expect(useSettingsStore.getState().lastVisitedScreen).toBeNull();
+    expect(dbSetSetting).toHaveBeenCalledWith('lastVisitedScreen', '');
+  });
+
+  it('is untouched by resetToDefaults, like other remembered state', () => {
+    useSettingsStore.getState().setLastVisitedScreen('Groceries');
+    useSettingsStore.getState().resetToDefaults();
+    expect(useSettingsStore.getState().lastVisitedScreen).toBe('Groceries');
+  });
+});
+
 describe('meal plan nudge settings', () => {
   it('defaults to off, Sunday, 09:00, and never fired', () => {
     expect(useSettingsStore.getState().mealPlanNudgeEnabled).toBe(false);
