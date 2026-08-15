@@ -37,7 +37,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
-import { defaultExpiresAt } from '../utils/groceryShelfLife';
+import { expiresAtForPurchase } from '../utils/groceryShelfLife';
 import { useUpTaskDraft, useUpTaskFields, useUpTaskNeedsUpdate, wantsUseUpTask } from '../utils/groceryExpiry';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import {
@@ -296,6 +296,12 @@ interface GroceryStore {
    * the only thing that decides any of the three.
    */
   setExpiresAt: (id: string, expiresAt: string | null) => void;
+  /**
+   * The remembered shelf life — a dumb setter, unlike setExpiresAt: this
+   * never touches expiresAt or the use-up task on its own. See
+   * GroceryItem.shelfLifeDays for when each one is the write to make.
+   */
+  setShelfLifeDays: (id: string, days: number | null) => void;
   /**
    * The per-item answer to "does this get a use-up task" — true, false, or
    * null to hand the question back to the setting. Reconciles immediately, so
@@ -605,8 +611,10 @@ function newItemRow(fields: {
     isStaple: false,
     // Nothing on the *list* has a use-by date: adding a name is a plan to buy
     // it, and the shelf life doesn't start until it's in the fridge.
-    // finishShopping is what stamps this — see defaultExpiresAt.
+    // finishShopping is what stamps this — see expiresAtForPurchase.
     expiresAt: null,
+    // No one has corrected the lexicon guess for this row yet.
+    shelfLifeDays: null,
     useUpTask: null,
     // Same reasoning as expiresAt: a name typed onto the list is a plan to buy
     // something, and nothing has been paid for it yet. finishShopping and the
@@ -1431,6 +1439,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     reconcileUseUpTask(updated);
   },
 
+  setShelfLifeDays(id, days) {
+    const item = get().items.find(i => i.id === id);
+    if (!item || item.shelfLifeDays === days) return;
+    const updated = { ...item, shelfLifeDays: days };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
   setUseUpTask(id, value, options) {
     const item = get().items.find(i => i.id === id);
     if (!item || item.useUpTask === value) return;
@@ -1623,7 +1639,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const expiresAtById: Record<string, string> = {};
     for (const i of get().items) {
       if (!i.checked || !i.onList) continue;
-      const expires = defaultExpiresAt(i.name, now);
+      const expires = expiresAtForPurchase(i, now);
       if (expires) expiresAtById[i.id] = expires;
     }
     // The quantity each price was for, captured before the trip clears the

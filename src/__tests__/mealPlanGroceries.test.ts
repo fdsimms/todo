@@ -124,6 +124,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     choiceGroup: null,
     isStaple: false,
     expiresAt: null,
+    shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,

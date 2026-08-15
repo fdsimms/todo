@@ -846,6 +846,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     addToPantry,
     setStaple,
     setExpiresAt,
+    setShelfLifeDays,
     setUseUpTask,
     finishShopping,
     addAisle,
@@ -1140,6 +1141,13 @@ function seedGroceries(recipes: DemoRecipes): void {
     addByName(name, undefined, undefined, { registerUndo: false })
   );
   setCheckedMany(idsNamed(['Milk', 'Bananas']), true);
+
+  // The shelf-life correction itself: a name the lexicon has never heard of
+  // (cheddar isn't in it), given a shelf life by hand. Cheddar is still on
+  // the list and hasn't been bought in this seed, so this doesn't count down
+  // yet — it only turns into a real use-by date the next time a trip actually
+  // buys it. See GroceryItem.shelfLifeDays.
+  setShelfLifeDays(itemNamed('Cheddar').id, 21);
 
   // ...plus tonight's dinner, added off the recipe, so a few rows carry "from
   // Weeknight chicken stir-fry" rather than looking hand-typed.

@@ -135,6 +135,7 @@ export function GroceryItemSheet({
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
   const setStaple = useGroceryStore(s => s.setStaple);
   const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
+  const setShelfLifeDays = useGroceryStore(s => s.setShelfLifeDays);
   const setUseUpTask = useGroceryStore(s => s.setUseUpTask);
   const setItemPrice = useGroceryStore(s => s.setItemPrice);
   const clearItemShopPrice = useGroceryStore(s => s.clearItemShopPrice);
@@ -441,10 +442,20 @@ export function GroceryItemSheet({
   // survives the app being closed for a week, where "5 days" would quietly
   // mean five days from whenever you next looked. Same conversion
   // keepUntilKeyFor/keepDaysBetween do for a leftover.
-  const expiryDays = item.expiresAt ? expiryDaysFromNow(item.expiresAt, new Date()) : null;
+  //
+  // While the item is on hand this is a real countdown (expiresAt); while
+  // it isn't, there's nothing to count down from yet, so the stepper reads
+  // and writes the remembered shelf life instead — see
+  // GroceryItem.shelfLifeDays for why a purchase is what activates it.
+  const expiryDays = onHandFuture
+    ? (item.expiresAt ? expiryDaysFromNow(item.expiresAt, new Date()) : null)
+    : item.shelfLifeDays;
   const pickExpiryDays = (days: number | null) => {
     haptics.tap();
-    setExpiresAt(item.id, days === null ? null : expiryKeyFor(new Date(), days));
+    setShelfLifeDays(item.id, days);
+    if (onHandFuture) {
+      setExpiresAt(item.id, days === null ? null : expiryKeyFor(new Date(), days));
+    }
   };
   // Whether this item gets a task, as the store will decide it — not whether
   // one exists right now. A task completed this morning shouldn't make the row
@@ -1026,15 +1037,21 @@ export function GroceryItemSheet({
                 summary={
                   item.expiresAt
                     ? `${format(dayKeyToDate(item.expiresAt), 'd MMM')} · ${describeExpiry(item.expiresAt)}`
-                    : undefined
+                    : item.shelfLifeDays !== null
+                      ? `Keeps ${item.shelfLifeDays} ${item.shelfLifeDays === 1 ? 'day' : 'days'}`
+                      : undefined
                 }
                 emptySummary="None"
-                hint="The day this should be used up by. Finishing a shopping trip fills it in for things that go off, and the use-up task is dated from it."
+                hint={
+                  item.expiresAt
+                    ? "The day this should be used up by. Finishing a shopping trip fills it in for things that go off, and the use-up task is dated from it."
+                    : "How long this keeps once bought. It doesn't count down yet — finishing a shopping trip starts the clock from there, and adds the use-up task."
+                }
                 expanded={openField === 'useBy'}
                 onToggle={() => toggleField('useBy')}
               >
                 <View style={styles.stepperRow}>
-                  <Text style={styles.stepperHint}>Days from today</Text>
+                  <Text style={styles.stepperHint}>{onHandFuture ? 'Days from today' : 'Days once bought'}</Text>
                   <CountStepper
                     value={expiryDays}
                     onChange={pickExpiryDays}
@@ -1042,9 +1059,13 @@ export function GroceryItemSheet({
                     max={GROCERY_EXPIRY_DAYS_MAX}
                     allowNull
                     emptyLabel="None"
-                    format={n => (n === 0 ? 'Today' : `${n}d`)}
+                    format={n => (onHandFuture && n === 0 ? 'Today' : `${n}d`)}
                     label="Use by"
-                    describeValue={n => (n === null ? 'No use-by date' : n === 0 ? 'Use by today' : `${n} days from today`)}
+                    describeValue={n => {
+                      if (n === null) return onHandFuture ? 'No use-by date' : 'No shelf life recorded';
+                      if (onHandFuture) return n === 0 ? 'Use by today' : `${n} days from today`;
+                      return `Keeps ${n} ${n === 1 ? 'day' : 'days'} once bought`;
+                    }}
                   />
                 </View>
               </CollapsibleField>
