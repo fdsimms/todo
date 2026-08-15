@@ -402,12 +402,14 @@ describe('describeTripMarker', () => {
     expect(describeTripMarker({ kind: 'usually', shop: traderJoes })).toBe("Usually Trader Joe's");
   });
 
-  // Rides inside the marker that's already there, rather than a fourth line.
-  it('appends the substitute to an unavailable marker that carries one', () => {
+  // Rides inside the marker that's already there, rather than a fourth line
+  // — and drops the shop's name once the substitute joins it, the same
+  // reasoning withoutBrand runs on: you're standing in the shop already.
+  it('appends the substitute to an unavailable marker, dropping the shop name', () => {
     const margarine = item('margarine', { name: 'Margarine' });
     expect(
       describeTripMarker({ kind: 'unavailable', shop: safeway, substitute: margarine })
-    ).toBe('Not at Safeway · or Margarine');
+    ).toBe('Not here · or Margarine');
   });
 
   // Names the brand and not the store: you're standing in the shop. And not

@@ -796,7 +796,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const marker = tripMarkerFor(tortillas, itemShops, shops, trip, itemSubs, items)!;
     expect(marker.kind).toBe('unavailable');
     expect(marker.substitute?.id).toBe(cornTortillas.id);
-    expect(describeTripMarker(marker)).toBe("Not at Trader Joe's · or Corn tortillas");
+    expect(describeTripMarker(marker)).toBe('Not here · or Corn tortillas');
 
     // Tapping the caption is a real swap: the substitute lands on the list
     // carrying Tortillas off it.

@@ -210,8 +210,16 @@ export function describeTripMarker(marker: TripMarker): string {
       // line — a fourth caption is how the row becomes unreadable while
       // walking. Only ever the one substitute TripMarker carries; naming a
       // second here would say more than tapping the caption can act on.
+      //
+      // Drops the shop's name once a substitute joins the clause, same
+      // reasoning `withoutBrand` already runs on below: you're standing in
+      // it, so naming it is the one fact on the row you don't need — and
+      // "Not at Trader Joe's · or margarine" was two facts stapled into one
+      // line before the swap could even happen. "Not here" names the same
+      // shop with a third the words, leaving room for the one that matters:
+      // what to grab instead.
       return marker.substitute
-        ? `Not at ${marker.shop.name} · or ${marker.substitute.name}`
+        ? `Not here · or ${marker.substitute.name}`
         : `Not at ${marker.shop.name}`;
     // Names the brand rather than the store: you're standing in the store, so
     // its name is the one fact on the row you don't need. It deliberately

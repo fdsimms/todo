@@ -1066,7 +1066,7 @@ function seedGroceries(recipes: DemoRecipes): void {
 
   // The shelf caption (#1567): Tortillas is already marked unavailable at
   // Trader Joe's and already on the list, so a substitute here is the one
-  // link that makes "Not at Trader Joe's · or Corn tortillas" — and its
+  // link that makes "Not here · or Corn tortillas" — and its
   // tap-to-swap — visible in the demo at all, rather than just the plain
   // "Not at Trader Joe's" every other unavailable row still shows.
   const cornTortillas = ensureCatalogItem('Corn tortillas');
