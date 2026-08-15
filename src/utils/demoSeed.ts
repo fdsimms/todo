@@ -1064,6 +1064,16 @@ function seedGroceries(recipes: DemoRecipes): void {
     });
   }
 
+  // The shelf caption (#1567): Tortillas is already marked unavailable at
+  // Trader Joe's and already on the list, so a substitute here is the one
+  // link that makes "Not here · or Corn tortillas" — and its
+  // tap-to-swap — visible in the demo at all, rather than just the plain
+  // "Not at Trader Joe's" every other unavailable row still shows.
+  const cornTortillas = ensureCatalogItem('Corn tortillas');
+  if (cornTortillas) {
+    linkItemSub(itemNamed('Tortillas').id, cornTortillas.id);
+  }
+
   // Everything else typed above is still sitting on the list, since only what
   // a trip actually bought — or a link/unavailable claim above — came off it
   // or promoted it. Clearing parks what's already catalog and drops the rest,

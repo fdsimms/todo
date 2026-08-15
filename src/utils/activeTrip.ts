@@ -1,5 +1,6 @@
-import type { GroceryItem, ItemShopLink, Shop } from '../types';
+import type { GroceryItem, ItemShopLink, ItemSubLink, Shop } from '../types';
 import { exclusiveShopFor, isUnavailable, lacksWantedBrand, primaryShopFor } from './groceryShops';
+import { substitutesFor } from './itemSubs';
 
 /**
  * The trip you are on right now — "I'm at this store".
@@ -149,19 +150,32 @@ export interface TripMarker {
   shop: Shop;
   /** `withoutBrand` only: the brand the item insists on. */
   wantedBrand?: string;
+  /**
+   * `unavailable` only: the oldest substitute on record for this item, if any
+   * (see itemSubs.substitutesFor). This is the highest-value moment for a
+   * substitute link — you're standing in front of the empty shelf — so the
+   * marker rides the clause rather than the row growing a fourth caption; see
+   * describeTripMarker and GroceryRow's tap-to-swap.
+   */
+  substitute?: GroceryItem;
 }
 
 export function tripMarkerFor(
   item: GroceryItem,
   links: readonly ItemShopLink[],
   shops: readonly Shop[],
-  trip: Shop
+  trip: Shop,
+  subLinks: readonly ItemSubLink[] = [],
+  items: readonly GroceryItem[] = []
 ): TripMarker | null {
   const here = links.find(l => l.itemId === item.id && l.shopId === trip.id);
   if (here) {
     // Not stocking it at all outranks not having your brand — it's the
     // stronger claim, and both are the user's own.
-    if (isUnavailable(here)) return { kind: 'unavailable', shop: trip };
+    if (isUnavailable(here)) {
+      const substitute = substitutesFor(item.id, subLinks, items)[0]?.item;
+      return { kind: 'unavailable', shop: trip, substitute };
+    }
     if (lacksWantedBrand(here, item)) {
       return { kind: 'withoutBrand', shop: trip, wantedBrand: item.brand! };
     }
@@ -192,7 +206,21 @@ export function tripMarkerFor(
 export function describeTripMarker(marker: TripMarker): string {
   switch (marker.kind) {
     case 'unavailable':
-      return `Not at ${marker.shop.name}`;
+      // Rides inside the marker that's already there rather than adding a
+      // line — a fourth caption is how the row becomes unreadable while
+      // walking. Only ever the one substitute TripMarker carries; naming a
+      // second here would say more than tapping the caption can act on.
+      //
+      // Drops the shop's name once a substitute joins the clause, same
+      // reasoning `withoutBrand` already runs on below: you're standing in
+      // it, so naming it is the one fact on the row you don't need — and
+      // "Not at Trader Joe's · or margarine" was two facts stapled into one
+      // line before the swap could even happen. "Not here" names the same
+      // shop with a third the words, leaving room for the one that matters:
+      // what to grab instead.
+      return marker.substitute
+        ? `Not here · or ${marker.substitute.name}`
+        : `Not at ${marker.shop.name}`;
     // Names the brand rather than the store: you're standing in the store, so
     // its name is the one fact on the row you don't need. It deliberately
     // doesn't name what this shop *does* carry — the app only knows what you
@@ -205,4 +233,21 @@ export function describeTripMarker(marker: TripMarker): string {
     case 'usually':
       return `Usually ${marker.shop.name}`;
   }
+}
+
+/**
+ * The caption for an `unavailable` marker once its row sits under its
+ * aisle's own "Not here" group instead of inline (see GroceryScreen) — a
+ * second-generation version of the same problem `describeTripMarker`'s
+ * `unavailable` case already solved once: restating the store's own
+ * negative claim on every row under a header that already said it once is
+ * exactly the over-stuffed caption that case was shortened to avoid.
+ *
+ * Every row under that header is `unavailable` by construction, so there is
+ * nothing left to say beyond the one thing the header doesn't know: what to
+ * grab instead. Empty when there's no substitute on record — the row says
+ * nothing at all, same silence rule as everywhere else in this module.
+ */
+export function describeGroupedUnavailable(marker: TripMarker): string {
+  return marker.substitute ? `or ${marker.substitute.name}` : '';
 }

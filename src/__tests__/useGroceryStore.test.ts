@@ -3348,3 +3348,138 @@ describe('substitutes', () => {
     expect(useGroceryStore.getState().items).toEqual([]);
   });
 });
+
+// ─── swapForSubstitute (#1567) ──────────────────────────────────────────────
+
+describe('swapForSubstitute', () => {
+  it('puts the substitute on the list and takes the original off, carrying the quantity', () => {
+    const tortillas = makeItem({ name: 'Tortillas', onList: true, quantity: '1 pack' });
+    const corn = makeItem({ name: 'Corn tortillas', onList: false });
+    seed([tortillas, corn], {
+      itemSubs: [
+        { itemId: tortillas.id, subItemId: corn.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null },
+      ],
+    });
+
+    useGroceryStore.getState().swapForSubstitute(tortillas.id, corn.id);
+
+    const items = useGroceryStore.getState().items;
+    expect(items.find(i => i.id === tortillas.id)).toMatchObject({ onList: false, checked: false });
+    expect(items.find(i => i.id === corn.id)).toMatchObject({ onList: true, checked: false, quantity: '1 pack' });
+  });
+
+  it("converts the quantity through the link's ratio", () => {
+    const garlic = makeItem({ name: 'Garlic', onList: true, quantity: '3 cloves' });
+    const powder = makeItem({ name: 'Garlic powder', onList: false });
+    seed([garlic, powder], {
+      itemSubs: [
+        { itemId: garlic.id, subItemId: powder.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: '1 clove', ratioTo: '1/4 tsp' },
+      ],
+    });
+
+    useGroceryStore.getState().swapForSubstitute(garlic.id, powder.id);
+
+    expect(useGroceryStore.getState().items.find(i => i.id === powder.id)?.quantity).toBe('3/4 tsp');
+  });
+
+  it('carries the quantity verbatim when it will not convert through the ratio', () => {
+    const butter = makeItem({ name: 'Butter', onList: true, quantity: 'a stick' });
+    const margarine = makeItem({ name: 'Margarine', onList: false });
+    seed([butter, margarine], {
+      itemSubs: [
+        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: '100 g', ratioTo: '110 g' },
+      ],
+    });
+
+    useGroceryStore.getState().swapForSubstitute(butter.id, margarine.id);
+
+    expect(useGroceryStore.getState().items.find(i => i.id === margarine.id)?.quantity).toBe('a stick');
+  });
+
+  it('carries recipe ownership onto the swapped-in row, and clears it off the original', () => {
+    const butter = makeItem({ name: 'Butter', onList: true, quantity: '3/4 cup', quantityFromRecipe: true });
+    const margarine = makeItem({ name: 'Margarine', onList: false });
+    seed([butter, margarine], {
+      itemSubs: [
+        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null },
+      ],
+    });
+
+    useGroceryStore.getState().swapForSubstitute(butter.id, margarine.id);
+
+    expect(useGroceryStore.getState().items.find(i => i.id === margarine.id)).toMatchObject({
+      quantity: '3/4 cup',
+      quantityFromRecipe: true,
+    });
+    // Same rule removeFromList and finishShopping follow: a recipe-owned
+    // quantity's claim ends with the row it was on.
+    expect(useGroceryStore.getState().items.find(i => i.id === butter.id)).toMatchObject({
+      quantity: null,
+      quantityFromRecipe: false,
+    });
+  });
+
+  it('leaves a hand-set quantity on the original — only a recipe-owned one clears', () => {
+    const butter = makeItem({ name: 'Butter', onList: true, quantity: '2 sticks', quantityFromRecipe: false });
+    const margarine = makeItem({ name: 'Margarine', onList: false });
+    seed([butter, margarine], {
+      itemSubs: [
+        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null },
+      ],
+    });
+
+    useGroceryStore.getState().swapForSubstitute(butter.id, margarine.id);
+
+    expect(useGroceryStore.getState().items.find(i => i.id === butter.id)?.quantity).toBe('2 sticks');
+  });
+
+  it('is a no-op unless the original is actually on the list', () => {
+    const butter = makeItem({ name: 'Butter', onList: false });
+    const margarine = makeItem({ name: 'Margarine', onList: false });
+    seed([butter, margarine]);
+
+    useGroceryStore.getState().swapForSubstitute(butter.id, margarine.id);
+
+    expect(useGroceryStore.getState().items).toEqual([butter, margarine]);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
+  it('undo restores both rows exactly, including the un-swap', () => {
+    const butter = makeItem({ name: 'Butter', onList: true, quantity: '2 sticks' });
+    const margarine = makeItem({ name: 'Margarine', onList: false });
+    seed([butter, margarine], {
+      itemSubs: [
+        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null },
+      ],
+    });
+
+    useGroceryStore.getState().swapForSubstitute(butter.id, margarine.id);
+    useGroceryStore.getState().lastAction!.undo();
+
+    const items = useGroceryStore.getState().items;
+    expect(items.find(i => i.id === butter.id)).toEqual(butter);
+    expect(items.find(i => i.id === margarine.id)).toEqual(margarine);
+  });
+
+  // Same split removeFromList makes: a provisional original has nothing to
+  // keep, so it's deleted outright rather than merely unlisted — and undo
+  // has to re-insert it, not just patch it back.
+  it('deletes a provisional original outright, and undo re-inserts it', () => {
+    const mysteryHerb = makeItem({ name: 'Mystery herb', onList: true, inCatalog: false });
+    const basil = makeItem({ name: 'Basil', onList: false });
+    seed([mysteryHerb, basil], {
+      itemSubs: [
+        { itemId: mysteryHerb.id, subItemId: basil.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null },
+      ],
+    });
+
+    useGroceryStore.getState().swapForSubstitute(mysteryHerb.id, basil.id);
+    expect(useGroceryStore.getState().items.map(i => i.id)).toEqual([basil.id]);
+    expect(dbDeleteGroceryItem).toHaveBeenCalledWith(mysteryHerb.id);
+
+    useGroceryStore.getState().lastAction!.undo();
+    const restored = useGroceryStore.getState().items;
+    expect(restored.find(i => i.id === mysteryHerb.id)).toEqual(mysteryHerb);
+    expect(restored.find(i => i.id === basil.id)).toEqual(basil);
+  });
+});

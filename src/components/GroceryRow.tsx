@@ -74,6 +74,15 @@ interface Props {
    * See utils/activeTrip.ts for why silence is the common case.
    */
   storeMarker?: string;
+  /**
+   * The substitute named in `storeMarker`'s "· or margarine" clause, present
+   * only when `storeMarker` is an `unavailable` marker carrying one (see
+   * TripMarker.substitute). Its presence is what makes the caption itself
+   * tappable — every other marker stays inert text.
+   */
+  swapSubstituteId?: string;
+  /** Tap the "· or margarine" clause: swap this item for that substitute. */
+  onSwapForSubstitute?: (itemId: string, subItemId: string) => void;
 }
 
 /**
@@ -110,6 +119,8 @@ export const GroceryRow = React.memo(function GroceryRow({
   onOpenSubstitutes,
   alternatives,
   storeMarker,
+  swapSubstituteId,
+  onSwapForSubstitute,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -270,8 +281,24 @@ export const GroceryRow = React.memo(function GroceryRow({
               recipe: {item.sourceRecipeTitle}
             </Text>
           )}
-          {!!storeMarker && (
-            <Text style={styles.storeMarker} numberOfLines={1}>{storeMarker}</Text>
+          {/* Tappable only when the marker is carrying a substitute — every
+              other marker (withoutBrand/only/usually, or unavailable with
+              nothing to swap to) is inert text, same as before. Not while
+              selecting: a tap there has to select the row like the rest of
+              it does, not swap an item out from under the selection. */}
+          {!!storeMarker && !!swapSubstituteId && !selectionMode ? (
+            <TouchableOpacity
+              onPress={() => onSwapForSubstitute?.(item.id, swapSubstituteId)}
+              hitSlop={{ top: 6, bottom: 6, left: 0, right: 40 }}
+              accessibilityRole="button"
+              accessibilityLabel={`${storeMarker}. Double tap to put it on the list instead.`}
+            >
+              <Text style={styles.storeMarker} numberOfLines={1}>{storeMarker}</Text>
+            </TouchableOpacity>
+          ) : (
+            !!storeMarker && (
+              <Text style={styles.storeMarker} numberOfLines={1}>{storeMarker}</Text>
+            )
           )}
           {!!alternatives && (
             <Text style={styles.alternatives} numberOfLines={1}>{alternatives}</Text>
