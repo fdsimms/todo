@@ -2458,6 +2458,27 @@ export function TodayScreen() {
     setProjectNudgeDismissedAt(new Date().toISOString());
   };
 
+  // The quiet-projects nudge used to be a fixed strip above the list, pinned
+  // with the rest of the header controls. It's a suggestion to go read
+  // something, not a standing piece of chrome, so it scrolls with the page
+  // now — folded into the same ListHeaderComponent as the pinned block,
+  // ahead of it, rather than sitting outside the ScrollView.
+  const todayListHeader = (
+    <>
+      {projectStalls.length > 0 && !nudgeDismissed && (
+        <ProjectNudgeBanner
+          stalls={projectStalls}
+          onReview={projectIds => {
+            setPullScopeProjectIds(projectIds);
+            setPullVisible(true);
+          }}
+          onDismiss={dismissProjectNudge}
+        />
+      )}
+      {pinnedBlock}
+    </>
+  );
+
   const today = format(new Date(), 'EEEE, MMMM d');
 
 
@@ -2655,18 +2676,6 @@ export function TodayScreen() {
             the tap landed on. Renders nothing unless a cook just raised one. */}
         {viewMode === 'today' && <CookedUseUpOffer />}
 
-        {/* "What's new" leads; "what's gone quiet" follows. */}
-        {viewMode === 'today' && projectStalls.length > 0 && !nudgeDismissed && (
-          <ProjectNudgeBanner
-            stalls={projectStalls}
-            onReview={projectIds => {
-              setPullScopeProjectIds(projectIds);
-              setPullVisible(true);
-            }}
-            onDismiss={dismissProjectNudge}
-          />
-        )}
-
         {/*
           Nothing about the day's calendar or its menu renders above the list
           any more. Both were a fixed block here — which meant the top of the
@@ -2820,7 +2829,7 @@ export function TodayScreen() {
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
-            ListHeaderComponent={pinnedBlock}
+            ListHeaderComponent={todayListHeader}
             onDragBegin={() => {
               setExpandedTaskId(null);
               joinedTaskIdRef.current = null;
