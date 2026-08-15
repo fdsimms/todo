@@ -15,22 +15,22 @@ interface Props {
 }
 
 /**
- * The plain fallback `TripSuggestionCard` leaves behind.
+ * The one starting prompt on the list, deliberately quiet (#1662).
  *
- * That card is deliberately silent whenever it has nothing data-backed to
- * say (see its own doc comment) — fewer than two suggestable stores, or no
- * purchase history yet — because a card reading "no idea, sorry" would be
- * worse than the silence. But that silence was also the entire reason a
- * single-store household (which can never clear the two-store floor) had no
- * obvious way to start a trip at all: the header's walk icon reads as "make
- * a task," and the smart card never renders for them. This is the always-
- * there answer for exactly that gap — one line, no ranking, no history
- * required.
+ * This used to be the plain fallback a data-backed `TripSuggestionCard`
+ * left behind for whoever it stayed silent for — fewer than two
+ * suggestable stores, or no purchase history yet. That card is gone: a
+ * store-by-store "likely has 2/3 items" read doesn't earn a permanent slot
+ * at the top of the list when the overwhelming majority of visits aren't
+ * "where do I shop this" — checking things off, adding something, browsing
+ * recipes. The full ranking still exists, one tap away, as
+ * `ShoppingTripSheet`'s own suggestion card, which is exactly what
+ * `onOpenSheet` reaches.
  *
- * Mutually exclusive with `TripSuggestionCard` — `GroceryScreen` renders
- * whichever one has something to say (`tripSuggestionCopy`,
- * shoppingTrip.ts) — for the same "two controls, one plan" reason
- * `ActiveTripBanner` and `TripSuggestionCard` already don't coexist.
+ * So this is now the only starting prompt there is, not a fallback for one
+ * that stayed silent — one line, no ranking, no history required. It still
+ * has its own single-store shortcut (`onStart`), because that's the one
+ * case with no real choice to open a sheet over.
  */
 export function StartTripPrompt({ suggestable, onStart, onOpenSheet }: Props) {
   const colors = useColors();
