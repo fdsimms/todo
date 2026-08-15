@@ -45,14 +45,6 @@ interface Props {
    */
   onSwipeSelect?: (id: string) => void;
   /**
-   * Opens the recipe this item came from. Passed only when
-   * `item.sourceRecipeId` still resolves to a live recipe — the pointer is
-   * resolve-or-shrug like every other cross-row one here, and a button that
-   * navigates nowhere is worse than no button. Absent, the row just names the
-   * recipe in its caption as before.
-   */
-  onOpenRecipe?: (recipeId: string) => void;
-  /**
    * Opens this item straight into its Substitutes field ("what can I use
    * instead?", #1578). A recipe ingredient row reaches the same field by
    * tapping the row at all, so it earns no glyph of its own — this row's tap
@@ -115,7 +107,6 @@ export const GroceryRow = React.memo(function GroceryRow({
   selected = false,
   onSelect,
   onSwipeSelect,
-  onOpenRecipe,
   onOpenSubstitutes,
   alternatives,
   storeMarker,
@@ -268,8 +259,8 @@ export const GroceryRow = React.memo(function GroceryRow({
           )}
           {/* A note the user wrote themselves outranks this — it's their own
               word on the row, and the two together would be one caption too
-              many. The recipe stays reachable either way: the button below is
-              what opens it, and it doesn't depend on this line rendering.
+              many. The recipe stays reachable by opening the row itself,
+              which is where the source recipe is now shown as a link.
 
               The store marker outranks it too, and only it: where this came
               from is provenance, which is the least useful thing to know at a
@@ -315,9 +306,8 @@ export const GroceryRow = React.memo(function GroceryRow({
       </TouchableOpacity>
 
       {/* Tertiary grey, like the ellipsis beside it — this edits the row too,
-          just straight to one field of it. Left of the recipe button (which
-          leaves for another screen and is accent for that reason) and the
-          ellipsis (which opens the same sheet at its top). */}
+          just straight to one field of it. Left of the ellipsis, which opens
+          the same sheet at its top. */}
       {!selectionMode && !!onOpenSubstitutes && (
         <TouchableOpacity
           onPress={() => onOpenSubstitutes(item.id)}
@@ -327,28 +317,6 @@ export const GroceryRow = React.memo(function GroceryRow({
           accessibilityLabel={`What can I use instead of ${item.name}?`}
         >
           <Ionicons name="swap-horizontal-outline" size={iconSize.sm} color={colors.textTertiary} />
-        </TouchableOpacity>
-      )}
-
-      {/* The way back to what put this on the list. A trailing glyph rather
-          than a tappable caption, because the caption is inside the rename tap
-          zone and gives way to the user's own note the moment they write one —
-          this has to be reachable in both cases. Accent, unlike the tertiary
-          ellipsis beside it: one edits this row, the other leaves for another
-          screen. */}
-      {!selectionMode && !!item.sourceRecipeId && !!onOpenRecipe && (
-        <TouchableOpacity
-          onPress={() => onOpenRecipe(item.sourceRecipeId!)}
-          activeOpacity={interaction.activeOpacity}
-          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel={
-            item.sourceRecipeTitle
-              ? `Open the recipe ${item.sourceRecipeTitle}`
-              : 'Open the recipe this came from'
-          }
-        >
-          <Ionicons name="restaurant-outline" size={iconSize.sm} color={colors.accent} />
         </TouchableOpacity>
       )}
 
