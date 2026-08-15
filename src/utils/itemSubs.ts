@@ -225,6 +225,33 @@ export function describeSubstitutesOnHand(subs: readonly Substitute[]): string |
 }
 
 /**
+ * The pills for the finish-shopping sheet's "got something else instead?"
+ * follow-up — what the trip actually bought, plus whatever's already on
+ * record as this item's own substitute (#1661), so an existing answer is one
+ * tap away instead of requiring you to type a name the app already has.
+ *
+ * Known substitutes come first: they're a standing fact about the item, one
+ * step more direct than a row merely having been in this trip's trolley.
+ * Deduplicated against `purchased` — a substitute that was also bought this
+ * trip is named once, not twice.
+ */
+export interface SubstituteOffer {
+  id: string;
+  name: string;
+}
+
+export function substituteOptionsFor(
+  itemId: string,
+  purchased: readonly SubstituteOffer[],
+  links: readonly ItemSubLink[],
+  items: readonly GroceryItem[]
+): SubstituteOffer[] {
+  const known = substitutesFor(itemId, links, items).map(s => ({ id: s.item.id, name: s.item.name }));
+  const knownIds = new Set(known.map(k => k.id));
+  return [...known, ...purchased.filter(p => !knownIds.has(p.id))];
+}
+
+/**
  * What the finish-shopping sheet's "got something else instead?" follow-up is
  * allowed to write — a rule restated here so it's covered by a test rather
  * than trusted to the sheet.

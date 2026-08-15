@@ -3,6 +3,7 @@ import {
   describeSubstitutesOnHand,
   resolveShoppingSubstitutes,
   substituteForItems,
+  substituteOptionsFor,
   substituteQuantity,
   substitutesFor,
   substitutesOnHand,
@@ -315,6 +316,42 @@ describe('describeSubstitutesOnHand', () => {
 
   it('counts past two, since this lands in a one-line row subtitle', () => {
     expect(line([margarine, ghee, oil])).toBe('you have 3 substitutes');
+  });
+});
+
+describe('substituteOptionsFor', () => {
+  it('offers what was purchased when nothing is on record', () => {
+    const options = substituteOptionsFor(butter.id, [{ id: oil.id, name: 'Olive oil' }], [], ITEMS);
+    expect(options).toEqual([{ id: oil.id, name: 'Olive oil' }]);
+  });
+
+  it('leads with the known substitute, ahead of whatever was purchased', () => {
+    const links = [sub(butter.id, margarine.id)];
+    const options = substituteOptionsFor(
+      butter.id,
+      [{ id: oil.id, name: 'Olive oil' }],
+      links,
+      ITEMS
+    );
+    expect(options).toEqual([
+      { id: margarine.id, name: 'Margarine' },
+      { id: oil.id, name: 'Olive oil' },
+    ]);
+  });
+
+  it('names a known substitute once, even when it was also purchased this trip', () => {
+    const links = [sub(butter.id, margarine.id)];
+    const options = substituteOptionsFor(
+      butter.id,
+      [{ id: margarine.id, name: 'Margarine' }],
+      links,
+      ITEMS
+    );
+    expect(options).toEqual([{ id: margarine.id, name: 'Margarine' }]);
+  });
+
+  it('is empty when nothing was bought and nothing is on record', () => {
+    expect(substituteOptionsFor(butter.id, [], [], ITEMS)).toEqual([]);
   });
 });
 

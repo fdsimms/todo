@@ -21,7 +21,8 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { PillGroup } from './PillGroup';
 import { haptics } from '../utils/haptics';
 import { lastPriceFor as lastPriceForItem, parsePriceInput, priceToInput } from '../utils/groceryPrice';
-import { resolveShoppingSubstitutes } from '../utils/itemSubs';
+import { resolveShoppingSubstitutes, substituteOptionsFor } from '../utils/itemSubs';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH } from '../types';
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
@@ -83,15 +84,20 @@ interface Props {
  * rather than from a declaration — everywhere else in that system waits for
  * the user to go and say so in the item sheet, which is exactly why it's
  * worth capturing well here. It unfolds under the row itself rather than
- * opening anything, offers what the trip actually bought as one-tap picks
- * (`purchased`, the honest common case), and — via the same find-or-add
- * `PillGroup` shape the store picker above it already uses — lets typing a
- * name mint a catalog row for anything else, through `ensureCatalogItem`
- * (the same "type it in" `SubstituteSheet`'s own field uses). Someone whose
- * trolley never had the actual replacement in it, or who bought nothing at
- * all this trip, can still say what they got. It follows the same silence
- * rule as the tick above it: nothing is picked by default, and skipping it
- * writes nothing. Changing the store clears these answers along with the
+ * opening anything. `substituteOptionsFor` (itemSubs.ts) is what decides the
+ * pills: it leads with whatever's already on record as this item's own
+ * substitute (#1661 — the app already knows the usual answer here, so it's
+ * one tap rather than something to type again), then whatever the trip
+ * actually bought (`purchased`, the honest common case when there's no
+ * standing link), deduplicated against each other. And — via the same
+ * find-or-add `PillGroup` shape the store picker above it already uses —
+ * typing a name mints a catalog row for anything else, through
+ * `ensureCatalogItem` (the same "type it in" `SubstituteSheet`'s own field
+ * uses). Someone whose trolley never had the actual replacement in it, or
+ * who bought nothing at all this trip, can still say what they got. It
+ * follows the same silence rule as the tick above it: nothing is picked by
+ * default, and skipping it writes nothing — a known substitute is offered,
+ * never assumed. Changing the store clears these answers along with the
  * ticks — "got margarine instead" is an answer about Safeway's shelves, not
  * Costco's. `resolveShoppingSubstitutes` is what turns the sheet's per-row
  * answers into the pairs actually worth writing.
@@ -124,8 +130,10 @@ export function FinishShoppingSheet({
   const addShop = useGroceryStore(s => s.addShop);
   const items = useGroceryStore(useShallow(s => s.items));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const [selected, setSelected] = useState<string | null>(null);
   // Leftovers the store didn't have. Ids rather than an index set, so a list
@@ -257,7 +265,12 @@ export function FinishShoppingSheet({
           <SheetHeaderButton label="Finish" onPress={handleFinish} minWidth={64} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          ref={keyboardScroll.ref}
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           <Text style={styles.intro}>
             {countLabel}. Everything stays in your catalog for next time.
           </Text>
@@ -331,11 +344,14 @@ export function FinishShoppingSheet({
                 {leftover.map((row, i) => {
                   const ticked = unavailable.includes(row.id);
                   const chosenId = substituteFor[row.id] ?? null;
-                  // A pick can be a purchased row, or a name typed into the
-                  // create field and minted on the spot — the latter isn't in
-                  // `purchased`, so it needs its own pill to show as selected.
+                  // Known substitute first, then what the trip actually
+                  // bought — see substituteOptionsFor (#1661).
+                  const offered = substituteOptionsFor(row.id, purchased, itemSubs, items);
+                  // A pick can also be a name typed into the create field and
+                  // minted on the spot — that one isn't in `offered`, so it
+                  // needs its own pill to show as selected.
                   const chosenExtra =
-                    chosenId && !purchased.some(p => p.id === chosenId)
+                    chosenId && !offered.some(o => o.id === chosenId)
                       ? items.find(i => i.id === chosenId)
                       : null;
                   return (
@@ -371,11 +387,11 @@ export function FinishShoppingSheet({
                             createMaxLength={GROCERY_NAME_MAX_LENGTH}
                             onCreate={name => handleCreateSubstitute(row.id, name)}
                             options={[
-                              ...purchased.map(p => ({
-                                key: p.id,
-                                label: p.name,
-                                selected: chosenId === p.id,
-                                onPress: () => toggleSubstitute(row.id, p.id),
+                              ...offered.map(o => ({
+                                key: o.id,
+                                label: o.name,
+                                selected: chosenId === o.id,
+                                onPress: () => toggleSubstitute(row.id, o.id),
                               })),
                               ...(chosenExtra
                                 ? [
