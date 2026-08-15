@@ -234,3 +234,20 @@ export function describeTripMarker(marker: TripMarker): string {
       return `Usually ${marker.shop.name}`;
   }
 }
+
+/**
+ * The caption for an `unavailable` marker once its row sits under its
+ * aisle's own "Not here" group instead of inline (see GroceryScreen) — a
+ * second-generation version of the same problem `describeTripMarker`'s
+ * `unavailable` case already solved once: restating the store's own
+ * negative claim on every row under a header that already said it once is
+ * exactly the over-stuffed caption that case was shortened to avoid.
+ *
+ * Every row under that header is `unavailable` by construction, so there is
+ * nothing left to say beyond the one thing the header doesn't know: what to
+ * grab instead. Empty when there's no substitute on record — the row says
+ * nothing at all, same silence rule as everywhere else in this module.
+ */
+export function describeGroupedUnavailable(marker: TripMarker): string {
+  return marker.substitute ? `or ${marker.substitute.name}` : '';
+}

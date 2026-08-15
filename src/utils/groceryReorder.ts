@@ -16,6 +16,7 @@ import type { GroceryItem } from '../types';
  */
 export type GroceryDropRow =
   | { type: 'aisle'; aisle: string }
+  | { type: 'unavailableHeader' }
   | { type: 'cartHeader' }
   | { type: 'item'; item: GroceryItem };
 
@@ -42,6 +43,11 @@ export interface GroceryPlacement {
  * last aisle in the store — and their order isn't something anyone is arranging
  * anyway. Leaving them out also makes a drop mean the same thing whether the
  * cart section happens to be expanded or collapsed.
+ *
+ * **A `unavailableHeader` row is transparent, not a boundary.** It's a label
+ * inside an aisle (the store you're standing in doesn't carry these), not a
+ * new one — so it's skipped without touching `currentAisle`, the same way an
+ * aisle header itself is the only thing allowed to change it.
  */
 export function resolveGroceryDrop(rows: readonly GroceryDropRow[]): GroceryPlacement[] {
   const placements: GroceryPlacement[] = [];
@@ -54,6 +60,7 @@ export function resolveGroceryDrop(rows: readonly GroceryDropRow[]): GroceryPlac
       currentAisle = row.aisle;
       continue;
     }
+    if (row.type === 'unavailableHeader') continue;
     rank += 1;
     placements.push({
       id: row.item.id,
@@ -124,6 +131,14 @@ export function placeNewGroceryItems(
  * section for it to become part of. Bounded at the bottom by the "In cart"
  * header, since that section is a record of what's already in the trolley
  * rather than a place to file something.
+ *
+ * **Not similarly bounded above a `unavailableHeader`.** A "not here" row
+ * can't be picked up as a drag source at all (see GroceryScreen), so the only
+ * way one enters that range is a normal item dropped there — which
+ * `resolveGroceryDrop` still ranks correctly, and the next render moves it
+ * straight back out, since bucket membership is read fresh from the trip
+ * marker rather than from where it landed. A per-aisle exclusion zone would
+ * only prevent a one-frame visual that self-corrects on its own.
  */
 export function groceryDragRange(
   rows: readonly GroceryDropRow[],

@@ -46,6 +46,7 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
 const aisle = (name: string): GroceryDropRow => ({ type: 'aisle', aisle: name });
 const row = (item: GroceryItem): GroceryDropRow => ({ type: 'item', item });
 const cart: GroceryDropRow = { type: 'cartHeader' };
+const notHere: GroceryDropRow = { type: 'unavailableHeader' };
 
 // ─── resolveGroceryDrop ──────────────────────────────────────────────────────
 
@@ -106,6 +107,26 @@ describe('resolveGroceryDrop', () => {
   it('returns nothing for a list with no items', () => {
     expect(resolveGroceryDrop([aisle('Dairy'), aisle('Produce')])).toEqual([]);
     expect(resolveGroceryDrop([])).toEqual([]);
+  });
+
+  // A "Not here" header is a label inside an aisle, not a new one — only an
+  // actual aisle row is allowed to change currentAisle.
+  it('keeps items after an unavailableHeader in the same aisle, ranked in place', () => {
+    const milk = makeItem('Milk', { aisle: 'Dairy' });
+    const cream = makeItem('Cream', { aisle: 'Dairy' });
+    const apples = makeItem('Apples', { aisle: 'Produce' });
+
+    const placements = resolveGroceryDrop([
+      aisle('Dairy'), row(milk),
+      notHere, row(cream),
+      aisle('Produce'), row(apples),
+    ]);
+
+    expect(placements).toEqual([
+      { id: milk.id, sortOrder: 1, aisle: 'Dairy' },
+      { id: cream.id, sortOrder: 2, aisle: 'Dairy' },
+      { id: apples.id, sortOrder: 3, aisle: 'Produce' },
+    ]);
   });
 });
 

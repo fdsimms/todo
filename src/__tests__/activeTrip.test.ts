@@ -7,6 +7,7 @@ import {
   resolveActiveTrip,
   tripMarkerFor,
   describeTripMarker,
+  describeGroupedUnavailable,
 } from '../utils/activeTrip';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { GroceryItem, ItemShopLink, ItemSubLink, Shop } from '../types';
@@ -418,5 +419,27 @@ describe('describeTripMarker', () => {
     expect(
       describeTripMarker({ kind: 'withoutBrand', shop: safeway, wantedBrand: 'Good Culture' })
     ).toBe('No Good Culture here');
+  });
+});
+
+describe('describeGroupedUnavailable', () => {
+  // The row's aisle already carries a "Not here" header once it's grouped —
+  // restating that here would be exactly the caption describeTripMarker's
+  // own unavailable case was shortened to stop saying twice.
+  it('names only the substitute, with no store fact at all', () => {
+    const margarine = item('margarine', { name: 'Margarine' });
+    expect(
+      describeGroupedUnavailable({ kind: 'unavailable', shop: safeway, substitute: margarine })
+    ).toBe('or Margarine');
+  });
+
+  it('says nothing when there is no substitute on record', () => {
+    expect(describeGroupedUnavailable({ kind: 'unavailable', shop: safeway })).toBe('');
+  });
+
+  // Every row under the header is unavailable by construction, but the
+  // function itself stays honest about what it actually reads.
+  it('says nothing for a marker of a different kind', () => {
+    expect(describeGroupedUnavailable({ kind: 'only', shop: traderJoes })).toBe('');
   });
 });

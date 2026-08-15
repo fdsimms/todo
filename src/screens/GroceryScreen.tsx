@@ -40,7 +40,12 @@ import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { TripSuggestionCard } from '../components/TripSuggestionCard';
 import { StartTripPrompt } from '../components/StartTripPrompt';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
-import { describeTripMarker, resolveActiveTrip, tripMarkerFor } from '../utils/activeTrip';
+import {
+  describeGroupedUnavailable,
+  describeTripMarker,
+  resolveActiveTrip,
+  tripMarkerFor,
+} from '../utils/activeTrip';
 import { tripSuggestionCopy } from '../utils/shoppingTrip';
 import { InlineAction } from '../components/InlineAction';
 import { ListBulkBar } from '../components/ListBulkBar';
@@ -77,11 +82,17 @@ const GROCERIES_LINK_URL = KNOWN_LINK_APPS.find(app => app.name === 'Groceries')
  * than a second animation system, and it is what lets one drag both reorder an
  * item and move it to another aisle: the row lands where it's dropped and takes
  * the aisle of the nearest header above (see resolveGroceryDrop).
+ *
+ * `unavailableHeader` is the same idea one level down: a label *inside* an
+ * aisle's own run of rows, not a new aisle. It only ever appears while a trip
+ * is running and only when that aisle actually has a row to put under it —
+ * see the `rows` memo below.
  */
 type ListRow =
   | { type: 'aisle'; key: string; aisle: string }
+  | { type: 'unavailableHeader'; key: string; aisle: string; count: number }
   | { type: 'cartHeader'; key: string; count: number }
-  | { type: 'item'; key: string; item: GroceryItem; inCart: boolean };
+  | { type: 'item'; key: string; item: GroceryItem; inCart: boolean; unavailableHere: boolean };
 
 // The add button, naming what a release right now would do.
 function AddGroceryFabWithDropLabel({
@@ -240,19 +251,29 @@ export function GroceryScreen() {
   // only the screen has the links, and a row that subscribed to them would
   // re-render every one of them on any purchase. Empty whenever no trip is
   // running, so the rows go back to exactly what they rendered before.
+  //
   // `substituteId` rides alongside the caption only on an `unavailable`
   // marker with a substitute on record — that's the tap-to-swap target
   // (#1567), and its absence is what keeps every other marker's caption
-  // inert.
+  // inert. `unavailable` is what the `rows` memo below reads to route a row
+  // into its aisle's own "Not here" group instead of leaving it in place —
+  // and once it's there, the caption switches to `describeGroupedUnavailable`
+  // rather than `describeTripMarker`: the group's header already says "not
+  // here" once for every row beneath it, so restating it per row would be
+  // exactly the over-stuffed caption #1567 was shortened to avoid.
   const storeMarkers = useMemo(() => {
-    const out = new Map<string, { text: string; substituteId?: string }>();
+    const out = new Map<string, { text: string; substituteId?: string; unavailable: boolean }>();
     if (!activeTripShop) return out;
     for (const item of items) {
       if (!item.onList) continue;
       const marker = tripMarkerFor(item, itemShops, shops, activeTripShop, itemSubs, items);
-      if (marker) {
-        out.set(item.id, { text: describeTripMarker(marker), substituteId: marker.substitute?.id });
-      }
+      if (!marker) continue;
+      const unavailable = marker.kind === 'unavailable';
+      out.set(item.id, {
+        text: unavailable ? describeGroupedUnavailable(marker) : describeTripMarker(marker),
+        substituteId: marker.substitute?.id,
+        unavailable,
+      });
     }
     return out;
   }, [activeTripShop, items, itemShops, shops, itemSubs]);
@@ -299,16 +320,41 @@ export function GroceryScreen() {
     const out: ListRow[] = [];
     for (const section of sections) {
       out.push({ type: 'aisle', key: `aisle:${section.aisle}`, aisle: section.aisle });
-      for (const item of section.data) out.push({ type: 'item', key: item.id, item, inCart: false });
+      // Held back rather than pushed in place, so the aisle's own roster
+      // stays first and the "Not here" group — if this trip's store leaves
+      // anything out of it — reads as a footnote to that roster, not a
+      // second aisle. Order within each bucket is still the aisle's own
+      // sortOrder walk, just split rather than reordered.
+      const notHere: GroceryItem[] = [];
+      for (const item of section.data) {
+        if (storeMarkers.get(item.id)?.unavailable) {
+          notHere.push(item);
+          continue;
+        }
+        out.push({ type: 'item', key: item.id, item, inCart: false, unavailableHere: false });
+      }
+      if (notHere.length > 0) {
+        out.push({
+          type: 'unavailableHeader',
+          key: `unavailable:${section.aisle}`,
+          aisle: section.aisle,
+          count: notHere.length,
+        });
+        for (const item of notHere) {
+          out.push({ type: 'item', key: item.id, item, inCart: false, unavailableHere: true });
+        }
+      }
     }
     if (inCart.length > 0) {
       out.push({ type: 'cartHeader', key: 'cartHeader', count: inCart.length });
       if (cartOpen) {
-        for (const item of inCart) out.push({ type: 'item', key: item.id, item, inCart: true });
+        for (const item of inCart) {
+          out.push({ type: 'item', key: item.id, item, inCart: true, unavailableHere: false });
+        }
       }
     }
     return out;
-  }, [sections, inCart, cartOpen]);
+  }, [sections, inCart, cartOpen, storeMarkers]);
 
   // What's actually selectable right now — the cart's rows only join this
   // when the cart is expanded, same as what's tappable on screen.
@@ -364,12 +410,15 @@ export function GroceryScreen() {
     rows.forEach((row, i) => {
       if (row.type === 'aisle') {
         map.set(row.key, { kind: 'header', key: row.key, category: row.aisle });
-      } else if (row.type === 'cartHeader' || row.inCart) {
+      } else if (row.type === 'cartHeader' || row.type === 'unavailableHeader' || row.inCart || row.unavailableHere) {
         // Registered, but with nothing to say about placement: the cart is a
         // record of the trolley rather than a place to file something, which is
         // the same bound groceryDragRange puts on a row drag. Leaving these out
         // entirely would let a drop over them reach back up to the last aisle
-        // row instead of resolving to "nowhere in particular".
+        // row instead of resolving to "nowhere in particular". A "Not here" row
+        // gets the same treatment for the same reason — it's a record of what
+        // this store lacks, not a place to file a new item that presumably
+        // isn't unavailable here at all.
         map.set(row.key, { kind: 'rest', key: row.key });
       } else {
         map.set(row.key, { kind: 'task', key: row.key, category: aislesFor[i] ?? null });
@@ -704,6 +753,21 @@ export function GroceryScreen() {
           </View>
         );
       }
+      if (row.type === 'unavailableHeader') {
+        // Same treatment as the aisle header above it, not a dimmer one —
+        // every section header in this app reads the same way (see
+        // CLAUDE.md's design-system note), so what tells this apart from a
+        // new aisle is the wording and the count, the same way "In cart (N)"
+        // already reads as a different kind of group without a style of its
+        // own. Not a button: unlike the cart, there's nothing to expand —
+        // hiding "not here" behind a tap would defeat the reason it exists,
+        // which is being visible while you're still standing in the aisle.
+        return withZone(
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Not here ({row.count})</Text>
+          </View>
+        );
+      }
       if (row.type === 'cartHeader') {
         return withZone(
           <TouchableOpacity
@@ -734,10 +798,13 @@ export function GroceryScreen() {
           onEdit={handleEdit}
           onOpenSubstitutes={handleOpenSubstitutes}
           // Nothing in the cart is draggable: that section is a record of the
-          // trolley, not a place to file something (see groceryDragRange).
-          // Reordering is off while selecting too — the long press that would
-          // start a drag is how a mis-tapped row gets selected instead.
-          drag={selectionMode || row.inCart ? undefined : drag}
+          // trolley, not a place to file something (see groceryDragRange). A
+          // "Not here" row is the same call for the same reason — its
+          // position is a fact about this trip, not something to manually
+          // rearrange. Reordering is off while selecting too — the long
+          // press that would start a drag is how a mis-tapped row gets
+          // selected instead.
+          drag={selectionMode || row.inCart || row.unavailableHere ? undefined : drag}
           isActive={isActive}
           selectionMode={selectionMode}
           selected={selectedIds.has(row.item.id)}
