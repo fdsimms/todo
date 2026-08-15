@@ -37,7 +37,6 @@ import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
-import { TripSuggestionCard } from '../components/TripSuggestionCard';
 import { StartTripPrompt } from '../components/StartTripPrompt';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import {
@@ -46,7 +45,6 @@ import {
   resolveActiveTrip,
   tripMarkerFor,
 } from '../utils/activeTrip';
-import { tripSuggestionCopy } from '../utils/shoppingTrip';
 import { InlineAction } from '../components/InlineAction';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
@@ -211,21 +209,14 @@ export function GroceryScreen() {
   );
 
   // A store flagged "don't suggest" (Amazon: "it has everything") stays out of
-  // every trip-starting surface — the header action, TripSuggestionCard's
-  // floor, and StartTripPrompt below. It's still fully linkable by hand
-  // elsewhere, just never the thing any of these offer.
+  // every trip-starting surface — the header action and StartTripPrompt below.
+  // It's still fully linkable by hand elsewhere, just never the thing either
+  // of these offer.
   const suggestableShops = useMemo(
     () => shops.filter(shop => !shop.excludeFromSuggestions),
     [shops]
   );
-  // Whichever of TripSuggestionCard / StartTripPrompt has something to say —
-  // see tripSuggestionCopy's own doc comment for why this is one shared
-  // question rather than two components each re-deriving it.
-  const hasTripSuggestion = useMemo(
-    () => tripSuggestionCopy(items, itemShops, shops) !== null,
-    [items, itemShops, shops]
-  );
-  // A trip can outlive the moment it was last rendered, and the memo above
+  // A trip can outlive the moment it was last rendered, and activeTripShop
   // can't notice on its own — its inputs haven't changed. Clearing the store
   // fields is what makes an expired trip disappear rather than merely stop
   // resolving. Focus rather than mount: this screen stays mounted behind a tab.
@@ -854,6 +845,7 @@ export function GroceryScreen() {
         <ActiveTripBanner
           shopName={activeTripShop.name}
           onChange={() => setTripOpen(true)}
+          onFinish={() => setFinishOpen(true)}
           onClear={handleClearTrip}
         />
       )}
@@ -886,19 +878,19 @@ export function GroceryScreen() {
         // header can go here — see ReorderableList.ListHeaderComponent, where
         // one hung in the container silently offsets the drag math. Hidden
         // while selecting, like every header action is.
-        // The banner replaces both outright once a trip is running: the cards
-        // below are for deciding whether/where to go, and the banner says
+        // The banner replaces it outright once a trip is running: the prompt
+        // below is for deciding whether/where to go, and the banner says
         // you've gone. Two cards about one trip would be the "two controls
-        // for one plan" TripSuggestionCard's own note warns about.
+        // for one plan" ShoppingTripSheet's own note warns about.
         //
-        // Between the two starting cards: TripSuggestionCard wins whenever it
-        // has a data-backed recommendation, and StartTripPrompt is what's left
-        // for everyone it stays silent for (a single-store household above
-        // all — see StartTripPrompt's own doc comment).
+        // Deliberately quiet rather than pre-justified with coverage data
+        // (#1662) — a store-by-store "likely has 2/3 items" read used to sit
+        // here on every single visit, which is screen furniture on the far
+        // more common visits that aren't "where do I shop this". The fuller
+        // reasoning still exists; it's the sheet's own suggestion card, opened
+        // by tapping this exact same prompt.
         ListHeaderComponent={
-          selectionMode || activeTripShop ? null
-          : hasTripSuggestion ? <TripSuggestionCard onPress={() => setTripOpen(true)} />
-          : (
+          selectionMode || activeTripShop ? null : (
             <StartTripPrompt
               suggestable={suggestableShops}
               onStart={handleStartTrip}

@@ -43,7 +43,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
-import { planTrip, summarizeTrip, describeTripSuggestion } from '../utils/shoppingTrip';
+import { planTrip, summarizeTrip } from '../utils/shoppingTrip';
 import { cheapestShopFor, describeShopPrices, shopPricesFor } from '../utils/groceryPrice';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
@@ -709,24 +709,21 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(items.some(i => i.aisle === 'Bulk bins')).toBe(true);
     expect(aisleOrder.indexOf('Frozen')).toBeGreaterThan(aisleOrder.indexOf('Pantry'));
 
-    // …and enough of them on the seeded list for the card at the top of the
-    // Groceries screen to have something to say. It renders nothing when the
-    // suggestion is empty, so a seed that shopped its whole list clean would
-    // read as a feature the app hasn't got.
+    // …and enough of them on the seeded list for ShoppingTripSheet's own
+    // suggestion card — the trip planner's read of the same data — to have
+    // both halves to show: a headline store, and a second stop worth naming.
+    // A seed that shopped its whole list clean would read as a feature the
+    // app hasn't got.
     const plan = planTrip(items, itemShops, shops);
     expect(plan.coverage.length).toBeGreaterThanOrEqual(2);
-    const copy = describeTripSuggestion(
-      summarizeTrip([], plan).suggestion,
-      plan.itemIds.length,
-      new Map(items.map(i => [i.id, i.name]))
-    );
-    expect(copy).not.toBeNull();
-    // Both halves of the card, because the second one is conditional: the
-    // offer only appears when a second store clears extraStopThreshold, so a
-    // seed one link short of it shows the one-store case and nothing else —
-    // and the line would read as a feature the app hasn't got.
-    expect(copy?.store).toBe("Trader Joe's");
-    expect(copy?.offer).toBe('Add Costco for Cottage cheese, Peanut butter and Tortillas');
+    const suggestion = summarizeTrip([], plan).suggestion;
+    expect(suggestion[0]?.shop.name).toBe("Trader Joe's");
+    // The second stop only exists if it's still closing a real gap once the
+    // first store's coverage is accounted for.
+    expect(suggestion[1]?.shop.name).toBe('Costco');
+    const coveredByHead = new Set(suggestion[0].itemIds);
+    const secondStopAdds = suggestion[1].itemIds.filter(id => !coveredByHead.has(id));
+    expect(secondStopAdds.length).toBeGreaterThan(0);
   });
 
   it('seeds prices, including one item priced at two stores', () => {

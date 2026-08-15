@@ -1,0 +1,4 @@
+{
+  "message": "The grocery list no longer shows a \"likely has 2/3 items\" card on every visit. It's a plain \"Start shopping\" prompt now, with the full store-by-store reasoning still there the moment you tap it.",
+  "date": "2026-08-15"
+}
