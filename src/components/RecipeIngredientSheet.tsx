@@ -292,6 +292,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           maxLength={GROCERY_QUANTITY_MAX_LENGTH}
           accessibilityLabel="Quantity"
         />
+        <Text style={styles.hint}>
+          What this recipe needs, not what you'd normally buy — that's set separately, on
+          the item itself.
+        </Text>
 
         <View style={styles.separator} />
 
@@ -549,8 +553,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           ]}
         />
         <Text style={styles.hint}>
-          Leave it on “usually” unless this recipe needs it somewhere else — that way it
-          follows wherever you file the item later.
+          Only used the next time this lands on your grocery list, and only if you haven’t
+          already told the app where it goes. If it’s already in your groceries with an aisle
+          set, this doesn’t change it.
         </Text>
       </View>
 

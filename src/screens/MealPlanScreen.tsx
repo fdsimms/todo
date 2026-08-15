@@ -3,12 +3,13 @@ import { Animated, View, Text, FlatList, StyleSheet, Alert, TouchableOpacity } f
 import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { addWeeks } from 'date-fns/addWeeks';
 import { format } from 'date-fns/format';
 import { isToday } from 'date-fns/isToday';
 import { isSameWeek } from 'date-fns/isSameWeek';
+import { isBefore } from 'date-fns/isBefore';
 import type { Leftover, MealPlanEntry, MealSlot, Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
@@ -601,6 +602,30 @@ export function MealPlanScreen() {
   }, [days]);
 
   const onThisWeek = isSameWeek(anchor, new Date(), { weekStartsOn });
+
+  // `anchor` is set once at mount and this screen never unmounts
+  // (enableScreens(false) parks a blurred tab rather than tearing it down —
+  // see the ResourceSavingView note in CLAUDE.md), so left alone it goes
+  // stale exactly the way an active trip does: leave the app parked here
+  // over a weekend and it's still showing last week when you come back.
+  //
+  // Only resets a week that's fallen into the *past* — never a future one,
+  // so paging ahead on purpose and glancing away for a moment doesn't get
+  // silently undone. A week that's already current needs nothing. Mirrors
+  // GroceryScreen's checkTripExpiry: a memo whose inputs haven't changed
+  // won't re-render itself away, so this has to be an effect, not a value.
+  useFocusEffect(
+    useCallback(() => {
+      const thisWeekStart = buildWeekDays(new Date(), weekStartsOn)[0];
+      if (isBefore(days[0], thisWeekStart)) {
+        setAnchor(new Date());
+        setCollapsedDays(collapsePastDays(buildWeekDays(new Date(), weekStartsOn)));
+      }
+      // days[0] alone decides this — weekStartsOn only changes which day a
+      // week starts on, not whether the anchor's week is in the past.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [days])
+  );
 
   // A selection is scoped to the week on screen — the store's bulk methods
   // would still reach an off-screen id fine, but the bar's counts and
