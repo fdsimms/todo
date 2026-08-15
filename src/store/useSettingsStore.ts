@@ -481,6 +481,14 @@ interface SettingsStore {
   // the same mechanical reason as aiFeatureConfig: it's an object, and
   // String(value) doesn't round-trip one.
   newTaskDefaults: NewTaskDefaults;
+  // The top-level screen (a bottom-tab or drawer route name — see
+  // RESTORABLE_SCREENS in AppNavigator.tsx) the app was on when it last left
+  // the foreground. State, not a preference — kept out of DEFAULT_SETTINGS/
+  // resetToDefaults like projectNudgeDismissedAt — so it's read once, as
+  // Tab.Navigator's initialRouteName, to reopen where the user left off
+  // instead of always on Today. Null (fresh install, or a name AppNavigator
+  // no longer recognizes) falls back to Today.
+  lastVisitedScreen: string | null;
   initialized: boolean;
   initialize: () => void;
   /** Loads the keychain-backed settings. Call after initialize(). */
@@ -562,6 +570,7 @@ interface SettingsStore {
   setLeftoverUseUpTaskCategory: (category: string | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   setNewTaskDefaults: (patch: Partial<NewTaskDefaults>) => void;
+  setLastVisitedScreen: (screen: string | null) => void;
   resetToDefaults: () => void;
 }
 
@@ -872,6 +881,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   mealPlanNudgeLastFiredWeekKey: null,
   mealPlanNudgeGroupId: null,
   newTaskDefaults: DEFAULT_NEW_TASK_DEFAULTS,
+  lastVisitedScreen: null,
   initialized: false,
 
   initialize() {
@@ -1059,7 +1069,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, initialized: true });
+    const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1548,6 +1559,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       dbSetSetting('newTaskDefaults', JSON.stringify(next));
       return { newTaskDefaults: next };
     });
+  },
+
+  setLastVisitedScreen(screen: string | null) {
+    dbSetSetting('lastVisitedScreen', screen ?? '');
+    set({ lastVisitedScreen: screen });
   },
 
   resetToDefaults() {
