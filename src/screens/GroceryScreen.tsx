@@ -163,7 +163,7 @@ export function GroceryScreen() {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   // sourceRecipeId is a snapshot pointer and doesn't cascade, so a row can
   // outlive the recipe that put it there. The set is what decides whether the
-  // row gets a button at all — see GroceryRow.onOpenRecipe.
+  // item sheet's recipe link is tappable — see GroceryItemSheet.recipeExists.
   const recipeIds = useMemo(() => new Set(recipes.map(r => r.id)), [recipes]);
   // "or pears", per row. Only what's still on the list counts as a live option
   // — an off-list catalog row that once shared the group is history — and
@@ -810,11 +810,6 @@ export function GroceryScreen() {
           selected={selectedIds.has(row.item.id)}
           onSelect={toggleSelection}
           onSwipeSelect={id => enterSelectionMode(id)}
-          onOpenRecipe={
-            row.item.sourceRecipeId && recipeIds.has(row.item.sourceRecipeId)
-              ? openRecipe
-              : undefined
-          }
           alternatives={alternativeCaptionById.get(row.item.id)}
           storeMarker={storeMarkers.get(row.item.id)?.text}
           swapSubstituteId={storeMarkers.get(row.item.id)?.substituteId}
@@ -822,7 +817,7 @@ export function GroceryScreen() {
         />
       );
     },
-    [styles, colors, cartOpen, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, recipeIds, openRecipe, alternativeCaptionById, storeMarkers]
+    [styles, colors, cartOpen, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, storeMarkers]
   );
 
   return (
