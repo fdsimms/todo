@@ -107,6 +107,40 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// The category a task reminder's notification carries, so the system offers
+// Complete/Snooze action buttons on it (see useNotificationTapSync, which
+// tells the two apart by actionIdentifier). iOS resolves a notification's
+// actions from whichever category was registered by the time it's
+// *delivered*, not whenever the app next happens to call
+// scheduleNotificationAsync — so this has to run at module scope, before the
+// first reminder is ever scheduled, rather than lazily inside
+// scheduleTaskReminder. It returns a Promise; at module scope there's
+// nothing to await it, so the rejection (e.g. on a platform with no such
+// API) is swallowed here rather than becoming an unhandled one.
+export const TASK_REMINDER_CATEGORY = 'task-reminder';
+export const COMPLETE_ACTION_IDENTIFIER = 'complete';
+export const SNOOZE_ACTION_IDENTIFIER = 'snooze';
+// How far "Snooze" pushes a reminder out. Fixed rather than a setting — this
+// is a lightweight notification action, not the reschedule picker
+// (snoozeEngine.ts).
+export const SNOOZE_MINUTES = 15;
+
+Notifications.setNotificationCategoryAsync(TASK_REMINDER_CATEGORY, [
+  {
+    identifier: COMPLETE_ACTION_IDENTIFIER,
+    buttonTitle: 'Complete',
+    // Background action taps don't reliably run JS in Expo managed, so both
+    // actions foreground the app — the same trade the widget's
+    // CompleteTaskIntent.openAppWhenRun makes.
+    options: { opensAppToForeground: true },
+  },
+  {
+    identifier: SNOOZE_ACTION_IDENTIFIER,
+    buttonTitle: 'Snooze',
+    options: { opensAppToForeground: true },
+  },
+]).catch(() => {});
+
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (Platform.OS === 'web') return false;
   const existing = (await Notifications.getPermissionsAsync()) as unknown as PermissionResponse;
@@ -199,6 +233,7 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
       body: task.notes || 'You have a task coming up',
       data: { taskId: task.id },
       sound: true,
+      categoryIdentifier: TASK_REMINDER_CATEGORY,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,

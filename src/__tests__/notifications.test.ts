@@ -6,6 +6,7 @@ import { ALARM_MAX_RINGS, ALARM_RING_INTERVAL_MINUTES, taskAlarmUuid } from '../
 
 jest.mock('expo-notifications', () => ({
   setNotificationHandler: jest.fn(),
+  setNotificationCategoryAsync: jest.fn().mockResolvedValue(undefined),
   getPermissionsAsync: jest.fn(),
   requestPermissionsAsync: jest.fn(),
   cancelScheduledNotificationAsync: jest.fn().mockResolvedValue(undefined),
@@ -79,6 +80,7 @@ import {
   scheduleTripReminder,
   cancelTripReminder,
   rescheduleTripReminder,
+  TASK_REMINDER_CATEGORY,
 } from '../utils/notifications';
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { setDemoModeActive } from '../utils/demoState';
@@ -243,6 +245,12 @@ describe('scheduleTaskReminder', () => {
     expect(arg.identifier).toBe('task-abc');
     expect(arg.content.title).toBe('Meeting prep');
     expect(arg.content.data).toEqual({ taskId: 'task-abc' });
+  });
+
+  it('carries the task-reminder category, so Complete/Snooze actions show', async () => {
+    await scheduleTaskReminder(makeTask({ id: 'task-cat', reminderTime: FUTURE }));
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.content.categoryIdentifier).toBe(TASK_REMINDER_CATEGORY);
   });
 
   it('falls back to "Task reminder" when title is empty', async () => {
