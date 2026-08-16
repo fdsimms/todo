@@ -81,6 +81,8 @@ export function TasksProjectsSettings() {
   const setSimpleTaskForm = useSettingsStore(s => s.setSimpleTaskForm);
   const timerLiveActivity = useSettingsStore(s => s.timerLiveActivity);
   const setTimerLiveActivity = useSettingsStore(s => s.setTimerLiveActivity);
+  const tripLiveActivity = useSettingsStore(s => s.tripLiveActivity);
+  const setTripLiveActivity = useSettingsStore(s => s.setTripLiveActivity);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const setKitchenEnabled = useSettingsStore(s => s.setKitchenEnabled);
   const mealsOnToday = useSettingsStore(s => s.mealsOnToday);
@@ -323,6 +325,24 @@ export function TasksProjectsSettings() {
           accessibilityLabel="Restock after cooking"
         />
       </SettingsSection>
+
+      {Platform.OS === 'ios' && (
+        <SettingsSection
+          label="Shopping trip"
+          footer="Requires iOS 17. Ends when you clear or finish the trip, or automatically after about 6 hours."
+        >
+          <SettingsRow
+            icon="phone-portrait-outline"
+            iconColor={tripLiveActivity ? colors.accent : undefined}
+            label="Live Activity while shopping"
+            hint={tripLiveActivity
+              ? 'The store you\'re at and how long you\'ve been there shows on the Lock Screen and Dynamic Island'
+              : 'A trip stays in the app only'}
+            toggle={tripLiveActivity}
+            onPress={() => setTripLiveActivity(!tripLiveActivity)}
+          />
+        </SettingsSection>
+      )}
 
       <SettingsSection
         label="Recipe suggestions"

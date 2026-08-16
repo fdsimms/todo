@@ -19,6 +19,7 @@ import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { useWidgetSync } from './src/utils/widgetSync';
 import { useTimerLiveActivitySync } from './src/utils/liveActivity';
+import { useTripLiveActivitySync } from './src/utils/tripLiveActivity';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
 import { useSyncStore } from './src/store/useSyncStore';
@@ -215,6 +216,9 @@ function AppRoot() {
 
   // Keeps a running task/recipe timer's Lock Screen Live Activity in sync.
   useTimerLiveActivitySync();
+
+  // Keeps an active shopping trip's Lock Screen Live Activity in sync.
+  useTripLiveActivitySync();
 
   // Keeps the pending daily agenda's count matching the tasks it describes.
   useDailyAgendaSync();
