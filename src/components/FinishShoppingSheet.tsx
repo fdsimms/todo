@@ -20,7 +20,12 @@ import { resolveActiveTrip } from '../utils/activeTrip';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { PillGroup } from './PillGroup';
 import { haptics } from '../utils/haptics';
-import { lastPriceFor as lastPriceForItem, parsePriceInput, priceToInput } from '../utils/groceryPrice';
+import {
+  formatPriceInput,
+  lastPriceFor as lastPriceForItem,
+  parsePriceInput,
+  priceToInput,
+} from '../utils/groceryPrice';
 import { resolveShoppingSubstitutes } from '../utils/itemSubs';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH } from '../types';
 
@@ -462,12 +467,14 @@ export function FinishShoppingSheet({
                           style={styles.priceInput}
                           value={priceText[row.id] ?? ''}
                           onChangeText={text =>
-                            setPriceText(prev => ({ ...prev, [row.id]: text }))
+                            setPriceText(prev => ({ ...prev, [row.id]: formatPriceInput(text) }))
                           }
-                          // Not `numeric`: the decimal separator is on the
-                          // number pad on iOS but the plain one has no way to
-                          // type a price at all.
-                          keyboardType="decimal-pad"
+                          // Cents-first entry (formatPriceInput) never needs a
+                          // decimal key, so the plain digit pad is the right
+                          // one here — unlike the `numeric` fallback this used
+                          // to avoid, back when a decimal separator had to be
+                          // typed by hand.
+                          keyboardType="number-pad"
                           returnKeyType="done"
                           placeholder={known !== null ? priceToInput(known) : '0.00'}
                           placeholderTextColor={colors.textTertiary}
