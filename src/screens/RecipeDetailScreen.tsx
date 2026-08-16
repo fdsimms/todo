@@ -1017,7 +1017,7 @@ export function RecipeDetailScreen() {
                 onPress={() => { haptics.tap(); setEditorVisible(true); }}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel="Recipe settings"
+                accessibilityLabel="Recipe Details"
               >
                 <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
               </TouchableOpacity>

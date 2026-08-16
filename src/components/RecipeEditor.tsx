@@ -256,7 +256,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
       header={
         <>
           <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />
-          <Text style={styles.headerTitle}>Edit Recipe</Text>
+          <Text style={styles.headerTitle}>Recipe Details</Text>
           <TouchableOpacity
             onPress={handleDelete}
             hitSlop={8}
@@ -278,6 +278,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         maxLength={RECIPE_NAME_MAX_LENGTH}
         accessibilityLabel="Recipe name"
       />
+      <Text style={styles.contentHint}>
+        Ingredients, steps, and components are edited on the recipe page.
+      </Text>
 
       <View style={styles.sectionCard}>
         <EditorRow
@@ -728,6 +731,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // A box height rather than lineHeight: RN puts lineHeight straight onto the
     // iOS paragraph style with no baseline offset, sitting the glyphs low.
     minHeight: 44,
+  },
+  // Same treatment as CollapsibleField's own `hint` — this sheet has no field
+  // for ingredients/steps/components to attach the explanation to, so it runs
+  // as its own line instead of inside a row.
+  contentHint: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    lineHeight: 16,
   },
   sectionCard: {
     backgroundColor: colors.bgSecondary,
