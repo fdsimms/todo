@@ -10,6 +10,7 @@ import {
   reachableRecipeIds,
   wouldCreateRecipeCycle,
   recipesUsing,
+  recipesUsingIngredient,
   describeComponents,
   activeComponents,
   activeIngredients,
@@ -347,6 +348,37 @@ describe('recipesUsing', () => {
     const soup = recipe('r4', 'Soup');
 
     expect(recipesUsing([steak, salmon, soup, mash], 'r3').map(r => r.name)).toEqual(['Steak', 'Salmon']);
+  });
+});
+
+describe('recipesUsingIngredient', () => {
+  it('names every recipe whose flattened ingredients carry the key', () => {
+    const chili = recipe('r1', 'Chili', { ingredients: [ing('Onion'), ing('Beans')] });
+    const soup = recipe('r2', 'Soup', { ingredients: [ing('Onion'), ing('Stock')] });
+    const cake = recipe('r3', 'Cake', { ingredients: [ing('Flour')] });
+
+    expect(recipesUsingIngredient('onion', [chili, soup, cake]).map(r => r.name))
+      .toEqual(['Chili', 'Soup']);
+  });
+
+  it('counts a component\'s ingredients, so a parent recipe that only reaches an item through a component still matches', () => {
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Butter')] });
+    const soup = recipe('r3', 'Soup', { ingredients: [ing('Stock')] });
+    const steak = recipe('r1', 'Steak with mash', {
+      ingredients: [ing('Steak')],
+      components: [link('r2', 'Mash')],
+    });
+
+    // Steak's own ingredients never mention butter — it only reaches it
+    // through the mash component, which is exactly the case this exists for.
+    expect(recipesUsingIngredient('butter', [steak, soup, mash]).map(r => r.name))
+      .toEqual(['Steak with mash', 'Mash']);
+  });
+
+  it('is empty for a key nothing calls for, or a blank key', () => {
+    const chili = recipe('r1', 'Chili', { ingredients: [ing('Onion')] });
+    expect(recipesUsingIngredient('paprika', [chili])).toEqual([]);
+    expect(recipesUsingIngredient('', [chili])).toEqual([]);
   });
 });
 
