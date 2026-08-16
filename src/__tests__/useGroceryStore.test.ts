@@ -1847,6 +1847,109 @@ describe('finishShopping with a store', () => {
   });
 });
 
+describe('finishShopping undo', () => {
+  it('restores everything a purchase touched, including a promoted provisional row', () => {
+    const nduja = makeItem({
+      name: 'nduja', onList: true, checked: true, inCatalog: false, purchaseCount: 0,
+      quantity: '1 jar', quantityFromRecipe: true,
+    });
+    seed([nduja]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([nduja.id]);
+
+    expect(useGroceryStore.getState().finishShopping()).toBe(1);
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+    expect(useGroceryStore.getState().lastAction?.label).toBe('Bought 1 thing');
+
+    useGroceryStore.getState().undoLastAction();
+
+    const restored = useGroceryStore.getState().items[0];
+    expect(restored.onList).toBe(true);
+    expect(restored.checked).toBe(true);
+    // A row that wasn't in the catalog before this trip goes back to not
+    // being in it — the purchase that promoted it never happened.
+    expect(restored.inCatalog).toBe(false);
+    expect(restored.purchaseCount).toBe(0);
+    expect(restored.lastPurchasedAt).toBeNull();
+    expect(restored.quantity).toBe('1 jar');
+    expect(restored.quantityFromRecipe).toBe(true);
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(nduja);
+  });
+
+  it('undoes a priced purchase back to no price at all', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true });
+    seed([milk]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
+
+    useGroceryStore.getState().finishShopping(null, { [milk.id]: 429 });
+    useGroceryStore.getState().undoLastAction();
+
+    const restored = useGroceryStore.getState().items[0];
+    expect(restored.lastPriceMinor).toBeNull();
+    expect(restored.lastPricedAt).toBeNull();
+  });
+
+  it('puts a bumped item-shop link back to its old counts and un-remembers a brand-new one', () => {
+    const costco = makeShop('Costco');
+    const target = makeShop('Target');
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, purchaseCount: 2 });
+    const eggs = makeItem({ name: 'Eggs', onList: true, checked: true });
+    seed([milk, eggs], {
+      shops: [costco, target],
+      itemShops: [
+        { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: '2026-01-01T00:00:00.000Z',
+          unavailableAt: '2026-02-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null,
+          lastPriceQuantity: null, brand: null, brandUnavailableAt: null },
+      ],
+    });
+    // Last week's store — this trip is at a different one.
+    useGroceryStore.setState({ lastShopId: target.id });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id, eggs.id]);
+
+    useGroceryStore.getState().finishShopping(costco.id);
+    expect(useGroceryStore.getState().itemShops).toHaveLength(2);
+    expect(useGroceryStore.getState().lastShopId).toBe(costco.id);
+
+    useGroceryStore.getState().undoLastAction();
+
+    const links = useGroceryStore.getState().itemShops;
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({
+      itemId: milk.id, shopId: costco.id, purchaseCount: 2, unavailableAt: '2026-02-01T00:00:00.000Z',
+    });
+    expect(dbSetItemShopLink).toHaveBeenCalledWith(
+      expect.objectContaining({ itemId: milk.id, shopId: costco.id, purchaseCount: 2 })
+    );
+    // The link this trip minted outright never existed before it.
+    expect(dbDeleteItemShopLink).toHaveBeenCalledWith(eggs.id, costco.id);
+    expect(dbSetLastShopId).toHaveBeenCalledWith(target.id);
+    expect(useGroceryStore.getState().lastShopId).toBe(target.id);
+  });
+
+  it('leaves no undo entry with an empty trolley', () => {
+    seed([makeItem({ name: 'Milk', onList: true })]);
+    useGroceryStore.setState({ lastAction: null });
+
+    useGroceryStore.getState().finishShopping();
+
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+  });
+
+  it('re-derives the use-up task against the restored item, dropping the one it spawned', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: 'spinach', onList: true, checked: true });
+    seed([spinach]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([spinach.id]);
+
+    useGroceryStore.getState().finishShopping();
+    expect(useUpTaskFor(spinach.id)).toBeDefined();
+
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().items[0].expiresAt).toBeNull();
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+  });
+});
+
 // ─── remembered aisles ───────────────────────────────────────────────────────
 
 describe('remembered aisles', () => {

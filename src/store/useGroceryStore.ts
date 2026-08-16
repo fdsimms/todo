@@ -1650,6 +1650,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const pricedQuantityById = new Map(
       get().items.filter(i => priceById[i.id] !== undefined).map(i => [i.id, i.quantity])
     );
+    // Snapshotted before anything is written, so undo restores the rows
+    // themselves rather than reconstructing what they probably were — same
+    // discipline resolveChoice/clearList already follow. Every row
+    // dbFinishGroceryShopping touches still exists afterward (a purchase
+    // promotes a provisional row rather than deleting it), so there's no
+    // "revive a deleted row" branch to carry over from clearList's undo.
+    const beforeItems = get().items;
+    const beforeItemShops = get().itemShops;
+    const beforeLastShopId = get().lastShopId;
     const ids = dbFinishGroceryShopping(
       purchasedAt,
       onHandUntilById,
@@ -1659,6 +1668,16 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     );
     if (ids.length === 0) return 0;
     const done = new Set(ids);
+    const before = beforeItems.filter(i => done.has(i.id));
+    // Only this shop's links are ever touched below, bumped or newly minted —
+    // an untouched shop's links need no snapshot to put back.
+    const beforeLinks = new Map(
+      shop
+        ? beforeItemShops
+            .filter(l => l.shopId === shop.id && done.has(l.itemId))
+            .map((l): [string, ItemShopLink] => [l.itemId, l])
+        : []
+    );
 
     set(s => {
       // Patch the links the db just upserted rather than re-reading them —
@@ -1778,6 +1797,43 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       const item = get().items.find(i => i.id === id);
       if (item) reconcileUseUpTask(item);
     }
+
+    get().setLastAction({
+      label: `Bought ${ids.length} ${ids.length === 1 ? 'thing' : 'things'}`,
+      undo: () => {
+        for (const row of before) dbUpdateGroceryItem(row);
+        const byId = new Map(before.map(i => [i.id, i]));
+        if (shop) {
+          // A link this trip bumped goes back to its old counts; one this
+          // trip minted outright never existed before it, so it's deleted
+          // rather than "restored" to a row that was never there.
+          for (const id of done) {
+            const old = beforeLinks.get(id);
+            if (old) dbSetItemShopLink(old);
+            else dbDeleteItemShopLink(id, shop.id);
+          }
+          dbSetLastShopId(beforeLastShopId);
+        }
+        set(s => ({
+          items: s.items.map(i => byId.get(i.id) ?? i),
+          itemShops: shop
+            ? [
+                ...s.itemShops.filter(l => !(l.shopId === shop.id && done.has(l.itemId))),
+                ...beforeLinks.values(),
+              ]
+            : s.itemShops,
+          lastShopId: shop ? beforeLastShopId : s.lastShopId,
+        }));
+        // Re-derive each use-up task against the item as it now stands — the
+        // same call finishShopping itself makes above, so an undo that
+        // reverts expiresAt reverts (or drops) the task spawned for it.
+        for (const id of Object.keys(expiresAtById)) {
+          const restored = byId.get(id);
+          if (restored) reconcileUseUpTask(restored);
+        }
+      },
+    });
+
     return ids.length;
   },
 
