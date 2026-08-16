@@ -1346,10 +1346,10 @@ export function RecipeDetailScreen() {
 
         {components.length === 0 ? (
           <Text style={styles.hint}>
-            Use another recipe as part of this one — the mash that goes with both the steak
-            and the salmon. Its ingredients and prep tasks come along, and editing it once
-            updates every meal that uses it. Long press a component to make it an either/or
-            alternative, like mash or roast potatoes.
+            Use another recipe as part of this one — the mashed potatoes that go with both
+            the steak and the salmon. Its ingredients and prep tasks come along, and editing
+            it once updates every meal that uses it. Long press a component to make it an
+            either/or alternative, like mashed potatoes or roast potatoes.
           </Text>
         ) : (
           <View style={styles.card}>
