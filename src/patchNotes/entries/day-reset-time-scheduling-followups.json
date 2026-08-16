@@ -1,0 +1,4 @@
+{
+  "message": "Fixed several more spots (snooze suggestions, the deload plan's Tomorrow option, the drift screen's Do it today, the project auto-schedule drip, and use-up tasks for leftovers) that could ignore your daily reset time during the early-morning grace window and date something a day later than intended.",
+  "date": "2026-08-16"
+}

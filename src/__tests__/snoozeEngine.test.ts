@@ -3,9 +3,11 @@ import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 import type { Task } from '../types';
 import type { BusyEvent } from '../utils/calendarBusy';
 
+const settingsState = { dayResetTime: '00:00' };
+
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({ dayResetTime: '00:00' }),
+    getState: () => settingsState,
   },
 }));
 
@@ -335,6 +337,28 @@ describe('computeSnoozeSuggestion', () => {
       const withDefault = computeSnoozeSuggestion(task, [task]);
       const withEmpty = computeSnoozeSuggestion(task, [task], []);
       expect(isoDate(withDefault.date)).toBe(isoDate(withEmpty.date));
+    });
+  });
+
+  describe('day reset time', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+      settingsState.dayResetTime = '00:00';
+    });
+
+    it('anchors candidate days to the logical day during the early-morning grace window', () => {
+      // 1:30 AM on June 11, with a 2:00 AM reset — still "June 10" logically,
+      // so the nearest candidate ("tomorrow") should be June 11, not June 12.
+      settingsState.dayResetTime = '02:00';
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
+
+      const task = makeTask({ id: 'snooze-me' });
+      const result = computeSnoozeSuggestion(task, [task]);
+
+      expect(result.date.getDate()).toBe(11);
+      expect(result.date.getMonth()).toBe(5);
+      expect(result.dayLabel).toBe('Tomorrow');
     });
   });
 });

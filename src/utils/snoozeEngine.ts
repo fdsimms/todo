@@ -29,8 +29,8 @@ export interface SnoozeSuggestion {
   score: number;
 }
 
-function labelForDate(d: Date): string {
-  const today = new Date();
+function labelForDate(d: Date, dayResetTime: string): string {
+  const today = getDayStart(new Date(), dayResetTime);
   const diff = differenceInCalendarDays(d, today);
   if (diff === 1) return 'Tomorrow';
   if (isThisWeek(d, { weekStartsOn: getWeekStart() })) return format(d, 'EEEE');
@@ -73,7 +73,7 @@ function recurrenceHorizonDays(task: Task, dayResetTime: string): number | null 
   if (task.recurrenceType === 'none') return null;
   const next = getNextDueDate(task, dayResetTime);
   if (!next) return null;
-  const days = differenceInCalendarDays(next, new Date());
+  const days = differenceInCalendarDays(next, getDayStart(new Date(), dayResetTime));
   // An overdue recurring task can compute a next occurrence that's already
   // past; every candidate is at least tomorrow, so floor it there.
   return Math.min(Math.max(days, 1), DEFAULT_HORIZON_DAYS);
@@ -90,8 +90,8 @@ export function computeSnoozeSuggestion(
   // state itself.
   busyEvents: readonly BusyEvent[] = [],
 ): SnoozeSuggestion {
-  const today = new Date();
   const dayResetTime = useSettingsStore.getState().dayResetTime;
+  const today = getDayStart(new Date(), dayResetTime);
 
   const completed = allTasks.filter(t => !t.parentId && t.completed && t.completedAt != null);
   const pending = allTasks.filter(t => !t.parentId && !t.completed && t.id !== task.id);
@@ -240,7 +240,7 @@ export function computeSnoozeSuggestion(
 
   return {
     date: winner.date,
-    dayLabel: labelForDate(winner.date),
+    dayLabel: labelForDate(winner.date, dayResetTime),
     reason,
     score: winner.score,
   };

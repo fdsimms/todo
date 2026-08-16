@@ -2,6 +2,7 @@ import type { Leftover, TaskDraft } from '../types';
 import { generatedBy, wantsGeneratedTask } from './generatedTasks';
 import { needsAttention } from './leftovers';
 import { resolveOffsetDate } from './templateUtils';
+import { getCurrentDayStart } from './dateUtils';
 
 /**
  * Projecting a leftover onto a "Use up X" task in the task list.
@@ -61,7 +62,7 @@ export function useUpTaskTitle(leftover: Leftover): string {
  */
 export function useUpTaskFields(
   leftover: Leftover,
-  now: Date = new Date()
+  now: Date = getCurrentDayStart()
 ): { title: string; dueDate: string; deadline: string } {
   return {
     title: useUpTaskTitle(leftover),
@@ -81,7 +82,7 @@ export function useUpTaskFields(
 export function useUpTaskDraft(
   leftover: Leftover,
   category: string | null = null,
-  now: Date = new Date()
+  now: Date = getCurrentDayStart()
 ): Partial<TaskDraft> {
   return { ...useUpTaskFields(leftover, now), ...generatedBy('leftoverUseUp', leftover.id), category };
 }
@@ -94,7 +95,7 @@ export function useUpTaskDraft(
 export function useUpTaskNeedsUpdate(
   task: { title: string; dueDate: string | null; deadline: string | null },
   leftover: Leftover,
-  now: Date = new Date()
+  now: Date = getCurrentDayStart()
 ): boolean {
   const next = useUpTaskFields(leftover, now);
   return (

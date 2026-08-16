@@ -344,6 +344,21 @@ describe('buildDeloadPlan', () => {
       expect(p.blocker).toBeNull();
     });
 
+    it('anchors to the logical day during the early-morning grace window', () => {
+      // 1:30 AM on June 11, with a 2:00 AM reset — still "June 10" logically,
+      // so tomorrow should be June 11, not June 12.
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
+
+      const task = makeTask({ id: 'a', estimatedMinutes: 30, dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString() });
+      const [p] = buildDeloadPlan([task], [task], '02:00').proposals;
+
+      expect(p.tomorrow!.date.getDate()).toBe(11);
+      expect(p.tomorrow!.date.getMonth()).toBe(5);
+
+      jest.useRealTimers();
+    });
+
     it('does not propose a daily task a week out', () => {
       // The reported bug: a task that repeats every day was being sent to the
       // lightest day of the week, which skips it six times over.

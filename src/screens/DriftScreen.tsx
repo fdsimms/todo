@@ -5,6 +5,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { format } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { getCurrentDayStart } from '../utils/dateUtils';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskEditor } from '../components/TaskEditor';
 import { TaskBreakdownSheet } from '../components/TaskBreakdownSheet';
@@ -20,12 +21,13 @@ import type { DriftEntry } from '../utils/postpone';
 import type { Task } from '../types';
 
 /**
- * Noon, matching what WhenPicker's Today chip writes — a date parked at midday
- * can't be dragged across a day boundary by a timezone or a DST hour, which is
- * what "do it today" must not do on the one screen about dates being wrong.
+ * Noon on the logical today, matching what WhenPicker's Today chip writes — a
+ * date parked at midday can't be dragged across a day boundary by a timezone
+ * or a DST hour, which is what "do it today" must not do on the one screen
+ * about dates being wrong.
  */
 const noonToday = () => {
-  const n = new Date();
+  const n = getCurrentDayStart();
   n.setHours(12, 0, 0, 0);
   return n;
 };
