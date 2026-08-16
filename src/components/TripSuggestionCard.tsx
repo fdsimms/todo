@@ -53,8 +53,10 @@ interface Props {
  * or the two would recommend different trips on the same list.
  *
  * **Hidden rather than hedged when there's nothing to say.** No items, one
- * suggestable store, or a suggestion with no known and no likely item, and the
- * card doesn't render — a card reading "no idea, sorry" at the top of every
+ * suggestable store, a suggestion with no known and no likely item, or a
+ * headline pick too thin to be worth a special trip (one item seen at a store
+ * on a six-item list is noise, not a recommendation) — the card doesn't
+ * render for any of those. A card reading "no idea, sorry" at the top of every
  * list is worse than the silence it replaced, and a store that has nothing on
  * record is exactly the case `describeTripSuggestion` returns null for. The
  * copy behind that decision is `tripSuggestionCopy` (shoppingTrip.ts), not

@@ -392,6 +392,12 @@ export interface TripSuggestionCopy {
  * that has to earn nothing — the store's own "don't send me there" is
  * `excludeFromSuggestions`, and anything finer wants a fact the user has told
  * us, not a sharper guess.
+ *
+ * `MIN_EXTRA_STOP_ITEMS` also stands alone as the headline pick's own floor,
+ * below — the flat half of this formula, not the share. A trip you're already
+ * making doesn't need the "is a whole extra stop worth it" question the share
+ * answers, but "is one recorded purchase enough to put a store's name on the
+ * screen" still needs an answer, and it's the same one: no.
  */
 export const MIN_EXTRA_STOP_ITEMS = 2;
 export const EXTRA_STOP_SHARE = 0.2;
@@ -419,6 +425,22 @@ export function extraStopThreshold(total: number): number {
  * `names` map the caller already has — and the number is there to say how much
  * the naming leaves out.
  *
+ * **The headline pick has its own floor, `MIN_EXTRA_STOP_ITEMS`.** A store the
+ * app has seen once, for one item on a six-item list, isn't a recommendation —
+ * it's a coin flip dressed up as one, and naming a store at all reads as "go
+ * here" however thin the record behind it. Below that floor, and short of
+ * covering the list outright, the card has nothing worth saying (see the
+ * `null` case below), and `GroceryScreen` falls back to `StartTripPrompt` —
+ * the honest "no ranking, no history required" answer for a list this store's
+ * record doesn't back up. It's the flat floor rather than the scaled
+ * `extraStopThreshold`, deliberately: that share exists to price an
+ * *additional* trip against a longer list, and the headline isn't optional in
+ * the same way — you're going shopping regardless, so a modest lead on a long
+ * list is still worth naming, and only "we've only ever seen this once" is
+ * disqualifying. Covering the list outright is exempt regardless of size: "the
+ * one item on a one-item list" is still the whole answer, however thin the
+ * floor looks.
+ *
  * **One store is the recommendation; a second is an offer with a price on it.**
  * It used to headline the whole itinerary — "The Bad Wife, then Mr. Kiwi" over
  * a *joint* "likely have 2/5" — and both halves of that were wrong. The count
@@ -436,7 +458,8 @@ export function extraStopThreshold(total: number): number {
  * re-ranking here would be a second walk to disagree with the sheet's.
  *
  * Null when there's nothing to say, which is the card's own "don't render": an
- * empty list, no suggestion, or a suggestion covering nothing on record.
+ * empty list, no suggestion, a suggestion covering nothing on record, or a
+ * headline pick too thin to clear `MIN_EXTRA_STOP_ITEMS`.
  */
 export function describeTripSuggestion(
   suggestion: readonly ShopCoverage[],
@@ -450,6 +473,10 @@ export function describeTripSuggestion(
   // no union across stops any more, which is the point.
   const covered = head.itemIds;
   if (covered.length === 0) return null;
+  // Full coverage is always worth naming, whatever the list's length; short of
+  // that, the headline needs its own floor — see this function's own doc
+  // comment for why it's flat rather than the second stop's scaled threshold.
+  if (covered.length < total && covered.length < MIN_EXTRA_STOP_ITEMS) return null;
 
   const store = head.shop.name;
   const offer = describeExtraStop(rest[0], covered, total, names);

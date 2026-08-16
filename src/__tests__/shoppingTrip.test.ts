@@ -559,7 +559,10 @@ describe('describeTripSuggestion', () => {
   });
 
   it('raises the bar with the length of the list', () => {
-    const stops = [cover(tj, [milk.id]), cover(pharmacy, [shampoo.id, saffron.id])];
+    // The headline needs its own floor cleared too (`MIN_EXTRA_STOP_ITEMS`),
+    // so it covers two here rather than one — this test is about the second
+    // stop's scaled threshold, not the headline's flat one.
+    const stops = [cover(tj, [milk.id, bread.id]), cover(pharmacy, [shampoo.id, saffron.id])];
     // Two of five clears a threshold of two…
     expect(describeTripSuggestion(stops, 5, NAMES)?.offer).toBe(
       'Add Ballard Pharmacy for shampoo and saffron'
@@ -571,9 +574,12 @@ describe('describeTripSuggestion', () => {
   });
 
   it('names only the walk’s next stop, never a third', () => {
+    // The headline's second item is an unnamed id purely to clear its own
+    // floor without borrowing from the other two stops' items — this test
+    // doesn't touch `.detail`, so the fallback name never shows.
     const copy = describeTripSuggestion(
       [
-        cover(tj, [milk.id]),
+        cover(tj, [milk.id, 'item-headline-extra']),
         cover(pharmacy, [shampoo.id, saffron.id]),
         cover(union, [bread.id, eggs.id]),
       ],
@@ -602,7 +608,7 @@ describe('describeTripSuggestion', () => {
     );
     expect(
       describeTripSuggestion(
-        [cover(tj, [milk.id]), cover(pharmacy, ['item-gone', 'item-also-gone'])],
+        [cover(tj, [milk.id, bread.id]), cover(pharmacy, ['item-gone', 'item-also-gone'])],
         5,
         NAMES
       )?.offer
@@ -613,6 +619,19 @@ describe('describeTripSuggestion', () => {
     expect(describeTripSuggestion([cover(tj, [milk.id])], 0, NAMES)).toBeNull();
     expect(describeTripSuggestion([], 5, NAMES)).toBeNull();
     expect(describeTripSuggestion([cover(tj, [])], 5, NAMES)).toBeNull();
+  });
+
+  it('says nothing when the headline pick is too thin to be a recommendation', () => {
+    // #1716: one item seen at a store, out of six on the list — that's a
+    // coin flip dressed up as "go here", not a trip worth naming. Below
+    // MIN_EXTRA_STOP_ITEMS and short of covering the list outright.
+    expect(describeTripSuggestion([cover(tj, [milk.id])], 6, NAMES)).toBeNull();
+  });
+
+  it('headlines a store the moment its coverage clears the same floor', () => {
+    expect(describeTripSuggestion([cover(tj, [milk.id, bread.id])], 6, NAMES)?.detail).toBe(
+      'Likely has 2/6 items on your list: milk and bread'
+    );
   });
 
   it('describes the plan the trip sheet would suggest', () => {
@@ -659,5 +678,15 @@ describe('tripSuggestionCopy', () => {
     const a = makeShop('A store', 1);
     const b = makeShop('B store', 2);
     expect(tripSuggestionCopy(LIST, [], [a, b])).toBeNull();
+  });
+
+  it('is null when the best pick only accounts for one item on a longer list', () => {
+    // #1716: a single recorded purchase shouldn't be enough to put a store's
+    // name on the screen as "the" recommendation for a six-item list.
+    const longList = [milk, bread, eggs, shampoo, saffron, makeItem('aleve')];
+    const a = makeShop('A store', 1);
+    const b = makeShop('B store', 2);
+    const links = [link(milk.id, a.id, 1)];
+    expect(tripSuggestionCopy(longList, links, [a, b])).toBeNull();
   });
 });
