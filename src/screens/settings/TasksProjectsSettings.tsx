@@ -6,6 +6,9 @@ import { useSettingsStore, type MealsOnToday } from '../../store/useSettingsStor
 import type { UnitSystem } from '../../utils/unitConvert';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useCategoryStore } from '../../store/useCategoryStore';
+import { useRecipeStore } from '../../store/useRecipeStore';
+import { useShallow } from 'zustand/react/shallow';
+import { allRecipeTags } from '../../utils/recipeTags';
 import { useColors } from '../../theme/ThemeContext';
 import { spacing } from '../../theme';
 import { CalendarPicker } from '../../components/CalendarPicker';
@@ -88,6 +91,8 @@ export function TasksProjectsSettings() {
   const setUnitSystem = useSettingsStore(s => s.setUnitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const setCurrencySymbol = useSettingsStore(s => s.setCurrencySymbol);
+  const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
+  const setExcludedRecipeTags = useSettingsStore(s => s.setExcludedRecipeTags);
   const defaultProjectNudgeCadenceDays = useSettingsStore(s => s.defaultProjectNudgeCadenceDays);
   const setDefaultProjectNudgeCadenceDays = useSettingsStore(s => s.setDefaultProjectNudgeCadenceDays);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
@@ -95,6 +100,7 @@ export function TasksProjectsSettings() {
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
   const categories = useCategoryStore(s => s.categories);
+  const recipeTagVocabulary = useRecipeStore(useShallow(s => allRecipeTags(s.recipes)));
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -316,6 +322,42 @@ export function TasksProjectsSettings() {
           onPress={() => setRestockOfferEnabled(!restockOfferEnabled)}
           accessibilityLabel="Restock after cooking"
         />
+      </SettingsSection>
+
+      <SettingsSection
+        label="Recipe suggestions"
+        footer="Only your own recipe tags decide this — nothing is guessed from ingredients. Tag a dish (however you like: “vegetarian”, “eggy”, whatever the reason is) on its own recipe screen, then pick the tags to leave out here. A dish stays fully editable and plannable by hand; this only keeps it out of what the app proposes."
+      >
+        <SettingsRow
+          icon="nutrition-outline"
+          iconColor={excludedRecipeTags.length > 0 ? colors.accent : undefined}
+          label="Tags to avoid"
+          hint={recipeTagVocabulary.length === 0 ? 'Tag a recipe first to pick from here' : undefined}
+          tight
+        />
+        {recipeTagVocabulary.length > 0 && (
+          <View style={styles.pillGroupRow}>
+            <PillGroup
+              noun="tag"
+              options={recipeTagVocabulary.map(tag => ({
+                key: tag,
+                label: tag,
+                selected: excludedRecipeTags.includes(tag),
+                accessibilityLabel: excludedRecipeTags.includes(tag)
+                  ? `${tag}, left out of suggestions. Tap to allow it again.`
+                  : `${tag}. Tap to leave it out of suggestions.`,
+                onPress: () => {
+                  haptics.tap();
+                  setExcludedRecipeTags(
+                    excludedRecipeTags.includes(tag)
+                      ? excludedRecipeTags.filter(t => t !== tag)
+                      : [...excludedRecipeTags, tag]
+                  );
+                },
+              }))}
+            />
+          </View>
+        )}
       </SettingsSection>
 
       <GeneratedTasksSection

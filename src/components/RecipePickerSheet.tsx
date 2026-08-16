@@ -23,7 +23,9 @@ import { spacing, radius, font, fontWeight, border, animation, interaction, type
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { rankRecipes, describeRecipe, cleanRecipeName } from '../utils/recipeUtils';
+import { excludeRecipesByTags } from '../utils/recipeTags';
 import { slotLabel } from '../utils/mealPlan';
 import { describeLeftover, freshnessOf, liveLeftovers, mealTitleForLeftover } from '../utils/leftovers';
 // The colour ladder lives with the card that established it rather than in
@@ -114,6 +116,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
   const { height: windowHeight } = useWindowDimensions();
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
+  const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
   const [query, setQuery] = useState('');
   const [slot, setSlot] = useState<MealSlot>(defaultSlot);
@@ -129,12 +132,18 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
     const q = query.trim().toLowerCase();
     return q ? live.filter(l => l.title.toLowerCase().includes(q)) : live;
   }, [leftovers, query]);
+  // Excluded tags narrow the *browse* list — the one this sheet is offering
+  // unasked — but not a search that already names something specific. Typing
+  // "quiche" is the cook going and getting it on purpose, which is a
+  // different thing from the app proposing it; see excludeRecipesByTags.
   const matches = useMemo(() => {
-    const ranked = query.trim()
-      ? rankRecipes(query, recipes)
-      : [...recipes].sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder);
+    const trimmed = query.trim();
+    const ranked = trimmed
+      ? rankRecipes(trimmed, recipes)
+      : [...excludeRecipesByTags(recipes, excludedRecipeTags)]
+        .sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder);
     return ranked.slice(0, MAX_ROWS);
-  }, [query, recipes]);
+  }, [query, recipes, excludedRecipeTags]);
 
   // The typed line only earns a row when it isn't just the name of a recipe
   // already offered above it — two rows planning the same dinner, one of them
