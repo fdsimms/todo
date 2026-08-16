@@ -37,6 +37,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     emptySections: [],
     components: [],
     prepTasks: [],
+    steps: [],
     favorite: false,
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -621,6 +622,80 @@ describe('prepTasks', () => {
     useRecipeStore.getState().updatePrepTask(r.id, 'gone', { offsetDays: -2 });
     useRecipeStore.getState().removePrepTask(r.id, 'gone');
     expect(useRecipeStore.getState().recipeById(r.id)!.prepTasks).toEqual([]);
+  });
+});
+
+describe('steps', () => {
+  it('adds one, trimmed', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    const added = useRecipeStore.getState().addStep(r.id, '  Preheat the oven to 400°F  ')!;
+
+    expect(added.text).toBe('Preheat the oven to 400°F');
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps).toEqual([added]);
+  });
+
+  it('refuses a blank step', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    expect(useRecipeStore.getState().addStep(r.id, '   ')).toBeNull();
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps).toEqual([]);
+  });
+
+  it('updates the text', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const step = useRecipeStore.getState().addStep(r.id, 'Preheat the oven')!;
+
+    useRecipeStore.getState().updateStep(r.id, step.id, 'Preheat the oven to 425°F');
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].text).toBe('Preheat the oven to 425°F');
+  });
+
+  it('editing a step down to nothing removes it, the same as an empty add', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const step = useRecipeStore.getState().addStep(r.id, 'Preheat the oven')!;
+
+    useRecipeStore.getState().updateStep(r.id, step.id, '   ');
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps).toEqual([]);
+  });
+
+  it('removes one', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const step = useRecipeStore.getState().addStep(r.id, 'Preheat the oven')!;
+
+    useRecipeStore.getState().removeStep(r.id, step.id);
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps).toEqual([]);
+  });
+
+  it('reorders, and keeps anything the caller did not name', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addStep(r.id, 'Preheat the oven')!;
+    const b = useRecipeStore.getState().addStep(r.id, 'Chop the onions')!;
+    const c = useRecipeStore.getState().addStep(r.id, 'Brown the meat')!;
+
+    // A stale list naming only two must not delete the third.
+    useRecipeStore.getState().reorderSteps(r.id, [c.id, a.id]);
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps.map(s => s.id))
+      .toEqual([c.id, a.id, b.id]);
+  });
+
+  it('shrugs at a recipe or step id it does not hold', () => {
+    seed([]);
+    expect(useRecipeStore.getState().addStep('gone', 'Preheat the oven')).toBeNull();
+
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().updateStep(r.id, 'gone', 'Preheat the oven');
+    useRecipeStore.getState().removeStep(r.id, 'gone');
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps).toEqual([]);
   });
 });
 

@@ -11,6 +11,8 @@ import {
   rankRecipes,
   parsePrepTasks,
   normalizePrepTask,
+  parseSteps,
+  normalizeStep,
   resolvePrepTaskDraft,
   prepTaskDraftsForMeal,
   describeCookHistory,
@@ -89,6 +91,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     emptySections: [],
     components: [],
     prepTasks: [],
+    steps: [],
     favorite: false,
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -444,6 +447,45 @@ describe('parsePrepTasks', () => {
   it('drops rows with no usable title rather than rendering blanks forever', () => {
     const stored = JSON.stringify([{ title: '  ' }, { title: 'Defrost' }, null, 7]);
     expect(parsePrepTasks(stored).map(t => t.title)).toEqual(['Defrost']);
+  });
+});
+
+describe('normalizeStep', () => {
+  it('fills in a missing id and trims the text', () => {
+    const s = normalizeStep({ text: '  Preheat the oven to 400°F  ' })!;
+    expect(s.id).toBeTruthy();
+    expect(s.text).toBe('Preheat the oven to 400°F');
+  });
+
+  it('returns null for a row with no usable text', () => {
+    expect(normalizeStep({ text: '  ' })).toBeNull();
+    expect(normalizeStep({})).toBeNull();
+    expect(normalizeStep(null)).toBeNull();
+    expect(normalizeStep('not an object')).toBeNull();
+  });
+
+  it('keeps a stored id rather than regenerating it', () => {
+    const s = normalizeStep({ id: 's1', text: 'Preheat the oven' })!;
+    expect(s.id).toBe('s1');
+  });
+});
+
+describe('parseSteps', () => {
+  it('reads a stored array', () => {
+    const stored = JSON.stringify([{ id: 's1', text: 'Preheat the oven' }]);
+    expect(parseSteps(stored)).toEqual([{ id: 's1', text: 'Preheat the oven' }]);
+  });
+
+  it('returns empty for null, corrupt JSON, a non-array, or a blob written before the column existed', () => {
+    expect(parseSteps(null)).toEqual([]);
+    expect(parseSteps('{not json')).toEqual([]);
+    expect(parseSteps('{"a":1}')).toEqual([]);
+    expect(parseSteps(undefined)).toEqual([]);
+  });
+
+  it('drops rows with no usable text rather than rendering blanks forever', () => {
+    const stored = JSON.stringify([{ text: '  ' }, { text: 'Preheat the oven' }, null, 7]);
+    expect(parseSteps(stored).map(s => s.text)).toEqual(['Preheat the oven']);
   });
 });
 

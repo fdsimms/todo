@@ -1563,6 +1563,21 @@ export interface Recipe {
   // (scheduleTaskReminder(task)), and forking it for one feature is how an
   // app ends up with two reminder systems and one of them quietly broken.
   prepTasks: RecipePrepTask[];
+  // The method, as discrete instructions rather than one blob — see `notes`
+  // above. Empty for every recipe that predates this: `notes` is what every
+  // existing recipe's method lives in, and stays exactly as legible as it
+  // always was. Ordered by array position, the same convention `ingredients`
+  // and `components` use — there is deliberately no separate order field.
+  //
+  // **Why this exists at all when `notes` already holds text**: scaling and
+  // unit conversion can only ever reach a structured amount, never a sentence
+  // — so "add 2 cups of the flour" inside a notes blob doesn't move when the
+  // recipe is halved, and a cook mode has no unit to read a step's progress
+  // against. A step is deliberately still just `text`, though: no ingredient
+  // references and no per-step duration. Both were considered and both are a
+  // second list to keep in step with this one, worth adding only once
+  // something actually reads them (#1695).
+  steps: RecipeStep[];
   favorite: boolean;
   sortOrder: number;
   createdAt: string;
@@ -1647,6 +1662,16 @@ export interface RecipePrepTask {
   offsetDays: number;
   /** Minutes before the resolved due date a reminder fires; null = no reminder. */
   reminderOffsetMinutes: number | null;
+}
+
+// One instruction, as written — "Preheat the oven to 400°F", not a template
+// with amounts filled in. Free text and no length cap, same as `Recipe.notes`
+// it's the structured replacement for: a step is a sentence or two, not a
+// list-row label. See `Recipe.steps` for why this exists as its own list
+// rather than staying inside `notes`.
+export interface RecipeStep {
+  id: string;
+  text: string;
 }
 
 // Shorter than TITLE_MAX_LENGTH for the same reason a grocery item's is: this
