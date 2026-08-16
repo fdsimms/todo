@@ -234,6 +234,7 @@ describe('resetToDefaults', () => {
     useSettingsStore.getState().setAutoArchiveProjectsOnComplete(true);
     useSettingsStore.getState().setHideCategories(true);
     useSettingsStore.getState().setTimerLiveActivity(false);
+    useSettingsStore.getState().setTripLiveActivity(false);
 
     useSettingsStore.getState().resetToDefaults();
 
@@ -252,6 +253,7 @@ describe('resetToDefaults', () => {
     expect(state.autoArchiveProjectsOnComplete).toBe(false);
     expect(state.hideCategories).toBe(false);
     expect(state.timerLiveActivity).toBe(true);
+    expect(state.tripLiveActivity).toBe(true);
   });
 
   it('persists each default to the database', () => {
@@ -968,6 +970,29 @@ describe('timerLiveActivity', () => {
     useSettingsStore.getState().setTimerLiveActivity(false);
     expect(dbSetSetting).toHaveBeenCalledWith('timerLiveActivity', 'false');
     expect(useSettingsStore.getState().timerLiveActivity).toBe(false);
+  });
+});
+
+describe('tripLiveActivity', () => {
+  // Same reasoning as timerLiveActivity: defaults on so an install predating
+  // the setting keeps the Live Activity it already had.
+  it('defaults to on, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().tripLiveActivity).toBe(true);
+  });
+
+  it('only turns off for an explicit "false"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'tripLiveActivity' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().tripLiveActivity).toBe(false);
+  });
+
+  it('round-trips through setTripLiveActivity', () => {
+    useSettingsStore.getState().setTripLiveActivity(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('tripLiveActivity', 'false');
+    expect(useSettingsStore.getState().tripLiveActivity).toBe(false);
   });
 });
 

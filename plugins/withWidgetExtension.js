@@ -30,6 +30,7 @@ const SWIFT_FILES = [
   'TodoTodayWidget.swift',
   'CompleteTaskIntent.swift',
   'TimerLiveActivity.swift',
+  'TripLiveActivity.swift',
   'StopCookingTimerIntent.swift',
 ];
 // Files that must compile into BOTH this extension and the app. The
@@ -41,7 +42,7 @@ const SWIFT_FILES = [
 // so any drift between two hand-maintained copies would show up only as a
 // Live Activity that starts and then never appears. One file, copied.
 const BRIDGE_SOURCE_DIR = path.join(__dirname, '..', 'modules', 'todo-widget-bridge', 'ios');
-const SHARED_SWIFT_FILES = ['TimerActivityAttributes.swift'];
+const SHARED_SWIFT_FILES = ['TimerActivityAttributes.swift', 'TripActivityAttributes.swift'];
 
 const ALL_SWIFT_FILES = [
   ...SWIFT_FILES.map(name => ({ dir: SOURCE_DIR, name })),

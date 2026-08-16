@@ -253,6 +253,10 @@ interface SettingsStore {
   // above, so an install that predates the setting keeps the behavior it
   // already had once this ships.
   timerLiveActivity: boolean;
+  // Same idea as timerLiveActivity, for an active shopping trip
+  // (tripShopId/tripStartedAt in useGroceryStore.ts) — see
+  // src/utils/tripLiveActivity.ts. iOS 17+ only, defaults on.
+  tripLiveActivity: boolean;
   // Whether the app shows the groceries / recipes / meal plan trio at all —
   // one switch for all three because they aren't separable: a meal plan entry
   // points at a recipe by id, and a recipe reaches the grocery catalog by
@@ -558,6 +562,7 @@ interface SettingsStore {
   setHideCategories: (on: boolean) => void;
   setSimpleTaskForm: (on: boolean) => void;
   setTimerLiveActivity: (on: boolean) => void;
+  setTripLiveActivity: (on: boolean) => void;
   setKitchenEnabled: (on: boolean) => void;
   setRemindersImportEnabled: (on: boolean) => void;
   setRemindersImportListId: (id: string | null) => void;
@@ -619,6 +624,7 @@ const DEFAULT_SETTINGS = {
   hideCategories: false,
   simpleTaskForm: false,
   timerLiveActivity: true,
+  tripLiveActivity: true,
   collapsedCategories: [] as string[],
   mealsOnToday: 'inline' as MealsOnToday,
   unitSystem: 'asWritten' as UnitSystem,
@@ -882,6 +888,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   hideCategories: false,
   simpleTaskForm: false,
   timerLiveActivity: true,
+  tripLiveActivity: true,
   collapsedCategories: [],
   kitchenEnabled: true,
   mealsOnToday: 'inline',
@@ -978,6 +985,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // `!== 'false'`, not `=== 'true'` — defaults on, same reasoning as
     // hapticsEnabled/shakeToUndoEnabled above.
     const timerLiveActivity = dbGetSetting('timerLiveActivity') !== 'false';
+    // Same `!== 'false'` reasoning, for the shopping-trip Live Activity.
+    const tripLiveActivity = dbGetSetting('tripLiveActivity') !== 'false';
     // Same `!== 'false'`: the groceries/recipes/meal plan area is on unless
     // someone has turned it off, so no existing install loses it.
     const kitchenEnabled = dbGetSetting('kitchenEnabled') !== 'false';
@@ -1120,7 +1129,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1367,6 +1376,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setTimerLiveActivity(on: boolean) {
     dbSetSetting('timerLiveActivity', on ? 'true' : 'false');
     set({ timerLiveActivity: on });
+  },
+
+  setTripLiveActivity(on: boolean) {
+    dbSetSetting('tripLiveActivity', on ? 'true' : 'false');
+    set({ tripLiveActivity: on });
   },
 
   // Nothing else is written here on purpose. Every kitchen setting downstream

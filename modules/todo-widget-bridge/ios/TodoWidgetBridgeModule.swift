@@ -24,6 +24,12 @@ private struct TimerRunPayload: Codable {
   let targetEndMs: Double?
 }
 
+// Mirrors the TripRun shape written by src/utils/tripLiveActivity.ts.
+private struct TripRunPayload: Codable {
+  let shopName: String
+  let startedAtMs: Double
+}
+
 public class TodoWidgetBridgeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("TodoWidgetBridge")
@@ -194,5 +200,72 @@ public class TodoWidgetBridgeModule: Module {
       }
       return keys
     }
+
+    // ─── Live Activity (shopping trip) ────────────────────────────────────
+    // Same iOS 17.0 gate as syncTimerLiveActivities, same reason: the widget
+    // extension rendering TripActivityAttributes is built at
+    // IPHONEOS_DEPLOYMENT_TARGET 17.0.
+
+    // Reconciles the single "shopping trip" Live Activity against the JS
+    // side's desired state (see src/utils/tripLiveActivity.ts) — same idea as
+    // syncTimerLiveActivities, simplified for zero-or-one activity rather
+    // than a keyed set, since at most one trip is ever active
+    // (src/utils/activeTrip.ts). An empty string means "no trip wanted";
+    // anything else decodes as a TripRunPayload.
+    AsyncFunction("syncTripLiveActivity") { (jsonString: String) -> Bool in
+      var succeeded = false
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard #available(iOS 17.0, *) else { return }
+
+        let existing = Activity<TripActivityAttributes>.activities
+
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+          for activity in existing {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        guard
+          !jsonString.isEmpty,
+          let data = jsonString.data(using: .utf8),
+          let run = try? JSONDecoder().decode(TripRunPayload.self, from: data)
+        else {
+          // No trip wanted — end whatever's left, same as a revoked
+          // authorization above.
+          for activity in existing {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        let startedAt = Date(timeIntervalSince1970: run.startedAtMs / 1000)
+
+        // Already live for this exact trip — see TripActivityAttributes'
+        // header for why nothing about an in-flight trip is ever pushed as
+        // an update; a changed trip only ever shows up as the old activity
+        // ending and a new one starting.
+        if let current = existing.first, current.attributes.startedAt == startedAt {
+          for stale in existing.dropFirst() {
+            Task { await stale.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        for activity in existing {
+          Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
+        let attributes = TripActivityAttributes(shopName: run.shopName, startedAt: startedAt)
+        let content = ActivityContent(state: TripActivityAttributes.ContentState(), staleDate: nil)
+        _ = try? Activity.request(attributes: attributes, content: content, pushType: nil)
+
+        succeeded = true
+      }
+      return succeeded
+    }
+    .runOnQueue(.main)
   }
 }

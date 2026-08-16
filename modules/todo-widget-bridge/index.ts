@@ -8,6 +8,9 @@ interface TodoWidgetBridgeNativeModule {
   // reconciliation this drives.
   syncTimerLiveActivities(jsonString: string): Promise<boolean>;
   drainPendingTimerStops(): Promise<string[]>;
+  // See src/utils/tripLiveActivity.ts for the JSON shape (TripRun) and the
+  // reconciliation this drives. Empty string means "no trip wanted".
+  syncTripLiveActivity(jsonString: string): Promise<boolean>;
 }
 
 const TodoWidgetBridge = requireNativeModule<TodoWidgetBridgeNativeModule>('TodoWidgetBridge');
@@ -26,4 +29,8 @@ export function syncTimerLiveActivities(jsonString: string): Promise<boolean> {
 
 export function drainPendingTimerStops(): Promise<string[]> {
   return TodoWidgetBridge.drainPendingTimerStops();
+}
+
+export function syncTripLiveActivity(jsonString: string): Promise<boolean> {
+  return TodoWidgetBridge.syncTripLiveActivity(jsonString);
 }
