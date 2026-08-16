@@ -1043,6 +1043,14 @@ export const GROCERY_USE_UP_LEAD_DAYS_DEFAULT = 1;
 export const GROCERY_USE_UP_LEAD_DAYS_MIN = 0;
 export const GROCERY_USE_UP_LEAD_DAYS_MAX = 14;
 
+// How many "Use up X" tasks — grocery and leftover use-up tasks together — are
+// allowed to be live at once (#1675). null (the default) is unlimited: this
+// is a governor for a well-stocked kitchen with both generators on, not a
+// behavior change for anyone who hasn't hit it. A source that's declined a
+// slot isn't suppressed, just deferred until one opens up.
+export const USE_UP_TASK_CAP_MIN = 1;
+export const USE_UP_TASK_CAP_MAX = 20;
+
 // The furthest out a use-by date can be set by hand, in days. Long enough for a
 // freezer bag, short enough that the stepper can still reach the far end.
 export const GROCERY_EXPIRY_DAYS_MAX = 365;

@@ -116,6 +116,80 @@ describe('reconcileGeneratedTask — creating', () => {
   });
 });
 
+describe('reconcileGeneratedTask — useUpCap', () => {
+  it('creates the task while under the cap', () => {
+    seedTask({ id: 'other', generatedKind: 'leftoverUseUp', generatedSourceId: 'l-1' });
+
+    reconcileGeneratedTask(opts({ useUpCap: 2 }));
+
+    expect(mockTaskState.addTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('declines to create once the cap is already spent', () => {
+    seedTask({ id: 'other', generatedKind: 'leftoverUseUp', generatedSourceId: 'l-1' });
+
+    reconcileGeneratedTask(opts({ useUpCap: 1 }));
+
+    expect(mockTaskState.addTask).not.toHaveBeenCalled();
+    expect(mockTaskState.tasks).toHaveLength(1);
+  });
+
+  it('counts grocery and leftover use-up tasks together against one cap', () => {
+    seedTask({ id: 'g-other', generatedSourceId: 'g-2' });
+    seedTask({ id: 'l-other', generatedKind: 'leftoverUseUp', generatedSourceId: 'l-1' });
+
+    reconcileGeneratedTask(opts({ useUpCap: 2 }));
+
+    expect(mockTaskState.addTask).not.toHaveBeenCalled();
+  });
+
+  it('ignores a completed or archived task when spending the cap', () => {
+    seedTask({ id: 'done', completed: true });
+
+    reconcileGeneratedTask(opts({ useUpCap: 1 }));
+
+    expect(mockTaskState.addTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not count cook tasks or the nudge against the cap', () => {
+    seedTask({ id: 'cook', generatedKind: 'mealCook', generatedSourceId: 'm-1' });
+    seedTask({ id: 'nudge', generatedKind: 'mealPlanNudge', generatedSourceId: null });
+
+    reconcileGeneratedTask(opts({ useUpCap: 1 }));
+
+    expect(mockTaskState.addTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats null (and omitted) as unlimited', () => {
+    seedTask({ id: 'other', generatedKind: 'leftoverUseUp', generatedSourceId: 'l-1' });
+
+    reconcileGeneratedTask(opts({ useUpCap: null }));
+    expect(mockTaskState.addTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('never evicts an already-live task to make room — a shown task stays shown', () => {
+    seedTask({ id: 'other', generatedKind: 'leftoverUseUp', generatedSourceId: 'l-1' });
+
+    reconcileGeneratedTask(opts({ useUpCap: 1 }));
+
+    expect(mockTaskState.deleteTask).not.toHaveBeenCalled();
+    expect(mockTaskState.tasks).toHaveLength(1);
+  });
+
+  it('does not gate an update to an already-existing task', () => {
+    seedTask();
+    seedTask({ id: 'other', generatedKind: 'leftoverUseUp', generatedSourceId: 'l-1' });
+
+    reconcileGeneratedTask(opts({ useUpCap: 1, drift: () => ({ title: 'Use up Baby spinach' }) }));
+
+    expect(mockTaskState.updateTask).toHaveBeenCalledWith(
+      'existing',
+      { title: 'Use up Baby spinach' },
+      { skipPostponeCount: true }
+    );
+  });
+});
+
 describe('reconcileGeneratedTask — updating', () => {
   it('rewrites only what the caller reports as drifted', () => {
     seedTask();

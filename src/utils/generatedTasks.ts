@@ -284,3 +284,35 @@ export function generatedBy(
 ): { generatedKind: GeneratedKind; generatedSourceId: string | null } {
   return { generatedKind: kind, generatedSourceId: sourceId };
 }
+
+/**
+ * Whether `kind` draws from the shared "use up" daily cap (#1675).
+ *
+ * Grocery and leftover use-up tasks are two independent producers of what a
+ * person reads as one kind of nag, so a cap on the pile has to count them
+ * together — cook tasks and the meal-plan nudge are exempt: a cook task is
+ * one per planned dinner, which the user already chose by planning the meal,
+ * and the nudge is a single weekly stack. Neither floods the way two
+ * unrelated expiry clocks can.
+ */
+export function isUseUpKind(kind: GeneratedKind): boolean {
+  return kind === 'groceryUseUp' || kind === 'leftoverUseUp';
+}
+
+/**
+ * How many "Use up X" tasks — grocery and leftover together — are already
+ * live: not completed, not archived. The number `reconcileGeneratedTask`'s
+ * `useUpCap` is spent against.
+ *
+ * Deliberately not scoped to tasks due today: a use-up task's due date can sit
+ * days out (a grocery item's lead time), and one bypassing the cap now only
+ * to land on Today unopposed later would defeat the point. Counting every
+ * live one bounds the whole backlog, not just what's visible this instant.
+ */
+export function liveUseUpTaskCount(
+  tasks: readonly Pick<Task, 'generatedKind' | 'completed' | 'archived'>[]
+): number {
+  return tasks.filter(
+    t => t.generatedKind !== null && isUseUpKind(t.generatedKind) && !t.completed && !t.archived
+  ).length;
+}
