@@ -179,13 +179,6 @@ export function GroceryItemSheet({
   // it, which is how a price is taken back.
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
   const [nameError, setNameError] = useState<string | null>(null);
-  // A snapshot of every staged field at open time, same shape TaskEditor's
-  // own dirty check uses — compared against a fresh snapshot on dismiss so a
-  // swipe-down or Cancel with real changes pending asks first. Only the
-  // staged fields belong here: the CollapsibleField pills (aisle, stores,
-  // pantry, use-by, substitutes) apply immediately on tap and are already
-  // saved by the time this sheet could be dismissed — see #1682.
-  const initialStateRef = useRef<string>('');
   // Which substitute sheet is up, if any: 'add' opens the picker, an item id
   // opens that link for review. Null closes it.
   const [subSheet, setSubSheet] = useState<'add' | string | null>(null);
@@ -224,14 +217,6 @@ export function GroceryItemSheet({
       setPriceTarget(null);
       setPriceEdits({});
       setNameError(null);
-      initialStateRef.current = JSON.stringify({
-        name: item.name,
-        quantity: item.quantity ?? '',
-        brand: item.brand ?? '',
-        variant: item.variant ?? '',
-        note: item.note,
-        priceEdits: {},
-      });
       setOpenField(initialField ?? null);
       setSubSheet(null);
       cardYRef.current = null;
@@ -283,80 +268,66 @@ export function GroceryItemSheet({
   const linkFor = (shopId: string) =>
     itemShops.find(l => l.itemId === item.id && l.shopId === shopId) ?? null;
 
-  // The same shape TaskEditor's handleCancel uses: a fresh snapshot of the
-  // staged fields, compared against the one taken on open. Swiping the sheet
-  // down goes through this too (onRequestClose), not just the Cancel button —
-  // a dismiss gesture loses exactly as much work as an explicit Cancel does.
-  const handleCancel = () => {
-    const current = JSON.stringify({ name, quantity, brand, variant, note, priceEdits });
-    if (current === initialStateRef.current) {
-      onClose();
+  // Every field below commits on its own, the moment it stops being edited —
+  // matching the CollapsibleField pills further down, which have always
+  // applied on tap. There is no longer a Save to defer to and nothing to
+  // discard, so the header is a bare Done (see GroceryAislesSheet's own).
+  //
+  // renameItem refuses a collision rather than merging two catalog rows —
+  // merging means choosing whose purchase history survives — so a rejected
+  // rename leaves nameError showing and the item's stored name untouched;
+  // the field itself keeps whatever was typed until it's corrected.
+  const commitName = () => {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === item.name) { setNameError(null); return; }
+    if (!renameItem(item.id, trimmed)) {
+      setNameError('Another item already has that name.');
+      haptics.error();
       return;
     }
-    Alert.alert(
-      'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: onClose },
-      ],
-    );
+    setNameError(null);
   };
-
-  const handleSave = () => {
-    const trimmed = name.trim();
-    if (trimmed && trimmed !== item.name) {
-      // renameItem refuses a collision rather than merging two catalog rows —
-      // merging means choosing whose purchase history survives.
-      if (!renameItem(item.id, trimmed)) {
-        setNameError('Another item already has that name.');
-        haptics.error();
-        return;
-      }
+  const commitQuantity = () => {
+    if (quantity !== (item.quantity ?? '')) setQuantity(item.id, quantity);
+  };
+  const commitBrand = () => {
+    if (brand !== (item.brand ?? '')) setBrand(item.id, brand);
+  };
+  const commitVariant = () => {
+    if (variant !== (item.variant ?? '')) setVariant(item.id, variant);
+  };
+  const commitNote = () => {
+    if (note !== item.note) setNote(item.id, note);
+  };
+  // Scoped to one target rather than looping every buffered edit: unlike the
+  // old Save, there's no longer a single moment that flushes the whole
+  // priceEdits map, so each target has to commit for itself — on its own
+  // field blurring, and (below) right before the picker switches which
+  // target the one physical field is bound to. Anything that doesn't parse
+  // ("4.9.9", a typo mid-correction) is left alone rather than cleared.
+  const commitPrice = (key: string) => {
+    const raw = priceEdits[key];
+    if (raw === undefined) return;
+    const shopId = key === ITEM_PRICE_KEY ? null : key;
+    const link = shopId ? linkFor(shopId) : null;
+    // A store unlinked in this same sheet since the price was typed has
+    // nowhere to put it, and it isn't an item-level price either — the user
+    // said which store it was.
+    if (shopId && !link) return;
+    const stored = shopId ? link!.lastPriceMinor : item.lastPriceMinor;
+    const trimmed = raw.trim();
+    const parsed = parsePriceInput(trimmed);
+    if (!trimmed) {
+      if (stored === null) return;
+      // Clearing one store's number says nothing about the item — that's the
+      // whole reason clearItemShopPrice exists next to setItemPrice.
+      if (shopId) clearItemShopPrice(item.id, shopId);
+      else setItemPrice(item.id, null);
+      return;
     }
-    setQuantity(item.id, quantity);
-    setBrand(item.id, brand);
-    setVariant(item.id, variant);
-    setNote(item.id, note);
-    // After setQuantity, so a price being *changed* here is paired with the
-    // quantity being saved alongside it. A price left alone keeps the quantity
-    // it was recorded against, which is the point: retyping the quantity
-    // doesn't retroactively make an old price a price for the new one.
-    //
-    // An emptied field clears the price; anything that doesn't parse is left
-    // alone rather than clearing it, since "4.9.9" is a typo mid-correction and
-    // throwing the old price away over it is the one outcome nobody wants.
-    //
-    // Every target that was typed into, not just the one on screen — the buffer
-    // outlives switching stores, so Save is where all of it lands. The item's
-    // own price goes last: a store write updates it as a side effect (see
-    // setItemPrice), and an explicit "Any store" edit is the more direct
-    // statement of the two, so it has to win.
-    const edits = Object.entries(priceEdits).sort(
-      ([a], [b]) => Number(a === ITEM_PRICE_KEY) - Number(b === ITEM_PRICE_KEY)
-    );
-    for (const [key, raw] of edits) {
-      const shopId = key === ITEM_PRICE_KEY ? null : key;
-      const link = shopId ? linkFor(shopId) : null;
-      // A store unlinked in this same sheet since the price was typed has
-      // nowhere to put it, and it isn't an item-level price either — the user
-      // said which store it was.
-      if (shopId && !link) continue;
-      const stored = shopId ? link!.lastPriceMinor : item.lastPriceMinor;
-      const trimmedPrice = raw.trim();
-      const parsed = parsePriceInput(trimmedPrice);
-      if (!trimmedPrice) {
-        if (stored === null) continue;
-        // Clearing one store's number says nothing about the item — that's the
-        // whole reason clearItemShopPrice exists next to setItemPrice.
-        if (shopId) clearItemShopPrice(item.id, shopId);
-        else setItemPrice(item.id, null);
-      } else if (parsed !== null && parsed !== stored) {
-        setItemPrice(item.id, parsed, shopId);
-      }
+    if (parsed !== null && parsed !== stored) {
+      setItemPrice(item.id, parsed, shopId);
     }
-    haptics.success();
-    onClose();
   };
 
   /**
@@ -446,6 +417,7 @@ export function GroceryItemSheet({
       accessibilityLabel: 'Last price paid, without saying which store',
       onPress: () => {
         haptics.tap();
+        commitPrice(priceKey);
         setPriceTarget(null);
       },
     },
@@ -456,6 +428,7 @@ export function GroceryItemSheet({
       accessibilityLabel: `Last price at ${shop.name}`,
       onPress: () => {
         haptics.tap();
+        commitPrice(priceKey);
         setPriceTarget(shop.id);
       },
     })),
@@ -722,12 +695,12 @@ export function GroceryItemSheet({
   const usedInSummary = usedInRecipes.length ? plusMore(usedInRecipes.map(r => r.name)) : undefined;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
+          <View style={styles.headerSpacer} />
           <Text style={styles.headerTitle}>Item</Text>
-          <SheetHeaderButton label="Save" onPress={handleSave} minWidth={64} />
+          <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
         </View>
 
         <ScrollView
@@ -744,6 +717,8 @@ export function GroceryItemSheet({
               setName(t);
               if (nameError) setNameError(null);
             }}
+            onBlur={commitName}
+            onSubmitEditing={commitName}
             placeholder="Item name"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
@@ -807,6 +782,7 @@ export function GroceryItemSheet({
             style={styles.input}
             value={brand}
             onChangeText={setBrandText}
+            onBlur={commitBrand}
             placeholder="e.g. Good Culture"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
@@ -864,6 +840,7 @@ export function GroceryItemSheet({
             style={styles.input}
             value={variant}
             onChangeText={setVariantText}
+            onBlur={commitVariant}
             placeholder="e.g. low fat, 4%, crunchy"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
@@ -895,6 +872,7 @@ export function GroceryItemSheet({
             style={styles.input}
             value={quantity}
             onChangeText={setQuantityText}
+            onBlur={commitQuantity}
             placeholder="e.g. 2 lb, x3, a bunch"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
@@ -921,6 +899,8 @@ export function GroceryItemSheet({
               style={styles.priceInput}
               value={price}
               onChangeText={text => setPriceEdits(prev => ({ ...prev, [priceKey]: text }))}
+              onBlur={() => commitPrice(priceKey)}
+              onSubmitEditing={() => commitPrice(priceKey)}
               placeholder={priceHint === null ? '0.00' : priceToInput(priceHint)}
               placeholderTextColor={colors.textTertiary}
               keyboardType="decimal-pad"
@@ -966,6 +946,7 @@ export function GroceryItemSheet({
             style={styles.input}
             value={note}
             onChangeText={setNoteText}
+            onBlur={commitNote}
             placeholder="e.g. the blue cap one"
             placeholderTextColor={colors.textTertiary}
             maxLength={GROCERY_NAME_MAX_LENGTH}
@@ -1352,6 +1333,9 @@ function makeStyles(colors: Colors) {
       borderBottomColor: colors.separator,
     },
     headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+    // Matches Done's own minWidth, so the title stays centered the way
+    // GroceryAislesSheet's single-button header does.
+    headerSpacer: { width: 64 },
     subRow: {
       flexDirection: 'row',
       alignItems: 'center',
