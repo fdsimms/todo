@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Share,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
@@ -57,6 +58,7 @@ import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { describeListEstimate, estimateListTotal } from '../utils/groceryPrice';
+import { buildGroceryListShareText } from '../utils/shareText';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -279,6 +281,14 @@ export function GroceryScreen() {
   }, [activeTripShop, items, itemShops, shops, itemSubs]);
 
   const checkedCount = useMemo(() => items.filter(i => i.onList && i.checked).length, [items]);
+  // Empty for nothing left to buy, which is what the header action's disabled
+  // state gates on — see buildGroceryListShareText.
+  const shareText = useMemo(() => buildGroceryListShareText(items), [items]);
+  const handleShare = useCallback(() => {
+    if (!shareText) return;
+    haptics.tap();
+    Share.share({ message: shareText }).catch(() => {});
+  }, [shareText]);
   // What the trip is about to leave behind, in the walk order the list is in —
   // the finish sheet asks about these, and only these. Ids and names only: the
   // sheet has no business holding rows it can't edit.
@@ -699,6 +709,12 @@ export function GroceryScreen() {
       accessibilityLabel: 'Aisle order',
     });
     list.push({
+      icon: 'share-outline',
+      onPress: handleShare,
+      disabled: selectionMode || !shareText,
+      accessibilityLabel: 'Share the list',
+    });
+    list.push({
       icon: 'bag-check-outline',
       onPress: () => setFinishOpen(true),
       disabled: selectionMode || checkedCount === 0,
@@ -708,7 +724,7 @@ export function GroceryScreen() {
       accessibilityLabel: 'Finish shopping',
     });
     return list;
-  }, [checkedCount, selectionMode, handleCreateGroceryTask]);
+  }, [checkedCount, selectionMode, handleCreateGroceryTask, handleShare, shareText]);
 
   // Bottom-up: "Add an item" ends up closest to the button. The recipe entry
   // no longer needs a key by itself — a saved recipe imports nothing over the

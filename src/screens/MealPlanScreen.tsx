@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, View, Text, FlatList, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { Animated, View, Text, FlatList, StyleSheet, Alert, TouchableOpacity, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -85,6 +85,7 @@ import {
   titleForEntry,
 } from '../utils/mealPlan';
 import { liveGeneratedTask } from '../utils/generatedTasks';
+import { buildWeekPlanShareText } from '../utils/shareText';
 import {
   classifyPlanned,
   plannedIngredientsForRecipe,
@@ -1090,10 +1091,28 @@ export function MealPlanScreen() {
     if (entry) offerPrepTasks(entry);
   };
 
+  // Empty for a week with nothing planned, which is what the header action's
+  // disabled state gates on — see buildWeekPlanShareText.
+  const weekShareText = useMemo(
+    () => buildWeekPlanShareText(days, entries, recipesById),
+    [days, entries, recipesById]
+  );
+  const handleShareWeek = useCallback(() => {
+    if (!weekShareText) return;
+    haptics.tap();
+    Share.share({ message: weekShareText }).catch(() => {});
+  }, [weekShareText]);
+
   const headerActions = useMemo<ScreenHeaderAction[]>(() => {
     const actions: ScreenHeaderAction[] = [
       { icon: 'chevron-back', onPress: () => page(-1), accessibilityLabel: 'Previous week' },
       { icon: 'chevron-forward', onPress: () => page(1), accessibilityLabel: 'Next week' },
+      {
+        icon: 'share-outline',
+        onPress: handleShareWeek,
+        disabled: !weekShareText,
+        accessibilityLabel: 'Share this week’s meals',
+      },
     ];
     // Only offered once there's somewhere to come back from, so the header
     // isn't carrying a permanently inert button.
@@ -1111,7 +1130,7 @@ export function MealPlanScreen() {
       });
     }
     return actions;
-  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn]);
+  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText]);
 
   /**
    * The week a "copy" would take from, and only while this one is empty.

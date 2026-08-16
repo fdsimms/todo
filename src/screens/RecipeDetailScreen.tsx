@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Share,
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,6 +45,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
 import { describeCookTime, describePrepTime, describeRecipe, totalMinutes } from '../utils/recipeUtils';
+import { buildRecipeShareText } from '../utils/shareText';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, scaleQuantity } from '../utils/recipeScale';
@@ -402,6 +404,16 @@ export function RecipeDetailScreen() {
     animateLayout();
     removePrepTask(recipe.id, prepTask.id);
     haptics.tap();
+  };
+
+  // Renders through the same scale and unit system the screen is showing,
+  // so what gets sent matches what's on screen rather than the recipe's raw
+  // numbers — see shareText.ts. A rejection (the user backed out of the
+  // share sheet) is not an error and needs no handling.
+  const handleShare = () => {
+    haptics.tap();
+    const message = buildRecipeShareText(recipe, recipesById, { scale, unitSystem });
+    Share.share({ message }).catch(() => {});
   };
 
   const submitStepDraft = () => {
@@ -988,6 +1000,16 @@ export function RecipeDetailScreen() {
                   size={iconSize.md}
                   color={recipe.favorite ? colors.orange : colors.textSecondary}
                 />
+              </TouchableOpacity>
+            )}
+            {!selectionMode && (
+              <TouchableOpacity
+                onPress={handleShare}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Share this recipe"
+              >
+                <Ionicons name="share-outline" size={iconSize.md} color={colors.textSecondary} />
               </TouchableOpacity>
             )}
             {!selectionMode && (
