@@ -505,6 +505,25 @@ describe('suggestPullDate', () => {
     expect(result.dayLabel).not.toBe('Today');
     expect(result.date.getTime()).toBeGreaterThan(Date.now());
   });
+
+  it('honours dayResetTime during the early-morning grace window', () => {
+    // 1:30 AM on June 11, with a 2:00 AM reset — still "June 10" logically.
+    const originalDayResetTime = settingsState.dayResetTime;
+    settingsState.dayResetTime = '02:00';
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
+
+    try {
+      const result = suggestPullDate(makeTask(), [], [], 20);
+
+      expect(result.dayLabel).toBe('Today');
+      expect(result.date.getDate()).toBe(10);
+      expect(result.date.getMonth()).toBe(5);
+    } finally {
+      jest.useRealTimers();
+      settingsState.dayResetTime = originalDayResetTime;
+    }
+  });
 });
 
 describe('buildProjectPullPlan', () => {

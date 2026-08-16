@@ -441,7 +441,7 @@ export function suggestPullDate(
     return { date: suggestion.date, dayLabel: suggestion.dayLabel, reason: suggestion.reason };
   }
 
-  const today = new Date();
+  const today = getCurrentDayStart();
   today.setHours(12, 0, 0, 0);
   return { date: today, dayLabel: 'Today', reason: `quiet ${quietDays} days` };
 }

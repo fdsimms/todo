@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: pulling a task in from a quiet project during the early-morning grace window (before your daily reset time) could schedule it for the next calendar day instead of today.",
+  "date": "2026-08-16"
+}
