@@ -63,7 +63,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { alternativeCaptions } from '../utils/recipeComponents';
-import { buildGrocerySections } from '../utils/grocerySuggest';
+import { buildGrocerySections, buildGroceryRecipeSections } from '../utils/grocerySuggest';
 import { resolveGroceryDrop, groceryDragRange, placeNewGroceryItems } from '../utils/groceryReorder';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
@@ -89,10 +89,19 @@ const GROCERIES_LINK_URL = KNOWN_LINK_APPS.find(app => app.name === 'Groceries')
  * aisle's own run of rows, not a new aisle. It only ever appears while a trip
  * is running and only when that aisle actually has a row to put under it —
  * see the `rows` memo below.
+ *
+ * `recipeHeader` is the other lens on the same rows (#1717) — aisle and
+ * recipe are mutually exclusive groupings of one list, never both at once, so
+ * it's a sibling of `aisle` rather than something layered on top of it. It
+ * carries no `category` a dropped add button could seed (see `zoneByKey`):
+ * unlike an aisle, "which recipe" isn't something placement can assign, so
+ * every FAB drop zone stands down to `rest` while grouped this way, and row
+ * drag is disabled for the same reason (see the `drag` prop below).
  */
 type ListRow =
   | { type: 'aisle'; key: string; aisle: string }
-  | { type: 'unavailableHeader'; key: string; aisle: string; count: number }
+  | { type: 'recipeHeader'; key: string; label: string }
+  | { type: 'unavailableHeader'; key: string; groupKey: string; count: number }
   | { type: 'cartHeader'; key: string; count: number }
   | { type: 'item'; key: string; item: GroceryItem; inCart: boolean; unavailableHere: boolean };
 
@@ -121,6 +130,7 @@ export function GroceryScreen() {
 
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  const groupBy = useGroceryStore(s => s.groceryGroupBy);
   const cartHoldIds = useGroceryStore(useShallow(s => s.cartHoldIds));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const toggleChecked = useGroceryStore(s => s.toggleChecked);
@@ -200,10 +210,19 @@ export function GroceryScreen() {
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
-  const { sections, inCart, remaining } = useMemo(
-    () => buildGrocerySections(items, aisleOrder, cartHoldIds),
-    [items, aisleOrder, cartHoldIds]
-  );
+  // Two mutually exclusive lenses over the same rows — see the ListRow doc
+  // comment above for why grouping is a `kind` rather than two independent
+  // toggles. `sections`' shape follows `kind`, so every reader below narrows
+  // on it rather than assuming aisle's.
+  const grouped = useMemo(() => {
+    if (groupBy === 'recipe') {
+      const r = buildGroceryRecipeSections(items, cartHoldIds);
+      return { kind: 'recipe' as const, sections: r.sections, inCart: r.inCart, remaining: r.remaining };
+    }
+    const r = buildGrocerySections(items, aisleOrder, cartHoldIds);
+    return { kind: 'aisle' as const, sections: r.sections, inCart: r.inCart, remaining: r.remaining };
+  }, [items, aisleOrder, cartHoldIds, groupBy]);
+  const { inCart, remaining } = grouped;
 
   // The store you're standing in, if you've said. Everything the trip changes
   // on this screen hangs off this one value being non-null.
@@ -294,22 +313,22 @@ export function GroceryScreen() {
   // sheet has no business holding rows it can't edit.
   const leftover = useMemo(
     () =>
-      sections.flatMap(section =>
+      grouped.sections.flatMap(section =>
         section.data.filter(i => !i.checked).map(i => ({ id: i.id, name: i.name }))
       ),
-    [sections]
+    [grouped]
   );
   // The other half of the same read: what the trip is taking home, in the same
   // walk order, for the finish sheet's price fields. Carries quantity because a
   // price is only meaningful next to what it bought.
   const purchased = useMemo(
     () =>
-      sections.flatMap(section =>
+      grouped.sections.flatMap(section =>
         section.data
           .filter(i => i.checked)
           .map(i => ({ id: i.id, name: i.name, quantity: i.quantity }))
       ),
-    [sections]
+    [grouped]
   );
   // "≈ $47.30 · 9 of 14 priced", or null while nothing on the list has a price.
   // describeListEstimate owns the wording, including the rule that a partial
@@ -328,15 +347,16 @@ export function GroceryScreen() {
 
   const rows = useMemo<ListRow[]>(() => {
     const out: ListRow[] = [];
-    for (const section of sections) {
-      out.push({ type: 'aisle', key: `aisle:${section.aisle}`, aisle: section.aisle });
-      // Held back rather than pushed in place, so the aisle's own roster
-      // stays first and the "Not here" group — if this trip's store leaves
-      // anything out of it — reads as a footnote to that roster, not a
-      // second aisle. Order within each bucket is still the aisle's own
-      // sortOrder walk, just split rather than reordered.
+    // Held back rather than pushed in place, so the section's own roster
+    // stays first and the "Not here" group — if this trip's store leaves
+    // anything out of it — reads as a footnote to that roster, not a
+    // second section. Order within each bucket is still the section's own
+    // sortOrder walk, just split rather than reordered. Shared between both
+    // groupings, which differ only in the header row they push.
+    const pushSection = (header: ListRow, groupKey: string, data: GroceryItem[]) => {
+      out.push(header);
       const notHere: GroceryItem[] = [];
-      for (const item of section.data) {
+      for (const item of data) {
         if (storeMarkers.get(item.id)?.unavailable) {
           notHere.push(item);
           continue;
@@ -346,13 +366,24 @@ export function GroceryScreen() {
       if (notHere.length > 0) {
         out.push({
           type: 'unavailableHeader',
-          key: `unavailable:${section.aisle}`,
-          aisle: section.aisle,
+          key: `unavailable:${groupKey}`,
+          groupKey,
           count: notHere.length,
         });
         for (const item of notHere) {
           out.push({ type: 'item', key: item.id, item, inCart: false, unavailableHere: true });
         }
+      }
+    };
+    if (grouped.kind === 'recipe') {
+      for (const section of grouped.sections) {
+        const key = `recipe:${section.recipeId ?? 'none'}`;
+        pushSection({ type: 'recipeHeader', key, label: section.recipeTitle }, key, section.data);
+      }
+    } else {
+      for (const section of grouped.sections) {
+        const key = `aisle:${section.aisle}`;
+        pushSection({ type: 'aisle', key, aisle: section.aisle }, key, section.data);
       }
     }
     if (inCart.length > 0) {
@@ -364,7 +395,7 @@ export function GroceryScreen() {
       }
     }
     return out;
-  }, [sections, inCart, cartOpen, storeMarkers]);
+  }, [grouped, inCart, cartOpen, storeMarkers]);
 
   // What's actually selectable right now — the cart's rows only join this
   // when the cart is expanded, same as what's tappable on screen.
@@ -415,12 +446,21 @@ export function GroceryScreen() {
   }, []);
 
   const zoneByKey = useMemo(() => {
-    const aislesFor = categoriesByIndex(rows.map(r => (r.type === 'aisle' ? r.aisle : null)));
     const map = new Map<string, DropZone>();
+    // Grouped by recipe, every row stands down to `rest`: "which recipe" isn't
+    // a placement the add button can seed the way an aisle is (see the
+    // ListRow doc comment above `recipeHeader`), so a drop here always
+    // resolves to a plain add rather than an insert with a category nobody
+    // asked for.
+    if (grouped.kind === 'recipe') {
+      for (const row of rows) map.set(row.key, { kind: 'rest', key: row.key });
+      return map;
+    }
+    const aislesFor = categoriesByIndex(rows.map(r => (r.type === 'aisle' ? r.aisle : null)));
     rows.forEach((row, i) => {
       if (row.type === 'aisle') {
         map.set(row.key, { kind: 'header', key: row.key, category: row.aisle });
-      } else if (row.type === 'cartHeader' || row.type === 'unavailableHeader' || row.inCart || row.unavailableHere) {
+      } else if (row.type === 'cartHeader' || row.type === 'unavailableHeader' || row.type === 'recipeHeader' || row.inCart || row.unavailableHere) {
         // Registered, but with nothing to say about placement: the cart is a
         // record of the trolley rather than a place to file something, which is
         // the same bound groceryDragRange puts on a row drag. Leaving these out
@@ -435,7 +475,7 @@ export function GroceryScreen() {
       }
     });
     return map;
-  }, [rows]);
+  }, [rows, grouped.kind]);
 
   /**
    * Give the freshly added items the position the button was dropped at, then
@@ -706,7 +746,7 @@ export function GroceryScreen() {
       icon: 'options-outline',
       onPress: () => setAislesOpen(true),
       disabled: selectionMode,
-      accessibilityLabel: 'Aisle order',
+      accessibilityLabel: 'List settings — aisles, stores, and grouping',
     });
     list.push({
       icon: 'share-outline',
@@ -769,6 +809,13 @@ export function GroceryScreen() {
           </View>
         );
       }
+      if (row.type === 'recipeHeader') {
+        return withZone(
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{row.label}</Text>
+          </View>
+        );
+      }
       if (row.type === 'unavailableHeader') {
         // Same treatment as the aisle header above it, not a dimmer one —
         // every section header in this app reads the same way (see
@@ -819,8 +866,11 @@ export function GroceryScreen() {
           // position is a fact about this trip, not something to manually
           // rearrange. Reordering is off while selecting too — the long
           // press that would start a drag is how a mis-tapped row gets
-          // selected instead.
-          drag={selectionMode || row.inCart || row.unavailableHere ? undefined : drag}
+          // selected instead. And off while grouped by recipe: a drag
+          // reorders within an aisle or moves a row to another one (see
+          // resolveGroceryDrop), neither of which recipe grouping has a
+          // section to receive.
+          drag={selectionMode || row.inCart || row.unavailableHere || grouped.kind === 'recipe' ? undefined : drag}
           isActive={isActive}
           selectionMode={selectionMode}
           selected={selectedIds.has(row.item.id)}

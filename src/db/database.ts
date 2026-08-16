@@ -2266,6 +2266,18 @@ export function dbSetGroceryAisleOverrides(overrides: Record<string, string>): v
   dbSetSetting('grocery_aisle_overrides', JSON.stringify(overrides));
 }
 
+// The list's two ways of grouping unchecked items — see
+// buildGroceryRecipeSections. A scalar, so it's a settings key like
+// grocery_aisle_order rather than a column; anything but 'recipe' reads back
+// as 'aisle', which is also what an install that predates this setting gets.
+export function dbGetGroceryGroupBy(): 'aisle' | 'recipe' {
+  return dbGetSetting('grocery_group_by') === 'recipe' ? 'recipe' : 'aisle';
+}
+
+export function dbSetGroceryGroupBy(groupBy: 'aisle' | 'recipe'): void {
+  dbSetSetting('grocery_group_by', groupBy);
+}
+
 // ─── Grocery stores ─────────────────────────────────────────────────────────
 //
 // A table rather than a JSON list in `settings` — the opposite call to the

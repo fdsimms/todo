@@ -7,6 +7,8 @@ import {
   dbSetGroceryHiddenAisles,
   dbGetGroceryAisleOverrides,
   dbSetGroceryAisleOverrides,
+  dbGetGroceryGroupBy,
+  dbSetGroceryGroupBy,
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
   dbDeleteGroceryItem,
@@ -46,6 +48,8 @@ jest.mock('../db/database', () => ({
   dbSetGroceryHiddenAisles: jest.fn(),
   dbGetGroceryAisleOverrides: jest.fn().mockReturnValue({}),
   dbSetGroceryAisleOverrides: jest.fn(),
+  dbGetGroceryGroupBy: jest.fn().mockReturnValue('aisle'),
+  dbSetGroceryGroupBy: jest.fn(),
   dbInsertGroceryItem: jest.fn(),
   dbUpdateGroceryItem: jest.fn(),
   dbDeleteGroceryItem: jest.fn(),
@@ -200,6 +204,7 @@ function seed(
     items,
     aisleOrder: [...DEFAULT_AISLES],
     hiddenAisles: [],
+    groceryGroupBy: 'aisle',
     aisleOverrides: extra.aisleOverrides ?? {},
     shops: extra.shops ?? [],
     itemShops: extra.itemShops ?? [],
@@ -218,6 +223,7 @@ beforeEach(() => {
   (dbGetGroceryAisleOrder as jest.Mock).mockReturnValue(null);
   (dbGetGroceryHiddenAisles as jest.Mock).mockReturnValue([]);
   (dbGetGroceryAisleOverrides as jest.Mock).mockReturnValue({});
+  (dbGetGroceryGroupBy as jest.Mock).mockReturnValue('aisle');
   (dbFinishGroceryShopping as jest.Mock).mockReturnValue([]);
   (dbClearGroceryList as jest.Mock).mockReturnValue([]);
   (dbGetAllGroceryShops as jest.Mock).mockReturnValue([]);
@@ -967,6 +973,19 @@ describe('aisles', () => {
     const written = (dbSetGroceryAisleOrder as jest.Mock).mock.calls[0][0] as string[];
     expect(written[0]).toBe('Frozen');
     expect(written[written.length - 1]).toBe(OTHER_AISLE);
+  });
+
+  it('setGroceryGroupBy persists and updates state', () => {
+    useGroceryStore.getState().setGroceryGroupBy('recipe');
+
+    expect(dbSetGroceryGroupBy).toHaveBeenCalledWith('recipe');
+    expect(useGroceryStore.getState().groceryGroupBy).toBe('recipe');
+  });
+
+  it('initialize reads groceryGroupBy from settings', () => {
+    (dbGetGroceryGroupBy as jest.Mock).mockReturnValue('recipe');
+    useGroceryStore.getState().initialize();
+    expect(useGroceryStore.getState().groceryGroupBy).toBe('recipe');
   });
 
   it('addAisle appends a new aisle and persists it', () => {
