@@ -596,7 +596,7 @@ which rows you don't usually get here.
   the list on anyone's first trip, which is how the feature would come to read as noise. Same
   discipline as `shoppingTrip.ts`.
 - **The banner is a sibling of the list, not its `ListHeaderComponent`** — unlike
-  `TripSuggestionCard`. A mode indicator that scrolls away is one you can't find to turn off, and
+  `StartTripPrompt`. A mode indicator that scrolls away is one you can't find to turn off, and
   it's the answer to "why does this row say that" at the moment you're looking at the row. The two
   never render together: the card is for deciding where to go, the banner says you've gone.
 - **The row caption is its own third text treatment**, borrowing `note`'s colour and

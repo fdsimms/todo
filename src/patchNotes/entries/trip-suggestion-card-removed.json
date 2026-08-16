@@ -1,0 +1,4 @@
+{
+  "message": "The grocery list no longer opens with a \"Likely has\" store suggestion every time you visit. It's now a plain \"Start shopping\" action, and the store-coverage reasoning shows up inside the shopping trip planner once you open it.",
+  "date": "2026-08-16"
+}

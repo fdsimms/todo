@@ -22,11 +22,11 @@ interface Props {
  * on screen reads as the app having opinions.
  *
  * It is a sibling of the list rather than its `ListHeaderComponent`, unlike
- * `TripSuggestionCard`: a mode indicator that scrolls away is one you can't
+ * `StartTripPrompt`: a mode indicator that scrolls away is one you can't
  * find when you want to turn it off, and it's the answer to "why does this row
  * say that" at the moment you're looking at the row. The two never appear
- * together — the planner card is for deciding where to go, and this says you've
- * gone — so the fixed height it costs is only ever paid during a shop.
+ * together — the starting card is for deciding where to go, and this says
+ * you've gone — so the fixed height it costs is only ever paid during a shop.
  */
 export function ActiveTripBanner({ shopName, onChange, onClear }: Props) {
   const colors = useColors();
