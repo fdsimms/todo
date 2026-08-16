@@ -29,6 +29,8 @@ import {
   dbSetGroceryAisleOverrides,
   dbGetGroceryHiddenAisles,
   dbSetGroceryHiddenAisles,
+  dbGetGroceryGroupBy,
+  dbSetGroceryGroupBy,
   dbTransaction,
 } from '../db/database';
 import { useRecipeStore } from './useRecipeStore';
@@ -157,6 +159,13 @@ interface GroceryStore {
   aisleOverrides: Record<string, string>;
   /** Checked rows still holding their place in their own aisle. */
   cartHoldIds: string[];
+  /**
+   * How the shopping list groups its unchecked rows — aisle (default) or
+   * recipe. See buildGroceryRecipeSections. A display setting, not a fact
+   * about any item, so it lives here rather than on the rows themselves.
+   */
+  groceryGroupBy: 'aisle' | 'recipe';
+  setGroceryGroupBy: (groupBy: 'aisle' | 'recipe') => void;
   initialized: boolean;
 
   /**
@@ -755,6 +764,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   tripStartedAt: null,
   aisleOverrides: {},
   cartHoldIds: [],
+  groceryGroupBy: 'aisle',
   initialized: false,
   lastAction: null,
 
@@ -821,8 +831,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       tripShopId,
       tripStartedAt,
       cartHoldIds: [],
+      groceryGroupBy: dbGetGroceryGroupBy(),
       initialized: true,
     });
+  },
+
+  setGroceryGroupBy(groupBy) {
+    dbSetGroceryGroupBy(groupBy);
+    set({ groceryGroupBy: groupBy });
   },
 
   /**

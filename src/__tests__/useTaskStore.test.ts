@@ -95,6 +95,7 @@ jest.mock('../db/database', () => ({
   // read path has to be stubbed here even though nothing in this file is about
   // groceries.
   dbGetGroceryAisleOverrides: jest.fn().mockReturnValue({}),
+  dbGetGroceryGroupBy: jest.fn().mockReturnValue('aisle'),
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbGetAllItemSubLinks: jest.fn().mockReturnValue([]),

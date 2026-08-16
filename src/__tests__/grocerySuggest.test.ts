@@ -2,6 +2,7 @@ import {
   rankGrocerySuggestions,
   buyAgainItems,
   buildGrocerySections,
+  buildGroceryRecipeSections,
   catalogPruneCandidates,
   estimatedPurchaseCadenceDays,
   probablyHaveReason,
@@ -215,6 +216,60 @@ describe('buildGrocerySections', () => {
     ];
     const { sections } = buildGrocerySections(items, order);
     expect(sections[0].data.map(i => i.name)).toEqual(['Apples', 'Zucchini']);
+  });
+});
+
+// ─── buildGroceryRecipeSections ──────────────────────────────────────────────
+
+describe('buildGroceryRecipeSections', () => {
+  it('ignores anything not on the list', () => {
+    const items = [makeItem({ name: 'Milk', sourceRecipeId: 'r1', sourceRecipeTitle: 'Chili', onList: false })];
+    const { sections, remaining } = buildGroceryRecipeSections(items);
+    expect(sections).toEqual([]);
+    expect(remaining).toBe(0);
+  });
+
+  it('groups by recipe, sorted by title', () => {
+    const items = [
+      makeItem({ name: 'Chicken', sourceRecipeId: 'r2', sourceRecipeTitle: 'Stir-fry', onList: true }),
+      makeItem({ name: 'Beans', sourceRecipeId: 'r1', sourceRecipeTitle: 'Chili', onList: true }),
+    ];
+    const { sections } = buildGroceryRecipeSections(items);
+    expect(sections.map(s => s.recipeTitle)).toEqual(['Chili', 'Stir-fry']);
+    expect(sections.map(s => s.recipeId)).toEqual(['r1', 'r2']);
+  });
+
+  it('sinks unattributed items into "No recipe", always last', () => {
+    const items = [
+      makeItem({ name: 'Paper towels', sourceRecipeId: null, sourceRecipeTitle: null, onList: true }),
+      makeItem({ name: 'Beans', sourceRecipeId: 'r1', sourceRecipeTitle: 'Chili', onList: true }),
+    ];
+    const { sections } = buildGroceryRecipeSections(items);
+    expect(sections.map(s => s.recipeTitle)).toEqual(['Chili', 'No recipe']);
+    expect(sections[1].recipeId).toBeNull();
+  });
+
+  it('keeps a just-checked row in its own recipe section while the hold is live', () => {
+    const beans = makeItem({ name: 'Beans', sourceRecipeId: 'r1', sourceRecipeTitle: 'Chili', onList: true, checked: true });
+    const { sections, inCart } = buildGroceryRecipeSections([beans], [beans.id]);
+    expect(sections[0].data.map(i => i.name)).toEqual(['Beans']);
+    expect(inCart).toEqual([]);
+  });
+
+  it('sinks it into the cart once the hold clears', () => {
+    const beans = makeItem({ name: 'Beans', sourceRecipeId: 'r1', sourceRecipeTitle: 'Chili', onList: true, checked: true });
+    const { sections, inCart } = buildGroceryRecipeSections([beans], []);
+    expect(sections).toEqual([]);
+    expect(inCart.map(i => i.name)).toEqual(['Beans']);
+  });
+
+  it('orders rows within a recipe section by sortOrder', () => {
+    const items = [
+      makeItem({ name: 'Zucchini', sourceRecipeId: 'r1', sourceRecipeTitle: 'Chili', onList: true, sortOrder: 9 }),
+      makeItem({ name: 'Beans', sourceRecipeId: 'r1', sourceRecipeTitle: 'Chili', onList: true, sortOrder: 2 }),
+    ];
+    const { sections } = buildGroceryRecipeSections(items);
+    expect(sections[0].data.map(i => i.name)).toEqual(['Beans', 'Zucchini']);
   });
 });
 

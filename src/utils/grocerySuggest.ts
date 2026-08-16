@@ -19,6 +19,20 @@ export interface GrocerySection {
   data: GroceryItem[];
 }
 
+export interface GroceryRecipeSection {
+  /** Null for the catch-all bucket — see NO_RECIPE_LABEL. */
+  recipeId: string | null;
+  recipeTitle: string;
+  data: GroceryItem[];
+}
+
+/**
+ * Where a hand-typed item, or one classifyPlanned merged from more than one
+ * recipe in a week (GroceryItem.sourceRecipeId null in both cases), lands in
+ * buildGroceryRecipeSections — always last, same convention OTHER_AISLE uses.
+ */
+export const NO_RECIPE_LABEL = 'No recipe';
+
 const DAY_MS = 86_400_000;
 /** Score halves every this many days since last purchase. */
 const RECENCY_HALF_LIFE_DAYS = 30;
@@ -173,6 +187,60 @@ export function buildGrocerySections(
     a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
 
   const sections = sectionsInAisleOrder(byAisle, aisleOrder, bySortOrder);
+
+  inCart.sort(bySortOrder);
+
+  return {
+    sections,
+    inCart,
+    remaining: onList.filter(i => !i.checked).length,
+  };
+}
+
+/**
+ * The other lens on the same list: cut into recipes instead of aisles, off
+ * GroceryItem.sourceRecipeId/sourceRecipeTitle — a snapshot stamped once at
+ * creation (see useGroceryStore.newItemRow), not a live lookup, so a section
+ * still names its recipe correctly even after that recipe is renamed or
+ * deleted. Sections are sorted by title, with the no-recipe bucket always
+ * last; within a section, still the list's own sortOrder walk.
+ */
+export function buildGroceryRecipeSections(
+  items: readonly GroceryItem[],
+  cartHoldIds: readonly string[] = []
+): { sections: GroceryRecipeSection[]; inCart: GroceryItem[]; remaining: number } {
+  const held = new Set(cartHoldIds);
+  const onList = items.filter(i => i.onList);
+
+  const byRecipe = new Map<string, { title: string; data: GroceryItem[] }>();
+  const inCart: GroceryItem[] = [];
+
+  for (const item of onList) {
+    if (item.checked && !held.has(item.id)) {
+      inCart.push(item);
+      continue;
+    }
+    const key = item.sourceRecipeId ?? '';
+    const title = item.sourceRecipeId ? item.sourceRecipeTitle || NO_RECIPE_LABEL : NO_RECIPE_LABEL;
+    const bucket = byRecipe.get(key);
+    if (bucket) bucket.data.push(item);
+    else byRecipe.set(key, { title, data: [item] });
+  }
+
+  const bySortOrder = (a: GroceryItem, b: GroceryItem) =>
+    a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
+
+  const sections: GroceryRecipeSection[] = Array.from(byRecipe.entries())
+    .map(([recipeId, { title, data }]) => ({
+      recipeId: recipeId || null,
+      recipeTitle: title,
+      data: [...data].sort(bySortOrder),
+    }))
+    .sort((a, b) => {
+      if (a.recipeId === null) return b.recipeId === null ? 0 : 1;
+      if (b.recipeId === null) return -1;
+      return a.recipeTitle.localeCompare(b.recipeTitle);
+    });
 
   inCart.sort(bySortOrder);
 

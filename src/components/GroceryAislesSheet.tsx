@@ -26,6 +26,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { ReorderableList } from './ReorderableList';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
+import { SegmentedControl } from './SegmentedControl';
 import { EmptyState } from './EmptyState';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { itemCountsByShop } from '../utils/groceryShops';
@@ -37,17 +38,20 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = 'aisles' | 'stores';
+type Tab = 'aisles' | 'stores' | 'groupBy';
 
 /**
- * Where things are: the order you walk an aisle in, and the stores you walk.
+ * Where things are, and how the list itself is organized: the order you walk
+ * an aisle in, the stores you walk, and — #1717 — aisle vs. recipe grouping.
  *
- * The two tabs share a sheet because they're the same kind of setting and the
- * grocery header has no room for a fifth 34pt action. The split of labour with
- * Buy again is deliberate — **this sheet manages stores, Buy again browses
- * them.** Putting the "what does Costco carry" list here too would bury the
- * everyday read two taps inside a settings sheet, when the place you want it
- * is the screen where you're picking what to buy.
+ * The tabs share a sheet because they're the same kind of setting and the
+ * grocery header has no room for another 34pt action (this one used to be
+ * two tabs for exactly that reason; a third only extends the argument). The
+ * split of labour with Buy again is deliberate — **this sheet manages
+ * stores, Buy again browses them.** Putting the "what does Costco carry"
+ * list here too would bury the everyday read two taps inside a settings
+ * sheet, when the place you want it is the screen where you're picking what
+ * to buy.
  *
  * Uses ReorderableList rather than SortableList on purpose: this sheet owns
  * its own scroll view, so it's immune to the "a JS responder must be an
@@ -86,6 +90,8 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const reorderShops = useGroceryStore(s => s.reorderShops);
   const deleteShop = useGroceryStore(s => s.deleteShop);
   const setShopExcludedFromSuggestions = useGroceryStore(s => s.setShopExcludedFromSuggestions);
+  const groceryGroupBy = useGroceryStore(s => s.groceryGroupBy);
+  const setGroceryGroupBy = useGroceryStore(s => s.setGroceryGroupBy);
 
   const [tab, setTab] = useState<Tab>('aisles');
   const [newAisle, setNewAisle] = useState('');
@@ -205,13 +211,14 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
-          <Text style={styles.headerTitle}>Aisles &amp; stores</Text>
+          <Text style={styles.headerTitle}>List settings</Text>
           <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
         </View>
 
         <View style={styles.segments}>
-          {(['aisles', 'stores'] as const).map(t => {
+          {(['aisles', 'stores', 'groupBy'] as const).map(t => {
             const active = t === tab;
+            const label = t === 'aisles' ? 'Aisles' : t === 'stores' ? 'Stores' : 'Group by';
             return (
               <TouchableOpacity
                 key={t}
@@ -219,7 +226,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => {
                   haptics.tap();
-                  // Both tabs share the draft text, and the field that owns it
+                  // Every tab shares the draft text, and the field that owns it
                   // unmounts with the tab — so its onBlur never fires.
                   setEditingAisle(null);
                   setEditingShopId(null);
@@ -227,10 +234,10 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                 }}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
-                accessibilityLabel={t === 'aisles' ? 'Aisles' : 'Stores'}
+                accessibilityLabel={label}
               >
                 <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                  {t === 'aisles' ? 'Aisles' : 'Stores'}
+                  {label}
                 </Text>
               </TouchableOpacity>
             );
@@ -260,6 +267,12 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
               haptics.tap();
               setShopExcludedFromSuggestions(id, excluded);
             }}
+          />
+        ) : tab === 'groupBy' ? (
+          <GroupByTab
+            styles={styles}
+            groupBy={groceryGroupBy}
+            onChange={setGroceryGroupBy}
           />
         ) : (
         <>
@@ -539,6 +552,44 @@ function StoresTab({
   );
 }
 
+interface GroupByTabProps {
+  styles: ReturnType<typeof makeStyles>;
+  groupBy: 'aisle' | 'recipe';
+  onChange: (groupBy: 'aisle' | 'recipe') => void;
+}
+
+/**
+ * Aisle vs. recipe grouping (#1717) — a closed two-way choice, so
+ * SegmentedControl rather than another draggable list. Wrapped in a card:
+ * the control's own track is bgTertiary, which is close to invisible sitting
+ * directly on this sheet's bg (see SegmentedControl's doc comment).
+ */
+function GroupByTab({ styles, groupBy, onChange }: GroupByTabProps) {
+  return (
+    <>
+      <Text style={styles.intro}>
+        How the shopping list sorts what's still to buy.
+      </Text>
+      <View style={styles.groupByCard}>
+        <SegmentedControl
+          label="Group by"
+          value={groupBy}
+          onChange={onChange}
+          options={[
+            { value: 'aisle', label: 'Aisle' },
+            { value: 'recipe', label: 'Recipe' },
+          ]}
+        />
+        <Text style={styles.groupByHint}>
+          {groupBy === 'recipe'
+            ? 'Items are grouped by the recipe they were added from. Anything typed by hand, or added from more than one recipe at once, is under "No recipe."'
+            : 'Items are grouped by aisle, in the walk order set on the Aisles tab.'}
+        </Text>
+      </View>
+    </>
+  );
+}
+
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
@@ -632,5 +683,16 @@ function makeStyles(colors: Colors) {
     // the default neutral tint (bgTertiary) is nearly indistinguishable
     // from it.
     addButton: { backgroundColor: colors.bgSecondary },
+    // A card, for the same reason addButton needs one: SegmentedControl's
+    // track is bgTertiary, and this sheet's root sits on bg.
+    groupByCard: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      marginHorizontal: spacing.md,
+      marginTop: spacing.lg,
+      gap: spacing.sm,
+    },
+    groupByHint: { fontSize: font.sm, color: colors.textTertiary },
   });
 }

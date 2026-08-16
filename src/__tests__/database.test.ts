@@ -63,6 +63,8 @@ import {
   dbGetGroceryAisleOverrides,
   dbSetGroceryAisleOverrides,
   dbSetGroceryAisleOrder,
+  dbGetGroceryGroupBy,
+  dbSetGroceryGroupBy,
   dbGetMealPlanEntries,
   dbInsertMealPlanEntry,
   dbUpdateMealPlanEntry,
@@ -2059,6 +2061,22 @@ describe('grocery items', () => {
     it('drops non-string entries', () => {
       dbSetSetting('grocery_aisle_order', '["Produce",7,null,"Frozen"]');
       expect(dbGetGroceryAisleOrder()).toEqual(['Produce', 'Frozen']);
+    });
+  });
+
+  describe('grocery group by', () => {
+    it('is aisle on a fresh database', () => {
+      expect(dbGetGroceryGroupBy()).toBe('aisle');
+    });
+
+    it('survives a round trip', () => {
+      dbSetGroceryGroupBy('recipe');
+      expect(dbGetGroceryGroupBy()).toBe('recipe');
+    });
+
+    it('reads back anything but recipe as aisle', () => {
+      dbSetSetting('grocery_group_by', 'nonsense');
+      expect(dbGetGroceryGroupBy()).toBe('aisle');
     });
   });
 
