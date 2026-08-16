@@ -25,6 +25,8 @@ const mockSettingsState = {
   afternoonStart: '12:00',
   eveningStart: '18:00',
   nightStart: '21:00',
+  activeHoursStart: '08:00',
+  activeHoursEnd: '22:00',
 };
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -651,6 +653,31 @@ describe('laterSections', () => {
     const sections = laterSections([a, b]);
     expect(sections).toHaveLength(1);
     expect(sections[0].dateISO).toBeNull();
+  });
+
+  // #1145: a fresh 0/x quota task has no timeSegments/windowStart of its own,
+  // so isUpcomingToday's on-pace fast path is what's supposed to keep it out
+  // of a manufactured time-of-day sub-header — it belongs in the headerless
+  // "later today" bucket alongside anything else with no segment, not under
+  // Night just because the pace ramp happens to resolve to a late clock time.
+  it('puts a 0/x on-pace quota task in the headerless bucket, never under a manufactured time-of-day segment', () => {
+    mockSettingsState.dayResetTime = '04:00';
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 4, 0, 0)); // exactly dayResetTime, as reported
+    const task = makeTask({
+      id: 'quota',
+      dueDate: new Date(2025, 5, 10, 4, 0, 0).toISOString(),
+      targetCount: 8,
+      targetUnit: 'glasses',
+      progressCount: 0,
+    });
+    const sections = laterSections([task]);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].segments).toHaveLength(1);
+    expect(sections[0].segments[0].label).toBeNull();
+    expect(sections[0].segments[0].data.map(t => t.id)).toEqual(['quota']);
+    jest.useRealTimers();
+    mockSettingsState.dayResetTime = '00:00';
   });
 });
 
