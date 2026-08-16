@@ -9,6 +9,8 @@ import {
   GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   GROCERY_USE_UP_LEAD_DAYS_MAX,
   GROCERY_USE_UP_LEAD_DAYS_MIN,
+  USE_UP_TASK_CAP_MAX,
+  USE_UP_TASK_CAP_MIN,
 } from '../types';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
@@ -329,6 +331,14 @@ interface SettingsStore {
   // null for none — same setting as groceryUseUpTaskCategory, for the same
   // reason: loose tasks render above every category section on Today.
   leftoverUseUpTaskCategory: string | null;
+  // The shared ceiling grocery and leftover use-up tasks draw from together
+  // (#1675) — null (the default) is unlimited. The two generators are
+  // independent producers of the same kind of row, so a well-stocked kitchen
+  // with both on can put an unbounded pile of "Use up X" tasks on the list at
+  // once; this caps the pile without turning either generator off. A source
+  // that's declined a slot isn't suppressed — see reconcileGeneratedTask's
+  // useUpCap.
+  useUpTaskCap: number | null;
   // Pulling tasks out of the Reminders app and into the Inbox — the app's voice
   // capture story, since Siri needs no app name to add a reminder. Off by
   // default and never inferred: importing *deletes* the reminder, so it only
@@ -568,6 +578,7 @@ interface SettingsStore {
   setGroceryUseUpTaskCategory: (category: string | null) => void;
   setLeftoverUseUpTasks: (on: boolean) => void;
   setLeftoverUseUpTaskCategory: (category: string | null) => void;
+  setUseUpTaskCap: (cap: number | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   setNewTaskDefaults: (patch: Partial<NewTaskDefaults>) => void;
   setLastVisitedScreen: (screen: string | null) => void;
@@ -610,6 +621,7 @@ const DEFAULT_SETTINGS = {
   groceryUseUpTaskCategory: null,
   leftoverUseUpTasks: true,
   leftoverUseUpTaskCategory: null,
+  useUpTaskCap: null,
   remindersImportEnabled: false,
   remindersImportDelete: true,
   groceryImportEnabled: false,
@@ -856,6 +868,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   groceryUseUpTaskCategory: null,
   leftoverUseUpTasks: true,
   leftoverUseUpTaskCategory: null,
+  useUpTaskCap: null,
   remindersImportEnabled: false,
   remindersImportListId: null,
   remindersImportConfirmedListId: null,
@@ -990,6 +1003,15 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const leftoverUseUpTasks = dbGetSetting('leftoverUseUpTasks') !== 'false';
     const storedLeftoverCategory = dbGetSetting('leftoverUseUpTaskCategory');
     const leftoverUseUpTaskCategory = storedLeftoverCategory ? storedLeftoverCategory : null;
+    // '' persists as "no cap", same reading as vacationEnd/groceryUseUpTaskCategory.
+    const storedUseUpTaskCap = dbGetSetting('useUpTaskCap');
+    const parsedUseUpTaskCap = storedUseUpTaskCap ? Number(storedUseUpTaskCap) : Number.NaN;
+    const useUpTaskCap =
+      Number.isFinite(parsedUseUpTaskCap)
+      && parsedUseUpTaskCap >= USE_UP_TASK_CAP_MIN
+      && parsedUseUpTaskCap <= USE_UP_TASK_CAP_MAX
+        ? Math.round(parsedUseUpTaskCap)
+        : null;
     const remindersImportEnabled = dbGetSetting('remindersImportEnabled') === 'true';
     // `!== 'false'`, not `=== 'true'`, because this one defaults ON — an
     // install that predates the setting has no row, and the usual comparison
@@ -1070,7 +1092,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1413,6 +1435,17 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setLeftoverUseUpTaskCategory(category: string | null) {
     dbSetSetting('leftoverUseUpTaskCategory', category ?? '');
     set({ leftoverUseUpTaskCategory: category });
+  },
+
+  // Only read when a use-up task is created, same restraint as
+  // setGroceryUseUpLeadDays: lowering the cap doesn't retroactively delete
+  // tasks already on the list.
+  setUseUpTaskCap(cap: number | null) {
+    const clamped = cap === null
+      ? null
+      : Math.max(USE_UP_TASK_CAP_MIN, Math.min(USE_UP_TASK_CAP_MAX, Math.round(cap)));
+    dbSetSetting('useUpTaskCap', clamped === null ? '' : String(clamped));
+    set({ useUpTaskCap: clamped });
   },
 
   setRemindersImportEnabled(on: boolean) {

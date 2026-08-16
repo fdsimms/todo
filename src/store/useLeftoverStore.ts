@@ -132,13 +132,14 @@ interface LeftoverStore {
  * a title.
  */
 function reconcileLeftoverTask(leftover: Leftover): void {
-  const { leftoverUseUpTasks, leftoverUseUpTaskCategory } = useSettingsStore.getState();
+  const { leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap } = useSettingsStore.getState();
   reconcileGeneratedTask({
     kind: 'leftoverUseUp',
     sourceId: leftover.id,
     wanted: wantsUseUpTask(leftover, leftoverUseUpTasks),
     drift: existing => (useUpTaskNeedsUpdate(existing, leftover) ? useUpTaskFields(leftover) : null),
     draft: () => useUpTaskDraft(leftover, leftoverUseUpTaskCategory),
+    useUpCap: useUpTaskCap,
   });
 }
 
@@ -253,6 +254,10 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
   },
 
   reconcileAllLeftoverTasks() {
+    // `get().leftovers` is sorted soonest-keepUntil-first (sortLeftovers), so
+    // this sweep already visits the most urgent candidates first — which is
+    // what spends any open useUpTaskCap slots on them rather than on whichever
+    // leftover happened to be logged first (#1675).
     for (const leftover of get().leftovers) {
       if (!leftover.finishedAt) reconcileLeftoverTask(leftover);
     }

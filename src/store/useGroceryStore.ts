@@ -712,7 +712,7 @@ function commitAisleOrder(order: string[], used: readonly string[]) {
  * mean a staple got exactly one use-up task, ever.
  */
 function reconcileUseUpTask(item: GroceryItem): void {
-  const { groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory } =
+  const { groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, useUpTaskCap } =
     useSettingsStore.getState();
   reconcileGeneratedTask({
     kind: 'groceryUseUp',
@@ -727,6 +727,7 @@ function reconcileUseUpTask(item: GroceryItem): void {
         : null
     ),
     draft: () => useUpTaskDraft(item, groceryUseUpLeadDays, groceryUseUpTaskCategory),
+    useUpCap: useUpTaskCap,
   });
 }
 
@@ -1773,8 +1774,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // After the set(), so each reconcile reads the row as it now stands. Only
     // the rows this trip re-dated can have anything to say — an item bought
     // with no shelf life in the lexicon keeps whatever date it had, and its
-    // task with it.
-    for (const id of Object.keys(expiresAtById)) {
+    // task with it. Soonest-expiring first, so a trip that re-dates more
+    // items than the use-up cap has room for spends what's open on the ones
+    // that actually go off soonest (#1675) rather than on whichever happened
+    // to sort earliest in the cart.
+    const soonestFirst = Object.keys(expiresAtById).sort(
+      (a, b) => expiresAtById[a].localeCompare(expiresAtById[b])
+    );
+    for (const id of soonestFirst) {
       const item = get().items.find(i => i.id === id);
       if (item) reconcileUseUpTask(item);
     }
