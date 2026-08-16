@@ -260,6 +260,41 @@ All time comparisons use the configurable `dayResetTime` (default `"00:00"`) to 
 
 **Expiry needs a window that closes and a day to close it on.** `isTaskExpired()` is the one gate with no way back — `sweepExpiredTasks` deletes what it flags — so it checks both. `effectiveWindowEnd()` ignores a `windowEnd` that isn't after its `windowStart`, because both gates anchor to a single logical day and "22:00–02:00" otherwise compares as past from 02:00 onward: expired before it ever opened. And `windowEnd` is deliberately not a date signal (see `hasNoDateSignal`), so a task carrying only one has no day to be late for — `hasDayArrived()` can't catch that, since with no `dueDate` it's vacuously true. Expiry now demands the same placement `isTaskVisible` does.
 
+### Scheduling decisions and dayResetTime — the grace window bug
+
+**Any computation that decides where to schedule a task — when it should land, which date to suggest, whether to defer it — must use `dayResetTime`-aware helpers.** Using bare `new Date()` ignores the user's configured day boundary and off-by-ones tasks by one day during the "early-morning grace window" before `dayResetTime`.
+
+**The grace window is the period between midnight (00:00 calendar time) and the user's `dayResetTime` setting.** If a user sets their day to start at 02:00 because they work late, anything happening between midnight and 2 AM — pulling project tasks, accepting snooze suggestions, deciding to lighten the day, creating use-up reminders — still belongs to the *previous* logical day, not today. A decision made at 1:30 AM to reschedule something "tomorrow" means "tomorrow by their clock", which is 26.5 hours away, not 24.
+
+**The bug pattern: `new Date()` returns the calendar date, ignorant of `dayResetTime`.** At 1:30 AM on Aug 16 with a 02:00 reset, `new Date()` is Aug 16 but the logical today is still Aug 15. A scheduling decision that reads `new Date()` dates something Aug 16, not Aug 15, landing it one day later than intended.
+
+**The fix: use the helpers in `src/utils/dateUtils.ts`:**
+- `getCurrentDayStart()` — equivalent to `getDayStart(new Date(), dayResetTime)`, returns the midnight-equivalent instant of the current logical day. Use this when you need "today's start".
+- `getLogicalToday()` — returns a Date set to the current logical day, at noon (safe for display). Use when you need a Date in the current logical day that's definitely in the day (not on a boundary).
+- `getLogicalTomorrow()` — equivalent to `addDays(getLogicalToday(), 1)`, returns the next logical day. Use when computing "tomorrow".
+- `getDayStart(date, dayResetTime)` — anchors a date to the boundary of its logical day under the given reset time. Use when you need to normalize a date you already have.
+
+**Example of the bug vs the fix:**
+```ts
+// ❌ WRONG: ignores dayResetTime, off by one during grace window
+const today = new Date();
+const tomorrowDate = addDays(today, 1);  // at 1:30 AM with 02:00 reset, this is wrong by one day
+deloadProposal.tomorrow = { date: tomorrowDate, dayLabel: 'Tomorrow', reason: null };
+
+// ✅ RIGHT: respects dayResetTime
+const today = getCurrentDayStart();  // or getLogicalToday()
+const tomorrowDate = getLogicalTomorrow(resetTime);  // or addDays(getCurrentDayStart(), 1)
+deloadProposal.tomorrow = { date: tomorrowDate, dayLabel: 'Tomorrow', reason: null };
+```
+
+**Where to audit during code review:** Any date computation for scheduling purposes — `dueDate`, `deferUntil`, snooze suggestions, project pull dates, use-up task dates, deload plan destinations, or anything else that lands a task on a day. Specifically look for:
+- Bare `new Date()` being used to determine "today" or "tomorrow" for scheduling
+- `addDays(new Date(), n)` instead of computing from a logical day
+- Date comparisons using `new Date()` to establish "before/after today"
+- Default parameters that use `new Date()` for task-dating functions
+
+Search the codebase with `grep -n "new Date()" src/utils/` and check whether the result is a scheduling decision or something else (timestamps, display formatting, or expiry checks all have different rules). Don't assume a file is right because the pattern appears elsewhere in it — `src/utils/dateUtils.ts` itself has many correct uses alongside the one-line-per-function rule (e.g., `isTaskExpired()` deliberately uses bare `Date.now()` to capture the *real* current time, since expiry is about wall-clock seconds, not logical days).
+
 ### Pinning — a pinned task has two rows, and that's the feature
 
 Pinning adds a **copy** of a task to a "Pinned Tasks" block at the top of Today. The original row

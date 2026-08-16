@@ -9,8 +9,9 @@ import type { Leftover } from '../types';
 
 // utils/leftovers → dateUtils → the settings store → database.ts → expo-sqlite,
 // none of which this suite needs; same stub groceryExpiry.test.ts takes.
+const settingsState = { dayResetTime: '00:00' };
 jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
+  useSettingsStore: { getState: () => settingsState },
 }));
 
 let seq = 0;
@@ -77,6 +78,22 @@ describe('useUpTaskFields', () => {
   it('carries keepUntil itself as the deadline', () => {
     const fields = useUpTaskFields(leftover({ keepUntil: '2026-08-14' }), now);
     expect(fields.deadline).toBe('2026-08-14');
+  });
+
+  it('defaults to the logical day, honouring dayResetTime during the early-morning grace window', () => {
+    // 1:30 AM on June 11, with a 2:00 AM reset — still "June 10" logically.
+    settingsState.dayResetTime = '02:00';
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
+
+    try {
+      const fields = useUpTaskFields(leftover());
+      expect(new Date(fields.dueDate).getDate()).toBe(10);
+      expect(new Date(fields.dueDate).getMonth()).toBe(5);
+    } finally {
+      jest.useRealTimers();
+      settingsState.dayResetTime = '00:00';
+    }
   });
 });
 

@@ -1,8 +1,7 @@
-import { addDays } from 'date-fns/addDays';
 import type { Task } from '../types';
 import { computeSnoozeSuggestion } from './snoozeEngine';
 import { estimatedMinutesFor } from './effort';
-import { getTaskDayStart } from './dateUtils';
+import { getLogicalTomorrow, getTaskDayStart } from './dateUtils';
 import type { BusyEvent } from './calendarBusy';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -176,7 +175,7 @@ export function buildDeloadPlan(
   // they all pick the same "lightest" day, landing the whole sweep on one date.
   let working: Task[] = [...allTasks];
 
-  const tomorrowDate = addDays(new Date(), 1);
+  const tomorrowDate = getLogicalTomorrow(resetTime);
   tomorrowDate.setHours(12, 0, 0, 0);
 
   const proposals: DeloadProposal[] = ordered.map(({ task, minutes }) => {

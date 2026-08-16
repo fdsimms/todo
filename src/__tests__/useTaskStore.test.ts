@@ -2135,6 +2135,35 @@ describe('dripStalledProjects', () => {
 
     expect(useTaskStore.getState().tasks[0].autoScheduledAt).toBeNull();
   });
+
+  it('honours dayResetTime during the early-morning grace window', () => {
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+      useSettingsStore: { getState: jest.Mock };
+    };
+    const defaultSettings = useSettingsStore.getState();
+
+    jest.useFakeTimers();
+    // 1:30 AM on June 11, with a 2:00 AM reset — still "June 10" logically.
+    jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
+    useSettingsStore.getState.mockReturnValue({
+      ...defaultSettings,
+      dayResetTime: '02:00',
+      vacationMode: false,
+    });
+
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1', sortOrder: 0 })] });
+
+    useTaskStore.getState().dripStalledProjects();
+
+    const dueDate = useTaskStore.getState().tasks[0].dueDate;
+    expect(dueDate).not.toBeNull();
+    expect(new Date(dueDate!).getDate()).toBe(10);
+    expect(new Date(dueDate!).getMonth()).toBe(5);
+
+    jest.useRealTimers();
+    useSettingsStore.getState.mockReturnValue(defaultSettings);
+  });
 });
 
 // ─── checkMealPlanNudge ─────────────────────────────────────────────────────

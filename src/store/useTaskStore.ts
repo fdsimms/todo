@@ -2672,7 +2672,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // Today, not a suggested future day: the whole point is that an
         // opted-in project puts its next thing in front of you without being
         // asked, and a date a week out would leave it invisible until then.
-        const today = new Date();
+        const today = getCurrentDayStart();
         today.setHours(12, 0, 0, 0);
         // The stamp goes on here rather than inside projectPullUpdates, which
         // the pull sheet shares: a date the user picked off a proposal is a
