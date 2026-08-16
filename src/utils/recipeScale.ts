@@ -1,4 +1,4 @@
-import { CONTAINER_UNITS, SIZE_UNITS } from './groceryParse';
+import { isSizedContainer, matchSizedContainer, LEADING_WORD } from './groceryParse';
 
 /**
  * Halving and doubling a recipe — the one place in this app that does
@@ -313,16 +313,8 @@ export function formatQuantityAmount(value: number, preferDecimal = false): stri
 // Scaling
 // ---------------------------------------------------------------------------
 
-/** A sized container's trailing half — "oz can" out of "14 oz can". */
-const BARE_CONTAINER = /^([a-z]+)\.?\s+([a-z]+)$/i;
 /** A counted sized container's trailing half — "14 oz cans" out of "2 14 oz cans". */
 const COUNTED_CONTAINER = /^(\d+(?:\.\d+)?)\s*-?\s*([a-z]+)\.?\s+([a-z]+)$/i;
-/** The leading unit word of whatever follows the amount, if it is a word at all. */
-const LEADING_WORD = /^[a-z]+/i;
-
-function isContainer(size: string, container: string): boolean {
-  return SIZE_UNITS.has(size.toLowerCase()) && CONTAINER_UNITS.has(container.toLowerCase());
-}
 
 export interface ScaledQuantity {
   /** What to render. Equal to the input, trimmed, whenever `scaled` is false. */
@@ -381,19 +373,19 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
   // a guard against hand-typed and imported text rather than a live path.
   if (rest.startsWith('%')) return unchanged;
 
-  const bare = BARE_CONTAINER.exec(rest);
-  if (bare && isContainer(bare[1], bare[2])) {
+  const bare = matchSizedContainer(rest);
+  if (bare) {
     // The factor *is* the new count: one 14 oz can, doubled, is two of them.
     if (!Number.isInteger(factor)) return unchanged;
-    const container = inflectUnit(bare[2], factor);
+    const container = inflectUnit(bare.container, factor);
     return {
-      text: `${factor} ${formatRational(amount.value, amount.decimal)} ${bare[1]} ${container}`,
+      text: `${factor} ${formatRational(amount.value, amount.decimal)} ${bare.size} ${container}`,
       scaled: true,
     };
   }
 
   const counted = COUNTED_CONTAINER.exec(rest);
-  if (counted && isContainer(counted[2], counted[3])) {
+  if (counted && isSizedContainer(counted[2], counted[3])) {
     const count = multiply(amount.value, multiplier);
     const container = inflectUnit(counted[3], toNumber(count));
     return {
