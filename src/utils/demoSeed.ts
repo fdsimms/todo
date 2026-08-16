@@ -607,6 +607,10 @@ function seedRecipes(): DemoRecipes {
   setMealType(salad.id, 'side');
   setServings(salad.id, 4);
   setEstimatedMinutes(salad.id, 10);
+  // A real "vegetarian" tag alongside the flavour/occasion ones above, so the
+  // excluded-tags picker (#1693) has something a household would actually
+  // exclude on, not just cooking-style labels.
+  setTags(salad.id, ['vegetarian']);
 
   const salsaVerde = newRecipe('Salsa verde');
   addIngredientsFromText(
@@ -646,7 +650,7 @@ function seedRecipes(): DemoRecipes {
     ['1 cup hummus', '1 cucumber, sliced', '2 carrots, cut into sticks', '1 pita bread'].join('\n')
   );
   setMealType(snacks.id, 'snack');
-  setTags(snacks.id, ['no cook']);
+  setTags(snacks.id, ['no cook', 'vegetarian']);
   setServings(snacks.id, 2);
 
   const cake = newRecipe('Carrot cake with cream cheese frosting');

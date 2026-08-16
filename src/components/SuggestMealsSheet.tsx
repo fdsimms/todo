@@ -140,6 +140,7 @@ export function SuggestMealsSheet({
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
   const unitSystem = useSettingsStore(s => s.unitSystem);
+  const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
   const recipesById = useMemo(() => recipeMap(allRecipes), [allRecipes]);
 
   const [filter, setFilter] = useState<RecipeMealType | 'all'>('all');
@@ -256,6 +257,7 @@ export function SuggestMealsSheet({
         [...(recentTitles ?? [])],
         slotsToFill ?? openDays.length,
         hints,
+        excludedRecipeTags,
       );
       // The service dedupes against the context it was given; the recipe box
       // is the other half of "new". A dish the user already owns isn't an
@@ -269,7 +271,7 @@ export function SuggestMealsSheet({
     } finally {
       setGenerating(false);
     }
-  }, [plannedTitles, recentTitles, allRecipes, slotsToFill, openDays.length, hints]);
+  }, [plannedTitles, recentTitles, allRecipes, slotsToFill, openDays.length, hints, excludedRecipeTags]);
 
   const dismissIdea = (idea: MealIdea) => {
     haptics.tap();

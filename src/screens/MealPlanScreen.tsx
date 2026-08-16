@@ -66,6 +66,7 @@ import {
   type PantryCoverage,
 } from '../utils/recipeUtils';
 import { recentlyCookedTitles } from '../utils/mealIdeas';
+import { excludeRecipesByTags } from '../utils/recipeTags';
 import {
   applyChoice,
   describeChoices,
@@ -234,6 +235,7 @@ export function MealPlanScreen() {
   // one it has always been — the ranking below is deliberately ungated.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
+  const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
   // Any date inside the week on screen. Paging moves the anchor, never the days.
   const [anchor, setAnchor] = useState(() => new Date());
 
@@ -269,6 +271,14 @@ export function MealPlanScreen() {
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
+  // Only the shelves that *propose* a recipe read this — recipesById above
+  // stays the full box, since a night already planned from an excluded
+  // recipe must still render (see excludeRecipesByTags: this only narrows
+  // what gets offered next, never what's already on the calendar).
+  const suggestableRecipes = useMemo(
+    () => excludeRecipesByTags(recipes, excludedRecipeTags),
+    [recipes, excludedRecipeTags]
+  );
   const markRecipeCooked = useRecipeStore(s => s.markCooked);
   const startCookTimer = useRecipeStore(s => s.startCookTimer);
   const restoreCookStats = useRecipeStore(s => s.restoreCookStats);
@@ -1040,8 +1050,8 @@ export function MealPlanScreen() {
   // reading out from under them mid-flow. The week decides whether the shelf is
   // *offered* (canSuggestMeals), never what is on it.
   const mealSuggestions = useMemo(
-    () => suggestRecipesForEmptyNight(recipes, groceryItems, new Date(), 5, itemSubs),
-    [recipes, groceryItems, itemSubs]
+    () => suggestRecipesForEmptyNight(suggestableRecipes, groceryItems, new Date(), 5, itemSubs),
+    [suggestableRecipes, groceryItems, itemSubs]
   );
 
   // Recipes made often and made recently — the comfort-food half of the
@@ -1053,8 +1063,8 @@ export function MealPlanScreen() {
   // so a recipe that qualifies for both doesn't show up as two rows.
   const cookAgainSuggestions = useMemo(() => {
     const alreadyRanked = new Set(mealSuggestions.map(r => r.id));
-    return rankRecipeSuggestions(recipes, new Date()).filter(r => !alreadyRanked.has(r.id));
-  }, [recipes, mealSuggestions]);
+    return rankRecipeSuggestions(suggestableRecipes, new Date()).filter(r => !alreadyRanked.has(r.id));
+  }, [suggestableRecipes, mealSuggestions]);
 
   // The visible half of #1103's pantry signal — computed only for the
   // recipes actually on the suggestions shelf, same "just the visible list"
