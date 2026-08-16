@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -94,13 +94,19 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
   const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(
     new Set(['probablyHave']),
   );
+  // What `ticked` was reset to on open — compared against on dismiss so a
+  // swipe-down or Cancel with real unticks/reticks pending asks first. See
+  // handleCancel.
+  const tickedBaselineRef = useRef<string>('');
 
   // Reset to the default tick state fresh each time the sheet opens, rather
   // than living-recompute against classified while it's up — same model
   // GroceryAISheet uses for its own accepted-rows state.
   useEffect(() => {
     if (!visible) return;
-    setTicked(new Set(byCategory.needToBuy.map(r => r.nameKey)));
+    const defaultTicked = new Set(byCategory.needToBuy.map(r => r.nameKey));
+    setTicked(defaultTicked);
+    tickedBaselineRef.current = JSON.stringify([...defaultTicked].sort());
     setExpandedSections(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -123,6 +129,20 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
       else next.add(row.nameKey);
       return next;
     });
+  };
+
+  // Same shape RecipeToListSheet's own handleCancel uses.
+  const handleCancel = () => {
+    const dirty = JSON.stringify([...ticked].sort()) !== tickedBaselineRef.current;
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
   };
 
   const handleAdd = () => {
@@ -158,10 +178,10 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
   const nothingToShow = classified.length === 0;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
           <Text style={styles.headerTitle}>Add week to list</Text>
           <SheetHeaderButton
             label={addCount > 0 ? `Add ${addCount}` : 'Add'}
