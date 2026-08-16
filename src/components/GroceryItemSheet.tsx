@@ -179,6 +179,13 @@ export function GroceryItemSheet({
   // it, which is how a price is taken back.
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
   const [nameError, setNameError] = useState<string | null>(null);
+  // A snapshot of every staged field at open time, same shape TaskEditor's
+  // own dirty check uses — compared against a fresh snapshot on dismiss so a
+  // swipe-down or Cancel with real changes pending asks first. Only the
+  // staged fields belong here: the CollapsibleField pills (aisle, stores,
+  // pantry, use-by, substitutes) apply immediately on tap and are already
+  // saved by the time this sheet could be dismissed — see #1682.
+  const initialStateRef = useRef<string>('');
   // Which substitute sheet is up, if any: 'add' opens the picker, an item id
   // opens that link for review. Null closes it.
   const [subSheet, setSubSheet] = useState<'add' | string | null>(null);
@@ -217,6 +224,14 @@ export function GroceryItemSheet({
       setPriceTarget(null);
       setPriceEdits({});
       setNameError(null);
+      initialStateRef.current = JSON.stringify({
+        name: item.name,
+        quantity: item.quantity ?? '',
+        brand: item.brand ?? '',
+        variant: item.variant ?? '',
+        note: item.note,
+        priceEdits: {},
+      });
       setOpenField(initialField ?? null);
       setSubSheet(null);
       cardYRef.current = null;
@@ -267,6 +282,26 @@ export function GroceryItemSheet({
 
   const linkFor = (shopId: string) =>
     itemShops.find(l => l.itemId === item.id && l.shopId === shopId) ?? null;
+
+  // The same shape TaskEditor's handleCancel uses: a fresh snapshot of the
+  // staged fields, compared against the one taken on open. Swiping the sheet
+  // down goes through this too (onRequestClose), not just the Cancel button —
+  // a dismiss gesture loses exactly as much work as an explicit Cancel does.
+  const handleCancel = () => {
+    const current = JSON.stringify({ name, quantity, brand, variant, note, priceEdits });
+    if (current === initialStateRef.current) {
+      onClose();
+      return;
+    }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
 
   const handleSave = () => {
     const trimmed = name.trim();
@@ -687,10 +722,10 @@ export function GroceryItemSheet({
   const usedInSummary = usedInRecipes.length ? plusMore(usedInRecipes.map(r => r.name)) : undefined;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
           <Text style={styles.headerTitle}>Item</Text>
           <SheetHeaderButton label="Save" onPress={handleSave} minWidth={64} />
         </View>

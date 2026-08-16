@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -156,9 +156,16 @@ export function FinishShoppingSheet({
   const defaultShopRef = useRef(defaultShopId);
   defaultShopRef.current = defaultShopId;
 
+  // What `selected` was reset to on open — distinct from defaultShopRef above,
+  // which keeps tracking the live default for the *next* open. Compared
+  // against on dismiss so picking a different store than the default counts
+  // as real work about to be lost; re-confirming the same default doesn't.
+  const initialSelectedRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (visible) {
       setSelected(defaultShopRef.current);
+      initialSelectedRef.current = defaultShopRef.current;
       // Same reset and the same reason: last week's typed prices belong to last
       // week's trolley.
       setPriceText({});
@@ -180,6 +187,24 @@ export function FinishShoppingSheet({
     if (!shop) return 'You already have a store with that name.';
     haptics.success();
     setSelected(shop.id);
+  };
+
+  // A price is captured nowhere else — this is the only moment anyone knows
+  // a store didn't have something — so losing unavailable/priceText here
+  // loses information the app can't re-derive, not just a form to retype.
+  const handleCancel = () => {
+    const dirty = selected !== initialSelectedRef.current
+      || unavailable.length > 0
+      || Object.values(priceText).some(t => t.trim() !== '');
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
   };
 
   const handleFinish = () => {
@@ -249,10 +274,10 @@ export function FinishShoppingSheet({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
           <Text style={styles.headerTitle}>Finish shopping</Text>
           <SheetHeaderButton label="Finish" onPress={handleFinish} minWidth={64} />
         </View>

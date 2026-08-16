@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -178,6 +178,10 @@ export function RecipeToListSheet({
   const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(
     new Set(['probablyHave']),
   );
+  // What `ticked` gets reset to on open and on every choice/scale-driven
+  // recompute below — so the dirty check in handleCancel can tell a real tap
+  // apart from the set simply being recomputed out from under it.
+  const tickedBaselineRef = useRef<string>('');
 
   useEffect(() => {
     if (!visible) return;
@@ -199,7 +203,9 @@ export function RecipeToListSheet({
     const rows = initialSelection === 'restock'
       ? restockRows(byCategory.needToBuy)
       : byCategory.needToBuy;
-    setTicked(new Set(rows.map(r => r.nameKey)));
+    const defaultTicked = new Set(rows.map(r => r.nameKey));
+    setTicked(defaultTicked);
+    tickedBaselineRef.current = JSON.stringify([...defaultTicked].sort());
     setExpandedSections(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, choiceKey, initialSelection]);
@@ -234,6 +240,28 @@ export function RecipeToListSheet({
       next.delete(row.nameKey);
       return next;
     });
+  };
+
+  // Same shape as GroceryItemSheet/TaskEditor's own dirty check. A scale or a
+  // choice made is dirty on its own — there's nowhere for either to be
+  // written back once this closes, so losing them is losing real decisions —
+  // and `ticked` is compared against the baseline for the *current* choice
+  // state, so a set that only changed because a choice swap just recomputed
+  // it doesn't falsely read as user work about to be lost.
+  const handleCancel = () => {
+    const dirty = choices.length > 0
+      || undecided.length > 0
+      || scale !== 1
+      || JSON.stringify([...ticked].sort()) !== tickedBaselineRef.current;
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
   };
 
   const handleAdd = () => {
@@ -272,10 +300,10 @@ export function RecipeToListSheet({
   const nothingToShow = classified.length === 0;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
           <Text style={styles.headerTitle} numberOfLines={1}>{recipe?.name ?? 'Add to list'}</Text>
           <SheetHeaderButton
             label={addCount > 0 ? `Add ${addCount}` : 'Add'}
