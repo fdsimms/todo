@@ -7,6 +7,8 @@ import {
   suggestShorterCatalogName,
   resolveGroceryTokens,
   splitGroceryLines,
+  isSizedContainer,
+  matchSizedContainer,
 } from '../utils/groceryParse';
 
 // ─── groceryNameKey ──────────────────────────────────────────────────────────
@@ -661,5 +663,44 @@ describe('splitAlternativeNames', () => {
   it('still applies its other refusals to a comma list', () => {
     expect(splitAlternativeNames('a, b, c, d, or e')).toBeNull();
     expect(splitAlternativeNames('garlic, Garlic, or garlic')).toBeNull();
+  });
+});
+
+// ─── isSizedContainer / matchSizedContainer ─────────────────────────────────
+//
+// The shared primitive recipeScale's scaleQuantity and unitConvert's
+// convertOne/measureQuantity all read through, so a "14 oz can" is recognised
+// identically everywhere it matters — see #1671.
+
+describe('isSizedContainer', () => {
+  it('is true for a real size word and a real container word', () => {
+    expect(isSizedContainer('oz', 'can')).toBe(true);
+    expect(isSizedContainer('OZ', 'CANS')).toBe(true);
+  });
+
+  it('is false when either word is not the right kind', () => {
+    expect(isSizedContainer('cup', 'can')).toBe(false); // cup isn't a size unit
+    expect(isSizedContainer('oz', 'flour')).toBe(false); // flour isn't a container
+    expect(isSizedContainer('oz', 'oz')).toBe(false);
+  });
+});
+
+describe('matchSizedContainer', () => {
+  it('splits a bare sized container', () => {
+    expect(matchSizedContainer('oz can')).toEqual({ size: 'oz', container: 'can' });
+    expect(matchSizedContainer('oz. can')).toEqual({ size: 'oz', container: 'can' });
+  });
+
+  it('is null for a two-word phrase that is not a container', () => {
+    expect(matchSizedContainer('cup flour')).toBeNull();
+  });
+
+  it('is null for anything other than exactly two space-separated words', () => {
+    expect(matchSizedContainer('oz')).toBeNull();
+    expect(matchSizedContainer('oz cans black')).toBeNull();
+    expect(matchSizedContainer('ozcan')).toBeNull();
+    // A leading digit — the counted shape ("2 14 oz cans"), which this
+    // deliberately doesn't cover; see the function's own doc comment.
+    expect(matchSizedContainer('14 oz can')).toBeNull();
   });
 });

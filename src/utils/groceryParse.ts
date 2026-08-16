@@ -108,6 +108,50 @@ export const CONTAINER_UNITS = new Set([
   'bottle', 'bottles', 'package', 'packages', 'pkg', 'pouch', 'pouches',
 ]);
 
+/** Whether `size`/`container` name a real container shape — "oz"/"can", not "cup"/"flour". */
+export function isSizedContainer(size: string, container: string): boolean {
+  return SIZE_UNITS.has(size.toLowerCase()) && CONTAINER_UNITS.has(container.toLowerCase());
+}
+
+/**
+ * The leading unit word of whatever follows a quantity's amount, if it is a
+ * word at all — "cup" out of "cup flour", but nothing out of ", medium onion"
+ * (a size clause, not a unit).
+ *
+ * Exported so recipeScale and unitConvert read the same word rather than each
+ * defining their own copy of what "the next word" means.
+ */
+export const LEADING_WORD = /^[a-z]+/i;
+
+/** A sized container's trailing half — "oz can" out of "14 oz can". */
+const BARE_CONTAINER = /^([a-z]+)\.?\s+([a-z]+)$/i;
+
+/**
+ * Splits a bare sized container's size and container word out of `rest` —
+ * "14 oz can" → `{ size: 'oz', container: 'can' }` — or null when `rest`
+ * isn't exactly that two-word shape, or isn't a real container ("cup flour"
+ * has the shape but neither word is a container).
+ *
+ * recipeScale's `scaleQuantity` and unitConvert's `convertOne`/
+ * `measureQuantity` each need to recognise this exact shape — a sized
+ * container's leading number is the tin's *size*, never a count to scale or
+ * convert — and each used to carry its own copy of `BARE_CONTAINER` plus the
+ * same two-line `SIZE_UNITS`/`CONTAINER_UNITS` gate. One shared function is
+ * what keeps the scaler and the converter from ever recognising a different
+ * set of shapes as "a container".
+ *
+ * Deliberately doesn't cover a *counted* sized container ("2 14 oz cans") —
+ * that needs a second number, which only `scaleQuantity` has a use for (see
+ * its own `COUNTED_CONTAINER`); `measureQuantity` refuses that shape outright,
+ * on purpose, since two containers isn't one measurement.
+ */
+export function matchSizedContainer(rest: string): { size: string; container: string } | null {
+  const match = BARE_CONTAINER.exec(rest);
+  if (!match) return null;
+  const [, size, container] = match;
+  return isSizedContainer(size, container) ? { size, container } : null;
+}
+
 // "2 14 oz cans black beans", "2 (14.5 oz) jars salsa", "14-ounce can broth"
 // — a container line names both how many containers there are and how big
 // each one is, which LEADING_QTY can't express on its own (it only pulls one

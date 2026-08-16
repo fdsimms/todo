@@ -1,4 +1,4 @@
-import { CONTAINER_UNITS, SIZE_UNITS } from './groceryParse';
+import { matchSizedContainer, LEADING_WORD } from './groceryParse';
 import { formatQuantityAmount, inflectUnit, splitLeadingAmount, unitKey } from './recipeScale';
 
 /**
@@ -247,10 +247,6 @@ function renderUs(base: number, dimension: Dimension): string | null {
 // Converting a quantity string
 // ---------------------------------------------------------------------------
 
-/** The leading unit word of whatever follows the amount, if it is a word at all. */
-const LEADING_WORD = /^[a-z]+/i;
-/** A sized container's trailing half — "oz can" out of "14 oz can". */
-const BARE_CONTAINER = /^([a-z]+)\.?\s+([a-z]+)$/i;
 /** How mergeQuantities joins quantities it refused to add together. */
 const MERGE_SEPARATOR = ' · ';
 
@@ -282,14 +278,7 @@ function convertOne(part: string, target: 'metric' | 'us'): ConvertedQuantity {
 
   // A sized container: the leading number is how big the tin is, not how much
   // of something you have, so converting it renames a product off the shelf.
-  const container = BARE_CONTAINER.exec(rest);
-  if (
-    container
-    && SIZE_UNITS.has(container[1].toLowerCase())
-    && CONTAINER_UNITS.has(container[2].toLowerCase())
-  ) {
-    return unchanged;
-  }
+  if (matchSizedContainer(rest)) return unchanged;
 
   const word = LEADING_WORD.exec(rest);
   if (!word) return unchanged;
@@ -340,14 +329,10 @@ export function measureQuantity(quantity: string): MeasuredQuantity | null {
   // "2%" — part of the product, never an amount. Same guard convertOne carries.
   if (rest.startsWith('%')) return null;
 
-  const container = BARE_CONTAINER.exec(rest);
-  const sized =
-    !!container
-    && SIZE_UNITS.has(container[1].toLowerCase())
-    && CONTAINER_UNITS.has(container[2].toLowerCase());
-  // Only a *sized* container takes its unit from the first word; "2 cups flour"
+  // Only a *sized* container takes its unit from the size word; "2 cups flour"
   // matches the same two-word shape and must take "cups".
-  const word = sized ? container![1] : LEADING_WORD.exec(rest)?.[0];
+  const sized = matchSizedContainer(rest);
+  const word = sized ? sized.size : LEADING_WORD.exec(rest)?.[0];
   if (!word) return null;
 
   const known = KNOWN_UNITS[unitKey(word)];
