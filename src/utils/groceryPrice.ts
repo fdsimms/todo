@@ -95,6 +95,32 @@ export function priceToInput(minor: number): string {
 }
 
 /**
+ * Cents-first price entry, the way a checkout keypad (or YNAB) does it: every
+ * digit typed shifts the amount one place, so typing "4", "9", "9" reads
+ * "0.04", "0.49", "4.99" in turn. There's no decimal point to type, and typing
+ * one does nothing — `raw` is stripped down to its digits before anything
+ * else happens, the same first move formatPhoneInput makes.
+ *
+ * Idempotent like that function too: `raw` is whatever the field already
+ * holds (last keystroke's own output, plus whichever key was just pressed),
+ * so this rebuilds the amount from scratch every time rather than tracking
+ * state of its own, and it's safe to run on every keystroke. Backspacing
+ * drops the last digit the same way it dropped the last character, and
+ * running out of digits returns '' — an empty field, not "$0.00", same as the
+ * clear button next to it and the same call parsePriceInput's own "0" refusal
+ * makes: zero is not a price.
+ *
+ * Clamped to GROCERY_PRICE_MINOR_MAX rather than left to grow past it — typing
+ * a ninth digit at the ceiling leaves the field reading the ceiling, not a
+ * number nobody meant to enter.
+ */
+export function formatPriceInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  if (!digits || digits === '0') return '';
+  return priceToInput(Math.min(Number(digits), GROCERY_PRICE_MINOR_MAX));
+}
+
+/**
  * How stale a price is, in the app's usual shorthand: "today", "Mar", "Mar
  * 2024". A month rather than a day because nobody needs the date they bought
  * milk — they need to know whether the number is worth trusting, and the month

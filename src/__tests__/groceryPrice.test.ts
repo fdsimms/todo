@@ -6,6 +6,7 @@ import {
   describeShopPrices,
   estimateListTotal,
   formatPrice,
+  formatPriceInput,
   lastPriceFor,
   parsePriceInput,
   priceToInput,
@@ -122,6 +123,43 @@ describe('parsePriceInput', () => {
   it('round-trips through the field value it seeds', () => {
     expect(parsePriceInput(priceToInput(429))).toBe(429);
     expect(parsePriceInput(priceToInput(400))).toBe(400);
+  });
+});
+
+describe('formatPriceInput', () => {
+  it('treats the last two digits typed as cents, YNAB-style', () => {
+    expect(formatPriceInput('4')).toBe('0.04');
+    expect(formatPriceInput('49')).toBe('0.49');
+    expect(formatPriceInput('499')).toBe('4.99');
+    expect(formatPriceInput('1200')).toBe('12.00');
+  });
+
+  it('rebuilds from whatever digits are in the field, so backspacing drops the last one', () => {
+    // "4.9" is what the field holds mid-backspace from "4.99" — the trailing
+    // "9" is gone, leaving "49" cents.
+    expect(formatPriceInput('4.9')).toBe('0.49');
+    expect(formatPriceInput('0.0')).toBe('');
+  });
+
+  it('ignores a manually-typed decimal point — there is nothing to type it for', () => {
+    expect(formatPriceInput('4.')).toBe('0.04');
+    expect(formatPriceInput('4.9.9')).toBe('4.99');
+  });
+
+  it('is empty rather than "$0.00" once every digit is gone, same as the clear button', () => {
+    expect(formatPriceInput('')).toBe('');
+    expect(formatPriceInput('0')).toBe('');
+    expect(formatPriceInput('00')).toBe('');
+  });
+
+  it('clamps at the ceiling instead of growing past it', () => {
+    expect(formatPriceInput('1000000')).toBe('10000.00');
+    expect(formatPriceInput('99999999')).toBe('10000.00');
+  });
+
+  it('round-trips through parsePriceInput', () => {
+    expect(parsePriceInput(formatPriceInput('499'))).toBe(499);
+    expect(parsePriceInput(formatPriceInput('1200'))).toBe(1200);
   });
 });
 

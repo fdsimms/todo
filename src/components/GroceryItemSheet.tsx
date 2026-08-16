@@ -43,6 +43,7 @@ import {
   cheapestShopFor,
   describePriceContext,
   describeShopPrices,
+  formatPriceInput,
   lastPriceFor,
   parsePriceInput,
   priceToInput,
@@ -1263,12 +1264,14 @@ export function GroceryItemSheet({
             <TextInput
               style={styles.priceInput}
               value={price}
-              onChangeText={text => setPriceEdits(prev => ({ ...prev, [priceKey]: text }))}
+              onChangeText={text =>
+                setPriceEdits(prev => ({ ...prev, [priceKey]: formatPriceInput(text) }))
+              }
               onBlur={() => commitPrice(priceKey)}
               onSubmitEditing={() => commitPrice(priceKey)}
               placeholder={priceHint === null ? '0.00' : priceToInput(priceHint)}
               placeholderTextColor={colors.textTertiary}
-              keyboardType="decimal-pad"
+              keyboardType="number-pad"
               maxLength={PRICE_INPUT_MAX_LENGTH}
               accessibilityLabel={targetShopName ? `Last price at ${targetShopName}` : 'Last price'}
             />
