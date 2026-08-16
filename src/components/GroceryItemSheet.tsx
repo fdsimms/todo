@@ -25,6 +25,8 @@ import {
   type Colors,
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useRecipeStore } from '../store/useRecipeStore';
+import { recipesUsingIngredient } from '../utils/recipeComponents';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { CollapsibleField } from './CollapsibleField';
@@ -73,7 +75,7 @@ const PRICE_INPUT_MAX_LENGTH = 8;
 const ITEM_PRICE_KEY = 'item';
 
 /** The five collapsible fields in the "More" card, in the order they render. */
-type CollapsibleFieldKey = 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes';
+type CollapsibleFieldKey = 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'usedIn';
 
 interface Props {
   visible: boolean;
@@ -122,6 +124,14 @@ export function GroceryItemSheet({
       .map(i => i.name);
     return names.length > 0 ? names.join(' or ') : null;
   });
+  // The reverse of sourceRecipeTitle below: not where this row was first
+  // created from, but every recipe that calls for it right now. See
+  // recipesUsingIngredient.
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
+  const usedInRecipes = useMemo(
+    () => (item ? recipesUsingIngredient(item.nameKey, recipes) : []),
+    [item, recipes]
+  );
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const renameItem = useGroceryStore(s => s.renameItem);
   const setQuantity = useGroceryStore(s => s.setQuantity);
@@ -674,6 +684,7 @@ export function GroceryItemSheet({
     : notStockedNames.length
       ? `Not ${plusMore(notStockedNames)}`
       : undefined;
+  const usedInSummary = usedInRecipes.length ? plusMore(usedInRecipes.map(r => r.name)) : undefined;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -1126,6 +1137,51 @@ export function GroceryItemSheet({
                   style={styles.subAdd}
                   accessibilityLabel={`Add a substitute for ${item.name}`}
                 />
+              </CollapsibleField>
+            </View>
+
+            <View style={styles.separator} />
+
+            {/* The reverse of the sourceRecipeTitle link above: not where
+                this row was first created from, but every recipe that calls
+                for it right now, via recipesUsingIngredient. Read-only — a
+                recipe's ingredients are edited on the recipe itself. */}
+            <View onLayout={(e: LayoutChangeEvent) => {
+              fieldYRefs.current.usedIn = e.nativeEvent.layout.y;
+              maybeScrollToInitialField();
+            }}>
+              <CollapsibleField
+                label="Used in"
+                summary={usedInSummary}
+                emptySummary="No recipes yet"
+                hint="Every recipe on your list that calls for this. Editing the ingredient happens on the recipe itself."
+                expanded={openField === 'usedIn'}
+                onToggle={() => toggleField('usedIn')}
+              >
+                {usedInRecipes.map((r, i) => (
+                  onOpenRecipe ? (
+                    <TouchableOpacity
+                      key={r.id}
+                      style={[styles.subRow, i > 0 && styles.subRowDivided]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => onOpenRecipe(r.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={r.name}
+                      accessibilityHint="Closes this and opens the recipe"
+                    >
+                      <View style={styles.subBody}>
+                        <Text style={styles.subName} numberOfLines={1}>{r.name}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  ) : (
+                    <View key={r.id} style={[styles.subRow, i > 0 && styles.subRowDivided]}>
+                      <View style={styles.subBody}>
+                        <Text style={styles.subName} numberOfLines={1}>{r.name}</Text>
+                      </View>
+                    </View>
+                  )
+                ))}
               </CollapsibleField>
             </View>
           </View>

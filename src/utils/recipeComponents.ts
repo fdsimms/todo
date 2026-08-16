@@ -336,6 +336,28 @@ export function flattenRecipeIngredients(
   return out;
 }
 
+/**
+ * Every recipe whose shopping list actually calls for this catalog item —
+ * the reverse of the bridge `nameKey` already gives ingredients into the
+ * catalog. Reads through `flattenRecipeIngredients` rather than a recipe's
+ * own `ingredients` array, so a recipe that only calls for something via a
+ * component (the mash inside "steak with mash") still counts — every other
+ * shopping read in the app already makes this same choice, and reading raw
+ * `ingredients` here would be the one place that quietly disagreed.
+ *
+ * A full scan of the library rather than an index kept in step with every
+ * edit: this runs once per `GroceryItemSheet` open, not per keystroke, and
+ * `rankRecipes`/`suggestRecipesForEmptyNight` already make the same trade for
+ * reads at the same frequency.
+ */
+export function recipesUsingIngredient(nameKey: string, recipes: readonly Recipe[]): Recipe[] {
+  if (!nameKey) return [];
+  const byId = recipeMap(recipes);
+  return recipes.filter(r =>
+    flattenRecipeIngredients(r, byId).some(f => f.ingredient.nameKey === nameKey)
+  );
+}
+
 /** One prep step, plus which recipe in the tree carries it. */
 export interface FlatPrepTask {
   prepTask: RecipePrepTask;
