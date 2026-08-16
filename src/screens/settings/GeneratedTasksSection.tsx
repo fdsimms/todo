@@ -11,6 +11,8 @@ import {
   GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   GROCERY_USE_UP_LEAD_DAYS_MAX,
   GROCERY_USE_UP_LEAD_DAYS_MIN,
+  USE_UP_TASK_CAP_MAX,
+  USE_UP_TASK_CAP_MIN,
 } from '../../types';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
@@ -274,6 +276,35 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
           </React.Fragment>
         );
       })}
+      {(s.groceryUseUpTasks || s.leftoverUseUpTasks) && (
+        <>
+          {/* Spans both use-up generators, so it sits below the loop rather
+              than inside either generator's own extras — see useUpTaskCap. */}
+          <View style={sectionStyles.groupBreak} />
+          <SettingsRow
+            icon="layers-outline"
+            label="Limit use-up tasks"
+            hint={
+              s.useUpTaskCap === null
+                ? 'No limit — every qualifying item and leftover gets a task'
+                : `At most ${s.useUpTaskCap} use-up ${s.useUpTaskCap === 1 ? 'task' : 'tasks'} at a time, closest date first`
+            }
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.useUpTaskCap}
+              onChange={s.setUseUpTaskCap}
+              min={USE_UP_TASK_CAP_MIN}
+              max={USE_UP_TASK_CAP_MAX}
+              allowNull
+              emptyLabel="No limit"
+              label="Use-up task limit"
+              describeValue={n => (n === null ? 'No limit' : `At most ${n}`)}
+            />
+          </View>
+        </>
+      )}
     </SettingsSection>
   );
 }

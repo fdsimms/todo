@@ -2,6 +2,7 @@ import type { Task, TaskDraft } from '../types';
 import {
   hasAnyGeneratedTask,
   liveGeneratedTask,
+  liveUseUpTaskCount,
   type GeneratedKind,
 } from '../utils/generatedTasks';
 import { useTaskStore } from './useTaskStore';
@@ -78,6 +79,22 @@ export interface ReconcileGeneratedOptions {
    * are rows that come round again.
    */
   blocksOnFinished?: boolean;
+  /**
+   * The shared ceiling grocery and leftover use-up tasks draw from (#1675) —
+   * omitted by `mealCook` and `mealPlanNudge`, which have no flooding problem
+   * of their own (see `isUseUpKind`). `null`/omitted is unlimited.
+   *
+   * A source declined a slot here isn't suppressed the way `wanted: false`
+   * is — it still qualifies, and the next reconcile that finds room (the
+   * source's own next mutation, or the leftover foreground sweep) creates it.
+   * This deliberately never evicts an existing task to free a slot for a more
+   * urgent one: once a task is showing, it stays showing, so the cap only
+   * ever decides who claims a slot that's genuinely open. A caller that wants
+   * its most urgent sources to win a scarce slot has to reconcile them in
+   * urgency order itself (see `reconcileAllLeftoverTasks`, which already
+   * iterates leftovers soonest-`keepUntil`-first).
+   */
+  useUpCap?: number | null;
 }
 
 /**
@@ -94,7 +111,7 @@ export interface ReconcileGeneratedOptions {
  * separately and why its callers run it *after* the source row is gone.
  */
 export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void {
-  const { kind, sourceId, wanted, drift, draft, blocksOnFinished = false } = options;
+  const { kind, sourceId, wanted, drift, draft, blocksOnFinished = false, useUpCap = null } = options;
   const { tasks, addTask, updateTask } = useTaskStore.getState();
   const existing = liveGeneratedTask(tasks, kind, sourceId);
 
@@ -116,6 +133,7 @@ export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void
   }
 
   if (blocksOnFinished && hasAnyGeneratedTask(tasks, kind, sourceId)) return;
+  if (useUpCap !== null && liveUseUpTaskCount(tasks) >= useUpCap) return;
   addTask(draft());
 }
 

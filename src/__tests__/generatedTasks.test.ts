@@ -5,8 +5,10 @@ import {
   generatedBy,
   generatedSourceOf,
   hasAnyGeneratedTask,
+  isUseUpKind,
   liveGeneratedTask,
   liveGeneratedTasksOfKind,
+  liveUseUpTaskCount,
   wantsGeneratedTask,
 } from '../utils/generatedTasks';
 import type { GeneratedKind, Task } from '../types';
@@ -181,6 +183,39 @@ describe('generatedBy', () => {
       generatedKind: 'mealPlanNudge',
       generatedSourceId: null,
     });
+  });
+});
+
+describe('isUseUpKind', () => {
+  it('is true for the two use-up generators only', () => {
+    expect(isUseUpKind('groceryUseUp')).toBe(true);
+    expect(isUseUpKind('leftoverUseUp')).toBe(true);
+    expect(isUseUpKind('mealCook')).toBe(false);
+    expect(isUseUpKind('mealPlanNudge')).toBe(false);
+  });
+});
+
+describe('liveUseUpTaskCount', () => {
+  it('counts grocery and leftover use-up tasks together', () => {
+    const tasks = [from('groceryUseUp', 'g-1'), from('leftoverUseUp', 'l-1')];
+    expect(liveUseUpTaskCount(tasks)).toBe(2);
+  });
+
+  it('ignores cook tasks and the nudge — they draw from no shared cap', () => {
+    const tasks = [from('mealCook', 'm-1'), from('mealPlanNudge', '2026-08-10')];
+    expect(liveUseUpTaskCount(tasks)).toBe(0);
+  });
+
+  it('ignores completed and archived use-up tasks', () => {
+    const tasks = [
+      from('groceryUseUp', 'g-1', { completed: true }),
+      from('leftoverUseUp', 'l-1', { archived: true }),
+    ];
+    expect(liveUseUpTaskCount(tasks)).toBe(0);
+  });
+
+  it('ignores tasks nobody generated', () => {
+    expect(liveUseUpTaskCount([task()])).toBe(0);
   });
 });
 

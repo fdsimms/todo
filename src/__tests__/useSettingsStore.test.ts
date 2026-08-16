@@ -819,6 +819,47 @@ describe('use-up task settings', () => {
   });
 });
 
+describe('useUpTaskCap', () => {
+  const stored = (rows: Record<string, string>) =>
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => rows[key] ?? null);
+
+  it('defaults to unlimited — an existing install is unchanged until someone sets one', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().useUpTaskCap).toBeNull();
+  });
+
+  it('round-trips a stored cap', () => {
+    stored({ useUpTaskCap: '3' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().useUpTaskCap).toBe(3);
+  });
+
+  it('falls back to unlimited for a value out of range or not a number', () => {
+    stored({ useUpTaskCap: '400' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().useUpTaskCap).toBeNull();
+
+    stored({ useUpTaskCap: 'lots' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().useUpTaskCap).toBeNull();
+  });
+
+  it('clamps what the setter is given rather than storing it', () => {
+    useSettingsStore.getState().setUseUpTaskCap(99);
+    expect(dbSetSetting).toHaveBeenCalledWith('useUpTaskCap', '20');
+    useSettingsStore.getState().setUseUpTaskCap(-3);
+    expect(dbSetSetting).toHaveBeenCalledWith('useUpTaskCap', '1');
+  });
+
+  it('stores unlimited as an empty string, and reads it back as null', () => {
+    useSettingsStore.getState().setUseUpTaskCap(null);
+    expect(dbSetSetting).toHaveBeenCalledWith('useUpTaskCap', '');
+    stored({ useUpTaskCap: '' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().useUpTaskCap).toBeNull();
+  });
+});
+
 describe('weekStartsOn', () => {
   it('defaults to Sunday', () => {
     useSettingsStore.getState().initialize();
