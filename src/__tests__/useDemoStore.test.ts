@@ -839,6 +839,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     expect(recipes.some(r => r.favorite)).toBe(true);
     expect(recipes.some(r => r.tags.length > 1)).toBe(true);
+    // A real dietary tag, not just a cooking-style one — the excluded-tags
+    // picker (#1693) needs something a household would actually exclude on.
+    expect(recipes.some(r => r.tags.includes('vegetarian'))).toBe(true);
     expect(recipes.some(r => r.estimatedMinutes && r.prepMinutes)).toBe(true);
     expect(recipes.some(r => r.servings && r.servingsMax)).toBe(true);
     expect(recipes.some(r => r.recipeYield)).toBe(true);

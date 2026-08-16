@@ -1,6 +1,7 @@
 import {
   allRecipeTags,
   cleanRecipeTag,
+  excludeRecipesByTags,
   filterRecipesByTags,
   formatTagList,
   normalizeRecipeTags,
@@ -156,6 +157,41 @@ describe('filterRecipesByTags', () => {
 
   it('is empty when no recipe carries the whole set', () => {
     expect(filterRecipesByTags(recipes, ['thai', 'grill'])).toEqual([]);
+  });
+});
+
+describe('excludeRecipesByTags', () => {
+  const meat = recipe('Steak', ['meat', 'weekend']);
+  const eggy = recipe('Omelette', ['eggy', 'vegetarian']);
+  const cake = recipe('Carrot cake', ['vegetarian', 'baking']);
+  const untagged = recipe('Toast');
+  const recipes = [meat, eggy, cake, untagged];
+
+  it('returns everything when nothing is excluded', () => {
+    expect(excludeRecipesByTags(recipes, [])).toEqual(recipes);
+  });
+
+  it('drops a recipe carrying the excluded tag', () => {
+    expect(excludeRecipesByTags(recipes, ['meat']).map(r => r.name))
+      .toEqual(['Omelette', 'Carrot cake', 'Toast']);
+  });
+
+  // The scenario this was built for: vegetarian, but not a fan of anything
+  // egg-forward — while a cake that merely uses eggs stays untouched, because
+  // it was never tagged "eggy" in the first place. The exclusion can only ever
+  // be as honest as the tags the cook actually applied.
+  it('drops a recipe matching ANY excluded tag, not all of them — and leaves an untagged neighbor alone', () => {
+    const result = excludeRecipesByTags(recipes, ['meat', 'eggy']).map(r => r.name);
+    expect(result).toEqual(['Carrot cake', 'Toast']);
+  });
+
+  it('cleans the exclusion list, so a stray capital still matches', () => {
+    expect(excludeRecipesByTags(recipes, [' Meat ']).map(r => r.name))
+      .toEqual(['Omelette', 'Carrot cake', 'Toast']);
+  });
+
+  it('is a no-op when the exclusion list cleans to nothing', () => {
+    expect(excludeRecipesByTags(recipes, ['   '])).toEqual(recipes);
   });
 });
 

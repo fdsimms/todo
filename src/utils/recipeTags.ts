@@ -109,6 +109,30 @@ export function filterRecipesByTags(
 }
 
 /**
+ * The recipes carrying **none** of the excluded tags — the opposite shape from
+ * `filterRecipesByTags` above, and deliberately OR rather than AND: a recipe
+ * tagged "meat" is out whether or not it's also tagged "quick", so excluding a
+ * dish only ever needs one of its tags to match, not all of them. Empty
+ * exclusion list means no filter — the whole list back, not nothing.
+ *
+ * This is the one place `excludedRecipeTags` reaches into a recipe list —
+ * every offline suggestion surface goes through it rather than re-deriving
+ * the OR check. The AI meal-idea prompt can't call it (there's no recipe list
+ * to filter, only a model to instruct), so it states the same tags as a
+ * textual constraint instead. See useSettingsStore's `excludedRecipeTags` for
+ * why this is tag-only and never guesses from ingredients.
+ */
+export function excludeRecipesByTags(
+  recipes: readonly Recipe[],
+  excluded: readonly string[]
+): Recipe[] {
+  if (excluded.length === 0) return [...recipes];
+  const unwanted = new Set(normalizeRecipeTags(excluded));
+  if (unwanted.size === 0) return [...recipes];
+  return recipes.filter(recipe => !recipe.tags.some(tag => unwanted.has(tag)));
+}
+
+/**
  * "“vegetarian”" / "“vegetarian” and “quick”" / "“a”, “b” and “c”" — the tags
  * currently narrowing the box, named in the empty state. Quoted because a tag
  * is free text and can be several words ("make ahead"), which an unquoted list

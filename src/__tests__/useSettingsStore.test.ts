@@ -1106,6 +1106,47 @@ describe('persisted recipe sort & filter', () => {
   });
 });
 
+describe('excludedRecipeTags (#1693)', () => {
+  it('defaults to no exclusions', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().excludedRecipeTags).toEqual([]);
+  });
+
+  it('round-trips a list of tags', () => {
+    useSettingsStore.getState().setExcludedRecipeTags(['meat', 'eggy']);
+    expect(dbSetSetting).toHaveBeenCalledWith('excludedRecipeTags', JSON.stringify(['meat', 'eggy']));
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'excludedRecipeTags' ? JSON.stringify(['meat', 'eggy']) : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().excludedRecipeTags).toEqual(['meat', 'eggy']);
+  });
+
+  it('cleans a stored list the same way a typed tag is cleaned', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'excludedRecipeTags' ? JSON.stringify([' Meat ', 'meat', '']) : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().excludedRecipeTags).toEqual(['meat']);
+  });
+
+  it('falls back to no exclusions on a corrupt stored value', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'excludedRecipeTags' ? 'not json' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().excludedRecipeTags).toEqual([]);
+  });
+
+  it('is not touched by resetToDefaults — a dietary exclusion is not appearance or formatting', () => {
+    useSettingsStore.getState().setExcludedRecipeTags(['meat']);
+    (dbSetSetting as jest.Mock).mockClear();
+    useSettingsStore.getState().resetToDefaults();
+    expect(dbSetSetting).not.toHaveBeenCalledWith('excludedRecipeTags', expect.anything());
+    expect(useSettingsStore.getState().excludedRecipeTags).toEqual(['meat']);
+  });
+});
+
 // ─── postpone check ───
 
 describe('postpone check settings', () => {
