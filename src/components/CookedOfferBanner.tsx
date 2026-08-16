@@ -39,7 +39,7 @@ interface Props {
  *
  * **Every caller computes its count live and renders nothing at 0.** That's
  * what takes the place of a dismissal stamp: answering empties the set and the
- * banner goes on its own, the way `TripSuggestionCard` returns null rather than
+ * banner goes on its own, the way `StartTripPrompt` returns null rather than
  * hedging. The × is for "not now" — nothing is wrong with the offer, it just
  * isn't wanted, and it doesn't have to persist to be honest since both the
  * shop and the pantry stay reachable by hand.

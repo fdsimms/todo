@@ -384,7 +384,7 @@ export function MealPlanScreen() {
   // banner says. Computed against the live catalog rather than snapshotted at
   // cook time, which is what retires the banner without needing a dismissal
   // stamp — adding the items takes the set to 0 and it renders nothing, the
-  // same "hidden rather than hedged" call TripSuggestionCard makes.
+  // same "hidden rather than hedged" call StartTripPrompt makes.
   const restockCountFor = useCallback(
     (recipe: Recipe, choices: readonly string[], scale: number) =>
       restockRows(
