@@ -38,13 +38,16 @@ import { RecipeExtractSheet } from '../components/RecipeExtractSheet';
 import { RecipeComponentPicker } from '../components/RecipeComponentPicker';
 import { ComponentChoiceSheet } from '../components/ComponentChoiceSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
+import { useRecipeTimer } from '../hooks/useRecipeTimer';
 import { RecipeTimerRow } from '../components/RecipeTimerRow';
+import { CookModeSheet } from '../components/CookModeSheet';
+import { cookSteps } from '../utils/cookMode';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
-import { describeCookTime, describePrepTime, describeRecipe, totalMinutes } from '../utils/recipeUtils';
+import { describeRecipe, totalMinutes } from '../utils/recipeUtils';
 import { buildRecipeShareText } from '../utils/shareText';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
@@ -53,20 +56,6 @@ import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
-import {
-  cookTimerElapsed,
-  cookTimerProgress,
-  cookTimerRemaining,
-  hasCookTimer,
-  isCookTimerReady,
-  isCookTimerRunning,
-  prepTimerElapsed,
-  prepTimerProgress,
-  prepTimerRemaining,
-  hasPrepTimer,
-  isPrepTimerReady,
-  isPrepTimerRunning,
-} from '../utils/recipeTimer';
 import {
   alternativeCaptions,
   flattenRecipeIngredients,
@@ -113,16 +102,6 @@ export function RecipeDetailScreen() {
   const removeStep = useRecipeStore(s => s.removeStep);
   const reorderSteps = useRecipeStore(s => s.reorderSteps);
   const setImage = useRecipeStore(s => s.setImage);
-  const startCookTimer = useRecipeStore(s => s.startCookTimer);
-  const pauseCookTimer = useRecipeStore(s => s.pauseCookTimer);
-  const resetCookTimer = useRecipeStore(s => s.resetCookTimer);
-  const stopCookTimer = useRecipeStore(s => s.stopCookTimer);
-  const logManualCookTime = useRecipeStore(s => s.logManualCookTime);
-  const startPrepTimer = useRecipeStore(s => s.startPrepTimer);
-  const pausePrepTimer = useRecipeStore(s => s.pausePrepTimer);
-  const resetPrepTimer = useRecipeStore(s => s.resetPrepTimer);
-  const stopPrepTimer = useRecipeStore(s => s.stopPrepTimer);
-  const logManualPrepTime = useRecipeStore(s => s.logManualPrepTime);
   const addComponent = useRecipeStore(s => s.addComponent);
   const removeComponent = useRecipeStore(s => s.removeComponent);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
@@ -151,6 +130,16 @@ export function RecipeDetailScreen() {
   // plus every component's, which is the number the footer button gates on.
   const shoppableCount = useMemo(
     () => (recipe ? flattenRecipeIngredients(recipe, recipesById).length : 0),
+    [recipe, recipesById]
+  );
+  // What cook mode would have to read out — this recipe's steps and every
+  // component's, or the notes blob a recipe predating Recipe.steps still keeps
+  // its method in. Zero means there is no method here at all, and the footer
+  // simply doesn't offer the button rather than offering a disabled one: an
+  // absent verb reads as "nothing written down yet", where a greyed one reads
+  // as a feature that's broken.
+  const cookableCount = useMemo(
+    () => (recipe ? cookSteps(recipe, recipesById).length : 0),
     [recipe, recipesById]
   );
 
@@ -206,6 +195,7 @@ export function RecipeDetailScreen() {
   const [planVisible, setPlanVisible] = useState(false);
   const { planRecipe, offerPrepTasks } = usePlanMeal();
   const [extractVisible, setExtractVisible] = useState(false);
+  const [cookModeVisible, setCookModeVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [componentPickerVisible, setComponentPickerVisible] = useState(false);
   const [choiceComponent, setChoiceComponent] = useState<ResolvedComponent | null>(null);
@@ -229,19 +219,13 @@ export function RecipeDetailScreen() {
     deselectAll,
   } = useRowSelection();
 
-  // Tick once a second while either timer runs, mirroring TaskItem's own
-  // timer clock — everything else is recomputed from the stored fields
-  // against nowTick rather than counted down in state, so this reads right
-  // even after the app was backgrounded or killed mid-cook (or mid-prep).
-  const [nowTick, setNowTick] = useState(() => Date.now());
-  const cookRunning = recipe ? isCookTimerRunning(recipe) : false;
-  const prepRunning = recipe ? isPrepTimerRunning(recipe) : false;
-  useEffect(() => {
-    if (!cookRunning && !prepRunning) return;
-    setNowTick(Date.now());
-    const interval = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [cookRunning, prepRunning, recipe?.timerStartedAt, recipe?.prepTimerStartedAt]);
+  // Both timers, wired up — the clock, the derivation and the store calls all
+  // live in the hook now, because cook mode (#1695) keeps the cook timer on
+  // screen too and a second copy of this is how the two would come to disagree
+  // about what "running" means. Called above the "the row is gone" guard
+  // below, which is why the hook tolerates an undefined recipe.
+  const prepTimer = useRecipeTimer(recipe, 'Prep');
+  const cookTimer = useRecipeTimer(recipe, 'Cook');
 
   // The row can be gone while the screen is still mounted (deleted from the
   // editor), so this renders rather than crashing on the next read.
@@ -258,74 +242,7 @@ export function RecipeDetailScreen() {
     );
   }
 
-  const cookHasTarget = hasCookTimer(recipe);
-  const cookElapsedSeconds = cookTimerElapsed(recipe, nowTick);
-  const cookRemainingSeconds = cookHasTarget ? cookTimerRemaining(recipe, nowTick) : 0;
-  const cookProgress = cookHasTarget ? cookTimerProgress(recipe, nowTick) : 0;
-  const cookReady = cookHasTarget && isCookTimerReady(recipe, nowTick);
-  const cookPaused = !cookRunning && recipe.timerElapsedSeconds > 0;
-  const cookInProgress = cookRunning || recipe.timerElapsedSeconds > 0;
-  const cookTimeSummary = describeCookTime(recipe);
-
-  const handleCookTimerToggle = async () => {
-    if (cookRunning) {
-      await haptics.success();
-      pauseCookTimer(recipe.id);
-    } else {
-      await haptics.impactMedium();
-      startCookTimer(recipe.id);
-    }
-  };
-
-  const handleLogCookTime = async () => {
-    await haptics.success();
-    stopCookTimer(recipe.id);
-  };
-
-  const handleResetCookTimer = async () => {
-    await haptics.warning();
-    resetCookTimer(recipe.id);
-  };
-
-  const handleLogManualCookTime = async (minutes: number) => {
-    await haptics.success();
-    logManualCookTime(recipe.id, minutes);
-  };
-
-  const prepHasTarget = hasPrepTimer(recipe);
-  const prepElapsedSeconds = prepTimerElapsed(recipe, nowTick);
-  const prepRemainingSeconds = prepHasTarget ? prepTimerRemaining(recipe, nowTick) : 0;
-  const prepProgress = prepHasTarget ? prepTimerProgress(recipe, nowTick) : 0;
-  const prepReady = prepHasTarget && isPrepTimerReady(recipe, nowTick);
-  const prepPaused = !prepRunning && recipe.prepTimerElapsedSeconds > 0;
-  const prepInProgress = prepRunning || recipe.prepTimerElapsedSeconds > 0;
-  const prepTimeSummary = describePrepTime(recipe);
   const totalTimeMinutes = totalMinutes(recipe);
-
-  const handlePrepTimerToggle = async () => {
-    if (prepRunning) {
-      await haptics.success();
-      pausePrepTimer(recipe.id);
-    } else {
-      await haptics.impactMedium();
-      startPrepTimer(recipe.id);
-    }
-  };
-
-  const handleLogPrepTime = async () => {
-    await haptics.success();
-    stopPrepTimer(recipe.id);
-  };
-
-  const handleResetPrepTimer = async () => {
-    await haptics.warning();
-    resetPrepTimer(recipe.id);
-  };
-
-  const handleLogManualPrepTime = async (minutes: number) => {
-    await haptics.success();
-    logManualPrepTime(recipe.id, minutes);
-  };
 
   const submitDraft = () => {
     const text = draft;
@@ -1131,39 +1048,9 @@ export function RecipeDetailScreen() {
             see RecipeTimerRow. Two stopwatches are one subject, and stacked as
             two separate cards they read as two of the recipe's facts. */}
         <View style={styles.timerCard}>
-          <RecipeTimerRow
-            verb="Prep"
-            targetMinutes={recipe.prepMinutes}
-            running={prepRunning}
-            paused={prepPaused}
-            inProgress={prepInProgress}
-            ready={prepReady}
-            elapsedSeconds={prepElapsedSeconds}
-            remainingSeconds={prepRemainingSeconds}
-            progress={prepProgress}
-            summary={prepTimeSummary}
-            onToggle={handlePrepTimerToggle}
-            onLog={handleLogPrepTime}
-            onReset={handleResetPrepTimer}
-            onLogManual={handleLogManualPrepTime}
-          />
+          <RecipeTimerRow verb="Prep" {...prepTimer} />
           <View style={styles.timerDivider} />
-          <RecipeTimerRow
-            verb="Cook"
-            targetMinutes={recipe.estimatedMinutes}
-            running={cookRunning}
-            paused={cookPaused}
-            inProgress={cookInProgress}
-            ready={cookReady}
-            elapsedSeconds={cookElapsedSeconds}
-            remainingSeconds={cookRemainingSeconds}
-            progress={cookProgress}
-            summary={cookTimeSummary}
-            onToggle={handleCookTimerToggle}
-            onLog={handleLogCookTime}
-            onReset={handleResetCookTimer}
-            onLogManual={handleLogManualCookTime}
-          />
+          <RecipeTimerRow verb="Cook" {...cookTimer} />
         </View>
 
         {/* A heading you can declare on its own, with nothing filed under it
@@ -1449,7 +1336,23 @@ export function RecipeDetailScreen() {
               having decided to cook something — so they share the footer rather
               than one of them going up into an already-crowded header. Plan is
               the quieter of the two: the list is what this screen has always
-              been for, and shopping is the step that can't be undone by a tap. */}
+              been for, and shopping is the step that can't be undone by a tap.
+              Cook joined them as the third verb (#1695), for the same reason
+              and in the same place: it's the one that happens *now*, so it
+              leads. Its label is a word where the others are two, which is what
+              keeps three buttons on a 390pt line. */}
+          {cookableCount > 0 && (
+            <TouchableOpacity
+              style={styles.secondary}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setCookModeVisible(true); }}
+              accessibilityRole="button"
+              accessibilityLabel={`Cook ${recipe.name} one step at a time`}
+            >
+              <Ionicons name="flame-outline" size={iconSize.sm} color={colors.accent} />
+              <Text style={styles.secondaryText}>Cook</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.secondary}
             activeOpacity={interaction.activeOpacity}
@@ -1469,7 +1372,11 @@ export function RecipeDetailScreen() {
             accessibilityLabel="Add ingredients to the grocery list"
           >
             <Ionicons name="cart-outline" size={iconSize.sm} color={colors.onAccent} />
-            <Text style={styles.primaryText}>Add ingredients to list</Text>
+            {/* "Add to list" rather than the "Add ingredients to list" this said
+                until Cook joined the row: three buttons don't fit a 390pt line
+                at the longer label, and the cart glyph beside it already says
+                which list. The accessibility label keeps the full sentence. */}
+            <Text style={styles.primaryText}>Add to list</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1538,6 +1445,17 @@ export function RecipeDetailScreen() {
         visible={extractVisible}
         recipe={recipe}
         onClose={() => setExtractVisible(false)}
+      />
+
+      {/* The scale travels in, the way it does into the add-to-list sheet — a
+          halved recipe has to read halved mid-step too. Nothing travels back:
+          cook mode writes nothing but the timer the recipe already owns. */}
+      <CookModeSheet
+        visible={cookModeVisible}
+        recipe={recipe}
+        recipesById={recipesById}
+        scale={scale}
+        onClose={() => setCookModeVisible(false)}
       />
 
       <ComponentChoiceSheet
