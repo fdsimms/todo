@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateItemGroup } from '../types';
+import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion } from '../types';
 import {
   dbGetAllTemplates,
   dbInsertTemplate,
@@ -13,6 +13,7 @@ import { useProjectStore } from './useProjectStore';
 import { generateId } from '../utils/id';
 import {
   normalizeTemplateItem,
+  normalizeTemplateQuestion,
   expandTemplateItems,
   buildDraftsFromTemplateTree,
   resolveApplyContainer,
@@ -80,6 +81,18 @@ interface TemplateStore {
   renameItemGroup: (templateId: string, groupId: string, title: string) => void;
   deleteItemGroup: (templateId: string, groupId: string) => void;
   groupItems: (templateId: string, itemIds: string[], title: string) => TemplateItemGroup;
+  /** The stored question, or null if `templateId` names no template — same contract as addItem. */
+  addQuestion: (templateId: string, question: Partial<TemplateQuestion>) => TemplateQuestion | null;
+  updateQuestion: (templateId: string, questionId: string, updates: Partial<TemplateQuestion>) => void;
+  /**
+   * Deleting a question also takes it off every item conditioned on it, rather
+   * than leaving conditions that resolve to nothing. Readers shrug those off
+   * anyway (see liveConditions), but an item still *carrying* one would show
+   * "Only when" with nothing under it in the editor, and would come back to
+   * life if a new question ever reused the id.
+   */
+  deleteQuestion: (templateId: string, questionId: string) => void;
+  reorderQuestions: (templateId: string, orderedIds: string[]) => void;
   applyTemplate: (
     templateId: string,
     selectedItemIds: Set<string>,
@@ -104,6 +117,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       name,
       items: [],
       itemGroups: [],
+      questions: [],
       createdAt: new Date().toISOString(),
       sortOrder: maxOrder + 1,
       category: null,
@@ -292,6 +306,58 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       );
     }
     return group;
+  },
+
+  addQuestion(templateId, question) {
+    const template = get().templates.find(t => t.id === templateId);
+    if (!template) return null;
+    const stored = normalizeTemplateQuestion({ ...question, id: generateId() });
+    const updated = { ...template, questions: [...template.questions, stored] };
+    dbUpdateTemplate(updated);
+    set(s => ({ templates: s.templates.map(t => (t.id === templateId ? updated : t)) }));
+    return stored;
+  },
+
+  updateQuestion(templateId, questionId, updates) {
+    const template = get().templates.find(t => t.id === templateId);
+    if (!template) return;
+    const updated = {
+      ...template,
+      questions: template.questions.map(q =>
+        q.id === questionId ? normalizeTemplateQuestion({ ...q, ...updates }) : q
+      ),
+    };
+    dbUpdateTemplate(updated);
+    set(s => ({ templates: s.templates.map(t => (t.id === templateId ? updated : t)) }));
+  },
+
+  deleteQuestion(templateId, questionId) {
+    const template = get().templates.find(t => t.id === templateId);
+    if (!template) return;
+    const updated = {
+      ...template,
+      questions: template.questions.filter(q => q.id !== questionId),
+      items: template.items.map(i =>
+        i.conditions.some(c => c.questionId === questionId)
+          ? { ...i, conditions: i.conditions.filter(c => c.questionId !== questionId) }
+          : i
+      ),
+    };
+    dbUpdateTemplate(updated);
+    set(s => ({ templates: s.templates.map(t => (t.id === templateId ? updated : t)) }));
+  },
+
+  reorderQuestions(templateId, orderedIds) {
+    const template = get().templates.find(t => t.id === templateId);
+    if (!template) return;
+    const byId = new Map(template.questions.map(q => [q.id, q]));
+    const reordered = orderedIds
+      .map(id => byId.get(id))
+      .filter((q): q is TemplateQuestion => q !== undefined);
+    if (reordered.length !== template.questions.length) return;
+    const updated = { ...template, questions: reordered };
+    dbUpdateTemplate(updated);
+    set(s => ({ templates: s.templates.map(t => (t.id === templateId ? updated : t)) }));
   },
 
   applyTemplate(templateId, selectedItemIds, anchors, options) {

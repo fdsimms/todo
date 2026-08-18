@@ -5,7 +5,17 @@
  */
 import { addDays } from 'date-fns/addDays';
 import { startOfDay } from 'date-fns/startOfDay';
-import type { TaskDraft, TaskTemplate, TemplateAnchor, TemplateContainer, TemplateItem } from '../types';
+import type {
+  TaskDraft,
+  TaskTemplate,
+  TemplateAnchor,
+  TemplateContainer,
+  TemplateItem,
+  TemplateItemCondition,
+  TemplateQuestion,
+  TemplateQuestionKind,
+  TemplateQuestionSource,
+} from '../types';
 import { generateId } from './id';
 import { parseChainItems } from './chain';
 
@@ -52,8 +62,46 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     chainIndex: raw.chainIndex ?? 0,
     subtasks: raw.subtasks ?? [],
     groupId: raw.groupId ?? null,
+    conditions: normalizeConditions(raw.conditions),
     refTemplateId: raw.refTemplateId ?? null,
     refTemplateName: raw.refTemplateName ?? '',
+  };
+}
+
+/** Drop anything that isn't a `{questionId, values[]}` pair — the same tolerance normalizeTemplateItem gives every other field, since these ride in the same blob. */
+function normalizeConditions(raw: unknown): TemplateItemCondition[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((c): c is TemplateItemCondition =>
+      !!c && typeof c === 'object' && typeof (c as TemplateItemCondition).questionId === 'string')
+    .map(c => ({
+      questionId: c.questionId,
+      values: Array.isArray(c.values) ? c.values.filter((v): v is string => typeof v === 'string') : [],
+    }));
+}
+
+/**
+ * Fill defaults for a question parsed from stored JSON, tolerating missing and
+ * unknown fields exactly as normalizeTemplateItem does.
+ *
+ * An unrecognised `kind` falls back to 'text' rather than being dropped: a
+ * question written by a newer version still fills its blank and still holds the
+ * conditions pointing at it, which is strictly better than the item those
+ * conditions govern quietly becoming unconditional.
+ */
+export function normalizeTemplateQuestion(raw: Partial<TemplateQuestion>): TemplateQuestion {
+  const kind: TemplateQuestionKind =
+    raw.kind === 'number' || raw.kind === 'choice' ? raw.kind : 'text';
+  const fromDates: TemplateQuestionSource =
+    kind === 'number' && (raw.fromDates === 'days' || raw.fromDates === 'nights') ? raw.fromDates : 'none';
+  return {
+    id: raw.id ?? generateId(),
+    name: raw.name ?? '',
+    prompt: raw.prompt ?? '',
+    kind,
+    options: Array.isArray(raw.options) ? raw.options.filter((o): o is string => typeof o === 'string') : [],
+    defaultValue: raw.defaultValue ?? '',
+    fromDates,
   };
 }
 
@@ -488,14 +536,84 @@ export function expandSelectionWithAncestors(
 export const RUN_PLACEHOLDER = 'run';
 
 // Letters first so `{2}` and `{}` aren't mistaken for placeholders — a title
-// can legitimately contain braces.
-const PLACEHOLDER_PATTERN = /\{([a-zA-Z][a-zA-Z0-9 _-]*)\}/g;
+// can legitimately contain braces. The optional tail is the arithmetic form
+// below; `-` needs no help from it, being a name character already.
+const PLACEHOLDER_PATTERN = /\{([a-zA-Z][a-zA-Z0-9 _-]*(?:\s*[-+*/]\s*\d+(?:\.\d+)?)?)\}/g;
 
-/** Placeholder names in `text`, lowercased, in order of first appearance (duplicates collapsed). */
+/**
+ * Arithmetic on a blank — `{nights - 2}`, `{nights / 2}`, `{guests * 2}`.
+ *
+ * The point of the whole thing is a packing list that counts: a number
+ * answered once ("7 nights") is rarely the number that goes in every title,
+ * since shirts are one a day and jeans are one per two. Without this each
+ * derived count is its own question to answer, which is how a template with
+ * four of them stops being quicker than typing the tasks out.
+ *
+ * **Deliberately not an expression language.** One operator and a literal
+ * number, no parentheses, no blank on the right-hand side: what an item title
+ * needs is "some multiple of the one number this run is about", and everything
+ * past that is a formula editor nobody asked for. A token that doesn't fit the
+ * shape isn't an error — it falls back to being a name, exactly as it was
+ * before this existed.
+ */
+const PLACEHOLDER_ARITHMETIC = /^([a-zA-Z][a-zA-Z0-9 _-]*?)\s*([-+*/])\s*(\d+(?:\.\d+)?)$/;
+
+interface PlaceholderRef {
+  /** The blank being read — "nights" for `{nights / 2}`. */
+  name: string;
+  /** Null for a plain `{name}`, which is every token that predates the arithmetic form. */
+  op: '+' | '-' | '*' | '/' | null;
+  operand: number;
+}
+
+/** Read one `{...}` token's contents. Arithmetic wins whenever the shape matches — see normalizePlaceholderName, which refuses to mint a blank whose *name* would parse as one, so the two can't collide. */
+function parsePlaceholderRef(raw: string): PlaceholderRef {
+  const trimmed = raw.trim();
+  const math = PLACEHOLDER_ARITHMETIC.exec(trimmed);
+  if (math) {
+    return {
+      name: math[1].trim().replace(/\s+/g, ' ').toLowerCase(),
+      op: math[2] as PlaceholderRef['op'],
+      operand: Number(math[3]),
+    };
+  }
+  return { name: trimmed.replace(/\s+/g, ' ').toLowerCase(), op: null, operand: 0 };
+}
+
+/**
+ * The token's value, or null when the blank it reads has none.
+ *
+ * A plain token hands back what was typed, verbatim — a blank is text, and
+ * only the arithmetic form needs it to be a number. A computed count **rounds
+ * up and never goes below zero**: these are counts of things to take with you,
+ * where three and a half pairs of jeans means four and where "-1 shirts" is
+ * not a sentence.
+ */
+function resolvePlaceholderRef(ref: PlaceholderRef, values: Record<string, string>): string | null {
+  const raw = (values[ref.name] ?? '').trim();
+  if (!raw) return null;
+  if (ref.op === null) return raw;
+  const base = Number(raw);
+  if (!Number.isFinite(base)) return null;
+  if (ref.op === '/' && ref.operand === 0) return null;
+  const result =
+    ref.op === '+' ? base + ref.operand
+    : ref.op === '-' ? base - ref.operand
+    : ref.op === '*' ? base * ref.operand
+    : base / ref.operand;
+  return String(Math.max(0, Math.ceil(result)));
+}
+
+/**
+ * Placeholder names in `text`, lowercased, in order of first appearance
+ * (duplicates collapsed). An arithmetic token reports the blank it reads, so
+ * a template asking for `{nights}` and `{nights / 2}` still has one blank to
+ * fill rather than two.
+ */
 function placeholderNamesIn(text: string): string[] {
   const found: string[] = [];
   for (const match of text.matchAll(PLACEHOLDER_PATTERN)) {
-    const name = match[1].trim().toLowerCase();
+    const { name } = parsePlaceholderRef(match[1]);
     if (name && !found.includes(name)) found.push(name);
   }
   return found;
@@ -558,6 +676,10 @@ export function itemPlaceholders(
 export function normalizePlaceholderName(raw: string): string | null {
   const cleaned = raw.trim().replace(/^\{+|\}+$/g, '').trim().replace(/\s+/g, ' ').toLowerCase();
   if (!cleaned) return null;
+  // A name the arithmetic form would claim ("nights-2") is refused rather than
+  // resolved one way or the other: `{nights-2}` can only mean one thing, and a
+  // blank that can never be filled in is worse than a name the user retypes.
+  if (PLACEHOLDER_ARITHMETIC.test(cleaned)) return null;
   return /^[a-z][a-z0-9 _-]*$/.test(cleaned) ? cleaned : null;
 }
 
@@ -581,8 +703,8 @@ export function withPlaceholder(text: string, name: string): string {
 export function withoutPlaceholder(text: string, name: string): string {
   if (!placeholderNamesIn(text).includes(name)) return text;
   PLACEHOLDER_PATTERN.lastIndex = 0;
-  const stripped = text.replace(PLACEHOLDER_PATTERN, (match, rawName: string) =>
-    rawName.trim().toLowerCase() === name ? '' : match
+  const stripped = text.replace(PLACEHOLDER_PATTERN, (match, token: string) =>
+    parsePlaceholderRef(token).name === name ? '' : match
   );
   return tidySubstituted(stripped);
 }
@@ -622,8 +744,8 @@ export function substitutePlaceholders(text: string, values: Record<string, stri
     return text;
   }
   PLACEHOLDER_PATTERN.lastIndex = 0;
-  const substituted = text.replace(PLACEHOLDER_PATTERN, (_, rawName: string) =>
-    (values[rawName.trim().toLowerCase()] ?? '').trim()
+  const substituted = text.replace(PLACEHOLDER_PATTERN, (_, token: string) =>
+    resolvePlaceholderRef(parsePlaceholderRef(token), values) ?? ''
   );
   return tidySubstituted(substituted);
 }

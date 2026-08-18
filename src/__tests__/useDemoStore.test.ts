@@ -364,6 +364,33 @@ describe('demo mode', () => {
     expect(templates.some(t => declaresRunPlaceholder(t.items))).toBe(true);
   });
 
+  // A template that asks nothing looks exactly like an app that can't ask, and
+  // both kinds of question are invisible until one is declared — so the seed
+  // needs a count read off the dates and a choice that decides an item.
+  it('seeds a template that asks about the run, and an item conditioned on the answer', () => {
+    useDemoStore.getState().enterDemoMode();
+    const templates = useTemplateStore.getState().templates;
+
+    const asking = templates.find(t => t.questions.length > 0)!;
+    expect(asking).toBeDefined();
+
+    // A number read off the two anchor dates, so a trip's length is answered by
+    // picking its dates rather than typed.
+    const counted = asking.questions.find(q => q.kind === 'number' && q.fromDates !== 'none')!;
+    expect(counted).toBeDefined();
+    // Used in a title, and used again through the arithmetic form.
+    expect(asking.items.some(i => i.title.includes(`{${counted.name}}`))).toBe(true);
+    expect(asking.items.some(i => i.title.includes(`{${counted.name} /`))).toBe(true);
+
+    // And a choice with an item riding on it.
+    const choice = asking.questions.find(q => q.kind === 'choice')!;
+    expect(choice.options.length).toBeGreaterThan(1);
+    const conditioned = asking.items.filter(i => i.conditions.length > 0);
+    expect(conditioned.length).toBeGreaterThan(0);
+    expect(conditioned[0].conditions[0].questionId).toBe(choice.id);
+    expect(choice.options).toEqual(expect.arrayContaining(conditioned[0].conditions[0].values));
+  });
+
   // A decision task is invisible as a *capability* until something asks a
   // question, and the answer only exists on a completed row — so the seed
   // needs both halves for the feature to read as one that exists.
