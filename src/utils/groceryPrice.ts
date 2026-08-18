@@ -245,7 +245,7 @@ export function shopPricesFor(
   return out.sort((a, b) => a.minor - b.minor || a.shop.name.localeCompare(b.shop.name));
 }
 
-interface Comparable {
+export interface Comparable {
   /** How much: base units for a measurement, its own unit for a count. */
   amount: number;
   /** Two quantities are comparable exactly when these match. */
@@ -266,8 +266,13 @@ interface Comparable {
  * counts of the same thing. That's also why the unit word has to match exactly
  * rather than being coerced: "1 bag" against "6" is two ways of counting one
  * item, and nothing in the app knows how many are in the bag.
+ *
+ * Exported for recipeCost.ts, which relates a recipe line's quantity to a
+ * remembered purchase quantity the same all-or-nothing way unitPricesFor
+ * relates two stores' — one gate for "when is it safe to divide one quantity
+ * by another", not a second one growing up beside it.
  */
-function comparableQuantity(quantity: string | null): Comparable | null {
+export function comparableQuantity(quantity: string | null): Comparable | null {
   const text = (quantity ?? '').trim();
   if (!text) return null;
 

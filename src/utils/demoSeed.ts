@@ -908,7 +908,7 @@ function seedGroceries(recipes: DemoRecipes): void {
     // Dairy & Eggs
     'Milk', 'Eggs', 'Greek yogurt', 'Butter', 'Cheddar', 'Cottage cheese',
     // Produce
-    'Spinach', 'Bananas', 'Tomatoes', 'Onions', 'Garlic', 'Lemons',
+    'Spinach', 'Bananas', 'Tomatoes', 'Onions', 'Garlic', 'Lemons', 'Potatoes',
     // Meat & Seafood
     'Chicken breast', 'Ground beef',
     // Pantry / Canned
@@ -932,6 +932,11 @@ function seedGroceries(recipes: DemoRecipes): void {
   setQuantity(itemNamed('Ground beef').id, '2 lb');
   setQuantity(itemNamed('Bananas').id, 'a bunch');
   setQuantity(itemNamed('Rice').id, '5 lb');
+  // Priced in the same unit family the mashed potatoes recipe measures it in
+  // (mass), which is what makes it — alongside the milk above — the demo's
+  // example of a recipe cost actually clearing recipeCost.ts's coverage floor
+  // (see estimateRecipeCost in useDemoStore.test.ts).
+  setQuantity(itemNamed('Potatoes').id, '5 lb');
   setNote(itemNamed('Black beans').id, 'The low-sodium ones');
   setNote(itemNamed('Bread').id, 'Seeded, from the back shelf');
   // The brand is a clause beside the name, so this row is still plain "cottage
@@ -959,7 +964,7 @@ function seedGroceries(recipes: DemoRecipes): void {
   // Finishing a trip promotes what was on it into the catalog, records the
   // purchase against the store, and takes it off the list.
   const WEEKLY_SHOP = ['Milk', 'Eggs', 'Spinach', 'Bananas', 'Bread', 'Chicken breast', 'Tomatoes', 'Coffee'];
-  const BULK_RUN = ['Paper towels', 'Toilet paper', 'Olive oil', 'Rice', 'Frozen peas'];
+  const BULK_RUN = ['Paper towels', 'Toilet paper', 'Olive oil', 'Rice', 'Frozen peas', 'Potatoes'];
 
   // Prices, in minor units, keyed by the name the seed already uses. Recorded
   // through a finished trip rather than written onto rows, like everything else
@@ -973,7 +978,7 @@ function seedGroceries(recipes: DemoRecipes): void {
 
   addExistingMany(idsNamed(BULK_RUN));
   setCheckedMany(idsNamed(BULK_RUN), true);
-  finishShopping(costco.id, priced({ 'Olive oil': 1299, 'Paper towels': 1849, Rice: 799 }));
+  finishShopping(costco.id, priced({ 'Olive oil': 1299, 'Paper towels': 1849, Rice: 799, Potatoes: 599 }));
 
   addExistingMany(idsNamed(WEEKLY_SHOP));
   setCheckedMany(idsNamed(WEEKLY_SHOP), true);

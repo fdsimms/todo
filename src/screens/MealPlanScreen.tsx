@@ -93,6 +93,7 @@ import {
   restockRows,
 } from '../utils/mealPlanGroceries';
 import { standingSwapMap } from '../utils/standingSwaps';
+import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
 
 /**
  * Tints a day section while a drag is aimed at it — the same "arm on the way
@@ -236,6 +237,7 @@ export function MealPlanScreen() {
   // one it has always been — the ranking below is deliberately ungated.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
+  const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
   // Any date inside the week on screen. Paging moves the anchor, never the days.
   const [anchor, setAnchor] = useState(() => new Date());
@@ -1179,8 +1181,16 @@ export function MealPlanScreen() {
   };
 
   const addedStamp = range ? addedToListAt[range.startKey] : undefined;
+  // Null while too little of the week is priced to say (see recipeCost.ts's
+  // coverage floor) — the common case for a library that's only lightly
+  // priced, same as a fresh install answering nothing at all.
+  const weekCost = useMemo(
+    () => (range ? estimateWeekCost(entries, recipesById, groceryItems, range, standingSwaps) : null),
+    [entries, recipesById, groceryItems, range, standingSwaps]
+  );
   const subtitle = [
     describeWeekPlan(entries),
+    describeWeekCost(weekCost, currencySymbol, new Date()),
     addedStamp ? describeAddedToList(addedStamp, new Date(), weekStartsOn) : null,
   ].filter(Boolean).join(' · ');
 
