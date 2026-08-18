@@ -12,6 +12,7 @@ import {
   LEFTOVER_RETENTION_DAYS,
 } from '../types';
 import { cleanRecipeName } from './recipeUtils';
+import { daysUntilDay, describeUseBy, freshnessFor, isUseUpSoon } from './freshness';
 import { cookedDishes, type ChoiceResolution } from './recipeComponents';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 
@@ -190,7 +191,7 @@ export function daysInFridge(leftover: Leftover, now: Date = new Date()): number
  * means it's past.
  */
 export function daysLeft(leftover: Leftover, now: Date = new Date()): number {
-  return differenceInCalendarDays(dayKeyToDate(leftover.keepUntil), now);
+  return daysUntilDay(leftover.keepUntil, now);
 }
 
 /**
@@ -203,11 +204,7 @@ export function daysLeft(leftover: Leftover, now: Date = new Date()): number {
  * were actually asking.
  */
 export function freshnessOf(leftover: Leftover, now: Date = new Date()): LeftoverFreshness {
-  const left = daysLeft(leftover, now);
-  if (left < 0) return 'over';
-  if (left === 0) return 'due';
-  if (left === 1) return 'soon';
-  return 'fresh';
+  return freshnessFor(leftover.keepUntil, now);
 }
 
 /**
@@ -219,7 +216,7 @@ export function freshnessOf(leftover: Leftover, now: Date = new Date()): Leftove
  * up the evening someone could have planned around it.
  */
 export function needsAttention(leftover: Leftover, now: Date = new Date()): boolean {
-  return isLiveLeftover(leftover) && daysLeft(leftover, now) <= 1;
+  return isLiveLeftover(leftover) && isUseUpSoon(freshnessOf(leftover, now));
 }
 
 /** Still in the fridge, most urgent first. */
@@ -273,19 +270,12 @@ export function describeAge(leftover: Leftover, now: Date = new Date()): string 
  * The keep-until half of a row's caption: "Use by today", "Use by tomorrow",
  * "3 days left", "2 days past".
  *
- * Deliberately its own small ladder rather than a reuse of dateUtils'
- * formatDeadlineDate family, for the reason describeAddedToList gives for
- * forking too: those are written for a task's due date and phrase a past one as
- * overdue work. A leftover past its day isn't late, it's questionable — and the
- * wording has to leave room for the user to decide it's still fine.
+ * The wording (and the reason it doesn't reuse dateUtils' deadline family) now
+ * lives in `freshness.describeUseBy`, which a perishable in the catalog reads
+ * through too — this is the fridge's name for the same question. See #1670.
  */
 export function describeKeepUntil(leftover: Leftover, now: Date = new Date()): string {
-  const left = daysLeft(leftover, now);
-  if (left === 0) return 'Use by today';
-  if (left === 1) return 'Use by tomorrow';
-  if (left > 1) return `${left} days left`;
-  const past = -left;
-  return `${past} ${past === 1 ? 'day' : 'days'} past`;
+  return describeUseBy(leftover.keepUntil, now);
 }
 
 /** The full caption under a leftover's title — "2 days in the fridge · Use by today". */

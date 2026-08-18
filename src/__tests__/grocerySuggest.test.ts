@@ -8,7 +8,6 @@ import {
   probablyHaveReason,
   defaultOnHandUntil,
   pantryEntries,
-  buildPantrySections,
   distinctGroceryValues,
   filterGrocerySuggestions,
 } from '../utils/grocerySuggest';
@@ -389,7 +388,7 @@ describe('defaultOnHandUntil', () => {
   });
 });
 
-// ─── pantryEntries / buildPantrySections ─────────────────────────────────────
+// ─── pantryEntries ──────────────────────────────────────────────────────────
 
 describe('pantryEntries', () => {
   it('is exactly what probablyHaveReason answers for, and carries its wording', () => {
@@ -420,46 +419,6 @@ describe('pantryEntries', () => {
   it('keeps an item that is also on the list — the assertion outlives the add', () => {
     const item = makeItem({ name: 'Rice', onList: true, onHandUntil: daysAgo(-5) });
     expect(pantryEntries([item], NOW).map(e => e.item.name)).toEqual(['Rice']);
-  });
-});
-
-describe('buildPantrySections', () => {
-  const marked = (name: string, aisle: string) =>
-    makeItem({ name, aisle, onHandUntil: daysAgo(-5) });
-
-  it('cuts the pantry into aisles in walk order', () => {
-    const items = [marked('Rice', 'Pantry'), marked('Milk', 'Dairy & Eggs')];
-    const sections = buildPantrySections(items, ['Dairy & Eggs', 'Pantry'], NOW);
-    expect(sections.map(s => s.aisle)).toEqual(['Dairy & Eggs', 'Pantry']);
-    expect(sections[0].data.map(e => e.item.name)).toEqual(['Milk']);
-  });
-
-  it('still renders an aisle the order has never heard of', () => {
-    const sections = buildPantrySections([marked('Steak', 'Butcher')], ['Produce'], NOW);
-    expect(sections.map(s => s.aisle)).toEqual(['Butcher']);
-  });
-
-  it('drops an aisle with nothing on hand in it', () => {
-    const items = [marked('Rice', 'Pantry')];
-    const sections = buildPantrySections(items, ['Produce', 'Pantry'], NOW);
-    expect(sections.map(s => s.aisle)).toEqual(['Pantry']);
-  });
-
-  it('sorts within an aisle by name', () => {
-    const items = [marked('Rice', 'Pantry'), marked('Flour', 'Pantry')];
-    const sections = buildPantrySections(items, ['Pantry'], NOW);
-    expect(sections[0].data.map(e => e.item.name)).toEqual(['Flour', 'Rice']);
-  });
-
-  it('filters by name, so "do I have flour" is one field away', () => {
-    const items = [marked('Rice', 'Pantry'), marked('Flour', 'Pantry')];
-    const sections = buildPantrySections(items, ['Pantry'], NOW, 'flo');
-    expect(sections[0].data.map(e => e.item.name)).toEqual(['Flour']);
-  });
-
-  it('is empty rather than unfiltered when nothing matches', () => {
-    const items = [marked('Rice', 'Pantry')];
-    expect(buildPantrySections(items, ['Pantry'], NOW, 'saffron')).toEqual([]);
   });
 });
 

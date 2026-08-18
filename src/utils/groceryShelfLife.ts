@@ -1,6 +1,7 @@
 import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
+import { describeUseBy } from './freshness';
 import { groceryNameKey } from './groceryParse';
 import { GROCERY_EXPIRY_DAYS_MAX } from '../types';
 import type { GroceryItem } from '../types';
@@ -134,18 +135,12 @@ export function expiryDaysFromNow(expiresAt: string, now: Date): number {
 /**
  * "Use by today", "Use by tomorrow", "3 days left", "2 days past".
  *
- * Word for word `describeKeepUntil`'s ladder, because it's answering the same
- * question about the same kind of date and two phrasings of "this is about to
- * go off" is one more thing to keep true. Same reason it doesn't reuse
- * dateUtils' deadline wording: food past its day isn't late, it's
- * questionable, and the copy has to leave room for the user to decide it's
- * still fine.
+ * This and `describeKeepUntil` were word-for-word the same four lines, which
+ * is what #1670 read as the two features having one question between them:
+ * both are one `freshness.describeUseBy` now. Kept as its own name because
+ * that's the vocabulary here — the catalog says "use by", the fridge says
+ * "keep until", and they mean the same day.
  */
 export function describeExpiry(expiresAt: string, now: Date = new Date()): string {
-  const left = differenceInCalendarDays(dayKeyToDate(expiresAt), now);
-  if (left === 0) return 'Use by today';
-  if (left === 1) return 'Use by tomorrow';
-  if (left > 1) return `${left} days left`;
-  const past = -left;
-  return `${past} ${past === 1 ? 'day' : 'days'} past`;
+  return describeUseBy(expiresAt, now);
 }
