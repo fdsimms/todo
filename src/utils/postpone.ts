@@ -165,8 +165,8 @@ export interface DriftEntry {
 }
 
 /**
- * The Drift screen's list: incomplete, unarchived tasks pushed at least
- * `threshold` times, worst first.
+ * The Drift screen's list, as raw Task rows: incomplete, unarchived tasks
+ * pushed at least `threshold` times, worst first.
  *
  * Muted tasks are excluded, not merely sorted last. "Stop asking about this
  * one" is an answer to exactly the question this screen asks, and a screen that
@@ -177,8 +177,15 @@ export interface DriftEntry {
  * order is stable across renders rather than dependent on row order — a list
  * that reshuffles under a finger when one task's count ticks is the failure
  * `foldRows` avoids by not re-sorting.
+ *
+ * Split out from `driftingTasks()` below so a store selector can hand back
+ * this array — filter+sort of the existing Task references, so its elements
+ * keep their identity across calls when nothing actually changed — rather
+ * than `driftingTasks()`'s freshly-allocated `DriftEntry` wrappers, which
+ * `useShallow` can never treat as equal to the previous render's and which
+ * drove DriftScreen into an infinite render loop (#1626).
  */
-export function driftingTasks(tasks: readonly Task[], threshold: number): DriftEntry[] {
+export function driftingTaskList(tasks: readonly Task[], threshold: number): Task[] {
   return tasks
     .filter(
       t =>
@@ -188,19 +195,27 @@ export function driftingTasks(tasks: readonly Task[], threshold: number): DriftE
         !t.postponeMuted &&
         t.postponeCount >= threshold,
     )
-    .map(t => ({ task: t, count: t.postponeCount, since: t.driftingSince }))
     .sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
+      if (b.postponeCount !== a.postponeCount) return b.postponeCount - a.postponeCount;
       // A null stamp sorts last within its count: it's an older run than the
       // feature can date, not a longer one, and guessing it's the worst would
       // put every pre-upgrade task at the top of the screen for weeks.
-      if (a.since !== b.since) {
-        if (!a.since) return 1;
-        if (!b.since) return -1;
-        return a.since < b.since ? -1 : 1;
+      if (a.driftingSince !== b.driftingSince) {
+        if (!a.driftingSince) return 1;
+        if (!b.driftingSince) return -1;
+        return a.driftingSince < b.driftingSince ? -1 : 1;
       }
-      return a.task.title.localeCompare(b.task.title);
+      return a.title.localeCompare(b.title);
     });
+}
+
+/** `driftingTaskList()`, hoisted into the `{task, count, since}` shape the row needs. */
+export function driftingTasks(tasks: readonly Task[], threshold: number): DriftEntry[] {
+  return driftingTaskList(tasks, threshold).map(t => ({
+    task: t,
+    count: t.postponeCount,
+    since: t.driftingSince,
+  }));
 }
 
 /**
