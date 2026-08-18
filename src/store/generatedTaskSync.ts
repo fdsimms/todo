@@ -1,10 +1,12 @@
 import type { Task, TaskDraft } from '../types';
 import {
+  generatedTaskCountOf,
   hasAnyGeneratedTask,
   liveGeneratedTask,
   liveUseUpTaskCount,
   type GeneratedKind,
 } from '../utils/generatedTasks';
+import { derivedId, spawnSeed } from '../utils/syncIds';
 import { useTaskStore } from './useTaskStore';
 
 /**
@@ -134,7 +136,15 @@ export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void
 
   if (blocksOnFinished && hasAnyGeneratedTask(tasks, kind, sourceId)) return;
   if (useUpCap !== null && liveUseUpTaskCount(tasks) >= useUpCap) return;
-  addTask(draft());
+  // Derived rather than random for a sourced generator (#1751): two devices
+  // that each reconcile the same source before ever syncing must land on the
+  // same id, or the ordinary merge keeps both as separate rows instead of
+  // collapsing them into one. An unsourced generator (none exist yet) has
+  // nothing to derive from, so it falls back to addTask's own random id.
+  const id = sourceId !== null
+    ? derivedId(spawnSeed.generated(kind, sourceId, generatedTaskCountOf(tasks, kind, sourceId)))
+    : undefined;
+  addTask(draft(), id);
 }
 
 /**

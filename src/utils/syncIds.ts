@@ -70,4 +70,19 @@ export const spawnSeed = {
   catchUp: (missedTaskId: string) => `catchup:${missedTaskId}`,
   /** A subtask carried onto a fresh occurrence, keyed by the one it copies. */
   subtask: (newParentId: string, sourceSubtaskId: string) => `sub:${newParentId}:${sourceSubtaskId}`,
+  /**
+   * A task the app generates unattended from a source row — "Cook X", "Use up
+   * X", a day of the weekly meal-plan nudge. Two devices that each reconcile
+   * the same source before ever syncing compute the same id instead of two
+   * rows for one source (#1751), the same failure `occurrence` above exists
+   * to prevent for a completion's successor.
+   *
+   * `index` is how many tasks this exact (kind, source) pair has already
+   * produced, live or finished — 0 the first time. A source that legitimately
+   * earns another task after the last one finished (the same grocery item
+   * bought again) is a new occurrence, not a duplicate of the old one, so it
+   * needs a new id; counting what already exists is the disambiguator
+   * `occurrence` gets for free by keying off the completion it came from.
+   */
+  generated: (kind: string, sourceId: string, index: number) => `gen:${kind}:${sourceId}:${index}`,
 } as const;

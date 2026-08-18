@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a sync bug where two devices could each independently add their own copy of a cook/use-up task or the weekly meal-plan nudge before ever syncing with each other, so a task you'd already completed on one device could come back as a duplicate from the other",
+  "date": "2026-08-18"
+}

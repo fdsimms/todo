@@ -3,6 +3,7 @@ import {
   reconcileGeneratedTask,
   deleteGeneratedTaskQuietly,
 } from '../store/generatedTaskSync';
+import { derivedId, spawnSeed } from '../utils/syncIds';
 import type { Task } from '../types';
 
 // The shared reconcile reaches useTaskStore directly, the same way each
@@ -10,9 +11,9 @@ import type { Task } from '../types';
 // useLeftoverStore.test.ts / useGroceryStore.test.ts.
 const mockTaskState = {
   tasks: [] as Task[],
-  addTask: jest.fn((draft: Partial<Task>) => {
+  addTask: jest.fn((draft: Partial<Task>, id?: string) => {
     const task = {
-      id: `t-${mockTaskState.tasks.length + 1}`,
+      id: id ?? `t-${mockTaskState.tasks.length + 1}`,
       completed: false,
       archived: false,
       generatedKind: null,
@@ -95,6 +96,38 @@ describe('reconcileGeneratedTask — creating', () => {
     reconcileGeneratedTask(opts());
 
     expect(mockTaskState.tasks).toHaveLength(2);
+    // And it must not reuse the finished row's id (#1751): the two share a
+    // (kind, source) pair, so without a per-occurrence index the second
+    // create would collide with the first instead of standing beside it.
+    const created = mockTaskState.tasks[1];
+    expect(created.id).not.toBe('old');
+    expect(created.id).toBe(derivedId(spawnSeed.generated('groceryUseUp', 'g-1', 1)));
+  });
+
+  it('derives the created id from the kind, source and how many already exist (#1751)', () => {
+    // The bug this prevents: two devices each reconcile the same grocery item
+    // before ever syncing. Without a shared id each mints its own random one
+    // via addTask, and the ordinary sync merge keeps both as separate rows.
+    reconcileGeneratedTask(opts());
+
+    expect(mockTaskState.tasks[0].id).toBe(derivedId(spawnSeed.generated('groceryUseUp', 'g-1', 0)));
+  });
+
+  it('gives two independent reconciles of the same fresh source the same id', () => {
+    // Simulates the race directly: two "devices" each reconcile a source
+    // neither has ever created a task for, without seeing the other's tasks.
+    const firstDeviceTasks: Task[] = [];
+    const secondDeviceTasks: Task[] = [];
+
+    mockTaskState.tasks = firstDeviceTasks;
+    reconcileGeneratedTask(opts());
+    const firstId = mockTaskState.tasks[0].id;
+
+    mockTaskState.tasks = secondDeviceTasks;
+    reconcileGeneratedTask(opts());
+    const secondId = mockTaskState.tasks[0].id;
+
+    expect(secondId).toBe(firstId);
   });
 
   it('refuses the second one when blocksOnFinished is set', () => {

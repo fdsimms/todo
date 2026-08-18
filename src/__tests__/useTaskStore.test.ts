@@ -1,5 +1,6 @@
 import { useTaskStore } from '../store/useTaskStore';
 import { isMissed, isRealCompletion } from '../utils/missed';
+import { derivedId, spawnSeed } from '../utils/syncIds';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -2304,6 +2305,33 @@ describe('checkMealPlanNudge', () => {
     const only = new Date(due[0]!);
     expect(only.getDate()).toBe(3);
     expect(only.getHours()).toBe(12);
+  });
+
+  it('derives each day task\'s id from its day key, so two devices agree without syncing (#1751)', () => {
+    // The bug: two devices whose clocks each cross the trigger before either
+    // has synced with the other independently fire the nudge and each mint
+    // their own random ids for what is meant to be one weekly stack — the
+    // ordinary sync merge then keeps both sets, and whichever tasks were
+    // already completed on one device come back as duplicates from the other.
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    const firstRunIds = useTaskStore.getState().tasks.map(t => t.id);
+    expect(firstRunIds).toEqual([
+      '2025-08-10', '2025-08-11', '2025-08-12', '2025-08-13',
+      '2025-08-14', '2025-08-15', '2025-08-16',
+    ].map(dayKey => derivedId(spawnSeed.generated('mealPlanNudge', dayKey, 0))));
+
+    // A second "device" that has never seen the first device's tasks —
+    // simulated by resetting the store back to empty before firing again for
+    // the same week — computes the exact same ids.
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(firstRunIds);
   });
 
   it('files the seven under one stack, expanded, and remembers which', () => {

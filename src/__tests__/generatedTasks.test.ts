@@ -4,6 +4,7 @@ import {
   GENERATED_KIND_SPECS,
   generatedBy,
   generatedSourceOf,
+  generatedTaskCountOf,
   hasAnyGeneratedTask,
   isUseUpKind,
   liveGeneratedTask,
@@ -151,6 +152,30 @@ describe('hasAnyGeneratedTask', () => {
   it('is still scoped to the kind and the source', () => {
     expect(hasAnyGeneratedTask([from('leftoverUseUp', 'm-1')], 'mealCook', 'm-1')).toBe(false);
     expect(hasAnyGeneratedTask([from('mealCook', 'm-2')], 'mealCook', 'm-1')).toBe(false);
+  });
+});
+
+describe('generatedTaskCountOf', () => {
+  it('is 0 for a source with no task yet', () => {
+    expect(generatedTaskCountOf([], 'groceryUseUp', 'g-1')).toBe(0);
+  });
+
+  it('counts a finished one, like hasAnyGeneratedTask — a repeat purchase must not reuse its id', () => {
+    const tasks = [from('groceryUseUp', 'g-1', { completed: true })];
+    expect(generatedTaskCountOf(tasks, 'groceryUseUp', 'g-1')).toBe(1);
+  });
+
+  it('counts a live one and a finished one for the same source together', () => {
+    const tasks = [
+      from('groceryUseUp', 'g-1', { completed: true }),
+      from('groceryUseUp', 'g-1'),
+    ];
+    expect(generatedTaskCountOf(tasks, 'groceryUseUp', 'g-1')).toBe(2);
+  });
+
+  it('is scoped to the kind and the source, like hasAnyGeneratedTask', () => {
+    const tasks = [from('leftoverUseUp', 'g-1'), from('groceryUseUp', 'g-2')];
+    expect(generatedTaskCountOf(tasks, 'groceryUseUp', 'g-1')).toBe(0);
   });
 });
 
