@@ -653,14 +653,12 @@ const LogbookRow = React.memo(function LogbookRow({
                 the Logbook to read back. It shrinks where the others don't, so
                 a long answer truncates instead of shoving them off the row.
 
-                A tinted pill rather than one more "· value" in the line, and
-                the "?" needs the pill as much as the pill needs it: bare, the
-                glyph sits between two unrelated bits of text and reads as
-                uncertainty about the value it's next to. Enclosed, it's a
-                label on the thing it belongs to — and the answer stops reading
-                as a second timestamp, which "9:14 AM · Sat 12 Sep" plainly
-                did. Same glyph the task's own checkbox carried before it was
-                ticked, so the row and its Logbook entry say the same thing.
+                A tinted pill rather than one more "· value" in the line — the
+                tint alone is what stops the answer reading as a second
+                timestamp, which "9:14 AM · Sat 12 Sep" plainly did. No "?" in
+                it (#1735): a question mark on a decision that's already been
+                made reads as the decision still being open, the opposite of
+                what a tinted "here's what you decided" pill is for.
 
                 An asked-but-unanswered entry says so rather than showing
                 nothing — otherwise it's indistinguishable from an ordinary
@@ -671,7 +669,6 @@ const LogbookRow = React.memo(function LogbookRow({
             {asksOnCompletion(task) && (
               answer !== null ? (
                 <View style={styles.answerPill}>
-                  <Ionicons name="help" size={iconSize.xs} color={colors.accent} />
                   <Text style={styles.answer} numberOfLines={1}>{answer}</Text>
                 </View>
               ) : (
