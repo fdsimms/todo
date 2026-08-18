@@ -58,7 +58,7 @@ import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import {
   postponeOutcome,
@@ -3968,7 +3968,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   vacationHiddenTasks() {
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
-      .filter(t => !t.parentId && isHiddenForVacation(t))
+      // isHiddenForVacation alone says *why* a task is hidden, not whether it
+      // would otherwise be on Today — isVisibleApartFromVacation is what makes
+      // this "what vacation is currently hiding from today" rather than
+      // "every vacation-paused task that exists".
+      .filter(t => !t.parentId && isHiddenForVacation(t) && isVisibleApartFromVacation(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 

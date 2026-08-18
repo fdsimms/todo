@@ -4712,6 +4712,56 @@ describe('deferredTasks', () => {
   });
 });
 
+describe('vacationHiddenTasks', () => {
+  const settingsStoreMock = () => {
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+    return useSettingsStore;
+  };
+
+  const enableVacationMode = () => {
+    settingsStoreMock().getState.mockReturnValue({
+      ...settingsStoreMock().getState(),
+      vacationMode: true,
+    });
+  };
+
+  // #1753: this used to be every vacation-paused/vacation-hidden-category task
+  // that exists, not just the ones that would otherwise be on Today.
+  it('includes a vacation-paused task that is due today', () => {
+    enableVacationMode();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', vacationPause: true, dueDate: new Date().toISOString() })],
+    });
+    expect(useTaskStore.getState().vacationHiddenTasks().map(t => t.id)).toEqual(['t1']);
+  });
+
+  it('excludes a vacation-paused task deferred to a future day', () => {
+    const future = new Date();
+    future.setFullYear(future.getFullYear() + 1);
+    enableVacationMode();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', vacationPause: true, deferUntil: future.toISOString() })],
+    });
+    expect(useTaskStore.getState().vacationHiddenTasks()).toHaveLength(0);
+  });
+
+  it('excludes a vacation-paused task with no date signal', () => {
+    enableVacationMode();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', vacationPause: true })],
+    });
+    expect(useTaskStore.getState().vacationHiddenTasks()).toHaveLength(0);
+  });
+
+  it('excludes non-paused tasks', () => {
+    enableVacationMode();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', dueDate: new Date().toISOString() })],
+    });
+    expect(useTaskStore.getState().vacationHiddenTasks()).toHaveLength(0);
+  });
+});
+
 describe('expiredTasks', () => {
   beforeEach(() => {
     jest.useFakeTimers();

@@ -250,12 +250,17 @@ struct TodoTodayWidgetEntryView: View {
 
                 Group {
                     if shown.isEmpty {
+                        // maxHeight: .infinity, not a fixed gridHeight box: rowHeight
+                        // clamps at WidgetLayout.maxRowHeight on most widget sizes, so
+                        // gridHeight is shorter than the space actually available below
+                        // the header. Centering in the fixed box left the leftover to
+                        // the trailing Spacer alone, which put the text above the
+                        // widget's true center instead of in it.
                         Text(emptyStateMessage)
                             .font(.system(size: 13))
                             .foregroundColor(palette.textTertiary)
                             .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .frame(height: gridHeight)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     } else {
                         // Both columns are always laid out, even when the
                         // right one is empty — otherwise the left column is
@@ -271,7 +276,12 @@ struct TodoTodayWidgetEntryView: View {
                 }
                 .padding(.top, WidgetLayout.headerGap)
 
-                Spacer(minLength: 0)
+                // Only needed to hold the fixed-height grid at the top when
+                // there are rows — the empty state above already fills all
+                // remaining space itself via maxHeight: .infinity.
+                if !shown.isEmpty {
+                    Spacer(minLength: 0)
+                }
             }
             .padding(.horizontal, WidgetLayout.horizontalPadding)
             .padding(.top, WidgetLayout.topPadding)
