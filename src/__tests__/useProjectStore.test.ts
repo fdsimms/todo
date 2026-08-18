@@ -118,6 +118,8 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   sortOrder: 1,
   archived: false,
   archivedAt: null,
+  completed: false,
+  completedAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
   nudgeCadenceDays: 14,
   autoSchedule: false,
@@ -392,6 +394,12 @@ describe('isProjectPastWindow', () => {
     const project = makeProject({ targetEndDate: past, archived: false });
     expect(isProjectPastWindow(project, { done: 2, total: 2 })).toBe(false);
   });
+
+  it('is false when the project is marked complete, even past its window', () => {
+    const past = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
+    const project = makeProject({ targetEndDate: past, archived: false, completed: true });
+    expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(false);
+  });
 });
 
 // ─── store CRUD ─────────────────────────────────────────────────────────────
@@ -502,6 +510,44 @@ describe('applyProjectArchived', () => {
     useProjectStore.setState({ projects: [makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })] });
     useProjectStore.getState().applyProjectArchived('p1', true);
     expect(useProjectStore.getState().getProjectById('p1')!.archivedAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+});
+
+describe('applyProjectCompleted', () => {
+  it('completes a project, stamping completedAt', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', completed: false })] });
+    useProjectStore.getState().applyProjectCompleted('p1', true);
+    const project = useProjectStore.getState().getProjectById('p1')!;
+    expect(project.completed).toBe(true);
+    expect(project.completedAt).not.toBeNull();
+  });
+
+  it('keeps a passed-in completedAt instead of stamping now', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', completed: false })] });
+    useProjectStore.getState().applyProjectCompleted('p1', true, '2025-01-01T00:00:00.000Z');
+    expect(useProjectStore.getState().getProjectById('p1')!.completedAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  it('uncompletes a project, clearing completedAt', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', completed: true, completedAt: '2025-01-01T00:00:00.000Z' })] });
+    useProjectStore.getState().applyProjectCompleted('p1', false);
+    const project = useProjectStore.getState().getProjectById('p1')!;
+    expect(project.completed).toBe(false);
+    expect(project.completedAt).toBeNull();
+  });
+
+  it('is a no-op when the project is already in the requested state', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', completed: true, completedAt: '2025-01-01T00:00:00.000Z' })] });
+    useProjectStore.getState().applyProjectCompleted('p1', true);
+    expect(useProjectStore.getState().getProjectById('p1')!.completedAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  it('is independent of archived — completing an archived project leaves it archived', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })] });
+    useProjectStore.getState().applyProjectCompleted('p1', true);
+    const project = useProjectStore.getState().getProjectById('p1')!;
+    expect(project.archived).toBe(true);
+    expect(project.completed).toBe(true);
   });
 });
 

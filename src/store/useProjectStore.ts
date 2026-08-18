@@ -125,7 +125,7 @@ function answeredAt(task: Task): string {
 // date while still incomplete and not archived — nothing automatic happens,
 // this is purely a visual cue so the user can decide what to do about it.
 export function isProjectPastWindow(project: Project, progress: { done: number; total: number }): boolean {
-  if (!project.targetEndDate || project.archived) return false;
+  if (!project.targetEndDate || project.archived || project.completed) return false;
   if (progress.total > 0 && progress.done === progress.total) return false;
   return new Date(project.targetEndDate).getTime() < Date.now();
 }
@@ -147,6 +147,11 @@ interface ProjectStore {
   // explicitly when undoing an unarchive so the project keeps the day it was
   // originally archived rather than being re-stamped as archived just now.
   applyProjectArchived: (id: string, archived: boolean, archivedAt?: string | null) => void;
+  // Same shape as applyProjectArchived, and undoable through completeProject/
+  // uncompleteProject in useTaskStore for the same reason. `completedAt` is
+  // passed back explicitly when undoing an uncomplete so the project keeps
+  // the day it was originally completed.
+  applyProjectCompleted: (id: string, completed: boolean, completedAt?: string | null) => void;
   // Deletion lives in useTaskStore since it needs to touch tasks too; these
   // are the low-level row operations it calls once members are handled.
   removeProjectRow: (id: string) => void;
@@ -174,6 +179,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       sortOrder: maxOrder + 1,
       archived: false,
       archivedAt: null,
+      completed: false,
+      completedAt: null,
       createdAt: new Date().toISOString(),
       // Seeded from the global default at creation time only — changing the
       // default in Settings later never touches a project already created.
@@ -240,6 +247,18 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       ...project,
       archived,
       archivedAt: archived ? (archivedAt ?? new Date().toISOString()) : null,
+    };
+    dbUpdateProject(updated);
+    set(s => ({ projects: s.projects.map(p => (p.id === id ? updated : p)) }));
+  },
+
+  applyProjectCompleted(id, completed, completedAt) {
+    const project = get().projects.find(p => p.id === id);
+    if (!project || project.completed === completed) return;
+    const updated = {
+      ...project,
+      completed,
+      completedAt: completed ? (completedAt ?? new Date().toISOString()) : null,
     };
     dbUpdateProject(updated);
     set(s => ({ projects: s.projects.map(p => (p.id === id ? updated : p)) }));

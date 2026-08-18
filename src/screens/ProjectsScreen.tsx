@@ -35,7 +35,7 @@ import {
 } from '../utils/fabDrop';
 import { ReorderableList } from '../components/ReorderableList';
 import { ProgressBar } from '../components/ProgressBar';
-import { ProjectsOptionsMenu } from '../components/ProjectsOptionsMenu';
+import { ProjectsOptionsMenu, type ProjectFilter } from '../components/ProjectsOptionsMenu';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -80,10 +80,11 @@ export function ProjectsScreen() {
   const removeProjectRow = useProjectStore(s => s.removeProjectRow);
   const reorderProjectsWithCategoryUpdates = useProjectStore(s => s.reorderProjectsWithCategoryUpdates);
   const unarchiveProject = useTaskStore(s => s.unarchiveProject);
+  const uncompleteProject = useTaskStore(s => s.uncompleteProject);
   const allTasks = useTaskStore(s => s.tasks);
   const projectCategories = useProjectCategoryStore(useShallow(s => s.categories));
 
-  const [showArchived, setShowArchived] = useState(false);
+  const [projectFilter, setProjectFilter] = useState<ProjectFilter>('active');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
@@ -92,9 +93,15 @@ export function ProjectsScreen() {
   // details" — discarded on close if it was never given a name.
   const newProjectIdRef = useRef<string | null>(null);
 
+  // A project that's both completed and archived reads as archived — archiving
+  // is always the final resting state, so it can't show in two lists at once.
   const visibleProjects = useMemo(
-    () => projects.filter(p => p.archived === showArchived),
-    [projects, showArchived]
+    () => projects.filter(p => {
+      if (projectFilter === 'archived') return p.archived;
+      if (projectFilter === 'completed') return p.completed && !p.archived;
+      return !p.archived && !p.completed;
+    }),
+    [projects, projectFilter]
   );
 
   const projectCategoryOrder = useMemo(
@@ -106,6 +113,7 @@ export function ProjectsScreen() {
     [visibleProjects, projectCategoryOrder]
   );
   const archivedCount = useMemo(() => projects.filter(p => p.archived).length, [projects]);
+  const completedCount = useMemo(() => projects.filter(p => p.completed && !p.archived).length, [projects]);
 
   // ——— Dragging the add button into the list ———————————————————————————
   //
@@ -259,6 +267,12 @@ export function ProjectsScreen() {
     unarchiveProject(project.id);
   };
 
+  const handleQuickUncomplete = (project: Project) => {
+    haptics.tap();
+    animateLayout();
+    uncompleteProject(project.id);
+  };
+
   const renderRow = (item: ProjectListItem, drag?: () => void, isActive?: boolean) => {
     if (item.type === 'header') {
       return (
@@ -289,12 +303,22 @@ export function ProjectsScreen() {
         <View style={styles.projectInfo}>
           <View style={styles.projectTitleRow}>
             <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
-            {showArchived && (
+            {projectFilter === 'archived' && (
               <TouchableOpacity
                 onPress={() => handleQuickUnarchive(project)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Unarchive ${project.title}`}
+              >
+                <Ionicons name="arrow-undo-outline" size={16} color={colors.accent} />
+              </TouchableOpacity>
+            )}
+            {projectFilter === 'completed' && (
+              <TouchableOpacity
+                onPress={() => handleQuickUncomplete(project)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Restore ${project.title} to active`}
               >
                 <Ionicons name="arrow-undo-outline" size={16} color={colors.accent} />
               </TouchableOpacity>
@@ -331,15 +355,17 @@ export function ProjectsScreen() {
       <ScreenHeader
         title="Projects"
         subtitle={visibleProjects.length > 0
-          ? showArchived
+          ? projectFilter === 'archived'
             ? `${visibleProjects.length} archived`
-            : `${visibleProjects.length} active ${visibleProjects.length === 1 ? 'project' : 'projects'}`
+            : projectFilter === 'completed'
+              ? `${visibleProjects.length} completed`
+              : `${visibleProjects.length} active ${visibleProjects.length === 1 ? 'project' : 'projects'}`
           : undefined}
         actions={[
           {
             icon: 'ellipsis-horizontal',
             onPress: () => setOptionsMenuVisible(true),
-            active: showArchived,
+            active: projectFilter !== 'active',
             accessibilityLabel: 'Project options',
           },
         ]}
@@ -352,11 +378,17 @@ export function ProjectsScreen() {
       >
       {visibleProjects.length === 0 ? (
         <EmptyState
-          icon={showArchived ? 'archive-outline' : 'briefcase-outline'}
-          title={showArchived ? 'No archived projects' : 'No projects yet'}
-          subtitle={showArchived ? 'Projects you archive will show up here' : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time'}
-          actionLabel={showArchived ? undefined : 'New project'}
-          onAction={showArchived ? undefined : () => setQuickAddVisible(true)}
+          icon={projectFilter === 'archived' ? 'archive-outline' : projectFilter === 'completed' ? 'checkmark-circle-outline' : 'briefcase-outline'}
+          title={projectFilter === 'archived' ? 'No archived projects' : projectFilter === 'completed' ? 'No completed projects' : 'No projects yet'}
+          subtitle={
+            projectFilter === 'archived'
+              ? 'Projects you archive will show up here'
+              : projectFilter === 'completed'
+                ? 'Projects you mark complete will show up here'
+                : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time'
+          }
+          actionLabel={projectFilter === 'active' ? 'New project' : undefined}
+          onAction={projectFilter === 'active' ? () => setQuickAddVisible(true) : undefined}
           bottomOffset={tabBarHeight}
         />
       ) : (
@@ -392,7 +424,7 @@ export function ProjectsScreen() {
       )}
       </FabDropZoneProvider>
 
-      {!showArchived && (
+      {projectFilter === 'active' && (
         <AddProjectFabWithDropLabel
           channel={fabIntentChannel}
           onPress={() => setQuickAddVisible(true)}
@@ -406,8 +438,9 @@ export function ProjectsScreen() {
       <ProjectsOptionsMenu
         visible={optionsMenuVisible}
         onClose={() => setOptionsMenuVisible(false)}
-        showArchived={showArchived}
-        onShowArchivedChange={setShowArchived}
+        filter={projectFilter}
+        onFilterChange={setProjectFilter}
+        completedCount={completedCount}
         archivedCount={archivedCount}
       />
 

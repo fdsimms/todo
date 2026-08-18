@@ -345,7 +345,9 @@ export function findProjectStalls(
   const stalls: ProjectStall[] = [];
 
   for (const project of projects) {
-    if (project.archived) continue;
+    // A completed project is done, same as an archived one — neither has a
+    // "next task" to nudge for.
+    if (project.archived || project.completed) continue;
     const verdict = classifyProject(project, byProject.get(project.id) ?? [], todayStart, mode);
     if (verdict.stall) stalls.push(verdict.stall);
   }
@@ -482,7 +484,7 @@ export function diagnosePullEmpty(
     return { reason: 'vacation', count: 0, total: 0 };
   }
 
-  const active = projects.filter(p => !p.archived);
+  const active = projects.filter(p => !p.archived && !p.completed);
   if (active.length === 0) return { reason: 'no-projects', count: 0, total: 0 };
 
   const byProject = bucketByProject(tasks);

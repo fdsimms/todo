@@ -1319,6 +1319,8 @@ describe('Projects', () => {
     sortOrder: 1,
     archived: false,
     archivedAt: null,
+    completed: false,
+    completedAt: null,
     createdAt: '2025-01-01T00:00:00.000Z',
     nudgeCadenceDays: 14,
     autoSchedule: false,
@@ -1334,6 +1336,14 @@ describe('Projects', () => {
     expect(p.targetStartDate).toBe('2026-06-01T00:00:00.000Z');
     expect(p.targetEndDate).toBe('2026-09-01T00:00:00.000Z');
     expect(p.archived).toBe(false);
+    expect(p.completed).toBe(false);
+  });
+
+  it('round-trips a completed project, stamping completedAt', () => {
+    dbInsertProject(makeProject({ id: 'p-done', completed: true, completedAt: '2026-01-05T00:00:00.000Z' }));
+    const p = dbGetAllProjects().find(row => row.id === 'p-done');
+    expect(p?.completed).toBe(true);
+    expect(p?.completedAt).toBe('2026-01-05T00:00:00.000Z');
   });
 
   it('orders by sort_order', () => {
@@ -1496,7 +1506,7 @@ describe('backup and restore', () => {
     dbInsertTask(makeTask({ id: 't2', title: 'Pay rent', completed: true }));
     dbInsertProject({
       id: 'p1', title: 'Summer list', notes: '', targetStartDate: null, targetEndDate: null,
-      category: null, sortOrder: 1, archived: false, archivedAt: null,
+      category: null, sortOrder: 1, archived: false, archivedAt: null, completed: false, completedAt: null,
       createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false, sequential: false,
       nudgeOptIn: true,
     });

@@ -12,21 +12,25 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 
+export type ProjectFilter = 'active' | 'completed' | 'archived';
+
 interface Props {
   visible: boolean;
   onClose: () => void;
-  showArchived: boolean;
-  onShowArchivedChange: (v: boolean) => void;
+  filter: ProjectFilter;
+  onFilterChange: (v: ProjectFilter) => void;
+  completedCount: number;
   archivedCount: number;
 }
 
 /**
  * The Projects screen's overflow ("...") menu. Its one job today is switching
- * between the active and archived lists — the direct toggle button it
- * replaced took a header slot for something reached rarely, the same reason
- * Today's own display options live behind its "..." rather than as buttons.
+ * between the active, completed and archived lists — the direct toggle button
+ * it replaced took a header slot for something reached rarely, the same
+ * reason Today's own display options live behind its "..." rather than as
+ * buttons.
  */
-export function ProjectsOptionsMenu({ visible, onClose, showArchived, onShowArchivedChange, archivedCount }: Props) {
+export function ProjectsOptionsMenu({ visible, onClose, filter, onFilterChange, completedCount, archivedCount }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -54,9 +58,9 @@ export function ProjectsOptionsMenu({ visible, onClose, showArchived, onShowArch
     });
   };
 
-  const choose = (archived: boolean) => {
+  const choose = (v: ProjectFilter) => {
     haptics.tap();
-    onShowArchivedChange(archived);
+    onFilterChange(v);
     dismiss();
   };
 
@@ -69,33 +73,50 @@ export function ProjectsOptionsMenu({ visible, onClose, showArchived, onShowArch
         <View style={styles.optionsCard}>
           <TouchableOpacity
             style={styles.optionRow}
-            onPress={() => choose(false)}
+            onPress={() => choose('active')}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
             accessibilityLabel="Active projects"
           >
-            <Ionicons name="briefcase-outline" size={18} color={!showArchived ? colors.accent : colors.textSecondary} />
+            <Ionicons name="briefcase-outline" size={18} color={filter === 'active' ? colors.accent : colors.textSecondary} />
             <View style={styles.optionContent}>
-              <Text style={[styles.optionLabel, !showArchived && styles.optionLabelActive]}>Active projects</Text>
+              <Text style={[styles.optionLabel, filter === 'active' && styles.optionLabelActive]}>Active projects</Text>
             </View>
-            {!showArchived && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+            {filter === 'active' && <Ionicons name="checkmark" size={18} color={colors.accent} />}
           </TouchableOpacity>
           <View style={styles.optionSep} />
           <TouchableOpacity
             style={styles.optionRow}
-            onPress={() => choose(true)}
+            onPress={() => choose('completed')}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Completed projects"
+          >
+            <Ionicons name="checkmark-circle-outline" size={18} color={filter === 'completed' ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={[styles.optionLabel, filter === 'completed' && styles.optionLabelActive]}>Completed projects</Text>
+              <Text style={styles.optionHint}>
+                {completedCount > 0 ? `${completedCount} completed` : 'None marked complete yet'}
+              </Text>
+            </View>
+            {filter === 'completed' && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+          </TouchableOpacity>
+          <View style={styles.optionSep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => choose('archived')}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
             accessibilityLabel="Archived projects"
           >
-            <Ionicons name="archive-outline" size={18} color={showArchived ? colors.accent : colors.textSecondary} />
+            <Ionicons name="archive-outline" size={18} color={filter === 'archived' ? colors.accent : colors.textSecondary} />
             <View style={styles.optionContent}>
-              <Text style={[styles.optionLabel, showArchived && styles.optionLabelActive]}>Archived projects</Text>
+              <Text style={[styles.optionLabel, filter === 'archived' && styles.optionLabelActive]}>Archived projects</Text>
               <Text style={styles.optionHint}>
                 {archivedCount > 0 ? `${archivedCount} archived` : 'None archived yet'}
               </Text>
             </View>
-            {showArchived && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+            {filter === 'archived' && <Ionicons name="checkmark" size={18} color={colors.accent} />}
           </TouchableOpacity>
         </View>
 

@@ -129,6 +129,14 @@ export interface Project {
   sortOrder: number;
   archived: boolean;
   archivedAt: string | null;
+  // Independent of archived: finishing a project and filing it away are two
+  // different calls, and reusing archived for both meant the only way to mark
+  // a project done was to also hide it from the Projects screen entirely (see
+  // ProjectEditor's Mark complete row). A completed project keeps its own
+  // Completed list; archiving one afterward moves it to Archived instead, same
+  // as archiving any other project.
+  completed: boolean;
+  completedAt: string | null;
   createdAt: string;
   // Days of quiet before this project offers up its next task (see
   // utils/projectPull.ts). 0 = never ask, for a project deliberately parked.
