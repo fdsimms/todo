@@ -426,13 +426,16 @@ export function isQuotaPartial(task: Task): boolean {
 // because the pure, node-tested utils can't import this one. See missed.ts.
 export { isMissed, isRealCompletion } from './missed';
 
-export function isTaskVisible(task: Task): boolean {
+// Every isTaskVisible gate except the vacation ones. Exported so the "hidden
+// on vacation" reveal (vacationHiddenTasks) can ask "would this be on Today at
+// all, if not for vacation mode" — re-checking vacationPause/category here
+// would be circular, since those are the very reason a task lands in that
+// section, but everything else still has to hold or the reveal would include
+// tasks that wouldn't be on Today anyway (deferred to next month, filed in a
+// project with no date, blocked, ...).
+export function isVisibleApartFromVacation(task: Task): boolean {
   if (task.completed) return false;
   if (task.archived) return false;
-
-  if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
-
-  if (isCategoryHiddenOnVacation(task.category)) return false;
 
   // Ahead of the time gates deliberately: being blocked isn't a "not yet" that
   // a clock resolves, so it shouldn't rank below one.
@@ -479,6 +482,12 @@ export function isTaskVisible(task: Task): boolean {
   if (!isCategoryScheduleActive(task.category)) return false;
 
   return true;
+}
+
+export function isTaskVisible(task: Task): boolean {
+  if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
+  if (isCategoryHiddenOnVacation(task.category)) return false;
+  return isVisibleApartFromVacation(task);
 }
 
 // True for a recurring task that's showing up in Later ahead of its own day

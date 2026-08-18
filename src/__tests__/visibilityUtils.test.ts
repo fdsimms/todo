@@ -6,6 +6,7 @@ import {
   isTaskSweepable,
   getVisibleAt,
   isHiddenForVacation,
+  isVisibleApartFromVacation,
   isRecurrenceNotYetDue,
   isTaskNew,
   isInboxTask,
@@ -1116,6 +1117,43 @@ describe('isHiddenForVacation', () => {
   it('is false for a completed paused task', () => {
     mockSettingsState.vacationMode = true;
     expect(isHiddenForVacation({ ...baseTask, vacationPause: true, completed: true })).toBe(false);
+  });
+});
+
+// ─── isVisibleApartFromVacation ────────────────────────────────────────────────
+// (#1753: the "hidden on vacation" reveal used to list every vacation-paused
+// task, not just ones that would otherwise be on Today — this is the check
+// that narrows it.)
+
+describe('isVisibleApartFromVacation', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockCategorySchedule(null);
+    mockSettingsState.vacationMode = false;
+  });
+
+  it('ignores vacationPause and the task\'s hide-on-vacation category', () => {
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    mockSettingsState.vacationMode = true;
+    expect(isVisibleApartFromVacation({ ...baseTask, dueDate, vacationPause: true })).toBe(true);
+    mockCategorySchedule(errandsCategory);
+    expect(isVisibleApartFromVacation({ ...baseTask, dueDate, category: 'Errands' })).toBe(true);
+  });
+
+  it('still hides a task deferred to a future day', () => {
+    const deferUntil = new Date(2025, 5, 11, 12, 0, 0).toISOString();
+    mockSettingsState.vacationMode = true;
+    expect(isVisibleApartFromVacation({ ...baseTask, deferUntil, vacationPause: true })).toBe(false);
+  });
+
+  it('still hides a task with no date signal', () => {
+    mockSettingsState.vacationMode = true;
+    expect(isVisibleApartFromVacation({ ...baseTask, vacationPause: true })).toBe(false);
   });
 });
 

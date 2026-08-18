@@ -4712,6 +4712,56 @@ describe('deferredTasks', () => {
   });
 });
 
+describe('vacationHiddenTasks', () => {
+  const settingsStoreMock = () => {
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+    return useSettingsStore;
+  };
+
+  const enableVacationMode = () => {
+    settingsStoreMock().getState.mockReturnValue({
+      ...settingsStoreMock().getState(),
+      vacationMode: true,
+    });
+  };
+
+  // #1753: this used to be every vacation-paused/vacation-hidden-category task
+  // that exists, not just the ones that would otherwise be on Today.
+  it('includes a vacation-paused task that is due today', () => {
+    enableVacationMode();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', vacationPause: true, dueDate: new Date().toISOString() })],
+    });
+    expect(useTaskStore.getState().vacationHiddenTasks().map(t => t.id)).toEqual(['t1']);
+  });
+
+  it('excludes a vacation-paused task deferred to a future day', () => {
+    const future = new Date();
+    future.setFullYear(future.getFullYear() + 1);
+    enableVacationMode();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', vacationPause: true, deferUntil: future.toISOString() })],
+    });
+    expect(useTaskStore.getState().vacationHiddenTasks()).toHaveLength(0);
+  });
+
+  it('excludes a vacation-paused task with no date signal', () => {
+    enableVacationMode();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', vacationPause: true })],
+    });
+    expect(useTaskStore.getState().vacationHiddenTasks()).toHaveLength(0);
+  });
+
+  it('excludes non-paused tasks', () => {
+    enableVacationMode();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', dueDate: new Date().toISOString() })],
+    });
+    expect(useTaskStore.getState().vacationHiddenTasks()).toHaveLength(0);
+  });
+});
+
 describe('expiredTasks', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -5981,6 +6031,56 @@ describe('quota tasks', () => {
       const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
       expect(task.completed).toBe(false);
       expect(task.progressCount).toBe(7);
+    });
+  });
+
+  // #1752: raising the target on a quota task that already hit its old one
+  // used to leave it stuck completed and invisible on Today, with no way to
+  // log the rest of the day's new target.
+  describe('updateTask reopening a completed quota task', () => {
+    it('reopens the task when the new target exceeds what was already logged', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 7 })] });
+      useTaskStore.getState().logQuotaUnit('water'); // 7 -> 8, completes for the day
+
+      useTaskStore.getState().updateTask('water', { targetCount: 12 });
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      // Nothing was un-logged — only the completion — so the count actually
+      // reached today is preserved rather than dropped to targetCount - 1.
+      expect(task.progressCount).toBe(8);
+      expect(task.targetCount).toBe(12);
+    });
+
+    it('deletes the next occurrence the completion had already spawned', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 7 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      expect(useTaskStore.getState().tasks).toHaveLength(2);
+
+      useTaskStore.getState().updateTask('water', { targetCount: 12 });
+
+      expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['water']);
+    });
+
+    it('leaves a still-active (not yet completed) quota task alone', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 3 })] });
+      useTaskStore.getState().updateTask('water', { targetCount: 12 });
+
+      const task = useTaskStore.getState().tasks[0];
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(3);
+      expect(task.targetCount).toBe(12);
+    });
+
+    it('leaves a completed quota task alone when the target is not raised past what was logged', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 7 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      useTaskStore.getState().updateTask('water', { targetCount: 8 });
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(true);
+      expect(task.progressCount).toBe(8);
     });
   });
 

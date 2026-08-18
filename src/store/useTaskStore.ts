@@ -58,7 +58,7 @@ import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import {
   postponeOutcome,
@@ -1478,6 +1478,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   updateTask(id, updates, options) {
+    // Raising a completed quota task's target past what's already logged
+    // means there's more to do today, but isTaskVisible bails out on
+    // `completed` before it ever looks at targetCount — the row would stay
+    // stuck done, invisible on Today, with no way to log the rest (#1752).
+    // Reopen it the same way undoing its completion would (which also
+    // deletes the next occurrence completing it already spawned, so raising
+    // the target can't leave two live rows for the same series), then
+    // restore the count actually logged — nothing was undone, only the
+    // completion.
+    const current = get().tasks.find(t => t.id === id);
+    if (
+      current?.completed &&
+      isQuotaTask(current) &&
+      !isMissed(current) &&
+      'targetCount' in updates &&
+      updates.targetCount != null &&
+      updates.targetCount > current.progressCount
+    ) {
+      const loggedSoFar = current.progressCount;
+      get().uncompleteTask(id);
+      updates = { ...updates, progressCount: loggedSoFar };
+    }
+
     const scope = options?.scope ?? 'series';
     // Computed once, outside the map: it scans every task, and the map is
     // already a full pass. Only consumed on the 0→1 transition below.
@@ -3968,7 +3991,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   vacationHiddenTasks() {
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
-      .filter(t => !t.parentId && isHiddenForVacation(t))
+      // isHiddenForVacation alone says *why* a task is hidden, not whether it
+      // would otherwise be on Today — isVisibleApartFromVacation is what makes
+      // this "what vacation is currently hiding from today" rather than
+      // "every vacation-paused task that exists".
+      .filter(t => !t.parentId && isHiddenForVacation(t) && isVisibleApartFromVacation(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
