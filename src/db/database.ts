@@ -2087,7 +2087,6 @@ export function dbDeleteGroceryItem(id: string): void {
  */
 export function dbFinishGroceryShopping(
   purchasedAt: string,
-  onHandUntilById: Readonly<Record<string, string>> = {},
   shopId: string | null = null,
   expiresAtById: Readonly<Record<string, string>> = {},
   priceById: Readonly<Record<string, number>> = {}
@@ -2113,22 +2112,24 @@ export function dbFinishGroceryShopping(
         SET on_list = 0, checked = 0, in_catalog = 1,
             purchase_count = purchase_count + 1,
             last_purchased_at = ?,
+            on_hand_until = NULL,
             quantity = CASE WHEN quantity_from_recipe = 1 THEN NULL ELSE quantity END,
             quantity_from_recipe = 0
       WHERE checked = 1 AND on_list = 1`,
     [purchasedAt]
   );
-  // Unlike every field above, on_hand_until is a per-item cadence guess (see
-  // grocerySuggest.defaultOnHandUntil) — never the same value twice across a
-  // trip — so it can't ride the single bulk UPDATE and gets its own pass, the
-  // same shape as the shop-link loop just below.
+  // on_hand_until is *cleared* by a purchase rather than written, and it rides
+  // the bulk UPDATE above because null is the same value for every row. A
+  // purchase is evidence probablyHaveReason reads directly (#1770); the only
+  // thing it has to say about the column is that buying something refutes an
+  // "Out of it" left on it — the same correction a purchase already makes to a
+  // shop link's unavailableAt, and the same reason: nobody should have to take
+  // that claim back by hand once they've come home with the thing.
   for (const row of rows) {
-    const until = onHandUntilById[row.id];
-    if (until) db.runSync('UPDATE grocery_items SET on_hand_until = ? WHERE id = ?', [until, row.id]);
-    // Same per-item pass, and the same reason: a use-by day comes off the shelf
-    // life of *this* item (see groceryShelfLife.ts), so it can't ride the bulk
-    // UPDATE either. Only the rows the lexicon recognises get one — a bag of
-    // rice is in this trip too and has no day worth naming.
+    // A use-by day, unlike the clear above, is per item: it comes off the shelf
+    // life of *this* row (see groceryShelfLife.ts), so it can't ride the bulk
+    // UPDATE. Only the rows the lexicon recognises get one — a bag of rice is
+    // in this trip too and has no day worth naming.
     const expires = expiresAtById[row.id];
     if (expires) db.runSync('UPDATE grocery_items SET expires_at = ? WHERE id = ?', [expires, row.id]);
     // Only the rows the user actually priced. An absent price leaves the last

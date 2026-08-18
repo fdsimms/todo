@@ -91,6 +91,7 @@ import {
   TOMBSTONE_RETENTION_DAYS,
 } from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
+import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, Leftover, MealPlanEntry, MealSlot } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -2013,7 +2014,7 @@ describe('grocery items', () => {
         brand: 'Fage', brandStrict: false,
       }));
 
-      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', {}, 'shop-1');
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', 'shop-1');
 
       const byItem = new Map(dbGetAllItemShopLinks().map(l => [l.itemId, l.brand]));
       expect(byItem.get('g1')).toBe('Good Culture');
@@ -2044,24 +2045,26 @@ describe('grocery items', () => {
       expect(dbGetAllGroceryItems()[0].purchaseCount).toBe(0);
     });
 
-    it('writes a per-item on_hand_until rather than one shared value', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true }));
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', checked: true }));
+    // #1770 — a purchase is evidence probablyHaveReason reads for itself, not
+    // an assertion to store. What a trip writes here is a clear, so that
+    // coming home with something takes back an "Out of it" left on it.
+    it('clears on_hand_until rather than stamping a window', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true, onHandUntil: OUT_OF_IT_UNTIL }));
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', checked: true, onHandUntil: '2026-09-01T00:00:00.000Z' }));
 
-      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', {
-        g1: '2026-08-21T00:00:00.000Z',
-        g2: '2026-08-14T00:00:00.000Z',
-      });
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z');
 
       const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
-      expect(byId.get('g1')!.onHandUntil).toBe('2026-08-21T00:00:00.000Z');
-      expect(byId.get('g2')!.onHandUntil).toBe('2026-08-14T00:00:00.000Z');
+      expect(byId.get('g1')!.onHandUntil).toBeNull();
+      expect(byId.get('g2')!.onHandUntil).toBeNull();
     });
 
-    it('leaves on_hand_until untouched for a row the map says nothing about', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true, onHandUntil: '2026-08-01T00:00:00.000Z' }));
-      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', {});
-      expect(dbGetAllGroceryItems()[0].onHandUntil).toBe('2026-08-01T00:00:00.000Z');
+    it('leaves on_hand_until alone on a row the trip did not buy', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true }));
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', checked: false, onHandUntil: OUT_OF_IT_UNTIL }));
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z');
+      const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
+      expect(byId.get('g2')!.onHandUntil).toBe(OUT_OF_IT_UNTIL);
     });
   });
 

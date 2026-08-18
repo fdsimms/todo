@@ -575,11 +575,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Salt and pepper — always on hand, grouped away from "Need to buy" when
     // a recipe's ingredients get added to the list.
     expect(items.some(i => i.isStaple)).toBe(true);
-    // …and so the Pantry view has a pantry to browse. Every row in it is an
-    // assertion (finishing a trip stamps one on what it bought): the cadence
-    // guess needs a row older than its purchases, and a seeded row is created
-    // this instant, so the guessed half of the list can't be seeded.
-    expect(pantryEntries(items, new Date()).length).toBeGreaterThan(5);
+    // …and so the Pantry view has a pantry to browse — showing *both* kinds of
+    // reason, which it couldn't before #1770. A trip used to stamp an assertion
+    // onto everything it bought, so every seeded row read as one and the demo
+    // could only ever show corrections. A purchase is read back in its own
+    // words now, and a row created this instant sits inside the flat window,
+    // so the evidence line seeds like anything else.
+    const pantry = pantryEntries(items, new Date());
+    expect(pantry.length).toBeGreaterThan(5);
+    expect(pantry.some(e => e.asserted)).toBe(true);
+    expect(pantry.some(e => !e.asserted && e.reason.startsWith('bought '))).toBe(true);
     // Added straight to the pantry: never on a list, never bought, and in the
     // catalog anyway — what the pantry sheet's add field makes.
     expect(

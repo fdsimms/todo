@@ -7,6 +7,7 @@ import {
   estimatedPurchaseCadenceDays,
   probablyHaveReason,
   defaultOnHandUntil,
+  OUT_OF_IT_UNTIL,
   pantryEntries,
   distinctGroceryValues,
   filterGrocerySuggestions,
@@ -322,11 +323,27 @@ describe('estimatedPurchaseCadenceDays', () => {
 // ─── probablyHaveReason ──────────────────────────────────────────────────────
 
 describe('probablyHaveReason', () => {
-  it('is null without enough purchases to trust a cadence, even if bought recently', () => {
+  // #1770 — under the cadence floor the flat two-week window applies instead
+  // of the item's own (2 purchases on a 60-day row divides out to 30 days,
+  // which is not a number to believe from two data points).
+  it('falls back to the flat window without enough purchases to trust a cadence', () => {
     const item = makeItem({
       name: 'Truffle salt', purchaseCount: 2, createdAt: daysAgo(60), lastPurchasedAt: daysAgo(1),
     });
+    expect(probablyHaveReason(item, NOW)).toBe('bought 2× · last on 6 Aug');
+  });
+
+  it('is null once the flat window has run out, below the cadence floor', () => {
+    const item = makeItem({
+      name: 'Truffle salt', purchaseCount: 2, createdAt: daysAgo(60), lastPurchasedAt: daysAgo(20),
+    });
     expect(probablyHaveReason(item, NOW)).toBeNull();
+  });
+
+  // "once" rather than "1×", mirroring describeCookHistory.
+  it('names a single purchase as "once"', () => {
+    const item = makeItem({ name: 'Tahini', purchaseCount: 1, createdAt: daysAgo(3), lastPurchasedAt: daysAgo(3) });
+    expect(probablyHaveReason(item, NOW)).toBe('bought once · last on 4 Aug');
   });
 
   it('gives a reason when the last purchase is still inside the item\'s own cadence', () => {
@@ -350,14 +367,44 @@ describe('probablyHaveReason', () => {
     expect(probablyHaveReason(item, NOW)).toBeNull();
   });
 
+  // The invariant #1770 was about: a purchase must be readable *as* a
+  // purchase. Nothing writes onHandUntil on the way through any more, so this
+  // is the shape every bought row now has.
+  it('reads a bought row with no assertion on it at all', () => {
+    const item = makeItem({
+      name: 'Milk', purchaseCount: 4, createdAt: daysAgo(120), lastPurchasedAt: daysAgo(5), onHandUntil: null,
+    });
+    expect(probablyHaveReason(item, NOW)).toBe('bought 4× · last on 2 Aug');
+  });
+
   it('a future onHandUntil wins regardless of purchase history', () => {
     const item = makeItem({ name: 'Saffron', purchaseCount: 0, onHandUntil: daysAgo(-5) });
     expect(probablyHaveReason(item, NOW)).toBe('marked as on hand');
   });
 
-  it('a past onHandUntil suppresses what would otherwise be a true guess', () => {
+  it('an "Out of it" suppresses what would otherwise be a true reading', () => {
     const item = makeItem({
       name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+      onHandUntil: OUT_OF_IT_UNTIL,
+    });
+    expect(probablyHaveReason(item, NOW)).toBeNull();
+  });
+
+  // #1770 — the distinction the old "any past stamp is a negative" rule
+  // couldn't draw. A "Got it" that has simply run out is not a claim to be
+  // out of something; it hands the question back to the purchase reading.
+  // Legacy rows carry exactly this shape, from when a trip stamped a window.
+  it('a lapsed "Got it" falls through to the purchase reading rather than suppressing it', () => {
+    const item = makeItem({
+      name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+      onHandUntil: daysAgo(1),
+    });
+    expect(probablyHaveReason(item, NOW)).toBe('bought 3× · last on 28 Jul');
+  });
+
+  it('a lapsed "Got it" still reads as nothing when the purchase is stale too', () => {
+    const item = makeItem({
+      name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(40),
       onHandUntil: daysAgo(1),
     });
     expect(probablyHaveReason(item, NOW)).toBeNull();

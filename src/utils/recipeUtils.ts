@@ -422,10 +422,12 @@ export interface PantryCoverage {
   total: number;
   /**
    * How many of those lines have *any* catalog row, matched or not — the
-   * denominator for whether there's purchase history to judge by at all.
+   * denominator for whether there's anything to judge by at all.
    * Zero here (with `total` > 0) is what makes `percent` null rather than 0:
-   * a recipe of ingredients nobody has ever bought isn't "0% likely on
-   * hand", it's unjudged.
+   * a recipe of ingredients that have never been through the grocery list
+   * isn't "0% likely on hand", it's unjudged. Catalog membership, not
+   * purchase history — a row the catalog knows but nobody has bought is a
+   * real 0%, which `pantryCoverageForRecipe`'s own tests pin.
    */
   catalogMatches: number;
   /** How many lines `classifyPlanned` currently calls "probably have" — grocerySuggest's pantry guess, or an explicit `onHandUntil` assertion. */
@@ -487,21 +489,26 @@ export function pantryCoverageForRecipe(
 }
 
 /**
- * "5/7 likely on hand" / "No purchase history for these yet" — the one line
- * a suggestion row renders next to a recipe. Null only when there's nothing
- * to say at all (no ingredients), same as `countLikelyInPantry`'s null.
+ * "5/7 likely on hand" / "None of these have been on your list yet" — the one
+ * line a suggestion row renders next to a recipe. Null only when there's
+ * nothing to say at all (no ingredients), same as `countLikelyInPantry`'s null.
  *
  * The no-catalog-match case is worded as a state, not a number: a bare "0/7"
- * there would read as "you have none of this" when the honest answer is
- * "we've never seen these ingredients bought, so we can't guess" — the
- * graceful-degradation case #1103 asks for. `viaSubstitute` rides as its own
- * trailing clause either way, never folded into the fraction in front of it —
- * same shape `describeShops` uses for a trailing negative-evidence clause.
+ * there would read as "you have none of this" when the honest answer is "these
+ * ingredients have never been through the grocery list, so we can't guess" —
+ * the graceful-degradation case #1103 asks for. It names *catalog membership*
+ * and not purchase history, because that's the condition it actually tests: an
+ * ingredient the catalog knows but nobody has bought is a deliberate real 0%
+ * (see `pantryCoverageForRecipe`), and wording this branch as "no purchase
+ * history" claimed a line the other branch also sits on. `viaSubstitute` rides
+ * as its own trailing clause either way, never folded into the fraction in
+ * front of it — same shape `describeShops` uses for a trailing
+ * negative-evidence clause.
  */
 export function describePantryCoverage(coverage: PantryCoverage): string | null {
   if (coverage.total === 0) return null;
   const base = coverage.catalogMatches === 0
-    ? 'No purchase history for these yet'
+    ? 'None of these have been on your list yet'
     : `${coverage.probablyHave}/${coverage.total} likely on hand`;
   if (coverage.viaSubstitute === 0) return base;
   const clause = coverage.viaSubstitute === 1 ? '1 with a substitute' : `${coverage.viaSubstitute} with a substitute`;

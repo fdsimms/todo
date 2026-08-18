@@ -740,10 +740,24 @@ gesture onto it — that's the inventory again.
   instead.
 - **The row's caption is `probablyHaveReason`'s own words**, verbatim — the same line a week plan
   and the item sheet already show. A second phrasing here is a second thing to keep true.
-- **The cadence half can't be seeded into demo mode.** A guess needs a row older than its purchases
-  (`estimatedPurchaseCadenceDays` divides the row's age by its count), and every seeded row is
-  created at seed time, so the demo's pantry is all assertions. That's the honest reason it shows
-  one kind of reason and not both.
+- **A purchase is read, never asserted** (#1770). `finishShopping` used to stamp a computed
+  `onHandUntil` onto everything it bought, which meant `probablyHaveReason` took its assertion
+  branch for any row ever bought and the purchase branch below was unreachable — so the pantry
+  could only ever say "marked as on hand", crediting the user with a claim a till had made, and
+  the demo could only seed corrections. A trip now writes `null` and nothing else: coming home
+  with something refutes an "Out of it" sitting on it, the same correction it already makes to
+  `ItemShopLink.unavailableAt`. Both halves seed fine as a result.
+  - **The negative is a sentinel, not "in the past".** `OUT_OF_IT_UNTIL` suppresses the purchase
+    reading; a *lapsed* "Got it" hands the question back to it. Those were one case while nothing
+    but `markOutOfIt` could put a past value there, and stamping windows that expire is what
+    silently made them two — legacy rows still carry the shape, and read correctly without a
+    migration.
+  - **One window, two anchors.** `onHandWindowDays` is how long a purchase of this item is worth
+    believing in: its own cadence past `MIN_PURCHASES_FOR_CADENCE`, a flat two weeks before that.
+    `defaultOnHandUntil` measures it from the tap, `probablyHaveReason` from the till. Written
+    twice, the two disagreed — the reading wanted three purchases before trusting a cadence and
+    the assertion was happy with one, so a single purchase on a year-old row asserted on-hand for
+    a year.
 - **`GroceryItemSheet` and `LeftoverSheet` are rendered *inside* `KitchenSheet`'s `Modal`, not
   beside it.** A `Modal` presents from the view controller its React parent belongs to, so a
   sibling would ask the screen's controller to present a second sheet while the kitchen is already
