@@ -51,12 +51,16 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const updateProject = useProjectStore(s => s.updateProject);
   const archiveProject = useTaskStore(s => s.archiveProject);
   const unarchiveProject = useTaskStore(s => s.unarchiveProject);
+  const completeProject = useTaskStore(s => s.completeProject);
+  const uncompleteProject = useTaskStore(s => s.uncompleteProject);
   const deleteProject = useTaskStore(s => s.deleteProject);
+  const allTasks = useTaskStore(s => s.tasks);
   // `project` is a snapshot handed down when the sheet was opened, so it never
   // sees its own archived flag flip back — read that one field live instead,
   // or unarchiving here leaves the toggle showing "archived" until the sheet
   // is reopened even though the store already changed.
   const liveArchived = useProjectStore(s => project ? s.projects.find(p => p.id === project.id)?.archived : undefined);
+  const liveCompleted = useProjectStore(s => project ? s.projects.find(p => p.id === project.id)?.completed : undefined);
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
   const addCategory = useProjectCategoryStore(s => s.addCategory);
 
@@ -136,8 +140,34 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     );
   };
 
+  const handleComplete = () => {
+    if (!project) return;
+    const remaining = allTasks.filter(
+      t => t.projectId === project.id && t.parentId === null && !t.completed && !t.archived
+    );
+    const finish = (archiveRemaining: boolean) => {
+      haptics.success();
+      completeProject(project.id, { archiveRemaining });
+      onClose();
+    };
+    if (remaining.length === 0) {
+      finish(false);
+      return;
+    }
+    Alert.alert(
+      'Mark Complete',
+      `"${project.title}" still has ${remaining.length} open ${remaining.length === 1 ? 'task' : 'tasks'}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Leave Remaining Tasks', onPress: () => finish(false) },
+        { text: 'Archive Remaining Tasks', onPress: () => finish(true) },
+      ],
+    );
+  };
+
   if (!project) return null;
   const archived = liveArchived ?? project.archived;
+  const completed = liveCompleted ?? project.completed;
 
   return (
     <EditorSheet
@@ -407,6 +437,34 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         Drag the tasks on the project's own screen to set the order. A step that isn't open yet
         stays off Today and Later until the one above it is done.
       </Text>
+
+      <View style={[styles.card, { marginTop: spacing.xl }]}>
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => {
+            if (completed) {
+              uncompleteProject(project.id);
+            } else {
+              handleComplete();
+            }
+          }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Mark complete"
+          accessibilityState={{ checked: completed }}
+        >
+          <Ionicons name={completed ? 'checkmark-circle' : 'checkmark-circle-outline'} size={18} color={completed ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Mark complete</Text>
+            <Text style={styles.optionHint}>
+              {completed ? 'Off the active list, listed under Completed' : 'Move to the completed list'}
+            </Text>
+          </View>
+          <View style={[styles.toggle, completed && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, completed && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+      </View>
 
       <View style={[styles.card, { marginTop: spacing.xl }]}>
         <TouchableOpacity

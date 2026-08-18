@@ -499,6 +499,14 @@ describe('demo mode', () => {
     expect(members.every(t => !t.dueDate)).toBe(true);
   });
 
+  it('seeds a completed project, separate from archived', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const hallway = useProjectStore.getState().projects.find(p => p.title === 'Repaint the hallway');
+    expect(hallway?.completed).toBe(true);
+    expect(hallway?.archived).toBe(false);
+  });
+
   it('seeds a task that has been pushed enough times to trip the postpone check', () => {
     // Invisible until something has a history: a fresh demo database has none,
     // so without a stamped count the date picker never shows the prompt and the

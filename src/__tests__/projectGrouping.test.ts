@@ -11,6 +11,8 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   sortOrder: 1,
   archived: false,
   archivedAt: null,
+  completed: false,
+  completedAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
   nudgeCadenceDays: 14,
   autoSchedule: false,

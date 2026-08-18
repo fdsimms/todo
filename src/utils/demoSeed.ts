@@ -52,6 +52,7 @@ export function seedDemoData(): void {
     addExistingToProject,
     addTag,
     pinGroup,
+    completeProject,
   } = useTaskStore.getState();
   const { addCategory, setCategoryEmoji } = useCategoryStore.getState();
   const { createProject } = useProjectStore.getState();
@@ -406,6 +407,17 @@ export function seedDemoData(): void {
     const t = addTask({ title });
     addExistingToProject(t.id, giftIdeas.id);
   });
+
+  // Marked complete rather than archived — demonstrates Project.completed,
+  // which has its own Completed list (see ProjectEditor's Mark complete row)
+  // instead of disappearing into Archived the way finishing a project used to.
+  const hallway = createProject('Repaint the hallway', null, null);
+  ['Buy paint and tape', 'Tape the trim', 'Two coats, let dry between'].forEach(title => {
+    const t = addTask({ title, category: 'Home' });
+    addExistingToProject(t.id, hallway.id);
+    completeTask(t.id);
+  });
+  completeProject(hallway.id, { archiveRemaining: false });
 
   // --- Subtasks ------------------------------------------------------------
   const trip = addTask({

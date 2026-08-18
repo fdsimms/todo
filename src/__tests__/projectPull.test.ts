@@ -128,6 +128,8 @@ const PROJECT_BASE: Project = {
   sortOrder: 0,
   archived: false,
   archivedAt: null,
+  completed: false,
+  completedAt: null,
   // Old enough that the default cadence is comfortably exceeded unless a test
   // says otherwise.
   createdAt: subDays(new Date(), 60).toISOString(),
@@ -229,6 +231,10 @@ describe('findProjectStalls', () => {
 
   it('excludes archived projects', () => {
     expect(findProjectStalls([makeProject({ archived: true })], [makeTask({ id: 'a' })])).toHaveLength(0);
+  });
+
+  it('excludes completed projects', () => {
+    expect(findProjectStalls([makeProject({ completed: true })], [makeTask({ id: 'a' })])).toHaveLength(0);
   });
 
   it('treats cadence 0 as never ask', () => {
@@ -653,6 +659,14 @@ describe('diagnosePullEmpty', () => {
   it('reports having no projects at all, archived ones not counting', () => {
     expect(diagnosePullEmpty([], [])).toEqual({ reason: 'no-projects', count: 0, total: 0 });
     expect(diagnosePullEmpty([makeProject({ archived: true })], [])).toEqual({
+      reason: 'no-projects',
+      count: 0,
+      total: 0,
+    });
+  });
+
+  it('reports having no projects at all, completed ones not counting either', () => {
+    expect(diagnosePullEmpty([makeProject({ completed: true })], [])).toEqual({
       reason: 'no-projects',
       count: 0,
       total: 0,

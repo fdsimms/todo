@@ -750,6 +750,11 @@ export function initDatabase(): void {
     // normalizeTemplateItem defaults the field for anything written before it.
     // See TaskTemplate.questions.
     "ALTER TABLE templates ADD COLUMN questions TEXT NOT NULL DEFAULT '[]'",
+    // 0/NULL for every existing project — nothing before this shipped
+    // recorded finishing a project as anything but archiving it. Independent
+    // of `archived`: see Project.completed.
+    'ALTER TABLE projects ADD COLUMN completed INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE projects ADD COLUMN completed_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2884,6 +2889,8 @@ function rowToProject(row: Record<string, unknown>): Project {
     sortOrder: row.sort_order as number,
     archived: Boolean(row.archived),
     archivedAt: (row.archived_at as string) ?? null,
+    completed: Boolean(row.completed),
+    completedAt: (row.completed_at as string) ?? null,
     createdAt: row.created_at as string,
     nudgeCadenceDays: (row.nudge_cadence_days as number | null) ?? DEFAULT_NUDGE_CADENCE_DAYS,
     autoSchedule: Boolean(row.auto_schedule),
@@ -2899,10 +2906,11 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.targetStartDate, project.targetEndDate,
-      project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt, project.createdAt,
+      project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
+      project.completed ? 1 : 0, project.completedAt, project.createdAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
     ]
   );
@@ -2910,10 +2918,11 @@ export function dbInsertProject(project: Project): void {
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=? WHERE id=?',
     [
       project.title, project.notes, project.targetStartDate, project.targetEndDate,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
+      project.completed ? 1 : 0, project.completedAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0, project.id,
     ]
   );

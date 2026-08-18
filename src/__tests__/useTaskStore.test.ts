@@ -304,6 +304,8 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   sortOrder: 1,
   archived: false,
   archivedAt: null,
+  completed: false,
+  completedAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
   nudgeCadenceDays: 14,
   autoSchedule: false,
@@ -5706,6 +5708,76 @@ describe('unarchiveProject', () => {
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
     useTaskStore.setState({ lastAction: null });
     useTaskStore.getState().unarchiveProject('p1');
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+// ─── completeProject / uncompleteProject ────────────────────────────────────
+
+describe('completeProject', () => {
+  it('completes the project and is undoable', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ tasks: [], lastAction: null });
+    useTaskStore.getState().completeProject('p1', { archiveRemaining: false });
+    expect(useProjectStore.getState().getProjectById('p1')!.completed).toBe(true);
+    useTaskStore.getState().undoLastAction();
+    const project = useProjectStore.getState().getProjectById('p1')!;
+    expect(project.completed).toBe(false);
+    expect(project.completedAt).toBeNull();
+  });
+
+  it('leaves incomplete member tasks untouched when archiveRemaining is false', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1', completed: false })], lastAction: null });
+    useTaskStore.getState().completeProject('p1', { archiveRemaining: false });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.archived).toBe(false);
+  });
+
+  it('archives incomplete member tasks when archiveRemaining is true, and undo restores them', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', completed: false }),
+        makeTask({ id: 'b', projectId: 'p1', completed: true }),
+      ],
+      lastAction: null,
+    });
+    useTaskStore.getState().completeProject('p1', { archiveRemaining: true });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.archived).toBe(true);
+    // Already-completed member is untouched — nothing left to archive.
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'b')?.archived).toBe(false);
+
+    useTaskStore.getState().undoLastAction();
+    expect(useProjectStore.getState().getProjectById('p1')!.completed).toBe(false);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.archived).toBe(false);
+  });
+
+  it('is a no-op when the project is already complete', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', completed: true, completedAt: '2025-01-01T00:00:00.000Z' })] });
+    useTaskStore.setState({ tasks: [], lastAction: null });
+    useTaskStore.getState().completeProject('p1', { archiveRemaining: false });
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+describe('uncompleteProject', () => {
+  it('restores the project and undoes back to the original completedAt', () => {
+    useProjectStore.setState({
+      projects: [makeProject({ id: 'p1', completed: true, completedAt: '2025-01-01T00:00:00.000Z' })],
+    });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().uncompleteProject('p1');
+    expect(useProjectStore.getState().getProjectById('p1')!.completed).toBe(false);
+    useTaskStore.getState().undoLastAction();
+    const project = useProjectStore.getState().getProjectById('p1')!;
+    expect(project.completed).toBe(true);
+    expect(project.completedAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  it('leaves no undo entry for a project that is not completed', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().uncompleteProject('p1');
     expect(useTaskStore.getState().lastAction).toBeNull();
   });
 });

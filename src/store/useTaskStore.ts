@@ -992,6 +992,13 @@ interface TaskStore {
   // directly — these are the ones that register an undo entry.
   archiveProject: (projectId: string) => void;
   unarchiveProject: (projectId: string) => void;
+  // Marking a project complete is independent of archiving it (see
+  // Project.completed). When incomplete member tasks remain, the caller
+  // decides via opts whether they're archived along with the project or left
+  // exactly where they are — ProjectEditor asks the user which before calling
+  // this, the same way it asks before a cascading delete.
+  completeProject: (projectId: string, opts: { archiveRemaining: boolean }) => void;
+  uncompleteProject: (projectId: string) => void;
   // Bulk selection on the Projects screen. One undo entry covers the whole
   // batch — see the note on bulkDeleteProjects.
   bulkDeleteProjects: (projectIds: string[], opts: { cascade: boolean }) => void;
@@ -3659,6 +3666,49 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: 'Project restored',
       undo: () => useProjectStore.getState().applyProjectArchived(projectId, true, archivedAt),
+    });
+  },
+
+  // Same shape as archiveProject/unarchiveProject, plus the option to archive
+  // whatever's still open in the project — never delete: completing a project
+  // isn't a request to lose data, so the only cascade this offers is the
+  // reversible one. Undo restores both the project and every task it archived.
+  completeProject(projectId, opts) {
+    const project = useProjectStore.getState().getProjectById(projectId);
+    if (!project || project.completed) return;
+    const members = get().tasks.filter(
+      t => t.projectId === projectId && t.parentId === null && !t.completed && !t.archived
+    );
+    const undos: Array<() => void> = [];
+    if (opts.archiveRemaining && members.length > 0) {
+      dbTransaction(() => {
+        members.forEach(member => {
+          get().archiveTask(member.id);
+          const action = get().lastAction;
+          if (action) undos.push(action.undo);
+        });
+      });
+    }
+    useProjectStore.getState().applyProjectCompleted(projectId, true);
+    get().setLastAction({
+      label: opts.archiveRemaining && members.length > 0
+        ? 'Project completed, remaining tasks archived'
+        : 'Project completed',
+      undo: () => {
+        useProjectStore.getState().applyProjectCompleted(projectId, false);
+        undos.forEach(fn => fn());
+      },
+    });
+  },
+
+  uncompleteProject(projectId) {
+    const project = useProjectStore.getState().getProjectById(projectId);
+    if (!project || !project.completed) return;
+    const completedAt = project.completedAt;
+    useProjectStore.getState().applyProjectCompleted(projectId, false);
+    get().setLastAction({
+      label: 'Project restored to active',
+      undo: () => useProjectStore.getState().applyProjectCompleted(projectId, true, completedAt),
     });
   },
 
