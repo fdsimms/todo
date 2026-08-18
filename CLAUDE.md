@@ -146,7 +146,8 @@ Start from this table instead of searching. Most work lands in one of these file
 | which store an item comes from | `src/utils/groceryShops.ts` — see Grocery stores below |
 | the store you're shopping at right now | `src/utils/activeTrip.ts` — see The active trip below |
 | what something costs, and which store is cheaper | `src/utils/groceryPrice.ts` |
-| what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see The pantry below |
+| what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see The kitchen below |
+| what's in the kitchen and what's about to be wasted | `src/utils/kitchenInventory.ts` (+ the ladder in `src/utils/freshness.ts`) — see The kitchen below |
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see Grocery either/or below |
 | "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see Substitutes below |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
@@ -643,7 +644,7 @@ which rows you don't usually get here.
   while you stand in a third, and the demo has two stores anyone would shop at. The seeded trip
   is at Trader Joe's and shows the other two.
 
-### The pantry — computed, corrected, and now browsable
+### The kitchen — the pantry and the fridge, read as one thing
 
 What the app treats as "have it" is one function, `probablyHaveReason` — an explicit
 `onHandUntil` assertion if there is one, otherwise a guess from this item's own purchase cadence.
@@ -651,12 +652,57 @@ There is no inventory table and there must not be one: a maintained inventory is
 dies in week three, so it's computed first and corrected second ("Got it" / "Out of it" on
 `GroceryItemSheet`, and `finishShopping` stamping what a trip bought).
 
-**`PantrySheet` is a read plus one write, not a second model.** It lists exactly the set
-`probablyHaveReason` answers for (`pantryEntries`), cut into aisles by `buildPantrySections`.
-That's the distinction the aggregate view turns on: nobody should have to check items in and out,
-but a set the app has already derived per-item is worth being able to look at, and until this
-there was no way to answer "do I have flour" short of opening items one at a time.
-Don't grow quantities, expiry dates or a check-in gesture onto it — that's the inventory again.
+**Four mechanisms answer two questions, and `src/utils/kitchenInventory.ts` is the read above
+them** (#1670). `onHandUntil` and `probablyHaveReason` answer "do I have it"; `expiresAt` and
+`Leftover.keepUntil` answer "is it dying". Each is individually well-argued and none of them is
+reopened — the notes on why an expiry is a date rather than a `perishable` flag, and why a
+`Leftover` isn't a `GroceryItem`, still stand. The problem was one level up: a person has one
+mental model here, and a bag of spinach going off Thursday and a container of chilli going off
+Thursday are the same fact to the cook.
+
+- **`KitchenEntry` is a view model, computed per render, never stored** — the `ContextRow`
+  pattern, carrying only what a row draws so no reader treats it as the source. No schema change;
+  it's pure derivation, which is why it's a util and not a store.
+- **Membership is `pantryEntries` plus every live `Leftover`.** Deliberately *not* "everything
+  carrying an `expiresAt`": that column outlives the food (nothing clears it when the bag is
+  finished), so reading it as membership keeps a bag of spinach in the kitchen for ever, months
+  past an "Out of it" the user already typed. `probablyHaveReason` stays the single owner of "do
+  I have this", and a use-by day is only read off a row it has already vouched for.
+- **One freshness ladder, in `src/utils/freshness.ts`.** `describeKeepUntil` and `describeExpiry`
+  were word-for-word the same four lines; both are `describeUseBy` now, and `freshnessFor` is the
+  one producer of `LeftoverFreshness` (which keeps its name — renaming it is a rename across the
+  whole leftovers feature for no behaviour). `needsAttention` draws its line through
+  `isUseUpSoon`, so the fridge and the catalog can't drift on where it is. That module imports
+  nothing but `dateUtils` on purpose: `leftovers`, `groceryShelfLife` and `kitchenInventory` all
+  read *down* into it, and one edge back up makes the three a cycle.
+- **It ranks, it doesn't only label.** A screen can show everything; a single row has one line and
+  has to pick what to name first. `compareKitchenEntries` sorts on the use-by day itself (which
+  *is* the ladder's order — over, due, soon, fresh), then a container ahead of a catalog row
+  because a cooked portion spoils harder, then by name. Anything with no day sorts last: an
+  undated rice isn't fresher than a dated spinach, it's not in the conversation.
+- **"Nothing to report" is a first-class answer.** `useUpEntries` returns `[]` and
+  `describeKitchen` returns `''`, so a one-line consumer renders nothing at all rather than an
+  empty row — the silence-by-default discipline `tripMarkerFor` runs on. The wording for such a
+  row isn't here: copy is easiest to get right with the row in front of you, so it belongs to
+  whatever builds one.
+- **The generators still own their own triggers.** `useUpEntries` is the shared "what's dying"
+  read for *surfaces*. A grocery's use-up task is a lead time back from the expiry (it's meant to
+  arrive days early) and a leftover's fires the moment `needsAttention` turns true; folding those
+  into one query would change what a grocery use-up task means.
+
+**`KitchenSheet` is a read plus one write, not a second model.** It renders that inventory, the
+fridge first and then the pantry cut into aisles. That's the distinction the aggregate view turns
+on: nobody should have to check items in and out, but a set the app has already derived per-item
+is worth being able to look at, and until this there was no way to answer "do I have flour" short
+of opening items one at a time. Don't grow quantities, per-row expiry editing or a check-in
+gesture onto it — that's the inventory again.
+
+- **A catalog row carries the ✕; a container doesn't.** "Out of it" is one bit and the ✕ writes
+  exactly it (`markOutOfMany`). Closing a container out is a two-way question ("Eaten" / "Thrown
+  out"), and guessing "eaten" would write a fridge-history row the user never chose — so its row
+  opens `LeftoverSheet`, which asks properly.
+- **`LeftoversCard` still renders the fridge alone.** Its rows drag onto a night of the week, and
+  a bag of spinach is not a dinner. What it shares with the kitchen is the ladder, not the list.
 
 - **The one write is `addToPantry`**, off the field at the top, and it writes the same assertion
   the item sheet's "Got it" pill writes (`defaultOnHandUntil`) on the same catalog row. It exists
@@ -672,7 +718,7 @@ Don't grow quantities, expiry dates or a check-in gesture onto it — that's the
   what you're offered the chance to add, and "do I have flour" is the moment you learn you never
   said. It's also the one insert path besides `addByName`, so both go through `newItemRow` and a
   column added later can't reach only one of them.
-- **Taking it back still goes through `GroceryItemSheet`'s Pantry pills**, which is why a row here
+- **Taking it back still goes through `GroceryItemSheet`'s Pantry pills**, which is why a catalog row here
   opens that sheet with them already unfolded (`initialField`). The sheet is dense, and a
   collapsed "Pantry" field halfway down it was in practice no way to say you're out of something
   at all — the caption promising it was simply wrong. Pre-opening it is the fix; a swipe action on
@@ -688,11 +734,11 @@ Don't grow quantities, expiry dates or a check-in gesture onto it — that's the
   (`estimatedPurchaseCadenceDays` divides the row's age by its count), and every seeded row is
   created at seed time, so the demo's pantry is all assertions. That's the honest reason it shows
   one kind of reason and not both.
-- **`GroceryItemSheet` is rendered *inside* `PantrySheet`'s `Modal`, not beside it.** A `Modal`
-  presents from the view controller its React parent belongs to, so a sibling would ask the
-  screen's controller to present a second sheet while the pantry is already up. Nesting is what
-  lets it stack — and keeping the pantry mounted underneath is the point, since correcting one
-  item should drop you back into the list you were reading.
+- **`GroceryItemSheet` and `LeftoverSheet` are rendered *inside* `KitchenSheet`'s `Modal`, not
+  beside it.** A `Modal` presents from the view controller its React parent belongs to, so a
+  sibling would ask the screen's controller to present a second sheet while the kitchen is already
+  up. Nesting is what lets it stack — and keeping the kitchen mounted underneath is the point,
+  since correcting one row should drop you back into the list you were reading.
 
 ### Grocery either/or — two rows you pick between at the shelf
 

@@ -94,7 +94,7 @@ interface Props {
   recipeExists?: (recipeId: string) => boolean;
   /**
    * Which picker is already open when the sheet appears. Only for callers whose
-   * whole reason for opening the sheet is that field — PantrySheet, where the
+   * whole reason for opening the sheet is that field — KitchenSheet, where the
    * row you tapped is a pantry row and "Out of it" is what you came to say.
    * Left closed by default: a long-press from the list has no such subject, and
    * a sheet that opens with a section unfolded for no reason is the progressive
@@ -1445,7 +1445,7 @@ export function GroceryItemSheet({
       </View>
 
       {/* Rendered inside this Modal rather than beside it, for the reason
-          PantrySheet nests this sheet: a Modal presents from the view
+          KitchenSheet nests this sheet: a Modal presents from the view
           controller its React parent belongs to, so a sibling would be asking
           the screen's controller to present a second sheet while this one is
           already up. */}

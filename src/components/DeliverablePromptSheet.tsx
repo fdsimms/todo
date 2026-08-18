@@ -245,7 +245,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
       {/* Nested inside this Modal rather than beside it: a Modal presents from
           the controller its React parent belongs to, so a sibling would ask
           this sheet's own controller to present a second one while it's up.
-          Same reason PantrySheet nests GroceryItemSheet. */}
+          Same reason KitchenSheet nests GroceryItemSheet. */}
       {pickerOpen && (
         <WhenPicker
           visible

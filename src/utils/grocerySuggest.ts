@@ -50,7 +50,7 @@ function daysBetween(later: Date, earlierIso: string | null): number {
  * ranking below (frequency × recency) is what actually needs to decide — an
  * elaborate match score would drown it.
  */
-function matchWeight(nameKey: string, queryKey: string): number {
+export function matchWeight(nameKey: string, queryKey: string): number {
   if (!queryKey) return 0;
   if (nameKey.startsWith(queryKey)) return 3;
   // Word-start: "goat cheese" for a "ch" query.
@@ -128,10 +128,10 @@ export function buyAgainItems(items: readonly GroceryItem[], now: Date, limit = 
 
 /**
  * Buckets already keyed by aisle, emitted in walk order — the shopping list's
- * rule, shared with the pantry below so the two can't come to disagree about
- * where an unplaced aisle goes.
+ * rule, shared with `kitchenInventory.buildKitchenSections` so the two can't
+ * come to disagree about where an unplaced aisle goes.
  */
-function sectionsInAisleOrder<T>(
+export function sectionsInAisleOrder<T>(
   byAisle: Map<string, T[]>,
   aisleOrder: readonly string[],
   compare: (a: T, b: T) => number
@@ -339,7 +339,7 @@ function onHandAssertion(item: GroceryItem, now: Date): boolean | null {
 export function probablyHaveReason(item: GroceryItem, now: Date): string | null {
   // A staple outranks everything below: it's a standing fact ("I always have
   // salt"), not a guess, and it doesn't need purchase history or an
-  // onHandUntil assertion to be true. This is also why PantrySheet — every
+  // onHandUntil assertion to be true. This is also why KitchenSheet — every
   // name this function answers for — reads a staple as on hand with no
   // purchases ever recorded.
   if (item.isStaple) return 'always have it';
@@ -379,11 +379,6 @@ export interface PantryEntry {
   reason: string;
   /** An explicit `onHandUntil` rather than the purchase-cadence guess. */
   asserted: boolean;
-}
-
-export interface PantrySection {
-  aisle: string;
-  data: PantryEntry[];
 }
 
 /**
@@ -439,36 +434,4 @@ export function filterGrocerySuggestions(values: readonly string[], query: strin
   const q = query.trim().toLowerCase();
   const matches = q ? values.filter(v => v.toLowerCase().includes(q) && v.toLowerCase() !== q) : values;
   return matches.slice(0, 8);
-}
-
-/**
- * The pantry cut into aisles, in the same walk order the shopping list uses —
- * a kitchen isn't laid out like a shop, but the aisle is the filing the user
- * has already done, and a flat A–Z list of forty things answers nothing.
- *
- * `query` filters by name with autocomplete's own matcher, so "do I have
- * flour" is one field away rather than a scroll.
- */
-export function buildPantrySections(
-  items: readonly GroceryItem[],
-  aisleOrder: readonly string[],
-  now: Date,
-  query = ''
-): PantrySection[] {
-  const queryKey = groceryNameKey(query);
-  const entries = pantryEntries(items, now).filter(
-    e => !queryKey || matchWeight(e.item.nameKey, queryKey) > 0
-  );
-
-  const byAisle = new Map<string, PantryEntry[]>();
-  for (const entry of entries) {
-    const aisle = entry.item.aisle || OTHER_AISLE;
-    const bucket = byAisle.get(aisle);
-    if (bucket) bucket.push(entry);
-    else byAisle.set(aisle, [entry]);
-  }
-
-  return sectionsInAisleOrder(byAisle, aisleOrder, (a, b) =>
-    a.item.name.localeCompare(b.item.name)
-  );
 }

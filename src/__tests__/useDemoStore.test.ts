@@ -43,6 +43,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
+import { describeKitchen, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { planTrip, summarizeTrip, describeShopCoverage } from '../utils/shoppingTrip';
 import { cheapestShopFor, describeShopPrices, shopPricesFor } from '../utils/groceryPrice';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
@@ -1041,6 +1042,35 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const cheddar = items.find(i => i.nameKey === 'cheddar')!;
     expect(cheddar.shelfLifeDays).not.toBeNull();
     expect(cheddar.expiresAt).toBeNull();
+  });
+
+  it('seeds a kitchen that answers the merged question — pantry and fridge on one ladder', () => {
+    const { items } = useGroceryStore.getState();
+    const { leftovers } = useLeftoverStore.getState();
+    const entries = kitchenInventory(items, leftovers, new Date());
+
+    // Both halves in one list, which is the whole capability (#1670): with
+    // only one of them seeded the merge reads as a feature the app doesn't
+    // have rather than one nobody has used yet.
+    expect(entries.some(e => e.kind === 'grocery')).toBe(true);
+    expect(entries.some(e => e.kind === 'leftover')).toBe(true);
+
+    // A perishable and a container, both counting down through the same
+    // ladder — the spinach going off and the chilli going off are the fact
+    // the merged read exists to put side by side.
+    const dying = useUpEntries(entries);
+    expect(dying.some(e => e.kind === 'grocery')).toBe(true);
+    expect(dying.some(e => e.kind === 'leftover')).toBe(true);
+    // …and a pantry row with nothing counting down at all, which is most of a
+    // kitchen and has to read as ignorance rather than as freshness.
+    expect(entries.some(e => e.kind === 'grocery' && e.freshness === null)).toBe(true);
+
+    // Most urgent first, and everything on a clock ahead of everything that
+    // isn't — the ranking a one-line consumer needs.
+    const dated = entries.filter(e => e.useBy !== null);
+    expect(entries.slice(0, dated.length)).toEqual(dated);
+    expect([...dated].sort((a, b) => a.useBy!.localeCompare(b.useBy!))).toEqual(dated);
+    expect(describeKitchen(entries)).toContain('to use up');
   });
 
   it('seeds a fridge covering every freshness state and both endings', () => {
