@@ -277,6 +277,21 @@ interface SettingsStore {
   // note there.
   kitchenEnabled: boolean;
   mealsOnToday: MealsOnToday;
+  // Whether Today says what's about to be wasted, as a context row filed with
+  // the meals (#1689). On by default, and safely so: the row exists only while
+  // something is actually down to its last day (see kitchenContextRows), it
+  // writes nothing, and anything that already has a "Use up X" task is dropped
+  // rather than said twice. So an install upgrading into this sees a row on the
+  // days it has something to say and nothing on the rest.
+  //
+  // Separate from mealsOnToday because a warning and a plan are different
+  // things to want on a list — plenty of people want to know the spinach is
+  // going without wanting tonight's menu in among their tasks, and the reverse.
+  // It shares mealCookTaskCategory rather than growing a category setting of
+  // its own: that setting already means "where food goes on Today", and one
+  // more "File them under" row for a feature that renders at most one line
+  // would cost more to read than it buys.
+  kitchenOnToday: boolean;
   // Which units recipe and grocery amounts are *shown* in — see
   // src/utils/unitConvert.ts. Display only: the quantity stored on the recipe
   // or the grocery row is never rewritten, and an editable field always shows
@@ -536,6 +551,7 @@ interface SettingsStore {
   setHapticsEnabled: (on: boolean) => void;
   setShakeToUndoEnabled: (on: boolean) => void;
   setMealsOnToday: (mode: MealsOnToday) => void;
+  setKitchenOnToday: (on: boolean) => void;
   setUnitSystem: (system: UnitSystem) => void;
   setCurrencySymbol: (symbol: string) => void;
   setMealCookTasks: (on: boolean) => void;
@@ -627,6 +643,7 @@ const DEFAULT_SETTINGS = {
   tripLiveActivity: true,
   collapsedCategories: [] as string[],
   mealsOnToday: 'inline' as MealsOnToday,
+  kitchenOnToday: true,
   unitSystem: 'asWritten' as UnitSystem,
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
@@ -892,6 +909,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   collapsedCategories: [],
   kitchenEnabled: true,
   mealsOnToday: 'inline',
+  kitchenOnToday: true,
   unitSystem: 'asWritten',
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
@@ -991,6 +1009,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // someone has turned it off, so no existing install loses it.
     const kitchenEnabled = dbGetSetting('kitchenEnabled') !== 'false';
     const storedMealsOnToday = dbGetSetting('mealsOnToday');
+    // Defaults on, read `!== 'false'` like kitchenEnabled above it.
+    const kitchenOnToday = dbGetSetting('kitchenOnToday') !== 'false';
     // 'strip' and 'block' are the retired values (see MealsOnToday). Anything
     // that isn't 'off' means "show me the day's meals", which is now one shape
     // — so they read forward rather than falling through to a default that
@@ -1129,7 +1149,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1398,6 +1418,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setMealsOnToday(mode: MealsOnToday) {
     dbSetSetting('mealsOnToday', mode);
     set({ mealsOnToday: mode });
+  },
+
+  setKitchenOnToday(on: boolean) {
+    dbSetSetting('kitchenOnToday', on ? 'true' : 'false');
+    set({ kitchenOnToday: on });
   },
 
   setUnitSystem(system: UnitSystem) {

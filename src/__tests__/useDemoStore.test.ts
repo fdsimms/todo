@@ -46,6 +46,8 @@ import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlan
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
 import { describeKitchen, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
+import { liveGeneratedTask } from '../utils/generatedTasks';
+import { kitchenContextRows, plannedUsesToday } from '../utils/dayContextRows';
 import { planTrip, summarizeTrip, describeShopCoverage } from '../utils/shoppingTrip';
 import { cheapestShopFor, describeShopPrices, shopPricesFor } from '../utils/groceryPrice';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
@@ -1178,6 +1180,42 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(entries.slice(0, dated.length)).toEqual(dated);
     expect([...dated].sort((a, b) => a.useBy!.localeCompare(b.useBy!))).toEqual(dated);
     expect(describeKitchen(entries)).toContain('to use up');
+  });
+
+  it('seeds the kitchen rows Today draws, including the one paired with a meal', () => {
+    const { items, itemSubs } = useGroceryStore.getState();
+    const { leftovers } = useLeftoverStore.getState();
+    const { tasks } = useTaskStore.getState();
+    const entries = kitchenInventory(items, leftovers, new Date());
+    const recipesById = new Map(useRecipeStore.getState().recipes.map(r => [r.id, r]));
+    const todaysMeals = useMealPlanStore.getState().entries
+      .filter(e => e.date === dayKeyOf(new Date()));
+
+    const rows = kitchenContextRows(entries, {
+      category: 'Meal Plan',
+      hasUseUpTask: entry => !!liveGeneratedTask(
+        tasks,
+        entry.kind === 'leftover' ? 'leftoverUseUp' : 'groceryUseUp',
+        entry.sourceId,
+      ),
+      plannedUses: plannedUsesToday(
+        entries, todaysMeals, recipesById, standingSwapMap(itemSubs, items)
+      ),
+    });
+
+    // Two rows and not a summary: past two they collapse, and the captions are
+    // the thing worth showing. Both are perishables the generator declined —
+    // groceryUseUpTasks is off in the seed as it is by default — which is the
+    // gap these rows exist to fill.
+    expect(rows.map(r => [r.title, r.caption])).toEqual([
+      ['Cilantro', 'Use by today'],
+      ['Red bell pepper', 'Use by tomorrow · For Weeknight chicken stir-fry'],
+    ]);
+
+    // Nothing that already has a "Use up X" task is said twice — the seeded
+    // spinach and every leftover in range have one, and none of them is here.
+    expect(rows.some(r => r.title === 'Spinach')).toBe(false);
+    expect(useUpEntries(entries).length).toBeGreaterThan(rows.length);
   });
 
   it('seeds a fridge covering every freshness state and both endings', () => {

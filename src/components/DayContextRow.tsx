@@ -8,7 +8,10 @@ import { haptics } from '../utils/haptics';
 
 interface Props {
   row: ContextRow;
-  /** Opens the day's events, or the meal plan. Omit for a row with nowhere to go. */
+  /**
+   * Opens the day's events, the meal plan, or the kitchen. Omit for a row with
+   * nowhere to go.
+   */
   onPress?: () => void;
   /**
    * Marks the meal cooked. Meal rows only — an event is EventKit's row and this
@@ -19,15 +22,15 @@ interface Props {
 }
 
 /**
- * A row on Today that isn't a task — a calendar event, or a meal with no cook
- * task behind it (#1571).
+ * A row on Today that isn't a task — a calendar event, a meal with no cook task
+ * behind it (#1571), or something in the kitchen about to be wasted (#1689).
  *
  * **It is styled as an ordinary task row, and the glyph is the only tell.**
  * Card surface, card margins, card shadow, `TaskItem`'s own paddings, a
  * full-strength title, and the caption carried as a meta chip under it exactly
  * where a task reports its category or its time. The one substitution is at the
- * leading edge: the checkbox is replaced, in the same 24pt column, by a
- * calendar or fork-and-knife glyph.
+ * leading edge: the checkbox is replaced, in the same 24pt column, by the
+ * glyph of whichever source the row came from.
  *
  * This reverses the original treatment, which was deliberately card-less on the
  * grounds that a glance should separate what you can act on from what's merely
@@ -35,6 +38,15 @@ interface Props {
  * inset cards reads as a *different list* wedged into this one, and the seam is
  * loudest in exactly the section that has most of them (Meals). Blending in
  * costs the at-a-glance distinction and buys back one list.
+ *
+ * **A kitchen row is a reading and has no button either** (#1689). It says what
+ * the kitchen is right now — "Spinach · Use by today", and when the day's plan
+ * would eat it, "Use by today · For Chili". Ticking it would have to mean
+ * one of "eaten"/"thrown out" or one of "got it"/"out of it", which are the
+ * two-way questions `KitchenSheet` already refuses to guess at with one glyph,
+ * so the row opens the kitchen and lets it ask. The *task* version of the same
+ * food — "Use up X" — is the tickable one, and this row is dropped whenever it
+ * exists (see `kitchenContextRows`).
  *
  * **A meal's glyph is a button, and it's drawn as one** — the fork and knife
  * sits inside a rounded box borrowed from the checkbox (`checkboxRadius`,
@@ -81,7 +93,13 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const glyphName = row.kind === 'event' ? 'calendar-outline' : 'restaurant-outline';
+  // Three sources, three glyphs, all in the checkbox's column. `nutrition-outline`
+  // rather than a second fork-and-knife for the kitchen: a meal is something
+  // you're going to cook and a bag of spinach is something in a drawer, and at
+  // 16pt two cutlery glyphs side by side in one section are indistinguishable.
+  const glyphName = row.kind === 'event' ? 'calendar-outline'
+    : row.kind === 'kitchen' ? 'nutrition-outline'
+    : 'restaurant-outline';
 
   const leading = onMarkCooked ? (
     <TouchableOpacity
@@ -108,9 +126,9 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
         {row.title}
       </Text>
       {/* One meta chip, shaped like TaskItem's. Every caption these rows can
-          carry says *when* — "4:15 PM", "All day", "Now", "Lunch" — so one
-          clock covers all four, and it's the glyph the row's own time-ish
-          meta would use if it were a task. */}
+          carry says *when* — "4:15 PM", "All day", "Now", "Lunch", "Use by
+          today" — so one clock covers all of them, and it's the glyph the
+          row's own time-ish meta would use if it were a task. */}
       <View style={styles.metaRow}>
         <View style={styles.metaChip}>
           <Ionicons
@@ -140,7 +158,11 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
             hitSlop={{ top: 14, bottom: 14, left: 0, right: 10 }}
             accessibilityRole="button"
             accessibilityLabel={`${row.title}, ${row.caption}`}
-            accessibilityHint={row.kind === 'event' ? "Opens the day's events" : 'Opens Meal plan'}
+            accessibilityHint={
+              row.kind === 'event' ? "Opens the day's events"
+              : row.kind === 'kitchen' ? 'Opens the kitchen'
+              : 'Opens Meal plan'
+            }
           >
             {body}
           </TouchableOpacity>

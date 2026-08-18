@@ -6,9 +6,13 @@ import type { CategoryListItem, TodayListItem } from './taskGrouping';
 import { LATER_TODAY_LABEL } from './taskGrouping';
 import { formatTimeOfDay } from './dateUtils';
 import { titleForEntry } from './mealPlan';
+import { useUpEntries, type KitchenEntry } from './kitchenInventory';
+import { flattenRecipeIngredients } from './recipeComponents';
+import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 
 /**
- * The day's calendar events and planned meals, as rows in the task list (#1571).
+ * The day's calendar events, planned meals and dying food, as rows in the task
+ * list (#1571, #1689).
  *
  * Both used to be a fixed strip pinned above the list — one line of calendar,
  * one of menu — which meant the top of the Today screen was never a task. This
@@ -24,10 +28,20 @@ import { titleForEntry } from './mealPlan';
  * shape as the three "File them under" settings the generated tasks already
  * have. Placement, collapsing and renaming stop being this feature's problem.
  *
+ * **The kitchen is the third source, and it files with the meals.** A meal row
+ * is a plan and a kitchen row is a warning, so the question was whether the
+ * warning belongs above the plan or beside it — and beside is the answer that
+ * needs no new setting: `mealCookTaskCategory` is already "where food goes on
+ * Today", and `insertContextRows` leads a section with its context rows, so
+ * pushing the kitchen ahead of the meals puts the warning at the top of the
+ * section the plan it concerns is in. Which is also what makes the pairing
+ * legible — see `plannedUsesToday`, where the two halves meet.
+ *
  * Pure, and the whole reason the rules are testable: the impure halves stay
  * where they were — EventKit in `calendarSync`/`useCalendarStore`, the entries
- * in `useMealPlanStore` — and what may appear, in what order, and under which
- * header is decided here.
+ * in `useMealPlanStore`, the catalog and the fridge in
+ * `useGroceryStore`/`useLeftoverStore` — and what may appear, in what order,
+ * and under which header is decided here.
  */
 
 /** Slot order, for meals sharing a section. Matches the meal plan's own read. */
@@ -124,6 +138,180 @@ export function mealContextRows(
       category: opts.category,
       now: false,
     }));
+}
+
+/**
+ * How many things can go off before Today stops naming them one by one.
+ *
+ * Two, because a single container of chilli going off tomorrow deserves its own
+ * line and a pair still reads as two facts rather than as a list. Past that the
+ * rows stop being readable *as* rows — a run of five is the kitchen screen
+ * wedged into the task list, which is the thing this feature exists not to be —
+ * so they collapse to one line that says how many and opens the kitchen.
+ */
+export const KITCHEN_ROW_LIMIT = 2;
+
+/**
+ * Which of today's planned meals would eat each thing that's dying — the meal's
+ * own title, keyed by `KitchenEntry.id` (#1689).
+ *
+ * The title alone, with no slot in front of it: "Use by tomorrow · Dinner:
+ * Weeknight chicken stir-fry" truncates mid-word at 390pt, and what gets cut is
+ * the dish — the only part of the clause worth reading. The row is on Today and
+ * sits in the section holding the day's food, so "which meal" was the question
+ * and "which slot" was never really it. `kitchenContextRows` owns the wording
+ * the title goes into.
+ *
+ * **This is the row the whole feature is for.** A bag of spinach going off
+ * today is a warning; a bag of spinach going off today with tonight's salad
+ * already planned is an answer, and the app is the only thing that can see both
+ * halves at once. It costs one pass over the day's meals because both halves
+ * are already on this screen.
+ *
+ * The two kinds are paired by different keys, and neither is a guess:
+ *
+ * - **A leftover is matched by `MealPlanEntry.leftoverId`** — a pointer the
+ *   user created by planning that container onto that night. Nothing is
+ *   inferred from its title, which would otherwise have to match "Leftover
+ *   chicken stir-fry" against "Chicken stir-fry" by luck.
+ * - **A catalog row is matched by `nameKey`** against the flattened ingredients
+ *   of the meal's recipe — the same bridge `classifyPlanned` and
+ *   `scoreRecipeAgainstCatalog` cross, so a component's lines count and an
+ *   either/or contributes whichever option this meal picked. `swaps` are passed
+ *   for the same reason every other shopping read passes them: with "always use
+ *   oat milk for milk" on, the line reads oat milk, and oat milk is what's in
+ *   the fridge going off.
+ *
+ * **The earliest slot wins**, so a spinach wanted by both lunch and dinner
+ * names lunch: that's the meal that settles it first. A cooked entry is
+ * dropped, for `uncookedEntries`' reason — that dinner already happened, and
+ * naming it would tell the user to relax about food nothing is going to eat.
+ *
+ * Pure and separate from the row-building below so it can be tested against a
+ * hand-built week, and so the impure half (which recipes are loaded, which
+ * swaps are set) stays in the screen.
+ */
+export function plannedUsesToday(
+  entries: readonly KitchenEntry[],
+  mealEntries: readonly MealPlanEntry[],
+  recipesById: ReadonlyMap<string, Recipe>,
+  swaps: StandingSwapMap = NO_STANDING_SWAPS,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  if (entries.length === 0) return out;
+
+  const meals = mealEntries
+    .filter(entry => !entry.cookedAt)
+    .slice()
+    .sort((a, b) =>
+      (SLOT_RANK.get(a.slot) ?? 0) - (SLOT_RANK.get(b.slot) ?? 0) || a.sortOrder - b.sortOrder);
+
+  for (const meal of meals) {
+    if (out.size === entries.length) break;
+    const recipe = meal.recipeId ? recipesById.get(meal.recipeId) : undefined;
+    const ingredientKeys = recipe
+      ? new Set(
+          flattenRecipeIngredients(recipe, recipesById, { chosen: meal.recipeChoices }, swaps)
+            .map(flat => flat.ingredient.nameKey)
+            .filter(Boolean),
+        )
+      : null;
+    // Built once per meal rather than once per (meal, entry): the title is a
+    // fact about the meal, and titleForEntry resolves a recipe to do it.
+    const label = titleForEntry(meal, recipesById);
+
+    for (const entry of entries) {
+      if (out.has(entry.id)) continue;
+      const used = entry.kind === 'leftover'
+        ? meal.leftoverId === entry.sourceId
+        : !!entry.matchKey && !!ingredientKeys?.has(entry.matchKey);
+      if (used) out.set(entry.id, label);
+    }
+  }
+
+  return out;
+}
+
+/**
+ * What's about to be wasted, as rows on Today (#1689).
+ *
+ * **Silence unless something needs attention**, which is the whole shape of it:
+ * `useUpEntries` is the shared "what's dying" read, and on the ordinary day it
+ * returns nothing and this returns nothing. A standing "6 things in the
+ * kitchen" row is a status bar, and a status bar on a task list is noise you
+ * learn to skip — the same call `tripMarkerFor` makes about captioning a row it
+ * knows nothing about.
+ *
+ * **Anything that already has a "Use up X" task is dropped**, exactly as
+ * `mealContextRows` drops a meal with a cook task behind it, and for a sharper
+ * reason: the task *is* the same food, phrased as work. Two rows for one bag of
+ * spinach is the duplication the meal strip was folded in to end. `hasUseUpTask`
+ * is passed in because "is there a live generated task for this row" is a
+ * question about the task store and this module is the tested half.
+ *
+ * That dedupe is also what makes the feature mean something rather than merely
+ * repeat the generators. `groceryUseUpTasks` is **off** by default — a task list
+ * that fills itself with food is the one people turn off — so a perishable's
+ * only voice was the catalog screen nobody opens. It gets a row here instead.
+ * The same goes for anything the user opted out of per-row, and for whatever
+ * `useUpTaskCap` left without a task: the cap stops evicting knowledge and
+ * starts choosing which of it is worth a *task*.
+ *
+ * One row per thing up to `KITCHEN_ROW_LIMIT`, then one row for all of it. The
+ * summary's caption is the soonest day among them, which is the honest lead for
+ * a line that can't state four dates; it is not a claim about the other rows,
+ * and the kitchen it opens has each of them in `compareKitchenEntries` order.
+ *
+ * `now` stays false throughout. It means "this event is running" and drives the
+ * one emphasis the treatment has; a use-by day is already the loudest thing a
+ * caption can say, and borrowing the accent for it would put food above the
+ * work it sits among.
+ */
+export function kitchenContextRows(
+  entries: readonly KitchenEntry[],
+  opts: {
+    category: string | null;
+    hasUseUpTask: (entry: KitchenEntry) => boolean;
+    /** `plannedUsesToday`'s answer. Absent is the same as nothing planned. */
+    plannedUses?: ReadonlyMap<string, string>;
+  },
+): ContextRow[] {
+  const dying = useUpEntries(entries).filter(entry => !opts.hasUseUpTask(entry));
+  if (dying.length === 0) return [];
+
+  if (dying.length > KITCHEN_ROW_LIMIT) {
+    return [{
+      // No source id: this row is built from all of them and names none. See
+      // ContextRow.sourceId — nothing dereferences it, since every kitchen row
+      // opens the same sheet.
+      id: 'kitchen-all',
+      sourceId: '',
+      kind: 'kitchen',
+      title: `${dying.length} things to use up`,
+      caption: dying[0].useByCaption,
+      category: opts.category,
+      now: false,
+    }];
+  }
+
+  return dying.map(entry => {
+    const usedBy = opts.plannedUses?.get(entry.id);
+    return {
+      // The entry id is already prefixed by its own kind, so this reads
+      // `kitchen-leftover-<id>` and can't collide with the other two sources.
+      id: `kitchen-${entry.id}`,
+      sourceId: entry.sourceId,
+      kind: 'kitchen' as const,
+      title: entry.title,
+      // "Use by tomorrow · For Weeknight chicken stir-fry". "For" rather than
+      // the slot: it's three characters, it reads the same over a recipe and
+      // over a leftover planned onto the night ("For Leftover chilli"), and it
+      // leaves the dish room to survive the row's single line.
+      caption: usedBy ? `${entry.useByCaption} · For ${usedBy}` : entry.useByCaption,
+      category: opts.category,
+      now: false,
+    };
+  });
 }
 
 /**

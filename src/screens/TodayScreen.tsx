@@ -50,12 +50,18 @@ import { useDemoStore } from '../store/useDemoStore';
 import {
   eventContextRows,
   mealContextRows,
+  kitchenContextRows,
+  plannedUsesToday,
   insertContextRows,
   withoutContextRows,
 } from '../utils/dayContextRows';
 import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { kitchenInventory, type KitchenEntry } from '../utils/kitchenInventory';
+import { standingSwapMap } from '../utils/standingSwaps';
+import { KitchenSheet } from '../components/KitchenSheet';
 import { isLiveLeftover } from '../utils/leftovers';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
@@ -1302,6 +1308,42 @@ export function TodayScreen() {
   const calendarEventCategory = useSettingsStore(s => s.calendarEventCategory);
   const mealCookTaskCategory = useSettingsStore(s => s.mealCookTaskCategory);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
+
+  /**
+   * What's about to be wasted, and which of today's meals would eat it (#1689).
+   *
+   * Read straight off the two stores rather than through a new one: the whole
+   * feature is the #1670 derivation rendered somewhere else, and giving it its
+   * own state here is how a second inventory model starts. `minuteTick` is in
+   * the deps because the ladder is against the clock — nothing mutates a store
+   * when a use-by day arrives — and the same tick already refreshes the events.
+   *
+   * Gated on `kitchenEnabled` at the point of use, like `mealsOnToday` above:
+   * with the groceries/meals area put away Today says nothing about food, and
+   * the setting is left alone so turning the area back on restores it.
+   */
+  const storedKitchenOnToday = useSettingsStore(s => s.kitchenOnToday);
+  const kitchenOnToday = kitchenEnabled && storedKitchenOnToday;
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const [kitchenSheetVisible, setKitchenSheetVisible] = useState(false);
+  const kitchenEntries = useMemo(
+    () => (kitchenOnToday ? kitchenInventory(groceryItems, leftovers, new Date()) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [kitchenOnToday, groceryItems, leftovers, minuteTick]
+  );
+  // Swapped, because the fridge holds what was actually bought: with "always
+  // use oat milk for milk" on, the recipe line reads oat milk and oat milk is
+  // the carton going off. Same map every shopping read builds.
+  const standingSwaps = useMemo(
+    () => standingSwapMap(itemSubs, groceryItems),
+    [itemSubs, groceryItems]
+  );
+  const kitchenPlannedUses = useMemo(
+    () => plannedUsesToday(kitchenEntries, todayMealEntries ?? [], recipesById, standingSwaps),
+    [kitchenEntries, todayMealEntries, recipesById, standingSwaps]
+  );
+
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
     // No category means nowhere to put them — see ensureCalendarEventCategory
@@ -1311,6 +1353,22 @@ export function TodayScreen() {
         now: new Date(),
         category: calendarEventCategory,
         use24Hour: use24HourTime,
+      }));
+    }
+    // The kitchen leads the meals it shares a section with, and that ordering
+    // is the answer to "warning or plan first" (#1689): insertContextRows keeps
+    // the order rows are pushed in, so what's about to be wasted sits at the
+    // top of the section holding the day's food. Reading down from there — the
+    // spinach, then the dinner that would eat it — is the pairing.
+    if (kitchenOnToday && kitchenEntries.length > 0) {
+      rows.push(...kitchenContextRows(kitchenEntries, {
+        category: mealCookTaskCategory,
+        hasUseUpTask: (entry: KitchenEntry) => !!liveGeneratedTask(
+          allTasks,
+          entry.kind === 'leftover' ? 'leftoverUseUp' : 'groceryUseUp',
+          entry.sourceId,
+        ),
+        plannedUses: kitchenPlannedUses,
       }));
     }
     if (mealsOnToday === 'inline' && todayMealEntries) {
@@ -1323,6 +1381,7 @@ export function TodayScreen() {
   }, [
     todayCalendarEvents, calendarEventCategory, use24HourTime,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
+    kitchenOnToday, kitchenEntries, kitchenPlannedUses,
     minuteTick,
   ]);
 
@@ -2039,7 +2098,14 @@ export function TodayScreen() {
       return (
         <DayContextRow
           row={item.row}
-          onPress={item.row.kind === 'event' ? () => setEventsSheetVisible(true) : openMealPlan}
+          onPress={
+            item.row.kind === 'event' ? () => setEventsSheetVisible(true)
+            // Every kitchen row lands in the same place, per-item and summary
+            // alike: the merged inventory is where both halves are corrected,
+            // and it asks the two-way question a row's glyph can't (#1689).
+            : item.row.kind === 'kitchen' ? () => setKitchenSheetVisible(true)
+            : openMealPlan
+          }
           onMarkCooked={
             item.row.kind === 'meal'
               ? () => handleMarkMealCooked(item.row.sourceId, item.row.title)
@@ -3230,6 +3296,14 @@ export function TodayScreen() {
           visible={eventsSheetVisible}
           onClose={() => setEventsSheetVisible(false)}
           events={todayCalendarEvents}
+        />
+
+        {/* Where a kitchen row goes. The same sheet the Groceries screen opens
+            — it nests GroceryItemSheet and LeftoverSheet inside its own Modal,
+            so correcting one row from here drops back into the list. */}
+        <KitchenSheet
+          visible={kitchenSheetVisible}
+          onClose={() => setKitchenSheetVisible(false)}
         />
 
         <DeloadSheet
