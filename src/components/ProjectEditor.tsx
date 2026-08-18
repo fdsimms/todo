@@ -161,7 +161,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           <WhenPicker
             visible={showStartDatePicker}
             value={targetStartDate}
-            title="Start Date"
+            title="Start date"
             showTimeOfDay={false}
             showSuggest={false}
             onConfirm={(date) => { setTargetStartDate(date); setShowStartDatePicker(false); }}
@@ -171,7 +171,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           <WhenPicker
             visible={showEndDatePicker}
             value={targetEndDate}
-            title="Target Date"
+            title="Target date"
             showTimeOfDay={false}
             showSuggest={false}
             onConfirm={(date) => { setTargetEndDate(date); setShowEndDatePicker(false); }}
@@ -268,8 +268,12 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           onClear={targetEndDate ? () => setTargetEndDate(null) : undefined}
         />
       </View>
+      {/* #1740: this used to only explain the target date, leaving "Start
+          date" to sit unexplained next to a card full of scheduling toggles
+          — reasonably read as gating something. Neither date does; both are
+          purely informational (see Project.targetStartDate/targetEndDate). */}
       <Text style={styles.sectionFooter}>
-        Optional. If the target date passes before the project's done, nothing happens automatically. It's just flagged so you can decide what to do.
+        Optional, just for reference — shown on the project's card, doesn't affect scheduling or when tasks appear. If the target date passes before the project's done, nothing happens automatically; it's just flagged so you can decide what to do.
       </Text>
 
       <View style={[styles.card, { marginTop: spacing.lg }]}>
