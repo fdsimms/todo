@@ -242,14 +242,14 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
    * is asked later, when the meal is actually marked cooked — see
    * MealPlanScreen's markCooked — not here, before it's even been eaten.
    *
-   * The title captures the age at plan time (mealTitleForLeftover) rather than
-   * resolving it live like a recipe name does, because "2 days old" is a fact
-   * about the night this was planned for, not about the dish.
+   * The title is captured at plan time (mealTitleForLeftover) rather than
+   * resolving it live like a recipe name does — it's the leftover's own title,
+   * not the recipe's.
    *
    * `recipeId` stays null even when the leftover knows which recipe made it —
    * the two backings are mutually exclusive on purpose. Carrying both would
-   * hand titleForEntry a recipe to resolve, and the live recipe name winning is
-   * exactly what would strip the age back off the row.
+   * hand titleForEntry a recipe to resolve, and the live recipe name winning
+   * is exactly what would replace the leftover's own title on the row.
    */
   const pickLeftover = (leftover: Leftover) => {
     haptics.success();

@@ -272,11 +272,10 @@ describe('weekCopyDrafts', () => {
     expect(drafts[0].cookedAt).toBeNull();
   });
 
-  // The container was in the fridge that week and isn't now, and its title has
-  // its age baked in — see mealTitleForLeftover.
+  // The container was in the fridge that week and isn't now.
   it('skips a meal that was eating a tracked leftover', () => {
     const drafts = weekCopyDrafts([
-      entry('2026-08-05', 'dinner', { leftoverId: 'lo-1', title: 'Chilli (2 days old)' }),
+      entry('2026-08-05', 'dinner', { leftoverId: 'lo-1', title: 'Chilli' }),
       entry('2026-08-06', 'dinner', { title: 'Ragù' }),
     ], 7);
 
