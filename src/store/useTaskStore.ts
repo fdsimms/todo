@@ -94,6 +94,13 @@ interface UndoableAction {
    * (see UNDO_ACTION_MAX_AGE_MS in utils/shakeDetect.ts).
    */
   at?: number;
+  /**
+   * Marks an action irreversible-feeling enough to warrant the transient
+   * UndoBar (src/components/UndoBar.tsx), not just the shake gesture — a
+   * delete or a clear, not an add or a reschedule. See UndoBar's own doc
+   * comment for the full rule; this flag is the only thing it reads.
+   */
+  destructive?: boolean;
 }
 
 // Fields that silently carry forward to the next occurrence today (spread
@@ -1351,6 +1358,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     get().setLastAction({
       label: live.length === 1 ? 'Task deleted' : `${live.length} dates deleted`,
+      destructive: true,
       undo: () => {
         [...live, ...subtasks].forEach(t => {
           dbInsertTask(t);
@@ -1786,6 +1794,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     get().setLastAction({
       label: 'Task deleted',
+      destructive: true,
       undo: () => {
         dbInsertTask(task);
         scheduleTaskReminder(task);
@@ -3236,6 +3245,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     get().setLastAction({
       label: 'Subtask deleted',
+      destructive: true,
       undo: () => {
         dbInsertTask(subtask);
         set(s => ({ tasks: [...s.tasks, subtask] }));
@@ -3571,6 +3581,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!group) return;
     get().setLastAction({
       label: opts.cascade ? 'Group and its tasks deleted' : 'Group deleted',
+      destructive: true,
       undo: () => {
         useTaskGroupStore.getState().restoreGroup(group);
         undos.forEach(fn => fn());
@@ -3632,6 +3643,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!project) return;
     get().setLastAction({
       label: opts.cascade ? 'Project and its tasks deleted' : 'Project deleted',
+      destructive: true,
       undo: () => {
         useProjectStore.getState().restoreProject(project);
         if (opts.cascade) {
@@ -3663,6 +3675,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     get().setLastAction({
       label: `${ids.length} project${ids.length === 1 ? '' : 's'} deleted`,
+      destructive: true,
       undo: () => undos.forEach(fn => fn()),
     });
   },
@@ -3692,6 +3705,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useTemplateStore.getState().removeTemplateRow(id);
     get().setLastAction({
       label: 'Template deleted',
+      destructive: true,
       undo: () => useTemplateStore.getState().restoreTemplate(template),
     });
   },
@@ -3706,6 +3720,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     templates.forEach(t => useTemplateStore.getState().removeTemplateRow(t.id));
     get().setLastAction({
       label: `${templates.length} template${templates.length === 1 ? '' : 's'} deleted`,
+      destructive: true,
       undo: () => templates.forEach(t => useTemplateStore.getState().restoreTemplate(t)),
     });
   },
@@ -3757,6 +3772,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     get().setLastAction({
       label: 'Streaks reset',
+      destructive: true,
       undo: () => {
         snapshot.forEach(({ id, streakCount, streakDate }) => {
           const task = get().tasks.find(t => t.id === id);
@@ -3831,6 +3847,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     get().setLastAction({
       label: `${ids.length} task${ids.length === 1 ? '' : 's'} deleted`,
+      destructive: true,
       undo: () => {
         deleted.forEach(t => {
           dbInsertTask(t);
@@ -3850,7 +3867,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().bulkDeleteTasks(ids);
     const undo = get().lastAction?.undo;
     if (undo) {
-      get().setLastAction({ label: 'Logbook cleared', undo });
+      get().setLastAction({ label: 'Logbook cleared', destructive: true, undo });
     }
   },
 
@@ -4083,6 +4100,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     get().setLastAction({
       label: `Deleted tag "${tag}"`,
+      destructive: true,
       undo: () => {
         if (wasRegistered) {
           dbAddToTagRegistry(tag);
@@ -4151,6 +4169,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!category) return;
     get().setLastAction({
       label: 'Category deleted',
+      destructive: true,
       undo: () => {
         useCategoryStore.getState().restoreCategory(category);
         const s2 = useSettingsStore.getState();

@@ -31,6 +31,7 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
 import { PersistentTripBar } from '../components/PersistentTripBar';
+import { UndoBar } from '../components/UndoBar';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
@@ -356,6 +357,10 @@ export default function AppNavigator() {
           either, and ActiveTripBanner (GroceryScreen.tsx) already covers the
           in-screen case — this is what's still there once you've tabbed away. */}
       <PersistentTripBar />
+      {/* Same placement again: a destructive action's undo window is a state
+          the app is in for a few seconds, not a screen — see UndoBar's own
+          doc comment for why it belongs beside these two. */}
+      <UndoBar />
     </>
   );
 }

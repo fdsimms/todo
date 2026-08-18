@@ -94,6 +94,8 @@ interface UndoableAction {
   label: string;
   undo: () => void;
   at?: number;
+  /** See useTaskStore's UndoableAction — same flag, same UndoBar. */
+  destructive?: boolean;
 }
 
 // One shared timer, re-armed by each tap, exactly like armCompletionCollapse
@@ -1531,6 +1533,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     get().setLastAction({
       label: `Marked ${updates.length} ${updates.length === 1 ? 'thing' : 'things'} out`,
+      destructive: true,
       undo: () => {
         for (const b of before) dbUpdateGroceryItem(b);
         const originalById = new Map(before.map(b => [b.id, b]));
@@ -1743,6 +1746,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     get().setLastAction({
       label: `Chose ${item.name}`,
+      destructive: true,
       undo: () => {
         const live = new Set(get().items.map(i => i.id));
         const restored = before.filter(i => !live.has(i.id));
@@ -2048,6 +2052,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     get().setLastAction({
       label: `Bought ${ids.length} ${ids.length === 1 ? 'thing' : 'things'}`,
+      destructive: true,
       undo: () => {
         for (const row of before) dbUpdateGroceryItem(row);
         const byId = new Map(before.map(i => [i.id, i]));
@@ -2115,6 +2120,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     get().endTrip();
     get().setLastAction({
       label: 'Cleared the list',
+      destructive: true,
       undo: () => {
         const parkedById = new Map(parked.map(item => [item.id, item]));
         deleted.forEach(item => dbInsertGroceryItem(item));

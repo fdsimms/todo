@@ -13,6 +13,12 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 
+// The bar's own rendered height (padding + the icon badge, its tallest row) —
+// exported so UndoBar can stack itself one slot above this one when a trip is
+// running and both want the same band. Headroom, not a measurement, same as
+// TAB_BAR_HEIGHT/FAB_SIZE above it: nothing here measures the real view.
+export const TRIP_BAR_HEIGHT = 52;
+
 /**
  * "You're mid-trip and might forget" — the counterpart to `ActiveTripBanner`
  * (GroceryScreen.tsx), which only exists on the one screen a trip was started
