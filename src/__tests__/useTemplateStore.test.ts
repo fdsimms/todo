@@ -562,6 +562,81 @@ describe('applyTemplate — naming the run', () => {
     expect(mockGroupTasks).toHaveBeenCalledWith(['task-Book'], 'Flights', null);
     expect(mockAddTask.mock.calls[0][0].projectId).toBe('project-Denver');
   });
+
+  it('creates one run task and turns every item into a subtask of it when the template asks for a task', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        applyContainer: 'task',
+        items: [makeItem({ id: 'a', title: 'Buy tickets' }), makeItem({ id: 'b', title: 'Decide date' })],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a', 'b']), { start: null, end: null }, { runName: 'Camping w/ Dan' }
+    );
+    expect(mockCreateGroup).not.toHaveBeenCalled();
+    expect(mockCreateProject).not.toHaveBeenCalled();
+    expect(mockAddTask.mock.calls[0][0]).toEqual(expect.objectContaining({ title: 'Camping w/ Dan' }));
+    const itemCalls = mockAddTask.mock.calls.slice(1);
+    expect(itemCalls.map(([d]) => d.title)).toEqual(['Buy tickets', 'Decide date']);
+    expect(itemCalls.every(([d]) => d.parentId === 'task-Camping w/ Dan')).toBe(true);
+    expect(itemCalls.every(([d]) => d.groupId === undefined)).toBe(true);
+  });
+
+  it('categorizes the run task by the category most of its items share, same as a run stack (#1748)', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        applyContainer: 'task',
+        items: [
+          makeItem({ id: 'a', title: 'Buy tickets', category: 'Health' }),
+          makeItem({ id: 'b', title: 'Decide date', category: 'Health' }),
+          makeItem({ id: 'c', title: 'Odd one out', category: 'Work' }),
+        ],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a', 'b', 'c']), { start: null, end: null }, { runName: 'Camping w/ Dan' }
+    );
+    expect(mockAddTask.mock.calls[0][0].category).toBe('Health');
+    // Unlike a run stack, the individual subtasks keep their own category —
+    // subtasks aren't independently filterable by category anywhere.
+    expect(mockAddTask.mock.calls.slice(1).map(([d]) => d.category)).toEqual(['Health', 'Health', 'Work']);
+  });
+
+  it("flattens an item's own subtask stubs onto the run task, since a subtask of a subtask renders nowhere", () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        applyContainer: 'task',
+        items: [makeItem({ id: 'a', title: 'Buy tickets', subtasks: [{ id: 's1', title: 'Compare prices' }] })],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver' });
+    expect(mockAddSubtask).toHaveBeenCalledWith('task-Denver', 'Compare prices');
+  });
+
+  it("does not stack an item group's members into a sub-stack when the run is a task — they're already subtasks", () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        applyContainer: 'task',
+        itemGroups: [{ id: 'g1', title: 'Flights', sortOrder: 1 }],
+        items: [makeItem({ id: 'a', title: 'Book', groupId: 'g1' })],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver' });
+    expect(mockGroupTasks).not.toHaveBeenCalled();
+    expect(mockAddTask.mock.calls[1][0].parentId).toBe('task-Denver');
+  });
+
+  it('lands the run task inside a target project without giving its subtasks their own projectId', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({ applyContainer: 'task', items: [makeItem({ id: 'a', title: 'Buy tickets' })] })],
+    });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver', targetProjectId: 'proj-1' }
+    );
+    expect(mockCreateProject).not.toHaveBeenCalled();
+    expect(mockAddTask.mock.calls[0][0]).toEqual(expect.objectContaining({ title: 'Denver', projectId: 'proj-1' }));
+    expect(mockAddTask.mock.calls[1][0].projectId).toBeUndefined();
+  });
 });
 
 describe('applyTemplate — placeholders', () => {

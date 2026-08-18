@@ -36,8 +36,11 @@ export interface ApplyTemplateOptions {
    * Land every created task in this existing project instead of the template's
    * own container. A resolved 'project' container would otherwise create a
    * *second* project to hold what's meant for this one, so it's capped at
-   * 'stack' — item-group sub-stacks still form (that pass is unconditional,
-   * see the second pass below) and still land inside this project.
+   * 'stack' — item-group sub-stacks still form (that pass runs for every
+   * container except 'task', see the second pass below) and still land
+   * inside this project. A 'task' container is untouched by the cap: its
+   * one run task still takes on this project's id, exactly as a run stack's
+   * members would.
    */
   targetProjectId?: string;
 }
@@ -324,14 +327,19 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       // resolveApplyContainer guarantees a run *stack* never collides with
       // one — it upgrades that case to a project.
       //
-      // The run stack's category is majorityCategory's read of its own
-      // members' categories, and every member adopts it — same "stack
-      // members share the stack's category" rule groupTasks/applyGroupCategory
-      // enforce everywhere else a stack exists. Without the second half, a
-      // template item explicitly categorized "Health" would still land in a
-      // stack that carries a *different* category, which is no more findable
-      // than the uncategorized stack this replaced.
-      const runCategory = container === 'stack' ? majorityCategory(drafts.map(d => d.category ?? null)) : null;
+      // The run stack's (and run task's) category is majorityCategory's read
+      // of its own members' categories, and every stack member adopts it —
+      // same "stack members share the stack's category" rule
+      // groupTasks/applyGroupCategory enforce everywhere else a stack exists.
+      // Without the second half, a template item explicitly categorized
+      // "Health" would still land in a stack that carries a *different*
+      // category, which is no more findable than the uncategorized stack
+      // this replaced. A run task's own subtasks don't get the same
+      // override — subtasks aren't independently filterable by category
+      // anywhere, so there's nothing for it to fix.
+      const runCategory = (container === 'stack' || container === 'task')
+        ? majorityCategory(drafts.map(d => d.category ?? null))
+        : null;
       const runGroup = container === 'stack'
         ? useTaskGroupStore.getState().createGroup(runName, runCategory)
         : null;
@@ -344,10 +352,23 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         : null;
       const projectId = options?.targetProjectId ?? runProject?.id ?? null;
 
+      // A 'task' container's parent is a real Task rather than a TaskGroup or
+      // Project, created up front like they are so its id can ride in on the
+      // item drafts below — as parentId rather than groupId, since every
+      // item becomes a subtask of it instead of a loose or grouped top-level
+      // task.
+      const runTask = container === 'task'
+        ? addTask({ title: runName, category: runCategory, ...(projectId ? { projectId } : {}) })
+        : null;
+
       createdTasks = drafts.map(d => addTask({
         ...d,
         ...(runGroup ? { groupId: runGroup.id, category: runCategory } : {}),
-        ...(projectId ? { projectId } : {}),
+        ...(runTask ? { parentId: runTask.id } : {}),
+        // A subtask doesn't carry its own project membership, matching
+        // addSubtask's convention below — only the run task above represents
+        // the run inside a project.
+        ...(projectId && !runTask ? { projectId } : {}),
       }));
 
       // Second pass: subtasks and groups need ids that don't exist until
@@ -359,11 +380,23 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         const createdTask = createdTasks[index];
         if (!createdTask) return;
 
+        // A 'task' container already spends the app's one supported level of
+        // subtask nesting turning each item into a subtask of runTask — an
+        // item's own subtask stubs, which normally nest a second level under
+        // createdTask, would be subtasks of a subtask, and nothing in the
+        // app renders, reorders or cascade-deletes those. Flattened onto
+        // runTask instead, as createdTask's own siblings, rather than
+        // silently dropped.
+        const subtaskParent = runTask ?? createdTask;
         item.subtasks.forEach(stub =>
-          addSubtask(createdTask.id, substitutePlaceholders(stub.title, placeholders))
+          addSubtask(subtaskParent.id, substitutePlaceholders(stub.title, placeholders))
         );
 
-        if (item.groupId) {
+        // Item-group sub-stacks only ever mean anything among top-level
+        // tasks — a 'task' container's items are already subtasks, invisible
+        // to every stack-rendering surface, so grouping them would only
+        // produce an orphaned stack nothing ever shows.
+        if (item.groupId && !runTask) {
           const key = `${sourceTemplateId}:${item.groupId}`;
           const list = createdTaskIdsByGroup.get(key) ?? [];
           list.push(createdTask.id);

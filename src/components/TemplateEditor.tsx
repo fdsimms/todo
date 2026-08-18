@@ -218,24 +218,32 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
               will use a project instead, so the groups have somewhere to sit.
             </Text>
           )}
+          {container === 'task' && template.itemGroups.length > 0 && (
+            <Text style={styles.containerNote}>
+              This template has item groups, but every item becomes a subtask here — the
+              groups won't form stacks of their own.
+            </Text>
+          )}
         </CollapsibleField>
       </View>
     </EditorSheet>
   );
 }
 
-const CONTAINER_OPTIONS: TemplateContainer[] = ['none', 'stack', 'project'];
+const CONTAINER_OPTIONS: TemplateContainer[] = ['none', 'stack', 'project', 'task'];
 
 const CONTAINER_LABELS: Record<TemplateContainer, string> = {
   none: 'Nothing',
   stack: 'A stack',
   project: 'A project',
+  task: 'A task',
 };
 
 const CONTAINER_NOTES: Record<TemplateContainer, string> = {
   none: 'Tasks are added loose, and the run name only fills in {blanks}.',
   stack: 'Tasks are headed by a stack named after the run. Best for most templates.',
   project: 'Tasks go in a project named after the run, dated by the two anchors. Best for long, multi-week ones.',
+  task: 'Tasks become subtasks of one task named after the run. Best for a routine you want a single checkbox for.',
 };
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
