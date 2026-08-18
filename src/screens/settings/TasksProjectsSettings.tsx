@@ -89,6 +89,8 @@ export function TasksProjectsSettings() {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const setKitchenEnabled = useSettingsStore(s => s.setKitchenEnabled);
   const mealsOnToday = useSettingsStore(s => s.mealsOnToday);
+  const kitchenOnToday = useSettingsStore(s => s.kitchenOnToday);
+  const setKitchenOnToday = useSettingsStore(s => s.setKitchenOnToday);
   const setMealsOnToday = useSettingsStore(s => s.setMealsOnToday);
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
   const setRestockOfferEnabled = useSettingsStore(s => s.setRestockOfferEnabled);
@@ -313,7 +315,7 @@ export function TasksProjectsSettings() {
       <>
       <SettingsSection
         label="Meals on Today"
-        footer="A meal with no cook task behind it (a leftover, a takeaway, a dinner you typed) shows as a row in the list, filed under the same category as cook tasks. Cook tasks themselves are under Tasks the app adds, below."
+        footer="A meal with no cook task behind it (a leftover, a takeaway, a dinner you typed) shows as a row in the list, filed under the same category as cook tasks — and so does anything in the kitchen about to go off, above them. Neither can be checked off; tapping opens the meal plan or the kitchen. Cook tasks themselves are under Tasks the app adds, below."
       >
         {/* A toggle rather than a track of two: one bounded choice with two
             answers is what a switch is for, and the two shapes this used to
@@ -329,6 +331,19 @@ export function TasksProjectsSettings() {
           toggle={mealsOnToday === 'inline'}
           onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}
           accessibilityLabel="Show the day's meals"
+        />
+        {/* Filed in this section rather than under Tasks the app adds, because
+            it is not a task the app adds: nothing is written, and the row
+            leaves when the food does. What it shares with the meals is where
+            it lands — the same category, at the top of the same section. */}
+        <SettingsRow
+          icon="nutrition-outline"
+          iconColor={kitchenOnToday ? colors.accent : undefined}
+          label="Show what needs using up"
+          hint="A row on the day something in the kitchen is down to its last day, unless it already has a use-up task."
+          toggle={kitchenOnToday}
+          onPress={() => setKitchenOnToday(!kitchenOnToday)}
+          accessibilityLabel="Show what needs using up"
         />
         <SettingsRow
           icon="basket-outline"

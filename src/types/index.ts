@@ -2147,20 +2147,38 @@ export const MEAL_PLAN_RETENTION_DAYS = 180;
 /**
  * A row on the Today list that isn't a task and never becomes one (#1571).
  *
- * A calendar event and a planned meal both belong on the day and neither can be
- * dragged, selected or edited here — an event is EventKit's row and the app only
- * reads it, and a meal is `MealPlanEntry`'s. They used to sit in two fixed
- * strips above the list; folding them in needs a row treatment that doesn't
- * bring a second interaction model with it, which is what this is: no drag
- * handle and no `SelectionDot`. That last absence is the signal for bulk edits —
- * every *eligible* row grows a ring while one is on, so a row without one is
- * already how this list says "not this one".
+ * A calendar event, a planned meal and what's about to go off in the kitchen all
+ * belong on the day, and none of them can be dragged, selected or edited here —
+ * an event is EventKit's row and the app only reads it, a meal is
+ * `MealPlanEntry`'s, and a kitchen row is a reading over the catalog and the
+ * fridge (#1689). The first two used to sit in two fixed strips above the list;
+ * folding them in needs a row treatment that doesn't bring a second interaction
+ * model with it, which is what this is: no drag handle and no `SelectionDot`.
+ * That last absence is the signal for bulk edits — every *eligible* row grows a
+ * ring while one is on, so a row without one is already how this list says "not
+ * this one".
+ *
+ * **The third kind is why the mechanism was worth having.** The kitchen's front
+ * door is the list the user already reads every day, not a screen they have to
+ * go to: everything the groceries/meals area knows sits behind More →
+ * Groceries & meals → a pill, and a bag of spinach nobody navigates to is a bag
+ * of spinach that rots. A context row is the opposite — the knowledge arrives
+ * where the attention already is.
  *
  * **A meal can be ticked off from here; an event can't.** That asymmetry is the
  * whole of what a context row can *do*, and it follows from who owns the row: a
  * meal's `cookedAt` is this app's to write, and a leftover or a takeaway planned
  * for tonight is a real thing to finish that has no "Cook X" task to finish it
  * with. See `DayContextRow`, which draws the tickable one's glyph as a button.
+ *
+ * **A kitchen row is a reading, so it can't be ticked either** (#1689) — and
+ * that's the line between it and the "Use up X" *task* the same food can
+ * produce. A task is a thing to do: it carries an opt-out, it can be deferred,
+ * and it lands in the Logbook when it's done. A kitchen row states what the
+ * kitchen is right now; it goes away when the food does, and the only two
+ * answers it could offer ("eaten" / "thrown out", "got it" / "out of it") are
+ * exactly the two-way questions `KitchenSheet` already refuses to guess at with
+ * a single glyph. So it opens the kitchen instead of finishing anything.
  *
  * **A view model, computed per render, never stored.** Nothing here is written
  * to SQLite: `src/utils/dayContextRows.ts` builds these from the calendar store
@@ -2178,19 +2196,30 @@ export interface ContextRow {
   id: string;
   /**
    * The row this was built from — a `MealPlanEntry.id` for a meal, a
-   * `BusyEvent.id` for an event. Its own field rather than `id` with the prefix
-   * peeled off at the call site: `id` is a list key and owes nothing to whatever
-   * made it, and a screen re-deriving a store key by string surgery is how the
-   * two quietly stop matching.
+   * `BusyEvent.id` for an event, a `GroceryItem.id` or `Leftover.id` for a
+   * kitchen row. Its own field rather than `id` with the prefix peeled off at
+   * the call site: `id` is a list key and owes nothing to whatever made it, and
+   * a screen re-deriving a store key by string surgery is how the two quietly
+   * stop matching.
+   *
+   * Empty on the one row that summarizes several — see `kitchenContextRows`,
+   * where "3 things to use up" is built from no single source and has none to
+   * name. Nothing dereferences it: every kitchen row opens the same sheet.
    */
   sourceId: string;
-  kind: 'event' | 'meal';
+  kind: 'event' | 'meal' | 'kitchen';
   title: string;
   /**
-   * The caption under the title — "4:15 PM", "All day", "Now", "Dinner". A
-   * single string rather than a time plus a formatter, because the four cases
-   * don't share a format and the row would otherwise need to know which it had.
-   * All four say *when*, which is what lets the row caption them with one glyph.
+   * The caption under the title — "4:15 PM", "All day", "Now", "Dinner", "Use
+   * by today". A single string rather than a time plus a formatter, because the
+   * cases don't share a format and the row would otherwise need to know which
+   * it had. They all say *when*, which is what lets the row caption them with
+   * one glyph — a kitchen row's use-by day included, since that is the whole of
+   * what makes it worth a row.
+   *
+   * A kitchen row is the one that can carry a second clause ("Use by today ·
+   * For Chili"), and only for the pairing this feature exists for: the thing
+   * that's dying, next to the meal already planned to eat it.
    */
   caption: string;
   /** Which category section this files under; null = the header-less loose group. */

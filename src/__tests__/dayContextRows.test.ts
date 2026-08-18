@@ -1,12 +1,16 @@
-import type { MealPlanEntry, MealSlot, Recipe } from '../types';
+import type { LeftoverFreshness, MealPlanEntry, MealSlot, Recipe } from '../types';
 import type { BusyEvent } from '../utils/calendarBusy';
 import type { TodayListItem } from '../utils/taskGrouping';
 import {
   eventContextRows,
   mealContextRows,
+  kitchenContextRows,
+  plannedUsesToday,
   insertContextRows,
   withoutContextRows,
 } from '../utils/dayContextRows';
+import type { KitchenEntry } from '../utils/kitchenInventory';
+import { groceryNameKey } from '../utils/groceryParse';
 
 // Both mocks are here for what this module *imports*, not for what it does:
 // dateUtils reaches the settings store for the 12/24-hour preference (every
@@ -218,5 +222,205 @@ describe('withoutContextRows', () => {
     );
     expect(withRows).toHaveLength(2);
     expect(withoutContextRows(withRows)).toEqual([header('Calendar Events')]);
+  });
+});
+
+// ─── the kitchen (#1689) ────────────────────────────────────────────────────
+
+/**
+ * `KitchenEntry` fixtures, built by hand rather than through
+ * `kitchenInventory`: what's under test here is which of them earns a row and
+ * what that row says, and staging a purchase cadence to produce one is
+ * `kitchenInventory.test.ts`'s job. `useByCaption`/`freshness` are set
+ * together, since the row reads one and the filter reads the other.
+ */
+function kitchen(
+  title: string,
+  freshness: LeftoverFreshness | null,
+  overrides: Partial<KitchenEntry> = {},
+): KitchenEntry {
+  seq += 1;
+  const kind = overrides.kind ?? 'grocery';
+  const sourceId = overrides.sourceId ?? `k-${seq}`;
+  return {
+    id: `${kind}-${sourceId}`,
+    sourceId,
+    kind,
+    title,
+    section: 'Other',
+    useBy: freshness === null ? null : '2026-08-13',
+    freshness,
+    daysLeft: freshness === null ? null : 0,
+    reason: 'Bought 2×',
+    useByCaption: freshness === null ? '' : 'Use by today',
+    caption: 'Bought 2×',
+    onList: false,
+    matchKey: groceryNameKey(title),
+    ...overrides,
+  };
+}
+
+const NO_TASKS = { category: 'Kitchen', hasUseUpTask: () => false };
+
+describe('kitchenContextRows', () => {
+  it('says nothing on a day with nothing about to go off', () => {
+    expect(kitchenContextRows([kitchen('Rice', 'fresh'), kitchen('Flour', null)], NO_TASKS))
+      .toEqual([]);
+  });
+
+  it('names one thing on its own line, with the use-by day as the caption', () => {
+    const rows = kitchenContextRows([kitchen('Spinach', 'due')], NO_TASKS);
+    expect(rows.map(r => [r.kind, r.title, r.caption]))
+      .toEqual([['kitchen', 'Spinach', 'Use by today']]);
+  });
+
+  it('names two, and collapses three or more into one row', () => {
+    const dying = [
+      kitchen('Spinach', 'over', { useByCaption: '2 days past' }),
+      kitchen('Chilli', 'due', { kind: 'leftover' }),
+      kitchen('Yogurt', 'soon', { useByCaption: 'Use by tomorrow' }),
+    ];
+    expect(kitchenContextRows(dying.slice(0, 2), NO_TASKS).map(r => r.title))
+      .toEqual(['Spinach', 'Chilli']);
+    // The soonest day leads the summary — it can't state three, and the one
+    // already past is the one that has to be dealt with tonight.
+    expect(kitchenContextRows(dying, NO_TASKS).map(r => [r.title, r.caption]))
+      .toEqual([['3 things to use up', '2 days past']]);
+  });
+
+  it('drops anything that already has a use-up task, rather than saying it twice', () => {
+    const spinach = kitchen('Spinach', 'due');
+    const chilli = kitchen('Chilli', 'over', { kind: 'leftover' });
+    const rows = kitchenContextRows([spinach, chilli], {
+      category: 'Kitchen',
+      hasUseUpTask: entry => entry.id === chilli.id,
+    });
+    expect(rows.map(r => r.title)).toEqual(['Spinach']);
+  });
+
+  it('counts only what is left after that drop, so the summary cannot overstate', () => {
+    const dying = [
+      kitchen('Spinach', 'over'),
+      kitchen('Chilli', 'due'),
+      kitchen('Yogurt', 'soon'),
+    ];
+    const rows = kitchenContextRows(dying, {
+      category: 'Kitchen',
+      hasUseUpTask: entry => entry.title === 'Yogurt',
+    });
+    expect(rows.map(r => r.title)).toEqual(['Spinach', 'Chilli']);
+  });
+
+  it('files under the category it is given and is never marked as running', () => {
+    const [row] = kitchenContextRows([kitchen('Spinach', 'due')], NO_TASKS);
+    expect(row.category).toBe('Kitchen');
+    expect(row.now).toBe(false);
+  });
+
+  it('prefixes the id by kind, twice over, so it cannot collide with anything', () => {
+    const entry = kitchen('Spinach', 'due', { sourceId: 'gi-1' });
+    const [row] = kitchenContextRows([entry], NO_TASKS);
+    expect(row.id).toBe('kitchen-grocery-gi-1');
+    expect(row.sourceId).toBe('gi-1');
+  });
+
+  it('names no single source on the summary row', () => {
+    const dying = ['a', 'b', 'c'].map(n => kitchen(n, 'due'));
+    expect(kitchenContextRows(dying, NO_TASKS)[0].sourceId).toBe('');
+  });
+
+  it('adds the meal that would eat it, when there is one', () => {
+    const spinach = kitchen('Spinach', 'due');
+    const rows = kitchenContextRows([spinach], {
+      ...NO_TASKS,
+      plannedUses: new Map([[spinach.id, 'Green salad']]),
+    });
+    expect(rows[0].caption).toBe('Use by today · For Green salad');
+  });
+});
+
+describe('plannedUsesToday', () => {
+  const spinach = kitchen('Spinach', 'due');
+
+  function withRecipe(name: string, ingredientNames: string[]) {
+    const ingredients = ingredientNames.map(n => ({
+      id: `i-${++seq}`,
+      name: n,
+      nameKey: groceryNameKey(n),
+      quantity: '',
+      aisle: null,
+      prep: null,
+      purpose: null,
+      section: null,
+      choiceGroup: null,
+    }));
+    return {
+      id: `r-${++seq}`,
+      name,
+      ingredients,
+      components: [],
+      emptySections: [],
+    } as unknown as Recipe;
+  }
+
+  it('pairs a catalog row with the meal whose recipe calls for it', () => {
+    const salad = withRecipe('Green salad', ['Spinach', 'Olive oil']);
+    const uses = plannedUsesToday(
+      [spinach],
+      [entry('dinner', { recipeId: salad.id })],
+      new Map([[salad.id, salad]]),
+    );
+    expect(uses.get(spinach.id)).toBe('Green salad');
+  });
+
+  it('pairs a leftover by the pointer the user made, not by its title', () => {
+    const chilli = kitchen('Chilli', 'due', { kind: 'leftover', sourceId: 'lo-1' });
+    const uses = plannedUsesToday(
+      [chilli],
+      [entry('dinner', { leftoverId: 'lo-1', title: 'Leftover chilli' })],
+      NO_RECIPES,
+    );
+    expect(uses.get(chilli.id)).toBe('Leftover chilli');
+  });
+
+  it('says nothing about a leftover a meal merely shares a name with', () => {
+    const chilli = kitchen('Chilli', 'due', { kind: 'leftover' });
+    const uses = plannedUsesToday(
+      [chilli],
+      [entry('dinner', { title: 'Chilli' })],
+      NO_RECIPES,
+    );
+    expect(uses.size).toBe(0);
+  });
+
+  it('names the earliest slot when two meals both want it', () => {
+    const salad = withRecipe('Green salad', ['Spinach']);
+    const soup = withRecipe('Spinach soup', ['Spinach']);
+    const uses = plannedUsesToday(
+      [spinach],
+      [entry('dinner', { recipeId: soup.id }), entry('lunch', { recipeId: salad.id })],
+      new Map([[salad.id, salad], [soup.id, soup]]),
+    );
+    expect(uses.get(spinach.id)).toBe('Green salad');
+  });
+
+  it('ignores a meal already cooked', () => {
+    const salad = withRecipe('Green salad', ['Spinach']);
+    const uses = plannedUsesToday(
+      [spinach],
+      [entry('lunch', { recipeId: salad.id, cookedAt: '2026-08-13T12:00:00.000Z' })],
+      new Map([[salad.id, salad]]),
+    );
+    expect(uses.size).toBe(0);
+  });
+
+  it('says nothing when the day has no meal that would use it', () => {
+    const soup = withRecipe('Tomato soup', ['Tomatoes']);
+    const uses = plannedUsesToday(
+      [spinach],
+      [entry('dinner', { recipeId: soup.id }), entry('lunch')],
+      new Map([[soup.id, soup]]),
+    );
+    expect(uses.size).toBe(0);
   });
 });

@@ -1172,6 +1172,25 @@ function seedGroceries(recipes: DemoRecipes): void {
   setExpiresAt(itemNamed('Spinach').id, dayKeyOf(addDays(new Date(), 1)));
   setUseUpTask(itemNamed('Spinach').id, true);
 
+  // ...and the other half of that same pair (#1689): two perishables on their
+  // last day with the setting still off, so neither gets a task and both say so
+  // on Today as kitchen context rows instead. That is exactly the gap the rows
+  // exist for — with `groceryUseUpTasks` off by default, a use-by date the
+  // catalog knows about had no voice anywhere the user actually looks.
+  //
+  // The pepper is the row the feature is really for: tonight's dinner is the
+  // stir-fry, and the stir-fry calls for a red bell pepper, so its row reads
+  // "Use by tomorrow · Dinner: Weeknight chicken stir-fry" — the warning and
+  // the plan that answers it, on one line. The cilantro is the same row with
+  // nothing planned to eat it, which is what most of them look like.
+  //
+  // Two of them and not three, deliberately: past two the rows collapse into a
+  // single "N things to use up" and the demo would show the summary instead of
+  // either of the captions worth seeing.
+  addToPantry('Red bell pepper');
+  setExpiresAt(itemNamed('Red bell pepper').id, dayKeyOf(addDays(new Date(), 1)));
+  setExpiresAt(itemNamed('Cilantro').id, dayKeyOf(new Date()));
+
   // A walk order the user has clearly edited: a custom section they file two
   // things into by hand, a built-in they never shop deleted (which leaves the
   // tombstone that stops normalizeAisleOrder re-appending it), and Frozen
