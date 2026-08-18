@@ -17,6 +17,7 @@ import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
 import { substitutesOnHand } from './itemSubs';
+import { standingSwapMap } from './standingSwaps';
 import { formatDuration } from './effort';
 import {
   countChoiceAware,
@@ -67,7 +68,7 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
   const r = raw as Partial<RecipeIngredient>;
   const name = typeof r.name === 'string' ? r.name.trim().slice(0, GROCERY_NAME_MAX_LENGTH) : '';
   if (!name) return null;
-  return {
+  const normalized: RecipeIngredient = {
     id: typeof r.id === 'string' && r.id ? r.id : generateId(),
     name,
     nameKey: groceryNameKey(name),
@@ -86,6 +87,11 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
       : null,
     choiceGroup: cleanChoiceGroup(typeof r.choiceGroup === 'string' ? r.choiceGroup : null),
   };
+  // Written only when it's true, which is what makes the field optional worth
+  // anything: "keep as written" is off for nearly every line in the app, and
+  // storing `false` on all of them would grow every recipe's blob to say so.
+  if (r.noSwap === true) normalized.noSwap = true;
+  return normalized;
 }
 
 /**
@@ -458,7 +464,15 @@ export function pantryCoverageForRecipe(
   recipesById?: ReadonlyMap<string, Recipe>,
   itemSubs: readonly ItemSubLink[] = [],
 ): PantryCoverage {
-  const planned = plannedIngredientsForRecipe(recipe, recipesById);
+  // Swapped, from the same links this already takes: a cook who never buys
+  // dairy milk is not missing an ingredient, and a coverage number that says
+  // they are is the exact complaint #1571 exists to answer. Built here rather
+  // than passed in so every caller of this — and of
+  // `countLikelyInPantry` above it — gets the same answer without a new
+  // argument each.
+  const planned = plannedIngredientsForRecipe(
+    recipe, recipesById, undefined, 1, standingSwapMap(itemSubs, items)
+  );
   if (planned.length === 0) return { total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null };
 
   const classified = classifyPlanned(planned, items, now, itemSubs);
@@ -1059,8 +1073,12 @@ function catalogCoverage(
   // search: this is a fraction, and counting every alternative inflates the
   // denominator with lines that will never be bought, so a recipe offering a
   // choice would score as less ready than the same recipe without one.
-  const ingredients = flattenRecipeIngredients(recipe, recipesById ?? new Map([[recipe.id, recipe]]))
-    .map(f => f.ingredient);
+  // Standing swaps applied, for the reason pantryCoverageForRecipe gives: this
+  // is "how ready am I to cook this", and the answer is about the ingredients
+  // this kitchen actually uses.
+  const ingredients = flattenRecipeIngredients(
+    recipe, recipesById ?? new Map([[recipe.id, recipe]]), undefined, standingSwapMap(itemSubs, items)
+  ).map(f => f.ingredient);
   if (ingredients.length === 0) return { matched: 0, total: 0, coverage: 0, avgRecency: 0 };
   const byKey = new Map(items.map(i => [i.nameKey, i]));
   let matched = 0;

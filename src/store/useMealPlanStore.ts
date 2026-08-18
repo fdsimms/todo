@@ -25,6 +25,7 @@ import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { syncMealEvent } from '../utils/mealCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
 import { classifyPlanned, consumedRows, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
+import { standingSwapMap } from '../utils/standingSwaps';
 import { generateId } from '../utils/id';
 import { normalizeScale } from '../utils/recipeScale';
 import {
@@ -937,10 +938,15 @@ function useUpOfferFor(entry: MealPlanEntry): CookedOffer | null {
 
   const recipesById = new Map(recipes.map(r => [r.id, r]));
   const scale = normalizeScale(entry.recipeScale);
+  // Swapped: what a cook used up is what they actually cooked with, so a
+  // standing "oat milk for milk" asks after the oat milk.
+  const { items, itemSubs } = useGroceryStore.getState();
   const rows = consumedRows(
     classifyPlanned(
-      plannedIngredientsForRecipe(recipe, recipesById, { chosen: entry.recipeChoices }, scale),
-      useGroceryStore.getState().items,
+      plannedIngredientsForRecipe(
+        recipe, recipesById, { chosen: entry.recipeChoices }, scale, standingSwapMap(itemSubs, items)
+      ),
+      items,
       new Date()
     )
   );

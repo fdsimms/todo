@@ -1863,6 +1863,7 @@ describe('grocery items', () => {
       subItemId,
       note,
       createdAt: '2026-01-01T00:00:00.000Z',
+      standing: false,
       ...ratio,
     });
 
@@ -1876,7 +1877,7 @@ describe('grocery items', () => {
       expect(dbGetAllItemSubLinks()).toEqual([
         {
           itemId: 'g1', subItemId: 'g2', note: 'Not for baking', createdAt: '2026-01-01T00:00:00.000Z',
-          ratioFrom: null, ratioTo: null,
+          ratioFrom: null, ratioTo: null, standing: false,
         },
       ]);
     });
@@ -1899,6 +1900,19 @@ describe('grocery items', () => {
       const rows = dbGetAllItemSubLinks();
       expect(rows).toHaveLength(1);
       expect(rows[0].ratioTo).toBe('1/2 tsp');
+    });
+
+    it('round-trips the standing bit, and defaults it off', () => {
+      // 0 for every row that predates it — a rule that rewrites what lands in
+      // the trolley can only be ticked by the person it rewrites for.
+      dbSetItemSubLink(link('g1', 'g2'));
+      expect(dbGetAllItemSubLinks()[0].standing).toBe(false);
+
+      dbSetItemSubLink({ ...link('g1', 'g2'), standing: true });
+      expect(dbGetAllItemSubLinks()[0].standing).toBe(true);
+
+      dbSetItemSubLink(link('g1', 'g2'));
+      expect(dbGetAllItemSubLinks()[0].standing).toBe(false);
     });
 
     it('keeps the two directions apart', () => {

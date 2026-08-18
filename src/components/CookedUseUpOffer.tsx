@@ -8,6 +8,7 @@ import {
   consumedRows,
   plannedIngredientsForRecipe,
 } from '../utils/mealPlanGroceries';
+import { standingSwapMap } from '../utils/standingSwaps';
 import { CookedOfferBanner } from './CookedOfferBanner';
 import { CookedUseUpSheet } from './CookedUseUpSheet';
 
@@ -32,6 +33,9 @@ export function CookedUseUpOffer() {
   const clearCookedOffer = useMealPlanStore(s => s.clearCookedOffer);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const items = useGroceryStore(useShallow(s => s.items));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  // What the cook actually cooked with — see standingSwaps.ts.
+  const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
 
   const [sheetVisible, setSheetVisible] = useState(false);
 
@@ -45,12 +49,12 @@ export function CookedUseUpOffer() {
     if (!recipe) return [];
     return consumedRows(
       classifyPlanned(
-        plannedIngredientsForRecipe(recipe, recipesById, { chosen: offer.choices }, offer.scale),
+        plannedIngredientsForRecipe(recipe, recipesById, { chosen: offer.choices }, offer.scale, swaps),
         items,
         new Date()
       )
     );
-  }, [offer, recipesById, items]);
+  }, [offer, recipesById, items, swaps]);
 
   // Answering every line — or the recipe going away — leaves an offer with
   // nothing to say. Clearing it rather than merely rendering null is what hands

@@ -172,6 +172,36 @@ describe('flattenRecipeIngredients', () => {
       .toEqual(['Bread']);
   });
 
+  // #1571 — the rule itself is pinned in standingSwaps.test.ts; what this
+  // covers is that the gate every shopping read goes through actually applies
+  // it, components included, and that a caller passing none is unaffected.
+  it('applies a standing swap on the way out, at any depth', () => {
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Potatoes'), ing('Milk')] });
+    const steak = recipe('r1', 'Steak with mash', {
+      ingredients: [ing('Steak')],
+      components: [link('r2', 'Mash')],
+    });
+    const swaps = new Map([['milk', {
+      link: {
+        itemId: 'i-milk', subItemId: 'i-oat', note: null,
+        createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: true,
+      },
+      from: { name: 'Milk', nameKey: 'milk', aisle: null } as never,
+      to: { name: 'Oat milk', nameKey: 'oat milk', aisle: 'Dairy' } as never,
+    }]]);
+
+    const flat = flattenRecipeIngredients(steak, recipeMap([steak, mash]), undefined, swaps);
+
+    expect(flat.map(f => f.ingredient.name)).toEqual(['Steak', 'Potatoes', 'Oat milk']);
+    expect(flat.map(f => f.swappedFrom)).toEqual([null, null, 'Milk']);
+    // The recipe itself is untouched — the swap is a read, not a write.
+    expect(mash.ingredients.map(i => i.name)).toEqual(['Potatoes', 'Milk']);
+    // ...and a caller that passes no rules reads the recipe's own words, which
+    // is what every authoring and search read wants.
+    expect(flattenRecipeIngredients(steak, recipeMap([steak, mash])).map(f => f.ingredient.name))
+      .toEqual(['Steak', 'Potatoes', 'Milk']);
+  });
+
   it('brings a component’s lines along, own lines first', () => {
     const mash = recipe('r2', 'Mash', { ingredients: [ing('Potatoes'), ing('Butter')] });
     const steak = recipe('r1', 'Steak with mash', {

@@ -7,6 +7,7 @@ import type { UnitSystem } from '../../utils/unitConvert';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useCategoryStore } from '../../store/useCategoryStore';
 import { useRecipeStore } from '../../store/useRecipeStore';
+import { useGroceryStore } from '../../store/useGroceryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { allRecipeTags } from '../../utils/recipeTags';
 import { useColors } from '../../theme/ThemeContext';
@@ -20,6 +21,8 @@ import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { PillGroup } from '../../components/PillGroup';
+import { StandingSwapsSheet } from '../../components/StandingSwapsSheet';
+import { standingSwaps } from '../../utils/standingSwaps';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
 import { categoryLabel } from '../../utils/categoryLabel';
@@ -104,9 +107,21 @@ export function TasksProjectsSettings() {
   const categories = useCategoryStore(s => s.categories);
   const recipeTagVocabulary = useRecipeStore(useShallow(s => allRecipeTags(s.recipes)));
 
+  // How many substitutes the app is currently applying on its own (#1571) —
+  // the count on the Standing swaps row, and the reason it reads as active.
+  // The resolved list, not a raw `standing` count: a rule whose other half has
+  // gone isn't being applied to anything.
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const standingSwapCount = useMemo(
+    () => standingSwaps(itemSubs, groceryItems).length,
+    [itemSubs, groceryItems]
+  );
+
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
+  const [standingSwapsVisible, setStandingSwapsVisible] = useState(false);
 
   // Not a segmented control: the categories are the user's own and there can be
   // fifteen of them, which is `PillGroup`'s job (it caps and filters) and not a
@@ -448,6 +463,28 @@ export function TasksProjectsSettings() {
           />
         </View>
       </SettingsSection>
+
+      {/* The review surface for the one substitute setting that changes what
+          lands in the trolley (#1571). The rule itself is written where the
+          pair is, on the item's Substitutes field — this is the "what is the
+          app currently rewriting for me" read, which is the thing a link-level
+          bit on its own can't answer. */}
+      <SettingsSection
+        label="Substitutes"
+        footer="A substitute normally just says what you could use instead. One marked &quot;always use this instead&quot; is applied for you: recipes calling for the original show and shop for the substitute, marked with what the recipe said. Nothing is written to the recipe, and a single line can opt out under &quot;Keep as written&quot;."
+      >
+        <SettingsRow
+          icon="swap-horizontal-outline"
+          iconColor={standingSwapCount > 0 ? colors.accent : undefined}
+          label="Standing swaps"
+          hint={standingSwapCount > 0
+            ? 'Substitutes being applied to every recipe that calls for the original'
+            : 'Nothing is being swapped for you'}
+          value={standingSwapCount > 0 ? String(standingSwapCount) : undefined}
+          chevron
+          onPress={() => { haptics.tap(); setStandingSwapsVisible(true); }}
+        />
+      </SettingsSection>
       </>
       )}
 
@@ -602,6 +639,11 @@ export function TasksProjectsSettings() {
           setShowVacationEndPicker(false);
         }}
         onCancel={() => setShowVacationEndPicker(false)}
+      />
+
+      <StandingSwapsSheet
+        visible={standingSwapsVisible}
+        onClose={() => setStandingSwapsVisible(false)}
       />
     </>
   );

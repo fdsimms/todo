@@ -2619,7 +2619,7 @@ describe('mergeItems', () => {
       seed([cilantro, coriander, parsley], {
         itemSubs: [{
           itemId: coriander.id, subItemId: parsley.id, note: null,
-          createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null,
+          createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false,
         }],
       });
 
@@ -2636,13 +2636,42 @@ describe('mergeItems', () => {
       seed([cilantro, coriander], {
         itemSubs: [{
           itemId: cilantro.id, subItemId: coriander.id, note: null,
-          createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null,
+          createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false,
         }],
       });
 
       useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
 
       expect(useGroceryStore.getState().itemSubs).toEqual([]);
+    });
+
+    it('keeps the survivor’s own standing rule over one retargeted in from the loser', () => {
+      // Cilantro (survivor) already always uses Basil; Coriander (loser) always
+      // uses Parsley. Merging must not leave the survivor with two standing
+      // rules — one item, one answer (see standingSwaps.ts).
+      const cilantro = makeItem({ name: 'Cilantro' });
+      const coriander = makeItem({ name: 'Coriander' });
+      const basil = makeItem({ name: 'Basil' });
+      const parsley = makeItem({ name: 'Parsley' });
+      seed([cilantro, coriander, basil, parsley], {
+        itemSubs: [
+          {
+            itemId: cilantro.id, subItemId: basil.id, note: null,
+            createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: true,
+          },
+          {
+            itemId: coriander.id, subItemId: parsley.id, note: null,
+            createdAt: '2026-01-02T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: true,
+          },
+        ],
+      });
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      const subs = useGroceryStore.getState().itemSubs;
+      expect(subs).toHaveLength(2);
+      expect(subs.find(l => l.subItemId === basil.id)).toMatchObject({ itemId: cilantro.id, standing: true });
+      expect(subs.find(l => l.subItemId === parsley.id)).toMatchObject({ itemId: cilantro.id, standing: false });
     });
   });
 
@@ -3748,6 +3777,7 @@ describe('substitutes', () => {
         itemId: butter.id, subItemId: margarine.id, note: null,
         createdAt: '2020-01-01T00:00:00.000Z',
         ratioFrom: '100 g', ratioTo: '110 g',
+        standing: false,
       }],
     });
 
@@ -3807,6 +3837,7 @@ describe('substitutes', () => {
           createdAt: '2020-01-01T00:00:00.000Z',
           ratioFrom: null,
           ratioTo: null,
+          standing: false,
         },
       ],
     });
@@ -3832,6 +3863,91 @@ describe('substitutes', () => {
       expect.objectContaining({ itemId: margarine.id, subItemId: butter.id }),
     ]);
     expect(dbDeleteItemSubLink).toHaveBeenCalledWith(butter.id, margarine.id);
+  });
+
+  // ── Standing swaps (#1571) ────────────────────────────────────────────────
+
+  it('linkItemSub writes the standing bit on the forward row only', () => {
+    const milk = makeItem({ name: 'Milk' });
+    const oat = makeItem({ name: 'Oat milk' });
+    seed([milk, oat]);
+
+    useGroceryStore.getState().linkItemSub(milk.id, oat.id, { bothWays: true, standing: true });
+
+    const links = useGroceryStore.getState().itemSubs;
+    expect(links.find(l => l.itemId === milk.id)!.standing).toBe(true);
+    // Or the pair swaps into itself, and standingSwaps drops both.
+    expect(links.find(l => l.itemId === oat.id)!.standing).toBe(false);
+  });
+
+  it('linkItemSub keeps one standing answer per item', () => {
+    const milk = makeItem({ name: 'Milk' });
+    const oat = makeItem({ name: 'Oat milk' });
+    const soy = makeItem({ name: 'Soy milk' });
+    seed([milk, oat, soy]);
+    useGroceryStore.getState().linkItemSub(milk.id, oat.id, { standing: true });
+
+    useGroceryStore.getState().linkItemSub(milk.id, soy.id, { standing: true });
+
+    const links = useGroceryStore.getState().itemSubs;
+    // Both substitutes are still recorded; only the rule moved.
+    expect(links).toHaveLength(2);
+    expect(links.find(l => l.subItemId === oat.id)!.standing).toBe(false);
+    expect(links.find(l => l.subItemId === soy.id)!.standing).toBe(true);
+    expect(dbSetItemSubLink).toHaveBeenCalledWith(
+      expect.objectContaining({ subItemId: oat.id, standing: false })
+    );
+  });
+
+  it('linkItemSub clears a standing rule pointing back the other way', () => {
+    const milk = makeItem({ name: 'Milk' });
+    const oat = makeItem({ name: 'Oat milk' });
+    seed([milk, oat]);
+    useGroceryStore.getState().linkItemSub(milk.id, oat.id, { standing: true });
+
+    useGroceryStore.getState().linkItemSub(oat.id, milk.id, { standing: true });
+
+    const links = useGroceryStore.getState().itemSubs;
+    expect(links.find(l => l.itemId === milk.id)!.standing).toBe(false);
+    expect(links.find(l => l.itemId === oat.id)!.standing).toBe(true);
+  });
+
+  it('setItemSubStanding turns a rule off without forgetting the substitute', () => {
+    const milk = makeItem({ name: 'Milk' });
+    const oat = makeItem({ name: 'Oat milk' });
+    seed([milk, oat]);
+    useGroceryStore.getState().linkItemSub(milk.id, oat.id, { standing: true, note: 'Keep' });
+
+    useGroceryStore.getState().setItemSubStanding(milk.id, oat.id, false);
+
+    expect(useGroceryStore.getState().itemSubs).toEqual([
+      expect.objectContaining({ itemId: milk.id, subItemId: oat.id, standing: false, note: 'Keep' }),
+    ]);
+  });
+
+  it('setItemSubStanding enforces the same one-per-item rule turning one on', () => {
+    const milk = makeItem({ name: 'Milk' });
+    const oat = makeItem({ name: 'Oat milk' });
+    const soy = makeItem({ name: 'Soy milk' });
+    seed([milk, oat, soy]);
+    useGroceryStore.getState().linkItemSub(milk.id, oat.id, { standing: true });
+    useGroceryStore.getState().linkItemSub(milk.id, soy.id);
+
+    useGroceryStore.getState().setItemSubStanding(milk.id, soy.id, true);
+
+    const links = useGroceryStore.getState().itemSubs;
+    expect(links.find(l => l.subItemId === oat.id)!.standing).toBe(false);
+    expect(links.find(l => l.subItemId === soy.id)!.standing).toBe(true);
+  });
+
+  it('setItemSubStanding is a no-op for a link that is not there', () => {
+    const milk = makeItem({ name: 'Milk' });
+    const oat = makeItem({ name: 'Oat milk' });
+    seed([milk, oat]);
+
+    useGroceryStore.getState().setItemSubStanding(milk.id, oat.id, true);
+
+    expect(useGroceryStore.getState().itemSubs).toEqual([]);
   });
 
   it('setItemSubNote clears the note on a blank string', () => {
@@ -3886,7 +4002,7 @@ describe('swapForSubstitute', () => {
     const corn = makeItem({ name: 'Corn tortillas', onList: false });
     seed([tortillas, corn], {
       itemSubs: [
-        { itemId: tortillas.id, subItemId: corn.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null },
+        { itemId: tortillas.id, subItemId: corn.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false },
       ],
     });
 
@@ -3902,7 +4018,7 @@ describe('swapForSubstitute', () => {
     const powder = makeItem({ name: 'Garlic powder', onList: false });
     seed([garlic, powder], {
       itemSubs: [
-        { itemId: garlic.id, subItemId: powder.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: '1 clove', ratioTo: '1/4 tsp' },
+        { itemId: garlic.id, subItemId: powder.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: '1 clove', ratioTo: '1/4 tsp', standing: false },
       ],
     });
 
@@ -3916,7 +4032,7 @@ describe('swapForSubstitute', () => {
     const margarine = makeItem({ name: 'Margarine', onList: false });
     seed([butter, margarine], {
       itemSubs: [
-        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: '100 g', ratioTo: '110 g' },
+        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: '100 g', ratioTo: '110 g', standing: false },
       ],
     });
 
@@ -3930,7 +4046,7 @@ describe('swapForSubstitute', () => {
     const margarine = makeItem({ name: 'Margarine', onList: false });
     seed([butter, margarine], {
       itemSubs: [
-        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null },
+        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false },
       ],
     });
 
@@ -3953,7 +4069,7 @@ describe('swapForSubstitute', () => {
     const margarine = makeItem({ name: 'Margarine', onList: false });
     seed([butter, margarine], {
       itemSubs: [
-        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null },
+        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false },
       ],
     });
 
@@ -3978,7 +4094,7 @@ describe('swapForSubstitute', () => {
     const margarine = makeItem({ name: 'Margarine', onList: false });
     seed([butter, margarine], {
       itemSubs: [
-        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null },
+        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false },
       ],
     });
 
@@ -3998,7 +4114,7 @@ describe('swapForSubstitute', () => {
     const basil = makeItem({ name: 'Basil', onList: false });
     seed([mysteryHerb, basil], {
       itemSubs: [
-        { itemId: mysteryHerb.id, subItemId: basil.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null },
+        { itemId: mysteryHerb.id, subItemId: basil.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false },
       ],
     });
 

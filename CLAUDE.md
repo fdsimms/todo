@@ -26,6 +26,13 @@ one function and has an obvious right answer: fix it. Anything that needs a desi
 touches several files, or you're not sure is actually wrong: say so instead of guessing — the
 same as any other judgment call in this file.
 
+**"Say so" means ask, not just mention.** A note buried in a PR description or a closing summary
+is easy to skim past, and it leaves the bug unfixed with nobody having actually decided that's
+fine. When you find one of these mid-task, stop and ask — `AskUserQuestion` if the harness has
+it, a plain question in chat otherwise — with the options you'd otherwise have listed unasked.
+Don't file it away as a "worth flagging" aside and move on; get a decision and act on it (fix it,
+open an issue, or leave it, whichever they pick) before you finish the task it turned up in.
+
 ## User-facing copy
 
 Say what a setting does in plain, literal terms — the way the rest of the app already talks
@@ -150,6 +157,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | what's in the kitchen and what's about to be wasted | `src/utils/kitchenInventory.ts` (+ the ladder in `src/utils/freshness.ts`) — see The kitchen below |
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see Grocery either/or below |
 | "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see Substitutes below |
+| "always use oat milk for milk" | `src/utils/standingSwaps.ts` — see Standing swaps below |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
 | "serrano or jalapeño", decided at the shelf | `ChoiceResolution.undecided` in `src/utils/recipeComponents.ts` — see Deciding at the shelf below |
 | which heading an ingredient sits under | `src/utils/recipeSections.ts` — see Sections below |
@@ -773,8 +781,9 @@ has no dish decision to defer — but the loser then sat there looking outstandi
 ### Substitutes (`ItemSubLink`) — one item standing in for another
 
 **The vocabulary rule, so it can't drift: either/or on the list, alternatives on the
-recipe, substitutes on the item.** Three adjacent terms for three genuinely different
-things; settled here rather than left to be re-argued per PR.
+recipe, substitutes on the item — and a substitute marked "always use this instead" is a
+standing swap.** Four adjacent terms for four genuinely different things; settled here
+rather than left to be re-argued per PR.
 
 The one-line test for which you're looking at: **does the answer depend on the dish?**
 If yes it's a `choiceGroup` — both options intended, equals, decided per cooking in
@@ -806,7 +815,8 @@ plumbing through the recipes JSON blob.
   particular **`probablyHaveReason` returning null is ignorance, not absence**: it's the
   default state of nearly every item, so reading it as "you haven't got this" would
   caption the whole app on nothing. Consequently the recipe ingredient row is silent by
-  default — no standing "or margarine" — and you go and ask instead.
+  default — no standing "or margarine" — and you go and ask instead. **The one exception is
+  a standing swap**, which the user ticked on this exact pair — see below.
 - **The first read is a caption, never a category.** `classifyPlanned` sets
   `ClassifiedIngredient.reason` to `describeSubstitutesOnHand`'s "you have margarine" on a
   **`needToBuy`** row whose linked substitute `probablyHaveReason` answers for — and leaves
@@ -869,6 +879,64 @@ plumbing through the recipes JSON blob.
   neutral 0.5 wash on its own, and a linked substitute genuinely on hand lifts that (capped
   below a fresh direct purchase, so **the fully-stocked recipe still wins**) rather than
   leaving a coverable line reading as no better than an unstocked one.
+
+### Standing swaps (`ItemSubLink.standing`) — "always use oat milk for milk"
+
+Someone who never buys dairy milk wants every recipe calling for milk to read, and shop, as
+oat milk, without editing twelve recipes. Structurally that is a substitute with auto-apply
+on, so it is **one bit on the link and not its own system** — `src/utils/standingSwaps.ts` is
+the resolution, `SubstituteSheet`'s "Always use this instead" is the write, and there is no
+new table and no settings key.
+
+It is the deliberate exception to the rule above — a substitute informs, it never buys — and
+the exception is earned by the mandate: the user named both items and ticked "always", which
+is a stronger statement than anything `probablyHaveReason` acts on. Four things keep it
+narrow, and none is optional.
+
+- **Read time, on the way out of `flattenRecipeIngredients`** — the same shape
+  `ChoiceResolution` uses, and the reason the rule is resolved there rather than at each of
+  the eight shopping reads: that gate is already the one they all go through. **Nothing
+  persists a swapped name.** The recipe row is untouched, every authoring surface (the
+  ingredient sheet, the reorder list, `shareText`) reads the recipe's own words because it
+  never passes a swap map, and unticking the bit restores every recipe at once.
+- **Recipe view *and* shopping read**, which is the useful answer and the loud one: a cook
+  reading the dish needs to know which line they'll be cooking with, and the list has to say
+  oat milk or the feature does nothing.
+- **Always marked, never silently.** A swapped line renders the substitute's name with
+  `describeStandingSwap`'s "instead of milk" directly under it, in the accent tint a scaled
+  or converted quantity pill already takes — the `≈` convention, applied to a name instead of
+  a number. A ratio'd swap tints the pill too, for the same reason.
+- **The recipe stays findable by its own words.** `rankRecipes` passes no swaps (with
+  `allOptions`, as it already did), so searching "milk" still finds the dish: a swap changes
+  what you buy, not what the recipe says. `recipesUsingIngredient` is raw for the same
+  reason.
+
+Three rules the resolver enforces, all pinned by `standingSwaps.test.ts`:
+
+- **One hop, never a chain.** Milk→oat and oat→soy are two rules, each applied to its own
+  line; a milk line does not become soy. Chaining means the swap you get depends on a rule
+  written about something else.
+- **A pair marked standing both ways is dropped entirely.** `linkItemSub` clears the reverse
+  bit (and any other standing rule on the same item — one item has one answer), so that state
+  is only reachable through a restore; neither direction is a rule anyone meant.
+- **A ratio that can't be applied refuses the whole swap.** `substituteQuantity` already
+  refuses to convert "1 bulb" through a per-clove ratio; renaming the line anyway would leave
+  "1 bulb garlic powder", which is worse than not swapping. The line stays exactly as written.
+  A ratio-less link — the common case, and the dietary one — carries the quantity across
+  verbatim, which is not an assumed 1:1 but the user having declined to qualify the amount.
+
+- **The wrong-in-one-dish case is `RecipeIngredient.noSwap`, per line** ("this pastry needs
+  real butter"). On the recipe, because it's a fact about the dish rather than about one
+  cooking, and **deliberately not a `choiceGroup`**: there are no options to pick between, so
+  filing it there would mean a group of one — the dead-end state `RecipeIngredientSheet`'s
+  Alternatives field exists to make unreachable. Its control appears only when a standing rule
+  actually reaches the line (or the line has already opted out), because a toggle explaining a
+  rule you haven't written changes nothing.
+- **The bit lives on the link; Settings reviews the set.** That's both halves of the question,
+  not two homes: `StandingSwapsSheet` (Tasks & projects → Substitutes) is a read over the
+  links, and its one write turns a rule off *without* forgetting the substitute. A rule that
+  rewrites what lands in the trolley has to be answerable somewhere that isn't "open every
+  grocery item and check".
 
 ### Composed recipes (`Recipe.components`) — one recipe used inside another
 

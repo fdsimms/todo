@@ -619,7 +619,16 @@ export function GroceryScreen() {
       // about a row that was just marked unavailable, so it follows that claim
       // rather than racing it.
       if (shopId && unavailableIds.length > 0) markItemsUnavailable(unavailableIds, shopId);
-      for (const { itemId, subItemId } of substitutes) linkItemSub(itemId, subItemId);
+      // Only a pair that isn't already recorded. `linkItemSub` writes the row
+      // whole rather than patching it (see its own note), which is right for
+      // the sheet that edits a link and wrong here: this caller knows only the
+      // two ids, so re-linking a pair the user has already written would erase
+      // its caveat, its ratio and its standing-swap bit for nothing. There is
+      // nothing to record about a swap that's already on file.
+      for (const { itemId, subItemId } of substitutes) {
+        if (itemSubs.some(l => l.itemId === itemId && l.subItemId === subItemId)) continue;
+        linkItemSub(itemId, subItemId);
+      }
       // The prices ride with the trip rather than being a fourth write: they're
       // about what it bought, so they have to land on the same rows in the same
       // pass that takes them off the list.
@@ -630,7 +639,7 @@ export function GroceryScreen() {
       endTrip();
       setCartOpen(false);
     },
-    [finishShopping, markItemsUnavailable, linkItemSub, endTrip]
+    [finishShopping, markItemsUnavailable, linkItemSub, endTrip, itemSubs]
   );
 
   const handleClearTrip = useCallback(() => {

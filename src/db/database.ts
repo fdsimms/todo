@@ -427,6 +427,11 @@ export function initDatabase(): void {
     // simply has no ratio, which is the row it already was.
     'ALTER TABLE grocery_item_subs ADD COLUMN ratio_from TEXT',
     'ALTER TABLE grocery_item_subs ADD COLUMN ratio_to TEXT',
+    // "Always use oat milk for milk" (#1571). 0 for every existing row, which
+    // is exactly the link they already were: a substitute that informs and
+    // never buys. No backfill could ever be right here — a rule that rewrites
+    // what lands in the trolley has to be ticked by the person it rewrites for.
+    'ALTER TABLE grocery_item_subs ADD COLUMN standing INTEGER NOT NULL DEFAULT 0',
     // Nullable, and null is the value every existing row wants: a task nobody
     // imported from Reminders has no suggestion pending. JSON, like
     // series_defaults, because it holds a Partial<Task> rather than a scalar.
@@ -2403,6 +2408,7 @@ function rowToItemSubLink(row: Record<string, unknown>): ItemSubLink {
     createdAt: row.created_at as string,
     ratioFrom: (row.ratio_from as string) ?? null,
     ratioTo: (row.ratio_to as string) ?? null,
+    standing: row.standing === 1,
   };
 }
 
@@ -2420,12 +2426,13 @@ export function dbGetAllItemSubLinks(): ItemSubLink[] {
  */
 export function dbSetItemSubLink(link: ItemSubLink): void {
   db.runSync(
-    `INSERT INTO grocery_item_subs (item_id, sub_item_id, note, created_at, ratio_from, ratio_to)
-     VALUES (?,?,?,?,?,?)
+    `INSERT INTO grocery_item_subs (item_id, sub_item_id, note, created_at, ratio_from, ratio_to, standing)
+     VALUES (?,?,?,?,?,?,?)
      ON CONFLICT(item_id, sub_item_id)
      DO UPDATE SET note = excluded.note,
                    ratio_from = excluded.ratio_from,
-                   ratio_to = excluded.ratio_to`,
+                   ratio_to = excluded.ratio_to,
+                   standing = excluded.standing`,
     [
       link.itemId,
       link.subItemId,
@@ -2433,6 +2440,7 @@ export function dbSetItemSubLink(link: ItemSubLink): void {
       link.createdAt,
       link.ratioFrom ?? null,
       link.ratioTo ?? null,
+      link.standing ? 1 : 0,
     ]
   );
 }

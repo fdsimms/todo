@@ -589,6 +589,14 @@ function seedRecipes(): DemoRecipes {
   // below is on the window its own recipe asked for. The salmon takes the other
   // end of the dial — a dish can say either.
   setLeftoverKeepDays(mash.id, 5);
+  // The per-line exception to a standing swap (#1571). Milk → oat milk is
+  // marked "always use this instead" further down, so every seeded recipe
+  // calling for milk reads and shops as oat milk — except this one line, which
+  // is exactly what RecipeIngredient.noSwap is for. Seeded because the escape
+  // hatch is otherwise a toggle nobody ever sees: with it, the same rule
+  // visibly reaches Overnight oats and visibly doesn't reach the mash.
+  const mashMilk = ingredientIdNamed(mash.id, 'milk');
+  if (mashMilk) updateIngredient(mash.id, mashMilk, { noSwap: true });
 
   const roasties = newRecipe('Roast potatoes');
   addIngredientsFromText(
@@ -1064,7 +1072,15 @@ function seedGroceries(recipes: DemoRecipes): void {
     setOnHandUntil(margarine.id, defaultOnHandUntil(margarine, new Date()));
   }
   if (oatMilk) {
-    linkItemSub(itemNamed('Milk').id, oatMilk.id, { bothWays: true });
+    // ...and the standing swap (#1571), on the issue's own example. This is
+    // the one substitute setting that changes what lands in the trolley, so a
+    // demo without one shows only half the feature: with it, Overnight oats
+    // reads "Oat milk · instead of milk" on the recipe and adds oat milk to
+    // the list, while Mashed potatoes' own milk line (marked "keep as
+    // written" above) is left alone. Standing rides on the forward row only —
+    // the both-ways reverse row is never standing, or the pair would swap
+    // into itself.
+    linkItemSub(itemNamed('Milk').id, oatMilk.id, { bothWays: true, standing: true });
   }
 
   // A ratio (#1573) — the issue's own motivating example, and a natural fit:

@@ -1258,6 +1258,34 @@ export interface ItemSubLink {
    */
   ratioFrom: string | null;
   ratioTo: string | null;
+  /**
+   * **A standing swap** — "I never buy dairy milk, so every recipe calling for
+   * milk reads and shops as oat milk." One bit on the link rather than its own
+   * system, because structurally that is all it is (#1571).
+   *
+   * It is the one deliberate exception to the rule every other read of a
+   * substitute obeys: a substitute informs, it never buys. What earns the
+   * exception is the mandate — the user named both items and ticked "always",
+   * which is a stronger statement than anything `probablyHaveReason` acts on.
+   * Four things keep it safe, and none of them is optional:
+   *
+   * - **Read time only.** `standingSwaps.applyStandingSwap` rewrites a line on
+   *   the way out of `flattenRecipeIngredients`, the way `ChoiceResolution`
+   *   resolves an either/or. Nothing writes the swapped name onto the recipe,
+   *   so unticking this restores every recipe at once.
+   * - **Always marked.** A swapped line says what the recipe said, wherever it
+   *   is shown — the same call `unitConvert` makes with `≈`.
+   * - **Directional and never chained.** `bothWays` writes the reverse row
+   *   without this bit, and one item has at most one standing swap; a swap's
+   *   target is never itself swapped.
+   * - **A ratio that can't be applied refuses the whole swap.** Renaming the
+   *   line while leaving an amount the ratio couldn't convert is worse than
+   *   not swapping at all.
+   *
+   * The escape hatch for a swap that's wrong in one dish (butter to margarine
+   * in laminated pastry) is `RecipeIngredient.noSwap`, per line.
+   */
+  standing: boolean;
 }
 
 /**
@@ -1371,6 +1399,25 @@ export interface RecipeIngredient {
   // in MealPlanEntry.recipeChoices, which is safe because an id says which list
   // it came from by which list holds it.
   choiceGroup: string | null;
+  // "This one has to be real butter" — the per-line opt-out from a standing
+  // swap (ItemSubLink.standing). Margarine for butter is fine in a pan and
+  // wrong in laminated pastry, and a rule that rewrites a line without being
+  // asked has to have somewhere for that exception to live.
+  //
+  // **On the recipe, deliberately, and deliberately not a choiceGroup.** Which
+  // pepper you use is a fact about one cooking (MealPlanEntry.recipeChoices);
+  // "this pastry needs butter" is a fact about the dish, true every time it is
+  // made. And it isn't a choice at all — there are no options to pick between,
+  // just one line the standing rule doesn't reach — so filing it with the
+  // either/or machinery would mean a group of one, the dead-end state
+  // RecipeIngredientSheet's Alternatives field exists to make unreachable.
+  //
+  // Optional rather than `boolean`, unlike every field above: ingredients live
+  // in a JSON blob, so an absent key is already the value nearly every line
+  // wants, and requiring it would mean a backfill through every construction
+  // site (the parser, the extractor, the editor, the seed) for a bit that is
+  // off almost everywhere.
+  noSwap?: boolean;
 }
 
 // One recipe used as a part of another — "mashed potatoes" inside both "Steak

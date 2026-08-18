@@ -1,6 +1,7 @@
 import type { Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 import { RECIPE_CHOICE_GROUP_MAX_LENGTH, RECIPE_NAME_MAX_LENGTH } from '../types';
 import { generateId } from './id';
+import { applyStandingSwap, NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 
 /**
  * Composed recipes: one recipe used as a part of another.
@@ -301,6 +302,15 @@ export interface FlatIngredient {
   recipe: Recipe;
   /** 0 for the root's own lines, 1 for a direct component's, and so on. */
   depth: number;
+  /**
+   * The recipe's own name for this line when a standing swap rewrote it (see
+   * standingSwaps.ts) — null for every line that wasn't swapped, which is
+   * every line for a caller that passes no rules.
+   *
+   * Optional so a hand-built fixture doesn't have to say "not swapped"; the
+   * walk itself always sets it.
+   */
+  swappedFrom?: string | null;
 }
 
 /**
@@ -323,14 +333,29 @@ export function flattenRecipeIngredients(
   recipe: Recipe,
   recipesById: ReadonlyMap<string, Recipe>,
   resolution?: ChoiceResolution,
+  /**
+   * The user's standing swaps, applied on the way out — "always use oat milk
+   * for milk" (#1571). This is the one gate every shopping read already goes
+   * through, which is why the rule is resolved here rather than at each of
+   * them; a caller passing none reads the recipe's own words, which is what
+   * every authoring and search read wants.
+   *
+   * In particular `rankRecipes` passes none (with `allOptions`), so a recipe
+   * stays findable by the ingredient it is actually written with — a swap
+   * changes what you buy, not what the recipe says.
+   */
+  swaps: StandingSwapMap = NO_STANDING_SWAPS,
 ): FlatIngredient[] {
   const out: FlatIngredient[] = [];
   walk(recipe, recipesById, new Set([recipe.id]), 0, resolution, node => {
     // Resolved, not raw: an either/or line contributes whichever pepper this
     // meal picked. Ungrouped lines are every line, so a recipe with no
     // alternatives flattens exactly as it always did.
-    for (const ingredient of activeIngredients(node.recipe, resolution)) {
-      out.push({ ingredient, recipe: node.recipe, depth: node.depth });
+    for (const line of activeIngredients(node.recipe, resolution)) {
+      // Swapped after the choice is resolved, never before: an option the
+      // user isn't cooking has nothing to be swapped into.
+      const { ingredient, swappedFrom } = applyStandingSwap(line, swaps);
+      out.push({ ingredient, recipe: node.recipe, depth: node.depth, swappedFrom });
     }
   });
   return out;

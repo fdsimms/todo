@@ -132,6 +132,22 @@ describe('parseRecipeIngredients', () => {
     ]);
   });
 
+  it('keeps a line’s standing-swap opt-out, and writes the key only when it is set', () => {
+    // normalizeIngredient rebuilds the row field by field, so a field it
+    // doesn't name is a field that silently stops persisting.
+    const optedOut = JSON.parse(JSON.stringify(parseRecipeIngredients(JSON.stringify([
+      { id: 'a', name: 'Butter', nameKey: 'butter', quantity: '1 cup', noSwap: true },
+    ]))));
+    expect(optedOut[0].noSwap).toBe(true);
+
+    // Off for nearly every line in the app, so it isn't stored as `false` on
+    // all of them.
+    const plain = parseRecipeIngredients(JSON.stringify([
+      { id: 'a', name: 'Butter', nameKey: 'butter', quantity: '1 cup' },
+    ]));
+    expect('noSwap' in plain[0]).toBe(false);
+  });
+
   it('reads a stored purpose clause', () => {
     const stored = JSON.stringify([
       { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas' },
@@ -1244,7 +1260,7 @@ function item(name: string, overrides: Partial<GroceryItem> & { nameKey?: string
 
 // #1568 — a substitute link, for the "counts as covered" tests below.
 function sub(itemId: string, subItemId: string): ItemSubLink {
-  return { itemId, subItemId, note: null, createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null };
+  return { itemId, subItemId, note: null, createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false };
 }
 
 describe('scoreRecipeAgainstCatalog', () => {

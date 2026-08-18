@@ -514,6 +514,14 @@ interface GroceryStore {
        */
       ratioFrom?: string | null;
       ratioTo?: string | null;
+      /**
+       * "Always use this instead" — the standing swap (#1571). Never copied
+       * onto the `bothWays` row, and writing it clears the bit on this item's
+       * other substitutes and on the reverse link: one item has one answer to
+       * "what do I always use instead", and a pair marked standing both ways
+       * would swap into itself.
+       */
+      standing?: boolean;
     }
   ) => void;
   /**
@@ -534,6 +542,14 @@ interface GroceryStore {
   unlinkItemSub: (itemId: string, subItemId: string) => void;
   /** The caveat — "fine for frying, not for baking". Blank clears it. */
   setItemSubNote: (itemId: string, subItemId: string, note: string) => void;
+  /**
+   * Turns the standing swap on or off for one link, leaving the substitute
+   * itself recorded either way — the Settings review list's one write, and the
+   * whole of "turning the rule off restores everything".
+   *
+   * Turning it on enforces the same exclusivity `linkItemSub` does.
+   */
+  setItemSubStanding: (itemId: string, subItemId: string, standing: boolean) => void;
   /**
    * "Not at Safeway · or margarine", tapped: puts the substitute on the list
    * and takes the original off. The original's quantity carries over —
@@ -586,6 +602,28 @@ interface GroceryStore {
 
 function nextSortOrder(items: GroceryItem[]): number {
   return items.reduce((m, i) => Math.max(m, i.sortOrder), 0) + 1;
+}
+
+/**
+ * The links that have to stop being standing for `itemId → subItemId` to be —
+ * this item's other substitutes, and the reverse row.
+ *
+ * Returned rather than written, so both callers (`linkItemSub`,
+ * `setItemSubStanding`) persist and patch state in one pass with their own
+ * write. Empty for the overwhelmingly common case of an item with one
+ * substitute and no reverse link, so nothing is written for nothing.
+ */
+function clearOtherStandingLinks(
+  links: readonly ItemSubLink[],
+  itemId: string,
+  subItemId: string
+): ItemSubLink[] {
+  return links
+    .filter(l => l.standing)
+    .filter(l =>
+      (l.itemId === itemId && l.subItemId !== subItemId)
+      || (l.itemId === subItemId && l.subItemId === itemId))
+    .map(l => ({ ...l, standing: false }));
 }
 
 /**
@@ -1355,10 +1393,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       retargetedSubs.push({ ...link, itemId, subItemId });
     }
 
+    // A standing swap is one-rule-per-item (see standingSwaps.ts), enforced
+    // wherever the app writes one — linkItemSub, setItemSubStanding — but a
+    // merge doesn't go through either, it retargets links directly. Without
+    // this, an item that already has its own standing rule and picks up a
+    // second one from the loser's side would carry two: no crash
+    // (standingSwapMap just resolves one), but Settings would list both as
+    // "on" when only one is actually applied. The survivor's own rule wins,
+    // the same precedent this function already uses for a plain link
+    // collision just above.
+    const standingItemIds = new Set(survivingSubs.filter(l => l.standing).map(l => l.itemId));
+    const finalRetargetedSubs = retargetedSubs.map(link =>
+      link.standing && standingItemIds.has(link.itemId) ? { ...link, standing: false } : link
+    );
+
     dbTransaction(() => {
       dbUpdateGroceryItem(merged);
       for (const link of mergedShopLinks) dbSetItemShopLink(link);
-      for (const link of retargetedSubs) dbSetItemSubLink(link);
+      for (const link of finalRetargetedSubs) dbSetItemSubLink(link);
       // Cascades whatever's left still pointing at fromId — the rows worth
       // keeping were already moved onto intoId above, so this only clears
       // the old fromId-keyed copies and the item row itself.
@@ -1377,7 +1429,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         ...mergedShopLinks,
         ...s.itemShops.filter(l => l.itemId !== fromId && l.itemId !== intoId),
       ],
-      itemSubs: [...survivingSubs, ...retargetedSubs],
+      itemSubs: [...survivingSubs, ...finalRetargetedSubs],
       cartHoldIds: s.cartHoldIds.filter(x => x !== fromId),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));
@@ -2393,23 +2445,29 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const ratioTo = opts.ratioTo?.trim() || null;
     const hasRatio = !!ratioFrom && !!ratioTo;
 
+    const standing = !!opts.standing;
+
     const createdAt = new Date().toISOString();
-    // [itemId, subItemId, ratioFrom, ratioTo] per row written. The reverse
-    // row's ratio is the forward one **swapped**: it describes the other
-    // item's own unit on its own left, or a both-ways garlic↔garlic-powder
-    // link would have the reverse row claiming a clove converts to a clove.
-    const pairs: Array<[string, string, string | null, string | null]> = [
-      [itemId, subItemId, hasRatio ? ratioFrom : null, hasRatio ? ratioTo : null],
+    // [itemId, subItemId, ratioFrom, ratioTo, standing] per row written. The
+    // reverse row's ratio is the forward one **swapped**: it describes the
+    // other item's own unit on its own left, or a both-ways
+    // garlic↔garlic-powder link would have the reverse row claiming a clove
+    // converts to a clove.
+    const pairs: Array<[string, string, string | null, string | null, boolean]> = [
+      [itemId, subItemId, hasRatio ? ratioFrom : null, hasRatio ? ratioTo : null, standing],
     ];
     // The reverse row carries the same note: a caveat about how far the swap
     // goes ("fine for frying, not for baking") is a fact about the pair, not
-    // about the direction you happened to write it from.
+    // about the direction you happened to write it from. It is never standing,
+    // though, whatever the forward row says: "always use oat milk for milk" is
+    // not also "always use milk for oat milk", and a pair pointing at each
+    // other is a rule that swaps into itself (see standingSwaps.ts).
     if (opts.bothWays) {
-      pairs.push([subItemId, itemId, hasRatio ? ratioTo : null, hasRatio ? ratioFrom : null]);
+      pairs.push([subItemId, itemId, hasRatio ? ratioTo : null, hasRatio ? ratioFrom : null, false]);
     }
 
     const written: ItemSubLink[] = [];
-    for (const [a, b, rFrom, rTo] of pairs) {
+    for (const [a, b, rFrom, rTo, isStanding] of pairs) {
       const existing = itemSubs.find(l => l.itemId === a && l.subItemId === b);
       // Re-linking an existing pair is an edit of its note (and ratio), so the
       // original createdAt is kept: that stamp is what orders the list, and
@@ -2422,10 +2480,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         createdAt: existing?.createdAt ?? createdAt,
         ratioFrom: rFrom,
         ratioTo: rTo,
+        standing: isStanding,
       };
       dbSetItemSubLink(link);
       written.push(link);
     }
+
+    // One standing answer per item, and no pair pointing at each other. Both
+    // are cleared here rather than refused, because the user just said which
+    // one they mean — see standingSwaps.ts for what the alternative states
+    // would do to a read.
+    const cleared = standing ? clearOtherStandingLinks(itemSubs, itemId, subItemId) : [];
+    for (const link of cleared) dbSetItemSubLink(link);
 
     const promoted = new Map<string, GroceryItem>();
     for (const row of [item, sub]) {
@@ -2436,7 +2502,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }
 
     const key = (l: { itemId: string; subItemId: string }) => `${l.itemId}|${l.subItemId}`;
-    const byKey = new Map(written.map(l => [key(l), l]));
+    const byKey = new Map([...cleared, ...written].map(l => [key(l), l]));
     set(s => ({
       itemSubs: [
         ...s.itemSubs.map(l => byKey.get(key(l)) ?? l),
@@ -2490,6 +2556,20 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({
       itemSubs: s.itemSubs.filter(l => !(l.itemId === itemId && l.subItemId === subItemId)),
     }));
+  },
+
+  setItemSubStanding(itemId, subItemId, standing) {
+    const { itemSubs } = get();
+    const link = itemSubs.find(l => l.itemId === itemId && l.subItemId === subItemId);
+    if (!link || link.standing === standing) return;
+    const next: ItemSubLink = { ...link, standing };
+    dbSetItemSubLink(next);
+    const cleared = standing ? clearOtherStandingLinks(itemSubs, itemId, subItemId) : [];
+    for (const other of cleared) dbSetItemSubLink(other);
+
+    const key = (l: { itemId: string; subItemId: string }) => `${l.itemId}|${l.subItemId}`;
+    const byKey = new Map([next, ...cleared].map(l => [key(l), l]));
+    set(s => ({ itemSubs: s.itemSubs.map(l => byKey.get(key(l)) ?? l) }));
   },
 
   setItemSubNote(itemId, subItemId, note) {

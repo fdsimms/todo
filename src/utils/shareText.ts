@@ -75,6 +75,9 @@ export function buildRecipeShareText(
   if (minutes) subtitle.push(formatDuration(minutes));
   if (subtitle.length > 0) lines.push(subtitle.join(' · '));
 
+  // No standing swaps, deliberately (#1571): a swap is a fact about this
+  // kitchen, and the person being sent the recipe has their own. What travels
+  // is the recipe's own words.
   const flat = flattenRecipeIngredients(recipe, recipesById);
   if (flat.length > 0) {
     lines.push('', 'Ingredients:');
