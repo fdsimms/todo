@@ -1,9 +1,8 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, interaction, type Colors } from '../theme';
 import { formatTaskDeliverable } from '../utils/deliverables';
 import { displayTitleFor } from '../utils/visibilityUtils';
 
@@ -24,7 +23,9 @@ interface Props {
  *
  * The answer is rendered through `formatTaskDeliverable` and wears the same
  * tinted pill the Logbook row gives it — one formatter and one treatment, so a
- * decision reads identically wherever it's read.
+ * decision reads identically wherever it's read. No "?" in the pill (#1735):
+ * these rows are already-answered questions, and a question mark on one reads
+ * as the decision still being open.
  */
 export function ProjectDecisions({ decisions, onPress }: Props) {
   const colors = useColors();
@@ -51,7 +52,6 @@ export function ProjectDecisions({ decisions, onPress }: Props) {
           >
             <Text style={styles.title} numberOfLines={1}>{title}</Text>
             <View style={styles.answerPill}>
-              <Ionicons name="help" size={iconSize.xs} color={colors.accent} />
               <Text style={styles.answer} numberOfLines={1}>{answer}</Text>
             </View>
           </TouchableOpacity>

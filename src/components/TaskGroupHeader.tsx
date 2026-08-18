@@ -254,7 +254,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
    * depend on the header resembling anything.
    *
    * Three unambiguous levels end up on screen: category caption (tiny,
-   * uppercase, tertiary), stack caption (17pt bold + tile), task card.
+   * uppercase, tertiary), stack caption (17pt regular + tile), task card.
    */
   band: {
     // Geometry belongs to the tray. The one thing kept here is an opaque
@@ -302,14 +302,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: 7,
   },
-  // Two steps up from a task title (font.md regular) — a stack is named once
-  // and then read as a heading, so it can afford the weight that would be
-  // shouting on a row you have twenty of.
+  // Bold read as a heading for every task below it, not just a label for the
+  // stack itself (#1728) — regular weight, same as a task title, with only
+  // the larger size (still two steps up from font.md) marking it as a
+  // heading rather than one more row.
   title: {
     flexShrink: 1,
     color: colors.text,
     fontSize: font.lg,
-    fontWeight: fontWeight.bold,
+    fontWeight: fontWeight.regular,
     letterSpacing: -0.2,
   },
   progressText: {

@@ -505,6 +505,23 @@ describe('newTaskFromDraft: newTaskDefaults', () => {
     expect(rows.every(r => r.effort === 4)).toBe(true);
     expect(rows.every(r => r.timeSegments && r.timeSegments[0] === 'morning')).toBe(true);
   });
+
+  // #1724: a generator's own category setting (possibly deliberately null,
+  // e.g. "None" chosen for leftover use-up tasks) must not be read as an
+  // unanswered field and swapped for the unrelated newTaskDefaults.category.
+  describe('skipCategoryDefault (generated tasks, #1724)', () => {
+    it('leaves the task uncategorized rather than falling back to newTaskDefaults', () => {
+      withDefaults({ category: 'Home', priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false });
+      const task = useTaskStore.getState().addTask({ title: 'Use up spinach', category: null }, undefined, { skipCategoryDefault: true });
+      expect(task.category).toBeNull();
+    });
+
+    it('still honors an explicit category', () => {
+      withDefaults({ category: 'Home', priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false });
+      const task = useTaskStore.getState().addTask({ title: 'Use up spinach', category: 'Leftovers' }, undefined, { skipCategoryDefault: true });
+      expect(task.category).toBe('Leftovers');
+    });
+  });
 });
 
 // ─── updateTask ──────────────────────────────────────────────────────────────

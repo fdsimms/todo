@@ -175,6 +175,38 @@ describe('eventsIn', () => {
   it('includes an event that starts before the range and runs into it', () => {
     expect(eventsIn([ev(at(8), at(10))], new Date(at(9)), new Date(at(17)))).toHaveLength(1);
   });
+
+  // #1725: an all-day event's startDate/endDate are UTC midnight of the
+  // calendar date it names, not a moment in the day — on a device west of
+  // UTC, that instant falls in the *previous* local day's evening, and a raw
+  // instant-overlap test (what the other cases above exercise, correctly,
+  // for timed events) places the event a day early.
+  //
+  // These two only actually distinguish the fix from the bug when the
+  // process itself is running west of UTC — Node resolves its ICU default
+  // timezone once at startup, so `process.env.TZ` can't be changed from
+  // inside a running test (confirmed empirically; a worker_thread with its
+  // own `env` doesn't get its own timezone either — only a genuinely
+  // separate process spawned with TZ already set does). This repo's test
+  // run is pinned to UTC, where local and UTC calendar-date components are
+  // numerically identical, so both cases pass here regardless. Verified for
+  // real with `TZ=America/Los_Angeles npx jest calendarBusy.test.ts -t 1725`
+  // — fails on the pre-fix code, passes on the fix.
+  describe('all-day events off UTC (#1725)', () => {
+    // "Aug 13" all-day, as EventKit stores it: UTC midnight to UTC midnight
+    // the next day — 5pm to 5pm Pacific, which straddles local Aug 12 and 13.
+    const allDayAug13 = () => ev('2026-08-13T00:00:00.000Z', '2026-08-14T00:00:00.000Z', { allDay: true });
+
+    it('does not place it on the local day before the one it names', () => {
+      const localAug12 = { start: new Date(2026, 7, 12), end: new Date(2026, 7, 13) };
+      expect(eventsIn([allDayAug13()], localAug12.start, localAug12.end)).toEqual([]);
+    });
+
+    it('places it on the local day it actually names', () => {
+      const localAug13 = { start: new Date(2026, 7, 13), end: new Date(2026, 7, 14) };
+      expect(eventsIn([allDayAug13()], localAug13.start, localAug13.end)).toHaveLength(1);
+    });
+  });
 });
 
 describe('nextEventAfter', () => {

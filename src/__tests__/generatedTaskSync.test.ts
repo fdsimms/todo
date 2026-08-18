@@ -11,7 +11,10 @@ import type { Task } from '../types';
 // useLeftoverStore.test.ts / useGroceryStore.test.ts.
 const mockTaskState = {
   tasks: [] as Task[],
-  addTask: jest.fn((draft: Partial<Task>, id?: string) => {
+  // The third parameter is declared so the skipCategoryDefault assertion below
+  // can read it — reconcileGeneratedTask always passes one, same reason as
+  // updateTask's _options below.
+  addTask: jest.fn((draft: Partial<Task>, id?: string, _options?: { skipCategoryDefault?: boolean }) => {
     const task = {
       id: id ?? `t-${mockTaskState.tasks.length + 1}`,
       completed: false,
@@ -72,6 +75,17 @@ describe('reconcileGeneratedTask — creating', () => {
 
     expect(mockTaskState.addTask).toHaveBeenCalledTimes(1);
     expect(mockTaskState.tasks).toHaveLength(1);
+  });
+
+  // #1724: the draft's category is the source's own dedicated setting,
+  // already resolved and possibly deliberately null — addTask must not read
+  // that null as unanswered and substitute newTaskDefaults.category for it.
+  it('creates with skipCategoryDefault, so a deliberately uncategorized source stays uncategorized', () => {
+    reconcileGeneratedTask(opts({ draft: () => ({ title: 'Use up Spinach', category: null }) }));
+
+    const [draftArg, , optionsArg] = mockTaskState.addTask.mock.calls[0];
+    expect(draftArg).toEqual({ title: 'Use up Spinach', category: null });
+    expect(optionsArg).toEqual({ skipCategoryDefault: true });
   });
 
   it('does not create one when the source does not want it', () => {
