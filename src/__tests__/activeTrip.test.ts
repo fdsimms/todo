@@ -46,7 +46,7 @@ function link(
 }
 
 function subLink(itemId: string, subItemId: string, createdAt: string): ItemSubLink {
-  return { itemId, subItemId, note: null, createdAt, ratioFrom: null, ratioTo: null };
+  return { itemId, subItemId, note: null, createdAt, ratioFrom: null, ratioTo: null, standing: false };
 }
 
 /**

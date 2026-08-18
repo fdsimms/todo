@@ -24,6 +24,7 @@ import {
   type ClassifiedIngredient,
   type PlanCategory,
 } from '../utils/mealPlanGroceries';
+import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { convertQuantity } from '../utils/unitConvert';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
@@ -77,10 +78,14 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const stampAddedToList = useMealPlanStore(s => s.stampAddedToList);
 
+  // The week's shop, with the user's standing swaps applied — see
+  // standingSwaps.ts. Every swapped row names what the recipe said.
+  const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
+
   const classified = useMemo(() => {
-    const planned = collectPlannedIngredients(entries, recipesById, range);
+    const planned = collectPlannedIngredients(entries, recipesById, range, swaps);
     return classifyPlanned(planned, items, new Date(), itemSubs);
-  }, [entries, recipesById, range, items, itemSubs]);
+  }, [entries, recipesById, range, items, itemSubs, swaps]);
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {
@@ -236,6 +241,9 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
                         // Shown in the reader's units; what gets written to the
                         // list is still row.quantity, as the recipes wrote it.
                         const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
+                        // Under the name, because it qualifies the name — the
+                        // row is the app's substitution, not the recipe's word.
+                        const swapNote = row.swappedFrom ? describeStandingSwap(row.swappedFrom) : null;
                         return (
                           <React.Fragment key={row.nameKey}>
                             {i > 0 && <View style={styles.sep} />}
@@ -247,7 +255,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
                               accessibilityRole="checkbox"
                               accessibilityState={{ checked: on, disabled: !interactive }}
                               accessibilityLabel={
-                                [row.name, shownQuantity, subtitle, !interactive ? 'already in your cart' : null]
+                                [row.name, swapNote, shownQuantity, subtitle, !interactive ? 'already in your cart' : null]
                                   .filter(Boolean)
                                   .join(', ')
                               }
@@ -263,6 +271,9 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
                                 <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={1}>
                                   {row.name}
                                 </Text>
+                                {!!swapNote && (
+                                  <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
+                                )}
                                 {!!subtitle && (
                                   <Text style={styles.sources} numberOfLines={1}>{subtitle}</Text>
                                 )}
@@ -357,6 +368,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   nameDisabled: { color: colors.textSecondary },
   sources: { fontSize: font.xs, color: colors.textTertiary },
+  // Accent where `sources` is grey: this row isn't what the recipe wrote, and
+  // that has to survive a glance down a week's worth of rows.
+  swapNote: { fontSize: font.xs, color: colors.accent, fontWeight: fontWeight.medium },
   qtyPill: {
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,

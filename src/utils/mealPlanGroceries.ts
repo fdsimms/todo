@@ -5,6 +5,7 @@ import { dayKeyToDate } from './dateUtils';
 import { probablyHaveReason } from './grocerySuggest';
 import { describeSubstitutesOnHand, substitutesOnHand } from './itemSubs';
 import { choiceGroupKey, flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
+import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import {
   formatQuantityAmount,
   inflectUnit,
@@ -64,6 +65,14 @@ export interface PlannedIngredient {
    * renders no heading for a group, and `GroceryItem.choiceGroup` says why.
    */
   choiceGroup?: string | null;
+  /**
+   * The recipe's own name for this line when a standing swap rewrote it — see
+   * standingSwaps.ts. Carried this far, and no further than
+   * `ClassifiedIngredient`, because it's something a row *says*, never
+   * something it's filed by: the row is the substitute now, in every other
+   * respect.
+   */
+  swappedFrom?: string | null;
 }
 
 /**
@@ -94,7 +103,9 @@ export interface PlannedIngredient {
 export function collectPlannedIngredients(
   entries: readonly MealPlanEntry[],
   recipesById: ReadonlyMap<string, Recipe>,
-  range: { startKey: string; endKey: string }
+  range: { startKey: string; endKey: string },
+  /** The user's standing swaps — see flattenRecipeIngredients. */
+  swaps: StandingSwapMap = NO_STANDING_SWAPS,
 ): PlannedIngredient[] {
   const out: PlannedIngredient[] = [];
   for (const entry of entries) {
@@ -111,15 +122,19 @@ export function collectPlannedIngredients(
     // The entry's own picks, so a week holding steak-with-mash on Tuesday and
     // steak-with-roast on Friday shops for one side each night rather than both
     // twice. An entry that never answered resolves to the defaults.
-    for (const flat of flattenRecipeIngredients(recipe, recipesById, { chosen: entry.recipeChoices })) {
+    for (const flat of flattenRecipeIngredients(recipe, recipesById, { chosen: entry.recipeChoices }, swaps)) {
       out.push({
         name: flat.ingredient.name,
         nameKey: flat.ingredient.nameKey,
+        // Swapped first, then scaled: the swap's own ratio converts the line
+        // the recipe wrote, so multiplying before it would hand the ratio an
+        // amount the recipe never named.
         quantity: scaleQuantity(flat.ingredient.quantity, scale).text,
         aisle: flat.ingredient.aisle,
         source: `${weekday} ${flat.recipe.name}`,
         recipeId: flat.recipe.id,
         recipeTitle: flat.recipe.name,
+        swappedFrom: flat.swappedFrom ?? null,
       });
     }
   }
@@ -147,10 +162,12 @@ export function plannedIngredientsForRecipe(
   recipesById: ReadonlyMap<string, Recipe> = new Map([[recipe.id, recipe]]),
   resolution?: ChoiceResolution,
   scale = 1,
+  /** The user's standing swaps — see flattenRecipeIngredients. */
+  swaps: StandingSwapMap = NO_STANDING_SWAPS,
 ): PlannedIngredient[] {
   const factor = normalizeScale(scale);
   const undecided = new Set(resolution?.undecided ?? []);
-  return flattenRecipeIngredients(recipe, recipesById, resolution).map(flat => ({
+  return flattenRecipeIngredients(recipe, recipesById, resolution, swaps).map(flat => ({
     name: flat.ingredient.name,
     nameKey: flat.ingredient.nameKey,
     quantity: [
@@ -167,6 +184,7 @@ export function plannedIngredientsForRecipe(
     recipeId: flat.recipe.id,
     recipeTitle: flat.recipe.name,
     choiceGroup: groupKeyIfUndecided(flat.recipe.id, flat.ingredient.choiceGroup, undecided),
+    swappedFrom: flat.swappedFrom ?? null,
   }));
 }
 
@@ -335,6 +353,22 @@ export interface ClassifiedIngredient {
    */
   choiceGroup: string | null;
   /**
+   * The recipe's own name for this line when a standing swap rewrote it (see
+   * standingSwaps.ts) — "oat milk", swapped from "milk".
+   *
+   * **Its own field rather than a third producer of `reason`.** That one has
+   * exactly two, told apart by the row's category, and both answer "why does
+   * this row say what it says about your kitchen". This answers a different
+   * question — whose words the row's *name* is — and a swapped row can want
+   * both at once.
+   *
+   * The first non-null among the group's contributors, the same rule
+   * `choiceGroup` follows: two lines swapped into one item ("milk" and "whole
+   * milk" both to oat milk) merge into one row, and naming one origin is what
+   * the row has space to say.
+   */
+  swappedFrom: string | null;
+  /**
    * The single recipe behind this row, when there is one — null once a row
    * has merged ingredients from more than one recipe, since crediting either
    * one over the other would be a guess. See PlannedRow.sourceRecipeId.
@@ -431,8 +465,9 @@ export function classifyPlanned(
     // occurrence overwrite a null would put a row on the list as half a choice
     // that something else needs unconditionally.
     const choiceGroup = group.find(g => g.choiceGroup)?.choiceGroup ?? null;
+    const swappedFrom = group.find(g => g.swappedFrom)?.swappedFrom ?? null;
 
-    rows.push({ nameKey: key, name, aisle, quantity, sources, category, known: !!match, reason, choiceGroup, sourceRecipeId, sourceRecipeTitle });
+    rows.push({ nameKey: key, name, aisle, quantity, sources, category, known: !!match, reason, choiceGroup, swappedFrom, sourceRecipeId, sourceRecipeTitle });
   }
   return rows;
 }

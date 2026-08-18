@@ -12,6 +12,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, intera
 import { dayKeyOf } from '../utils/dateUtils';
 import { describeCookHistory, describePantryCoverage, describeRecipe, type PantryCoverage } from '../utils/recipeUtils';
 import { flattenRecipeIngredients, recipeMap, type FlatIngredient } from '../utils/recipeComponents';
+import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { convertQuantity } from '../utils/unitConvert';
 import {
   mergeMealSuggestions, mealIdeaRecipeDraft, mealTitleKey,
@@ -136,6 +137,16 @@ export function SuggestMealsSheet({
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  // The preview reads like the recipe screen does, standing swaps included —
+  // it sits beside a pantry-coverage line that already counts them, and a
+  // preview listing milk under "5/7 likely on hand" would be the app
+  // disagreeing with itself on one row.
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const standingSwaps = useMemo(
+    () => standingSwapMap(itemSubs, groceryItems),
+    [itemSubs, groceryItems]
+  );
   const allRecipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
@@ -368,7 +379,7 @@ export function SuggestMealsSheet({
   // there's nothing to pick an alternative for.
   const previewGroups = useMemo(() => {
     if (!previewRecipe) return [];
-    const flat = flattenRecipeIngredients(previewRecipe, recipesById);
+    const flat = flattenRecipeIngredients(previewRecipe, recipesById, undefined, standingSwaps);
     const groups: { recipe: Recipe; items: FlatIngredient[] }[] = [];
     for (const item of flat) {
       let group = groups.find(g => g.recipe.id === item.recipe.id);
@@ -376,7 +387,7 @@ export function SuggestMealsSheet({
       group.items.push(item);
     }
     return groups;
-  }, [previewRecipe, recipesById]);
+  }, [previewRecipe, recipesById, standingSwaps]);
 
   const openPreview = (recipe: Recipe) => { haptics.tap(); setPreviewRecipe(recipe); };
 
@@ -729,12 +740,19 @@ export function SuggestMealsSheet({
                     {group.recipe.id !== previewRecipe.id && (
                       <Text style={styles.sectionHeader}>FROM {group.recipe.name.toUpperCase()}</Text>
                     )}
-                    {group.items.map(({ ingredient }) => {
+                    {group.items.map(({ ingredient, swappedFrom }) => {
                       const quantity = convertQuantity(ingredient.quantity, unitSystem).text;
                       return (
                         <View key={ingredient.id} style={styles.previewIngredientRow}>
                           <Text style={styles.previewIngredientName}>
                             {ingredient.name}{ingredient.prep ? `, ${ingredient.prep}` : ''}
+                            {/* A swapped line always says what the recipe
+                                wrote. Inline here rather than on its own line:
+                                these rows are a compact preview, and the name
+                                is already carrying its prep clause. */}
+                            {!!swappedFrom && (
+                              <Text style={styles.previewSwap}> · {describeStandingSwap(swappedFrom)}</Text>
+                            )}
                           </Text>
                           {!!quantity && (
                             <Text style={styles.previewIngredientQty} numberOfLines={1}>{quantity}</Text>
@@ -755,6 +773,8 @@ export function SuggestMealsSheet({
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  // Accent, the same tint every other surface marks a swapped line with.
+  previewSwap: { color: colors.accent },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

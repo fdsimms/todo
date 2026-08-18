@@ -148,8 +148,8 @@ describe('collectPlannedIngredients', () => {
     const result = collectPlannedIngredients(entries, recipesById, RANGE);
 
     expect(result).toEqual([
-      { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Tue Ragù', recipeId: ragu.id, recipeTitle: 'Ragù' },
-      { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Tue Ragù', recipeId: ragu.id, recipeTitle: 'Ragù' },
+      { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Tue Ragù', recipeId: ragu.id, recipeTitle: 'Ragù', swappedFrom: null },
+      { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Tue Ragù', recipeId: ragu.id, recipeTitle: 'Ragù', swappedFrom: null },
     ]);
   });
 
@@ -246,8 +246,8 @@ describe('plannedIngredientsForRecipe', () => {
   it('maps each ingredient, tagged with the recipe as its own source', () => {
     const ragu = recipe('Ragù', [ing('Onions', { quantity: '2' }), ing('Garlic', { quantity: '3 cloves' })]);
     expect(plannedIngredientsForRecipe(ragu)).toEqual([
-      { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù', choiceGroup: null },
-      { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù', choiceGroup: null },
+      { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù', choiceGroup: null, swappedFrom: null },
+      { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù', choiceGroup: null, swappedFrom: null },
     ]);
   });
 
@@ -308,14 +308,36 @@ describe('plannedIngredientsForRecipe', () => {
     ]);
     const planned = plannedIngredientsForRecipe(cake);
     expect(planned).toEqual([
-      { name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, source: 'Layer Cake', recipeId: cake.id, recipeTitle: 'Layer Cake', choiceGroup: null },
-      { name: 'Butter', nameKey: 'butter', quantity: '1 cup', aisle: null, source: 'Layer Cake', recipeId: cake.id, recipeTitle: 'Layer Cake', choiceGroup: null },
+      { name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, source: 'Layer Cake', recipeId: cake.id, recipeTitle: 'Layer Cake', choiceGroup: null, swappedFrom: null },
+      { name: 'Butter', nameKey: 'butter', quantity: '1 cup', aisle: null, source: 'Layer Cake', recipeId: cake.id, recipeTitle: 'Layer Cake', choiceGroup: null, swappedFrom: null },
     ]);
     expect(planned.some(p => 'section' in p)).toBe(false);
   });
 
   it('is empty for a recipe with no ingredients', () => {
     expect(plannedIngredientsForRecipe(recipe('Toast', []))).toEqual([]);
+  });
+
+  // #1571 — the rule is pinned in standingSwaps.test.ts; what matters here is
+  // that a swapped line reaches the shopping row still saying what the recipe
+  // wrote, and that it groups under the substitute's key rather than the
+  // original's.
+  it('carries a standing swap through to the classified row', () => {
+    const oats = recipe('Overnight oats', [ing('Milk', { quantity: '1 cup' })]);
+    const swaps = new Map([['milk', {
+      link: {
+        itemId: 'i-milk', subItemId: 'i-oat', note: null,
+        createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: true,
+      },
+      from: { name: 'Milk', nameKey: 'milk', aisle: null } as never,
+      to: { name: 'Oat milk', nameKey: 'oat milk', aisle: 'Dairy' } as never,
+    }]]);
+
+    const planned = plannedIngredientsForRecipe(oats, undefined, undefined, 1, swaps);
+    expect(planned[0]).toMatchObject({ name: 'Oat milk', nameKey: 'oat milk', swappedFrom: 'Milk' });
+
+    const row = classifyPlanned(planned, [], new Date())[0];
+    expect(row).toMatchObject({ nameKey: 'oat milk', name: 'Oat milk', swappedFrom: 'Milk' });
   });
 
   describe('a choice left for the shelf', () => {
@@ -524,7 +546,7 @@ describe('classifyPlanned', () => {
     const planned = [{ name: 'Saffron', nameKey: 'saffron', quantity: '1 pinch', aisle: null, source: 'Tue Paella' }];
     const rows = classifyPlanned(planned, [], now);
     expect(rows).toEqual([
-      { nameKey: 'saffron', name: 'Saffron', aisle: null, quantity: '1 pinch', sources: ['Tue Paella'], category: 'needToBuy', known: false, reason: null, choiceGroup: null, sourceRecipeId: null, sourceRecipeTitle: null },
+      { nameKey: 'saffron', name: 'Saffron', aisle: null, quantity: '1 pinch', sources: ['Tue Paella'], category: 'needToBuy', known: false, reason: null, choiceGroup: null, swappedFrom: null, sourceRecipeId: null, sourceRecipeTitle: null },
     ]);
   });
 
@@ -553,6 +575,7 @@ describe('classifyPlanned', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       ratioFrom: null,
       ratioTo: null,
+      standing: false,
     });
     const plannedButter = [
       { name: 'Butter', nameKey: 'butter', quantity: '100 g', aisle: null, source: 'Wed Cake' },

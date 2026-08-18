@@ -82,6 +82,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [bothWays, setBothWays] = useState(false);
+  const [standing, setStanding] = useState(false);
   const [ratioFrom, setRatioFrom] = useState('');
   const [ratioTo, setRatioTo] = useState('');
   const [suggested, setSuggested] = useState<SuggestedSubstitute[]>([]);
@@ -102,6 +103,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
     // rather than presenting a blank form over an answer that already exists.
     setNote(editingSub?.link.note ?? '');
     setBothWays(editingSub?.isMutual ?? false);
+    setStanding(editingSub?.link.standing ?? false);
     setRatioFrom(editingSub?.link.ratioFrom ?? '');
     setRatioTo(editingSub?.link.ratioTo ?? '');
     // Seeding is a one-shot on open: re-running it as the store changes would
@@ -230,7 +232,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
 
   const handleConfirm = () => {
     if (!item || !picked) return;
-    linkItemSub(item.id, picked.id, { note, bothWays, ratioFrom, ratioTo });
+    linkItemSub(item.id, picked.id, { note, bothWays, ratioFrom, ratioTo, standing });
     // The reverse row is written by `bothWays` and taken back here, rather than
     // left standing: unticking it in this sheet has to mean the same thing as
     // never ticking it, or reviewing a link is a way to add one you can't undo.
@@ -331,7 +333,13 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
             </View>
             <Text style={styles.hint}>
               {fromUnit
-                ? `Only applies to a recipe line measured in ${fromUnit}. Anything else is left as written.`
+                // With the swap applied for you, a line the ratio can't be
+                // read against isn't renamed either — see standingSwaps.ts for
+                // why a swapped name over an unconverted amount is the one
+                // outcome worse than leaving the line alone.
+                ? standing
+                  ? `Only applies to a recipe line measured in ${fromUnit}. A line measured any other way isn’t swapped.`
+                  : `Only applies to a recipe line measured in ${fromUnit}. Anything else is left as written.`
                 : `Optional. For a substitute that needs a different amount, not just a different name.`}
             </Text>
 
@@ -346,8 +354,8 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
               accessibilityLabel="Note about this substitute"
             />
             <Text style={styles.hint}>
-              Nothing swaps anything by itself, so this is where a swap that only works
-              sometimes says so.
+              Where a swap that only works sometimes says so — fine for frying, wrong for
+              baking.
             </Text>
 
             <TouchableOpacity
@@ -370,6 +378,37 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
                 <Text style={styles.toggleLabel}>Both ways</Text>
                 <Text style={styles.toggleHint}>
                   Also use {item.name.toLowerCase()} when there&apos;s no {picked.name.toLowerCase()}.
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* The standing swap (#1571) — the one substitute setting that
+                changes what lands in the trolley. Below Both ways rather than
+                above it: that one is about which directions are recorded, this
+                one is about what the app does with the direction you're
+                writing. */}
+            <TouchableOpacity
+              style={styles.toggleRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => {
+                haptics.tap();
+                setStanding(v => !v);
+              }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: standing }}
+              accessibilityLabel="Always use this instead"
+            >
+              <Ionicons
+                name={standing ? 'checkbox' : 'square-outline'}
+                size={iconSize.md}
+                color={standing ? colors.accent : colors.textSecondary}
+              />
+              <View style={styles.toggleBody}>
+                <Text style={styles.toggleLabel}>Always use this instead</Text>
+                <Text style={styles.toggleHint}>
+                  Recipes calling for {item.name.toLowerCase()} show and shop for{' '}
+                  {picked.name.toLowerCase()}. Swapped lines say what the recipe wrote, and
+                  no recipe is changed.
                 </Text>
               </View>
             </TouchableOpacity>

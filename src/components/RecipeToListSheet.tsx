@@ -25,6 +25,7 @@ import {
   type ClassifiedIngredient,
   type PlanCategory,
 } from '../utils/mealPlanGroceries';
+import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { alternativeCaptions, applyChoice, choiceGroupKey, recipeChoiceGroups } from '../utils/recipeComponents';
 import { normalizeScale } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
@@ -148,15 +149,20 @@ export function RecipeToListSheet({
     [recipe, recipesById, choiceKey]
   );
 
+  // "Always use oat milk for milk" — applied on the way out of the flatten, so
+  // what this sheet offers is what the kitchen actually buys. Every swapped row
+  // says so (see standingSwaps.ts); nothing is written back to the recipe.
+  const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
+
   const classified = useMemo(() => {
     if (!recipe) return [];
     return classifyPlanned(
-      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices, undecided }, scale),
+      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices, undecided }, scale, swaps),
       items,
       new Date(),
       itemSubs
     );
-  }, [recipe, recipesById, items, itemSubs, choiceKey, scale]);
+  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, scale]);
 
   // "or jalapeño" on each option of a group left open, so a row in Need to buy
   // reads as one of a pair rather than as a second thing to buy. Keyed on
@@ -433,6 +439,11 @@ export function RecipeToListSheet({
                         // row is one of a set, and a row you read as ordinary is
                         // a row you buy all of.
                         const alternativeNote = alternativeNotes.get(row.nameKey);
+                        // Directly under the name, because it qualifies the
+                        // name: this row is the app's substitution, not the
+                        // recipe's word. Same job `≈` does for a converted
+                        // amount.
+                        const swapNote = row.swappedFrom ? describeStandingSwap(row.swappedFrom) : null;
                         const canMarkHave = category === 'needToBuy' && row.known;
                         // Shown in the reader's units; what gets written to the
                         // list is still row.quantity, as the recipe wrote it.
@@ -449,7 +460,7 @@ export function RecipeToListSheet({
                                 accessibilityRole="checkbox"
                                 accessibilityState={{ checked: on, disabled: !interactive }}
                                 accessibilityLabel={
-                                  [row.name, shownQuantity, subtitle, alternativeNote,
+                                  [row.name, swapNote, shownQuantity, subtitle, alternativeNote,
                                    !interactive ? 'already in your cart' : null]
                                     .filter(Boolean)
                                     .join(', ')
@@ -466,6 +477,9 @@ export function RecipeToListSheet({
                                   <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={1}>
                                     {row.name}
                                   </Text>
+                                  {!!swapNote && (
+                                    <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
+                                  )}
                                   {!!subtitle && (
                                     <Text style={styles.sources} numberOfLines={1}>{subtitle}</Text>
                                   )}
@@ -621,6 +635,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // one shop and two, so it has to survive a glance down a list of ten rows.
   // Same treatment the recipe screen gives its own "or manchego".
   alternativeNote: { fontSize: font.xs, color: colors.accent, fontWeight: fontWeight.medium },
+  // Accent for the same reason `alternativeNote` is: this row isn't what the
+  // recipe wrote, and that has to survive a glance down a list of ten rows.
+  swapNote: { fontSize: font.xs, color: colors.accent, fontWeight: fontWeight.medium },
   qtyPill: {
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,

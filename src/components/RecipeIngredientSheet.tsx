@@ -27,6 +27,7 @@ import { splitAlternativeNames, suggestShorterCatalogName } from '../utils/groce
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { allSectionsOf } from '../utils/recipeSections';
+import { standingSwapMap } from '../utils/standingSwaps';
 import { disclosureValue } from '../theme/textStyles';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
@@ -99,6 +100,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const [editingGroupName, setEditingGroupName] = useState(false);
   const [groupNameDraft, setGroupNameDraft] = useState('');
   const [aisle, setAisle] = useState<string | null>(null);
+  // The per-line exception to a standing swap — "this pastry needs real
+  // butter" (RecipeIngredient.noSwap).
+  const [noSwap, setNoSwap] = useState(false);
   // Nested rather than a sibling: a Modal presents from its React parent's view
   // controller, so a sibling would ask this sheet's own presenter for a second
   // presentation while this one is up. Same call KitchenSheet makes, and it's
@@ -115,6 +119,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setChoiceGroup(ingredient.choiceGroup ?? '');
     setEditingGroupName(false);
     setAisle(ingredient.aisle);
+    setNoSwap(!!ingredient.noSwap);
     setEditingItemId(null);
   }, [ingredient]);
 
@@ -171,6 +176,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       section: section.trim() || null,
       choiceGroup: cleanChoiceGroup(choiceGroup),
       aisle,
+      noSwap,
     });
     onClose();
   };
@@ -197,6 +203,13 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const catalogSummary = catalogItem
     ? describeCatalogItem(catalogItem, itemSubs, groceryItems, new Date())
     : null;
+
+  // The standing swap that reaches this line, if there is one. Shown only when
+  // there's a rule to opt out of — or when this line has already opted out, so
+  // a "keep as written" ticked before the rule went away is still findable and
+  // still untickable. A control for a rule you haven't written would be a
+  // setting explaining a feature rather than changing anything.
+  const standingSwap = standingSwapMap(itemSubs, groceryItems).get(ingredient.nameKey) ?? null;
 
   const acceptSplit = () => {
     if (!ingredient || !alternatives) return;
@@ -355,6 +368,35 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             Not in your groceries yet. It's added the first time you put this on a list, and
             then it can carry a brand, a store, a price and what you'd accept instead.
           </Text>
+        )}
+
+        {(!!standingSwap || noSwap) && (
+          <>
+            <View style={styles.separator} />
+            <Text style={styles.groupLabel}>Standing swap</Text>
+            <TouchableOpacity
+              style={styles.toggleRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setNoSwap(v => !v); }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: noSwap }}
+              accessibilityLabel="Keep as written"
+            >
+              <Ionicons
+                name={noSwap ? 'checkbox' : 'square-outline'}
+                size={iconSize.md}
+                color={noSwap ? colors.accent : colors.textSecondary}
+              />
+              <View style={styles.toggleBody}>
+                <Text style={styles.toggleLabel}>Keep as written</Text>
+                <Text style={styles.hint}>
+                  {standingSwap
+                    ? `You use ${standingSwap.to.name.toLowerCase()} instead of ${standingSwap.from.name.toLowerCase()}. Tick this to leave this one line alone.`
+                    : 'This line is left alone by any standing swap for it.'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </>
         )}
       </View>
 
@@ -658,6 +700,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingVertical: spacing.xs,
+  },
+  // Same row shape as catalogRow above it, top-aligned because its hint runs
+  // to two lines and a centred checkbox would float against the middle of the
+  // paragraph.
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  toggleBody: {
+    flex: 1,
+    gap: 2,
+  },
+  toggleLabel: {
+    color: colors.text,
+    fontSize: font.md,
   },
   catalogBody: {
     flex: 1,

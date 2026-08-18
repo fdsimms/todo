@@ -228,6 +228,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'currencySymbol', groupId: 'tasksProjects', label: 'Currency', section: 'Recipe & grocery amounts',
     keywords: ['price', 'cost', 'money', 'symbol', 'dollar', 'pound', 'euro', 'yen', 'grocery'],
     kitchen: true },
+  // The row is a count and a way in; the rules themselves live on the links.
+  // Keyworded for what someone would actually type when a recipe surprised
+  // them — "why does this say oat milk" is a search for the swap, not for the
+  // word "substitute".
+  { id: 'standingSwaps', groupId: 'tasksProjects', label: 'Standing swaps', section: 'Substitutes',
+    keywords: ['substitute', 'instead of', 'always use', 'replace', 'oat milk', 'dairy',
+      'allergy', 'recipe', 'grocery', 'automatic'],
+    kitchen: true },
 
   // Privacy & AI
   { id: 'appLock', groupId: 'privacyAi', label: 'Require Face ID to open', section: 'App lock',

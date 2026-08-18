@@ -74,6 +74,7 @@ import {
   resolveComponents,
   type ResolvedComponent,
 } from '../utils/recipeComponents';
+import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
 
@@ -128,6 +129,18 @@ export function RecipeDetailScreen() {
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const addAisle = useGroceryStore(s => s.addAisle);
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+
+  // The user's standing swaps — "always use oat milk for milk" (#1571). Shown
+  // here as well as on the shopping read, because a cook reading the recipe
+  // needs to know which line they'll actually be cooking with. Display only:
+  // the row still edits, reorders and removes the recipe's own line, and
+  // nothing here writes a swapped name back.
+  const standingSwaps = useMemo(
+    () => standingSwapMap(itemSubs, groceryItems),
+    [itemSubs, groceryItems]
+  );
 
   const recipesById = useMemo(() => recipeMap(recipes), [recipes]);
   const components = useMemo(
@@ -618,10 +631,24 @@ export function RecipeDetailScreen() {
     // Scaled first, then converted: the multiplication is exact and the
     // conversion rounds, so rounding last is the only order that doesn't
     // compound.
-    const scaledResult = scaleQuantity(ingredient.quantity, scale);
+    //
+    // The standing swap runs first, on the line as the recipe wrote it: its
+    // ratio is stated per the recipe's own unit, so handing it an already
+    // multiplied amount would convert something the recipe never said. What
+    // the row then scales and converts is the swapped line — and everything
+    // else about the row (edit, remove, reorder) still uses `ingredient`, the
+    // recipe's own, which is what keeps the swap read-only.
+    const swapped = applyStandingSwap(ingredient, standingSwaps);
+    const line = swapped.ingredient;
+    const swapNote = swapped.swappedFrom ? describeStandingSwap(swapped.swappedFrom) : null;
+    const scaledResult = scaleQuantity(line.quantity, scale);
     const convertedResult = convertQuantity(scaledResult.text, unitSystem);
     const scaledQuantity = convertedResult.text;
-    const scaledHere = scaledResult.scaled || convertedResult.converted;
+    const scaledHere = scaledResult.scaled
+      || convertedResult.converted
+      // A ratio'd swap is the app's number too — the same tint, for the same
+      // reason a converted one earns it.
+      || line.quantity !== ingredient.quantity;
     // A line can open both: the section it belongs to (now its own row in the
     // merged list, not rendered here — see renderHeadingRow), then the either/or
     // slot it fills within that section.
@@ -668,7 +695,7 @@ export function RecipeDetailScreen() {
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={
-            [ingredient.section, ingredient.name, scaledQuantity, ingredient.prep,
+            [ingredient.section, line.name, swapNote, scaledQuantity, ingredient.prep,
              ingredient.purpose && `for ${ingredient.purpose}`,
              choiceGroup && (isChoiceDefault ? `usual choice for ${choiceGroup}` : `alternative for ${choiceGroup}`)]
               .filter(Boolean).join(', ')
@@ -685,7 +712,14 @@ export function RecipeDetailScreen() {
             </View>
           )}
           <View style={styles.ingredientText}>
-            <Text style={styles.ingredientName}>{ingredient.name}</Text>
+            <Text style={styles.ingredientName}>{line.name}</Text>
+            {/* Directly under the name it replaced, in the same tint the
+                quantity pill uses when the number isn't the recipe's: a
+                swapped line has to be legible as the app's substitution
+                rather than as what the recipe says. */}
+            {!!swapNote && (
+              <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
+            )}
             {(!!ingredient.prep || !!ingredient.purpose) && (
               <Text style={styles.ingredientPrep}>
                 {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`].filter(Boolean).join(' · ')}
@@ -1753,6 +1787,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // you're allowed to leave in the shop.
   alternativeNote: {
     color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
+    marginTop: 2,
+  },
+  // Accent, matching the tint a scaled or converted quantity pill takes: both
+  // mean "the app's words, not the recipe's". Brighter than `alternativeNote`
+  // beneath it on purpose — an alternative is something the recipe offers, a
+  // swap is something the app did.
+  swapNote: {
+    color: colors.accent,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
     marginTop: 2,

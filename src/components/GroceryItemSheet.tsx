@@ -1469,7 +1469,15 @@ function subCaption(sub: Substitute): string | null {
   const ratio = sub.link.ratioFrom && sub.link.ratioTo
     ? `${sub.link.ratioFrom} → ${sub.link.ratioTo}`
     : null;
-  const parts = [ratio, sub.link.note, sub.isMutual ? 'both ways' : null].filter(Boolean);
+  // First, and stated as what it does rather than as a setting's name: it's
+  // the one thing in this row that changes what a recipe shops for, so a
+  // reader skimming the field has to meet it before the caveats.
+  const parts = [
+    sub.link.standing ? 'always used instead' : null,
+    ratio,
+    sub.link.note,
+    sub.isMutual ? 'both ways' : null,
+  ].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 

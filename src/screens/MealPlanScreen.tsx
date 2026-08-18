@@ -92,6 +92,7 @@ import {
   plannedIngredientsForRecipe,
   restockRows,
 } from '../utils/mealPlanGroceries';
+import { standingSwapMap } from '../utils/standingSwaps';
 
 /**
  * Tints a day section while a drag is aimed at it — the same "arm on the way
@@ -299,6 +300,12 @@ export function MealPlanScreen() {
   const { offerPrepTasks } = usePlanMeal();
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  // "Always use oat milk for milk", applied to every read here that shops or
+  // asks about what was cooked — see standingSwaps.ts.
+  const standingSwaps = useMemo(
+    () => standingSwapMap(itemSubs, groceryItems),
+    [itemSubs, groceryItems]
+  );
 
   // The day being planned; null when the picker is closed.
   const [planningDay, setPlanningDay] = useState<string | null>(null);
@@ -389,12 +396,12 @@ export function MealPlanScreen() {
     (recipe: Recipe, choices: readonly string[], scale: number) =>
       restockRows(
         classifyPlanned(
-          plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices }, scale),
+          plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices }, scale, standingSwaps),
           groceryItems,
           new Date()
         )
       ).length,
-    [recipesById, groceryItems]
+    [recipesById, groceryItems, standingSwaps]
   );
 
   const restockCount = useMemo(

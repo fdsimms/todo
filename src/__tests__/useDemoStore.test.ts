@@ -19,6 +19,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
 import { pantryEntries } from '../utils/grocerySuggest';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
+import { standingSwapMap } from '../utils/standingSwaps';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
 import { flattenRecipeIngredients } from '../utils/recipeComponents';
 import {
@@ -610,6 +611,39 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // seed's own clearList on the way past.
     expect(margarine!.inCatalog).toBe(true);
     expect(mutual[0].item.inCatalog).toBe(true);
+  });
+
+  it('seeds a standing swap, and one line that opts out of it (#1571)', () => {
+    // The one substitute setting that changes what lands in the trolley, so a
+    // demo without one shows half the feature — and the per-line opt-out is
+    // otherwise a toggle nobody ever sees.
+    const { items, itemSubs } = useGroceryStore.getState();
+    const milk = items.find(i => i.name === 'Milk')!;
+    const oatMilk = items.find(i => i.nameKey === 'oat milk')!;
+
+    const swaps = standingSwapMap(itemSubs, items);
+    expect(swaps.get('milk')).toMatchObject({ to: expect.objectContaining({ id: oatMilk.id }) });
+    // The both-ways reverse row is never standing, or the pair swaps into
+    // itself and standingSwaps drops both.
+    expect(itemSubs.find(l => l.itemId === oatMilk.id && l.subItemId === milk.id)?.standing)
+      .toBe(false);
+
+    const recipes = useRecipeStore.getState().recipes;
+    const recipesById = new Map(recipes.map(r => [r.id, r]));
+    const oats = recipes.find(r => r.name === 'Overnight oats')!;
+    const swapped = flattenRecipeIngredients(oats, recipesById, undefined, swaps)
+      .find(f => f.swappedFrom)!;
+    expect(swapped.ingredient.nameKey).toBe('oat milk');
+    // The recipe's own word for the line, as written — "1 cup milk".
+    expect(swapped.swappedFrom).toBe('milk');
+    // Read time only: the recipe still says what it said.
+    expect(oats.ingredients.some(i => i.nameKey === 'milk')).toBe(true);
+
+    // ...and the line that said no.
+    const mash = recipes.find(r => r.name === 'Mashed potatoes')!;
+    const mashLines = flattenRecipeIngredients(mash, recipesById, undefined, swaps);
+    expect(mashLines.some(f => f.ingredient.nameKey === 'milk')).toBe(true);
+    expect(mashLines.every(f => f.swappedFrom === null)).toBe(true);
   });
 
   it('seeds a ratio that actually converts a real recipe line (#1573)', () => {
