@@ -612,6 +612,27 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(mutual[0].item.inCatalog).toBe(true);
   });
 
+  it('seeds cilantro and coriander as two catalog rows, ready to merge (#1570)', () => {
+    const { items, mergeItems } = useGroceryStore.getState();
+    const cilantro = items.find(i => i.nameKey === 'cilantro');
+    const coriander = items.find(i => i.nameKey === 'coriander');
+    expect(cilantro && coriander).toBeTruthy();
+
+    // Cilantro has a real purchase behind it; Coriander is on the list,
+    // typed fresh, with none — the exact split the issue that added merging
+    // describes, and why the seed leaves the two unmerged rather than
+    // demonstrating the fix itself.
+    expect(cilantro!.purchaseCount).toBeGreaterThan(0);
+    expect(coriander!.onList).toBe(true);
+    expect(coriander!.purchaseCount).toBe(0);
+
+    // And the feature actually resolves the pair, end to end.
+    expect(mergeItems(coriander!.id, cilantro!.id)).toBe(true);
+    const survivor = useGroceryStore.getState().itemById(cilantro!.id)!;
+    expect(survivor.onList).toBe(true);
+    expect(useGroceryStore.getState().itemById(coriander!.id)).toBeNull();
+  });
+
   it('seeds a ratio that actually converts a real recipe line (#1573)', () => {
     // The issue's own motivating example, run end to end against a real
     // seeded recipe rather than a synthetic fixture — "2 cloves garlic" is a
