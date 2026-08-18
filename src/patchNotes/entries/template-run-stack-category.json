@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: applying a template into a named stack now files that stack under the category its items actually use, instead of always landing in Uncategorized.",
+  "date": "2026-08-18"
+}

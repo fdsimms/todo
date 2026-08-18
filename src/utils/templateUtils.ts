@@ -672,3 +672,25 @@ export function resolveApplyContainer(
   if (container === 'stack' && usesItemGroups(expanded, templatesById)) return 'project';
   return container;
 }
+
+/**
+ * The category a new run stack should take: whichever category its members
+ * most often carry, ties going to whichever appeared first (insertion order
+ * = item order) — the same "most common, ties to first" rule the bulk
+ * "Group" action uses (see TodayScreen's onGroup). Without this a run stack
+ * always came out uncategorized (`createGroup(runName, null)`), so it filed
+ * under Uncategorized on Today no matter what category its items were
+ * actually configured with — a stack's members don't get their own row, only
+ * the stack's header does (see makeCategoryGroups), so the stack's own
+ * category is the only one that decides where it's seen.
+ */
+export function majorityCategory(categories: (string | null)[]): string | null {
+  const tally = new Map<string | null, number>();
+  for (const c of categories) tally.set(c, (tally.get(c) ?? 0) + 1);
+  let winner: string | null = null;
+  let best = 0;
+  for (const [c, n] of tally) {
+    if (n > best) { best = n; winner = c; }
+  }
+  return winner;
+}
