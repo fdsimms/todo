@@ -1,5 +1,6 @@
 import type { GroceryItem, ItemSubLink } from '../types';
-import { scaleQuantity, splitLeadingAmount, unitKey } from './recipeScale';
+import { parseQuantity, rationalToNumber, unitKey } from './quantity';
+import { scaleQuantity } from './recipeScale';
 import { probablyHaveReason } from './grocerySuggest';
 
 /**
@@ -155,12 +156,17 @@ export function substituteQuantity(
   const unchanged: SubstitutedQuantity = { text, converted: false };
   if (!text) return unchanged;
 
-  const line = splitLeadingAmount(text);
-  const from = splitLeadingAmount(ratioFrom);
-  if (!line || !from || from.value === 0) return unchanged;
+  const line = parseQuantity(text);
+  const from = parseQuantity(ratioFrom);
+  if (line.amount === null || from.amount === null) return unchanged;
+  const fromValue = rationalToNumber(from.amount);
+  if (fromValue === 0) return unchanged;
+  // Compared on the *whole* tail rather than the unit word alone: a ratio has
+  // to agree with the entire measurement it was written against, so
+  // "3 cloves, minced" doesn't quietly take a per-clove ratio.
   if (!line.rest || !from.rest || unitKey(line.rest) !== unitKey(from.rest)) return unchanged;
 
-  const factor = line.value / from.value;
+  const factor = rationalToNumber(line.amount) / fromValue;
 
   // scaleQuantity treats an exact 1× as a no-op and reports it unscaled —
   // right for its own callers (nothing to do), wrong here: an exact 1× means
@@ -170,7 +176,7 @@ export function substituteQuantity(
   // own denominator search absorbs the float noise from the division above,
   // the same tolerance mergeQuantities already leans on.)
   if (factor === 1) {
-    if (!splitLeadingAmount(ratioTo)) return unchanged;
+    if (parseQuantity(ratioTo).amount === null) return unchanged;
     return { text: ratioTo.trim(), converted: true };
   }
 

@@ -1,6 +1,6 @@
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 import { groceryNameKey } from './groceryParse';
-import { splitLeadingAmount } from './recipeScale';
+import { parseQuantity } from './quantity';
 
 /**
  * Validating what the model hands back for "what can I use instead of
@@ -48,7 +48,7 @@ function namesOneIngredient(name: string): boolean {
  * see #1573's "keep the name, drop the ratio."
  */
 function validRatio(ratioFrom: string, ratioTo: string): boolean {
-  return !!splitLeadingAmount(ratioFrom) && !!splitLeadingAmount(ratioTo);
+  return parseQuantity(ratioFrom).amount !== null && parseQuantity(ratioTo).amount !== null;
 }
 
 /**

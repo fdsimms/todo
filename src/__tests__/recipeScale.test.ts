@@ -2,11 +2,9 @@ import {
   RECIPE_SCALE_FACTORS,
   describeUnscaled,
   factorForServings,
-  formatQuantityAmount,
   formatScale,
   isUnscaled,
   normalizeScale,
-  quantityAmount,
   scaleQuantity,
   scaleServings,
   targetServingsFor,
@@ -159,29 +157,6 @@ describe('scaleQuantity', () => {
         expect(result.text).not.toMatch(/\d\.\d{3,}/);
       }
     }
-  });
-});
-
-describe('quantityAmount', () => {
-  it('reads every notation, including the fractions parseQuantityAmount used to refuse', () => {
-    expect(quantityAmount('2 cups')).toEqual({ value: 2, decimal: false });
-    expect(quantityAmount('1/2 cup')).toEqual({ value: 0.5, decimal: false });
-    expect(quantityAmount('1 1/2 cups')).toEqual({ value: 1.5, decimal: false });
-    expect(quantityAmount('1.5 kg')).toEqual({ value: 1.5, decimal: true });
-  });
-
-  it('is null for anything not opening with an amount', () => {
-    expect(quantityAmount('a pinch')).toBeNull();
-    expect(quantityAmount('')).toBeNull();
-  });
-});
-
-describe('formatQuantityAmount', () => {
-  it('renders a sum the way scaling renders a product', () => {
-    expect(formatQuantityAmount(0.75)).toBe('3/4');
-    expect(formatQuantityAmount(3)).toBe('3');
-    expect(formatQuantityAmount(1.5)).toBe('1 1/2');
-    expect(formatQuantityAmount(1.5, true)).toBe('1.5');
   });
 });
 

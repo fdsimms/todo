@@ -2,7 +2,7 @@ import { format } from 'date-fns/format';
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
 import { GROCERY_PRICE_MINOR_MAX } from '../types';
 import { isUnavailable } from './groceryShops';
-import { splitLeadingAmount, unitKey } from './recipeScale';
+import { parseQuantity, rationalToNumber } from './quantity';
 import { measureQuantity, shelfUnit, type Dimension } from './unitConvert';
 
 /**
@@ -245,9 +245,6 @@ export function shopPricesFor(
   return out.sort((a, b) => a.minor - b.minor || a.shop.name.localeCompare(b.shop.name));
 }
 
-/** The unit word of whatever follows a count's amount — "can" out of "3 cans". */
-const LEADING_UNIT_WORD = /^[a-z]+/i;
-
 interface Comparable {
   /** How much: base units for a measurement, its own unit for a count. */
   amount: number;
@@ -285,13 +282,14 @@ function comparableQuantity(quantity: string | null): Comparable | null {
     };
   }
 
-  const amount = splitLeadingAmount(text);
-  if (!amount || amount.value <= 0) return null;
-  const rest = amount.rest.trim();
-  if (rest.startsWith('%')) return null;
-  const word = LEADING_UNIT_WORD.exec(rest)?.[0] ?? '';
-  const unit = word ? unitKey(word) : '';
-  return { amount: amount.value, key: `unit:${unit}`, measure: null, countUnit: unit };
+  const q = parseQuantity(text);
+  if (q.amount === null) return null;
+  const value = rationalToNumber(q.amount);
+  if (value <= 0) return null;
+  // '' for a bare number ("12") and for a counted container ("2 14 oz cans",
+  // whose leading amount is followed by a second number rather than a word).
+  const unit = q.unit ?? '';
+  return { amount: value, key: `unit:${unit}`, measure: null, countUnit: unit };
 }
 
 export interface UnitPrice {
