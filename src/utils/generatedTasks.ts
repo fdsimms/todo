@@ -256,6 +256,24 @@ export function hasAnyGeneratedTask(
 }
 
 /**
+ * How many tasks — live or finished — this exact (kind, source) pair has
+ * ever produced. The disambiguator `spawnSeed.generated` needs: two devices
+ * independently creating "the same" generated task before they've synced
+ * must compute the same id, but a source that's earned a task before and
+ * earns another later (a staple bought again) must not collide with the
+ * finished row already sitting in the Logbook. Counting what already exists
+ * gives both devices the same next index without either having to have seen
+ * the other's copy.
+ */
+export function generatedTaskCountOf(
+  tasks: readonly Pick<Task, 'generatedKind' | 'generatedSourceId'>[],
+  kind: GeneratedKind,
+  sourceId: string | null = null
+): number {
+  return tasks.filter(t => isFrom(t, kind, sourceId)).length;
+}
+
+/**
  * The source row this task was generated from, but only if it came from the
  * generator asked about — null for every other task.
  *

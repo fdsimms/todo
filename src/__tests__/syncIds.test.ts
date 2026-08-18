@@ -39,8 +39,36 @@ describe('derivedId', () => {
       derivedId(spawnSeed.seriesDate('t1', '2026-01-10T00:00:00.000Z')),
       derivedId(spawnSeed.seriesDate('t1', '2026-01-15T00:00:00.000Z')),
       derivedId(spawnSeed.subtask('t1', 'sub1')),
+      derivedId(spawnSeed.generated('mealCook', 'entry1', 0)),
     ]);
-    expect(ids.size).toBe(6);
+    expect(ids.size).toBe(7);
+  });
+});
+
+describe('spawnSeed.generated', () => {
+  it('gives the same id for the same source on two devices (#1751)', () => {
+    // The bug this exists to prevent: two devices each reconcile the same
+    // grocery item before ever syncing and each create their own "Use up
+    // spinach" task — without a shared id, both survive the merge.
+    expect(derivedId(spawnSeed.generated('groceryUseUp', 'item1', 0)))
+      .toBe(derivedId(spawnSeed.generated('groceryUseUp', 'item1', 0)));
+  });
+
+  it('separates a source\'s later task from its earlier, already-finished one', () => {
+    // A staple bought again earns a new use-up task, not a collision with the
+    // Logbook row the first one left behind.
+    expect(derivedId(spawnSeed.generated('groceryUseUp', 'item1', 0)))
+      .not.toBe(derivedId(spawnSeed.generated('groceryUseUp', 'item1', 1)));
+  });
+
+  it('separates different sources and different kinds', () => {
+    const ids = new Set([
+      derivedId(spawnSeed.generated('groceryUseUp', 'item1', 0)),
+      derivedId(spawnSeed.generated('groceryUseUp', 'item2', 0)),
+      derivedId(spawnSeed.generated('leftoverUseUp', 'item1', 0)),
+      derivedId(spawnSeed.generated('mealCook', 'item1', 0)),
+    ]);
+    expect(ids.size).toBe(4);
   });
 });
 

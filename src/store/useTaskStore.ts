@@ -49,7 +49,7 @@ import {
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
 import { deleteGeneratedTaskQuietly } from './generatedTaskSync';
-import { generatedBy, generatedSourceOf } from '../utils/generatedTasks';
+import { generatedBy, generatedSourceOf, generatedTaskCountOf } from '../utils/generatedTasks';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { derivedId, spawnSeed } from '../utils/syncIds';
@@ -178,10 +178,11 @@ function newTaskFromDraft(
   now: string,
   sortOrder: number,
   seedFromCategory = false,
+  id?: string,
 ): Task {
   const defaults = useSettingsStore.getState().newTaskDefaults;
   return {
-    id: generateId(),
+    id: id ?? generateId(),
     title: draft.title ?? '',
     notes: draft.notes ?? '',
     completed: false,
@@ -743,7 +744,13 @@ interface TaskStore {
   sweepExpiredTasks: () => void;
   /** Deletes completions older than the retention window; returns how many went. */
   purgeOldCompletedTasks: () => number;
-  addTask: (draft: Partial<TaskDraft>) => Task;
+  /**
+   * `id` is for the app's own unattended generators only — a person's task
+   * always gets a fresh `generateId()`. Passing a `derivedId` (see syncIds.ts)
+   * is what lets two devices that independently create "the same" generated
+   * task before ever syncing converge on one row instead of two (#1751).
+   */
+  addTask: (draft: Partial<TaskDraft>, id?: string) => Task;
   duplicateTask: (id: string) => Task | null;
   /**
    * Opens the system event sheet to block out time for a task — the new-event
@@ -1130,10 +1137,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     return ids.length;
   },
 
-  addTask(draft) {
+  addTask(draft, id) {
     const now = new Date().toISOString();
     const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
-    const task = newTaskFromDraft(draft, now, maxOrder + 1, true);
+    const task = newTaskFromDraft(draft, now, maxOrder + 1, true, id);
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
     scheduleTaskReminder(task);
@@ -2812,7 +2819,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         category,
         groupId: group.id,
         ...generatedBy('mealPlanNudge', day.dayKey),
-      });
+      }, derivedId(spawnSeed.generated(
+        'mealPlanNudge',
+        day.dayKey,
+        generatedTaskCountOf(get().tasks, 'mealPlanNudge', day.dayKey)
+      )));
       // The stack's own 1..K order, which is a separate number space from the
       // list order addTask just stamped (see reorderGroupChildren). Set the way
       // groupTasks sets it, so the rows read down the week.
