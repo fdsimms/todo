@@ -2957,7 +2957,7 @@ function rowToTemplate(row: Record<string, unknown>): TaskTemplate {
 
 /** Tolerates a null (pre-migration row) or an unknown value from a newer app version, same as parseTimeSegments. */
 function parseApplyContainer(raw: unknown): TemplateContainer {
-  return raw === 'none' || raw === 'project' ? raw : 'stack';
+  return raw === 'none' || raw === 'project' || raw === 'task' ? raw : 'stack';
 }
 
 export function dbGetAllTemplates(): TaskTemplate[] {
