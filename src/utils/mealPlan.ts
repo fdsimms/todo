@@ -152,10 +152,9 @@ export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt' | 'calendarEv
  *   on a different night.
  * - **A meal eating a tracked leftover is skipped entirely**, rather than
  *   copied as free text. A container is one physical thing that was in the
- *   fridge that week; it isn't there now, and its title has its age baked in
- *   at plan time (see mealTitleForLeftover), so "Leftover chilli (2 days old)"
- *   copied into next week is false twice over. The night comes back empty,
- *   which is the honest answer.
+ *   fridge that week; it isn't there now, so "Leftover chilli" copied into
+ *   next week claims a dinner that container can't actually supply. The
+ *   night comes back empty, which is the honest answer.
  * - **`recipeChoices` and `recipeScale` carry.** They're facts about how you
  *   cook the dish — the roast potatoes, the double batch — and repeating the
  *   week is repeating those too. This is the whole reason a copy beats

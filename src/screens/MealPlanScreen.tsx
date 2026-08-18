@@ -1661,9 +1661,9 @@ export function MealPlanScreen() {
       {/*
         Planning a container is the same "pick a night" question planning a
         recipe is, so it's the same sheet. No `onPlanned`: a leftover has no
-        recipe and therefore no prep steps to offer. The title captures the age
-        at plan time exactly as the picker's own leftover path does — see
-        mealTitleForLeftover for why that isn't resolved live.
+        recipe and therefore no prep steps to offer. The title is captured at
+        plan time exactly as the picker's own leftover path does — see
+        mealTitleForLeftover.
       */}
       <PlanMealSheet
         visible={planningLeftover !== null}

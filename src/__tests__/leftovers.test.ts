@@ -480,18 +480,13 @@ describe('describeFridge', () => {
   });
 });
 
+// #1731: this used to bake "(N days old)" into the title. Dropped — a meal
+// you're looking forward to eating doesn't need to be told its age on the
+// plan itself, and the fridge card already answers that.
 describe('mealTitleForLeftover', () => {
-  it('bakes the age in at plan time so the row cannot keep counting up', () => {
-    expect(mealTitleForLeftover(aged(2, 4, { title: 'Leftover pizza' }), NOW))
-      .toBe('Leftover pizza (2 days old)');
-  });
-
-  it('singularises one day', () => {
-    expect(mealTitleForLeftover(aged(1, 4, { title: 'Dal' }), NOW)).toBe('Dal (1 day old)');
-  });
-
-  it('leaves off the age on the day it was made', () => {
-    expect(mealTitleForLeftover(aged(0, 4, { title: 'Dal' }), NOW)).toBe('Dal');
+  it('is just the leftover\'s own title, with no age suffix', () => {
+    expect(mealTitleForLeftover(aged(2, 4, { title: 'Leftover pizza' }))).toBe('Leftover pizza');
+    expect(mealTitleForLeftover(aged(0, 4, { title: 'Dal' }))).toBe('Dal');
   });
 });
 

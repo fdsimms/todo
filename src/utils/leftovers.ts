@@ -378,20 +378,19 @@ export function describeFridge(
 }
 
 /**
- * What a leftover reads as when it's the plan for a meal — "Leftover chilli
- * (2 days old)".
+ * What a leftover reads as when it's the plan for a meal — just its own title,
+ * verbatim.
  *
- * The age is baked into the captured title rather than resolved at render time,
- * which is the opposite of titleForEntry's live-recipe-name rule and deliberate:
- * a recipe's name is a fact about a document that should follow a rename, but
- * "2 days old" is a fact about *the night you planned it for*. Resolved live it
- * would keep counting up, so Tuesday's dinner would eventually claim it ate a
- * three-week-old curry.
+ * Used to read "Leftover chilli (2 days old)" — dropped (#1731): a meal you're
+ * looking forward to eating doesn't need to be told how old it is on the plan
+ * itself, and the fridge card (describeLeftover) is already where that's
+ * answered. Kept as its own named function rather than inlined at each call
+ * site: a leftover entry's title is a snapshot captured at plan time, not
+ * resolved live off the leftover row the way a recipe-based entry's name is
+ * (see titleForEntry) — this is the one place that snapshot is taken.
  */
-export function mealTitleForLeftover(leftover: Leftover, now: Date = new Date()): string {
-  const days = daysInFridge(leftover, now);
-  if (days === 0) return leftover.title;
-  return `${leftover.title} (${days} ${days === 1 ? 'day' : 'days'} old)`;
+export function mealTitleForLeftover(leftover: Leftover): string {
+  return leftover.title;
 }
 
 /**
