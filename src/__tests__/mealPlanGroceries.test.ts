@@ -458,6 +458,15 @@ describe('parseQuantityAmount', () => {
     expect(parseQuantityAmount('a bunch')).toBeNull();
     expect(parseQuantityAmount('x2')).toBeNull();
   });
+
+  // A percentage is part of a product name ("2% milk"), never an amount —
+  // the refusal scaling, converting and comparing all already made, and which
+  // this one now shares rather than reading "%" as a unit and summing to
+  // "4 %". See quantity.ts.
+  it('refuses a percentage', () => {
+    expect(parseQuantityAmount('2%')).toBeNull();
+    expect(mergeQuantities(['2%', '2%'])).toBe('2% · 2%');
+  });
 });
 
 describe('mergeQuantities', () => {

@@ -8,11 +8,12 @@ import { choiceGroupKey, flattenRecipeIngredients, type ChoiceResolution } from 
 import {
   formatQuantityAmount,
   inflectUnit,
-  normalizeScale,
-  quantityAmount,
-  scaleQuantity,
+  isWholeAmount,
+  parseQuantity,
+  rationalToNumber,
   unitKey,
-} from './recipeScale';
+} from './quantity';
+import { normalizeScale, scaleQuantity } from './recipeScale';
 
 /**
  * Everything decidable about turning a week plan into a grocery add, kept
@@ -33,6 +34,10 @@ import {
  * Sunday), unitConvert converts for display through a setting, and
  * groceryPrice divides to compare two stores' prices per unit — and that last
  * one refuses the whole set unless every quantity in it can be measured.
+ *
+ * All of them, this module included, now *read* a quantity the same way
+ * (`quantity.ts`). That's a shared parse, not a shared licence: what each is
+ * allowed to do with the result is still its own rule, written where it lives.
  */
 
 /** One recipe's ingredient, as it landed on one planned meal. */
@@ -186,23 +191,23 @@ function groupKeyIfUndecided(
   return undecided.has(key) ? key : null;
 }
 
-// A whole string that is nothing but an amount and an optional unit word. The
-// *shape* is as strict as it ever was — anchored at both ends, so "2 14 oz
-// cans" and "1 cup, packed" still don't parse and still get listed rather than
-// summed. Only the notations for the amount itself widened.
-const WHOLE_QUANTITY = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*([a-z%]*)$/i;
-
 /**
  * "2 lb" → `{ amount: 2, unit: 'lb' }`. Null for anything that isn't a bare
  * amount and unit word.
  *
- * **Fractions and mixed numbers parse here now**, where they used to be
- * refused. The original reasoning was that summing them means adding fractions
- * with possibly different denominators, and that this module had no business
- * doing that kind of quiet-but-fragile arithmetic. Recipe scaling changed the
- * arithmetic, not the caution: exact rational addition is in recipeScale (see
- * `quantityAmount`/`formatQuantityAmount`), and it's what makes "1/2 cup" +
- * "1/4 cup" come out as "3/4 cup" rather than "0.75 cup" or a float artefact.
+ * The *shape* is as strict as it ever was — "2 14 oz cans" and "1 cup, packed"
+ * still don't parse and still get listed rather than summed, which is what
+ * `isWholeAmount` says. What it no longer does is read the string itself: the
+ * amount notations, the units and the container shapes are `quantity.ts`'s, so
+ * this is the rule mergeQuantities applies rather than a fifth parser.
+ *
+ * **Fractions and mixed numbers parse here**, where they used to be refused.
+ * The original reasoning was that summing them means adding fractions with
+ * possibly different denominators, and that this module had no business doing
+ * that kind of quiet-but-fragile arithmetic. Recipe scaling changed the
+ * arithmetic, not the caution: exact rationals are `quantity.ts`'s, and they're
+ * what make "1/2 cup" + "1/4 cup" come out as "3/4 cup" rather than "0.75 cup"
+ * or a float artefact.
  *
  * Refusing them stopped being tenable anyway the moment a scaled recipe could
  * *produce* one: halving a shopping list would have turned every merged row
@@ -210,13 +215,9 @@ const WHOLE_QUANTITY = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*([a-z%]*)$/i;
  * would have quietly degraded the thing it was meant to help with.
  */
 export function parseQuantityAmount(q: string): { amount: number; unit: string } | null {
-  const trimmed = q.trim();
-  if (!trimmed) return null;
-  const match = WHOLE_QUANTITY.exec(trimmed);
-  if (!match) return null;
-  const amount = quantityAmount(match[1]);
-  if (!amount) return null;
-  return { amount: amount.value, unit: match[2].toLowerCase() };
+  const parsed = parseQuantity(q);
+  if (!isWholeAmount(parsed)) return null;
+  return { amount: rationalToNumber(parsed.amount), unit: (parsed.unitWritten ?? '').toLowerCase() };
 }
 
 /**
@@ -243,25 +244,27 @@ export function mergeQuantities(quantities: readonly string[]): string {
   if (present.length === 0) return '';
   if (present.length === 1) return present[0];
 
-  const parsed = present.map(parseQuantityAmount);
-  const allParsed = parsed.every((p): p is { amount: number; unit: string } => p !== null);
-  if (allParsed) {
-    const unit = parsed[0]!.unit;
+  const parsed = present.map(parseQuantity);
+  // Filtered rather than tested in place so the amounts narrow to non-null;
+  // every one of them has to qualify, which is what the length check says.
+  const whole = parsed.filter(isWholeAmount);
+  if (whole.length === parsed.length) {
+    const unit = (whole[0].unitWritten ?? '').toLowerCase();
     // Compared as unit *identities*, so "cup" and "cups" are the same unit and
     // still sum. Scaling generates both forms itself — a halved line says
     // "1/2 cup" where the recipe said "2 cups" — so a raw string comparison
     // would list two measurements of the same thing side by side. Still never
     // across genuinely different units: "g" and "grams" collapse, "g" and "kg"
-    // do not (see recipeScale.unitKey).
+    // do not (see quantity.unitKey).
     const key = unitKey(unit);
-    const sameUnit = parsed.every(p => unitKey(p!.unit) === key);
+    const sameUnit = whole.every(p => unitKey(p.unitWritten ?? '') === key);
     if (sameUnit) {
-      const total = parsed.reduce((sum, p) => sum + p!.amount, 0);
+      const total = whole.reduce((sum, p) => sum + rationalToNumber(p.amount), 0);
       // Rendered the same way a scaled quantity is, so a list built from
       // fractions reads in fractions ("3/4 cup") — except when a source was
       // written in decimals, which is a notation the person chose and gets kept
       // ("1.1 lb" + "2.2 lb" → "3.3 lb", not "3 3/10 lb").
-      const anyDecimal = present.some(q => /\d\.\d/.test(q));
+      const anyDecimal = whole.some(p => p.decimal);
       const amountText = formatQuantityAmount(total, anyDecimal);
       // Agreed with the total rather than copied off the first source, which
       // is the other half of comparing by identity: having decided "1/2 cup"
