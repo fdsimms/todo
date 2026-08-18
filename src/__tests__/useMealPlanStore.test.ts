@@ -162,7 +162,7 @@ beforeEach(() => {
   useGroceryStore.setState({ items: [] });
   useMealPlanStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
-    lastAction: null, cookedOffer: null, plannedSlotCounts: {},
+    lastAction: null, cookedOffer: null, plannedSlotCounts: {}, cookingCounts: null,
   });
 });
 
@@ -265,6 +265,81 @@ describe('refreshPlannedSlotCounts', () => {
     useMealPlanStore.getState().refreshPlannedSlotCounts(['2026-08-11']);
 
     expect(counts()).toBe(first);
+  });
+});
+
+describe('refreshCookingCounts', () => {
+  const window = { startKey: '2026-07-15', endKey: '2026-08-13', todayKey: '2026-08-13' };
+  const cooked = (date: string, slot: MealSlot = 'dinner') =>
+    entry(date, slot, { cookedAt: `${date}T19:00:00.000Z` });
+
+  it('is null until something asks — an absent count is not a zero', () => {
+    expect(useMealPlanStore.getState().cookingCounts).toBeNull();
+  });
+
+  it('counts the window out of the database rather than the loaded week', () => {
+    // The window MealPlanScreen has open is a different week entirely, which is
+    // the normal case for a hidden tab asking about a rolling month.
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      cooked('2026-08-10'),
+      entry('2026-08-11', 'dinner'),
+      cooked('2026-08-12'),
+    ]);
+
+    useMealPlanStore.getState().refreshCookingCounts(window);
+
+    expect(useMealPlanStore.getState().cookingCounts).toEqual({
+      days: 30,
+      daysCooked: 2,
+      planned: 3,
+      plannedCooked: 2,
+    });
+    expect(dbGetMealPlanEntries).toHaveBeenLastCalledWith('2026-07-15', '2026-08-13');
+  });
+
+  it('leaves the loaded window alone', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([cooked('2026-08-10')]);
+
+    useMealPlanStore.getState().refreshCookingCounts(window);
+
+    expect(useMealPlanStore.getState().rangeStart).toBe('2026-08-03');
+    expect(useMealPlanStore.getState().entries).toHaveLength(1);
+    expect(useMealPlanStore.getState().entries[0].date).toBe('2026-08-05');
+  });
+
+  it('keeps the same object when nothing moved', () => {
+    // Wired to a screen focus, so a revisit that changes nothing must not
+    // re-render the section.
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([cooked('2026-08-10')]);
+    useMealPlanStore.getState().refreshCookingCounts(window);
+    const first = useMealPlanStore.getState().cookingCounts;
+
+    useMealPlanStore.getState().refreshCookingCounts(window);
+
+    expect(useMealPlanStore.getState().cookingCounts).toBe(first);
+  });
+
+  it('picks up a meal marked cooked since the last read', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry('2026-08-10', 'dinner')]);
+    useMealPlanStore.getState().refreshCookingCounts(window);
+    expect(useMealPlanStore.getState().cookingCounts!.plannedCooked).toBe(0);
+
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([cooked('2026-08-10')]);
+    useMealPlanStore.getState().refreshCookingCounts(window);
+
+    expect(useMealPlanStore.getState().cookingCounts!.plannedCooked).toBe(1);
+  });
+
+  it('goes back to null on initialize, rather than describing a swapped-out database', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([cooked('2026-08-10')]);
+    useMealPlanStore.getState().refreshCookingCounts(window);
+    expect(useMealPlanStore.getState().cookingCounts).not.toBeNull();
+
+    useMealPlanStore.getState().initialize();
+
+    expect(useMealPlanStore.getState().cookingCounts).toBeNull();
   });
 });
 
