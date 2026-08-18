@@ -1611,9 +1611,18 @@ describe('describePantryCoverage', () => {
     expect(describePantryCoverage({ total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null })).toBeNull();
   });
 
-  it('names the degraded state rather than showing 0% when there\'s no catalog history at all', () => {
+  it('names the degraded state rather than showing 0% when nothing is in the catalog at all', () => {
     expect(describePantryCoverage({ total: 3, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null }))
-      .toBe('No purchase history for these yet');
+      .toBe('None of these have been on your list yet');
+  });
+
+  // The wording names catalog membership rather than purchase history, because
+  // that's the branch's actual condition: a catalogued-but-never-bought row
+  // takes the *other* branch and renders a real 0, so "no purchase history"
+  // described both states while only gating one.
+  it('still renders a fraction for a catalogued line nobody has bought', () => {
+    expect(describePantryCoverage({ total: 3, catalogMatches: 3, probablyHave: 0, viaSubstitute: 0, percent: 0 }))
+      .toBe('0/3 likely on hand');
   });
 
   it('renders the fraction, including a real 0, once there is history to judge from', () => {
