@@ -292,6 +292,22 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // The relationship can now be set from either end, so what has to exist in
+  // the seed is a live pair: one task carrying the pointer and one that shows
+  // as the thing it's waiting on.
+  it('seeds a task held back by another', () => {
+    useDemoStore.getState().enterDemoMode();
+    const s = useTaskStore.getState();
+
+    const waiter = s.tasks.find(t => t.title === 'Return the router');
+    const blocker = s.tasks.find(t => t.title === 'Cancel the internet plan');
+    expect(waiter?.blockedById).toBe(blocker!.id);
+    expect(s.waitingTasks().map(t => t.id)).toContain(waiter!.id);
+    expect(s.blockedTasksOf(blocker!.id).map(t => t.id)).toEqual([waiter!.id]);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // The month grid's one distinctive mark is a dot for an occurrence that has
   // no row yet, and only a fixed-schedule recurrence with a due date produces
   // one (see canProject). Nothing else in the seed asserts that combination

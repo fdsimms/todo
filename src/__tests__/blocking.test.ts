@@ -1,4 +1,4 @@
-import { canBlock, blockerOf, isBlocked, wouldCycle, waitingOn, resolverFor, blockerAffinity, sortByBlockerAffinity } from '../utils/blocking';
+import { canBlock, blockerOf, isBlocked, wouldCycle, waitingOn, resolverFor, blockerAffinity, sortByBlockerAffinity, canBeBlockerOf, canBeBlockedBy, resolveBlocksEdit, describeBlocks } from '../utils/blocking';
 import { registerTaskSource, resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import type { Task } from '../types';
 
@@ -203,6 +203,126 @@ describe('waitingOn', () => {
 
   it('is empty for a task nothing waits on', () => {
     expect(waitingOn('b', [makeTask({ id: 'b' })])).toEqual([]);
+  });
+});
+
+describe('canBeBlockerOf', () => {
+  const tasks = [
+    makeTask({ id: 'a' }),
+    makeTask({ id: 'b' }),
+    makeTask({ id: 'done', completed: true }),
+    makeTask({ id: 'filed', archived: true }),
+    makeTask({ id: 'sub', parentId: 'a' }),
+  ];
+  const resolve = resolverFor(tasks);
+
+  it('offers a live top-level task', () => {
+    expect(canBeBlockerOf(makeTask({ id: 'b' }), 'a', resolve)).toBe(true);
+  });
+
+  it('refuses the task itself, a done, filed or subtask row', () => {
+    expect(canBeBlockerOf(makeTask({ id: 'a' }), 'a', resolve)).toBe(false);
+    expect(canBeBlockerOf(makeTask({ id: 'done', completed: true }), 'a', resolve)).toBe(false);
+    expect(canBeBlockerOf(makeTask({ id: 'filed', archived: true }), 'a', resolve)).toBe(false);
+    expect(canBeBlockerOf(makeTask({ id: 'sub', parentId: 'a' }), 'a', resolve)).toBe(false);
+  });
+
+  it('refuses a candidate that would close a loop', () => {
+    const loop = resolverFor([makeTask({ id: 'a' }), makeTask({ id: 'b', blockedById: 'a' })]);
+    expect(canBeBlockerOf(makeTask({ id: 'b', blockedById: 'a' }), 'a', loop)).toBe(false);
+  });
+
+  it('offers anything live to a task that does not exist yet', () => {
+    expect(canBeBlockerOf(makeTask({ id: 'b' }), null, resolve)).toBe(true);
+  });
+});
+
+describe('canBeBlockedBy', () => {
+  it('offers a live task with no blocker of its own', () => {
+    const resolve = resolverFor([makeTask({ id: 'a' }), makeTask({ id: 'b' })]);
+    expect(canBeBlockedBy(makeTask({ id: 'b' }), 'a', resolve)).toBe(true);
+  });
+
+  // blockedById is one pointer, so taking a task already waiting on something
+  // else would silently drop that relationship.
+  it('refuses a task already waiting on a different task', () => {
+    const resolve = resolverFor([makeTask({ id: 'a' }), makeTask({ id: 'b', blockedById: 'c' }), makeTask({ id: 'c' })]);
+    expect(canBeBlockedBy(makeTask({ id: 'b', blockedById: 'c' }), 'a', resolve)).toBe(false);
+  });
+
+  it('still offers a task already waiting on this one', () => {
+    const resolve = resolverFor([makeTask({ id: 'a' }), makeTask({ id: 'b', blockedById: 'a' })]);
+    expect(canBeBlockedBy(makeTask({ id: 'b', blockedById: 'a' }), 'a', resolve)).toBe(true);
+  });
+
+  it('refuses the task this one is itself waiting on, directly or up the chain', () => {
+    const resolve = resolverFor([
+      makeTask({ id: 'a', blockedById: 'b' }),
+      makeTask({ id: 'b', blockedById: 'c' }),
+      makeTask({ id: 'c' }),
+    ]);
+    expect(canBeBlockedBy(makeTask({ id: 'b', blockedById: 'c' }), 'a', resolve)).toBe(false);
+    expect(canBeBlockedBy(makeTask({ id: 'c' }), 'a', resolve)).toBe(false);
+  });
+
+  it('refuses done, filed and subtask rows', () => {
+    const resolve = resolverFor([makeTask({ id: 'a' })]);
+    expect(canBeBlockedBy(makeTask({ id: 'done', completed: true }), 'a', resolve)).toBe(false);
+    expect(canBeBlockedBy(makeTask({ id: 'filed', archived: true }), 'a', resolve)).toBe(false);
+    expect(canBeBlockedBy(makeTask({ id: 'sub', parentId: 'x' }), 'a', resolve)).toBe(false);
+  });
+});
+
+describe('resolveBlocksEdit', () => {
+  it('links what was added and releases what was dropped', () => {
+    const tasks = [
+      makeTask({ id: 'a' }),
+      makeTask({ id: 'keep', blockedById: 'a' }),
+      makeTask({ id: 'drop', blockedById: 'a' }),
+      makeTask({ id: 'add' }),
+    ];
+    expect(resolveBlocksEdit('a', ['keep', 'add'], tasks)).toEqual({ link: ['add'], unlink: ['drop'] });
+  });
+
+  it('is a no-op when the set is unchanged', () => {
+    const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'w', blockedById: 'a' })];
+    expect(resolveBlocksEdit('a', ['w'], tasks)).toEqual({ link: [], unlink: [] });
+  });
+
+  // The waiter that already happened keeps its record of what held it up.
+  it('never releases a completed or archived waiter', () => {
+    const tasks = [
+      makeTask({ id: 'a' }),
+      makeTask({ id: 'done', blockedById: 'a', completed: true }),
+      makeTask({ id: 'filed', blockedById: 'a', archived: true }),
+    ];
+    expect(resolveBlocksEdit('a', [], tasks)).toEqual({ link: [], unlink: [] });
+  });
+
+  it('drops an id that is gone, or that the rules refuse', () => {
+    const tasks = [
+      makeTask({ id: 'a' }),
+      makeTask({ id: 'taken', blockedById: 'other' }),
+      makeTask({ id: 'other' }),
+    ];
+    expect(resolveBlocksEdit('a', ['deleted', 'taken'], tasks)).toEqual({ link: [], unlink: [] });
+  });
+
+  it('refuses a link that would close a loop', () => {
+    const tasks = [makeTask({ id: 'a', blockedById: 'b' }), makeTask({ id: 'b' })];
+    expect(resolveBlocksEdit('a', ['b'], tasks)).toEqual({ link: [], unlink: [] });
+  });
+});
+
+describe('describeBlocks', () => {
+  it('names one task and counts the rest', () => {
+    expect(describeBlocks([])).toBeUndefined();
+    expect(describeBlocks(['Return the router'])).toBe('Return the router');
+    expect(describeBlocks(['Return the router', 'Cancel the plan'])).toBe('2 tasks');
+  });
+
+  it('names a row that has gone rather than showing a blank', () => {
+    expect(describeBlocks([''])).toBe('Task no longer exists');
   });
 });
 

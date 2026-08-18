@@ -24,22 +24,37 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { fuzzySearch } from '../utils/fuzzySearch';
-import { wouldCycle, resolverFor, sortByBlockerAffinity, type BlockerContext } from '../utils/blocking';
+import { canBeBlockedBy, canBeBlockerOf, resolverFor, sortByBlockerAffinity, type BlockerContext } from '../utils/blocking';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { categoryLabel } from '../utils/categoryLabel';
 import type { Task } from '../types';
 
+/**
+ * Which end of the relationship is being filled in: the task being edited is
+ * either the one waiting, or the one everything else is waiting on.
+ */
+export type TaskRelation = 'waitingOn' | 'blocks';
+
 interface Props {
   visible: boolean;
   onClose: () => void;
+  relation: TaskRelation;
   /** The task being edited — excluded from the list, along with anything that would loop back to it. */
   taskId: string | null;
   /**
-   * Where the waiting task sits, from the editor's unsaved draft. Candidates
-   * sharing its stack, then project, then category are floated to the top.
+   * Where the task being edited sits, from the editor's unsaved draft.
+   * Candidates sharing its stack, then project, then category are floated to
+   * the top.
    */
   context?: BlockerContext;
-  onSelect: (blockerId: string) => void;
+  /**
+   * Anything the open editor has already spoken for — the tasks it's staged as
+   * blocked, and the blocker it's staged as waiting on. Both are draft state
+   * the store can't see yet, and each would be a one-hop loop from the other
+   * side, so they're kept out of the list here rather than caught on save.
+   */
+  excludeIds?: string[];
+  onSelect: (taskId: string) => void;
 }
 
 /** Enough to scan, few enough to render without virtualizing. Search reaches the rest. */
@@ -49,14 +64,50 @@ const MAX_ROWS = 40;
 const TOP_INSET = 72;
 
 /**
- * Picks the task that another task is waiting on (see Task.blockedById).
- *
- * The list is filtered by wouldCycle, not just by id: a loop makes every task
- * in it permanently invisible, since each is waiting on something that can
- * never complete. Filtering here is what stops one being made in the first
- * place — and it's why "waiting on" can't be offered as a free-text field.
+ * The words for each end. One table rather than a ternary per string, so the
+ * two directions read side by side and neither can quietly lose a line.
  */
-export function BlockerPickerSheet({ visible, onClose, taskId, context, onSelect }: Props) {
+const COPY: Record<TaskRelation, {
+  title: string;
+  hint: string;
+  emptyTitle: string;
+  emptySub: string;
+  action: (title: string) => string;
+}> = {
+  waitingOn: {
+    title: 'Waiting on',
+    hint: 'This task stays out of your lists until the one you pick is done.',
+    emptyTitle: 'Nothing to wait on',
+    emptySub: 'Tasks that would end up waiting on each other are left out.',
+    action: title => `Wait on ${title}`,
+  },
+  blocks: {
+    title: 'Blocks',
+    hint: 'The task you pick stays out of your lists until this one is done.',
+    emptyTitle: 'Nothing to block',
+    // Says why the list is short rather than leaving it a mystery: a task
+    // waits on one thing at a time, so anything already waiting on another
+    // task is set from that task's own editor instead.
+    emptySub: 'A task can wait on only one thing, so tasks already waiting on something else are left out.',
+    action: title => `Block ${title}`,
+  },
+};
+
+/**
+ * Picks the other end of a blocking relationship (see Task.blockedById) —
+ * either the task this one waits on, or a task this one holds back.
+ *
+ * One sheet for both directions because the pointer is one field: only the
+ * eligibility rule and the words change, and a second copy of the list,
+ * ranking, search and keyboard handling is how the two ends would come to
+ * disagree about which tasks can be picked.
+ *
+ * The list is filtered by the cycle check, not just by id: a loop makes every
+ * task in it permanently invisible, since each is waiting on something that
+ * can never complete. Filtering here is what stops one being made in the first
+ * place — and it's why neither end can be offered as a free-text field.
+ */
+export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, context, excludeIds, onSelect }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -69,17 +120,17 @@ export function BlockerPickerSheet({ visible, onClose, taskId, context, onSelect
   const [query, setQuery] = useState('');
 
   const ctx: BlockerContext = context ?? {};
+  const copy = COPY[relation];
+
+  const excluded = useMemo(() => new Set(excludeIds ?? []), [excludeIds]);
 
   const candidates = useMemo(() => {
     const resolve = resolverFor(tasks);
     const eligible = tasks.filter(t =>
-      !t.parentId &&
-      !t.completed &&
-      !t.archived &&
-      t.id !== taskId &&
-      // A completed blocker wouldn't hold anything back, and a loop would hide
-      // both ends of it forever.
-      !(taskId && wouldCycle(taskId, t.id, resolve))
+      !excluded.has(t.id) &&
+      (relation === 'waitingOn'
+        ? canBeBlockerOf(t, taskId, resolve)
+        : canBeBlockedBy(t, taskId, resolve))
     );
     // Rank before truncating, so a neighbour buried deep in the list still
     // reaches the visible rows.
@@ -91,7 +142,7 @@ export function BlockerPickerSheet({ visible, onClose, taskId, context, onSelect
       .filter(r => ids.has(r.task.id))
       .map(r => r.task);
     return sortByBlockerAffinity(matches, ctx).slice(0, MAX_ROWS);
-  }, [tasks, taskId, query, ctx.groupId, ctx.projectId, ctx.category]);
+  }, [tasks, taskId, relation, excluded, query, ctx.groupId, ctx.projectId, ctx.category]);
 
   /**
    * The one-line "where this lives" under a candidate's title — the category
@@ -235,10 +286,8 @@ export function BlockerPickerSheet({ visible, onClose, taskId, context, onSelect
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sheetTitle}>Waiting on</Text>
-          <Text style={styles.sheetHint}>
-            This task stays out of your lists until the one you pick is done.
-          </Text>
+          <Text style={styles.sheetTitle}>{copy.title}</Text>
+          <Text style={styles.sheetHint}>{copy.hint}</Text>
 
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={15} color={colors.textTertiary} />
@@ -256,11 +305,9 @@ export function BlockerPickerSheet({ visible, onClose, taskId, context, onSelect
           {candidates.length === 0 ? (
             <View style={styles.emptyWrap}>
               <Ionicons name="hourglass-outline" size={28} color={colors.textTertiary} />
-              <Text style={styles.emptyTitle}>{query.trim() ? 'No matches' : 'Nothing to wait on'}</Text>
+              <Text style={styles.emptyTitle}>{query.trim() ? 'No matches' : copy.emptyTitle}</Text>
               <Text style={styles.emptySub}>
-                {query.trim()
-                  ? 'No open task matches that.'
-                  : 'Tasks that would end up waiting on each other are left out.'}
+                {query.trim() ? 'No open task matches that.' : copy.emptySub}
               </Text>
             </View>
           ) : (
@@ -273,7 +320,7 @@ export function BlockerPickerSheet({ visible, onClose, taskId, context, onSelect
                     onPress={() => handleSelect(task)}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={`Wait on ${displayTitleFor(task)}`}
+                    accessibilityLabel={copy.action(displayTitleFor(task))}
                   >
                     <View style={[styles.rowIcon, { backgroundColor: colors.accent + '22' }]}>
                       <Ionicons name="checkbox-outline" size={16} color={colors.accent} />
