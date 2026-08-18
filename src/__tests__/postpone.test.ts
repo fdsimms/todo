@@ -1,6 +1,6 @@
 import {
   postponeOutcome, nextPostponeCount, shouldNudgePostpone, parsePostponeThreshold,
-  nextDriftingSince, driftingTasks,
+  nextDriftingSince, driftingTasks, driftingTaskList,
 } from '../utils/postpone';
 import type { Task } from '../types';
 
@@ -277,5 +277,29 @@ describe('driftingTasks', () => {
       make({ id: 'dated', postponeCount: 4, driftingSince: '2026-08-01T00:00:00.000Z' }),
     ], 3);
     expect(result.map(e => e.task.id)).toEqual(['dated', 'undated']);
+  });
+});
+
+describe('driftingTaskList', () => {
+  const make = (o: Partial<Task>): Task => ({
+    id: 'a', title: 'A', postponeCount: 0, postponeMuted: false, driftingSince: null,
+    completed: false, archived: false, parentId: null,
+    ...o,
+  } as Task);
+
+  // The whole reason this exists apart from driftingTasks(): DriftScreen
+  // selects it with useShallow, which only bails out of a re-render when an
+  // unchanged input yields elements that are === the previous call's. A
+  // fresh {task, count, since} wrapper per task (what driftingTasks() built,
+  // and what DriftScreen used to select directly) fails that check on every
+  // call and drove the screen into an infinite render loop (#1626).
+  it('returns the same Task references driftingTasks() wraps, filtered and sorted the same way', () => {
+    const worst = make({ id: 'worst', postponeCount: 9 });
+    const at = make({ id: 'at', postponeCount: 3 });
+    const low = make({ id: 'low', postponeCount: 2 });
+    const list = driftingTaskList([low, at, worst], 3);
+    expect(list).toEqual([worst, at]);
+    expect(list[0]).toBe(worst);
+    expect(list[1]).toBe(at);
   });
 });

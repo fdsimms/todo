@@ -57,7 +57,17 @@ const noonToday = () => {
 export function DriftScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const entries = useTaskStore(useShallow(s => s.driftingTasks()));
+  // Selected as the raw, stable Task[] rather than s.driftingTasks()'s
+  // DriftEntry[] — that method rebuilds a fresh {task, count, since} wrapper
+  // per task on every call, which useShallow can never find equal to the
+  // previous render's, so the store re-notified on every render and the
+  // screen spun into "Maximum update depth exceeded" (#1626). The wrapper
+  // objects are built once here instead, memoized on the task list itself.
+  const driftingTaskList = useTaskStore(useShallow(s => s.driftingTaskList()));
+  const entries = useMemo<DriftEntry[]>(
+    () => driftingTaskList.map(task => ({ task, count: task.postponeCount, since: task.driftingSince })),
+    [driftingTaskList],
+  );
   const updateTask = useTaskStore(s => s.updateTask);
   const archiveTask = useTaskStore(s => s.archiveTask);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
