@@ -89,6 +89,30 @@ function ms(iso: string): number | null {
 }
 
 /**
+ * An all-day event's [start, end) as local-midnight instants, or null for an
+ * unparseable date.
+ *
+ * EventKit stores an all-day event's `startDate`/`endDate` as UTC midnight of
+ * the calendar date it names, regardless of the device's own timezone — it's
+ * the date the event is *on*, not a moment in the day. Comparing that instant
+ * directly against a local day's [start, end) the way a timed event's instant
+ * is compared (`ms` above) reads the wrong day in any zone behind UTC: UTC
+ * midnight on the 13th is 5pm local on the 12th at UTC-7, which falls inside
+ * the *12th's* local range, not the 13th's (#1725). Reading the UTC calendar
+ * date back off the instant and rebuilding it as local midnight is what makes
+ * the comparison ask about the calendar date rather than the instant.
+ */
+function allDayRangeMs(event: BusyEvent): { start: number; end: number } | null {
+  const start = new Date(event.start);
+  const end = new Date(event.end);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return null;
+  return {
+    start: new Date(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()).getTime(),
+    end: new Date(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()).getTime(),
+  };
+}
+
+/**
  * The intervals of [rangeStart, rangeEnd) that are already spoken for, clipped
  * to the range and **merged**.
  *
@@ -208,12 +232,17 @@ export function eventsIn(
   return events
     .filter(event => {
       if (!isLiveEvent(event)) return false;
+      // An all-day event's range is the calendar date it names, read via
+      // allDayRangeMs — not the raw UTC-midnight instant, which reads as a
+      // different local day in any zone behind UTC (#1725). `end > from`
+      // keeps a meeting/day that finished at the range's own start out of it.
+      if (event.allDay) {
+        const range = allDayRangeMs(event);
+        return range !== null && range.start < to && range.end > from;
+      }
       const start = ms(event.start);
       const end = ms(event.end);
       if (start === null || end === null) return false;
-      // An all-day event's range is the day itself, so the same overlap test
-      // covers both kinds. `end > from` keeps a meeting that finished at the
-      // range's own start out of it.
       return start < to && end > from;
     })
     .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());

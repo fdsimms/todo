@@ -18,6 +18,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { addDays } from 'date-fns/addDays';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -107,9 +108,18 @@ export function LogbookScreen() {
   const setDeliverableValue = useTaskStore(s => s.setDeliverableValue);
   const clearLogbook = useTaskStore(s => s.clearLogbook);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
+  const projects = useProjectStore(s => s.projects);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // A completed task's projectId doesn't say which project — same map
+  // SearchScreen builds once per projects change rather than looking each
+  // row up by scanning the array (getProjectById) on every render.
+  const projectNamesById = useMemo(
+    () => new Map(projects.map(p => [p.id, p.title])),
+    [projects]
+  );
 
   const [menuTask, setMenuTask] = useState<Task | null>(null);
   // The entry whose answer is being corrected. Read back off the live list by
@@ -362,6 +372,7 @@ export function LogbookScreen() {
                   ? (categoryEmoji ? `${categoryEmoji} ${item.category}` : item.category)
                   : null
               }
+              projectTitle={item.projectId ? projectNamesById.get(item.projectId) ?? null : null}
               styles={styles}
               colors={colors}
               selectionMode={selectionMode}
@@ -474,6 +485,8 @@ interface RowProps {
   task: Task;
   /** Pre-resolved "🏥 Health", or null when the entry has no category. */
   categoryLabel: string | null;
+  /** The task's project title, or null when it isn't filed under one. */
+  projectTitle: string | null;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
   selectionMode: boolean;
@@ -495,6 +508,7 @@ interface RowProps {
 const LogbookRow = React.memo(function LogbookRow({
   task,
   categoryLabel,
+  projectTitle,
   styles,
   colors,
   selectionMode,
@@ -594,6 +608,7 @@ const LogbookRow = React.memo(function LogbookRow({
                 ? `fell short at ${task.progressCount} of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${formatTime(task.completedAt!)}`
                 : `completed ${formatTime(task.completedAt!)}`,
             task.category,
+            projectTitle,
             task.actualMinutes != null ? `timed ${formatDuration(task.actualMinutes)}` : null,
             // Both states out loud, same as the row shows them: "no answer" is
             // what makes the ⋯ menu's "Add Answer" make sense to someone who
@@ -620,6 +635,12 @@ const LogbookRow = React.memo(function LogbookRow({
                 <Text style={styles.categoryChipText} numberOfLines={1}>{categoryLabel}</Text>
               </View>
             )}
+            {projectTitle && (
+              <View style={styles.categoryChip}>
+                <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={styles.categoryChipText} numberOfLines={1}>{projectTitle}</Text>
+              </View>
+            )}
             {task.actualMinutes != null && (
               <Text style={styles.taskTime}>· {formatDuration(task.actualMinutes)}</Text>
             )}
@@ -632,14 +653,12 @@ const LogbookRow = React.memo(function LogbookRow({
                 the Logbook to read back. It shrinks where the others don't, so
                 a long answer truncates instead of shoving them off the row.
 
-                A tinted pill rather than one more "· value" in the line, and
-                the "?" needs the pill as much as the pill needs it: bare, the
-                glyph sits between two unrelated bits of text and reads as
-                uncertainty about the value it's next to. Enclosed, it's a
-                label on the thing it belongs to — and the answer stops reading
-                as a second timestamp, which "9:14 AM · Sat 12 Sep" plainly
-                did. Same glyph the task's own checkbox carried before it was
-                ticked, so the row and its Logbook entry say the same thing.
+                A tinted pill rather than one more "· value" in the line — the
+                tint alone is what stops the answer reading as a second
+                timestamp, which "9:14 AM · Sat 12 Sep" plainly did. No "?" in
+                it (#1735): a question mark on a decision that's already been
+                made reads as the decision still being open, the opposite of
+                what a tinted "here's what you decided" pill is for.
 
                 An asked-but-unanswered entry says so rather than showing
                 nothing — otherwise it's indistinguishable from an ordinary
@@ -650,7 +669,6 @@ const LogbookRow = React.memo(function LogbookRow({
             {asksOnCompletion(task) && (
               answer !== null ? (
                 <View style={styles.answerPill}>
-                  <Ionicons name="help" size={iconSize.xs} color={colors.accent} />
                   <Text style={styles.answer} numberOfLines={1}>{answer}</Text>
                 </View>
               ) : (

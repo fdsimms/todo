@@ -1,5 +1,10 @@
-import { matchSizedContainer, LEADING_WORD } from './groceryParse';
-import { formatQuantityAmount, inflectUnit, splitLeadingAmount, unitKey } from './recipeScale';
+import {
+  formatQuantityAmount,
+  inflectUnit,
+  parseQuantity,
+  rationalToNumber,
+  unitKey,
+} from './quantity';
 
 /**
  * Showing a quantity in the units the cook actually thinks in — "1 lb" read as
@@ -39,7 +44,7 @@ import { formatQuantityAmount, inflectUnit, splitLeadingAmount, unitKey } from '
  * The sharp case is the same one scaling has: **a container's size never
  * converts.** "14 oz can" names a product on a shelf, and "≈400 g can" is a
  * product nobody sells — so a container line passes through whole, recognised
- * off the same SIZE_UNITS/CONTAINER_UNITS the parser and the scaler share.
+ * as `Quantity.container` by the same parse the scaler reads.
  */
 
 /**
@@ -264,35 +269,28 @@ export interface ConvertedQuantity {
 
 /** One quantity, with no `≈` of its own — see convertQuantity for the marker. */
 function convertOne(part: string, target: 'metric' | 'us'): ConvertedQuantity {
-  const text = part.trim();
-  const unchanged: ConvertedQuantity = { text, converted: false };
-  if (!text) return unchanged;
-
-  const amount = splitLeadingAmount(text);
-  if (!amount || amount.value <= 0) return unchanged;
-  const rest = amount.rest;
-
-  // "2%" — part of the product ("2% milk"), never an amount, same guard
-  // scaleQuantity carries for hand-typed and imported text.
-  if (rest.startsWith('%')) return unchanged;
+  const q = parseQuantity(part);
+  const unchanged: ConvertedQuantity = { text: q.raw, converted: false };
+  if (q.amount === null) return unchanged;
+  const value = rationalToNumber(q.amount);
+  if (value <= 0) return unchanged;
 
   // A sized container: the leading number is how big the tin is, not how much
   // of something you have, so converting it renames a product off the shelf.
-  if (matchSizedContainer(rest)) return unchanged;
+  if (q.container) return unchanged;
 
-  const word = LEADING_WORD.exec(rest);
-  if (!word) return unchanged;
-  const known = KNOWN_UNITS[unitKey(word[0])];
+  if (!q.unit) return unchanged;
+  const known = KNOWN_UNITS[q.unit];
   if (!known || known.system === target) return unchanged;
 
   const rendered = target === 'metric'
-    ? renderMetric(amount.value * known.base, known.dimension)
-    : renderUs(amount.value * known.base, known.dimension);
+    ? renderMetric(value * known.base, known.dimension)
+    : renderUs(value * known.base, known.dimension);
   if (!rendered) return unchanged;
 
   // Whatever followed the unit is prose — a size clause ("1 cup, packed"), a
   // prep note — and carries through untouched, exactly as scaling carries it.
-  return { text: `${rendered}${rest.slice(word[0].length)}`, converted: true };
+  return { text: `${rendered}${q.trailing}`, converted: true };
 }
 
 export interface MeasuredQuantity {
@@ -316,28 +314,30 @@ export interface MeasuredQuantity {
  * nobody sells, which is why that path passes it through whole — but fourteen
  * ounces is genuinely how much is in the tin, so dividing a price by it renames
  * nothing. A container line that names a *count* of sized tins ("2 14 oz cans")
- * has no unit word after its leading amount and falls out as null, which is the
- * refusal that matters: two of them is not fourteen ounces.
+ * is refused, which is the refusal that matters: two of them is not fourteen
+ * ounces.
  */
 export function measureQuantity(quantity: string): MeasuredQuantity | null {
-  const text = quantity.trim();
-  if (!text) return null;
+  const q = parseQuantity(quantity);
+  if (q.amount === null) return null;
+  const value = rationalToNumber(q.amount);
+  if (value <= 0) return null;
 
-  const amount = splitLeadingAmount(text);
-  if (!amount || amount.value <= 0) return null;
-  const rest = amount.rest;
-  // "2%" — part of the product, never an amount. Same guard convertOne carries.
-  if (rest.startsWith('%')) return null;
+  // A bare sized container takes its unit from the size word, and its leading
+  // amount *is* that size — "14 oz can" is fourteen ounces. A counted one
+  // ("2 14 oz cans") names a count instead, and two of them is not fourteen
+  // ounces, so it falls out here rather than measuring the wrong number.
+  if (q.container) {
+    if (q.container.count) return null;
+    const sized = KNOWN_UNITS[unitKey(q.container.sizeUnit)];
+    if (!sized) return null;
+    return { base: value * sized.base, dimension: sized.dimension, system: sized.system };
+  }
 
-  // Only a *sized* container takes its unit from the size word; "2 cups flour"
-  // matches the same two-word shape and must take "cups".
-  const sized = matchSizedContainer(rest);
-  const word = sized ? sized.size : LEADING_WORD.exec(rest)?.[0];
-  if (!word) return null;
-
-  const known = KNOWN_UNITS[unitKey(word)];
+  if (!q.unit) return null;
+  const known = KNOWN_UNITS[q.unit];
   if (!known) return null;
-  return { base: amount.value * known.base, dimension: known.dimension, system: known.system };
+  return { base: value * known.base, dimension: known.dimension, system: known.system };
 }
 
 /**

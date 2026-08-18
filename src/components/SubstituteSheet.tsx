@@ -17,7 +17,8 @@ import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { groceryNameKey } from '../utils/groceryParse';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
-import { scaleQuantity, splitLeadingAmount } from '../utils/recipeScale';
+import { parseQuantity } from '../utils/quantity';
+import { scaleQuantity } from '../utils/recipeScale';
 import { probablyHaveReason } from '../utils/grocerySuggest';
 import type { SuggestedSubstitute } from '../utils/substituteSuggestions';
 import { suggestSubstitutes, describeAIError } from '../services/aiSuggestions';
@@ -200,7 +201,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
   // "only applies to a recipe line measured in X" hint states the constraint
   // it's *actually* enforcing rather than a canned sentence. Null while the
   // left field hasn't produced a usable amount+unit yet.
-  const fromUnit = splitLeadingAmount(ratioFrom)?.rest || null;
+  const fromUnit = parseQuantity(ratioFrom).rest || null;
 
   // Two illustrative outcomes rather than the three the mock shows for
   // garlic specifically: a believable "wrong but plausible unit" example

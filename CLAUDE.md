@@ -156,6 +156,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | which heading an ingredient sits under | `src/utils/recipeSections.ts` — see Sections below |
 | halving or doubling a recipe | `src/utils/recipeScale.ts` — see Scaling below |
 | showing amounts in metric or US units | `src/utils/unitConvert.ts` — see Unit conversion below |
+| reading a `quantity` string at all — amounts, units, containers | `src/utils/quantity.ts` — see Quantities below |
 
 **Read narrowly.** Seven files are over 1,000 lines — `useTaskStore.test.ts` (2.6k),
 `TaskEditor.tsx` (2.3k), `TodayScreen.tsx` (2.1k), `QuickAddModal.tsx` (1.6k),
@@ -1111,11 +1112,42 @@ choosable before anything's filed under it.
   payload this list's caller actually needs. Nothing about the drag itself changes for a caller that
   doesn't pass it.
 
+### Quantities (`quantity.ts`) — the one place a quantity string is read
+
+`quantity` is free text everywhere it's stored (`RecipeIngredient.quantity`, `GroceryItem.quantity`,
+`ItemShopLink.lastPriceQuantity`) and that hasn't changed — this is **a parse-on-read value type, not
+a migration**. What it replaced is six modules that each pulled a leading amount out of the same
+strings and each had its own idea of what "unreadable" meant (#1671). `parseQuantity` is now the only
+reader; the scaler, the converter, the price comparison, the substitute ratio, `mergeQuantities` and
+`parseGroceryInput`'s container gate are transformations over one type.
+
+- **`raw` is what renders whenever `amount` is null**, so "a pinch" behaves exactly as it always did
+  and no caller needs a refusal branch of its own.
+- **`amount === null` is every refusal, stated once**: no leading number, the `x2` notation, and a
+  percentage ("2%", which is part of a product name). That last one is the single behaviour this
+  extraction changed — `mergeQuantities` used to read `%` as a unit and sum "2%" + "2%" to "4 %",
+  where scaling, converting and comparing all already refused it.
+- **`countNotation` deliberately leaves `amount` null.** Scaling is the only reader with a use for
+  `x2`; every other one refused it before the type existed and gets that refusal for free.
+- **`container` carries both a size and a count**, because the leading number of "14 oz can" is the
+  tin's size and of "2 14 oz cans" is how many tins. `sizeText`/`sizeUnit`/`word` are verbatim: the
+  two modules allowed to do arithmetic on a quantity both leave a container's size exactly as
+  written, so it is carried rather than restated.
+- **`rest` is kept alongside `unit`**, and that isn't redundancy: `substituteQuantity` compares the
+  *whole* tail so a per-clove ratio can't take "3 cloves, minced", and `SubstituteSheet`'s hint names
+  back what the user typed.
+- **A shared parse is not a shared licence.** What each module may *do* with the result is still its
+  own rule, written where it lives — scaling never converts, conversion is display-only and marks
+  `≈`, `mergeQuantities` still won't collapse units that merely measure alike.
+
 ### Scaling (`recipeScale.ts`) — halving and doubling a recipe
 
 **This is the one place in the app that does arithmetic on a `quantity`**, and the only reason it's
 allowed to is that it's narrow by construction and always reached through a factor the user picked.
 Everything in `mealPlanGroceries.ts`'s header note still holds for every other reader.
+
+Rules 1, 3 and 4 below are `quantity.ts`'s now (the leading amount, the refusals, the rationals).
+What's left in `recipeScale` is the multiplication and the shapes it renders back.
 
 The four rules that make it safe, all enforced in `scaleQuantity`:
 
@@ -1136,8 +1168,8 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
 - **The sharp one: `14 oz can` doubled must become `2 14 oz cans`, not `28 oz can`.** That string is
   one can of a given size, so its leading number is the *size*, not a count — scaling it changes
   what you buy. Halving it refuses outright, having no expression in that notation. Both container
-  shapes are recognised off `SIZE_UNITS`/`CONTAINER_UNITS`, exported from `groceryParse` rather than
-  copied, so the parser and the scaler can't come to disagree about what a container line is.
+  shapes are recognised by `parseQuantity` (`Quantity.container`) rather than by each reader, so the
+  parser and the scaler can't come to disagree about what a container line is.
 - **Plural is `> 1`, not `!= 1`** — "1/2 cup", "1 1/2 cups". A unit that isn't in `UNIT_PLURALS`
   passes through uninflected ("2 bulb"), which is the same trade `groceryParse`'s unit whitelist
   makes: slightly wrong grammar in the user's own word beats "2 pinchs".
@@ -1188,9 +1220,9 @@ amount, and answering that in the unit they already had answers nothing.
 - **A closed table, never a guess** — mass and volume only, keyed by `unitKey` so both inflections
   land on one entry. A count ("3", "x2", "4 cloves"), an unparseable amount ("a pinch") and a unit
   not in the table all pass through verbatim and flagged, exactly as scaling's rule 3 does. **A
-  container's size never converts** either ("14 oz can" stays), recognised off the same
-  `SIZE_UNITS`/`CONTAINER_UNITS` the parser and the scaler share: "≈400 g can" is a product nobody
-  sells. `oz` is mass and only mass — the parser has no "fl oz", so there is no ambiguous ounce.
+  container's size never converts** either ("14 oz can" stays), recognised as the same
+  `Quantity.container` the parser and the scaler read: "≈400 g can" is a product nobody sells. `oz`
+  is mass and only mass — the parser has no "fl oz", so there is no ambiguous ounce.
 - **Rounded to what a person would write**, which is the half that makes it useful and the half that
   makes `≈` mandatory: 1 cup is 240 ml, not 236.59. Metric rounds to a step that widens with
   magnitude; US snaps to a cooking fraction and **refuses to when none is close enough**, saying

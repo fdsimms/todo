@@ -769,9 +769,13 @@ export interface TemplateItemGroup {
 //   'stack'   — one TaskGroup named after the run
 //   'project' — one Project named after the run, the apply's two anchor dates
 //               becoming its targetStartDate/targetEndDate
+//   'task'    — one real Task named after the run, every item becoming a
+//               subtask of it instead of a top-level task of its own. Takes
+//               no dates of its own, same as a stack — there's no Task field
+//               to put a start/end range in, only single dueDate/deferUntil.
 // Only consulted when the user actually names the run; a blank name always
 // means 'none'.
-export type TemplateContainer = 'none' | 'stack' | 'project';
+export type TemplateContainer = 'none' | 'stack' | 'project' | 'task';
 
 export interface TaskTemplate {
   id: string;

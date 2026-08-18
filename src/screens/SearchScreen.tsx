@@ -124,14 +124,15 @@ function SearchResultItem({ result, onPress, styles, colors }: {
           {/* What the task was completed with, for a decision task (see
               Task.deliverableKind). Search is how anyone finds a task they
               finished months ago, so without this the row you came for is
-              found and still doesn't tell you what you decided. Same glyph
-              and pill the Logbook entry uses, including the "No answer"
-              fallback — gated on isCompleted, since an *outstanding* decision
-              task hasn't failed to answer anything, it just hasn't run yet. */}
+              found and still doesn't tell you what you decided. Same pill the
+              Logbook entry uses, including the "No answer" fallback and the
+              lack of a "?" in an answered one (#1735: it read as the decision
+              still being open) — gated on isCompleted, since an *outstanding*
+              decision task hasn't failed to answer anything, it just hasn't
+              run yet. */}
           {isCompleted && asksOnCompletion(task) && (
             answer !== null ? (
               <View style={styles.answerPill}>
-                <Ionicons name="help" size={iconSize.xs} color={colors.accent} />
                 <Text style={styles.answerText} numberOfLines={1}>{answer}</Text>
               </View>
             ) : (

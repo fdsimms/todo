@@ -1,4 +1,12 @@
-import { isSizedContainer, matchSizedContainer, LEADING_WORD } from './groceryParse';
+import {
+  formatQuantityAmount,
+  formatRational,
+  inflectUnit,
+  multiplyRational,
+  parseQuantity,
+  rationalFromNumber,
+  rationalToNumber,
+} from './quantity';
 
 /**
  * Halving and doubling a recipe — the one place in this app that does
@@ -31,290 +39,16 @@ import { isSizedContainer, matchSizedContainer, LEADING_WORD } from './groceryPa
  * Rule 3 is the important one. A scaler that covers 95% of lines and admits
  * the other 5% is useful; one that covers 100% by guessing at "a knob of
  * butter" is a liability.
- */
-
-// ---------------------------------------------------------------------------
-// Exact rationals
-// ---------------------------------------------------------------------------
-
-/** A non-negative exact rational. `den` is always > 0 and the pair is reduced. */
-interface Rational {
-  num: number;
-  den: number;
-}
-
-function gcd(a: number, b: number): number {
-  while (b) [a, b] = [b, a % b];
-  return a;
-}
-
-function rational(num: number, den: number): Rational {
-  const divisor = gcd(Math.abs(num), Math.abs(den)) || 1;
-  return { num: num / divisor, den: den / divisor };
-}
-
-function multiply(a: Rational, b: Rational): Rational {
-  return rational(a.num * b.num, a.den * b.den);
-}
-
-function toNumber(r: Rational): number {
-  return r.num / r.den;
-}
-
-/**
- * A scale factor as an exact rational. The factors the UI offers are all
- * halves and thirds, and a servings-derived one ("4 servings → 6") is a ratio
- * of two integers, so a denominator search bounded at 1000 is exact for every
- * factor this app can produce and falls back to a plain approximation rather
- * than throwing for anything stranger.
- */
-function factorToRational(factor: number): Rational {
-  if (Number.isInteger(factor)) return { num: factor, den: 1 };
-  for (let den = 2; den <= 1000; den++) {
-    const num = factor * den;
-    if (Math.abs(num - Math.round(num)) < 1e-9) return rational(Math.round(num), den);
-  }
-  return rational(Math.round(factor * 1000), 1000);
-}
-
-// The denominators a cook writes. 6 and 16 are in because they're what halving
-// a third and an eighth produce — without them "1/3 cup" halved would fall
-// back to a decimal, which is the one place a fraction really is clearer.
-const DENOMINATORS = [2, 3, 4, 6, 8, 16];
-
-/**
- * A rational as the text a recipe would be written with: "3", "1/2",
- * "1 1/2" — ASCII rather than "½", matching what parseGroceryInput already
- * produces and stores.
  *
- * `preferDecimal` keeps a quantity in the notation it arrived in: "1.5 kg"
- * doubled reads "3 kg" and halved "0.75 kg", because someone writing decimals
- * doesn't want fractions handed back. A rational that lands on no cooking
- * denominator falls back to a 2-place decimal for the same reason rule 3
- * exists — an honest approximation beats "17/50 cup".
+ * Rules 1, 3 and 4 are all `quantity.ts`'s now — the leading amount, the
+ * refusals and the rationals are one value type shared with every other reader
+ * of a quantity string. What's left here is the multiplication and the shapes
+ * it renders back, which is all this module ever really was.
  */
-function formatRational(value: Rational, preferDecimal: boolean): string {
-  const n = toNumber(value);
-  if (value.den === 1) return String(value.num);
-  if (preferDecimal) return String(Math.round(n * 100) / 100);
-
-  const whole = Math.floor(n);
-  const remainder = n - whole;
-  for (const den of DENOMINATORS) {
-    const num = remainder * den;
-    if (Math.abs(num - Math.round(num)) < 1e-9) {
-      const fraction = `${Math.round(num)}/${den}`;
-      return whole ? `${whole} ${fraction}` : fraction;
-    }
-  }
-  return String(Math.round(n * 100) / 100);
-}
-
-// ---------------------------------------------------------------------------
-// Units
-// ---------------------------------------------------------------------------
-
-/**
- * Singular → plural for every unit in groceryParse's UNITS whitelist that
- * inflects at all. A table rather than a rule because English pluralisation
- * isn't one ("loaf" → "loaves", "bunch" → "bunches"), and because a naive `+s`
- * on an *unknown* word is precisely the guess this module refuses to make: a
- * unit that isn't here is passed through untouched, so "1 bulb" doubles to
- * "2 bulb". Slightly wrong grammar, visibly the user's own word, and nothing
- * about what they buy has changed — the trade groceryParse's unit whitelist
- * already makes for the same reason.
- *
- * Units that never inflect (oz, kg, g, ml, l, tbsp, tsp, qt, pt, gal, dozen)
- * are simply absent.
- */
-const UNIT_PLURALS: Record<string, string> = {
-  lb: 'lbs',
-  pound: 'pounds',
-  ounce: 'ounces',
-  gram: 'grams',
-  liter: 'liters',
-  litre: 'litres',
-  gallon: 'gallons',
-  quart: 'quarts',
-  pint: 'pints',
-  cup: 'cups',
-  tablespoon: 'tablespoons',
-  teaspoon: 'teaspoons',
-  pack: 'packs',
-  box: 'boxes',
-  bag: 'bags',
-  can: 'cans',
-  jar: 'jars',
-  bottle: 'bottles',
-  bunch: 'bunches',
-  head: 'heads',
-  clove: 'cloves',
-  loaf: 'loaves',
-  slice: 'slices',
-  link: 'links',
-  pouch: 'pouches',
-  package: 'packages',
-  deciliter: 'deciliters',
-  sprig: 'sprigs',
-  stalk: 'stalks',
-  rib: 'ribs',
-  stem: 'stems',
-  stick: 'sticks',
-  sheet: 'sheets',
-  fillet: 'fillets',
-  piece: 'pieces',
-  ear: 'ears',
-  wedge: 'wedges',
-  strip: 'strips',
-  pinch: 'pinches',
-  dash: 'dashes',
-  handful: 'handfuls',
-};
-
-const UNIT_SINGULARS: Record<string, string> = Object.fromEntries(
-  Object.entries(UNIT_PLURALS).map(([singular, plural]) => [plural, singular]),
-);
-
-/**
- * A unit word agreeing with `amount`, preserving the original when the word
- * isn't one we know how to inflect.
- *
- * The threshold is `> 1`, not `!== 1`: a fraction under one takes the singular
- * ("1/2 cup", "1/4 teaspoon"), which is why this can't just test for equality
- * with one.
- */
-/**
- * The identity of a unit word, ignoring number — "cups" and "cup" are one unit.
- *
- * Exported for mergeQuantities, which has to decide whether two quantities are
- * measured in the same thing before it may add them. Comparing the raw strings
- * was survivable while every quantity came from something the user typed; it
- * stopped being once scaling started *generating* both forms, so "1/2 cup"
- * (halved) and "2 cups" (as written) would list side by side rather than sum.
- *
- * Only inflections in the table collapse. "g" and "grams" stay two units,
- * because treating them as one is a unit conversion — see rule 2 above.
- */
-export function unitKey(unit: string): string {
-  const lower = unit.trim().toLowerCase();
-  return UNIT_SINGULARS[lower] ?? lower;
-}
-
-/**
- * A unit word agreeing with `amount`, preserving the original when the word
- * isn't one we know how to inflect.
- *
- * The threshold is `> 1`, not `!== 1`: a fraction under one takes the singular
- * ("1/2 cup", "1/4 teaspoon"), which is why this can't just test for equality
- * with one.
- */
-export function inflectUnit(unit: string, amount: number): string {
-  const singular = unitKey(unit);
-  const plural = UNIT_PLURALS[singular];
-  if (!plural) return unit;
-  return amount > 1 ? plural : singular;
-}
-
-// ---------------------------------------------------------------------------
-// Amount parsing
-// ---------------------------------------------------------------------------
-
-// The same three notations LEADING_QTY accepts, in the same order and for the
-// same reason: a mixed number has to be tried before a bare decimal, or
-// "1 1/2 cups" is read as "1" with "1/2 cups" left over.
-const MIXED_NUMBER = /^(\d+)\s+(\d+)\/(\d+)/;
-const FRACTION = /^(\d+)\/(\d+)/;
-const DECIMAL = /^\d+(?:\.\d+)?/;
-
-interface LeadingAmount {
-  value: Rational;
-  /** How many characters of the input the amount occupied. */
-  length: number;
-  /** True when it was written as a decimal — see formatRational. */
-  decimal: boolean;
-}
-
-/** The leading amount of a quantity string, or null when it doesn't open with one. */
-function readLeadingAmount(text: string): LeadingAmount | null {
-  const mixed = MIXED_NUMBER.exec(text);
-  if (mixed) {
-    const den = Number(mixed[3]);
-    if (den === 0) return null;
-    return {
-      value: rational(Number(mixed[1]) * den + Number(mixed[2]), den),
-      length: mixed[0].length,
-      decimal: false,
-    };
-  }
-  const fraction = FRACTION.exec(text);
-  if (fraction) {
-    const den = Number(fraction[2]);
-    if (den === 0) return null;
-    return { value: rational(Number(fraction[1]), den), length: fraction[0].length, decimal: false };
-  }
-  const decimal = DECIMAL.exec(text);
-  if (decimal) {
-    const [whole, places = ''] = decimal[0].split('.');
-    const den = 10 ** places.length;
-    return {
-      value: rational(Number(whole) * den + Number(places || 0), den),
-      length: decimal[0].length,
-      decimal: places.length > 0,
-    };
-  }
-  return null;
-}
-
-/**
- * `quantity` as an exact rational, for a caller that needs to *add* two
- * quantities rather than scale one — see mergeQuantities. Null when the string
- * doesn't open with a parseable amount.
- *
- * Exported as the shared amount reader so scaling and merging can't drift into
- * two different ideas of what "1 1/2" means.
- */
-export function quantityAmount(quantity: string): { value: number; decimal: boolean } | null {
-  const amount = readLeadingAmount(quantity.trim());
-  if (!amount) return null;
-  return { value: toNumber(amount.value), decimal: amount.decimal };
-}
-
-/**
- * The same read, plus whatever followed the amount — for a caller that has to
- * look at the unit word itself rather than only at the number (unitConvert).
- *
- * Exported alongside `quantityAmount` rather than widening it, so the three
- * notations stay defined in exactly one place: a second copy of the mixed-number
- * ordering is how a converter and a scaler would come to disagree about what
- * "1 1/2" means.
- */
-export function splitLeadingAmount(
-  quantity: string,
-): { value: number; decimal: boolean; rest: string } | null {
-  const text = quantity.trim();
-  const amount = readLeadingAmount(text);
-  if (!amount) return null;
-  return {
-    value: toNumber(amount.value),
-    decimal: amount.decimal,
-    rest: text.slice(amount.length).trim(),
-  };
-}
-
-/**
- * Renders a summed amount back to text, matching how scaling renders one, so
- * "1/2 cup" + "1/4 cup" reads "3/4 cup" rather than "0.75 cup".
- */
-export function formatQuantityAmount(value: number, preferDecimal = false): string {
-  return formatRational(factorToRational(value), preferDecimal);
-}
 
 // ---------------------------------------------------------------------------
 // Scaling
 // ---------------------------------------------------------------------------
-
-/** A counted sized container's trailing half — "14 oz cans" out of "2 14 oz cans". */
-const COUNTED_CONTAINER = /^(\d+(?:\.\d+)?)\s*-?\s*([a-z]+)\.?\s+([a-z]+)$/i;
 
 export interface ScaledQuantity {
   /** What to render. Equal to the input, trimmed, whenever `scaled` is false. */
@@ -334,7 +68,9 @@ export interface ScaledQuantity {
  * The cases, in the order they're tried:
  *
  * - **`x2`** — parseGroceryInput's trailing-count notation, scaled as the
- *   count it is.
+ *   count it is. It's the one shape whose amount `parseQuantity` deliberately
+ *   leaves null (see `Quantity.countNotation`), because scaling is the only
+ *   reader with a use for it.
  * - **A sized container with no count** ("14 oz can", from "14-ounce can
  *   broth") — the leading number is the can's *size*, not how many cans, so
  *   scaling it would turn two cans of broth into one 28 oz can. Doubling emits
@@ -351,60 +87,48 @@ export interface ScaledQuantity {
  * which is what lets every caller pass a factor unconditionally.
  */
 export function scaleQuantity(quantity: string, factor: number): ScaledQuantity {
-  const text = quantity.trim();
-  const unchanged: ScaledQuantity = { text, scaled: false };
-  if (!text) return unchanged;
+  const q = parseQuantity(quantity);
+  const unchanged: ScaledQuantity = { text: q.raw, scaled: false };
+  if (!q.raw) return unchanged;
   if (!Number.isFinite(factor) || factor <= 0 || factor === 1) return unchanged;
 
-  const multiplier = factorToRational(factor);
+  const multiplier = rationalFromNumber(factor);
 
-  const trailingCount = /^x\s*(\d+)$/i.exec(text);
-  if (trailingCount) {
-    const scaled = multiply({ num: Number(trailingCount[1]), den: 1 }, multiplier);
+  if (q.countNotation) {
+    const scaled = multiplyRational(q.countNotation, multiplier);
     return { text: `x${formatRational(scaled, false)}`, scaled: true };
   }
 
-  const amount = readLeadingAmount(text);
-  if (!amount) return unchanged;
-  const rest = text.slice(amount.length).trim();
+  if (q.amount === null) return unchanged;
 
-  // "2%" — a percentage is part of the product ("2% milk"), never an amount to
-  // multiply. parseGroceryInput already keeps it out of `quantity`, so this is
-  // a guard against hand-typed and imported text rather than a live path.
-  if (rest.startsWith('%')) return unchanged;
-
-  const bare = matchSizedContainer(rest);
-  if (bare) {
+  if (q.container) {
+    const { count, sizeText, sizeUnit, word } = q.container;
+    if (count) {
+      const scaled = multiplyRational(count, multiplier);
+      const container = inflectUnit(word, rationalToNumber(scaled));
+      return {
+        text: `${formatRational(scaled, q.decimal)} ${sizeText} ${sizeUnit} ${container}`,
+        scaled: true,
+      };
+    }
     // The factor *is* the new count: one 14 oz can, doubled, is two of them.
     if (!Number.isInteger(factor)) return unchanged;
-    const container = inflectUnit(bare.container, factor);
     return {
-      text: `${factor} ${formatRational(amount.value, amount.decimal)} ${bare.size} ${container}`,
+      text: `${factor} ${sizeText} ${sizeUnit} ${inflectUnit(word, factor)}`,
       scaled: true,
     };
   }
 
-  const counted = COUNTED_CONTAINER.exec(rest);
-  if (counted && isSizedContainer(counted[2], counted[3])) {
-    const count = multiply(amount.value, multiplier);
-    const container = inflectUnit(counted[3], toNumber(count));
-    return {
-      text: `${formatRational(count, amount.decimal)} ${counted[1]} ${counted[2]} ${container}`,
-      scaled: true,
-    };
-  }
-
-  const scaled = multiply(amount.value, multiplier);
-  const rendered = formatRational(scaled, amount.decimal);
-  if (!rest) return { text: rendered, scaled: true };
+  const scaled = multiplyRational(q.amount, multiplier);
+  const rendered = formatRational(scaled, q.decimal);
+  if (!q.rest) return { text: rendered, scaled: true };
 
   // A size clause rather than a unit — parseGroceryInput emits "1, medium",
   // and splitting that on spaces would produce "2 , medium".
-  const unit = LEADING_WORD.exec(rest);
-  if (!unit) return { text: `${rendered}${rest}`, scaled: true };
+  if (!q.unitWritten) return { text: `${rendered}${q.trailing}`, scaled: true };
 
-  const inflected = inflectUnit(unit[0], toNumber(scaled));
-  return { text: `${rendered} ${inflected}${rest.slice(unit[0].length)}`, scaled: true };
+  const inflected = inflectUnit(q.unitWritten, rationalToNumber(scaled));
+  return { text: `${rendered} ${inflected}${q.trailing}`, scaled: true };
 }
 
 // ---------------------------------------------------------------------------

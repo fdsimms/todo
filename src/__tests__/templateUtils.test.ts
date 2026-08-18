@@ -763,6 +763,10 @@ describe('usesItemGroups / resolveApplyContainer', () => {
     expect(resolveApplyContainer('none', expandedOf(grouped), byId)).toBe('none');
   });
 
+  it('never changes an explicit task, even with item groups in play — they flatten instead of upgrading', () => {
+    expect(resolveApplyContainer('task', expandedOf(grouped), byId)).toBe('task');
+  });
+
   it('sees item groups contributed by a nested template, not just the top-level one', () => {
     // The expanded list spans templates, so the check has to be per-source.
     const expanded = [...expandedOf(plain), ...expandedOf(grouped)];

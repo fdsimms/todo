@@ -38,6 +38,7 @@ import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
+import { describeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { expiresAtForPurchase } from '../utils/groceryShelfLife';
 import { useUpTaskDraft, useUpTaskFields, useUpTaskNeedsUpdate, wantsUseUpTask } from '../utils/groceryExpiry';
@@ -110,6 +111,32 @@ function armCartHold(): void {
   }, CART_HOLD_MS);
   // Without this, jest's node env hangs on the live handle at the end of a run.
   (cartHoldTimer as unknown as { unref?: () => void }).unref?.();
+}
+
+/**
+ * The later of two ISO stamps, treating null as older than any of them —
+ * i.e. an explicit assertion always beats no assertion. Used by mergeItems
+ * for every "which of two timestamps wins" question, including
+ * `onHandUntil`: `OUT_OF_IT_UNTIL` is deliberately the oldest possible
+ * stamp, so it loses to a real "on hand until" date exactly the way a stale
+ * out-of-it claim should when the other row has a fresher one.
+ */
+function laterOf(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
+}
+
+/** The three price fields, moved as a group from whichever side was priced more recently — never averaged. */
+function pickPriceFields<
+  T extends { lastPriceMinor: number | null; lastPricedAt: string | null; lastPriceQuantity: string | null },
+>(a: T, b: T): Pick<T, 'lastPriceMinor' | 'lastPricedAt' | 'lastPriceQuantity'> {
+  const winner = !a.lastPricedAt ? b : !b.lastPricedAt || a.lastPricedAt >= b.lastPricedAt ? a : b;
+  return {
+    lastPriceMinor: winner.lastPriceMinor,
+    lastPricedAt: winner.lastPricedAt,
+    lastPriceQuantity: winner.lastPriceQuantity,
+  };
 }
 
 interface GroceryStore {
@@ -233,6 +260,16 @@ interface GroceryStore {
   setAisleMany: (assignments: Record<string, string>) => void;
   /** False when the new name collides with another catalog row. */
   renameItem: (id: string, name: string) => boolean;
+  /**
+   * "cilantro" and "coriander" are one item wearing two names — this is the
+   * merge renameItem's own doc comment defers to. `fromId`'s history folds
+   * into `intoId` field by field (see the implementation for exactly how),
+   * `fromId` is deleted, and the pair's recipes/remembered aisle re-key onto
+   * `intoId` the same way a rename does. Not reversible by shake-to-undo —
+   * the merge sheet confirms first instead. False when either id is unknown
+   * or they're the same row.
+   */
+  mergeItems: (fromId: string, intoId: string) => boolean;
   setNote: (id: string, note: string) => void;
   /**
    * Which one to reach for — "Good Culture". A dumb setter like setNote: the
@@ -1218,9 +1255,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   },
 
   /**
-   * Returns false on a key collision rather than merging. Merging two catalog
-   * rows means choosing whose purchaseCount survives, and there's no right
-   * answer — better to tell the caller the name is taken.
+   * Returns false on a key collision rather than merging. A collision means
+   * two rows already claim to be the same thing, and *this* function has no
+   * way to ask which one should survive — that's mergeItems, reached through
+   * a deliberate merge sheet rather than a rename that happened to collide.
    */
   renameItem(id, name) {
     const item = get().items.find(i => i.id === id);
@@ -1250,6 +1288,141 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       items: s.items.map(i => (i.id === id ? updated : i)),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));
+    return true;
+  },
+
+  mergeItems(fromId, intoId) {
+    if (fromId === intoId) return false;
+    const { items, itemShops, itemSubs, aisleOverrides } = get();
+    const fromItem = items.find(i => i.id === fromId);
+    const intoItem = items.find(i => i.id === intoId);
+    if (!fromItem || !intoItem) return false;
+
+    const onList = fromItem.onList || intoItem.onList;
+    let quantity: string | null;
+    let quantityFromRecipe: boolean;
+    if (fromItem.onList && intoItem.onList) {
+      // Both are live on the list — list what each one wants rather than
+      // silently dropping either, the same way a merged recipe row does.
+      const present = [intoItem.quantity, fromItem.quantity].filter(
+        (q): q is string => !!q && q.trim() !== ''
+      );
+      quantity = present.length > 0 ? describeQuantities(present) : null;
+      quantityFromRecipe = false;
+    } else if (fromItem.onList) {
+      quantity = fromItem.quantity;
+      quantityFromRecipe = fromItem.quantityFromRecipe;
+    } else {
+      quantity = intoItem.quantity;
+      quantityFromRecipe = intoItem.quantityFromRecipe;
+    }
+
+    // A shared choiceGroup loses a member (fromItem) whether or not the pair
+    // is handled specially — this only decides whether the survivor's own
+    // membership should end too, per clearChoice's rule that one remaining
+    // option is not a choice.
+    let choiceGroup = intoItem.choiceGroup;
+    if (fromItem.choiceGroup && fromItem.choiceGroup === intoItem.choiceGroup) {
+      const remaining = items.filter(
+        i => i.id !== fromId && i.choiceGroup === fromItem.choiceGroup
+      ).length;
+      if (remaining <= 1) choiceGroup = null;
+    }
+
+    const merged: GroceryItem = {
+      ...intoItem,
+      purchaseCount: intoItem.purchaseCount + fromItem.purchaseCount,
+      lastAddedAt: laterOf(intoItem.lastAddedAt, fromItem.lastAddedAt),
+      lastPurchasedAt: laterOf(intoItem.lastPurchasedAt, fromItem.lastPurchasedAt),
+      onHandUntil: laterOf(intoItem.onHandUntil, fromItem.onHandUntil),
+      isStaple: intoItem.isStaple || fromItem.isStaple,
+      inCatalog: intoItem.inCatalog || fromItem.inCatalog,
+      onList,
+      checked: onList && (intoItem.checked || fromItem.checked),
+      quantity,
+      quantityFromRecipe,
+      choiceGroup,
+      ...pickPriceFields(intoItem, fromItem),
+    };
+
+    // Shop links: one row per shop either side has a link at. A shop only
+    // one side has just moves over; a shop both do combines into one row.
+    const shopIds = new Set([
+      ...itemShops.filter(l => l.itemId === fromId).map(l => l.shopId),
+      ...itemShops.filter(l => l.itemId === intoId).map(l => l.shopId),
+    ]);
+    const mergedShopLinks: ItemShopLink[] = [];
+    for (const shopId of shopIds) {
+      const survivorLink = itemShops.find(l => l.itemId === intoId && l.shopId === shopId);
+      const loserLink = itemShops.find(l => l.itemId === fromId && l.shopId === shopId);
+      if (survivorLink && loserLink) {
+        const purchaseCount = survivorLink.purchaseCount + loserLink.purchaseCount;
+        mergedShopLinks.push({
+          itemId: intoId,
+          shopId,
+          purchaseCount,
+          lastPurchasedAt: laterOf(survivorLink.lastPurchasedAt, loserLink.lastPurchasedAt),
+          // A purchase on either side refutes an "unavailable" claim, same as
+          // a fresh purchase already does to a single link.
+          unavailableAt:
+            purchaseCount > 0 ? null : laterOf(survivorLink.unavailableAt, loserLink.unavailableAt),
+          brand: survivorLink.brand ?? loserLink.brand,
+          brandUnavailableAt: survivorLink.brandUnavailableAt ?? loserLink.brandUnavailableAt,
+          ...pickPriceFields(survivorLink, loserLink),
+        });
+      } else {
+        mergedShopLinks.push({ ...(survivorLink ?? loserLink)!, itemId: intoId });
+      }
+    }
+
+    // Substitute links: retarget both directions onto the survivor. One that
+    // would end up pointing an item at itself (the pair already substituted
+    // for each other) is dropped rather than kept as a no-op; a collision
+    // with a link the survivor already has keeps the survivor's own.
+    const survivingSubs = itemSubs.filter(l => l.itemId !== fromId && l.subItemId !== fromId);
+    const subKeys = new Set(survivingSubs.map(l => `${l.itemId}|${l.subItemId}`));
+    const retargetedSubs: ItemSubLink[] = [];
+    for (const link of itemSubs) {
+      if (link.itemId !== fromId && link.subItemId !== fromId) continue;
+      const itemId = link.itemId === fromId ? intoId : link.itemId;
+      const subItemId = link.subItemId === fromId ? intoId : link.subItemId;
+      if (itemId === subItemId) continue;
+      const key = `${itemId}|${subItemId}`;
+      if (subKeys.has(key)) continue;
+      subKeys.add(key);
+      retargetedSubs.push({ ...link, itemId, subItemId });
+    }
+
+    dbTransaction(() => {
+      dbUpdateGroceryItem(merged);
+      for (const link of mergedShopLinks) dbSetItemShopLink(link);
+      for (const link of retargetedSubs) dbSetItemSubLink(link);
+      // Cascades whatever's left still pointing at fromId — the rows worth
+      // keeping were already moved onto intoId above, so this only clears
+      // the old fromId-keyed copies and the item row itself.
+      dbDeleteGroceryItem(fromId);
+    });
+
+    // Recipe ingredients and the remembered aisle are bridged to the catalog
+    // by nameKey, exactly like a rename — see renameItem.
+    const remembered = renameRememberedAisle(aisleOverrides, fromItem.nameKey, intoItem.nameKey);
+    if (remembered) dbSetGroceryAisleOverrides(remembered);
+    useRecipeStore.getState().remapIngredientKey(fromItem.nameKey, intoItem.nameKey);
+
+    set(s => ({
+      items: [merged, ...s.items.filter(i => i.id !== fromId && i.id !== intoId)],
+      itemShops: [
+        ...mergedShopLinks,
+        ...s.itemShops.filter(l => l.itemId !== fromId && l.itemId !== intoId),
+      ],
+      itemSubs: [...survivingSubs, ...retargetedSubs],
+      cartHoldIds: s.cartHoldIds.filter(x => x !== fromId),
+      aisleOverrides: remembered ?? s.aisleOverrides,
+    }));
+    // After the row is gone, not before — same ordering deleteItems uses.
+    // fromId's own "Use up X" task would otherwise keep pointing at a
+    // catalog row that no longer exists.
+    dropUseUpTask(fromId);
     return true;
   },
 

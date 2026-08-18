@@ -39,6 +39,7 @@ import { editorSearchTerms, matchesEditorQuery, filterEditorRows, type EditorSea
 import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
 import { SubstituteSheet } from './SubstituteSheet';
+import { MergeItemSheet } from './MergeItemSheet';
 import {
   cheapestShopFor,
   describePriceContext,
@@ -185,6 +186,7 @@ export function GroceryItemSheet({
   // Which substitute sheet is up, if any: 'add' opens the picker, an item id
   // opens that link for review. Null closes it.
   const [subSheet, setSubSheet] = useState<'add' | string | null>(null);
+  const [mergeSheetOpen, setMergeSheetOpen] = useState(false);
   // One picker open at a time, like every other editor in the app — see the
   // progressive-disclosure note in CLAUDE.md.
   const [openField, setOpenField] = useState<CollapsibleFieldKey | null>(null);
@@ -735,6 +737,8 @@ export function GroceryItemSheet({
     || matchesEditorQuery({ key: 'useUpTask', label: 'Use-up task', keywords: ['reminder', 'notification', 'task'] }, searchTerms));
   const removeFromListVisible = item.onList && (!searching
     || matchesEditorQuery({ key: 'removeFromList', label: 'Remove from list', keywords: ['take off', 'delete'] }, searchTerms));
+  const mergeVisible = !searching
+    || matchesEditorQuery({ key: 'merge', label: 'Merge with another item', keywords: ['duplicate', 'combine', 'same thing'] }, searchTerms);
   const forgetVisible = !searching
     || matchesEditorQuery({ key: 'forget', label: 'Forget this item', keywords: ['delete', 'remove', 'trash'] }, searchTerms);
 
@@ -1010,7 +1014,7 @@ export function GroceryItemSheet({
 
   const totalMatches = searching
     ? [nameVisible, brandVisible, variantVisible, quantityVisible, priceVisible, noteVisible,
-        useUpTaskVisible, removeFromListVisible, forgetVisible].filter(Boolean).length
+        useUpTaskVisible, removeFromListVisible, mergeVisible, forgetVisible].filter(Boolean).length
       + visibleCollapsibleRows.length
     : 0;
 
@@ -1418,6 +1422,24 @@ export function GroceryItemSheet({
             </TouchableOpacity>
           )}
 
+          {mergeVisible && (
+            <TouchableOpacity
+              style={styles.actionRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setMergeSheetOpen(true); }}
+              accessibilityRole="button"
+              accessibilityLabel="Merge with another item"
+            >
+              <Ionicons name="git-merge-outline" size={iconSize.md} color={colors.textSecondary} />
+              <View style={styles.actionBody}>
+                <Text style={styles.actionLabel}>Merge with another item</Text>
+                <Text style={styles.actionHint}>
+                  For a duplicate under a different name — combines the two into one.
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
           {forgetVisible && (
             <TouchableOpacity
               style={styles.actionRow}
@@ -1454,6 +1476,18 @@ export function GroceryItemSheet({
         itemId={item.id}
         editingSubItemId={subSheet === 'add' ? null : subSheet}
         onClose={() => setSubSheet(null)}
+      />
+      <MergeItemSheet
+        visible={mergeSheetOpen}
+        itemId={item.id}
+        onClose={() => setMergeSheetOpen(false)}
+        onMerged={survivorId => {
+          setMergeSheetOpen(false);
+          // The row this sheet is open for lost the merge — nothing left to
+          // show, so the whole sheet closes rather than rendering over a
+          // deleted item.
+          if (survivorId !== item.id) onClose();
+        }}
       />
     </Modal>
   );

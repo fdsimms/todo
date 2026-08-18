@@ -2380,6 +2380,345 @@ describe('renameItem keeps recipe ingredients in step', () => {
   });
 });
 
+// ─── mergeItems (#1570) ─────────────────────────────────────────────────────
+
+describe('mergeItems', () => {
+  it('returns false for the same id', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    seed([cilantro]);
+    expect(useGroceryStore.getState().mergeItems(cilantro.id, cilantro.id)).toBe(false);
+  });
+
+  it('returns false when either id is unknown', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    seed([cilantro]);
+    expect(useGroceryStore.getState().mergeItems('missing', cilantro.id)).toBe(false);
+    expect(useGroceryStore.getState().mergeItems(cilantro.id, 'missing')).toBe(false);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
+  it('sums purchaseCount and takes the later of lastAddedAt/lastPurchasedAt', () => {
+    const cilantro = makeItem({
+      name: 'Cilantro', purchaseCount: 4,
+      lastAddedAt: '2026-08-01T00:00:00.000Z', lastPurchasedAt: '2026-08-10T00:00:00.000Z',
+    });
+    const coriander = makeItem({
+      name: 'Coriander', purchaseCount: 2,
+      lastAddedAt: '2026-08-15T00:00:00.000Z', lastPurchasedAt: '2026-08-05T00:00:00.000Z',
+    });
+    seed([cilantro, coriander]);
+
+    expect(useGroceryStore.getState().mergeItems(coriander.id, cilantro.id)).toBe(true);
+
+    const survivor = useGroceryStore.getState().itemById(cilantro.id)!;
+    expect(survivor.purchaseCount).toBe(6);
+    expect(survivor.lastAddedAt).toBe('2026-08-15T00:00:00.000Z');
+    expect(survivor.lastPurchasedAt).toBe('2026-08-10T00:00:00.000Z');
+  });
+
+  it("keeps the surviving row's own name, brand, brandStrict, variant, aisle and note", () => {
+    const cilantro = makeItem({
+      name: 'Cilantro', brand: 'Store brand', brandStrict: true, variant: 'bunch',
+      aisle: 'Produce', note: 'the fresh kind',
+    });
+    const coriander = makeItem({
+      name: 'Coriander', brand: 'Generic', brandStrict: false, variant: 'bag',
+      aisle: 'Herbs', note: 'imported',
+    });
+    seed([cilantro, coriander]);
+
+    useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+    expect(useGroceryStore.getState().itemById(cilantro.id)).toMatchObject({
+      name: 'Cilantro', brand: 'Store brand', brandStrict: true, variant: 'bunch',
+      aisle: 'Produce', note: 'the fresh kind',
+    });
+  });
+
+  it('ORs isStaple', () => {
+    const cilantro = makeItem({ name: 'Cilantro', isStaple: false });
+    const coriander = makeItem({ name: 'Coriander', isStaple: true });
+    seed([cilantro, coriander]);
+
+    useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+    expect(useGroceryStore.getState().itemById(cilantro.id)!.isStaple).toBe(true);
+  });
+
+  it('deletes the losing row from the catalog', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander]);
+
+    useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+    expect(dbDeleteGroceryItem).toHaveBeenCalledWith(coriander.id);
+    const items = useGroceryStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe(cilantro.id);
+  });
+
+  describe('the pantry assertion (onHandUntil)', () => {
+    it('an explicit assertion beats no assertion on the other side', () => {
+      const cilantro = makeItem({ name: 'Cilantro', onHandUntil: null });
+      const coriander = makeItem({ name: 'Coriander', onHandUntil: '2026-09-01T00:00:00.000Z' });
+      seed([cilantro, coriander]);
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      expect(useGroceryStore.getState().itemById(cilantro.id)!.onHandUntil).toBe('2026-09-01T00:00:00.000Z');
+    });
+
+    it('takes the later of two assertions, so a fresher on-hand date beats a stale OUT_OF_IT_UNTIL', () => {
+      const cilantro = makeItem({ name: 'Cilantro', onHandUntil: OUT_OF_IT_UNTIL });
+      const coriander = makeItem({ name: 'Coriander', onHandUntil: '2020-01-01T00:00:00.000Z' });
+      seed([cilantro, coriander]);
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      // OUT_OF_IT_UNTIL is the epoch — the oldest possible stamp — so any
+      // real date on the other side outranks it.
+      expect(useGroceryStore.getState().itemById(cilantro.id)!.onHandUntil).toBe('2020-01-01T00:00:00.000Z');
+    });
+  });
+
+  describe('onList and quantity', () => {
+    it('ORs onList and merges quantities through mergeQuantities when both were on the list', () => {
+      const cilantro = makeItem({ name: 'Cilantro', onList: true, quantity: '1 lb' });
+      const coriander = makeItem({ name: 'Coriander', onList: true, quantity: '2 lb' });
+      seed([cilantro, coriander]);
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      const survivor = useGroceryStore.getState().itemById(cilantro.id)!;
+      expect(survivor.onList).toBe(true);
+      expect(survivor.quantity).toBe('3 lbs');
+    });
+
+    it("keeps the only listed side's quantity when just one side was on the list", () => {
+      const cilantro = makeItem({ name: 'Cilantro', onList: false, quantity: '1 bunch' });
+      const coriander = makeItem({ name: 'Coriander', onList: true, quantity: '2 bags' });
+      seed([cilantro, coriander]);
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      const survivor = useGroceryStore.getState().itemById(cilantro.id)!;
+      expect(survivor.onList).toBe(true);
+      expect(survivor.quantity).toBe('2 bags');
+    });
+
+    it('ORs checked, guarded by the merged onList', () => {
+      const cilantro = makeItem({ name: 'Cilantro', onList: true, checked: false });
+      const coriander = makeItem({ name: 'Coriander', onList: true, checked: true });
+      seed([cilantro, coriander]);
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      expect(useGroceryStore.getState().itemById(cilantro.id)!.checked).toBe(true);
+    });
+  });
+
+  it('moves price fields as a group from whichever side was priced more recently, never averaged', () => {
+    const cilantro = makeItem({
+      name: 'Cilantro', lastPriceMinor: 199, lastPricedAt: '2026-08-01T00:00:00.000Z', lastPriceQuantity: '1 bunch',
+    });
+    const coriander = makeItem({
+      name: 'Coriander', lastPriceMinor: 249, lastPricedAt: '2026-08-10T00:00:00.000Z', lastPriceQuantity: '2 bunch',
+    });
+    seed([cilantro, coriander]);
+
+    useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+    const survivor = useGroceryStore.getState().itemById(cilantro.id)!;
+    expect(survivor.lastPriceMinor).toBe(249);
+    expect(survivor.lastPricedAt).toBe('2026-08-10T00:00:00.000Z');
+    expect(survivor.lastPriceQuantity).toBe('2 bunch');
+  });
+
+  describe('shop links', () => {
+    it('sums counts, takes the later lastPurchasedAt, and a purchase on either side clears unavailableAt', () => {
+      const shop = makeShop('Costco');
+      const cilantro = makeItem({ name: 'Cilantro' });
+      const coriander = makeItem({ name: 'Coriander' });
+      seed([cilantro, coriander], {
+        shops: [shop],
+        itemShops: [
+          {
+            itemId: cilantro.id, shopId: shop.id, purchaseCount: 3,
+            lastPurchasedAt: '2026-08-01T00:00:00.000Z', unavailableAt: '2026-07-01T00:00:00.000Z',
+            lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null, brandUnavailableAt: null,
+          },
+          {
+            itemId: coriander.id, shopId: shop.id, purchaseCount: 1,
+            lastPurchasedAt: '2026-08-15T00:00:00.000Z', unavailableAt: null,
+            lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null, brandUnavailableAt: null,
+          },
+        ],
+      });
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      const link = useGroceryStore.getState().itemShops.find(l => l.shopId === shop.id)!;
+      expect(link.itemId).toBe(cilantro.id);
+      expect(link.purchaseCount).toBe(4);
+      expect(link.lastPurchasedAt).toBe('2026-08-15T00:00:00.000Z');
+      expect(link.unavailableAt).toBeNull();
+    });
+
+    it('takes the later unavailableAt when neither side has purchased there', () => {
+      const shop = makeShop('Whole Foods');
+      const cilantro = makeItem({ name: 'Cilantro' });
+      const coriander = makeItem({ name: 'Coriander' });
+      seed([cilantro, coriander], {
+        shops: [shop],
+        itemShops: [
+          {
+            itemId: cilantro.id, shopId: shop.id, purchaseCount: 0, lastPurchasedAt: null,
+            unavailableAt: '2026-07-01T00:00:00.000Z',
+            lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null, brandUnavailableAt: null,
+          },
+          {
+            itemId: coriander.id, shopId: shop.id, purchaseCount: 0, lastPurchasedAt: null,
+            unavailableAt: '2026-08-01T00:00:00.000Z',
+            lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null, brandUnavailableAt: null,
+          },
+        ],
+      });
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      expect(useGroceryStore.getState().itemShops[0].unavailableAt).toBe('2026-08-01T00:00:00.000Z');
+    });
+
+    it('moves a shop link only one side has, unchanged', () => {
+      const shop = makeShop("Trader Joe's");
+      const cilantro = makeItem({ name: 'Cilantro' });
+      const coriander = makeItem({ name: 'Coriander' });
+      seed([cilantro, coriander], {
+        shops: [shop],
+        itemShops: [{
+          itemId: coriander.id, shopId: shop.id, purchaseCount: 2,
+          lastPurchasedAt: '2026-08-01T00:00:00.000Z', unavailableAt: null,
+          lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null, brandUnavailableAt: null,
+        }],
+      });
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      const links = useGroceryStore.getState().itemShops;
+      expect(links).toHaveLength(1);
+      expect(links[0]).toMatchObject({ itemId: cilantro.id, shopId: shop.id, purchaseCount: 2 });
+    });
+  });
+
+  describe('substitute links', () => {
+    it('retargets a substitute link onto the survivor', () => {
+      const cilantro = makeItem({ name: 'Cilantro' });
+      const coriander = makeItem({ name: 'Coriander' });
+      const parsley = makeItem({ name: 'Parsley' });
+      seed([cilantro, coriander, parsley], {
+        itemSubs: [{
+          itemId: coriander.id, subItemId: parsley.id, note: null,
+          createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false,
+        }],
+      });
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      const subs = useGroceryStore.getState().itemSubs;
+      expect(subs).toHaveLength(1);
+      expect(subs[0]).toMatchObject({ itemId: cilantro.id, subItemId: parsley.id });
+    });
+
+    it('drops a link that would end up pointing an item at itself', () => {
+      const cilantro = makeItem({ name: 'Cilantro' });
+      const coriander = makeItem({ name: 'Coriander' });
+      seed([cilantro, coriander], {
+        itemSubs: [{
+          itemId: cilantro.id, subItemId: coriander.id, note: null,
+          createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false,
+        }],
+      });
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      expect(useGroceryStore.getState().itemSubs).toEqual([]);
+    });
+  });
+
+  describe('choiceGroup', () => {
+    it('collapses to no choice when the merge leaves only one member', () => {
+      const cilantro = makeItem({ name: 'Cilantro', onList: true, choiceGroup: 'g1' });
+      const coriander = makeItem({ name: 'Coriander', onList: true, choiceGroup: 'g1' });
+      seed([cilantro, coriander]);
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      expect(useGroceryStore.getState().itemById(cilantro.id)!.choiceGroup).toBeNull();
+    });
+
+    it('keeps the group when another member remains', () => {
+      const cilantro = makeItem({ name: 'Cilantro', onList: true, choiceGroup: 'g1' });
+      const coriander = makeItem({ name: 'Coriander', onList: true, choiceGroup: 'g1' });
+      const parsley = makeItem({ name: 'Parsley', onList: true, choiceGroup: 'g1' });
+      seed([cilantro, coriander, parsley]);
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      expect(useGroceryStore.getState().itemById(cilantro.id)!.choiceGroup).toBe('g1');
+    });
+  });
+
+  it("drops the losing item's use-up task", () => {
+    mockUseUpTasks = true;
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander]);
+    useGroceryStore.getState().setExpiresAt(coriander.id, '2026-08-20');
+    expect(useUpTaskFor(coriander.id)).toBeDefined();
+
+    useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+    expect(useUpTaskFor(coriander.id)).toBeUndefined();
+  });
+});
+
+describe('mergeItems keeps recipe ingredients and remembered aisles in step', () => {
+  it('remaps recipe ingredients from the losing key onto the surviving one', () => {
+    (dbGetAllRecipes as jest.Mock).mockReturnValue([{
+      id: 'r1', name: 'Salsa', nameKey: 'salsa', notes: '', sourceUrl: null, servings: null,
+      ingredients: [
+        { id: 'i1', name: 'Coriander', nameKey: 'coriander', quantity: '1 bunch', aisle: null },
+      ],
+      favorite: false, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
+    }]);
+    useRecipeStore.getState().initialize();
+
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander]);
+
+    useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+    const ingredients = useRecipeStore.getState().recipeById('r1')!.ingredients;
+    expect(ingredients[0].nameKey).toBe('cilantro');
+    // The recipe's own wording is untouched — only the catalog bridge moved.
+    expect(ingredients[0].name).toBe('Coriander');
+  });
+
+  it('carries a remembered aisle filing from the losing key onto the surviving one', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander], { aisleOverrides: { coriander: 'Herbs & Spices' } });
+
+    useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+    const overrides = useGroceryStore.getState().aisleOverrides;
+    expect(overrides.cilantro).toBe('Herbs & Spices');
+    expect(overrides.coriander).toBeUndefined();
+  });
+});
+
 describe('setBrand', () => {
   it('writes the brand and persists it, leaving the name key alone', () => {
     const cc = makeItem({ name: 'Cottage cheese' });
