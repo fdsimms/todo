@@ -901,15 +901,22 @@ export interface GroceryItem {
   lastAddedAt: string | null;
   lastPurchasedAt: string | null;
   createdAt: string;
-  // The pantry override — an explicit "Got it"/"Out of it" assertion from
-  // GroceryItemSheet, or set forward automatically when finishShopping
-  // records a purchase. A future value reads as "on hand" regardless of what
-  // grocerySuggest.probablyHaveReason's purchase-cadence guess would say on
-  // its own; a past value reads as "confirmed not on hand" and *suppresses*
-  // that guess, rather than letting stale purchase history overrule what the
-  // user just said with their own hands. null defers entirely to the guess.
-  // Self-expiring: once a future date passes, this reads exactly as null
-  // again, so "Got it" never needs a separate action to wear off.
+  // The pantry override — an explicit "Got it"/"Out of it" assertion, and
+  // *only* that. A future value reads as "on hand" regardless of what
+  // grocerySuggest.probablyHaveReason's purchase reading would say on its
+  // own; OUT_OF_IT_UNTIL reads as "confirmed not on hand" and *suppresses*
+  // that reading, rather than letting stale purchase history overrule what
+  // the user just said with their own hands. null defers entirely to the
+  // purchase reading. Self-expiring: once a future date passes this reads
+  // exactly as null again, so "Got it" never needs a separate action to wear
+  // off — which is why the negative is a sentinel and not merely "in the
+  // past", or a lapsed "Got it" would be indistinguishable from one.
+  //
+  // finishShopping used to set this forward on every purchase, which made the
+  // assertion branch the only reachable one and told people they had marked
+  // things on hand that a till had (#1770). A trip now only ever *clears* it:
+  // coming home with something refutes an "Out of it" left on it, the same
+  // correction a purchase already makes to ItemShopLink.unavailableAt.
   onHandUntil: string | null;
   // The recipe this item was first added from, if any. Set only when
   // addFromPlan creates a genuinely new catalog row — never on a row that

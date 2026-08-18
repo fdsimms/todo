@@ -283,9 +283,13 @@ export function catalogPruneCandidates(
 // is the whole trick, and it's the one behaviour here that genuinely needs
 // purchase history: milk and soy sauce can't share a number.
 
-/** Bought at least this many times before its own cadence is trusted. */
-const MIN_PURCHASES_FOR_PANTRY_GUESS = 3;
-/** "Got it" without enough purchase history to compute a cadence of its own. */
+/**
+ * Bought at least this many times before the item's *own* cadence is trusted
+ * over the flat default below. One purchase on a year-old row divides out to a
+ * 365-day cadence, which is not a number to assert anything from.
+ */
+const MIN_PURCHASES_FOR_CADENCE = 3;
+/** The window for an item with no cadence worth trusting yet. */
 const DEFAULT_ON_HAND_DAYS = 14;
 
 /**
@@ -321,7 +325,33 @@ function onHandAssertion(item: GroceryItem, now: Date): boolean | null {
   if (!item.onHandUntil) return null;
   const until = new Date(item.onHandUntil).getTime();
   if (Number.isNaN(until)) return null;
-  return until >= now.getTime();
+  if (until >= now.getTime()) return true;
+  // A past stamp is only an answer when it's the "Out of it" sentinel. A
+  // *lapsed* "Got it" is an assertion that has run out, not a claim to be out
+  // of something — so it hands the question back to the purchase reading below
+  // rather than suppressing it. Reading every past stamp as a negative is what
+  // made a row whose window quietly expired show the "Out of it" pill lit, and
+  // it's why GroceryItemSheet's "always OUT_OF_IT_UNTIL in practice" note had
+  // stopped being true.
+  return item.onHandUntil === OUT_OF_IT_UNTIL ? false : null;
+}
+
+/**
+ * How long one purchase of this item is worth believing in — its own cadence
+ * once there's enough history to trust one, a flat two weeks before that.
+ *
+ * The single window behind both halves of the pantry: how long a "Got it"
+ * lasts (`defaultOnHandUntil`, measured from the tap) and how long a purchase
+ * reads as on hand (`probablyHaveReason`, measured from the till). Two
+ * anchors, deliberately — a tap and a purchase are different moments — but one
+ * length, because "how long does this last" is one question, and answering it
+ * in two places is how the two came to disagree: the guess wanted three
+ * purchases before trusting a cadence and the assertion was happy with one.
+ */
+function onHandWindowDays(item: GroceryItem, now: Date): number {
+  if (item.purchaseCount < MIN_PURCHASES_FOR_CADENCE) return DEFAULT_ON_HAND_DAYS;
+  const cadence = estimatedPurchaseCadenceDays(item, now);
+  return cadence !== null && cadence >= 1 ? cadence : DEFAULT_ON_HAND_DAYS;
 }
 
 /**
@@ -330,11 +360,21 @@ function onHandAssertion(item: GroceryItem, now: Date): boolean | null {
  *
  * `item.onHandUntil` is an explicit assertion and is checked first, because
  * it's a fact the user handed over rather than a guess: a future value wins
- * regardless of what the cadence math below would say, and a past one
- * (`markOutOfIt`) *suppresses* the guess rather than letting stale purchase
- * history overrule "I just told you I'm out." Only when there's no assertion
- * at all does the guess run: enough purchases to trust a cadence, and the
- * time since the last one still inside it.
+ * regardless of what the purchase reading below would say, and `markOutOfIt`
+ * *suppresses* it rather than letting stale purchase history overrule "I just
+ * told you I'm out." Only when there's no live assertion does the purchase
+ * reading run: bought at least once, and the time since still inside this
+ * item's own window.
+ *
+ * **The purchase reading is why nothing stamps `onHandUntil` on a purchase.**
+ * It used to: `finishShopping` wrote a computed window onto every row it
+ * bought, which meant this function's assertion branch was taken for anything
+ * ever bought and the purchase branch below could not be reached at all (see
+ * #1770). The timing was right and everything else about it was wrong — the
+ * evidence never rendered, and the app told people they had marked something
+ * on hand when a till had. A purchase is evidence to read, not a claim to
+ * store; the only thing a trip writes here now is a `null`, clearing an "Out
+ * of it" the purchase refutes.
  */
 export function probablyHaveReason(item: GroceryItem, now: Date): string | null {
   // A staple outranks everything below: it's a standing fact ("I always have
@@ -347,26 +387,27 @@ export function probablyHaveReason(item: GroceryItem, now: Date): string | null 
   const asserted = onHandAssertion(item, now);
   if (asserted !== null) return asserted ? 'marked as on hand' : null;
 
-  if (item.purchaseCount < MIN_PURCHASES_FOR_PANTRY_GUESS || !item.lastPurchasedAt) return null;
-  const cadenceDays = estimatedPurchaseCadenceDays(item, now);
-  if (cadenceDays === null) return null;
-  if (daysBetween(now, item.lastPurchasedAt) >= cadenceDays) return null;
+  if (item.purchaseCount < 1 || !item.lastPurchasedAt) return null;
+  if (daysBetween(now, item.lastPurchasedAt) >= onHandWindowDays(item, now)) return null;
 
-  return `bought ${item.purchaseCount}× · last on ${format(new Date(item.lastPurchasedAt), 'd MMM')}`;
+  // "once" rather than "1×", mirroring describeCookHistory — the two lines sit
+  // in the same kind of caption and already share their halving.
+  const times = item.purchaseCount === 1 ? 'once' : `${item.purchaseCount}×`;
+  return `bought ${times} · last on ${format(new Date(item.lastPurchasedAt), 'd MMM')}`;
 }
 
 /**
- * How far out a fresh "Got it" (or a just-recorded purchase) should assert
- * on-hand: this item's own cadence once there's enough history to trust one,
- * the same two-week guess `probablyHaveReason` implicitly falls back to
- * otherwise. Shared by finishShopping (every purchased item gets this
- * automatically) and GroceryItemSheet's "Got it" button, so the two don't
- * quietly drift to different defaults.
+ * How far out a fresh "Got it" should assert on-hand, measured from the tap:
+ * `onHandWindowDays`, the same length a purchase reads as on hand for.
+ *
+ * Deliberately *not* called by `finishShopping` any more — a purchase is read,
+ * not asserted (see `probablyHaveReason`). Its callers are the three places
+ * someone says "I have this" by hand: GroceryItemSheet's "Got it" pill,
+ * RecipeToListSheet's equivalent, and KitchenSheet's add field via
+ * `addToPantry`.
  */
 export function defaultOnHandUntil(item: GroceryItem, now: Date): string {
-  const cadenceDays = estimatedPurchaseCadenceDays(item, now);
-  const days = cadenceDays !== null && cadenceDays >= 1 ? cadenceDays : DEFAULT_ON_HAND_DAYS;
-  return new Date(now.getTime() + days * DAY_MS).toISOString();
+  return new Date(now.getTime() + onHandWindowDays(item, now) * DAY_MS).toISOString();
 }
 
 export interface PantryEntry {
@@ -377,7 +418,11 @@ export interface PantryEntry {
    * phrasing here would be a second thing to keep true.
    */
   reason: string;
-  /** An explicit `onHandUntil` rather than the purchase-cadence guess. */
+  /**
+   * An explicit live `onHandUntil` rather than the purchase reading. Genuinely
+   * discriminating again since #1770 — while a trip stamped an assertion onto
+   * everything it bought, this was true of every entry there could be.
+   */
   asserted: boolean;
 }
 

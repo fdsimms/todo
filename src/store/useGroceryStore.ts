@@ -1863,15 +1863,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // A shop deleted between opening the finish sheet and confirming it would
     // otherwise write links nothing can resolve.
     const shop = shopId ? get().shops.find(s => s.id === shopId) ?? null : null;
-    // Computed from each item's *pre*-purchase history — its own cadence if
-    // it has one yet, defaultOnHandUntil's flat guess if not — so a trip
-    // asserts "you'll probably have this for about as long as you usually
-    // do" rather than a single flat window for everything bought today.
-    const onHandUntilById = Object.fromEntries(
-      get().items
-        .filter(i => i.checked && i.onList)
-        .map(i => [i.id, defaultOnHandUntil(i, now)])
-    );
     // The use-by day for everything in the trolley the shelf-life lexicon
     // recognises — which is a minority of any real list, and meant to be (see
     // groceryShelfLife.ts). Every purchase re-stamps rather than keeping
@@ -1903,7 +1894,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const beforeLastShopId = get().lastShopId;
     const ids = dbFinishGroceryShopping(
       purchasedAt,
-      onHandUntilById,
       shop?.id ?? null,
       expiresAtById,
       priceById
@@ -2006,7 +1996,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 inCatalog: true,
                 purchaseCount: i.purchaseCount + 1,
                 lastPurchasedAt: purchasedAt,
-                onHandUntil: onHandUntilById[i.id] ?? i.onHandUntil,
+                // Cleared, not written: probablyHaveReason reads the purchase
+                // itself (#1770), and the one thing a trip has to say about
+                // this column is that coming home with something refutes an
+                // "Out of it" sitting on it. Mirrors dbFinishGroceryShopping.
+                onHandUntil: null,
                 expiresAt: expiresAtById[i.id] ?? i.expiresAt,
                 // Mirrors the db's own CASE: the shop it was for has happened,
                 // so a recipe-owned quantity doesn't outlive it. A hand-set one

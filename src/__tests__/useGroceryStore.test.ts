@@ -654,30 +654,36 @@ describe('finishShopping', () => {
     expect(useGroceryStore.getState().items[0].onList).toBe(true);
   });
 
-  it('asserts the item on hand going forward, and passes the same map to the db layer', () => {
-    const milk = makeItem({ name: 'Milk', onList: true, checked: true, purchaseCount: 3, createdAt: '2026-01-01T00:00:00.000Z' });
+  // #1770 — a trip records a purchase and says nothing about whether the user
+  // has asserted anything. The reason the pantry gives is read back off the
+  // purchase itself, in its own words.
+  it('reads the purchase back rather than asserting it on hand', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, purchaseCount: 2, createdAt: '2026-01-01T00:00:00.000Z' });
     seed([milk]);
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
     useGroceryStore.getState().finishShopping();
 
-    const [, onHandUntilById] = (dbFinishGroceryShopping as jest.Mock).mock.calls[0];
-    expect(Object.keys(onHandUntilById)).toEqual([milk.id]);
     const updated = useGroceryStore.getState().items[0];
-    expect(updated.onHandUntil).toBe(onHandUntilById[milk.id]);
-    expect(new Date(updated.onHandUntil!).getTime()).toBeGreaterThan(Date.now());
+    expect(updated.onHandUntil).toBeNull();
+    expect(updated.purchaseCount).toBe(3);
+    expect(probablyHaveReason(updated, new Date())).toMatch(/^bought 3× · last on /);
   });
 
-  it('never asserts on hand for an item left unchecked', () => {
-    seed([makeItem({ name: 'Milk', onList: true, checked: true }), makeItem({ name: 'Eggs', onList: true, checked: false })]);
-    (dbFinishGroceryShopping as jest.Mock).mockImplementation(() => {
-      return useGroceryStore.getState().items.filter(i => i.checked && i.onList).map(i => i.id);
-    });
+  it('takes back an "Out of it" on something the trip bought', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, onHandUntil: OUT_OF_IT_UNTIL });
+    const eggs = makeItem({ name: 'Eggs', onList: true, checked: false, onHandUntil: OUT_OF_IT_UNTIL });
+    seed([milk, eggs]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
     useGroceryStore.getState().finishShopping();
 
-    const [, onHandUntilById] = (dbFinishGroceryShopping as jest.Mock).mock.calls[0];
-    expect(Object.keys(onHandUntilById)).toHaveLength(1);
+    const byId = new Map(useGroceryStore.getState().items.map(i => [i.id, i]));
+    expect(byId.get(milk.id)!.onHandUntil).toBeNull();
+    expect(probablyHaveReason(byId.get(milk.id)!, new Date())).toMatch(/^bought once · /);
+    // The one left in the trolley keeps its claim — nothing refuted it.
+    expect(byId.get(eggs.id)!.onHandUntil).toBe(OUT_OF_IT_UNTIL);
+    expect(probablyHaveReason(byId.get(eggs.id)!, new Date())).toBeNull();
   });
 
   it('clears a recipe-owned quantity, but leaves a hand-set one alone', () => {
@@ -1643,7 +1649,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping(costco.id);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), expect.any(Object), costco.id, expect.any(Object), expect.any(Object));
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), costco.id, expect.any(Object), expect.any(Object));
     const links = useGroceryStore.getState().itemShops;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ itemId: milk.id, shopId: costco.id, purchaseCount: 1 });
@@ -1825,7 +1831,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping();
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), expect.any(Object), null, expect.any(Object), expect.any(Object));
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object));
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
     // ...and the item-level count still moved, which is what makes the two
     // numbers diverge and why nothing may sum links to get a total.
@@ -1840,7 +1846,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping('shop-deleted-mid-sheet');
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), expect.any(Object), null, expect.any(Object), expect.any(Object));
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object));
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
   });
 

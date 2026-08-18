@@ -457,11 +457,18 @@ export function GroceryItemSheet({
     })),
   ];
 
-  // A future onHandUntil is an active "Got it"; a past one (always
-  // OUT_OF_IT_UNTIL in practice) is an active "Out of it"; null leaves the
-  // pantry guess deciding — see GroceryItem.onHandUntil.
+  // A future onHandUntil is an active "Got it"; OUT_OF_IT_UNTIL is an active
+  // "Out of it"; anything else leaves the purchase reading deciding — see
+  // GroceryItem.onHandUntil and grocerySuggest.probablyHaveReason.
+  //
+  // "Out of it" tests the sentinel rather than merely "in the past", which
+  // this used to and which its own note claimed was the same thing (#1770).
+  // It stopped being the same thing when trips started stamping windows that
+  // lapse: a row bought last spring came to sit here with the negative pill
+  // lit, reporting a claim nobody had made. Trips no longer write the column
+  // at all, but rows stamped before that still carry the shape.
   const onHandFuture = !!item.onHandUntil && new Date(item.onHandUntil).getTime() >= Date.now();
-  const onHandPast = !!item.onHandUntil && !onHandFuture;
+  const onHandPast = item.onHandUntil === OUT_OF_IT_UNTIL;
   const markGotIt = () => {
     haptics.tap();
     setOnHandUntil(item.id, defaultOnHandUntil(item, new Date()));
