@@ -6,6 +6,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useNowTick } from '../hooks/useNowTick';
 import { InlineAction } from './InlineAction';
 import { useFabIntentSelector, type FabIntentChannel } from './FabDropZones';
 import {
@@ -131,6 +132,13 @@ interface Props {
 export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, drag }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Every row's age/use-by caption and freshness dot are derived from `now`
+  // at render time (describeLeftover, freshnessOf) — this card sits inside
+  // MealPlanScreen, which never unmounts, so with nothing else to trigger a
+  // re-render those go stale exactly like a memoized TaskItem's clock-derived
+  // fields would without this same subscription (#1732; see nowTick.ts).
+  useNowTick();
 
   const [expanded, setExpanded] = useState(false);
 

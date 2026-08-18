@@ -50,9 +50,13 @@ export function ProjectDecisions({ decisions, onPress }: Props) {
             accessibilityLabel={`${title}, answered ${answer}`}
             accessibilityHint={onPress ? 'Double tap to change the answer' : undefined}
           >
-            <Text style={styles.title} numberOfLines={1}>{title}</Text>
+            {/* Three lines, not one (#1737): unlike the Logbook/Search rows
+                these same fields also render in, nothing here pins the row to
+                a fixed height, so there's no reason to clip a decision short
+                — a long question or answer just makes its own row taller. */}
+            <Text style={styles.title} numberOfLines={3}>{title}</Text>
             <View style={styles.answerPill}>
-              <Text style={styles.answer} numberOfLines={1}>{answer}</Text>
+              <Text style={styles.answer} numberOfLines={3}>{answer}</Text>
             </View>
           </TouchableOpacity>
         );

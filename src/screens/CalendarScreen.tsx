@@ -32,6 +32,11 @@ import {
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2) / 7);
+// Shorter than CELL_SIZE on purpose (#1746) — width still has to hold seven
+// columns across the screen, but with the dots beside the circle instead of
+// in their own row below it, the cell's content no longer needs a square box
+// to fit in.
+const CELL_HEIGHT = CELL_SIZE - 12;
 const DOT_SIZE = 6;
 
 /**
@@ -340,30 +345,34 @@ function DayCell({
       accessibilityState={{ selected: isSelected }}
       accessibilityLabel={cellLabel(day, bucket)}
     >
-      <View style={[
-        styles.dayCircle,
-        isSelected && styles.dayCircleSelected,
-        !isSelected && isToday && styles.dayCircleToday,
-      ]}>
-        <Text style={[
-          styles.dayText,
-          !inMonth && styles.dayTextOtherMonth,
-          isSelected && styles.dayTextSelected,
-          !isSelected && isToday && styles.dayTextToday,
+      <View style={styles.inlineWrap}>
+        <View style={[
+          styles.dayCircle,
+          isSelected && styles.dayCircleSelected,
+          !isSelected && isToday && styles.dayCircleToday,
         ]}>
-          {day.getDate()}
-        </Text>
-      </View>
-      <View style={styles.dotRow}>
-        {dots.map(dot => (
-          <View
-            key={dot.kind}
-            style={[
-              styles.dot,
-              dotStyle(dot.state, dotColor(dot.kind, colors)),
-            ]}
-          />
-        ))}
+          <Text style={[
+            styles.dayText,
+            !inMonth && styles.dayTextOtherMonth,
+            isSelected && styles.dayTextSelected,
+            !isSelected && isToday && styles.dayTextToday,
+          ]}>
+            {day.getDate()}
+          </Text>
+        </View>
+        {dots.length > 0 && (
+          <View style={styles.dotColumn}>
+            {dots.map(dot => (
+              <View
+                key={dot.kind}
+                style={[
+                  styles.dot,
+                  dotStyle(dot.state, dotColor(dot.kind, colors)),
+                ]}
+              />
+            ))}
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -448,14 +457,20 @@ function makeStyles(colors: Colors) {
     grid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      height: CELL_SIZE * 6,
+      height: CELL_HEIGHT * 6,
     },
     dayCell: {
       width: CELL_SIZE,
-      height: CELL_SIZE,
+      height: CELL_HEIGHT,
       alignItems: 'center',
-      justifyContent: 'flex-start',
-      paddingTop: 3,
+      justifyContent: 'center',
+    },
+    // Dots stack beside the circle rather than sitting under it (#1746), so
+    // this row's own height never has to grow the cell — up to three stacked
+    // dots (~19pt) stay well under the circle's own height (33pt) either way.
+    inlineWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
     },
     dayCircle: {
       width: CELL_SIZE - 18,
@@ -486,11 +501,10 @@ function makeStyles(colors: Colors) {
       color: colors.accent,
       fontWeight: fontWeight.semibold,
     },
-    dotRow: {
-      flexDirection: 'row',
-      gap: 3,
-      height: DOT_SIZE,
-      marginTop: 2,
+    dotColumn: {
+      flexDirection: 'column',
+      gap: 2,
+      marginLeft: 3,
     },
     dot: {
       width: DOT_SIZE,
