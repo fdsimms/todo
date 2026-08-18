@@ -65,6 +65,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   groupId: null,
   refTemplateId: null,
   refTemplateName: '',
+  conditions: [],
   ...overrides,
 });
 
@@ -340,6 +341,7 @@ const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
   name: 'Template',
   items: [],
   itemGroups: [],
+  questions: [],
   createdAt: '2025-01-01T00:00:00.000Z',
   sortOrder: 1,
   category: null,
@@ -657,6 +659,56 @@ describe('withoutPlaceholder', () => {
   });
 });
 
+describe('placeholder arithmetic', () => {
+  const values = { nights: '7', where: 'Denver' };
+
+  it('does the sum a packing list actually needs', () => {
+    expect(substitutePlaceholders('Pack {nights} shirts', values)).toBe('Pack 7 shirts');
+    expect(substitutePlaceholders('Pack {nights - 2} sweaters', values)).toBe('Pack 5 sweaters');
+    expect(substitutePlaceholders('Pack {nights + 1} pairs of socks', values)).toBe('Pack 8 pairs of socks');
+    expect(substitutePlaceholders('Pack {nights * 2} snacks', values)).toBe('Pack 14 snacks');
+  });
+
+  // Three and a half pairs of jeans means four — coming up short is the failure
+  // that matters when the answer is what to put in a bag.
+  it('rounds a fraction up', () => {
+    expect(substitutePlaceholders('Pack {nights / 2} pairs of jeans', values)).toBe('Pack 4 pairs of jeans');
+    expect(substitutePlaceholders('Pack {nights / 7} bags', values)).toBe('Pack 1 bags');
+  });
+
+  it('never goes below zero', () => {
+    expect(substitutePlaceholders('Pack {nights - 20} sweaters', values)).toBe('Pack 0 sweaters');
+  });
+
+  it('writes the answer verbatim when no arithmetic is asked for', () => {
+    expect(substitutePlaceholders('Book a hotel in {where}', values)).toBe('Book a hotel in Denver');
+  });
+
+  it('drops a sum it can\'t do rather than printing one that\'s wrong', () => {
+    expect(substitutePlaceholders('Pack {where - 2} shirts', values)).toBe('Pack shirts');
+    expect(substitutePlaceholders('Pack {missing / 2} shirts', values)).toBe('Pack shirts');
+    expect(substitutePlaceholders('Pack {nights / 0} shirts', values)).toBe('Pack shirts');
+  });
+
+  it('spaces around the operator are optional', () => {
+    expect(substitutePlaceholders('{nights-2} and {nights - 2}', values)).toBe('5 and 5');
+  });
+
+  it('reports the blank a sum reads, so it\'s asked for once', () => {
+    const item = makeItem({ title: 'Pack {nights} shirts', notes: 'and {nights / 2} pairs of jeans' });
+    expect(extractPlaceholders([item])).toEqual(['nights']);
+  });
+
+  it('refuses to mint a blank whose name would read as a sum', () => {
+    expect(normalizePlaceholderName('nights-2')).toBeNull();
+    expect(normalizePlaceholderName('check-in')).toBe('check-in');
+  });
+
+  it('takes the sums with the blank when it\'s removed', () => {
+    expect(withoutPlaceholder('Pack {nights / 2} pairs of jeans', 'nights')).toBe('Pack pairs of jeans');
+  });
+});
+
 describe('substitutePlaceholders', () => {
   it('substitutes a value', () => {
     expect(substitutePlaceholders('Book {where}', { where: 'Denver' })).toBe('Book Denver');
@@ -733,6 +785,7 @@ describe('usesItemGroups / resolveApplyContainer', () => {
   const grouped = makeTemplate({
     id: 'trip',
     itemGroups: [{ id: 'g1', title: 'Flights', sortOrder: 1 }],
+    questions: [],
     items: [makeItem({ id: 'i1', groupId: 'g1' })],
   });
   const plain = makeTemplate({ id: 'plain', items: [makeItem({ id: 'i2' })] });

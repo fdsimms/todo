@@ -36,9 +36,17 @@ import {
 } from '../utils/templateUtils';
 import { formatScheduledDate } from '../utils/dateUtils';
 import { TITLE_MAX_LENGTH } from '../types';
+import {
+  questionsForTree,
+  resolveAnswers,
+  placeholderValuesFor,
+  initialLeafSelection,
+  reselectForAnswers,
+  questionLabel,
+} from '../utils/templateQuestions';
 import { WhenPicker } from './WhenPicker';
 import { EditorRow } from './EditorRow';
-import type { TaskTemplate, TemplateContainer, TemplateItem } from '../types';
+import type { TaskTemplate, TemplateContainer, TemplateItem, TemplateQuestion } from '../types';
 
 interface Props {
   visible: boolean;
@@ -86,22 +94,11 @@ function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceho
   return `Fills in the blanks below${fills ? '' : ''}`;
 }
 
-/** Recursively collect the ids of every leaf item under `nodes` that should start checked (optional items, and everything under an optional nested-template block, start unchecked). */
-function initialLeafSelection(nodes: ApplyTreeNode[], ancestorOptional: boolean, out: Set<string>) {
-  for (const node of nodes) {
-    if (node.broken) continue;
-    if (node.item.refTemplateId === null) {
-      if (!node.item.optional && !ancestorOptional) out.add(node.item.id);
-    } else {
-      initialLeafSelection(node.children, ancestorOptional || node.item.optional, out);
-    }
-  }
-}
-
 /**
- * Bottom sheet for applying a template: pick an optional anchor date, toggle
- * which items to include (optional items start unchecked, including whole
- * nested-template blocks), then create them all as real tasks.
+ * Bottom sheet for applying a template: answer whatever it asks, pick an
+ * optional anchor date, toggle which items to include (optional items start
+ * unchecked, including whole nested-template blocks; a conditioned one starts
+ * on what the answers say), then create them all as real tasks.
  */
 export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Props) {
   const colors = useColors();
@@ -127,24 +124,37 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
   // any `{name}` blanks its items declare. Both empty = the original behavior.
   const [runName, setRunName] = useState('');
   const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>({});
+  // Only what's been answered by hand, keyed by question id — an untouched
+  // number question keeps following the anchor dates as they're picked, which
+  // is the whole point of asking a trip's length by asking its dates.
+  const [typedAnswers, setTypedAnswers] = useState<Record<string, string>>({});
   const anchors: TemplateAnchors = { start: startAnchor, end: endAnchor };
+
+  const questions = useMemo(() => questionsForTree(tree, templatesById), [tree, templatesById]);
+  const answers = resolveAnswers(questions, typedAnswers, anchors);
 
   const translateY = useRef(new Animated.Value(600)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible && template) {
-      // Non-optional leaves start checked; optional ones (and everything
-      // under an optional nested-template block) start unchecked.
-      const initial = new Set<string>();
-      initialLeafSelection(buildApplyTree(template.items, template.id, templatesById), false, initial);
-      setSelectedIds(initial);
+      // Non-optional leaves start checked; optional ones (and everything under
+      // an optional nested-template block) start unchecked — and a conditioned
+      // one starts on whatever its question's default answer says.
+      const freshTree = buildApplyTree(template.items, template.id, templatesById);
+      const freshQuestions = questionsForTree(freshTree, templatesById);
+      setSelectedIds(initialLeafSelection(
+        freshTree,
+        freshQuestions,
+        resolveAnswers(freshQuestions, {}, { start: null, end: null }),
+      ));
       setCollapsedRefIds(new Set());
       setStartAnchor(null);
       setEndAnchor(null);
       setCalendarTarget(null);
       setRunName('');
       setPlaceholderValues({});
+      setTypedAnswers({});
       translateY.setValue(600);
       backdropOpacity.setValue(0);
       Animated.parallel([
@@ -161,6 +171,18 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
       ]).start();
     }
   }, [visible, template]);
+
+  // Re-decide the conditioned items whenever an answer moves — including when
+  // it moves because the dates did. Items with no conditions are left exactly
+  // as ticked (see reselectForAnswers), so answering a question late never
+  // undoes the extra thing you added by hand.
+  const answersKey = JSON.stringify(answers);
+  useEffect(() => {
+    if (!visible || !template) return;
+    // Keyed on the serialization rather than on `answers` itself, which is a
+    // fresh object every render and would re-run this on every keystroke.
+    setSelectedIds(prev => reselectForAnswers(tree, questions, answers, prev));
+  }, [answersKey, visible, tree]);
 
   const dismiss = () => {
     Animated.parallel([
@@ -266,7 +288,11 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
   // Derived off the whole tree rather than the current selection, so the field
   // and its hint don't appear and disappear as items are ticked.
   const selectedLeafItems = flatLeaves.map(l => l.item);
-  const placeholderNames = extractPlaceholders(selectedLeafItems);
+  // Answers fill the blanks of their own name, so a declared one is asked for
+  // once — up in Questions, where it comes with the prompt its author wrote —
+  // rather than a second time as an unlabelled box.
+  const answerValues = placeholderValuesFor(questions, answers);
+  const placeholderNames = extractPlaceholders(selectedLeafItems).filter(name => !(name in answerValues));
   const resolvedContainer = resolveApplyContainer(template.applyContainer, flatLeaves, templatesById);
   // Mirrors useTemplateStore.applyTemplate's downgrade: a project already
   // exists here, so a resolved 'project' container becomes a stack inside it
@@ -276,7 +302,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
   // Nothing to name when the run has no container and no `{run}` to fill.
   const showRunField = container !== 'none' || declaresRunPlaceholder(selectedLeafItems);
 
-  const values = { ...placeholderValues, [RUN_PLACEHOLDER]: runName.trim() };
+  const values = { ...placeholderValues, ...answerValues, [RUN_PLACEHOLDER]: runName.trim() };
 
   const handleApply = () => {
     if (selectedCount === 0) return;
@@ -284,7 +310,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
     const flatSelection = expandSelectionWithAncestors(tree, selectedIds);
     applyTemplate(template.id, flatSelection, anchors, {
       runName,
-      placeholders: placeholderValues,
+      placeholders: { ...placeholderValues, ...answerValues },
       targetProjectId: projectId,
     });
     dismiss();
@@ -436,6 +462,26 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
             </View>
           )}
 
+          {/* What the template asks about this run. Above the blanks and above
+              the checklist both: the answers decide what's ticked below, so a
+              question sitting under the list it changes would read as an
+              afterthought. */}
+          {questions.length > 0 && (
+            <View style={styles.runBlock}>
+              <Text style={styles.blanksLabel}>Questions</Text>
+              {questions.map(question => (
+                <QuestionRow
+                  key={question.id}
+                  question={question}
+                  value={answers[question.id] ?? ''}
+                  onChange={value => setTypedAnswers(prev => ({ ...prev, [question.id]: value }))}
+                  colors={colors}
+                  styles={styles}
+                />
+              ))}
+            </View>
+          )}
+
           {/* The name stays visible beside the field rather than living in its
               placeholder text — with two or three blanks, a filled-in box with
               no label is unidentifiable. */}
@@ -463,7 +509,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
             </View>
           )}
 
-          {(showRunField || placeholderNames.length > 0) && <View style={styles.inlineSep} />}
+          {(showRunField || placeholderNames.length > 0 || questions.length > 0) && <View style={styles.inlineSep} />}
 
           {/* Anchor dates */}
           <AnchorRow
@@ -544,6 +590,60 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
  * "icon — label — value ›" one every editor uses; it only has to format the
  * Date into the value string first.
  */
+/**
+ * One question, asked. A choice is pills rather than a `SegmentedControl`
+ * because the answers are the author's own words and there's no ceiling on how
+ * many or how long they are — a track would either squeeze five answers into
+ * one line or wrap ragged, which is a row of pills again inside a box.
+ */
+function QuestionRow({
+  question, value, onChange, colors, styles,
+}: {
+  question: TemplateQuestion;
+  value: string;
+  onChange: (value: string) => void;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  return (
+    <View style={styles.questionBlock}>
+      <Text style={styles.questionPrompt} numberOfLines={2}>{questionLabel(question)}</Text>
+      {question.kind === 'choice' ? (
+        <View style={styles.answerRow}>
+          {question.options.map(option => {
+            const on = option === value;
+            return (
+              <TouchableOpacity
+                key={option}
+                style={[styles.answerPill, on && styles.answerPillOn]}
+                onPress={() => { haptics.tap(); onChange(option); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={option}
+              >
+                <Text style={[styles.answerPillText, on && styles.answerPillTextOn]}>{option}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : (
+        <TextInput
+          style={styles.blankInput}
+          value={value}
+          onChangeText={onChange}
+          placeholder={question.name ? `{${question.name}}` : 'Answer'}
+          placeholderTextColor={colors.textTertiary}
+          keyboardType={question.kind === 'number' ? 'number-pad' : 'default'}
+          maxLength={TITLE_MAX_LENGTH}
+          returnKeyType="done"
+          accessibilityLabel={questionLabel(question)}
+        />
+      )}
+    </View>
+  );
+}
+
 function AnchorRow({
   icon, label, hint, value, onPress, onClear,
 }: {
@@ -638,6 +738,36 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  questionBlock: {
+    gap: spacing.xs,
+  },
+  questionPrompt: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  answerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  answerPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  answerPillOn: {
+    backgroundColor: colors.accent,
+  },
+  answerPillText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+  },
+  answerPillTextOn: {
+    color: colors.onAccent,
+    fontWeight: fontWeight.semibold,
   },
   blankLabel: {
     width: 76,

@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, RecurrenceType, ChainItem, DeliverableKind } from '../types';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, DeliverableKind } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -19,6 +19,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { describeConditions, questionLabel } from '../utils/templateQuestions';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import {
@@ -49,7 +50,7 @@ import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'blanks' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable';
+type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable';
 
 interface Props {
   visible: boolean;
@@ -77,10 +78,16 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const categories = useCategoryStore(useShallow(s => s.categories));
   const addItem = useTemplateStore(s => s.addItem);
   const updateItem = useTemplateStore(s => s.updateItem);
+  // Only a choice can gate an item: a number or a free-text answer has no
+  // fixed set to pick from, so there's nothing an author could tick.
+  const choiceQuestions = useTemplateStore(
+    useShallow(s => (s.templates.find(t => t.id === templateId)?.questions ?? []).filter(q => q.kind === 'choice'))
+  );
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [optional, setOptional] = useState(false);
+  const [conditions, setConditions] = useState<TemplateItemCondition[]>([]);
   // True while a subtask/chain row is mid-drag. The sheet's ScrollView has to
   // stand down for the drag to survive the first finger move — a JS responder
   // nested *inside* a scroll view doesn't stop it from claiming the touch (see
@@ -137,6 +144,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setTitle(item?.title ?? draft?.title ?? '');
     setNotes(item?.notes ?? draft?.notes ?? '');
     setOptional(item?.optional ?? draft?.optional ?? false);
+    setConditions(item?.conditions ?? draft?.conditions ?? []);
     setAnchor(item?.anchor ?? draft?.anchor ?? 'start');
     setDueOffsetDays(item?.dueOffsetDays ?? draft?.dueOffsetDays ?? null);
     setDeferOffsetDays(item?.deferOffsetDays ?? draft?.deferOffsetDays ?? null);
@@ -175,6 +183,28 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setShowTimeWindow(false);
   }, [visible, item, initialDraft]);
 
+  const conditionSummary = describeConditions(conditions, choiceQuestions);
+
+  /**
+   * Tick one answer on or off. A question left with no answers ticked drops its
+   * condition entirely rather than being kept as an empty one — "included for
+   * none of the answers" is a state nothing could act on, and it's how the
+   * field says "every run" again.
+   */
+  const toggleCondition = (questionId: string, option: string) => {
+    haptics.tap();
+    setConditions(prev => {
+      const existing = prev.find(c => c.questionId === questionId);
+      const values = existing
+        ? existing.values.includes(option)
+          ? existing.values.filter(v => v !== option)
+          : [...existing.values, option]
+        : [option];
+      const rest = prev.filter(c => c.questionId !== questionId);
+      return values.length > 0 ? [...rest, { questionId, values }] : rest;
+    });
+  };
+
   const fieldOpen = (key: FieldKey, fallback = false) => openFields[key] ?? fallback;
   const toggleField = (key: FieldKey, fallback = false) =>
     setOpenFields(prev => ({ ...prev, [key]: !(prev[key] ?? fallback) }));
@@ -203,6 +233,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       title: title.trim(),
       notes,
       optional,
+      conditions,
       anchor,
       dueOffsetDays,
       deferOffsetDays,
@@ -384,6 +415,49 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           </View>
         </CollapsibleField>
       </View>
+
+      {/* Only when. Sits beside Blanks because both are about what the run's
+          answers do to this item — one writes them into the title, this one
+          decides whether the item arrives ticked. Hidden outright when the
+          template asks nothing to condition on: an empty picker of answers
+          that don't exist explains itself to nobody, and the place to write
+          one is the template's own editor. */}
+      {choiceQuestions.length > 0 && (
+        <View style={styles.sectionCard}>
+          <CollapsibleField
+            label="Only when"
+            summary={conditionSummary ?? undefined}
+            emptySummary="Every run"
+            hint="Ticked by default only for the answers you pick here. Everything stays on the list either way — you can still tick it on or off when you apply the template."
+            expanded={fieldOpen('conditions', conditionSummary !== null)}
+            onToggle={() => toggleField('conditions', conditionSummary !== null)}
+          >
+            {choiceQuestions.map(question => (
+              <View key={question.id} style={styles.conditionBlock}>
+                <Text style={styles.conditionLabel} numberOfLines={1}>{questionLabel(question)}</Text>
+                <View style={styles.blankRow}>
+                  {question.options.map(option => {
+                    const on = conditions.some(c => c.questionId === question.id && c.values.includes(option));
+                    return (
+                      <TouchableOpacity
+                        key={option}
+                        style={[styles.conditionPill, on && styles.conditionPillOn]}
+                        onPress={() => toggleCondition(question.id, option)}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: on }}
+                        accessibilityLabel={`${questionLabel(question)}: ${option}`}
+                      >
+                        <Text style={[styles.conditionPillText, on && styles.conditionPillTextOn]}>{option}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
+          </CollapsibleField>
+        </View>
+      )}
 
       {/* Scheduling relative to one of the template's two anchor dates */}
       <Text style={styles.groupLabel}>Schedule</Text>
@@ -1230,6 +1304,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
   pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: 2 },
+  /** One question's row of answers. Multi-select, so the pills fill with accent rather than taking the segmented track's raised treatment — several can be on at once. */
+  conditionBlock: { gap: spacing.xs, marginTop: spacing.sm },
+  conditionLabel: { color: colors.textSecondary, fontSize: font.xs },
+  conditionPill: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  },
+  conditionPillOn: { backgroundColor: colors.accent },
+  conditionPillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  conditionPillTextOn: { color: colors.onAccent, fontWeight: '600' },
   anchorRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,

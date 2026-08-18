@@ -458,16 +458,36 @@ export function seedDemoData(): void {
 // ---------------------------------------------------------------------------
 
 /**
- * One template, with two blanks in it.
+ * One template, with two blanks and two questions in it.
  *
- * The blanks are the reason this exists: `{destination}` is asked for once in
- * the apply sheet and lands in three item titles, and `{run}` inlines the name
- * given to the run itself. Both are invisible until a template declares one,
- * so without a seeded example the demo says the app can't do it.
+ * The blanks are half the reason this exists: `{destination}` is asked for once
+ * in the apply sheet and lands in three item titles, and `{run}` inlines the
+ * name given to the run itself.
+ *
+ * The questions are the other half, and they're the same argument one layer up
+ * — a template that asks nothing looks exactly like an app that can't ask. So
+ * this one asks both kinds: `{nights}` reads itself off the two anchor dates
+ * and counts the shirts (and, halved, the jeans), while "What kind of trip?"
+ * decides whether the laptop arrives ticked. Neither is visible anywhere until
+ * a template declares one.
  */
 function seedTemplates(): void {
-  const { addTemplate, addItem } = useTemplateStore.getState();
+  const { addTemplate, addItem, addQuestion } = useTemplateStore.getState();
   const template = addTemplate('Trip prep');
+  // Referenced by the item titles below rather than by an item field, so its
+  // id is never needed here.
+  addQuestion(template.id, {
+    prompt: 'How many nights?',
+    name: 'nights',
+    kind: 'number',
+    fromDates: 'nights',
+  });
+  const tripType = addQuestion(template.id, {
+    prompt: 'What kind of trip?',
+    name: 'trip type',
+    kind: 'choice',
+    options: ['Vacation', 'Work'],
+  })!;
   const ITEMS: Partial<TemplateItem>[] = [
     // The decision item: applying the template produces a task that asks for
     // the dates when it's ticked, rather than one someone has to convert to a
@@ -485,6 +505,17 @@ function seedTemplates(): void {
         { id: generateId(), title: 'Chargers' },
         { id: generateId(), title: 'Meds' },
       ],
+    },
+    // A count off the dates, and the same count halved — one shirt a day, one
+    // pair of jeans per two.
+    { title: 'Pack {nights} shirts', dueOffsetDays: -1, category: 'Home' },
+    { title: 'Pack {nights / 2} pairs of jeans', dueOffsetDays: -1, category: 'Home' },
+    // And the conditioned one: ticked for a work trip, left off for a vacation.
+    {
+      title: 'Pack laptop and charger',
+      dueOffsetDays: -1,
+      category: 'Home',
+      conditions: [{ questionId: tripType.id, values: ['Work'] }],
     },
     // Anchored to the end date instead, and optional — the two item settings
     // that are otherwise only described in the editor's own hints.

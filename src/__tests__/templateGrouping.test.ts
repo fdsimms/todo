@@ -6,6 +6,7 @@ const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
   name: 'Test Template',
   items: [],
   itemGroups: [],
+  questions: [],
   createdAt: '2025-01-01T00:00:00.000Z',
   sortOrder: 1,
   category: null,

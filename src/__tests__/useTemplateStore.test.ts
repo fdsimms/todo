@@ -68,6 +68,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   groupId: null,
   refTemplateId: null,
   refTemplateName: '',
+  conditions: [],
   ...overrides,
 });
 
@@ -76,6 +77,7 @@ const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
   name: 'Pre-vacation',
   items: [],
   itemGroups: [],
+  questions: [],
   createdAt: '2025-01-01T00:00:00.000Z',
   sortOrder: 1,
   category: null,
@@ -291,6 +293,7 @@ describe('applyTemplate', () => {
     useTemplateStore.setState({
       templates: [makeTemplate({
         itemGroups: [{ id: 'g1', title: 'Supplements', sortOrder: 1 }],
+        questions: [],
         items: [
           makeItem({ id: 'a', title: 'Coq10', groupId: 'g1', category: 'Health' }),
           makeItem({ id: 'b', title: 'Vitamin D', groupId: 'g1', category: 'Health' }),
@@ -337,6 +340,7 @@ describe('applyTemplate', () => {
           id: 'packing',
           name: 'Packing List',
           itemGroups: [{ id: 'g1', title: 'Documents', sortOrder: 1 }],
+          questions: [],
           items: [
             makeItem({ id: 'p1', title: 'Passport', groupId: 'g1', category: 'Travel' }),
             makeItem({ id: 'p2', title: 'Visa', groupId: 'g1', category: 'Travel' }),
@@ -399,6 +403,60 @@ describe('reorderTemplatesWithCategoryUpdates', () => {
     );
     expect(useTemplateStore.getState().templates.map(t => t.name)).toEqual(['B', 'A']);
     expect(useTemplateStore.getState().templates.find(t => t.id === b.id)?.category).toBe('Trips');
+  });
+});
+
+describe('questions', () => {
+  it('addQuestion stores a normalized question', () => {
+    const tpl = useTemplateStore.getState().addTemplate('Packing list');
+    const q = useTemplateStore.getState().addQuestion(tpl.id, {
+      prompt: 'What kind of trip?',
+      name: 'trip type',
+      kind: 'choice',
+      options: ['Work', 'Vacation'],
+    })!;
+    expect(q.id).toBeTruthy();
+    expect(useTemplateStore.getState().templates[0].questions).toEqual([
+      { ...q, defaultValue: '', fromDates: 'none' },
+    ]);
+  });
+
+  it('addQuestion returns null for a template that no longer exists', () => {
+    expect(useTemplateStore.getState().addQuestion('gone', { prompt: 'x' })).toBeNull();
+  });
+
+  it('updateQuestion normalizes what it is handed — a source only a number can have is dropped', () => {
+    const tpl = useTemplateStore.getState().addTemplate('A');
+    const q = useTemplateStore.getState().addQuestion(tpl.id, { prompt: 'How many nights?', kind: 'number', fromDates: 'nights' })!;
+    expect(q.fromDates).toBe('nights');
+    useTemplateStore.getState().updateQuestion(tpl.id, q.id, { kind: 'text' });
+    expect(useTemplateStore.getState().templates[0].questions[0].fromDates).toBe('none');
+  });
+
+  // A dangling condition is already shrugged off by every reader, but an item
+  // still carrying one would show an "Only when" with nothing under it.
+  it('deleteQuestion takes the question off the items conditioned on it', () => {
+    const tpl = useTemplateStore.getState().addTemplate('A');
+    const q = useTemplateStore.getState().addQuestion(tpl.id, { prompt: 'Kind?', kind: 'choice', options: ['Work'] })!;
+    const other = useTemplateStore.getState().addQuestion(tpl.id, { prompt: 'Long?', kind: 'choice', options: ['Yes'] })!;
+    const item = useTemplateStore.getState().addItem(tpl.id, { title: 'Laptop' })!;
+    useTemplateStore.getState().updateItem(tpl.id, item.id, {
+      conditions: [{ questionId: q.id, values: ['Work'] }, { questionId: other.id, values: ['Yes'] }],
+    });
+    useTemplateStore.getState().deleteQuestion(tpl.id, q.id);
+    const state = useTemplateStore.getState().templates[0];
+    expect(state.questions.map(x => x.id)).toEqual([other.id]);
+    expect(state.items[0].conditions).toEqual([{ questionId: other.id, values: ['Yes'] }]);
+  });
+
+  it('reorderQuestions rewrites the order, and refuses a list that does not name every one', () => {
+    const tpl = useTemplateStore.getState().addTemplate('A');
+    const a = useTemplateStore.getState().addQuestion(tpl.id, { prompt: 'A' })!;
+    const b = useTemplateStore.getState().addQuestion(tpl.id, { prompt: 'B' })!;
+    useTemplateStore.getState().reorderQuestions(tpl.id, [b.id, a.id]);
+    expect(useTemplateStore.getState().templates[0].questions.map(q => q.prompt)).toEqual(['B', 'A']);
+    useTemplateStore.getState().reorderQuestions(tpl.id, [a.id]);
+    expect(useTemplateStore.getState().templates[0].questions.map(q => q.prompt)).toEqual(['B', 'A']);
   });
 });
 
@@ -552,6 +610,7 @@ describe('applyTemplate — naming the run', () => {
       templates: [makeTemplate({
         applyContainer: 'stack',
         itemGroups: [{ id: 'g1', title: 'Flights', sortOrder: 1 }],
+        questions: [],
         items: [makeItem({ id: 'a', title: 'Book', groupId: 'g1' })],
       })],
     });
@@ -618,6 +677,7 @@ describe('applyTemplate — naming the run', () => {
       templates: [makeTemplate({
         applyContainer: 'task',
         itemGroups: [{ id: 'g1', title: 'Flights', sortOrder: 1 }],
+        questions: [],
         items: [makeItem({ id: 'a', title: 'Book', groupId: 'g1' })],
       })],
     });

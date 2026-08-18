@@ -1190,6 +1190,7 @@ describe('Templates', () => {
     groupId: null,
     refTemplateId: null,
     refTemplateName: '',
+    conditions: [],
     ...overrides,
   });
 
@@ -1198,6 +1199,7 @@ describe('Templates', () => {
     name: 'Pre-vacation',
     items: [],
     itemGroups: [],
+    questions: [],
     createdAt: '2025-01-01T00:00:00.000Z',
     sortOrder: 1,
     category: null,
@@ -1221,6 +1223,45 @@ describe('Templates', () => {
     dbInsertTemplate(makeTemplate({ itemGroups }));
     const [tpl] = dbGetAllTemplates();
     expect(tpl.itemGroups).toEqual(itemGroups);
+  });
+
+  it('insert → getAll round-trips questions JSON', () => {
+    const questions = [{
+      id: 'q1',
+      name: 'nights',
+      prompt: 'How many nights?',
+      kind: 'number' as const,
+      options: [],
+      defaultValue: '',
+      fromDates: 'nights' as const,
+    }];
+    dbInsertTemplate(makeTemplate({ questions }));
+    expect(dbGetAllTemplates()[0].questions).toEqual(questions);
+  });
+
+  it('reads a template asking nothing back as asking nothing, corrupted JSON included', () => {
+    dbInsertTemplate(makeTemplate());
+    expect(dbGetAllTemplates()[0].questions).toEqual([]);
+    mockRawDb.prepare('UPDATE templates SET questions = ? WHERE id = ?').run('not json', 'tpl-1');
+    expect(dbGetAllTemplates()[0].questions).toEqual([]);
+  });
+
+  it('fills defaults for questions missing fields (forward compat)', () => {
+    dbInsertTemplate(makeTemplate());
+    mockRawDb
+      .prepare('UPDATE templates SET questions = ? WHERE id = ?')
+      .run(JSON.stringify([{ id: 'q1', prompt: 'What kind?', kind: 'nonsense', futureField: 1 }]), 'tpl-1');
+    // An unknown kind reads as text rather than being dropped — the conditions
+    // pointing at it stay live either way. See normalizeTemplateQuestion.
+    expect(dbGetAllTemplates()[0].questions[0]).toEqual({
+      id: 'q1',
+      name: '',
+      prompt: 'What kind?',
+      kind: 'text',
+      options: [],
+      defaultValue: '',
+      fromDates: 'none',
+    });
   });
 
   it('orders by sort_order then created_at', () => {

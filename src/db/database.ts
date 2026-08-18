@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
@@ -8,7 +8,7 @@ import { parseRecipeTags } from '../utils/recipeTags';
 import { parseRecipeChoices, parseRecipeComponents } from '../utils/recipeComponents';
 import { parseEmptySections } from '../utils/recipeSections';
 import { normalizeScale } from '../utils/recipeScale';
-import { normalizeTemplateItem } from '../utils/templateUtils';
+import { normalizeTemplateItem, normalizeTemplateQuestion } from '../utils/templateUtils';
 import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
 import {
   SYNC_DELETIONS_TABLE,
@@ -744,6 +744,12 @@ export function initDatabase(): void {
     // had its method as discrete steps rather than one blob in `notes`. See
     // Recipe.steps.
     "ALTER TABLE recipes ADD COLUMN steps TEXT NOT NULL DEFAULT '[]'",
+    // '[]' for every existing template — a template that predates this asks
+    // nothing beyond its anchor dates, which is exactly how it behaved. Items'
+    // own `conditions` need no migration: `items` is a JSON blob, and
+    // normalizeTemplateItem defaults the field for anything written before it.
+    // See TaskTemplate.questions.
+    "ALTER TABLE templates ADD COLUMN questions TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2956,11 +2962,23 @@ function rowToTemplate(row: Record<string, unknown>): TaskTemplate {
     name: row.name as string,
     items: parseTemplateItems(row.items),
     itemGroups: parseItemGroups(row.item_groups),
+    questions: parseTemplateQuestions(row.questions),
     createdAt: row.created_at as string,
     sortOrder: row.sort_order as number,
     category: (row.category as string) ?? null,
     applyContainer: parseApplyContainer(row.apply_container),
   };
+}
+
+/** Tolerates a null (pre-migration row), malformed JSON and unknown fields, same as parseTemplateItems above. */
+function parseTemplateQuestions(raw: unknown): TemplateQuestion[] {
+  if (typeof raw !== 'string') return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(normalizeTemplateQuestion) : [];
+  } catch {
+    return [];
+  }
 }
 
 /** Tolerates a null (pre-migration row) or an unknown value from a newer app version, same as parseTimeSegments. */
@@ -2977,15 +2995,15 @@ export function dbGetAllTemplates(): TaskTemplate[] {
 
 export function dbInsertTemplate(template: TaskTemplate): void {
   db.runSync(
-    'INSERT INTO templates (id, name, items, item_groups, created_at, sort_order, category, apply_container) VALUES (?,?,?,?,?,?,?,?)',
-    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.createdAt, template.sortOrder, template.category, template.applyContainer]
+    'INSERT INTO templates (id, name, items, item_groups, questions, created_at, sort_order, category, apply_container) VALUES (?,?,?,?,?,?,?,?,?)',
+    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.createdAt, template.sortOrder, template.category, template.applyContainer]
   );
 }
 
 export function dbUpdateTemplate(template: TaskTemplate): void {
   db.runSync(
-    'UPDATE templates SET name = ?, items = ?, item_groups = ?, sort_order = ?, category = ?, apply_container = ? WHERE id = ?',
-    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.sortOrder, template.category, template.applyContainer, template.id]
+    'UPDATE templates SET name = ?, items = ?, item_groups = ?, questions = ?, sort_order = ?, category = ?, apply_container = ? WHERE id = ?',
+    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.sortOrder, template.category, template.applyContainer, template.id]
   );
 }
 

@@ -679,6 +679,78 @@ export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' |
 // anchored to its start date.
 export type TemplateAnchor = 'start' | 'end';
 
+// What kind of answer a template question takes.
+//   'text'   — a typed value, the declared form of the `{name}` blanks that
+//              are otherwise inferred from item text
+//   'number' — a typed count, which item titles can do arithmetic on
+//              ("Pack {nights} shirts", "Pack {nights / 2} pairs of jeans")
+//   'choice' — one of a fixed list, which items can be conditioned on
+export type TemplateQuestionKind = 'text' | 'number' | 'choice';
+
+// Where a number question's answer comes from before anyone types one.
+// 'days' and 'nights' both count the run's own two anchor dates — a trip
+// entered as the 3rd to the 10th is 7 nights and 8 days — so the length of a
+// trip is answered by picking its dates rather than typed a second time.
+// 'none' (the default) means the question is only ever answered by hand.
+export type TemplateQuestionSource = 'none' | 'days' | 'nights';
+
+// One thing the apply sheet asks about a run before it creates any tasks —
+// "How many nights?", "What kind of trip?".
+//
+// **A declared blank, not a second mechanism beside them.** An item's `{name}`
+// tokens are otherwise inferred from its text (see templateUtils' placeholder
+// engine), which leaves nowhere to say that one of them is a number, or that
+// its answer comes in a fixed set, or what to call it when it's asked for.
+// A question is that declaration: it fills the blank of the same `name`
+// exactly as an inferred one does, and everything below is what the
+// declaration buys.
+//
+// **Its own list on the template rather than fields on the items that use
+// it**, because two things need one shared answer — the title that inlines it
+// and every item conditioned on it — and an answer asked once per item is not
+// the same answer.
+export interface TemplateQuestion {
+  id: string;
+  // The blank it fills — "nights", "trip type". Lowercased and validated by
+  // normalizePlaceholderName, so a question and a hand-typed `{nights}` are
+  // the same blank rather than two that merely look alike. May be blank on a
+  // question that exists only to condition items ("What kind of trip?" need
+  // not appear in any title), in which case nothing substitutes it.
+  name: string;
+  // What the apply sheet asks — "How many nights?". Falls back to the name
+  // when empty, which is what a question written for a title alone gets.
+  prompt: string;
+  kind: TemplateQuestionKind;
+  // 'choice' only: the answers offered, in the order they're shown.
+  // **The first is the default**, deliberately rather than a defaultOptionId —
+  // the same call RecipeComponent.choiceGroup makes, and for the same reason:
+  // an id is a second thing to keep in step with the list and to repair when
+  // that option is renamed, while order is already there.
+  options: string[];
+  // 'text'/'number': what the field starts at, or '' for an empty one. Ignored
+  // for 'choice', whose default is its first option.
+  defaultValue: string;
+  // 'number' only: fill the answer from the run's anchor dates. A typed answer
+  // always wins — this is where the field starts, not what it's pinned to.
+  fromDates: TemplateQuestionSource;
+}
+
+// "Only include this item when the answer is one of these."
+//
+// Values are matched against the answer as strings, OR within one condition
+// and AND across an item's several — so an item can be for work trips *and*
+// long ones without the model needing an expression language.
+//
+// A condition naming a question that no longer exists is ignored rather than
+// failing the item, the resolve-or-shrug rule every cross-row pointer in this
+// app follows: deleting a question must not silently empty a packing list.
+export interface TemplateItemCondition {
+  questionId: string;
+  // Which answers include the item. An empty list is inert (it would
+  // otherwise mean "no answer includes this", which nothing can act on).
+  values: string[];
+}
+
 // One task definition inside a TaskTemplate. Item ids are stable so future
 // wizard rules can reference items; `optional` items start unchecked in the
 // apply sheet. Offsets are days relative to whichever anchor date (`anchor`)
@@ -742,6 +814,27 @@ export interface TemplateItem {
   // Which of the template's itemGroups this item belongs to; null = ungrouped.
   groupId: string | null;
 
+  // Which of the run's answers include this item — empty (the common case)
+  // means it's included whatever the run is about.
+  //
+  // **A condition decides the item's *default* tick in the apply sheet, not
+  // whether it's offered at all.** Everything the template holds stays on
+  // screen and stays overridable: a laptop conditioned on a work trip is
+  // pre-ticked for one and merely unticked for a weekend away, which is what
+  // the request asked for ("includes my laptop *by default*") and what keeps
+  // a wrong answer from hiding items the user then can't get back without
+  // editing the template.
+  //
+  // **When an item has conditions they replace `optional`, rather than
+  // stacking with it.** Both fields answer "is this ticked to begin with", and
+  // an item that's off for a beach trip and on for a work one is exactly the
+  // thing `optional` was being used to approximate — so an authored condition
+  // is the more specific answer and wins. `optional` still decides every item
+  // that carries no conditions, and an optional *nested-template block* still
+  // suppresses what's under it (its items answer to their own template's
+  // questions, not to this one's).
+  conditions: TemplateItemCondition[];
+
   // When set, this item is a reference to another template rather than a
   // real task — it expands into that template's own items at apply time.
   // Every other task-shaped field above is ignored when this is set.
@@ -782,6 +875,10 @@ export interface TaskTemplate {
   name: string;
   items: TemplateItem[];
   itemGroups: TemplateItemGroup[];
+  // What the apply sheet asks before it creates anything. Empty (the common
+  // case) means it asks nothing beyond the anchor dates and the run name, as
+  // every template did before this existed.
+  questions: TemplateQuestion[];
   createdAt: string;
   sortOrder: number;
   // Name of a TemplateCategory, purely for grouping templates on the

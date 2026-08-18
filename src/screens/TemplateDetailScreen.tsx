@@ -32,6 +32,7 @@ import { spacing, font, radius, iconSize, interaction, type Colors } from '../th
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingRefs, describeMissingRefs } from '../utils/templateUtils';
+import { liveConditions } from '../utils/templateQuestions';
 import type { TaskTemplate, TemplateItem } from '../types';
 
 type RootStackParamList = {
@@ -232,6 +233,9 @@ export function TemplateDetailScreen() {
     return { firstOfGroup: first, hiddenByCollapse: hidden };
   }, [template, collapsedGroups]);
 
+  const conditionLabelsFor = (item: TemplateItem) =>
+    liveConditions(item.conditions, template?.questions ?? []).map(c => c.values.join(' or '));
+
   return (
     <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
       <DetailHeader
@@ -341,6 +345,7 @@ export function TemplateDetailScreen() {
                   hint={hint}
                   categoryEmoji={categoryEmoji}
                   missingRefsLabel={missingRefsLabel}
+                  conditionLabels={conditionLabelsFor(item)}
                   resolvedRefTemplate={resolvedRefTemplate}
                   broken={broken}
                   colors={colors}
@@ -457,13 +462,15 @@ export function TemplateDetailScreen() {
 
 /** Item row: swipe left reveals Select (enters bulk mode). */
 function TemplateItemRow({
-  item, hint, categoryEmoji, missingRefsLabel, resolvedRefTemplate, broken, colors, styles, drag, isActive, selectionMode, selected, onPress, onDelete, onSwipeSelect, onReplace,
+  item, hint, categoryEmoji, missingRefsLabel, conditionLabels, resolvedRefTemplate, broken, colors, styles, drag, isActive, selectionMode, selected, onPress, onDelete, onSwipeSelect, onReplace,
 }: {
   item: TemplateItem;
   hint: string | null;
   categoryEmoji: string | null;
   /** Sentence naming the categories/tags this item still points at that are gone, or null if it's fine. */
   missingRefsLabel: string | null;
+  /** One entry per live condition, naming the answers that include this item ("Work", "Work or Vacation"). */
+  conditionLabels: string[];
   /** The live template this item references, or null if it isn't a reference item. */
   resolvedRefTemplate: TaskTemplate | null;
   /** True if this item references a template that no longer exists. */
@@ -552,6 +559,16 @@ function TemplateItemRow({
           </>
         )}
       </View>
+      {/* The answers this item rides on, named the way `Optional` is: both say
+          whether the row arrives ticked, and a conditioned item is otherwise
+          indistinguishable from an unconditional one while scanning the
+          template. Accent-tinted rather than grey, because this one is a rule
+          the author wrote and not a state of the row. */}
+      {conditionLabels.length > 0 && !broken && conditionLabels.map((label, i) => (
+        <View key={i} style={[styles.optionalBadge, styles.conditionBadge]}>
+          <Text style={[styles.optionalBadgeText, styles.conditionBadgeText]} numberOfLines={1}>{label}</Text>
+        </View>
+      ))}
       {item.optional && !broken && (
         <View style={styles.optionalBadge}>
           <Text style={styles.optionalBadgeText}>Optional</Text>
@@ -754,6 +771,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+  },
+  conditionBadge: {
+    backgroundColor: colors.accentSubtle,
+    maxWidth: 110,
+  },
+  conditionBadgeText: {
+    color: colors.accent,
   },
   optionalBadge: {
     paddingHorizontal: 8,
