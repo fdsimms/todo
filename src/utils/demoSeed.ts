@@ -980,6 +980,18 @@ function seedGroceries(recipes: DemoRecipes): void {
   setCheckedMany(idsNamed(STAPLES), true);
   finishShopping(null);
 
+  // Two names for one thing (#1570) — nameKey doesn't stem or synonymise, so
+  // "cilantro" and "coriander" sit as two catalog rows until someone merges
+  // them. Left unmerged on purpose, as the demo's one example of what "Merge
+  // with another item" on the item sheet is for. Cilantro gets a real trip
+  // so it has a purchase behind it; Coriander is added fresh after the clear
+  // below, on the list and unbought — the shape an imported recipe's own
+  // wording would add, and exactly the case the issue that added merging
+  // describes: neither name alone ever earns the pantry guess.
+  addByName('Cilantro');
+  setCheckedMany(idsNamed(['Cilantro']), true);
+  finishShopping(traderJoes.id);
+
   // "I can get this here" with no trip behind it — an assertion, not an
   // observation. Almonds are linked to Costco alone, so they read as available
   // at exactly one store. Linking (like finishing a trip) promotes a
@@ -1143,6 +1155,12 @@ function seedGroceries(recipes: DemoRecipes): void {
     addByName(name, undefined, undefined, { registerUndo: false })
   );
   setCheckedMany(idsNamed(['Milk', 'Bananas']), true);
+
+  // Coriander, typed fresh — see the Cilantro trip above. It has to be added
+  // here, after the clear, or clearList would delete it outright: nothing
+  // yet has bought it or linked it to a store, so it's provisional in
+  // exactly the sense every other never-bought name typed above is.
+  addByName('Coriander', undefined, undefined, { registerUndo: false });
 
   // The shelf-life correction itself: a name the lexicon has never heard of
   // (cheddar isn't in it), given a shelf life by hand. Cheddar is still on
