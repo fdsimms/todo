@@ -53,6 +53,8 @@ interface UndoableAction {
   label: string;
   undo: () => void;
   at?: number;
+  /** See useTaskStore's UndoableAction — same flag, same UndoBar. */
+  destructive?: boolean;
 }
 
 export interface MealPlanDraft {
@@ -590,6 +592,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (entry) {
       get().setLastAction({
         label: `Removed "${entry.title}"`,
+        destructive: true,
         undo: () => {
           dbInsertMealPlanEntry(entry);
           patchInRange(set, get, entry);
