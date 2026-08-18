@@ -476,6 +476,46 @@ describe('applyTemplate — naming the run', () => {
     expect(mockAddTask.mock.calls.map(([d]) => d.groupId)).toEqual(['group-Camping w/ Dan', 'group-Camping w/ Dan']);
   });
 
+  it('files the run stack under the category its items share, and stamps it onto every task (#1750)', () => {
+    // Before this, a run stack was always created uncategorized
+    // (createGroup(runName, null)), so it filed under Uncategorized on
+    // Today no matter what category its items were configured with —
+    // makeCategoryGroups sorts a stack by its own category, not its
+    // members'. Members must adopt it too, the same "stack members share
+    // the stack's category" rule groupTasks/applyGroupCategory enforce
+    // everywhere else a stack exists.
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [
+          makeItem({ id: 'a', title: 'Buy tickets', category: 'Health' }),
+          makeItem({ id: 'b', title: 'Decide date', category: 'Health' }),
+        ],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a', 'b']), { start: null, end: null }, { runName: 'Camping w/ Dan' }
+    );
+    expect(mockCreateGroup).toHaveBeenCalledWith('Camping w/ Dan', 'Health');
+    expect(mockAddTask.mock.calls.map(([d]) => d.category)).toEqual(['Health', 'Health']);
+  });
+
+  it('takes the category most of the run\'s items share when they disagree', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [
+          makeItem({ id: 'a', title: 'Buy tickets', category: 'Health' }),
+          makeItem({ id: 'b', title: 'Decide date', category: 'Health' }),
+          makeItem({ id: 'c', title: 'Odd one out', category: 'Work' }),
+        ],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a', 'b', 'c']), { start: null, end: null }, { runName: 'Camping w/ Dan' }
+    );
+    expect(mockCreateGroup).toHaveBeenCalledWith('Camping w/ Dan', 'Health');
+    expect(mockAddTask.mock.calls.map(([d]) => d.category)).toEqual(['Health', 'Health', 'Health']);
+  });
+
   it('trims the run name before it becomes a container title', () => {
     useTemplateStore.setState({ templates: [oneItem()] });
     useTemplateStore.getState().applyTemplate(

@@ -18,6 +18,7 @@ import {
   resolveApplyContainer,
   substituteDraftPlaceholders,
   substitutePlaceholders,
+  majorityCategory,
   RUN_PLACEHOLDER,
   type TemplateAnchors,
 } from '../utils/templateUtils';
@@ -322,8 +323,17 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       // stack coexist fine (projectId and groupId are independent), and
       // resolveApplyContainer guarantees a run *stack* never collides with
       // one — it upgrades that case to a project.
+      //
+      // The run stack's category is majorityCategory's read of its own
+      // members' categories, and every member adopts it — same "stack
+      // members share the stack's category" rule groupTasks/applyGroupCategory
+      // enforce everywhere else a stack exists. Without the second half, a
+      // template item explicitly categorized "Health" would still land in a
+      // stack that carries a *different* category, which is no more findable
+      // than the uncategorized stack this replaced.
+      const runCategory = container === 'stack' ? majorityCategory(drafts.map(d => d.category ?? null)) : null;
       const runGroup = container === 'stack'
-        ? useTaskGroupStore.getState().createGroup(runName, null)
+        ? useTaskGroupStore.getState().createGroup(runName, runCategory)
         : null;
       const runProject = (!options?.targetProjectId && container === 'project')
         ? useProjectStore.getState().createProject(
@@ -336,7 +346,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
 
       createdTasks = drafts.map(d => addTask({
         ...d,
-        ...(runGroup ? { groupId: runGroup.id } : {}),
+        ...(runGroup ? { groupId: runGroup.id, category: runCategory } : {}),
         ...(projectId ? { projectId } : {}),
       }));
 

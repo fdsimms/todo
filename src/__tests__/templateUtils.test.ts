@@ -25,6 +25,7 @@ import {
   declaresRunPlaceholder,
   usesItemGroups,
   resolveApplyContainer,
+  majorityCategory,
   findMissingRefs,
   templateHasMissingRefs,
   describeMissingRefs,
@@ -766,6 +767,29 @@ describe('usesItemGroups / resolveApplyContainer', () => {
     // The expanded list spans templates, so the check has to be per-source.
     const expanded = [...expandedOf(plain), ...expandedOf(grouped)];
     expect(resolveApplyContainer('stack', expanded, byId)).toBe('project');
+  });
+});
+
+describe('majorityCategory', () => {
+  it('is null for an empty list or when nobody names a category', () => {
+    expect(majorityCategory([])).toBeNull();
+    expect(majorityCategory([null, null])).toBeNull();
+  });
+
+  it('picks the one category everyone shares', () => {
+    expect(majorityCategory(['Home', 'Home', 'Home'])).toBe('Home');
+  });
+
+  it('picks whichever category is named most', () => {
+    expect(majorityCategory(['Home', 'Work', 'Home'])).toBe('Home');
+  });
+
+  it('breaks a tie in favor of whichever category appeared first', () => {
+    expect(majorityCategory(['Work', 'Home'])).toBe('Work');
+  });
+
+  it('does not let an uncategorized minority outvote a real category', () => {
+    expect(majorityCategory(['Home', 'Home', null])).toBe('Home');
   });
 });
 
