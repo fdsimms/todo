@@ -180,6 +180,7 @@ function newTaskFromDraft(
   sortOrder: number,
   seedFromCategory = false,
   id?: string,
+  skipCategoryDefault = false,
 ): Task {
   const defaults = useSettingsStore.getState().newTaskDefaults;
   return {
@@ -213,7 +214,7 @@ function newTaskFromDraft(
     targetUnit: normalizeTargetUnit(draft.targetUnit),
     allowOvershoot: draft.allowOvershoot ?? false,
     tags: draft.tags ?? [],
-    category: draft.category ?? defaults.category,
+    category: skipCategoryDefault ? (draft.category ?? null) : (draft.category ?? defaults.category),
     sortOrder,
     pinned: draft.pinned ?? false,
     pinnedOrder: 0,
@@ -750,8 +751,16 @@ interface TaskStore {
    * always gets a fresh `generateId()`. Passing a `derivedId` (see syncIds.ts)
    * is what lets two devices that independently create "the same" generated
    * task before ever syncing converge on one row instead of two (#1751).
+   *
+   * `skipCategoryDefault` is for the same generators: `category` on their
+   * draft is always their own dedicated setting (`leftoverUseUpTaskCategory`
+   * and siblings), already resolved and possibly deliberately null — not an
+   * unanswered field the way a fresh editor draft's null is. Without this,
+   * `??` can't tell "generator says no category" from "person hasn't picked
+   * one yet" and silently substitutes the unrelated newTaskDefaults.category
+   * for the former (#1724).
    */
-  addTask: (draft: Partial<TaskDraft>, id?: string) => Task;
+  addTask: (draft: Partial<TaskDraft>, id?: string, options?: { skipCategoryDefault?: boolean }) => Task;
   duplicateTask: (id: string) => Task | null;
   /**
    * Opens the system event sheet to block out time for a task — the new-event
@@ -1139,10 +1148,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     return ids.length;
   },
 
-  addTask(draft, id) {
+  addTask(draft, id, options) {
     const now = new Date().toISOString();
     const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
-    const task = newTaskFromDraft(draft, now, maxOrder + 1, true, id);
+    const task = newTaskFromDraft(draft, now, maxOrder + 1, true, id, options?.skipCategoryDefault);
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
     scheduleTaskReminder(task);

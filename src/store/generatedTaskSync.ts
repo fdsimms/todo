@@ -144,7 +144,11 @@ export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void
   const id = sourceId !== null
     ? derivedId(spawnSeed.generated(kind, sourceId, generatedTaskCountOf(tasks, kind, sourceId)))
     : undefined;
-  addTask(draft(), id);
+  // skipCategoryDefault: this draft's category is the source's own dedicated
+  // setting, already resolved and possibly deliberately null — not an
+  // unanswered field that should fall back to the unrelated
+  // newTaskDefaults.category the way a fresh editor draft's null would (#1724).
+  addTask(draft(), id, { skipCategoryDefault: true });
 }
 
 /**
