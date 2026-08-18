@@ -71,7 +71,8 @@ import { EditorGroup } from './EditorGroup';
 import { editorSearchTerms, matchesEditorQuery } from '../utils/editorSearch';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
-import { BlockerPickerSheet } from './BlockerPickerSheet';
+import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
+import { describeBlocks } from '../utils/blocking';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
@@ -168,6 +169,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const reorderSubtasks = useTaskStore(s => s.reorderSubtasks);
   const subtasksOf = useTaskStore(s => s.subtasksOf);
   const seriesRowsOf = useTaskStore(s => s.seriesRowsOf);
+  const blockedTasksOf = useTaskStore(s => s.blockedTasksOf);
+  const setBlockedTasks = useTaskStore(s => s.setBlockedTasks);
   const deleteSeries = useTaskStore(s => s.deleteSeries);
   const archiveTask = useTaskStore(s => s.archiveTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
@@ -310,6 +313,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [blockedById, setBlockedById] = useState<string | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
   const [showBlockerPicker, setShowBlockerPicker] = useState(false);
+  // The other end of the same pointer: the tasks this one holds back. Draft
+  // state like every other field, but it writes to *those* rows rather than to
+  // this one, so it can't ride along in `data` — see commitSave.
+  const [blocksIds, setBlocksIds] = useState<string[]>([]);
+  const [showBlocks, setShowBlocks] = useState(false);
+  const [showBlocksPicker, setShowBlocksPicker] = useState(false);
   const [extraTaskEveryN, setExtraTaskEveryN] = useState<number | null>(null);
   const [extraTaskTitle, setExtraTaskTitle] = useState('');
   const [showExtraTask, setShowExtraTask] = useState(false);
@@ -317,6 +326,20 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // rather than the whole list keeps unrelated task changes from re-rendering
   // the editor.
   const blockerTask = useTaskStore(s => (blockedById ? s.tasks.find(t => t.id === blockedById) : undefined));
+  // Memoized because the picker keys its candidate list on this array's
+  // identity: a fresh one every render would re-filter every task on every
+  // keystroke in the editor behind it.
+  const blocksExcludeIds = useMemo(
+    () => (blockedById ? [...blocksIds, blockedById] : blocksIds),
+    [blocksIds, blockedById],
+  );
+  // Just the titles, in the draft's own order — the same reason the blocker
+  // above is selected one task at a time. An id whose row has gone resolves to
+  // an empty string and the list says so, rather than the row disappearing.
+  const blocksTitles = useTaskStore(useShallow(s => blocksIds.map(id => {
+    const t = s.tasks.find(x => x.id === id);
+    return t ? displayTitleFor(t) : '';
+  })));
   const [showLinkPicker, setShowLinkPicker] = useState(false);
   const [customLinkText, setCustomLinkText] = useState('');
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
@@ -484,6 +507,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setBlockedById(task.blockedById ?? null);
+      setBlocksIds(blockedTasksOf(task.id).map(t => t.id));
       setDeliverableKind(task.deliverableKind ?? null);
       setExtraTaskEveryN(task.extraTaskEveryN ?? null);
       setExtraTaskTitle(task.extraTaskTitle ?? '');
@@ -508,12 +532,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setBlockedById(null);
+      setBlocksIds([]);
       setDeliverableKind(null);
       setExtraTaskEveryN(null);
       setExtraTaskTitle('');
     }
     setShowExtraTask(false);
     setShowBlockerPicker(false);
+    setShowBlocks(false); setShowBlocksPicker(false);
     setShowLinkPicker(false); setCustomLinkText('');
     setShowPhoneField(false); setPhoneText(task?.phoneNumber ?? initialDraft?.phoneNumber ?? '');
     setShowEmailField(false); setEmailText(task?.emailAddress ?? initialDraft?.emailAddress ?? '');
@@ -774,7 +800,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       haptics.success();
       if (task) {
         const snapshot = { ...task };
+        // What this task blocks, before the write — the undo below needs the
+        // set to put back, and it has to be read now rather than at open time
+        // in case something else pointed at this task while the sheet was up.
+        const blocksBefore = blockedTasksOf(task.id).map(t => t.id);
         updateTask(task.id, data, scope === 'occurrence' ? { scope: 'occurrence' } : undefined);
+        // Other rows, so it can't ride along in `data`: "Blocks" writes each
+        // picked task's own blockedById (see setBlockedTasks).
+        setBlockedTasks(task.id, blocksIds);
         // Membership after the field write, not before: addExistingToGroup
         // places the task at the end of its new stack, and `data` still carries
         // the sortOrder the task had before the move — writing that second
@@ -794,7 +827,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         // stack membership and category included.
         setLastAction({
           label: 'Edit saved',
-          undo: () => updateTask(snapshot.id, snapshot),
+          undo: () => {
+            updateTask(snapshot.id, snapshot);
+            // The blocked rows aren't in the snapshot — they're other tasks —
+            // so putting the set back is the same call that changed it.
+            setBlockedTasks(snapshot.id, blocksBefore);
+          },
         });
       } else {
         animateLayout();
@@ -803,9 +841,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         // order and cascade the category as well as setting the field.
         const newData = { ...data, groupId };
         if (allDates.length >= 2) {
-          addTaskSeries(newData, allDates, repeat);
+          const rows = addTaskSeries(newData, allDates, repeat);
+          // The set's earliest date is what the waiters wait on: blockedById
+          // names a row, and a set has no single row to point at — the same
+          // call the fan-out in updateTask makes about a shared blocker.
+          if (rows[0] && blocksIds.length > 0) setBlockedTasks(rows[0].id, blocksIds);
         } else {
           const created = addTask(newData);
+          if (blocksIds.length > 0) setBlockedTasks(created.id, blocksIds);
           // Subtasks typed in before the parent existed (see draftSubtasks) —
           // flush them to real rows now that there's a parent id to hang off.
           effectiveDraftSubtasks.forEach(d => {
@@ -1583,12 +1626,26 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             onClear={() => { setDeadline(null); setShowDeadlinePicker(false); }}
             onCancel={() => setShowDeadlinePicker(false)}
           />
-          <BlockerPickerSheet
+          <TaskRelationPickerSheet
+            relation="waitingOn"
             visible={showBlockerPicker}
             taskId={task?.id ?? null}
             context={{ groupId, projectId: project, category }}
+            // A task staged as blocked by this one can't also be what it waits
+            // on — that's the one-hop loop, and neither draft is saved yet for
+            // the sheet's own cycle check to see.
+            excludeIds={blocksIds}
             onClose={() => setShowBlockerPicker(false)}
             onSelect={setBlockedById}
+          />
+          <TaskRelationPickerSheet
+            relation="blocks"
+            visible={showBlocksPicker}
+            taskId={task?.id ?? null}
+            context={{ groupId, projectId: project, category }}
+            excludeIds={blocksExcludeIds}
+            onClose={() => setShowBlocksPicker(false)}
+            onSelect={id => setBlocksIds(prev => (prev.includes(id) ? prev : [...prev, id]))}
           />
           <NumberPadAccessory />
         </>
@@ -2676,13 +2733,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         ]}
       />
 
-      {/* Relationships — the two fields that tie this task to another one: one
-          it waits for, and one it creates. "Waiting on" used to sit in
-          Schedule, which is where it was hardest to find: it's not primary, so
-          on a task that wasn't using it the row lived behind that group's
-          "N more" with five schedule fields. Neither row is primary here
-          either, so a task using neither shows one folded line — and setting
-          either one opens the group with the other beside it. */}
+      {/* Relationships — the fields that tie this task to another one: one it
+          waits for, the ones it holds back, and one it creates. "Waiting on"
+          used to sit in Schedule, which is where it was hardest to find: it's
+          not primary, so on a task that wasn't using it the row lived behind
+          that group's "N more" with five schedule fields. A task using none of
+          them still shows one folded line — and setting any one opens the
+          group with the others beside it.
+
+          "Waiting on" and "Blocks" are the two ends of one pointer, which is
+          why they sit together: `blockedById` still lives on the blocked task
+          and there is no second field, so filling in "Blocks" writes the
+          picked tasks' own pointers (see setBlockedTasks) rather than
+          recording anything here. */}
       <EditorGroup
         label="Relationships"
         searchTerms={searchTerms}
@@ -2708,6 +2771,59 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          // Not on a subtask: the picker won't offer one as a blocker either
+          // (canBeBlockerOf), and a subtask that held a top-level task back
+          // would be a relationship settable from one end only.
+          ...(task?.parentId ? [] : [{
+            key: 'blocks', label: 'Blocks', set: blocksIds.length > 0, primary: true,
+            keywords: ['blocking', 'holds up', 'waiting on this', 'before', 'first'],
+            node: (
+              <>
+            <EditorRow
+              icon="hand-left-outline"
+              label="Blocks"
+              hint="Keep other tasks hidden until this one is done"
+              value={describeBlocks(blocksTitles)}
+              // Unfolds in place rather than opening the picker: the row can
+              // hold several tasks, and the list is both what it says and
+              // where a task is taken back off.
+              expanded={showBlocks}
+              onPress={() => { animateLayout(); setShowBlocks(v => !v); }}
+              onClear={blocksIds.length > 0
+                ? () => { animateLayout(); setBlocksIds([]); setShowBlocks(false); }
+                : undefined}
+            />
+            {showBlocks && (
+              <View style={styles.blocksBlock}>
+                {blocksIds.map((id, i) => (
+                  <View key={id} style={styles.blocksRow}>
+                    <Ionicons name="checkbox-outline" size={16} color={colors.textSecondary} />
+                    <Text style={styles.blocksTitle} numberOfLines={1}>
+                      {blocksTitles[i] || 'Task no longer exists'}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => { animateLayout(); setBlocksIds(prev => prev.filter(x => x !== id)); }}
+                      hitSlop={8}
+                      style={styles.blocksRemove}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Stop blocking ${blocksTitles[i] || 'this task'}`}
+                    >
+                      <Ionicons name="close" size={14} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <InlineAction
+                  icon="add"
+                  label="Add task"
+                  accessibilityLabel="Add a task this one blocks"
+                  onPress={() => setShowBlocksPicker(true)}
+                  style={styles.addBtnSpacing}
+                />
+              </View>
+            )}
+              </>
+            ),
+          }]),
           {
             key: 'extraTask', label: 'Extra task', set: extraTaskEveryN !== null,
             keywords: ['every', 'nth', 'occasionally', 'periodic', 'follow-up', 'maintenance'],
@@ -3713,6 +3829,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Lifts an InlineAction off the list it appends to, and keeps it from stretching in a column. */
   addBtnSpacing: { marginTop: spacing.sm, alignSelf: 'flex-start' },
+  blocksBlock: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  blocksRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+  },
+  blocksTitle: { flex: 1, color: colors.text, fontSize: font.md },
+  blocksRemove: { padding: 4 },
   tagSuggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
   tagSuggestion: {
     paddingHorizontal: 12, minHeight: interaction.pillHeight,

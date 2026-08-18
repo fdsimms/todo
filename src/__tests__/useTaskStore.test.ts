@@ -6833,6 +6833,69 @@ describe('blocking', () => {
     expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['blocker']);
   });
 
+  it('sets the relationship from the blocking task, and releases what it drops', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'blocker', dueDate: TODAY }),
+        makeTask({ id: 'was', dueDate: TODAY, blockedById: 'blocker' }),
+        makeTask({ id: 'now', dueDate: TODAY }),
+      ],
+    });
+
+    useTaskStore.getState().setBlockedTasks('blocker', ['now']);
+
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+    expect(byId('now').blockedById).toBe('blocker');
+    expect(byId('was').blockedById).toBeNull();
+    expect(useTaskStore.getState().blockedTasksOf('blocker').map(t => t.id)).toEqual(['now']);
+  });
+
+  it('leaves a completed waiter pointing at what held it up', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'blocker', dueDate: TODAY }),
+        makeTask({ id: 'done', dueDate: TODAY, blockedById: 'blocker', completed: true }),
+      ],
+    });
+
+    useTaskStore.getState().setBlockedTasks('blocker', []);
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'done')!.blockedById).toBe('blocker');
+  });
+
+  // Releasing one date of a dated set fans that release out to the set's later
+  // dates (blockedById is a content field), so a set half-kept has to come back
+  // out the other side still blocked.
+  it('keeps the dates of a set it is keeping when it releases an earlier one', () => {
+    const blocker = useTaskStore.getState().addTask({ title: 'Collect the key' });
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, { blockedById: blocker.id });
+
+    useTaskStore.getState().setBlockedTasks(blocker.id, [rows[1].id]);
+
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+    expect(byId(rows[0].id).blockedById).toBeNull();
+    expect(byId(rows[1].id).blockedById).toBe(blocker.id);
+  });
+
+  // The picker can't offer one, but the editor holds its set while the store
+  // moves on underneath it, so the write re-checks.
+  it('refuses a link that would close a loop', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', dueDate: TODAY, blockedById: 'b' }),
+        makeTask({ id: 'b', dueDate: TODAY }),
+      ],
+    });
+
+    useTaskStore.getState().setBlockedTasks('a', ['b']);
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'b')!.blockedById).toBeNull();
+  });
+
   it('surfaces the waiter when the blocker is completed, without writing anything to it', () => {
     useTaskStore.setState({
       tasks: [

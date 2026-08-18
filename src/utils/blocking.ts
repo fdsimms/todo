@@ -120,3 +120,82 @@ export function sortByBlockerAffinity(tasks: Task[], ctx: BlockerContext): Task[
 export function waitingOn(taskId: string, tasks: Task[]): Task[] {
   return tasks.filter(t => t.blockedById === taskId && !t.completed && !t.archived && !t.parentId);
 }
+
+/**
+ * Whether `candidate` can be offered as the task `taskId` waits on.
+ *
+ * Pulled out of the picker now that the same sheet fills the relationship from
+ * either end. The rules a candidate has to pass are the ones a blocker needs:
+ * it has to be a live top-level row, and pointing at it must not close a loop —
+ * a cycle makes every task in it permanently invisible, since each is waiting
+ * on something that can never complete.
+ *
+ * A null `taskId` is a task being created: it has no row to loop back to yet.
+ */
+export function canBeBlockerOf(candidate: Task, taskId: string | null, resolve: TaskResolver): boolean {
+  if (candidate.parentId || candidate.completed || candidate.archived) return false;
+  if (candidate.id === taskId) return false;
+  return !(taskId && wouldCycle(taskId, candidate.id, resolve));
+}
+
+/**
+ * Whether `candidate` can be offered as something `blockerId` blocks — that
+ * is, whether its own `blockedById` may be pointed at `blockerId`.
+ *
+ * The same eligibility with the cycle check turned round, plus the one rule
+ * this direction needs and the other doesn't: `blockedById` is a single
+ * pointer, so a candidate already waiting on some *other* task can't be taken
+ * without silently dropping a relationship set from over there. It's left out
+ * of the list rather than offered and overwritten — the sheet says why, and
+ * that task's own editor is still where its blocker changes.
+ */
+export function canBeBlockedBy(candidate: Task, blockerId: string | null, resolve: TaskResolver): boolean {
+  if (candidate.parentId || candidate.completed || candidate.archived) return false;
+  if (candidate.id === blockerId) return false;
+  if (candidate.blockedById && candidate.blockedById !== blockerId) return false;
+  return !(blockerId && wouldCycle(candidate.id, blockerId, resolve));
+}
+
+/** The writes that make `taskIds` the set of tasks waiting on `blockerId`. */
+export interface BlocksEdit {
+  /** Tasks to point at the blocker. */
+  link: string[];
+  /** Tasks to release, i.e. write `blockedById: null` to. */
+  unlink: string[];
+}
+
+/**
+ * Turns "these are the tasks this one blocks" into the writes that say so.
+ *
+ * The releases come from `waitingOn`, so completed and archived waiters are
+ * never touched: a task that was held up by this one and has since been done
+ * is history, and rewriting its pointer would edit the record of what it
+ * waited for. The links are re-checked against `canBeBlockedBy` rather than
+ * trusted — the picker filters the same way, but a set assembled with the
+ * editor open can be saved against a task list that has moved on since.
+ */
+export function resolveBlocksEdit(blockerId: string, taskIds: string[], tasks: Task[]): BlocksEdit {
+  const resolve = resolverFor(tasks);
+  const wanted = new Set(taskIds);
+  const link = [...wanted].filter(id => {
+    const task = resolve(id);
+    return task != null && task.blockedById !== blockerId && canBeBlockedBy(task, blockerId, resolve);
+  });
+  const unlink = waitingOn(blockerId, tasks).filter(t => !wanted.has(t.id)).map(t => t.id);
+  return { link, unlink };
+}
+
+/**
+ * The "Blocks" row's value in the task editor — one task's name, or a count.
+ *
+ * Two names truncate mid-word at 390pt (the row renders its value on one
+ * line), the same call `describeSubstitutes` makes, and the names are all
+ * listed under the row the moment it's open. A title that no longer resolves
+ * comes through as an empty string and is named as the missing row it is,
+ * matching what the "Waiting on" row says about a deleted blocker.
+ */
+export function describeBlocks(titles: string[]): string | undefined {
+  if (titles.length === 0) return undefined;
+  if (titles.length === 1) return titles[0] || 'Task no longer exists';
+  return `${titles.length} tasks`;
+}

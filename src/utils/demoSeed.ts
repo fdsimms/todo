@@ -261,6 +261,24 @@ export function seedDemoData(): void {
     effort: 1,
   });
 
+  // --- Waiting on / Blocks (one task held back by another) -----------------
+  // Blocking is invisible until two tasks use it: the blocker's row carries a
+  // "1 waiting" chip, the waiter is what the Waiting screen lists, and the
+  // pair is what either editor's Waiting on / Blocks rows name.
+  const cancelPlan = addTask({
+    title: 'Cancel the internet plan',
+    category: 'Errands',
+    dueDate: today.toISOString(),
+    effort: 1,
+  });
+  addTask({
+    title: 'Return the router',
+    notes: 'Held back until the plan is cancelled. Set from either task.',
+    category: 'Errands',
+    effort: 1,
+    blockedById: cancelPlan.id,
+  });
+
   // --- A stack (three independently-scheduled tasks under one label) --------
   const supplements = createGroup('Supplements', 'Health');
   addNewGroupedTask(supplements.id, 'Vitamin D');

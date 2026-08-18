@@ -70,6 +70,7 @@ import {
 } from '../utils/postpone';
 import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
 import { registerTaskSource } from '../utils/blockerRegistry';
+import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import {
@@ -792,6 +793,19 @@ interface TaskStore {
     // proposed it, or it's bookkeeping. See utils/postpone.ts.
     options?: { scope?: 'occurrence' | 'series'; skipPostponeCount?: boolean },
   ) => void;
+  /** The live tasks waiting on this one (see utils/blocking's waitingOn). */
+  blockedTasksOf: (id: string) => Task[];
+  /**
+   * The other side of "Waiting on": makes `taskIds` the set of tasks held back
+   * by `blockerId`, pointing each one's `blockedById` at it and releasing
+   * whatever was waiting on it and no longer is.
+   *
+   * The relationship is still one pointer on the blocked task — this is the
+   * write that lets it be set from the blocking task's editor instead of
+   * having to go and find each waiter. Completed and archived waiters are left
+   * alone (see resolveBlocksEdit): what a finished task waited for is history.
+   */
+  setBlockedTasks: (blockerId: string, taskIds: string[]) => void;
   // The two ends of an Apple Reminders suggestion (see Task.pendingImport).
   // Applying writes the parsed schedule onto the task, which is also the
   // moment it stops satisfying isInboxTask and leaves the Inbox for Today or
@@ -1195,6 +1209,30 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   seriesRowsOf(seriesId) {
     return get().tasks.filter(t => t.seriesId === seriesId && !t.parentId);
+  },
+
+  blockedTasksOf(id) {
+    // Rows, not a roster: a dated set whose dates all wait on this task is
+    // several waiters, each with its own day to be freed on, and the "N
+    // waiting" chip on the row counts them the same way. Collapsing them here
+    // and nowhere else would make the editor and the chip disagree.
+    return waitingOn(id, get().tasks);
+  },
+
+  setBlockedTasks(blockerId, taskIds) {
+    // One updateTask per row rather than a single bulk write: blockedById is a
+    // content field, so a waiter that belongs to a dated series has to fan out
+    // to that set's later dates exactly as it does when set from its own
+    // editor.
+    const { unlink } = resolveBlocksEdit(blockerId, taskIds, get().tasks);
+    unlink.forEach(id => get().updateTask(id, { blockedById: null }));
+    // Recomputed against what the releases left behind rather than decided up
+    // front, and that's the whole reason for the second call: releasing one
+    // date of a dated set fans the release out to the set's later dates, which
+    // may be rows this edit is keeping. Deciding both passes from the state
+    // before either ran would drop those on the floor.
+    const { link } = resolveBlocksEdit(blockerId, taskIds, get().tasks);
+    link.forEach(id => get().updateTask(id, { blockedById: blockerId }));
   },
 
   applyTaskDates(taskId, dates, repeat) {
