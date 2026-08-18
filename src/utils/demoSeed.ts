@@ -604,6 +604,7 @@ function seedRecipes(): DemoRecipes {
     toggleFavorite,
     markCooked,
     startCookTimer,
+    addStep,
   } = useRecipeStore.getState();
 
   // --- Sides, first: the two dinners below reference them as components ----
@@ -628,6 +629,14 @@ function seedRecipes(): DemoRecipes {
   // visibly reaches Overnight oats and visibly doesn't reach the mash.
   const mashMilk = ingredientIdNamed(mash.id, 'milk');
   if (mashMilk) updateIngredient(mash.id, mashMilk, { noSwap: true });
+  // A component with a written method, so cook mode on the steak below reads
+  // the meal's own steps and then these under a "Mashed potatoes" heading —
+  // which is the only way the attribution half of that screen is visible at all.
+  [
+    'Cover the potatoes with cold salted water and bring to a boil.',
+    'Simmer for 20 minutes, until a knife slides in with no resistance.',
+    'Drain well, then mash with the butter and milk and season.',
+  ].forEach(text => addStep(mash.id, text));
 
   const roasties = newRecipe('Roast potatoes');
   addIngredientsFromText(
@@ -777,6 +786,15 @@ function seedRecipes(): DemoRecipes {
   setSourceType(stirFry.id, 'homeRecipe');
   const marinate = addPrepTask(stirFry.id, 'Slice the chicken and marinate');
   if (marinate) updatePrepTask(stirFry.id, marinate.id, { offsetDays: 0, reminderOffsetMinutes: 60 });
+  // A written-out method (Recipe.steps), on the one recipe that's mid-cook
+  // below — so cook mode opens here with the timer already running, which is
+  // the state the whole screen was built for.
+  [
+    'Slice the chicken thin and toss it with the soy sauce.',
+    'Get the pan as hot as it goes, then sear the chicken in one layer.',
+    'Add the pepper, garlic and chile and stir-fry for two minutes.',
+    'Serve over the rice.',
+  ].forEach(text => addStep(stirFry.id, text));
   // Cooked often enough to have a history worth reading.
   [0, 1, 2, 3, 4].forEach(() => markCooked(stirFry.id));
   // Tonight's dinner, mid-cook — the one place a live timer shows up.
@@ -814,7 +832,18 @@ function seedRecipes(): DemoRecipes {
   setTags(steak.id, ['weekend']);
   setServings(steak.id, 2);
   setEstimatedMinutes(steak.id, 20);
-  setNotes(steak.id, 'Cast iron, screaming hot, and let it rest as long as it cooked.');
+  // Deliberately left as a notes blob rather than given steps: cook mode's
+  // fallback (a recipe whose method predates Recipe.steps) is otherwise
+  // invisible, and this is the recipe that shows both halves at once — its own
+  // lines split out of notes, then the mash's real steps after them.
+  setNotes(
+    steak.id,
+    [
+      'Get a cast iron pan screaming hot and salt the steak on both sides.',
+      'Sear three minutes a side, then add the butter and thyme and baste.',
+      'Rest it as long as it cooked before slicing against the grain.',
+    ].join('\n')
+  );
   // Either/or components: one of the two potatoes gets cooked, never both.
   // The default is the group's first link in list order, so mash is the usual.
   addComponent(steak.id, mash.id, 'Potatoes');

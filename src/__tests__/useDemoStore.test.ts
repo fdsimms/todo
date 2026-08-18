@@ -21,7 +21,8 @@ import { pantryEntries } from '../utils/grocerySuggest';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
-import { flattenRecipeIngredients } from '../utils/recipeComponents';
+import { flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
+import { cookSteps, stepsFromNotes } from '../utils/cookMode';
 import {
   countLikelyInPantry,
   describePantryCoverage,
@@ -920,6 +921,25 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.ingredients.some(i => i.purpose))).toBe(true);
     // A heading declared ahead of anything filed under it — see Recipe.emptySections.
     expect(recipes.some(r => r.emptySections.length > 0)).toBe(true);
+  });
+
+  it('seeds a written method, and one left in notes for cook mode to fall back to', () => {
+    const { recipes } = useRecipeStore.getState();
+    const byId = recipeMap(recipes);
+
+    // Structured steps (Recipe.steps), including on the recipe that's mid-cook,
+    // so cook mode opens there with the timer already running.
+    expect(recipes.some(r => r.steps.length > 1)).toBe(true);
+    expect(recipes.some(r => r.steps.length > 0 && r.timerStartedAt)).toBe(true);
+
+    // A recipe whose method is still a notes blob, which is what cook mode's
+    // fallback reads — and it's a composed one, so the same cook also shows a
+    // component's own steps attributed to it.
+    const fromNotes = recipes.find(r => r.steps.length === 0 && stepsFromNotes(r.notes).length > 1);
+    expect(fromNotes).toBeDefined();
+    const method = cookSteps(fromNotes!, byId);
+    expect(method.some(s => s.fromNotes && s.whole)).toBe(true);
+    expect(method.some(s => !s.fromNotes && !s.whole)).toBe(true);
   });
 
   it('seeds recipe duration, cook history, attribution and a live timer', () => {

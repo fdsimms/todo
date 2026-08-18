@@ -165,6 +165,8 @@ Start from this table instead of searching. Most work lands in one of these file
 | halving or doubling a recipe | `src/utils/recipeScale.ts` — see Scaling below |
 | showing amounts in metric or US units | `src/utils/unitConvert.ts` — see Unit conversion below |
 | reading a `quantity` string at all — amounts, units, containers | `src/utils/quantity.ts` — see Quantities below |
+| reading a recipe out one step at a time while cooking | `src/utils/cookMode.ts` + `src/components/CookModeSheet.tsx` — see Cook mode below |
+| either of a recipe's two timers, from any screen | `src/hooks/useRecipeTimer.ts` — see Cook mode below |
 
 **Read narrowly.** Seven files are over 1,000 lines — `useTaskStore.test.ts` (2.6k),
 `TaskEditor.tsx` (2.3k), `TodayScreen.tsx` (2.1k), `QuickAddModal.tsx` (1.6k),
@@ -1255,6 +1257,54 @@ amount, and answering that in the unit they already had answers nothing.
 - **A merged quantity is converted part by part** (`' · '`, what `mergeQuantities` emits when it
   won't add two measurements together), with one `≈` on the front. Converting only the leading
   measurement would leave the rest of the string as a stray tail.
+
+### Cook mode (`cookMode.ts`) — the method one step at a time
+
+Every other kitchen surface here is built for *preparing* to cook. This is the twenty minutes of
+doing it: full screen, one step, the screen held awake, the cook timer in reach throughout. It is
+a **read plus one timer**, no schema change and nothing written — `cookSteps` derives the method,
+`CookModeSheet` draws it, and position and the ingredient panel's fold die with the modal.
+
+- **It reads the nodes, not a fourth flatten.** `cookSteps` walks `cookedDishes` — the same
+  component walk, the same once-per-recipe rule, the same choice resolution the ingredient and
+  prep-task flatteners take. Writing a `flattenRecipeSteps` beside them would be a fourth copy of
+  one walk to keep in step.
+- **The order is the walk's, root first, and the boundary is *said* rather than guessed.** Nothing
+  here knows that the mash wants boiling before the steak is seared, so an interleave would be
+  asserting a schedule nobody wrote. A step from a component carries `whole: false` and renders
+  under that component's name instead.
+- **`notes` is the fallback, per node.** Every recipe predating `Recipe.steps` has its method in
+  `notes`, so a cook mode reading only the structured list would be inert for most of the box.
+  `stepsFromNotes` splits on blank lines when the blob has any and on newlines when it hasn't (a
+  method typed as paragraphs wraps its own lines; one typed per line has no blanks to find), and
+  takes a leading "1." off because cook mode numbers the steps itself. **A blob with no line
+  breaks is one step** — sentence splitting is the tempting third rule and it's wrong, because
+  "add 1.5 cups" and "Mr." are what it does to a real method. One long step is unhelpful; half a
+  sentence is misleading. It is display only: nothing is written back, and a bad split is fixed by
+  writing real steps.
+- **The cook timer is the recipe's own**, through `useRecipeTimer` — the hook that now owns the
+  clock, the derivation against it and the four store calls for *both* of a recipe's timers.
+  `RecipeDetailScreen` reads through the same hook, so "start it here, log it there" is structural
+  rather than a promise; a second stopwatch that merely looked alike would have a cook running two
+  and logging one. It takes an undefined recipe so a screen can call it above its own "the row is
+  gone" guard — and `CookModeSheet` passes `visible ? recipe : undefined`, since a modal mounted
+  invisible must not hold a once-a-second interval open.
+- **Quantities are the panel's, never the step's.** The ingredient panel runs the same
+  scale-then-convert pipeline the recipe row does (exact multiplication first, rounding conversion
+  second), so a halved recipe reads correctly mid-step. The step text renders exactly as written:
+  nothing parses amounts back out of a sentence, and per-step amounts wait for the ingredient
+  references #1695 deferred.
+- **Nothing is ticked off by itself.** Finishing the last step closes the sheet and logs nothing —
+  logging a cook time is the timer's own ✓, the same call `timer.ts` makes about a countdown.
+- **`useKeepAwake` is called from inside the Modal's content** (`ScreenAwake`), not at the top of
+  the sheet: the sheet stays mounted with `visible` false, and a lock taken there would hold the
+  phone awake for the rest of the session. `expo-keep-awake` was already in the tree as one of
+  `expo`'s own dependencies and is autolinked with the rest of them, so declaring it needs no
+  config plugin and no fresh build.
+- **Cook is the third footer verb on the recipe screen**, beside Plan and Add to list — the one
+  that happens *now*, so it leads, and hidden outright when the recipe has no method rather than
+  offered greyed out. Its arrival is why the primary shortened to "Add to list": three buttons
+  don't fit a 390pt line at the old label.
 
 ### Timed tasks, and apportioning one across its subtasks
 
