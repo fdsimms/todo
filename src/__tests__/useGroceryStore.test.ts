@@ -2644,6 +2644,35 @@ describe('mergeItems', () => {
 
       expect(useGroceryStore.getState().itemSubs).toEqual([]);
     });
+
+    it('keeps the survivor’s own standing rule over one retargeted in from the loser', () => {
+      // Cilantro (survivor) already always uses Basil; Coriander (loser) always
+      // uses Parsley. Merging must not leave the survivor with two standing
+      // rules — one item, one answer (see standingSwaps.ts).
+      const cilantro = makeItem({ name: 'Cilantro' });
+      const coriander = makeItem({ name: 'Coriander' });
+      const basil = makeItem({ name: 'Basil' });
+      const parsley = makeItem({ name: 'Parsley' });
+      seed([cilantro, coriander, basil, parsley], {
+        itemSubs: [
+          {
+            itemId: cilantro.id, subItemId: basil.id, note: null,
+            createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: true,
+          },
+          {
+            itemId: coriander.id, subItemId: parsley.id, note: null,
+            createdAt: '2026-01-02T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: true,
+          },
+        ],
+      });
+
+      useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
+
+      const subs = useGroceryStore.getState().itemSubs;
+      expect(subs).toHaveLength(2);
+      expect(subs.find(l => l.subItemId === basil.id)).toMatchObject({ itemId: cilantro.id, standing: true });
+      expect(subs.find(l => l.subItemId === parsley.id)).toMatchObject({ itemId: cilantro.id, standing: false });
+    });
   });
 
   describe('choiceGroup', () => {

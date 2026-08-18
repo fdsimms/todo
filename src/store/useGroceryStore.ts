@@ -1393,10 +1393,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       retargetedSubs.push({ ...link, itemId, subItemId });
     }
 
+    // A standing swap is one-rule-per-item (see standingSwaps.ts), enforced
+    // wherever the app writes one — linkItemSub, setItemSubStanding — but a
+    // merge doesn't go through either, it retargets links directly. Without
+    // this, an item that already has its own standing rule and picks up a
+    // second one from the loser's side would carry two: no crash
+    // (standingSwapMap just resolves one), but Settings would list both as
+    // "on" when only one is actually applied. The survivor's own rule wins,
+    // the same precedent this function already uses for a plain link
+    // collision just above.
+    const standingItemIds = new Set(survivingSubs.filter(l => l.standing).map(l => l.itemId));
+    const finalRetargetedSubs = retargetedSubs.map(link =>
+      link.standing && standingItemIds.has(link.itemId) ? { ...link, standing: false } : link
+    );
+
     dbTransaction(() => {
       dbUpdateGroceryItem(merged);
       for (const link of mergedShopLinks) dbSetItemShopLink(link);
-      for (const link of retargetedSubs) dbSetItemSubLink(link);
+      for (const link of finalRetargetedSubs) dbSetItemSubLink(link);
       // Cascades whatever's left still pointing at fromId — the rows worth
       // keeping were already moved onto intoId above, so this only clears
       // the old fromId-keyed copies and the item row itself.
@@ -1415,7 +1429,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         ...mergedShopLinks,
         ...s.itemShops.filter(l => l.itemId !== fromId && l.itemId !== intoId),
       ],
-      itemSubs: [...survivingSubs, ...retargetedSubs],
+      itemSubs: [...survivingSubs, ...finalRetargetedSubs],
       cartHoldIds: s.cartHoldIds.filter(x => x !== fromId),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));

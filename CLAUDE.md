@@ -26,6 +26,13 @@ one function and has an obvious right answer: fix it. Anything that needs a desi
 touches several files, or you're not sure is actually wrong: say so instead of guessing — the
 same as any other judgment call in this file.
 
+**"Say so" means ask, not just mention.** A note buried in a PR description or a closing summary
+is easy to skim past, and it leaves the bug unfixed with nobody having actually decided that's
+fine. When you find one of these mid-task, stop and ask — `AskUserQuestion` if the harness has
+it, a plain question in chat otherwise — with the options you'd otherwise have listed unasked.
+Don't file it away as a "worth flagging" aside and move on; get a decision and act on it (fix it,
+open an issue, or leave it, whichever they pick) before you finish the task it turned up in.
+
 ## User-facing copy
 
 Say what a setting does in plain, literal terms — the way the rest of the app already talks
