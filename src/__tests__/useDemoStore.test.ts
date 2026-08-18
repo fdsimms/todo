@@ -50,6 +50,7 @@ import { liveGeneratedTask } from '../utils/generatedTasks';
 import { kitchenContextRows, plannedUsesToday } from '../utils/dayContextRows';
 import { planTrip, summarizeTrip, describeShopCoverage } from '../utils/shoppingTrip';
 import { cheapestShopFor, describeShopPrices, shopPricesFor } from '../utils/groceryPrice';
+import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
 import { buildDayBuckets, canProject } from '../utils/calendarMonth';
@@ -867,6 +868,23 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(ricePrices.map(p => p.quantity)).toEqual(['1 lb', '5 lb']);
     expect(cheapestShopFor(rice.id, itemShops, shops)?.shop.name).toBe('Costco');
     expect(describeShopPrices(ricePrices, '$', 'x')).toContain('≈$1.60/lb');
+  });
+
+  it('seeds a recipe whose cost estimate actually clears the coverage floor', () => {
+    // Without this, recipeCost.ts's estimateRecipeCost — the feature #1672
+    // added — has no row in the demo that ever answers: most recipes here
+    // are priced too thinly to clear the coverage floor, which is realistic
+    // but would make the whole capability invisible to anyone handed the
+    // phone. Mashed potatoes clears it on its own two priced, measurable
+    // lines (potatoes by the pound, milk by the cup) against its one
+    // unpriced one (butter, by the tablespoon — priced by weight instead,
+    // so it's honestly uncovered rather than guessed).
+    const { items } = useGroceryStore.getState();
+    const mash = useRecipeStore.getState().recipes.find(r => r.name === 'Mashed potatoes')!;
+    const estimate = estimateRecipeCost(mash, items);
+    expect(estimate).not.toBeNull();
+    expect(estimate!.totalMinor).toBeGreaterThan(0);
+    expect(describeRecipeCost(estimate, '$', new Date())).toMatch(/^≈ \$\d+\.\d{2}/);
   });
 
   it('seeds a trip in progress, with rows that have something to say about it', () => {

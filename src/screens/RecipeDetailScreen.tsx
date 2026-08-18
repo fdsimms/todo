@@ -64,6 +64,7 @@ import {
   type ResolvedComponent,
 } from '../utils/recipeComponents';
 import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
+import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
 
@@ -106,6 +107,7 @@ export function RecipeDetailScreen() {
   const removeComponent = useRecipeStore(s => s.removeComponent);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const unitSystem = useSettingsStore(s => s.unitSystem);
+  const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const addAisle = useGroceryStore(s => s.addAisle);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
@@ -159,6 +161,18 @@ export function RecipeDetailScreen() {
     ).length;
     return describeUnscaled(count, scale);
   }, [recipe, scale]);
+
+  // Priced through the same flattening the shopping read uses (components,
+  // standing swaps, this much of the recipe) — null while too little of it is
+  // priced to say anything (see recipeCost.ts).
+  const costEstimate = useMemo(
+    () => (recipe ? estimateRecipeCost(recipe, groceryItems, recipesById, undefined, scale, standingSwaps) : null),
+    [recipe, groceryItems, recipesById, scale, standingSwaps]
+  );
+  const costLine = useMemo(
+    () => describeRecipeCost(costEstimate, currencySymbol, new Date()),
+    [costEstimate, currencySymbol]
+  );
 
   const [draft, setDraft] = useState('');
   // What new ingredients are filed under, until changed or cleared — the add
@@ -1113,6 +1127,10 @@ export function RecipeDetailScreen() {
             style={styles.scaleRow}
           />
         )}
+        {/* Live off the same scale chips above — a doubled dinner reads as a
+            doubled cost. Renders nothing rather than a guess while too few
+            lines are priced to say (see recipeCost.ts's coverage floor). */}
+        {!!costLine && <Text style={styles.summary}>{costLine}</Text>}
 
         {mergedIngredientRows.length === 0 && components.length === 0 ? (
           <Text style={styles.hint}>
