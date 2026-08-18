@@ -1478,6 +1478,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   updateTask(id, updates, options) {
+    // Raising a completed quota task's target past what's already logged
+    // means there's more to do today, but isTaskVisible bails out on
+    // `completed` before it ever looks at targetCount — the row would stay
+    // stuck done, invisible on Today, with no way to log the rest (#1752).
+    // Reopen it the same way undoing its completion would (which also
+    // deletes the next occurrence completing it already spawned, so raising
+    // the target can't leave two live rows for the same series), then
+    // restore the count actually logged — nothing was undone, only the
+    // completion.
+    const current = get().tasks.find(t => t.id === id);
+    if (
+      current?.completed &&
+      isQuotaTask(current) &&
+      !isMissed(current) &&
+      'targetCount' in updates &&
+      updates.targetCount != null &&
+      updates.targetCount > current.progressCount
+    ) {
+      const loggedSoFar = current.progressCount;
+      get().uncompleteTask(id);
+      updates = { ...updates, progressCount: loggedSoFar };
+    }
+
     const scope = options?.scope ?? 'series';
     // Computed once, outside the map: it scans every task, and the map is
     // already a full pass. Only consumed on the 0→1 transition below.
