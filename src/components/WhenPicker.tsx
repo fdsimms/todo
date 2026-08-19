@@ -27,6 +27,8 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
+import { buildDayBuckets } from '../utils/calendarMonth';
+import { buildDayLoads, describeDayWeight, weightFor, type DayLoad } from '../utils/dayLoad';
 import { shouldNudgePostpone } from '../utils/postpone';
 import { PostponeCheckBanner, type PostponeCheckAction } from './PostponeCheckBanner';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -136,6 +138,10 @@ export function WhenPicker({
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
+  // The span those events were actually read for — a day outside it knows
+  // nothing about meetings, which is not the same as having none.
+  const calendarWindowStart = useCalendarStore(s => s.windowStart);
+  const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
 
   const [displayMonth, setDisplayMonth] = useState(() => new Date());
   const [segments, setSegments] = useState<TimeOfDay[]>([]);
@@ -195,6 +201,37 @@ export function WhenPicker({
     [displayMonth, weekStartsOn]
   );
   const dayHeaders = useMemo(() => weekdayHeaders(weekStartsOn), [weekStartsOn]);
+
+  /**
+   * How full each day of the visible month already is (#1791).
+   *
+   * Suggest has always scored every one of these days on exactly this — it
+   * just never showed its working, so a date chosen by hand was chosen blind.
+   * Gated on `visible` because several hosts mount this picker closed, and a
+   * projection walk over the whole task list is not something a closed sheet
+   * should pay for. Deliberately *not* gated on `showSuggest`: that flag says
+   * there's no single task to anchor a suggestion to (a stack's reschedule, a
+   * template's anchor date), which is a different question from whether the
+   * day being picked is already full — and on both of those it very much is.
+   */
+  const dayLoads = useMemo(() => {
+    if (!visible || calendarDays.length === 0) return new Map<string, DayLoad>();
+    const buckets = buildDayBuckets(tasks, {
+      from: calendarDays[0],
+      to: calendarDays[calendarDays.length - 1],
+      dayResetTime,
+    });
+    const busyEvents = calendarReadEnabled && calendarLoaded ? calendarEvents : [];
+    return buildDayLoads(calendarDays, buckets, {
+      taskById: new Map(tasks.map(t => [t.id, t])),
+      busyEvents,
+      busyWindow: calendarWindowStart && calendarWindowEnd
+        ? { start: new Date(calendarWindowStart), end: new Date(calendarWindowEnd) }
+        : null,
+      dayResetTime,
+    });
+  }, [visible, calendarDays, tasks, dayResetTime, calendarReadEnabled, calendarLoaded, calendarEvents,
+      calendarWindowStart, calendarWindowEnd]);
 
   const toggleSegment = (seg: TimeOfDay) => {
     setSegments(prev =>
@@ -500,6 +537,8 @@ export function WhenPicker({
                 const key = todayDay ? 'today' : dayKeyOf(day);
                 const isPending = pendingKey === key && pendingRef.current;
                 const isSuggested = suggestion?.key === dayKeyOf(day);
+                const weight = weightFor(dayLoads.get(dayKeyOf(day)));
+                const dateLabel = todayDay ? `Today, ${format(day, 'EEEE, MMMM d')}` : format(day, 'EEEE, MMMM d');
 
                 return (
                   <TouchableOpacity
@@ -508,31 +547,44 @@ export function WhenPicker({
                     onPress={() => handleDayPress(day)}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={todayDay ? `Today, ${format(day, 'EEEE, MMMM d')}` : format(day, 'EEEE, MMMM d')}
+                    accessibilityLabel={weight ? `${dateLabel}, ${describeDayWeight(weight)}` : dateLabel}
                     accessibilityState={{ selected: isSelected }}
                   >
-                    <Animated.View style={[
-                      styles.dayCircle,
-                      isSelected && !isPending && styles.dayCircleSelected,
-                      !isSelected && !isPending && todayDay && styles.dayCircleToday,
-                      !isPending && isSuggested && styles.dayCircleSuggested,
-                      isPending && styles.dayCirclePending,
-                      isPending && { transform: [{ scale: popAnim }] },
-                    ]}>
-                      {isPending ? (
-                        <Ionicons name="checkmark-sharp" size={CELL_SIZE * 0.46} color={colors.onAccent} />
-                      ) : (
-                        <Text style={[
-                          styles.dayText,
-                          !inMonth && styles.dayTextOtherMonth,
-                          isSelected && styles.dayTextSelected,
-                          !isSelected && todayDay && styles.dayTextToday,
-                          isSuggested && styles.dayTextSuggested,
-                        ]}>
-                          {format(day, 'd')}
-                        </Text>
-                      )}
-                    </Animated.View>
+                    <View style={styles.dayStack}>
+                      <Animated.View style={[
+                        styles.dayCircle,
+                        isSelected && !isPending && styles.dayCircleSelected,
+                        !isSelected && !isPending && todayDay && styles.dayCircleToday,
+                        !isPending && isSuggested && styles.dayCircleSuggested,
+                        isPending && styles.dayCirclePending,
+                        isPending && { transform: [{ scale: popAnim }] },
+                      ]}>
+                        {isPending ? (
+                          <Ionicons name="checkmark-sharp" size={CELL_SIZE * 0.46} color={colors.onAccent} />
+                        ) : (
+                          <Text style={[
+                            styles.dayText,
+                            !inMonth && styles.dayTextOtherMonth,
+                            isSelected && styles.dayTextSelected,
+                            !isSelected && todayDay && styles.dayTextToday,
+                            isSuggested && styles.dayTextSuggested,
+                          ]}>
+                            {format(day, 'd')}
+                          </Text>
+                        )}
+                      </Animated.View>
+                      {/* The slot is reserved on every cell, marked or not, so a
+                          bar can't nudge its own circle out of line with its
+                          neighbours' — most days carry nothing here. */}
+                      <View style={styles.weightSlot}>
+                        {weight && (
+                          <View style={[
+                            styles.weightBar,
+                            weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
+                          ]} />
+                        )}
+                      </View>
+                    </View>
                   </TouchableOpacity>
                 );
               })}
@@ -769,12 +821,36 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  dayStack: {
+    alignItems: 'center',
+  },
   dayCircle: {
     width: CELL_SIZE - 6,
     height: CELL_SIZE - 6,
     borderRadius: (CELL_SIZE - 6) / 2,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Weight, not alarm: a full day is often exactly the day you meant to pick,
+  // so the cue is drawn in the greys the app already uses for "quieter than
+  // the row it sits under" rather than in red or orange.
+  weightSlot: {
+    height: 3,
+    marginTop: 2,
+    justifyContent: 'center',
+  },
+  weightBar: {
+    height: 2.5,
+    borderRadius: 1.5,
+  },
+  weightBarBusy: {
+    width: 11,
+    backgroundColor: colors.textTertiary,
+  },
+  weightBarFull: {
+    width: 21,
+    height: 3,
+    backgroundColor: colors.textSecondary,
   },
   dayCircleSelected: {
     backgroundColor: colors.accent,
