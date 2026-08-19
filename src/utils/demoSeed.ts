@@ -246,6 +246,25 @@ export function seedDemoData(): void {
     recurrenceInterval: 1,
     extraTaskEveryN: 4,
     extraTaskTitle: 'Rosin the bow',
+    // The rule says more than the name — the added task is filed, ranked,
+    // sized and given its own checklist. Invisible until it fires like the
+    // rest of the rule, so the seed's job is the editor's Details row: with
+    // no draft it reads "just the title", which is a capability nobody would
+    // know to look for.
+    extraTaskDraft: {
+      notes: 'The tin lives in the case pocket.',
+      category: 'Home',
+      projectId: null,
+      tags: ['upkeep'],
+      priority: 1,
+      effort: 1,
+      estimatedMinutes: 5,
+      timeSegments: ['evening'],
+      subtasks: [
+        { id: 'demo-rosin-1', title: 'Wipe the strings' },
+        { id: 'demo-rosin-2', title: 'Loosen the bow' },
+      ],
+    },
     effort: 2,
   });
   updateTask(violin.id, { extraTaskTally: 2 });

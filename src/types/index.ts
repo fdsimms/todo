@@ -81,6 +81,46 @@ export interface ChainItem {
   estimatedMinutes: number | null;
 }
 
+// Everything the "Extra task" rule says about the task it adds, beyond its
+// title — see the field notes on Task.extraTaskEveryN, and extraTask.ts for
+// the rule itself.
+//
+// **Null on the task means "just the title", which is what every rule written
+// before this existed says**, and the spawn behaves exactly as it did: filed
+// where the task that spawned it lives, and taking the app's new-task
+// defaults for priority and effort. A draft, once authored, is the whole
+// answer for the fields it carries.
+//
+// One JSON column rather than nine, for the reason chainItems is one: these
+// are only ever read and written together, by the one place that spawns the
+// task, and a column apiece would be nine migrations for a field set that is
+// this feature's alone.
+//
+// What is deliberately *not* here is when it lands. The rule already answers
+// that ("due with the next occurrence, or today if there isn't one"), so a
+// due date, a defer, a reminder or a repeat of its own would be a second
+// schedule contradicting the first — the same call applyTaskDates makes about
+// a series never carrying a recurrence rule.
+export interface ExtraTaskDraft {
+  notes: string;
+  // Null = the same category as the task that spawns it, which is the
+  // original behaviour and stays the default. Deliberately not a tri-state
+  // with an explicit "no category": filing it where its parent lives is what
+  // stops it sitting loose above the category sections, and that argument
+  // doesn't get weaker for being made in a picker.
+  category: string | null;
+  projectId: string | null; // null = the same project, same reasoning
+  tags: string[];
+  priority: Priority;
+  effort: Effort;
+  estimatedMinutes: number | null;
+  timeSegments: TimeOfDay[];
+  // Title-only stubs, created as real subtask rows alongside the task itself
+  // — the same shape TemplateItem.subtasks uses, and for the same reason: a
+  // subtask always starts unchecked, so it has no state worth authoring.
+  subtasks: { id: string; title: string }[];
+}
+
 // A lightweight, collapsible label for grouping several independent tasks
 // together (e.g. "Take supplements" grouping Coq10/Vitamin D/Iron, each on
 // its own schedule). Deliberately NOT a Task — it has no dueDate, recurrence,
@@ -564,6 +604,11 @@ export interface Task {
   // reader asks rather than testing the fields apart.
   extraTaskEveryN: number | null; // null = off; >= 2 (every 1st is every time)
   extraTaskTitle: string | null;  // title of the task to add
+  // The rest of what the added task looks like, or null for "just the title"
+  // — see ExtraTaskDraft. Off the rule's own liveness check on purpose:
+  // extraTaskRule() needs a count and a name, and everything here is optional
+  // detail on top of those.
+  extraTaskDraft: ExtraTaskDraft | null;
   extraTaskTally: number;         // completions since the last one was added
   // Snapshot of extraTaskTally from just before the current completion, so
   // uncompleting restores it — the same device previousStreakCount uses, and

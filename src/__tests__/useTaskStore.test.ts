@@ -1,6 +1,7 @@
 import { useTaskStore } from '../store/useTaskStore';
 import { isMissed, isRealCompletion } from '../utils/missed';
 import { derivedId, spawnSeed } from '../utils/syncIds';
+import { emptyExtraTaskDraft } from '../utils/extraTask';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -255,6 +256,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainStepOnSchedule: false,
   extraTaskEveryN: null,
   extraTaskTitle: null,
+  extraTaskDraft: null,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
   vacationPause: false,
@@ -7682,6 +7684,149 @@ describe('completeTask: extra task every Nth completion', () => {
     expect(live.extraTaskTally).toBe(0);
     expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(1);
   });
+
+  // ── What the added task looks like past its title (Task.extraTaskDraft) ──
+
+  describe('the draft the rule carries', () => {
+    it('applies every field the draft names', () => {
+      useTaskStore.setState({
+        tasks: [practice({
+          extraTaskTally: 3,
+          category: 'Music',
+          projectId: 'p1',
+          extraTaskDraft: {
+            notes: 'The tin lives in the case pocket',
+            category: 'Home',
+            projectId: 'p2',
+            tags: ['upkeep'],
+            priority: 3,
+            effort: 1,
+            estimatedMinutes: 5,
+            timeSegments: ['evening'],
+            subtasks: [],
+          },
+        })],
+      });
+
+      useTaskStore.getState().completeTask('practice');
+
+      const extra = extras()[0];
+      expect(extra.notes).toBe('The tin lives in the case pocket');
+      expect(extra.category).toBe('Home');
+      expect(extra.projectId).toBe('p2');
+      expect(extra.tags).toEqual(['upkeep']);
+      expect(extra.priority).toBe(3);
+      expect(extra.effort).toBe(1);
+      expect(extra.estimatedMinutes).toBe(5);
+      expect(extra.timeSegments).toEqual(['evening']);
+    });
+
+    // Null on the draft is "the same as the task that spawned it", not "no
+    // category" — filing it there is what keeps it out of the loose section
+    // above the categories.
+    it('follows the spawning task where the draft says nothing', () => {
+      useTaskStore.setState({
+        tasks: [practice({
+          extraTaskTally: 3,
+          category: 'Music',
+          projectId: 'p1',
+          extraTaskDraft: { ...emptyExtraTaskDraft(), notes: 'Just a note' },
+        })],
+      });
+
+      useTaskStore.getState().completeTask('practice');
+
+      const extra = extras()[0];
+      expect(extra.category).toBe('Music');
+      expect(extra.projectId).toBe('p1');
+      expect(extra.notes).toBe('Just a note');
+    });
+
+    // The behaviour of every rule written before drafts existed.
+    it('adds a bare task filed with its parent when there is no draft', () => {
+      useTaskStore.setState({
+        tasks: [practice({ extraTaskTally: 3, category: 'Music', tags: ['violin'], priority: 4 })],
+      });
+
+      useTaskStore.getState().completeTask('practice');
+
+      const extra = extras()[0];
+      expect(extra.category).toBe('Music');
+      expect(extra.notes).toBe('');
+      // Never inherited: they describe the task that spawned it, and this is
+      // a different piece of work.
+      expect(extra.tags).toEqual([]);
+      expect(extra.priority).toBe(0);
+    });
+
+    it('creates the draft\'s subtasks as real rows under it, unchecked and in order', () => {
+      useTaskStore.setState({
+        tasks: [practice({
+          extraTaskTally: 3,
+          extraTaskDraft: {
+            ...emptyExtraTaskDraft(),
+            subtasks: [
+              { id: 's1', title: 'Wipe the strings' },
+              { id: 's2', title: 'Tighten the bow' },
+            ],
+          },
+        })],
+      });
+
+      useTaskStore.getState().completeTask('practice');
+
+      const extra = extras().find(t => t.parentId === null)!;
+      const subs = useTaskStore.getState().tasks
+        .filter(t => t.parentId === extra.id)
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+      expect(subs.map(t => t.title)).toEqual(['Wipe the strings', 'Tighten the bow']);
+      expect(subs.every(t => !t.completed)).toBe(true);
+    });
+
+    it('takes the subtasks back with the task when the completion is undone', () => {
+      useTaskStore.setState({
+        tasks: [practice({
+          extraTaskTally: 3,
+          extraTaskDraft: {
+            ...emptyExtraTaskDraft(),
+            subtasks: [{ id: 's1', title: 'Wipe the strings' }],
+          },
+        })],
+      });
+
+      useTaskStore.getState().completeTask('practice');
+      expect(useTaskStore.getState().tasks.filter(t => t.title === 'Wipe the strings')).toHaveLength(1);
+
+      useTaskStore.getState().uncompleteTask('practice');
+      expect(extras()).toHaveLength(0);
+      expect(useTaskStore.getState().tasks.filter(t => t.title === 'Wipe the strings')).toHaveLength(0);
+    });
+
+    // Derived like the task itself: one milestone task per completion,
+    // however many devices saw that completion.
+    it('gives each subtask an id derived from its stub, not a fresh one', () => {
+      const seed = () => useTaskStore.setState({
+        tasks: [practice({
+          extraTaskTally: 3,
+          extraTaskDraft: {
+            ...emptyExtraTaskDraft(),
+            subtasks: [{ id: 's1', title: 'Wipe the strings' }],
+          },
+        })],
+      });
+
+      seed();
+      useTaskStore.getState().completeTask('practice');
+      const first = useTaskStore.getState().tasks.find(t => t.title === 'Wipe the strings')!.id;
+
+      seed();
+      useTaskStore.getState().completeTask('practice');
+      const second = useTaskStore.getState().tasks.find(t => t.title === 'Wipe the strings')!.id;
+
+      expect(first).toBe(second);
+      expect(first).toBe(derivedId(spawnSeed.subtask(derivedId(spawnSeed.extra('practice')), 's1')));
+    });
+  });
 });
 
 describe('completeTask: decision tasks capture an answer', () => {
@@ -8024,5 +8169,23 @@ describe('time block reconcile', () => {
     // Time already set aside — and possibly shared with other people — is not
     // this app's to withdraw. See Task.timeBlockEventId.
     expect(rowOf('report').timeBlockEventId).toBe('ev-1');
+  });
+});
+
+// The one path a user can actually write a draft through — TaskEditor hands
+// the whole form to updateTask, so a field the update path drops is a field
+// the sheet only appears to save.
+describe('updateTask: the extra task draft', () => {
+  it('saves a draft onto the task and takes it back off again', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'practice', extraTaskEveryN: 4, extraTaskTitle: 'Rosin the bow' })],
+    });
+    const draft = { ...emptyExtraTaskDraft(), notes: 'In the case pocket', priority: 2 as const };
+
+    useTaskStore.getState().updateTask('practice', { extraTaskDraft: draft });
+    expect(useTaskStore.getState().tasks[0].extraTaskDraft).toEqual(draft);
+
+    useTaskStore.getState().updateTask('practice', { extraTaskDraft: null });
+    expect(useTaskStore.getState().tasks[0].extraTaskDraft).toBeNull();
   });
 });
