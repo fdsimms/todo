@@ -1073,6 +1073,15 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(Math.max(...perSlot.values())).toBeGreaterThan(1);
     // "Added to list on X" on the week header.
     expect(Object.keys(useMealPlanStore.getState().addedToListAt).length).toBeGreaterThan(0);
+
+    // The deciding lens (#1669) has to have a night to be about, and the run
+    // deliberately ends on one: a day still ahead, holding a meal, with its
+    // dinner still open. A fortnight where every dinner is spoken for shows
+    // that surface only in the one state it isn't for.
+    const todayKey = dayKeyOf(new Date());
+    const ahead = new Set(entries.filter(e => e.date > todayKey).map(e => e.date));
+    const dinners = new Set(entries.filter(e => e.slot === 'dinner').map(e => e.date));
+    expect([...ahead].some(date => !dinners.has(date))).toBe(true);
   });
 
   it('leaves no post-cook offer standing, but sets tonight up to raise one', () => {
