@@ -28,22 +28,25 @@ import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
-  extractRecipe, describeAIError, type ExtractedRecipe, type RecipeGroceryItem,
+  extractRecipe, type ExtractedRecipe, type RecipeGroceryItem,
 } from '../services/aiSuggestions';
+import { describeImportError } from '../services/recipePage';
 import { normalizeIngredient, cleanRecipeName, formatServingsRange } from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { aisleForName } from '../utils/groceryAisles';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
-import { RecipeSourcePicker } from './RecipeSourcePicker';
+import { RecipeSourcePicker, type RecipeInputMode } from './RecipeSourcePicker';
 import { ExtractedIngredientRow } from './ExtractedIngredientRow';
-import { useRecipePhotoSource } from '../hooks/useRecipePhotoSource';
+import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { haptics } from '../utils/haptics';
 
 const CHECKBOX_SIZE = 22;
 
 interface Props {
   visible: boolean;
+  /** Which tab to open on — the add menu's item decides, see RecipesScreen. */
+  initialMode?: RecipeInputMode;
   onClose: () => void;
   /** Handed the new (or matched existing) recipe id; the caller navigates. */
   onCreated: (recipeId: string) => void;
@@ -64,8 +67,16 @@ interface Props {
  * (`nameKey` is UNIQUE), so a model's guess must be correctable — and having the
  * field on screen is what makes the already-have-this case cheap: the duplicate
  * check runs as you type and offers to open the recipe you meant.
+ *
+ * **A link import fills in more of the recipe than the other two sources can**,
+ * and that asymmetry is the page's doing rather than a policy: a page that
+ * publishes `schema.org/Recipe` hands over its method and its attribution as
+ * structured data, so the method is written straight to `Recipe.steps` and the
+ * site to `source`/`sourceUrl` rather than being re-derived by a model that is
+ * under instruction to ignore the method. A paste and a photo carry neither, so
+ * neither is invented for them.
  */
-export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
+export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onCreated }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -74,6 +85,12 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const setServings = useRecipeStore(s => s.setServings);
+  const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
+  const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
+  const setSource = useRecipeStore(s => s.setSource);
+  const setAuthor = useRecipeStore(s => s.setAuthor);
+  const setSourceType = useRecipeStore(s => s.setSourceType);
+  const addStep = useRecipeStore(s => s.addStep);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
 
   const [loading, setLoading] = useState(false);
@@ -85,13 +102,13 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
   const [ingredients, setIngredients] = useState<RecipeGroceryItem[]>([]);
   const [name, setName] = useState('');
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
-  const [applyServings, setApplyServings] = useState(true);
+  const [applyDetails, setApplyDetails] = useState(true);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
-  // Reachable only via the Recipes add button's "From a photo" item, so the
-  // sheet opens on the Photo tab rather than making that tap feel ignored —
-  // Paste is still one tap away for a recipe that's easier to copy in as text.
-  const input = useRecipePhotoSource('photo');
-  const { source, reset: resetInput } = input;
+  // Whichever add-menu item opened it — "From a link" and "From a photo" both
+  // land here, and each opens on its own tab rather than making that tap feel
+  // ignored. Every other tab is still one tap away.
+  const input = useRecipeImportSource(initialMode);
+  const { resolveSource, reset: resetInput } = input;
 
   const reset = useCallback(() => {
     setLoading(false);
@@ -100,7 +117,7 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
     setIngredients([]);
     setName('');
     setAccepted(new Set());
-    setApplyServings(true);
+    setApplyDetails(true);
     resetInput();
   }, [resetInput]);
 
@@ -109,22 +126,26 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
   }, [visible, reset]);
 
   const run = useCallback(async () => {
-    if (!source) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await extractRecipe(source, [...aisleOrder]);
+      // A link is fetched first; a paste and a photo resolve to themselves.
+      const resolved = await resolveSource();
+      if (!resolved) return;
+      const result = await extractRecipe(resolved.source, [...aisleOrder]);
       setExtracted(result);
       setIngredients(result.ingredients);
-      setName(result.name);
+      // The page's own title is the better answer when the model didn't give
+      // one — a page that says what it's called is not a recipe with no name.
+      setName(result.name || resolved.page?.title || '');
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
-      setApplyServings(result.servings !== null);
+      setApplyDetails(result.servings !== null || result.prepMinutes !== null);
     } catch (e) {
-      setError(describeAIError(e));
+      setError(describeImportError(e));
     } finally {
       setLoading(false);
     }
-  }, [source, aisleOrder]);
+  }, [resolveSource, aisleOrder]);
 
   const toggle = (index: number) => {
     setAccepted(prev => {
@@ -175,8 +196,29 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
       .map(item => normalizeIngredient(item))
       .filter((i): i is NonNullable<typeof i> => i !== null);
     if (chosen.length > 0) addStructuredIngredients(recipe.id, chosen);
-    if (applyServings && extracted.servings !== null) {
-      setServings(recipe.id, extracted.servings, extracted.servingsMax);
+    if (applyDetails) {
+      if (extracted.servings !== null) {
+        setServings(recipe.id, extracted.servings, extracted.servingsMax);
+      }
+      // Was read off the recipe and shown on the row, then dropped on the way
+      // out — the row promised a time the new recipe never got.
+      //
+      // Lands on `estimatedMinutes`, NOT on the identically-named
+      // `Recipe.prepMinutes`: the extractor's field is the recipe's *total*
+      // time, while the model's prepMinutes/estimatedMinutes pair splits prep
+      // from cook. A total in the cook half leaves `totalMinutes()` correct;
+      // in the prep half it would claim the whole recipe is mise en place.
+      if (extracted.prepMinutes !== null) setEstimatedMinutes(recipe.id, extracted.prepMinutes);
+    }
+    // Everything a page told us about itself. Only ever set from structured
+    // markup, so a paste and a photo leave all of it null as they always did.
+    const { page } = input;
+    if (page) {
+      setSourceUrl(recipe.id, page.url);
+      setSourceType(recipe.id, 'website');
+      if (page.siteName) setSource(recipe.id, page.siteName);
+      if (page.author) setAuthor(recipe.id, page.author);
+      page.steps.forEach(step => addStep(recipe.id, step));
     }
     haptics.success();
     // Close first, then navigate: a navigate fired from under a live pageSheet
@@ -187,13 +229,28 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
 
   const canCreate = !loading && !!extracted && !!cleaned && !duplicate;
 
+  // One checkbox applying two facts has to name both when it has both, and it
+  // reads out exactly what the row shows rather than a second phrasing of it.
+  const detailsLabel = !extracted ? ''
+    : extracted.servings !== null
+      ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}${
+          extracted.prepMinutes !== null ? `, about ${extracted.prepMinutes} min` : ''}`
+      : `About ${extracted.prepMinutes} min`;
+
+  // The method isn't in the review list — it's taken verbatim off the page, so
+  // there's nothing to tick or correct — but arriving with steps nobody
+  // mentioned is a surprise, so the count is said out loud.
+  const stepCount = input.page?.steps.length ?? 0;
+
   const renderBody = () => {
     if (loading) {
       return (
         <View style={styles.centered}>
           <ActivityIndicator color={colors.purple} />
           <Text style={styles.loadingText}>
-            {input.usingPhoto ? 'Reading the photo…' : 'Reading the recipe…'}
+            {input.fetching ? 'Opening the page…'
+              : input.usingPhoto ? 'Reading the photo…'
+              : 'Reading the recipe…'}
           </Text>
         </View>
       );
@@ -222,16 +279,22 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
           {...keyboardScroll.props}
         >
           <RecipeSourcePicker
-            intro="Photograph a cookbook page or paste a recipe, and it’ll be added to your recipe box: name, servings and all."
+            intro="Open a recipe link, photograph a cookbook page, or paste a recipe, and it’ll be added to your recipe box: name, servings and all."
             mode={input.mode}
             onChangeMode={input.setMode}
             text={input.text}
             onChangeText={input.setText}
+            url={input.url}
+            onChangeUrl={input.setUrl}
             photo={input.photo}
             onPickPhoto={input.pick}
             onClearPhoto={input.clearPhoto}
             picking={input.picking}
-            ctaLabel={input.usingPhoto ? 'Read the photo' : 'Read the recipe'}
+            ctaLabel={
+              input.usingLink ? 'Get the recipe'
+                : input.usingPhoto ? 'Read the photo'
+                : 'Read the recipe'
+            }
             onRun={run}
           />
           {!!input.photoError && <Text style={styles.photoError}>{input.photoError}</Text>}
@@ -247,6 +310,8 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
             title="Nothing found"
             subtitle={input.usingPhoto
               ? 'Nothing readable turned up in that photo. Try again in better light, or paste the text instead.'
+              : input.usingLink
+              ? 'No recipe turned up on that page. Copy the recipe from it and paste it instead.'
               : 'No recipe turned up in that text.'}
             actionLabel={input.usingPhoto ? 'Try another photo' : undefined}
             onAction={input.usingPhoto ? () => { setExtracted(null); input.clearPhoto(); } : undefined}
@@ -292,23 +357,28 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
 
         <Text style={styles.intro}>
           Untick anything you don't want added, or tap a name or amount to change it.
+          {stepCount > 0 && ` The method comes across too — ${stepCount} step${stepCount === 1 ? '' : 's'}.`}
         </Text>
 
-        {extracted.servings !== null && (
+        {(extracted.servings !== null || extracted.prepMinutes !== null) && (
           <TouchableOpacity
             style={styles.row}
             activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); setApplyServings(v => !v); }}
+            onPress={() => { haptics.tap(); setApplyDetails(v => !v); }}
             accessibilityRole="checkbox"
-            accessibilityState={{ checked: applyServings }}
-            accessibilityLabel={`Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`}
+            accessibilityState={{ checked: applyDetails }}
+            accessibilityLabel={detailsLabel}
           >
-            <View style={[styles.checkbox, applyServings && styles.checkboxOn]}>
-              {applyServings && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+            <View style={[styles.checkbox, applyDetails && styles.checkboxOn]}>
+              {applyDetails && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
             </View>
             <View style={styles.body}>
-              <Text style={styles.name}>Serves {formatServingsRange(extracted.servings, extracted.servingsMax)}</Text>
-              {extracted.prepMinutes !== null && (
+              <Text style={styles.name}>
+                {extracted.servings !== null
+                  ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
+                  : `About ${extracted.prepMinutes} min`}
+              </Text>
+              {extracted.servings !== null && extracted.prepMinutes !== null && (
                 <Text style={styles.meta}>About {extracted.prepMinutes} min</Text>
               )}
             </View>

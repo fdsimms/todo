@@ -23,6 +23,7 @@ import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
+import type { RecipeInputMode } from '../components/RecipeSourcePicker';
 import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
 import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
 import { Fab, FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
@@ -118,6 +119,7 @@ export function RecipesScreen() {
   const [sortFilterVisible, setSortFilterVisible] = useState(false);
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
+  const [importMode, setImportMode] = useState<RecipeInputMode>('photo');
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [groupByMealType, setGroupByMealType] = useState(true);
 
@@ -138,12 +140,16 @@ export function RecipesScreen() {
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
   // still the one under your thumb.
   const addMenuItems = useMemo<FabMenuItem[]>(() => ([
+    { key: 'link', label: 'From a link', icon: 'link-outline' },
     { key: 'import', label: 'From a photo', icon: 'camera-outline' },
     { key: 'name', label: 'New recipe', icon: 'add-circle-outline' },
   ]), []);
 
   const handleAddMenuSelect = useCallback((key: string) => {
-    if (key === 'import') setImportVisible(true);
+    // Both import items open the one sheet, on their own tab — see
+    // RecipeCreateSheet's initialMode.
+    if (key === 'link') { setImportMode('link'); setImportVisible(true); }
+    else if (key === 'import') { setImportMode('photo'); setImportVisible(true); }
     else setAddVisible(true);
   }, []);
 
@@ -158,7 +164,7 @@ export function RecipesScreen() {
   // state Fab's own PanResponder already tracks, so no drop-zone plumbing is
   // needed to answer it. Landing anywhere else commits to the plain "New
   // recipe" action, the same one closest to the button in the menu, skipping
-  // "From a photo" the way a task drag skips straight to a plain task rather
+  // the import items the way a task drag skips straight to a plain task rather
   // than reopening the chain/stack/template menu.
   const [fabDragActive, setFabDragActive] = useState(false);
   const [dragCanceling, setDragCanceling] = useState(false);
@@ -627,6 +633,7 @@ export function RecipesScreen() {
 
       <RecipeCreateSheet
         visible={importVisible}
+        initialMode={importMode}
         onClose={() => setImportVisible(false)}
         onCreated={recipeId => navigation.navigate('RecipeDetail', { recipeId })}
       />

@@ -1166,15 +1166,21 @@ export function suggestRecipesForEmptyNight(
 const BARE_URL = /^(https?:\/\/|www\.)\S+$/i;
 
 /**
- * Whether pasted text is *only* links — the case the recipe importers have to
- * refuse rather than run.
+ * Whether pasted text is *only* links — the case the paste box has to refuse
+ * rather than run.
  *
- * The importers send what you paste straight to the model, which has no way to
+ * The paste box sends what you type straight to the model, which has no way to
  * open a page: handed a bare URL it does the only thing it can and writes a
  * plausible recipe from the words in the address, which arrives looking exactly
  * like a successful import (#1607). That's the worst failure this app has —
  * silently invented data the user has no reason to distrust — so it's blocked
  * up front rather than defended against downstream.
+ *
+ * **Still a refusal now that the Link tab exists**, because it is a fact about
+ * the *paste* box and nothing about that changed: the model still can't open a
+ * page, and the address still contains no ingredients. What changed is where it
+ * sends you — `RecipeSourcePicker` turns this into the offer of the tab that
+ * fetches the page, carrying the address over with it.
  *
  * Deliberately requires *every* non-empty line to be a bare address. A real
  * paste from a recipe site is prose and quantities with a URL somewhere in it,

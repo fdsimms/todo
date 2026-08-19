@@ -27,15 +27,16 @@ import {
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
-  extractRecipe, describeAIError, type ExtractedRecipe, type RecipeGroceryItem,
+  extractRecipe, type ExtractedRecipe, type RecipeGroceryItem,
 } from '../services/aiSuggestions';
+import { describeImportError } from '../services/recipePage';
 import { normalizeIngredient, formatServingsRange } from '../utils/recipeUtils';
 import { aisleForName } from '../utils/groceryAisles';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
 import { ExtractedIngredientRow } from './ExtractedIngredientRow';
-import { useRecipePhotoSource } from '../hooks/useRecipePhotoSource';
+import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { haptics } from '../utils/haptics';
 
 const CHECKBOX_SIZE = 22;
@@ -65,6 +66,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const setServings = useRecipeStore(s => s.setServings);
+  const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
 
   const [loading, setLoading] = useState(false);
@@ -74,10 +76,10 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // (#1608) — extracted itself is left untouched.
   const [ingredients, setIngredients] = useState<RecipeGroceryItem[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
-  const [applyServings, setApplyServings] = useState(true);
+  const [applyDetails, setApplyDetails] = useState(true);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
-  const input = useRecipePhotoSource();
-  const { source, reset: resetInput } = input;
+  const input = useRecipeImportSource();
+  const { resolveSource, reset: resetInput } = input;
 
   const reset = useCallback(() => {
     setLoading(false);
@@ -85,7 +87,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setExtracted(null);
     setIngredients([]);
     setAccepted(new Set());
-    setApplyServings(true);
+    setApplyDetails(true);
     resetInput();
   }, [resetInput]);
 
@@ -94,21 +96,23 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   }, [visible, reset]);
 
   const run = useCallback(async () => {
-    if (!source) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await extractRecipe(source, [...aisleOrder]);
+      // A link is fetched first; a paste and a photo resolve to themselves.
+      const resolved = await resolveSource();
+      if (!resolved) return;
+      const result = await extractRecipe(resolved.source, [...aisleOrder]);
       setExtracted(result);
       setIngredients(result.ingredients);
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
-      setApplyServings(result.servings !== null);
+      setApplyDetails(result.servings !== null || result.prepMinutes !== null);
     } catch (e) {
-      setError(describeAIError(e));
+      setError(describeImportError(e));
     } finally {
       setLoading(false);
     }
-  }, [source, aisleOrder]);
+  }, [resolveSource, aisleOrder]);
 
   const toggle = (index: number) => {
     setAccepted(prev => {
@@ -142,14 +146,34 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       .map(item => normalizeIngredient(item))
       .filter((i): i is NonNullable<typeof i> => i !== null);
     if (chosen.length > 0) addStructuredIngredients(recipe.id, chosen);
-    if (applyServings && extracted.servings !== null) {
-      setServings(recipe.id, extracted.servings, extracted.servingsMax);
+    if (applyDetails) {
+      if (extracted.servings !== null) {
+        setServings(recipe.id, extracted.servings, extracted.servingsMax);
+      }
+      // Was read off the recipe and shown on the row, then dropped on the way
+      // out — the row promised a time the recipe never got.
+      //
+      // Lands on `estimatedMinutes`, NOT on the identically-named
+      // `Recipe.prepMinutes`: the extractor's field is the recipe's *total*
+      // time, while the model's prepMinutes/estimatedMinutes pair splits prep
+      // from cook. A total in the cook half leaves `totalMinutes()` correct;
+      // in the prep half it would claim the whole recipe is mise en place.
+      if (extracted.prepMinutes !== null) setEstimatedMinutes(recipe.id, extracted.prepMinutes);
     }
     haptics.success();
     onClose();
   };
 
-  const canApply = !loading && !!extracted && (accepted.size > 0 || (applyServings && extracted.servings !== null));
+  const hasDetails = !!extracted && (extracted.servings !== null || extracted.prepMinutes !== null);
+  const canApply = !loading && !!extracted && (accepted.size > 0 || (applyDetails && hasDetails));
+
+  // One checkbox applying two facts has to name both when it has both, and it
+  // reads out exactly what the row shows rather than a second phrasing of it.
+  const detailsLabel = !extracted ? ''
+    : extracted.servings !== null
+      ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}${
+          extracted.prepMinutes !== null ? `, about ${extracted.prepMinutes} min` : ''}`
+      : `About ${extracted.prepMinutes} min`;
 
   const renderBody = () => {
     if (loading) {
@@ -157,7 +181,9 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
         <View style={styles.centered}>
           <ActivityIndicator color={colors.purple} />
           <Text style={styles.loadingText}>
-            {input.usingPhoto ? 'Reading the photo…' : 'Reading the recipe…'}
+            {input.fetching ? 'Opening the page…'
+              : input.usingPhoto ? 'Reading the photo…'
+              : 'Reading the recipe…'}
           </Text>
         </View>
       );
@@ -186,16 +212,22 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           {...keyboardScroll.props}
         >
           <RecipeSourcePicker
-            intro={`Paste a recipe or photograph the page. Its servings and shopping list get added to ${recipe?.name ?? 'this recipe'} instead of just going on the grocery list.`}
+            intro={`Open a recipe link, paste a recipe, or photograph the page. Its servings and shopping list get added to ${recipe?.name ?? 'this recipe'} instead of just going on the grocery list.`}
             mode={input.mode}
             onChangeMode={input.setMode}
             text={input.text}
             onChangeText={input.setText}
+            url={input.url}
+            onChangeUrl={input.setUrl}
             photo={input.photo}
             onPickPhoto={input.pick}
             onClearPhoto={input.clearPhoto}
             picking={input.picking}
-            ctaLabel={input.usingPhoto ? 'Read the photo' : 'Read the recipe'}
+            ctaLabel={
+              input.usingLink ? 'Get the recipe'
+                : input.usingPhoto ? 'Read the photo'
+                : 'Read the recipe'
+            }
             onRun={run}
           />
           {!!input.photoError && <Text style={styles.photoError}>{input.photoError}</Text>}
@@ -203,7 +235,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       );
     }
 
-    if (ingredients.length === 0 && extracted.servings === null) {
+    if (ingredients.length === 0 && !hasDetails) {
       return (
         <View style={styles.centered}>
           <EmptyState
@@ -211,6 +243,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
             title="Nothing found"
             subtitle={input.usingPhoto
               ? 'Nothing readable turned up in that photo. Try again in better light, or paste the text instead.'
+              : input.usingLink
+              ? 'No recipe turned up on that page. Copy the recipe from it and paste it instead.'
               : 'No servings or shopping items turned up in that text.'}
             actionLabel={input.usingPhoto ? 'Try another photo' : undefined}
             onAction={input.usingPhoto ? () => { setExtracted(null); input.clearPhoto(); } : undefined}
@@ -225,21 +259,25 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           Untick anything you don't want added, or tap a name or amount to change it.
         </Text>
 
-        {extracted.servings !== null && (
+        {hasDetails && (
           <TouchableOpacity
             style={styles.row}
             activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); setApplyServings(v => !v); }}
+            onPress={() => { haptics.tap(); setApplyDetails(v => !v); }}
             accessibilityRole="checkbox"
-            accessibilityState={{ checked: applyServings }}
-            accessibilityLabel={`Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`}
+            accessibilityState={{ checked: applyDetails }}
+            accessibilityLabel={detailsLabel}
           >
-            <View style={[styles.checkbox, applyServings && styles.checkboxOn]}>
-              {applyServings && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+            <View style={[styles.checkbox, applyDetails && styles.checkboxOn]}>
+              {applyDetails && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
             </View>
             <View style={styles.body}>
-              <Text style={styles.name}>Serves {formatServingsRange(extracted.servings, extracted.servingsMax)}</Text>
-              {extracted.prepMinutes !== null && (
+              <Text style={styles.name}>
+                {extracted.servings !== null
+                  ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
+                  : `About ${extracted.prepMinutes} min`}
+              </Text>
+              {extracted.servings !== null && extracted.prepMinutes !== null && (
                 <Text style={styles.meta}>About {extracted.prepMinutes} min</Text>
               )}
             </View>

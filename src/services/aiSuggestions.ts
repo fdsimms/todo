@@ -285,8 +285,12 @@ export async function suggestSubtasks(
 
 /** Names per aisle-sort call. A weekly list is well under this; the cap bounds a pathological one. */
 const MAX_AISLE_NAMES = 60;
-/** Characters of recipe text we'll send. Roughly a long recipe including method. */
-const MAX_RECIPE_CHARS = 4_000;
+/**
+ * Characters of recipe text we'll send. Roughly a long recipe including method.
+ * Exported because `recipePage.ts` has to trim a fetched page to fit it, and a
+ * second copy of the number there is one that goes stale.
+ */
+export const MAX_RECIPE_CHARS = 4_000;
 const MAX_RECIPE_ITEMS = 40;
 
 /**
