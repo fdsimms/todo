@@ -901,7 +901,7 @@ interface TaskStore {
   dripStalledProjects: () => void;
   /**
    * The opt-in "plan meals for the week" nudge (#1121) — creates a real Task
-   * reminding the user to plan the coming week's meals, at most once a week
+   * reminding the user to plan that week's meals, at most once a week
    * and only when that week has nothing planned yet. See
    * src/utils/mealPlanNudge.ts for the firing/suppression rules this wraps.
    */

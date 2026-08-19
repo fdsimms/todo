@@ -62,10 +62,10 @@ describe('dueMealPlanNudge', () => {
     expect(due!.weekKey).toBe('2025-08-10');
   });
 
-  it('targets the week after the one the trigger fires in', () => {
+  it('targets the same week the trigger fires in', () => {
     const due = dueMealPlanNudge(SUN_AUG_3(9, 0), 0, 0, '09:00', null);
-    expect(due!.targetWeekStartKey).toBe('2025-08-10');
-    expect(due!.targetWeekEndKey).toBe('2025-08-16');
+    expect(due!.targetWeekStartKey).toBe('2025-08-03');
+    expect(due!.targetWeekEndKey).toBe('2025-08-09');
   });
 
   it('resolves the trigger day within the week regardless of which weekday it is', () => {
@@ -74,7 +74,7 @@ describe('dueMealPlanNudge', () => {
     const due = dueMealPlanNudge(FRI_AUG_8(9, 0), 0, 5, '09:00', null);
     expect(due).not.toBeNull();
     expect(due!.weekKey).toBe('2025-08-03');
-    expect(due!.targetWeekStartKey).toBe('2025-08-10');
+    expect(due!.targetWeekStartKey).toBe('2025-08-03');
   });
 
   it('respects weekStartsOn when computing the week and the target range', () => {
@@ -82,8 +82,8 @@ describe('dueMealPlanNudge', () => {
     const due = dueMealPlanNudge(TUE_AUG_5(9, 0), 1, 1, '09:00', null);
     expect(due).not.toBeNull();
     expect(due!.weekKey).toBe('2025-08-04');
-    expect(due!.targetWeekStartKey).toBe('2025-08-11');
-    expect(due!.targetWeekEndKey).toBe('2025-08-17');
+    expect(due!.targetWeekStartKey).toBe('2025-08-04');
+    expect(due!.targetWeekEndKey).toBe('2025-08-10');
   });
 
   it('falls back to midnight for an unparseable time rather than never firing', () => {
@@ -93,36 +93,36 @@ describe('dueMealPlanNudge', () => {
 
   it('titles the stack with a fixed name rather than a date range', () => {
     const due = dueMealPlanNudge(SUN_AUG_3(9, 0), 0, 0, '09:00', null);
-    expect(due!.title).toBe("Plan next week's meals");
+    expect(due!.title).toBe("Plan this week's meals");
   });
 
   it('names all seven days of the target week, in week order', () => {
     const due = dueMealPlanNudge(SUN_AUG_3(9, 0), 0, 0, '09:00', null);
     expect(due!.days.map(d => d.dayKey)).toEqual([
-      '2025-08-10',
-      '2025-08-11',
-      '2025-08-12',
-      '2025-08-13',
-      '2025-08-14',
-      '2025-08-15',
-      '2025-08-16',
+      '2025-08-03',
+      '2025-08-04',
+      '2025-08-05',
+      '2025-08-06',
+      '2025-08-07',
+      '2025-08-08',
+      '2025-08-09',
     ]);
   });
 
   it('titles each day by weekday and numeric date, without repeating the stack\'s verb', () => {
     const due = dueMealPlanNudge(SUN_AUG_3(9, 0), 0, 0, '09:00', null);
-    expect(due!.days[0].title).toBe('Sunday 08/10');
-    expect(due!.days[6].title).toBe('Saturday 08/16');
+    expect(due!.days[0].title).toBe('Sunday 08/03');
+    expect(due!.days[6].title).toBe('Saturday 08/09');
   });
 
   it('follows weekStartsOn into the day set, not just the range', () => {
     // Monday-start, firing inside Mon Aug 4 – Sun Aug 10, so the week being
-    // asked about is Mon Aug 11 – Sun Aug 17 and the rows start on a Monday.
+    // asked about is the same one and the rows start on a Monday.
     const due = dueMealPlanNudge(TUE_AUG_5(9, 0), 1, 1, '09:00', null);
     expect(due!.days).toHaveLength(7);
-    expect(due!.days[0].dayKey).toBe('2025-08-11');
-    expect(due!.days[0].title).toBe('Monday 08/11');
-    expect(due!.days[6].dayKey).toBe('2025-08-17');
+    expect(due!.days[0].dayKey).toBe('2025-08-04');
+    expect(due!.days[0].title).toBe('Monday 08/04');
+    expect(due!.days[6].dayKey).toBe('2025-08-10');
   });
 
   it('anchors dueDate to noon on the day it fires, not the trigger day', () => {

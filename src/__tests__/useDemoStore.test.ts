@@ -1227,7 +1227,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(groupIds.size).toBe(1);
     const group = groups.find(g => g.id === nudgeTasks[0].groupId);
     expect(group).toBeDefined();
-    expect(group!.title).toBe("Plan next week's meals");
+    expect(group!.title).toBe("Plan this week's meals");
     // A stack that arrives unattended opens itself; nothing else would show
     // the seven rows this feature is.
     expect(group!.collapsed).toBe(false);
@@ -1252,7 +1252,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
   it('seeds one nudge day already planned end to end, so the ready state shows', () => {
     // The counter and its full state are invisible until a day has all three
-    // meals on it — the reason this is seeded rather than left to the user.
+    // meals on it — today's own row, planned end to end by the seed above.
+    // The nudge's target week is this week (#1730), the same one that seed
+    // already fleshes out, so nothing extra is planted here for it.
     const { entries } = useMealPlanStore.getState();
     const { tasks } = useTaskStore.getState();
 
@@ -1264,7 +1266,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // ...and a spread either side of it, so the counter reads as a range
     // rather than as an on/off badge.
     expect(counts.some(c => c > 0 && c < MEAL_PLAN_NUDGE_SLOT_COUNT)).toBe(true);
-    expect(counts.some(c => c === 0)).toBe(true);
   });
 
   it('seeds today with meals on both sides of the fold', () => {

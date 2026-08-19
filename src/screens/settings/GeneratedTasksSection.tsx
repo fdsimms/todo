@@ -147,7 +147,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
   const hintFor = (spec: GeneratedKindSpec): string => {
     if (!enabledOf(spec.kind)) return spec.offHint;
     if (spec.kind === 'mealPlanNudge') {
-      return `A task appears ${WEEKDAY_NAMES[s.mealPlanNudgeWeekday]} at ${formatHHMM(s.mealPlanNudgeTime)} to plan the coming week`;
+      return `A task appears ${WEEKDAY_NAMES[s.mealPlanNudgeWeekday]} at ${formatHHMM(s.mealPlanNudgeTime)} to plan that week`;
     }
     return spec.onHint;
   };

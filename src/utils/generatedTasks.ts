@@ -142,8 +142,8 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   mealPlanNudge: {
     kind: 'mealPlanNudge',
     label: 'Plan meals for the week',
-    onHint: 'Adds a task once a week to plan the week ahead',
-    offHint: 'No weekly task to plan the week ahead',
+    onHint: 'Adds a task once a week to plan that week\'s meals',
+    offHint: 'No weekly task to plan the week\'s meals',
     icon: 'calendar-outline',
     sourced: false,
     // Categorized like the other three now: it was the one generator with
