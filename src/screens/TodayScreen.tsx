@@ -916,6 +916,8 @@ export function TodayScreen() {
   const setFilterPriorities = useSettingsStore(s => s.setFilterPriorities);
   const filterEfforts = useSettingsStore(useShallow(s => s.filterEfforts));
   const setFilterEfforts = useSettingsStore(s => s.setFilterEfforts);
+  const filterHasReminder = useSettingsStore(s => s.filterHasReminder);
+  const setFilterHasReminder = useSettingsStore(s => s.setFilterHasReminder);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const projects = useProjectStore(useShallow(s => s.projects));
@@ -923,13 +925,14 @@ export function TodayScreen() {
   const setProjectNudgeDismissedAt = useSettingsStore(s => s.setProjectNudgeDismissedAt);
 
   const activeFilterCount =
-    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length;
-  // Only priority/effort filters narrow which tasks render — sort just
-  // reorders them — so only those should suppress a stack's "N/M" tally (see
-  // the filtered prop on TaskGroupHeader). Later Today and Inbox groups don't
-  // go through this filter at all (deferredTasks/inboxTasks are unfiltered),
-  // so this only applies to the main Today list's group rows below.
-  const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0;
+    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length + (filterHasReminder ? 1 : 0);
+  // Only priority/effort/reminder filters narrow which tasks render — sort
+  // just reorders them — so only those should suppress a stack's "N/M" tally
+  // (see the filtered prop on TaskGroupHeader). Later Today and Inbox groups
+  // don't go through this filter at all (deferredTasks/inboxTasks are
+  // unfiltered), so this only applies to the main Today list's group rows
+  // below.
+  const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0 || filterHasReminder;
 
   // Today stays current on its own (see the tick effect above), so pulling
   // down doesn't refresh anything — it opens quick search. It used to open
@@ -1036,6 +1039,7 @@ export function TodayScreen() {
     let result = visibleTasks;
     if (filterPriorities.length > 0) result = result.filter(t => filterPriorities.includes(t.priority));
     if (filterEfforts.length > 0) result = result.filter(t => filterEfforts.includes(t.effort));
+    if (filterHasReminder) result = result.filter(t => t.reminderTime !== null);
     switch (sort) {
       case 'priority': return [...result].sort((a, b) => b.priority - a.priority);
       case 'effort-asc': return [...result].sort((a, b) => (a.effort || 99) - (b.effort || 99));
@@ -1049,7 +1053,7 @@ export function TodayScreen() {
       case 'streak': return [...result].sort((a, b) => b.streakCount - a.streakCount);
       default: return result;
     }
-  }, [visibleTasks, sort, filterPriorities, filterEfforts]);
+  }, [visibleTasks, sort, filterPriorities, filterEfforts, filterHasReminder]);
 
   // The rows the current sub-view is actually showing — what "select all" and
   // the bulk bar's tally operate on.
@@ -3267,6 +3271,8 @@ export function TodayScreen() {
           onPrioritiesChange={setFilterPriorities}
           efforts={filterEfforts}
           onEffortsChange={setFilterEfforts}
+          hasReminder={filterHasReminder}
+          onHasReminderChange={setFilterHasReminder}
         />
 
         <TodayOptionsMenu
