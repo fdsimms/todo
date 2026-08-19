@@ -23,6 +23,7 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
 import { flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
+import { kitchenEvents, kitchenHistoryDays } from '../utils/kitchenHistory';
 import {
   countLikelyInPantry,
   describePantryCoverage,
@@ -1303,6 +1304,33 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // And a leaderboard that actually ranks rather than a single row.
     expect(cooked.length).toBeGreaterThan(1);
     expect(cooked[0].count).toBeGreaterThan(1);
+  });
+
+  it("fills the Logbook's cooking lens, every row treatment included", () => {
+    // Reads the loaded window rather than refreshCookHistory, which goes
+    // straight to SQLite — the seed's cooked nights are all inside it, and this
+    // is about the rows existing, not about the store's snapshot plumbing.
+    const events = kitchenEvents(
+      useMealPlanStore.getState().entries,
+      useLeftoverStore.getState().leftovers,
+      useRecipeStore.getState().recipes
+    );
+
+    // Several days, or the day sections read as one block with a heading.
+    expect(kitchenHistoryDays(events).length).toBeGreaterThan(2);
+    // Both kinds of row, since the lens exists to put them in one chronology.
+    expect(events.some(e => e.kind === 'cooked')).toBe(true);
+    expect(events.some(e => e.kind === 'leftover')).toBe(true);
+    // Both endings, which are two different glyphs on the row.
+    expect(events.some(e => e.outcome === 'eaten')).toBe(true);
+    expect(events.some(e => e.outcome === 'tossed')).toBe(true);
+    // A row that opens its recipe, and one that can't — a free-text meal
+    // ("Takeout curry") has nowhere to go and shows no chevron.
+    expect(events.some(e => e.kind === 'cooked' && e.recipeId)).toBe(true);
+    expect(events.some(e => e.kind === 'cooked' && !e.recipeId)).toBe(true);
+    // The scale clause, which is silent at 1× and so invisible without a night
+    // that was cooked for a crowd.
+    expect(events.some(e => e.scale !== 1)).toBe(true);
   });
 
   it('seeds a use-up task for every live leftover in "soon", "due" or "over"', () => {

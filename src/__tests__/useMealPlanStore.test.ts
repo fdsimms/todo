@@ -343,6 +343,94 @@ describe('refreshCookingCounts', () => {
   });
 });
 
+describe('refreshCookHistory', () => {
+  const cooked = (date: string, slot: MealSlot = 'dinner') =>
+    entry(date, slot, { cookedAt: `${date}T19:00:00.000Z` });
+
+  it('is null until something asks — an absent history is not an empty one', () => {
+    expect(useMealPlanStore.getState().cookHistory).toBeNull();
+  });
+
+  it('keeps the cooked rows and drops the merely planned ones', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      cooked('2026-08-10'),
+      entry('2026-08-11', 'dinner'),
+      cooked('2026-08-12'),
+    ]);
+
+    useMealPlanStore.getState().refreshCookHistory('2026-02-14', '2026-08-13');
+
+    expect(useMealPlanStore.getState().cookHistory!.map(e => e.date)).toEqual([
+      '2026-08-10',
+      '2026-08-12',
+    ]);
+    expect(dbGetMealPlanEntries).toHaveBeenLastCalledWith('2026-02-14', '2026-08-13');
+  });
+
+  it('leaves the loaded window alone', () => {
+    // The whole point of the separate read: the Logbook asks about six months
+    // on a tab that stays mounted, and must not clobber the week Meal plan has
+    // open (see the note on `cookHistory`).
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([cooked('2026-03-10')]);
+
+    useMealPlanStore.getState().refreshCookHistory('2026-02-14', '2026-08-13');
+
+    expect(useMealPlanStore.getState().rangeStart).toBe('2026-08-03');
+    expect(useMealPlanStore.getState().entries).toHaveLength(1);
+    expect(useMealPlanStore.getState().entries[0].date).toBe('2026-08-05');
+  });
+
+  it('keeps the same array when nothing moved', () => {
+    // Wired to a screen focus, so a revisit that changes nothing must not
+    // re-render the list.
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([cooked('2026-08-10')]);
+    useMealPlanStore.getState().refreshCookHistory('2026-02-14', '2026-08-13');
+    const first = useMealPlanStore.getState().cookHistory;
+
+    // A fresh read allocates fresh row objects, so identity alone would never
+    // match — the guard compares what a row is built from.
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      { ...cooked('2026-08-10'), id: first![0].id, title: first![0].title },
+    ]);
+    useMealPlanStore.getState().refreshCookHistory('2026-02-14', '2026-08-13');
+
+    expect(useMealPlanStore.getState().cookHistory).toBe(first);
+  });
+
+  it('picks up a meal marked cooked since the last read', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry('2026-08-10', 'dinner')]);
+    useMealPlanStore.getState().refreshCookHistory('2026-02-14', '2026-08-13');
+    expect(useMealPlanStore.getState().cookHistory).toEqual([]);
+
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([cooked('2026-08-10')]);
+    useMealPlanStore.getState().refreshCookHistory('2026-02-14', '2026-08-13');
+
+    expect(useMealPlanStore.getState().cookHistory).toHaveLength(1);
+  });
+
+  it('notices a renamed meal, which only the title compare can catch', () => {
+    const row = cooked('2026-08-10');
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([row]);
+    useMealPlanStore.getState().refreshCookHistory('2026-02-14', '2026-08-13');
+
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([{ ...row, title: 'Takeout curry' }]);
+    useMealPlanStore.getState().refreshCookHistory('2026-02-14', '2026-08-13');
+
+    expect(useMealPlanStore.getState().cookHistory![0].title).toBe('Takeout curry');
+  });
+
+  it('goes back to null on initialize, rather than describing a swapped-out database', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([cooked('2026-08-10')]);
+    useMealPlanStore.getState().refreshCookHistory('2026-02-14', '2026-08-13');
+    expect(useMealPlanStore.getState().cookHistory).not.toBeNull();
+
+    useMealPlanStore.getState().initialize();
+
+    expect(useMealPlanStore.getState().cookHistory).toBeNull();
+  });
+});
+
 describe('loadRange', () => {
   it('reads only the window asked for', () => {
     loadWeek([entry('2026-08-05', 'dinner')]);

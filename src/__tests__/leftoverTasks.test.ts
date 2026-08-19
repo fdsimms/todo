@@ -33,6 +33,18 @@ function leftover(overrides: Partial<Leftover> = {}): Leftover {
 
 const now = new Date('2026-08-13T09:00:00.000Z');
 
+// Every helper below takes `now` — except `wantsUseUpTask`, which reaches
+// `needsAttention` and so reads the wall clock. That made the suite rot: its
+// "20th is 7 days out, so not urgent" case was true on the day it was written
+// and false from the 19th onwards. The clock is frozen for the whole file
+// rather than only that describe, so the two halves can't drift apart again.
+beforeAll(() => {
+  jest.useFakeTimers().setSystemTime(now);
+});
+afterAll(() => {
+  jest.useRealTimers();
+});
+
 describe('wantsUseUpTask', () => {
   it('needs the leftover to need attention — that is the whole trigger', () => {
     // Days left: 14th - 13th = 1 → "soon", needsAttention.

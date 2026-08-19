@@ -1,11 +1,11 @@
 import type { Task, TaskGroup } from '../types';
 import { displayTitleFor } from './visibilityUtils';
-import { mergeRanges } from './ranges';
+import { mergeRanges, scoreSubstring } from './ranges';
 
-// Re-exported so the existing call sites (and their tests) keep importing it
-// from here; it moved to `ranges.ts` so the settings search can use it without
-// pulling this module's store imports along.
-export { mergeRanges };
+// Re-exported so the existing call sites (and their tests) keep importing them
+// from here; both moved to `ranges.ts` so a search that isn't over tasks can
+// use them without pulling this module's store imports along.
+export { mergeRanges, scoreSubstring };
 
 export interface SearchResult {
   task: Task;
@@ -15,39 +15,6 @@ export interface SearchResult {
   projectName: string | null;
   /** Ranges to highlight in `projectName` — how a row shows *why* a project-name match matched. */
   projectMatches: [number, number][];
-}
-
-export function scoreSubstring(haystack: string, needle: string): { score: number; ranges: [number, number][] } {
-  if (!needle) return { score: 0, ranges: [] };
-  const h = haystack.toLowerCase();
-  const n = needle.toLowerCase();
-
-  // Exact substring match
-  const exactIdx = h.indexOf(n);
-  if (exactIdx !== -1) {
-    return { score: 100 + (exactIdx === 0 ? 20 : 0), ranges: [[exactIdx, exactIdx + n.length]] };
-  }
-
-  // Fuzzy: all chars of needle appear in order in haystack
-  let hi = 0;
-  let ni = 0;
-  let firstMatch = -1;
-  let lastMatch = -1;
-  while (hi < h.length && ni < n.length) {
-    if (h[hi] === n[ni]) {
-      if (firstMatch === -1) firstMatch = hi;
-      lastMatch = hi;
-      ni++;
-    }
-    hi++;
-  }
-
-  if (ni < n.length) return { score: 0, ranges: [] }; // not all chars found
-
-  const span = lastMatch - firstMatch + 1;
-  const density = n.length / span; // 1.0 = all chars consecutive
-  const score = Math.round(density * 60);
-  return { score, ranges: firstMatch !== -1 ? [[firstMatch, lastMatch + 1]] : [] };
 }
 
 export function fuzzySearch(
