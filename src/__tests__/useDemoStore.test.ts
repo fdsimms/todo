@@ -321,6 +321,25 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // The Archived screen had nothing in it, so the demo showed an empty state
+  // for a feature that works. Recurring and backdated, because both are what
+  // its row renders — the paused schedule and when it was paused.
+  it('seeds an archived recurring task', () => {
+    useDemoStore.getState().enterDemoMode();
+    const s = useTaskStore.getState();
+
+    const archived = s.archivedTasks();
+    expect(archived.map(t => t.title)).toContain('Swim before work');
+
+    const swim = archived.find(t => t.title === 'Swim before work')!;
+    expect(swim.recurrenceType).not.toBe('none');
+    expect(swim.archivedAt).not.toBeNull();
+    // Out of the daily lists entirely — that's what archiving is for.
+    expect(s.visibleTasks().map(t => t.id)).not.toContain(swim.id);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // #1255: a task with nothing seeded carrying streakRequiresWindow reads as
   // a feature the app doesn't have, so one recurring habit that already has a
   // window (timeSegments) and an established streak opts in.

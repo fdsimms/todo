@@ -9,8 +9,21 @@ import { haptics } from '../utils/haptics';
 interface Props {
   selectedCount: number;
   totalCount: number;
-  onMarkIncomplete: () => void;
+  /**
+   * The one verb this list has besides delete — "Incomplete" in the Logbook,
+   * "Restore" on Archived. Both screens hold rows that have already left the
+   * daily lists, so the useful pair is "put it back" and "get rid of it".
+   */
+  primary: {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    onPress: () => void;
+    /** Spoken on the icon button, which is otherwise just its label. */
+    accessibilityLabel: string;
+  };
   onDelete: () => void;
+  /** Spoken on the delete button — "entries" in the Logbook, "tasks" elsewhere. */
+  deleteAccessibilityLabel?: string;
   onSelectAll: () => void;
   onDeselectAll: () => void;
   onCancel: () => void;
@@ -21,17 +34,22 @@ interface Props {
 }
 
 /**
- * Floating bulk-action bar for selected Logbook entries — a trimmed sibling of
- * BulkActionBar with just the two things a *completed* task can still do: go
- * back to being incomplete, or be deleted from the history. Everything else
- * that bar offers (complete, when, pin, stack, priority) either already
- * happened or would mean scheduling a task that is done.
+ * Floating bulk-action bar for a list whose rows have two things left they can
+ * do — a trimmed sibling of BulkActionBar, which offers the full set (complete,
+ * when, pin, stack, priority) that only a *live* task can take.
+ *
+ * Parameterized over its first verb rather than copied per screen: the Logbook
+ * marks entries incomplete and Archived restores them, and those differ by an
+ * icon and a word. A second hand-written copy is how the third one would end up
+ * with a grey Cancel and a differently-sized icon — the drift SheetHeaderButton
+ * was created to undo.
  */
-export function LogbookBulkBar({
+export function SimpleBulkBar({
   selectedCount,
   totalCount,
-  onMarkIncomplete,
+  primary,
   onDelete,
+  deleteAccessibilityLabel = 'Delete selected entries',
   onSelectAll,
   onDeselectAll,
   onCancel,
@@ -64,17 +82,17 @@ export function LogbookBulkBar({
         <PressableScale
           style={[styles.actionBtn, none && styles.actionBtnDisabled]}
           disabled={none}
-          onPress={() => { haptics.tap(); onMarkIncomplete(); }}
-          accessibilityLabel="Mark selected tasks incomplete"
+          onPress={() => { haptics.tap(); primary.onPress(); }}
+          accessibilityLabel={primary.accessibilityLabel}
         >
-          <Ionicons name="arrow-undo" size={24} color={colors.accent} />
-          <Text style={[styles.actionLabel, { color: colors.accent }]}>Incomplete</Text>
+          <Ionicons name={primary.icon} size={24} color={colors.accent} />
+          <Text style={[styles.actionLabel, { color: colors.accent }]}>{primary.label}</Text>
         </PressableScale>
         <PressableScale
           style={[styles.actionBtn, none && styles.actionBtnDisabled]}
           disabled={none}
           onPress={() => { haptics.impactMedium(); onDelete(); }}
-          accessibilityLabel="Delete selected entries"
+          accessibilityLabel={deleteAccessibilityLabel}
         >
           <Ionicons name="trash" size={24} color={colors.red} />
           <Text style={[styles.actionLabel, { color: colors.red }]}>Delete</Text>

@@ -29,7 +29,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { SearchField } from '../components/SearchField';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
-import { LogbookBulkBar } from '../components/LogbookBulkBar';
+import { SimpleBulkBar } from '../components/SimpleBulkBar';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { SelectionDot } from '../components/SelectionDot';
@@ -644,12 +644,17 @@ export function LogbookScreen() {
       )}
 
       {selectionMode && (
-        <LogbookBulkBar
+        <SimpleBulkBar
           selectedCount={selectedIds.size}
           // Counted against what's on screen, not the whole logbook — with a
           // filter applied, "Select All" can only mean the rows it left.
           totalCount={filteredTasks.length}
-          onMarkIncomplete={handleBulkUncomplete}
+          primary={{
+            icon: 'arrow-undo',
+            label: 'Incomplete',
+            onPress: handleBulkUncomplete,
+            accessibilityLabel: 'Mark selected tasks incomplete',
+          }}
           onDelete={handleBulkDelete}
           onSelectAll={() => selectAll(filteredTasks.map(t => t.id))}
           onDeselectAll={deselectAll}

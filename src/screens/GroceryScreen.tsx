@@ -561,7 +561,7 @@ export function GroceryScreen() {
   );
 
   // "Check"/"Uncheck" flips direction based on the selection itself, the same
-  // way LogbookBulkBar's incomplete action always means the opposite of what's
+  // way SimpleBulkBar's Logbook incomplete action always means the opposite of what's
   // there — a selection that's already all in the cart has nothing left to
   // check off.
   const handleBulkCheck = useCallback(() => {
