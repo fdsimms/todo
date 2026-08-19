@@ -1190,3 +1190,35 @@ export function looksLikeBareUrl(text: string): boolean {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   return lines.length > 0 && lines.every(line => BARE_URL.test(line));
 }
+
+/**
+ * Whether a recipe already carries a method of its own.
+ *
+ * `notes` counts, and that's the conservative half: every recipe predating
+ * `Recipe.steps` keeps its method in that blob (see the cook mode notes), and
+ * nothing can tell a method there apart from "I like this with extra chilli".
+ * Reading non-empty `notes` as a method means the odd recipe whose notes are
+ * only a remark gets `RecipeExtractSheet`'s method row unticked when it could
+ * have been ticked — one extra tap, weighed against silently writing a second
+ * copy of a method the recipe already shows.
+ *
+ * Deliberately a question about *having* one, not about which field holds it:
+ * every caller is deciding whether there is something here to land on top of.
+ */
+export function recipeHasMethod(recipe: Recipe | null | undefined): boolean {
+  return !!recipe && (recipe.steps.length > 0 || !!recipe.notes.trim());
+}
+
+/**
+ * Whether a recipe carries any attribution at all.
+ *
+ * The three fields are independent by design (a recipe can name a person and
+ * no publication, or a URL and neither), so this asks whether *any* of them is
+ * set — an import filling in the blanks is only uncontroversial when they are
+ * all blank. `sourceName` is the legacy field nothing writes any more and is
+ * read here for the same reason `describeRecipe` still falls back to it: an old
+ * recipe carrying only that one is still a recipe that says where it came from.
+ */
+export function recipeHasAttribution(recipe: Recipe | null | undefined): boolean {
+  return !!recipe && (!!recipe.sourceUrl || !!recipe.source || !!recipe.author || !!recipe.sourceName);
+}
