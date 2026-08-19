@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the Finish shopping sheet's content getting hidden behind the keyboard, e.g. while typing a new store name",
+  "date": "2026-08-19"
+}

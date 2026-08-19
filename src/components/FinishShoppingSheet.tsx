@@ -16,6 +16,7 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { PillGroup } from './PillGroup';
@@ -26,7 +27,7 @@ import {
   parsePriceInput,
   priceToInput,
 } from '../utils/groceryPrice';
-import { resolveShoppingSubstitutes } from '../utils/itemSubs';
+import { resolveShoppingSubstitutes, substitutesFor } from '../utils/itemSubs';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH } from '../types';
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
@@ -101,6 +102,12 @@ interface Props {
  * Costco's. `resolveShoppingSubstitutes` is what turns the sheet's per-row
  * answers into the pairs actually worth writing.
  *
+ * **A row that already has a linked substitute (`substitutesFor`) offers it
+ * first.** This is the one moment the app knows both that the original isn't
+ * available here and what the user already said to use instead, so the pick
+ * is pinned ahead of what the trip happened to buy rather than left for
+ * someone to notice and type in again.
+ *
  * **Prices are the third question and follow the same rules**, with one
  * difference: they're asked whether or not a store is named. "They didn't have
  * it" needs somebody to be about, but what you paid is a fact on its own — a
@@ -121,6 +128,7 @@ export function FinishShoppingSheet({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const shops = useGroceryStore(useShallow(s => s.shops));
   const lastShopId = useGroceryStore(s => s.lastShopId);
@@ -129,6 +137,7 @@ export function FinishShoppingSheet({
   const addShop = useGroceryStore(s => s.addShop);
   const items = useGroceryStore(useShallow(s => s.items));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
@@ -287,7 +296,12 @@ export function FinishShoppingSheet({
           <SheetHeaderButton label="Finish" onPress={handleFinish} minWidth={64} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          ref={keyboardScroll.ref}
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           <Text style={styles.intro}>
             {countLabel}. Everything stays in your catalog for next time.
           </Text>
@@ -361,11 +375,17 @@ export function FinishShoppingSheet({
                 {leftover.map((row, i) => {
                   const ticked = unavailable.includes(row.id);
                   const chosenId = substituteFor[row.id] ?? null;
-                  // A pick can be a purchased row, or a name typed into the
-                  // create field and minted on the spot — the latter isn't in
-                  // `purchased`, so it needs its own pill to show as selected.
+                  // What the item's own substitute links already say to use
+                  // instead — the one thing the app can suggest here rather
+                  // than wait for the user to type it in.
+                  const knownSubs = substitutesFor(row.id, itemSubs, items);
+                  const knownSubIds = new Set(knownSubs.map(s => s.item.id));
+                  // A pick can be a purchased row, a recorded substitute, or a
+                  // name typed into the create field and minted on the spot —
+                  // the last of those isn't in either list, so it needs its
+                  // own pill to show as selected.
                   const chosenExtra =
-                    chosenId && !purchased.some(p => p.id === chosenId)
+                    chosenId && !purchased.some(p => p.id === chosenId) && !knownSubIds.has(chosenId)
                       ? items.find(i => i.id === chosenId)
                       : null;
                   return (
@@ -401,9 +421,27 @@ export function FinishShoppingSheet({
                             createMaxLength={GROCERY_NAME_MAX_LENGTH}
                             onCreate={name => handleCreateSubstitute(row.id, name)}
                             options={[
+                              // Recorded substitutes lead the grid and are
+                              // pinned so a longer purchased list can't push
+                              // them behind "N more" — a link the user
+                              // already authored outranks a guess. Skipped
+                              // when the same item is also in `purchased`,
+                              // which already gets a pill of its own below.
+                              ...knownSubs
+                                .filter(s => !purchased.some(p => p.id === s.item.id))
+                                .map(s => ({
+                                  key: s.item.id,
+                                  label: s.item.name,
+                                  suffix: ' · usual substitute',
+                                  pinned: true,
+                                  selected: chosenId === s.item.id,
+                                  accessibilityLabel: `${s.item.name}, the usual substitute for ${row.name}`,
+                                  onPress: () => toggleSubstitute(row.id, s.item.id),
+                                })),
                               ...purchased.map(p => ({
                                 key: p.id,
                                 label: p.name,
+                                suffix: knownSubIds.has(p.id) ? ' · usual substitute' : undefined,
                                 selected: chosenId === p.id,
                                 onPress: () => toggleSubstitute(row.id, p.id),
                               })),
