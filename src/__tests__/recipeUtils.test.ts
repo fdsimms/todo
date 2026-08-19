@@ -40,6 +40,7 @@ import {
   describePantryCoverage,
   formatServingsRange,
   looksLikeBareUrl,
+  describeExtractedDetails,
   recipeHasMethod,
   recipeHasAttribution,
 } from '../utils/recipeUtils';
@@ -1790,5 +1791,49 @@ describe('recipeHasAttribution', () => {
   it('shrugs off a missing recipe', () => {
     expect(recipeHasAttribution(null)).toBe(false);
     expect(recipeHasAttribution(undefined)).toBe(false);
+  });
+});
+
+describe('describeExtractedDetails', () => {
+  const none = { servings: null, servingsMax: null, recipeYield: null, prepMinutes: null };
+
+  it('is null when the import found nothing about the recipe itself', () => {
+    // This is what tells both sheets not to render the row at all.
+    expect(describeExtractedDetails(none)).toBeNull();
+  });
+
+  it('leads with the servings and captions the rest', () => {
+    expect(describeExtractedDetails({ ...none, servings: 4, prepMinutes: 30 }))
+      .toEqual({ title: 'Serves 4', meta: 'About 30 min' });
+  });
+
+  it('renders a servings range', () => {
+    expect(describeExtractedDetails({ ...none, servings: 4, servingsMax: 6 }))
+      .toEqual({ title: 'Serves 4-6', meta: null });
+  });
+
+  it('carries all three at once', () => {
+    expect(describeExtractedDetails({
+      servings: 8, servingsMax: null, recipeYield: '2 loaves', prepMinutes: 90,
+    })).toEqual({ title: 'Serves 8', meta: 'Makes 2 loaves · About 90 min' });
+  });
+
+  it('promotes whatever came first when there are no servings', () => {
+    // A time with no servings used to render no row at all, and was dropped.
+    expect(describeExtractedDetails({ ...none, prepMinutes: 30 }))
+      .toEqual({ title: 'About 30 min', meta: null });
+    expect(describeExtractedDetails({ ...none, recipeYield: '3 cups' }))
+      .toEqual({ title: 'Makes 3 cups', meta: null });
+  });
+
+  it('does not give a yield a second verb when the page already wrote one', () => {
+    expect(describeExtractedDetails({ ...none, recipeYield: 'makes 24 cookies' }))
+      .toEqual({ title: 'Makes 24 cookies', meta: null });
+    expect(describeExtractedDetails({ ...none, recipeYield: 'about 2 dozen' }))
+      .toEqual({ title: 'About 2 dozen', meta: null });
+  });
+
+  it('ignores a blank yield rather than rendering a bare verb', () => {
+    expect(describeExtractedDetails({ ...none, recipeYield: '   ' })).toBeNull();
   });
 });

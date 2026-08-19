@@ -1222,3 +1222,54 @@ export function recipeHasMethod(recipe: Recipe | null | undefined): boolean {
 export function recipeHasAttribution(recipe: Recipe | null | undefined): boolean {
   return !!recipe && (!!recipe.sourceUrl || !!recipe.source || !!recipe.author || !!recipe.sourceName);
 }
+
+/**
+ * The facts an import found about the recipe *itself* — what it serves, what it
+ * makes, how long it takes. Structurally typed rather than importing
+ * `ExtractedRecipe`, which lives in `services/`: utils are read down into, and
+ * one edge back up makes the pair a cycle.
+ */
+export interface ExtractedRecipeDetails {
+  servings: number | null;
+  servingsMax: number | null;
+  recipeYield: string | null;
+  prepMinutes: number | null;
+}
+
+const YIELD_HAS_VERB = /^(makes|yields|serves|for|about)\b/i;
+
+/**
+ * A recipe's yield as a row says it. "2 loaves" is what a page publishes and
+ * reads as a fragment on its own, so it gets a verb — but only when it hasn't
+ * brought one, since plenty of sites write "Makes 2 loaves" into the field and
+ * a bare prefix turns those into "Makes makes 2 loaves".
+ */
+function describeYield(raw: string | null): string | null {
+  const text = (raw ?? '').trim();
+  if (!text) return null;
+  if (YIELD_HAS_VERB.test(text)) return text[0].toUpperCase() + text.slice(1);
+  return `Makes ${text}`;
+}
+
+/**
+ * The one tick-to-apply row an import offers for those facts: the first one
+ * found as its title, the rest as its caption.
+ *
+ * Null when nothing was found, which is what tells the sheets not to render the
+ * row at all. Both import sheets read this rather than each writing the
+ * ternaries themselves — they had already drifted once, when a recipe carrying
+ * a time but no servings rendered no row and its time was silently dropped.
+ */
+export function describeExtractedDetails(
+  details: ExtractedRecipeDetails,
+): { title: string; meta: string | null } | null {
+  const parts: string[] = [];
+  if (details.servings !== null) {
+    parts.push(`Serves ${formatServingsRange(details.servings, details.servingsMax)}`);
+  }
+  const madeText = describeYield(details.recipeYield);
+  if (madeText) parts.push(madeText);
+  if (details.prepMinutes !== null) parts.push(`About ${details.prepMinutes} min`);
+  if (parts.length === 0) return null;
+  return { title: parts[0], meta: parts.slice(1).join(' · ') || null };
+}

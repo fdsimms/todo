@@ -1,5 +1,6 @@
 import {
   normalizeRecipeUrl,
+  recipeUrlKey,
   decodeEntities,
   htmlToText,
   metaContent,
@@ -370,5 +371,126 @@ describe('parseRecipePage', () => {
 
   it('never sets the site name from the bare host', () => {
     expect(parseRecipePage('<html><body>nothing</body></html>', LIMIT).siteName).toBeNull();
+  });
+});
+
+describe('recipeUrlKey', () => {
+  const key = (u: string) => recipeUrlKey(u);
+
+  it('treats the shapes of one address as one page', () => {
+    const canonical = key('https://cooking.example.com/recipes/chili');
+    expect(key('http://cooking.example.com/recipes/chili')).toBe(canonical);
+    expect(key('https://www.cooking.example.com/recipes/chili')).toBe(canonical);
+    expect(key('cooking.example.com/recipes/chili/')).toBe(canonical);
+    expect(key('https://cooking.example.com/recipes/chili#ingredients')).toBe(canonical);
+    expect(key('https://COOKING.EXAMPLE.COM/recipes/chili')).toBe(canonical);
+  });
+
+  it('ignores where a link was shared from', () => {
+    const canonical = key('https://example.com/chili');
+    expect(key('https://example.com/chili?utm_source=pinterest&utm_medium=social')).toBe(canonical);
+    expect(key('https://example.com/chili?fbclid=abc123')).toBe(canonical);
+    expect(key('https://example.com/chili?ref=newsletter')).toBe(canonical);
+  });
+
+  it('keeps a query the page actually needs, order-independently', () => {
+    // Plenty of sites key a recipe on ?id=.
+    expect(key('https://example.com/r?id=7')).not.toBe(key('https://example.com/r?id=8'));
+    expect(key('https://example.com/r?a=1&b=2')).toBe(key('https://example.com/r?b=2&a=1'));
+    expect(key('https://example.com/r?id=7&utm_source=x')).toBe(key('https://example.com/r?id=7'));
+  });
+
+  it('keeps distinct pages distinct', () => {
+    expect(key('https://example.com/chili')).not.toBe(key('https://example.com/chilli'));
+    expect(key('https://example.com/chili')).not.toBe(key('https://other.com/chili'));
+    expect(key('https://example.com:8080/r')).not.toBe(key('https://example.com/r'));
+    // Paths are case-significant on more servers than not.
+    expect(key('https://example.com/Chili')).not.toBe(key('https://example.com/chili'));
+  });
+
+  it('is null for anything that is not an address', () => {
+    expect(recipeUrlKey(null)).toBeNull();
+    expect(recipeUrlKey(undefined)).toBeNull();
+    expect(recipeUrlKey('')).toBeNull();
+    expect(recipeUrlKey('a note about chili')).toBeNull();
+  });
+});
+
+/**
+ * The structural shapes the common recipe plugins emit.
+ *
+ * **These are modelled on those shapes, not captured from live pages** — the
+ * sandbox this was written in can't reach a recipe site, so nothing here is
+ * evidence about what any particular site serves today. What they do pin is the
+ * set of structures a parser has to survive, each of which breaks a naive one.
+ */
+describe('parseRecipePage — shapes real plugins emit', () => {
+  it('finds the recipe when the page ships several JSON-LD blocks', () => {
+    // Yoast writes the site graph in one block; the recipe plugin adds its own.
+    const html = `
+      <script type="application/ld+json">${JSON.stringify({
+        '@context': 'https://schema.org',
+        '@graph': [
+          { '@type': 'WebSite', '@id': 'https://x.com/#website', name: 'A Food Blog' },
+          { '@type': 'WebPage', '@id': 'https://x.com/chili#webpage' },
+        ],
+      })}</script>
+      <script type="application/ld+json">${JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'Recipe',
+        name: 'Chili',
+        recipeIngredient: ['2 cans beans', '1 onion'],
+      })}</script>`;
+    const parsed = parseRecipePage(html, LIMIT);
+    expect(parsed.structured).toBe(true);
+    expect(parsed.title).toBe('Chili');
+  });
+
+  it('reads instructions given as an HTML list in a string', () => {
+    // Tasty Recipes and friends put markup in the field rather than HowToSteps.
+    const page = ldPage({
+      '@type': 'Recipe',
+      name: 'Chili',
+      recipeIngredient: ['2 cans beans'],
+      recipeInstructions: '<ol><li>Soften the onion.</li><li>Add the beans and simmer.</li></ol>',
+    });
+    expect(parseRecipePage(page, LIMIT).steps)
+      .toEqual(['Soften the onion.', 'Add the beans and simmer.']);
+  });
+
+  it('reads a numeric recipeYield', () => {
+    const page = ldPage({ '@type': 'Recipe', name: 'Chili', recipeYield: 4, recipeIngredient: ['x'] });
+    expect(parseRecipeJsonLd(page)?.recipeYield).toBe('4');
+  });
+
+  it('keeps fractions and ampersands out of the ingredient text', () => {
+    const page = ldPage({
+      '@type': 'Recipe',
+      name: 'Chili',
+      recipeIngredient: ['&frac12; cup stock', 'salt &amp; pepper', '1&nbsp;lb beef'],
+    });
+    expect(parseRecipeJsonLd(page)?.ingredients)
+      .toEqual(['½ cup stock', 'salt & pepper', '1 lb beef']);
+  });
+
+  it('survives a graph whose other nodes are heavier than the recipe', () => {
+    const page = ldPage({
+      '@context': 'https://schema.org',
+      '@graph': [
+        { '@type': 'Organization', name: 'A Food Blog', logo: { '@type': 'ImageObject', url: 'x' } },
+        { '@type': 'BreadcrumbList', itemListElement: [{ '@type': 'ListItem', position: 1 }] },
+        { '@type': ['Article', 'NewsArticle'], headline: 'The story of this chili' },
+        {
+          '@type': 'Recipe',
+          name: 'Chili',
+          image: [{ '@type': 'ImageObject', url: 'a.jpg' }, 'b.jpg'],
+          recipeIngredient: ['2 cans beans'],
+          recipeInstructions: [{ '@type': 'HowToStep', name: 'Step 1', text: 'Simmer.' }],
+        },
+      ],
+    });
+    const parsed = parseRecipePage(page, LIMIT);
+    expect(parsed.title).toBe('Chili');
+    expect(parsed.steps).toEqual(['Simmer.']);
   });
 });

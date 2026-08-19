@@ -31,7 +31,7 @@ import {
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import {
-  normalizeIngredient, formatServingsRange, recipeHasMethod, recipeHasAttribution,
+  normalizeIngredient, describeExtractedDetails, recipeHasMethod, recipeHasAttribution,
 } from '../utils/recipeUtils';
 import { aisleForName } from '../utils/groceryAisles';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -80,6 +80,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const setServings = useRecipeStore(s => s.setServings);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
+  const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
   const setSource = useRecipeStore(s => s.setSource);
   const setAuthor = useRecipeStore(s => s.setAuthor);
@@ -135,7 +136,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setExtracted(result);
       setIngredients(result.ingredients);
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
-      setApplyDetails(result.servings !== null || result.prepMinutes !== null);
+      setApplyDetails(!!describeExtractedDetails(result));
       // A page's method and attribution are structured data taken verbatim,
       // not a model's guess — so they're offered. Offered *ticked* only when
       // there's nothing of the user's to land on top of.
@@ -195,6 +196,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       // from cook. A total in the cook half leaves `totalMinutes()` correct;
       // in the prep half it would claim the whole recipe is mise en place.
       if (extracted.prepMinutes !== null) setEstimatedMinutes(recipe.id, extracted.prepMinutes);
+      if (extracted.recipeYield) setRecipeYield(recipe.id, extracted.recipeYield);
     }
     const page = input.page;
     if (page) {
@@ -214,7 +216,10 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     onClose();
   };
 
-  const hasDetails = !!extracted && (extracted.servings !== null || extracted.prepMinutes !== null);
+  const details = extracted ? describeExtractedDetails(extracted) : null;
+  // Reads out exactly what the row shows rather than a second phrasing of it.
+  const detailsLabel = details ? [details.title, details.meta].filter(Boolean).join(', ') : '';
+  const hasDetails = !!details;
   // Only ever the page's own structured data — a paste and a photo carry
   // neither, so neither row exists for them.
   const pageSteps = input.page?.steps ?? [];
@@ -224,15 +229,6 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     || (applyMethod && pageSteps.length > 0)
     || (applySource && !!input.page)
   );
-
-  // One checkbox applying two facts has to name both when it has both, and it
-  // reads out exactly what the row shows rather than a second phrasing of it.
-  const detailsLabel = !extracted ? ''
-    : extracted.servings !== null
-      ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}${
-          extracted.prepMinutes !== null ? `, about ${extracted.prepMinutes} min` : ''}`
-      : `About ${extracted.prepMinutes} min`;
-
 
   // A deterministic failure — a mistyped address, a site that refuses us, a page
   // that builds its recipe in the browser — fails identically however many times
@@ -361,15 +357,11 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           Untick anything you don't want added, or tap a name or amount to change it.
         </Text>
 
-        {hasDetails && renderToggle({
+        {!!details && renderToggle({
           checked: applyDetails,
           onToggle: () => setApplyDetails(v => !v),
-          title: extracted.servings !== null
-            ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
-            : `About ${extracted.prepMinutes} min`,
-          meta: extracted.servings !== null && extracted.prepMinutes !== null
-            ? `About ${extracted.prepMinutes} min`
-            : null,
+          title: details.title,
+          meta: details.meta,
           label: detailsLabel,
         })}
 

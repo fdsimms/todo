@@ -21,9 +21,11 @@ import {
   type Colors,
 } from '../theme';
 import { InlineAction } from './InlineAction';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { haptics } from '../utils/haptics';
 import { looksLikeBareUrl } from '../utils/recipeUtils';
 import { normalizeRecipeUrl } from '../utils/recipeUrl';
+import { useClipboardUrl } from '../hooks/useClipboardUrl';
 import type { RecipePhoto, RecipePhotoSource } from '../utils/recipePhoto';
 
 export type RecipeInputMode = 'paste' | 'link' | 'photo';
@@ -103,31 +105,26 @@ export function RecipeSourcePicker({
     onChangeMode('link');
   };
 
-  const renderTab = (value: RecipeInputMode, label: string, icon: React.ComponentProps<typeof Ionicons>['name']) => {
-    const active = mode === value;
-    return (
-      <TouchableOpacity
-        key={value}
-        style={[styles.tab, active && styles.tabActive]}
-        activeOpacity={interaction.activeOpacity}
-        onPress={() => {
-          if (active) return;
-          haptics.tap();
-          onChangeMode(value);
-        }}
-        accessibilityRole="tab"
-        accessibilityState={{ selected: active }}
-        accessibilityLabel={label}
-      >
-        <Ionicons
-          name={icon}
-          size={iconSize.sm}
-          color={active ? colors.onAccent : colors.textSecondary}
-        />
-        <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
-      </TouchableOpacity>
-    );
+  // Offered only on the Link tab, and only while the field is empty: a Paste
+  // button beside an address you've already typed is clutter. The detection
+  // call doesn't read the clipboard, so this costs no permission prompt — see
+  // useClipboardUrl.
+  const clipboard = useClipboardUrl(mode === 'link');
+  const offerPaste = mode === 'link' && clipboard.available && !typedUrl;
+
+  const pasteUrl = async () => {
+    const text = await clipboard.paste();
+    if (text) { haptics.success(); onChangeUrl(text); }
   };
+
+  // The app's control for "pick exactly one of a small closed set" — see
+  // SegmentedControl's own note. It fires the tap haptic itself, so this
+  // doesn't add one.
+  const sourceOptions: SegmentOption<RecipeInputMode>[] = [
+    { value: 'paste', label: 'Paste', icon: 'clipboard-outline' },
+    { value: 'link', label: 'Link', icon: 'link-outline' },
+    { value: 'photo', label: 'Photo', icon: 'camera-outline' },
+  ];
 
   const renderPhotoButton = (
     source: RecipePhotoSource,
@@ -151,11 +148,13 @@ export function RecipeSourcePicker({
     <>
       <Text style={styles.intro}>{intro}</Text>
 
-      <View style={styles.tabs}>
-        {renderTab('paste', 'Paste', 'clipboard-outline')}
-        {renderTab('link', 'Link', 'link-outline')}
-        {renderTab('photo', 'Photo', 'camera-outline')}
-      </View>
+      <SegmentedControl
+        options={sourceOptions}
+        value={mode}
+        onChange={onChangeMode}
+        label="Where the recipe comes from"
+        surface="page"
+      />
 
       {mode === 'paste' ? (
         <TextInput
@@ -184,6 +183,15 @@ export function RecipeSourcePicker({
             onSubmitEditing={() => { if (ready) onRun(); }}
             accessibilityLabel="Recipe link"
           />
+          {offerPaste && (
+            <InlineAction
+              label="Paste the link"
+              icon="clipboard-outline"
+              onPress={pasteUrl}
+              style={styles.pasteAction}
+              accessibilityLabel="Paste the link from your clipboard"
+            />
+          )}
           <Text style={badUrl ? styles.linkBad : styles.linkHint}>
             {badUrl
               ? 'That doesn’t look like a web address yet.'
@@ -290,20 +298,6 @@ function makeStyles(colors: Colors) {
       lineHeight: font.xs * 1.4,
     },
     warningAction: { marginTop: spacing.xs },
-    tabs: { flexDirection: 'row', gap: spacing.xs },
-    tab: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.xs,
-      flex: 1,
-      paddingVertical: 8,
-      borderRadius: radius.full,
-      backgroundColor: colors.bgSecondary,
-    },
-    tabActive: { backgroundColor: colors.accent },
-    tabText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-    tabTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
     pasteInput: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
@@ -331,6 +325,7 @@ function makeStyles(colors: Colors) {
       fontSize: font.md,
       color: colors.text,
     },
+    pasteAction: { alignSelf: 'center' },
     linkHint: {
       color: colors.textTertiary,
       fontSize: font.xs,

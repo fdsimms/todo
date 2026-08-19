@@ -5,8 +5,10 @@ import {
   GROCERY_QUANTITY_MAX_LENGTH,
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
+  RECIPE_SOURCE_MAX_LENGTH,
 } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
+import { cleanRecipeSource } from '../utils/recipeUtils';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import {
   clampIdeaCount, dedupeMealIdeas, MAX_MEAL_IDEAS, MIN_MEAL_IDEAS,
@@ -501,6 +503,15 @@ export interface ExtractedRecipe {
   servings: number | null;
   /** Clamped 1–99; null when the recipe doesn't give a range. Always > servings. */
   servingsMax: number | null;
+  /**
+   * What the recipe makes when a person-count doesn't fit — "2 loaves",
+   * "3 cups", "about 24 cookies". Null when it only gives a serving count.
+   *
+   * Independent of `servings` rather than an alternative to it, mirroring
+   * `Recipe.recipeYield`: a dough can honestly say both "serves 8" and "makes
+   * 2 loaves", so a page giving both must not have to pick one.
+   */
+  recipeYield: string | null;
   /** Null when not stated. */
   prepMinutes: number | null;
   ingredients: RecipeGroceryItem[];
@@ -545,7 +556,8 @@ export async function extractRecipe(
   const { apiKey, model } = requireFeature('recipeExtraction');
 
   const empty: ExtractedRecipe = {
-    name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+    name: '', servings: null, servingsMax: null, recipeYield: null, prepMinutes: null,
+    ingredients: [],
   };
   const image = typeof source === 'string' ? null : source;
   const text = typeof source === 'string' ? source.trim().slice(0, MAX_RECIPE_CHARS) : '';
@@ -595,6 +607,10 @@ export async function extractRecipe(
             type: 'integer',
             description: 'The high end of a servings range, if the recipe gives one ("serves 4-6" -> 6). 0 if the recipe states a single number or nothing at all.',
           },
+          recipeYield: {
+            type: 'string',
+            description: `What the recipe says it makes, when that is NOT a count of people — "2 loaves", "3 cups", "about 24 cookies", "1 9-inch cake". Under ${RECIPE_SOURCE_MAX_LENGTH} characters. Empty string when the recipe only gives a serving count, or gives nothing. Never restate the servings here.`,
+          },
           prepMinutes: {
             type: 'integer',
             description: 'Total prep/cook time in minutes, if stated. 0 if not stated.',
@@ -613,7 +629,8 @@ export async function extractRecipe(
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
-    name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown; items?: unknown;
+    name?: unknown; servings?: unknown; servingsMax?: unknown; recipeYield?: unknown;
+    prepMinutes?: unknown; items?: unknown;
   } | undefined;
   if (!input) throw new Error('No suggestions returned');
 
@@ -630,9 +647,14 @@ export async function extractRecipe(
   const prepMinutes = typeof input.prepMinutes === 'number' && input.prepMinutes > 0
     ? Math.round(input.prepMinutes)
     : null;
+  // Same cleaner and cap the editor's own Yield field runs, so a typed value
+  // and an extracted one can't be stored in two different shapes.
+  const recipeYield = typeof input.recipeYield === 'string'
+    ? cleanRecipeSource(input.recipeYield) || null
+    : null;
 
   return {
-    name, servings, servingsMax, prepMinutes,
+    name, servings, servingsMax, recipeYield, prepMinutes,
     ingredients: parseExtractedItems(input.items, availableAisles),
   };
 }

@@ -25,17 +25,22 @@ import {
   type Colors,
 } from '../theme';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
+import type { Recipe } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
   extractRecipe, type ExtractedRecipe, type RecipeGroceryItem,
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
-import { normalizeIngredient, cleanRecipeName, formatServingsRange } from '../utils/recipeUtils';
+import { recipeUrlKey } from '../utils/recipeUrl';
+import {
+  normalizeIngredient, cleanRecipeName, describeExtractedDetails,
+} from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { aisleForName } from '../utils/groceryAisles';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
+import { InlineAction } from './InlineAction';
 import { RecipeSourcePicker, type RecipeInputMode } from './RecipeSourcePicker';
 import { ExtractedIngredientRow } from './ExtractedIngredientRow';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
@@ -86,6 +91,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const setServings = useRecipeStore(s => s.setServings);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
+  const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
   const setSource = useRecipeStore(s => s.setSource);
   const setAuthor = useRecipeStore(s => s.setAuthor);
@@ -106,6 +112,8 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   const [name, setName] = useState('');
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const [applyDetails, setApplyDetails] = useState(true);
+  // A page already in the box, matched before any model call is spent on it.
+  const [alreadyImported, setAlreadyImported] = useState<Recipe | null>(null);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   // Whichever add-menu item opened it — "From a link" and "From a photo" both
   // land here, and each opens on its own tab rather than making that tap feel
@@ -121,6 +129,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     setName('');
     setAccepted(new Set());
     setApplyDetails(true);
+    setAlreadyImported(null);
     resetInput();
   }, [resetInput]);
 
@@ -128,13 +137,23 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     if (!visible) reset();
   }, [visible, reset]);
 
-  const run = useCallback(async () => {
+  // `opts` rather than a bare boolean because this is handed to press handlers,
+  // which would pass a gesture event straight into a positional flag.
+  const run = useCallback(async (opts?: { reimport?: boolean }) => {
     setLoading(true);
     setError(null);
+    setAlreadyImported(null);
     try {
       // A link is fetched first; a paste and a photo resolve to themselves.
       const resolved = await resolveSource();
       if (!resolved) return;
+      // Checked here, between the fetch and the extraction, so recognising a
+      // page you already have costs a request and not a model call.
+      if (resolved.page && opts?.reimport !== true) {
+        const key = recipeUrlKey(resolved.page.url);
+        const seen = key ? recipes.find(r => recipeUrlKey(r.sourceUrl) === key) : undefined;
+        if (seen) { setAlreadyImported(seen); return; }
+      }
       const result = await extractRecipe(resolved.source, [...aisleOrder]);
       setExtracted(result);
       setIngredients(result.ingredients);
@@ -142,14 +161,14 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       // one — a page that says what it's called is not a recipe with no name.
       setName(result.name || resolved.page?.title || '');
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
-      setApplyDetails(result.servings !== null || result.prepMinutes !== null);
+      setApplyDetails(!!describeExtractedDetails(result));
     } catch (e) {
       setError(describeImportError(e));
       setCanRetry(isRetryableImportError(e));
     } finally {
       setLoading(false);
     }
-  }, [resolveSource, aisleOrder]);
+  }, [resolveSource, aisleOrder, recipes]);
 
   const toggle = (index: number) => {
     setAccepted(prev => {
@@ -213,6 +232,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       // from cook. A total in the cook half leaves `totalMinutes()` correct;
       // in the prep half it would claim the whole recipe is mise en place.
       if (extracted.prepMinutes !== null) setEstimatedMinutes(recipe.id, extracted.prepMinutes);
+      if (extracted.recipeYield) setRecipeYield(recipe.id, extracted.recipeYield);
     }
     // Everything a page told us about itself. Only ever set from structured
     // markup, so a paste and a photo leave all of it null as they always did.
@@ -233,13 +253,9 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
 
   const canCreate = !loading && !!extracted && !!cleaned && !duplicate;
 
-  // One checkbox applying two facts has to name both when it has both, and it
-  // reads out exactly what the row shows rather than a second phrasing of it.
-  const detailsLabel = !extracted ? ''
-    : extracted.servings !== null
-      ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}${
-          extracted.prepMinutes !== null ? `, about ${extracted.prepMinutes} min` : ''}`
-      : `About ${extracted.prepMinutes} min`;
+  const details = extracted ? describeExtractedDetails(extracted) : null;
+  // Reads out exactly what the row shows rather than a second phrasing of it.
+  const detailsLabel = details ? [details.title, details.meta].filter(Boolean).join(', ') : '';
 
   // The method isn't in the review list — it's taken verbatim off the page, so
   // there's nothing to tick or correct — but arriving with steps nobody
@@ -281,6 +297,26 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       );
     }
 
+    if (alreadyImported) {
+      return (
+        <View style={styles.centered}>
+          <EmptyState
+            icon="checkmark-circle-outline"
+            title="You've imported this page"
+            subtitle={`It's already in your recipe box as “${alreadyImported.name}”.`}
+            actionLabel="Open it"
+            onAction={() => { onClose(); onCreated(alreadyImported.id); }}
+          />
+          <InlineAction
+            label="Import it again"
+            variant="neutral"
+            surface="page"
+            onPress={() => { void run({ reimport: true }); }}
+          />
+        </View>
+      );
+    }
+
     if (!extracted) {
       return (
         <ScrollView
@@ -313,7 +349,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       );
     }
 
-    if (ingredients.length === 0 && !extracted.name) {
+    if (ingredients.length === 0 && !extracted.name && !details) {
       return (
         <View style={styles.centered}>
           <EmptyState
@@ -371,7 +407,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
           {stepCount > 0 && ` The method comes across too — ${stepCount} step${stepCount === 1 ? '' : 's'}.`}
         </Text>
 
-        {(extracted.servings !== null || extracted.prepMinutes !== null) && (
+        {!!details && (
           <TouchableOpacity
             style={styles.row}
             activeOpacity={interaction.activeOpacity}
@@ -384,14 +420,8 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
               {applyDetails && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
             </View>
             <View style={styles.body}>
-              <Text style={styles.name}>
-                {extracted.servings !== null
-                  ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
-                  : `About ${extracted.prepMinutes} min`}
-              </Text>
-              {extracted.servings !== null && extracted.prepMinutes !== null && (
-                <Text style={styles.meta}>About {extracted.prepMinutes} min</Text>
-              )}
+              <Text style={styles.name}>{details.title}</Text>
+              {!!details.meta && <Text style={styles.meta}>{details.meta}</Text>}
             </View>
           </TouchableOpacity>
         )}

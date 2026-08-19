@@ -502,6 +502,7 @@ describe('extractRecipe', () => {
       name: 'Weeknight Chili',
       servings: 4,
       servingsMax: null,
+      recipeYield: null,
       prepMinutes: 45,
       ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
     });
@@ -589,9 +590,43 @@ describe('extractRecipe', () => {
   it('does not call the network for empty text', async () => {
     const spy = jest.spyOn(global, 'fetch');
     await expect(extractRecipe('   ', AISLES)).resolves.toEqual({
-      name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+      name: '', servings: null, servingsMax: null, recipeYield: null, prepMinutes: null,
+      ingredients: [],
     });
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('keeps a yield that names something other than people', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', { name: 'Sourdough', recipeYield: '2 loaves', items: [] })
+    );
+    expect((await extractRecipe('some recipe', AISLES)).recipeYield).toBe('2 loaves');
+  });
+
+  it('cleans a yield the same way the editor field does', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', { name: 'Soup', recipeYield: '  3   cups  ', items: [] })
+    );
+    expect((await extractRecipe('some recipe', AISLES)).recipeYield).toBe('3 cups');
+  });
+
+  it('is a null yield for an empty string or a non-string', async () => {
+    mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', recipeYield: '', items: [] }));
+    expect((await extractRecipe('some recipe', AISLES)).recipeYield).toBeNull();
+    mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', recipeYield: 4, items: [] }));
+    expect((await extractRecipe('some recipe', AISLES)).recipeYield).toBeNull();
+  });
+
+  it('keeps a yield alongside servings rather than making them exclusive', async () => {
+    // A dough can honestly say both, the same way Recipe.recipeYield allows.
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Sourdough', servings: 8, recipeYield: '2 loaves', items: [],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.servings).toBe(8);
+    expect(result.recipeYield).toBe('2 loaves');
   });
 
   it('throws when the model returns no tool use', async () => {
@@ -641,6 +676,7 @@ describe('extractRecipe', () => {
         name: 'Weeknight Chili',
         servings: 4,
         servingsMax: null,
+        recipeYield: null,
         prepMinutes: 45,
         ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
       });
@@ -665,7 +701,8 @@ describe('extractRecipe', () => {
     it('does not call the network for an empty image', async () => {
       const spy = jest.spyOn(global, 'fetch');
       await expect(extractRecipe({ base64: '', mediaType: 'image/jpeg' }, AISLES)).resolves.toEqual({
-        name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+        name: '', servings: null, servingsMax: null, recipeYield: null, prepMinutes: null,
+      ingredients: [],
       });
       expect(spy).not.toHaveBeenCalled();
     });
