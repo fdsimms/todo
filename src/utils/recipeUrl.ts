@@ -59,6 +59,49 @@ export function normalizeRecipeUrl(input: string): string | null {
   return `${protocol}://${host.toLowerCase()}${port}${path}`;
 }
 
+/**
+ * Query keys that name where a link was *shared from* rather than what it
+ * points at. Dropped so the same recipe mailed, tweeted and pasted is one page.
+ */
+const TRACKING_PARAM = /^(utm_[a-z_]+|fbclid|gclid|msclkid|mc_cid|mc_eid|igshid|ref|ref_src)$/i;
+
+/**
+ * A stable identity for "the page this recipe came from", for comparing a fresh
+ * import against `Recipe.sourceUrl`.
+ *
+ * Deliberately looser than the address itself, because the two sides are not
+ * held to the same standard: one is what `fetchRecipePage` normalised, the other
+ * may have been typed into the recipe editor by hand months ago. So the scheme
+ * goes (http and https are one page), `www.` goes, the fragment goes, a trailing
+ * slash goes, tracking parameters go, and what's left of the query is sorted.
+ *
+ * What deliberately stays: the port, the rest of the query (plenty of sites key
+ * a recipe on `?id=`), and the path's capitalisation, which is significant on
+ * more servers than not.
+ */
+export function recipeUrlKey(raw: string | null | undefined): string | null {
+  const normalized = normalizeRecipeUrl(raw ?? '');
+  if (!normalized) return null;
+
+  const withoutScheme = normalized.replace(SCHEME, '');
+  const cut = withoutScheme.search(/[/?#]/);
+  const authority = (cut === -1 ? withoutScheme : withoutScheme.slice(0, cut)).replace(/^www\./, '');
+  const rest = cut === -1 ? '' : withoutScheme.slice(cut);
+
+  const [beforeFragment] = rest.split('#');
+  const queryAt = beforeFragment.indexOf('?');
+  const path = (queryAt === -1 ? beforeFragment : beforeFragment.slice(0, queryAt)).replace(/\/+$/, '');
+  const query = queryAt === -1 ? '' : beforeFragment.slice(queryAt + 1);
+
+  const params = query
+    .split('&')
+    .filter(Boolean)
+    .filter(pair => !TRACKING_PARAM.test(pair.split('=')[0]))
+    .sort();
+
+  return `${authority}${path}${params.length ? `?${params.join('&')}` : ''}`;
+}
+
 // ——— Entities and tags ————————————————————————————————————————————————
 
 /**
