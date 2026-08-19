@@ -168,6 +168,14 @@ interface SettingsStore {
   sortOption: SortOption;
   filterPriorities: Priority[];
   filterEfforts: Effort[];
+  // Whether Today/Later/Unscheduled/Inbox are narrowed to tasks with a
+  // reminder set — the "easy way to see all tasks with alarms" ask (#1739),
+  // answered as a fourth SortFilterSheet filter rather than a new screen: the
+  // four view-modes already cover every non-completed, non-archived task
+  // between them, so flipping through them with this on is a real answer to
+  // "which of my tasks have one", not a partial one. Same persisted-view-state
+  // reasoning as filterPriorities/filterEfforts above.
+  filterHasReminder: boolean;
   // Recipes' own sort & filter, same persisted-view-state reasoning as
   // sortOption/filterPriorities/filterEfforts above — RecipeSortFilterSheet is
   // the recipe box's counterpart to Today's SortFilterSheet. 'default' keeps
@@ -569,6 +577,7 @@ interface SettingsStore {
   setSortOption: (sort: SortOption) => void;
   setFilterPriorities: (priorities: Priority[]) => void;
   setFilterEfforts: (efforts: Effort[]) => void;
+  setFilterHasReminder: (on: boolean) => void;
   setRecipeSortOption: (sort: RecipeSortOption) => void;
   setRecipeFavoritesOnly: (favoritesOnly: boolean) => void;
   setExcludedRecipeTags: (tags: string[]) => void;
@@ -894,6 +903,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   sortOption: 'default',
   filterPriorities: [],
   filterEfforts: [],
+  filterHasReminder: false,
   recipeSortOption: 'default',
   recipeFavoritesOnly: false,
   excludedRecipeTags: [],
@@ -988,6 +998,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       storedSort && SORT_OPTIONS.includes(storedSort) ? storedSort : 'default';
     const filterPriorities = parseFilterArray<Priority>(dbGetSetting('filterPriorities'), 4);
     const filterEfforts = parseFilterArray<Effort>(dbGetSetting('filterEfforts'), 6);
+    const filterHasReminder = dbGetSetting('filterHasReminder') === 'true';
     const storedRecipeSort = dbGetSetting('recipeSortOption') as RecipeSortOption | null;
     const recipeSortOption: RecipeSortOption =
       storedRecipeSort && RECIPE_SORT_OPTIONS.includes(storedRecipeSort) ? storedRecipeSort : 'default';
@@ -1161,7 +1172,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1289,6 +1300,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setFilterEfforts(efforts: Effort[]) {
     dbSetSetting('filterEfforts', JSON.stringify(efforts));
     set({ filterEfforts: efforts });
+  },
+
+  setFilterHasReminder(on: boolean) {
+    dbSetSetting('filterHasReminder', on ? 'true' : 'false');
+    set({ filterHasReminder: on });
   },
 
   setRecipeSortOption(sort: RecipeSortOption) {

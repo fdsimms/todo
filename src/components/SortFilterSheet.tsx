@@ -25,6 +25,8 @@ interface Props {
   onPrioritiesChange: (p: Priority[]) => void;
   efforts: Effort[];
   onEffortsChange: (e: Effort[]) => void;
+  hasReminder: boolean;
+  onHasReminderChange: (on: boolean) => void;
 }
 
 const SORT_OPTIONS: { value: SortOption; label: string; icon: string }[] = [
@@ -42,6 +44,7 @@ function toggle<T>(arr: T[], item: T): T[] {
 
 export function SortFilterSheet({
   visible, onClose, sort, onSortChange, priorities, onPrioritiesChange, efforts, onEffortsChange,
+  hasReminder, onHasReminderChange,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -108,12 +111,13 @@ export function SortFilterSheet({
   ).current;
 
   const activeCount =
-    (sort !== 'default' ? 1 : 0) + priorities.length + efforts.length;
+    (sort !== 'default' ? 1 : 0) + priorities.length + efforts.length + (hasReminder ? 1 : 0);
 
   const reset = () => {
     onSortChange('default');
     onPrioritiesChange([]);
     onEffortsChange([]);
+    onHasReminderChange(false);
   };
 
   return (
@@ -224,6 +228,25 @@ export function SortFilterSheet({
                   </TouchableOpacity>
                 );
               })}
+            </View>
+
+            {/* Reminder filter */}
+            <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Filter by reminder</Text>
+            <View style={styles.chips}>
+              <TouchableOpacity
+                style={[styles.chip, hasReminder && styles.chipActive]}
+                onPress={() => {
+                  haptics.tap();
+                  onHasReminderChange(!hasReminder);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Has reminder set"
+                accessibilityState={{ selected: hasReminder }}
+              >
+                <Text style={[styles.chipText, hasReminder && styles.chipTextActive]}>
+                  Has reminder set
+                </Text>
+              </TouchableOpacity>
             </View>
           </ScrollView>
         </Animated.View>

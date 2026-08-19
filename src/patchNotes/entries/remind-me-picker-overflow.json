@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the Remind Me sheet rendering taller than the screen, which could push the Ring As options and the Done button out of reach.",
+  "date": "2026-08-19"
+}

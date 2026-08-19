@@ -2343,13 +2343,13 @@ describe('checkMealPlanNudge', () => {
     const tasks = useTaskStore.getState().tasks;
     expect(tasks).toHaveLength(7);
     expect(tasks.map(t => t.title)).toEqual([
-      'Sunday 10 Aug',
-      'Monday 11 Aug',
-      'Tuesday 12 Aug',
-      'Wednesday 13 Aug',
-      'Thursday 14 Aug',
-      'Friday 15 Aug',
-      'Saturday 16 Aug',
+      'Sunday 08/10',
+      'Monday 08/11',
+      'Tuesday 08/12',
+      'Wednesday 08/13',
+      'Thursday 08/14',
+      'Friday 08/15',
+      'Saturday 08/16',
     ]);
     expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2025-08-10', '2025-08-16');
     expect(s.setMealPlanNudgeLastFiredWeekKey).toHaveBeenCalledWith('2025-08-03');
@@ -2424,7 +2424,7 @@ describe('checkMealPlanNudge', () => {
 
     const groups = useTaskGroupStore.getState().groups;
     expect(groups).toHaveLength(1);
-    expect(groups[0].title).toBe('Plan meals for 10 – 16 Aug');
+    expect(groups[0].title).toBe("Plan next week's meals");
     // A stack that appears unattended showing "0 of 7 done today" and no rows
     // hides the whole week behind a chevron nobody was told to tap.
     expect(groups[0].collapsed).toBe(false);
@@ -2455,7 +2455,7 @@ describe('checkMealPlanNudge', () => {
 
     expect(useTaskGroupStore.getState().groups).toHaveLength(1);
     expect(useTaskGroupStore.getState().groups[0].id).toBe(groupId);
-    expect(useTaskGroupStore.getState().groups[0].title).toBe('Plan meals for 17 – 23 Aug');
+    expect(useTaskGroupStore.getState().groups[0].title).toBe("Plan next week's meals");
   });
 
   it('makes a new stack when the remembered one has been deleted', () => {

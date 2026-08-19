@@ -1134,6 +1134,17 @@ describe('persisted filters', () => {
     expect(useSettingsStore.getState().filterPriorities).toEqual([]);
     expect(useSettingsStore.getState().filterEfforts).toEqual([]);
   });
+
+  it('defaults filterHasReminder to off and round-trips it', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().filterHasReminder).toBe(false);
+
+    useSettingsStore.getState().setFilterHasReminder(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('filterHasReminder', 'true');
+    storing({ filterHasReminder: 'true' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().filterHasReminder).toBe(true);
+  });
 });
 
 describe('persisted recipe sort & filter', () => {

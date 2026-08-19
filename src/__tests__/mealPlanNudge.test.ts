@@ -91,9 +91,9 @@ describe('dueMealPlanNudge', () => {
     expect(due).not.toBeNull();
   });
 
-  it('titles the task with the target week\'s own date range', () => {
+  it('titles the stack with a fixed name rather than a date range', () => {
     const due = dueMealPlanNudge(SUN_AUG_3(9, 0), 0, 0, '09:00', null);
-    expect(due!.title).toBe('Plan meals for 10 – 16 Aug');
+    expect(due!.title).toBe("Plan next week's meals");
   });
 
   it('names all seven days of the target week, in week order', () => {
@@ -109,10 +109,10 @@ describe('dueMealPlanNudge', () => {
     ]);
   });
 
-  it('titles each day by weekday and date, without repeating the stack\'s verb', () => {
+  it('titles each day by weekday and numeric date, without repeating the stack\'s verb', () => {
     const due = dueMealPlanNudge(SUN_AUG_3(9, 0), 0, 0, '09:00', null);
-    expect(due!.days[0].title).toBe('Sunday 10 Aug');
-    expect(due!.days[6].title).toBe('Saturday 16 Aug');
+    expect(due!.days[0].title).toBe('Sunday 08/10');
+    expect(due!.days[6].title).toBe('Saturday 08/16');
   });
 
   it('follows weekStartsOn into the day set, not just the range', () => {
@@ -121,7 +121,7 @@ describe('dueMealPlanNudge', () => {
     const due = dueMealPlanNudge(TUE_AUG_5(9, 0), 1, 1, '09:00', null);
     expect(due!.days).toHaveLength(7);
     expect(due!.days[0].dayKey).toBe('2025-08-11');
-    expect(due!.days[0].title).toBe('Monday 11 Aug');
+    expect(due!.days[0].title).toBe('Monday 08/11');
     expect(due!.days[6].dayKey).toBe('2025-08-17');
   });
 

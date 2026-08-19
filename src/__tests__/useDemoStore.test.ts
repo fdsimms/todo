@@ -1222,7 +1222,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(groupIds.size).toBe(1);
     const group = groups.find(g => g.id === nudgeTasks[0].groupId);
     expect(group).toBeDefined();
-    expect(group!.title).toMatch(/^Plan meals for /);
+    expect(group!.title).toBe("Plan next week's meals");
     // A stack that arrives unattended opens itself; nothing else would show
     // the seven rows this feature is.
     expect(group!.collapsed).toBe(false);

@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Dimensions,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ALARM_RING_INTERVAL_MINUTES } from '../utils/alarmChain';
@@ -36,7 +37,7 @@ interface Props {
   onCancel: () => void;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 380);
 const CAL_PADDING = 10;
 const CELL_SIZE = Math.floor((CARD_WIDTH - spacing.md * 2 - CAL_PADDING * 2) / 7);
@@ -46,7 +47,11 @@ const alarmKitAvailable = isAlarmKitAvailable();
 export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCancel }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  // Reactive, unlike the width above: read once at module load, a stale
+  // height would cap the card against a screen that no longer matches the
+  // one it's actually rendering on.
+  const { height: windowHeight } = useWindowDimensions();
+  const styles = useMemo(() => makeStyles(colors, windowHeight), [colors, windowHeight]);
 
   const [displayMonth, setDisplayMonth] = useState(() => value ?? new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(value);
@@ -224,23 +229,31 @@ export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCan
             {pickerReady && (
               <View style={styles.timeSection}>
                 <Text style={styles.sectionLabel}>Time</Text>
-                <DateTimePicker
-                  value={timeDate}
-                  mode="time"
-                  display="spinner"
-                  onChange={(_e, d) => {
-                    if (d) {
-                      setTimeDate(d);
-                      if (selectedDate) {
-                        const merged = new Date(selectedDate);
-                        merged.setHours(d.getHours(), d.getMinutes(), 0, 0);
-                        setSelectedDate(merged);
+                {/* The spinner's native rendered height doesn't reliably
+                    respect a height passed via its own `style` prop — it can
+                    lay out taller than asked, which is what was pushing Ring
+                    As and the Done button off the bottom of the sheet
+                    (#1616). A fixed-height, overflow-hidden wrapper clips it
+                    to the space this card actually has. */}
+                <View style={styles.timePickerClip}>
+                  <DateTimePicker
+                    value={timeDate}
+                    mode="time"
+                    display="spinner"
+                    onChange={(_e, d) => {
+                      if (d) {
+                        setTimeDate(d);
+                        if (selectedDate) {
+                          const merged = new Date(selectedDate);
+                          merged.setHours(d.getHours(), d.getMinutes(), 0, 0);
+                          setSelectedDate(merged);
+                        }
                       }
-                    }
-                  }}
-                  themeVariant={isDark ? 'dark' : 'light'}
-                  style={styles.timePickerWidget}
-                />
+                    }}
+                    themeVariant={isDark ? 'dark' : 'light'}
+                    style={styles.timePickerWidget}
+                  />
+                </View>
               </View>
             )}
 
@@ -344,7 +357,7 @@ export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCan
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: colors.backdrop,
@@ -354,7 +367,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   card: {
     width: CARD_WIDTH,
-    maxHeight: SCREEN_HEIGHT * 0.88,
+    maxHeight: windowHeight * 0.88,
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
@@ -501,6 +514,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: spacing.sm + 2,
     paddingTop: spacing.sm,
+  },
+  timePickerClip: {
+    height: 150,
+    overflow: 'hidden',
   },
   timePickerWidget: {
     height: 150,
