@@ -5,7 +5,7 @@ import type { WeekStart } from '../store/useSettingsStore';
 import { buildWeekDays } from './calendarGrid';
 import { dayKeyOf } from './dateUtils';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
-import { describeWeekRange, isKeyInRange } from './mealPlan';
+import { isKeyInRange } from './mealPlan';
 
 /**
  * The opt-in "plan meals for the week" nudge (#1121) — a real Task, created
@@ -160,7 +160,13 @@ export interface MealPlanNudgeDue {
    * and the order they're laid down in the stack.
    */
   days: MealPlanNudgeDay[];
-  /** "Plan meals for 17 – 23 Aug" — reuses mealPlan.ts's own week-range wording. */
+  /**
+   * "Plan next week's meals" — a fixed string rather than the date range
+   * mealPlan.ts's own wording would give it (#1727): the nudge only ever
+   * fires about the week right after the one it fires in, so naming which
+   * week it is doesn't add anything the reader doesn't already know from
+   * "next".
+   */
   title: string;
   /** Noon on the day the nudge fires — where the created task's `dueDate` lands. */
   dueDate: Date;
@@ -171,13 +177,16 @@ export interface MealPlanNudgeDay {
   /** `2026-08-17`. The task's `generatedSourceId`, and what its link opens on. */
   dayKey: string;
   /**
-   * "Monday 17 Aug" — the task's title.
+   * "Monday 08/17" — the task's title.
    *
-   * Doesn't repeat "Plan": the stack header above it already says "Plan meals
-   * for 17 – 23 Aug", and seven rows each opening with the same verb is a
+   * Doesn't repeat "Plan": the stack header above it already says "Plan next
+   * week's meals", and seven rows each opening with the same verb is a
    * column of prefixes to read past. The weekday leads because that's what a
    * person picks a day by; the date follows for the week that straddles a
-   * month, where three of the rows would otherwise be ambiguous.
+   * month, where three of the rows would otherwise be ambiguous. Numeric
+   * rather than "17 Aug" (#1727) — next to a plain task title on Today or the
+   * widget, a bare "Monday 17 Aug" reads like a date someone typed as a
+   * title, not a link to a day.
    */
   title: string;
 }
@@ -223,9 +232,9 @@ export function dueMealPlanNudge(
     targetWeekEndKey: dayKeyOf(targetDays[targetDays.length - 1]),
     days: targetDays.map(day => ({
       dayKey: dayKeyOf(day),
-      title: format(day, 'EEEE d MMM'),
+      title: format(day, 'EEEE MM/dd'),
     })),
-    title: `Plan meals for ${describeWeekRange(targetDays)}`,
+    title: "Plan next week's meals",
     dueDate,
   };
 }

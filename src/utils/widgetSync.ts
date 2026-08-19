@@ -82,13 +82,24 @@ async function processPendingWidgetCompletions(): Promise<void> {
   }
 }
 
+// The weekly meal-plan nudge (see mealPlanNudge.ts) fires as a stack of
+// seven — one bare "Sunday 08/17"-style task per day — which reads fine
+// under its stack header in the app but, flattened onto the widget with no
+// header or grouping to explain them, looked like seven nonsense date
+// titles crowding out the real tasks around them (#1726). The widget has no
+// notion of a stack to collapse them into instead, so they're left off
+// entirely; the stack is still one tap away inside the app.
+function isWidgetWorthy(task: Task): boolean {
+  return task.generatedKind !== 'mealPlanNudge';
+}
+
 function writeSnapshotNow(): void {
   if (Platform.OS !== 'ios') return;
   const { visibleTasks, pinnedTasks } = useTaskStore.getState();
   const snapshot: WidgetSnapshot = {
     updatedAt: new Date().toISOString(),
-    visibleTasks: visibleTasks().slice(0, MAX_VISIBLE_TASKS).map(toWidgetTask),
-    pinnedTasks: pinnedTasks().slice(0, MAX_PINNED_TASKS).map(toWidgetTask),
+    visibleTasks: visibleTasks().filter(isWidgetWorthy).slice(0, MAX_VISIBLE_TASKS).map(toWidgetTask),
+    pinnedTasks: pinnedTasks().filter(isWidgetWorthy).slice(0, MAX_PINNED_TASKS).map(toWidgetTask),
   };
   writeToNativeBridge(JSON.stringify(snapshot));
 }
