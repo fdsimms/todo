@@ -320,6 +320,21 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // #1255: a task with nothing seeded carrying streakRequiresWindow reads as
+  // a feature the app doesn't have, so one recurring habit that already has a
+  // window (timeSegments) and an established streak opts in.
+  it('seeds a habit whose streak requires on-time completion', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const standup = tasks.find(t => t.title === 'Morning standup');
+    expect(standup?.streakRequiresWindow).toBe(true);
+    expect(standup?.timeSegments).toEqual(['morning']);
+    expect(standup?.streakCount).toBeGreaterThan(0);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // The month grid's one distinctive mark is a dot for an occurrence that has
   // no row yet, and only a fixed-schedule recurrence with a due date produces
   // one (see canProject). Nothing else in the seed asserts that combination
@@ -491,6 +506,22 @@ describe('demo mode', () => {
     const decisions = projectDecisions(kitchen!.id, useTaskStore.getState().tasks);
     expect(decisions.length).toBeGreaterThan(0);
     expect(decisions.every(t => formatTaskDeliverable(t) !== null)).toBe(true);
+  });
+
+  // The project screen captions each row with its own date (TaskItem.showDate),
+  // which renders nothing at all on a project whose steps are undated.
+  it('dates the project steps that are still open', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    const open = useTaskStore.getState().tasks.filter(t => t.projectId === kitchen?.id && !t.completed);
+
+    expect(open.length).toBeGreaterThan(0);
+    expect(open.every(t => t.dueDate !== null || t.deferUntil !== null)).toBe(true);
+    // One of each, so both readings of the chip are on screen: a due date, and
+    // a task that isn't there yet.
+    expect(open.some(t => t.dueDate !== null)).toBe(true);
+    expect(open.some(t => t.deferUntil !== null)).toBe(true);
   });
 
   it('seeds a reference-list project excluded from every nudge', () => {

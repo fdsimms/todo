@@ -1983,7 +1983,6 @@ export function TodayScreen() {
         selected={selectedIds.has(task.id)}
         onSelect={toggleSelection}
         onSwipeSelect={handleRowSwipeSelect}
-        hideTodayLabel
         highlighted={task.id === flashTaskId}
         autoComplete={autoCompletingIds.has(task.id)}
         // This list is `filtered`, i.e. visibleTasks — a row leaves it the
@@ -2153,7 +2152,6 @@ export function TodayScreen() {
         selected={selectedIds.has(task.id)}
         onSelect={toggleSelection}
         onSwipeSelect={handleRowSwipeSelect}
-        hideTodayLabel
       />
     );
   };
@@ -2822,7 +2820,6 @@ export function TodayScreen() {
                     selected={selectedIds.has(item.task.id)}
                     onSelect={toggleSelection}
                     onSwipeSelect={handleRowSwipeSelect}
-                    hideTodayLabel
                     showCategory
                     showProject
                     showGroup
@@ -3087,7 +3084,6 @@ export function TodayScreen() {
                     selected={selectedIds.has(item.id)}
                     onSelect={toggleSelection}
                     onSwipeSelect={handleRowSwipeSelect}
-                    hideTodayLabel
                     showCategory
                     showProject
                     highlighted={item.id === flashTaskId}

@@ -33,13 +33,13 @@ function leftover(overrides: Partial<Leftover> = {}): Leftover {
 
 const now = new Date('2026-08-13T09:00:00.000Z');
 
-// Every helper below takes `now` — except `wantsUseUpTask`, which reaches
-// `needsAttention` and so reads the wall clock. That made the suite rot: its
-// "20th is 7 days out, so not urgent" case was true on the day it was written
-// and false from the 19th onwards. The clock is frozen for the whole file
-// rather than only that describe, so the two halves can't drift apart again.
+// Every other function here takes `now` as an argument, but wantsUseUpTask asks
+// freshness.ts, which reads the clock itself — so without pinning it the
+// fixtures below are dated against whenever the suite happens to run, and the
+// "fresh, not urgent" case starts failing once the real date catches up.
 beforeAll(() => {
-  jest.useFakeTimers().setSystemTime(now);
+  jest.useFakeTimers();
+  jest.setSystemTime(now);
 });
 afterAll(() => {
   jest.useRealTimers();
