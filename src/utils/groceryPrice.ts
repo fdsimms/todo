@@ -480,9 +480,31 @@ export function lastPriceFor(
   shopId: string | null,
   links: readonly ItemShopLink[]
 ): number | null {
+  return lastPricedAmountFor(item, shopId, links)?.minor ?? null;
+}
+
+/**
+ * The same answer as `lastPriceFor`, carrying the quantity it was the price
+ * *of*.
+ *
+ * A price without its quantity can only be compared against another price for
+ * the same size, which is the ambiguity `lastPriceQuantity` exists to close —
+ * so anything doing arithmetic across two prices needs both halves, and getting
+ * them from two lookups is how the pair comes to disagree about which store's
+ * price it's holding. `lastPriceFor` delegates here rather than restating the
+ * rule beside it.
+ */
+export function lastPricedAmountFor(
+  item: GroceryItem,
+  shopId: string | null,
+  links: readonly ItemShopLink[]
+): { minor: number; quantity: string | null } | null {
   if (shopId) {
     const link = links.find(l => l.itemId === item.id && l.shopId === shopId);
-    if (link?.lastPriceMinor != null) return link.lastPriceMinor;
+    if (link?.lastPriceMinor != null) {
+      return { minor: link.lastPriceMinor, quantity: link.lastPriceQuantity };
+    }
   }
-  return item.lastPriceMinor;
+  if (item.lastPriceMinor == null) return null;
+  return { minor: item.lastPriceMinor, quantity: item.lastPriceQuantity };
 }

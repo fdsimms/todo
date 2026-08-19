@@ -1,6 +1,8 @@
-import type { GroceryItem, Shop } from '../types';
+import type { GroceryItem, ItemShopLink, Shop } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { matchWeight } from './grocerySuggest';
+import { lastPricedAmountFor } from './groceryPrice';
+import { measureQuantity } from './unitConvert';
 import type { ReceiptLine } from '../services/aiSuggestions';
 
 /**
@@ -60,13 +62,6 @@ export interface ReceiptMatch {
    * the receipt; they can see there are two.
    */
   duplicateOf: string | null;
-}
-
-/** Rows a line is allowed to claim, and what came back for each. */
-export interface ReceiptMatchResult {
-  matches: ReceiptMatch[];
-  /** Ids that arrive pre-checked — the `exact` and `likely` ones. */
-  confidentIds: string[];
 }
 
 /**
@@ -141,7 +136,7 @@ const TIER_RANK: Record<ReceiptMatchConfidence, number> = { exact: 3, likely: 2,
 export function matchReceiptLines(
   lines: readonly ReceiptLine[],
   items: readonly GroceryItem[],
-): ReceiptMatchResult {
+): ReceiptMatch[] {
   const candidates = items.filter(i => i.onList);
   // Best line per row rather than best row per line: two lines reading as
   // "milk" must not both claim it, and the one that claims it should be the
@@ -191,12 +186,7 @@ export function matchReceiptLines(
     };
   });
 
-  return {
-    matches,
-    confidentIds: matches
-      .filter(m => m.itemId && m.confidence !== 'weak')
-      .map(m => m.itemId as string),
-  };
+  return matches;
 }
 
 /**
@@ -243,4 +233,162 @@ export function matchReceiptShop(storeName: string, shops: readonly Shop[]): Sho
       || key.startsWith(`${shopKey} `)
       || shopKey.startsWith(`${key} `);
   }) ?? null;
+}
+
+/**
+ * A match whose name looks right but whose numbers don't.
+ *
+ * Kept apart from `ReceiptMatchConfidence` because it's a genuinely independent
+ * axis: confidence is how well two *names* agree, and these are evidence from a
+ * different direction entirely. That independence is the point — a wrong match
+ * that reads perfectly by name ("Milk" ← a line the model rendered as "milk")
+ * is invisible to name similarity and obvious to price.
+ */
+export type ReceiptCaution =
+  /**
+   * Wildly off what this item last cost. Read as a *matching* error rather than
+   * as news about prices: a 4x move is almost never inflation or a sale, it's
+   * the receipt line having been read onto the wrong row.
+   */
+  | { kind: 'price'; baselineMinor: number; baselineQuantity: string | null }
+  /** The receipt names a different amount than the row asked for. */
+  | { kind: 'quantity'; wanted: string };
+
+/**
+ * How far a price has to move before it's evidence of anything.
+ *
+ * Deliberately blunt. Real groceries move a long way on their own — a sale
+ * takes a third off, a year of inflation adds a fifth, and a switch from the
+ * small pack to the big one doubles the line outright. A threshold tight enough
+ * to catch those would fire on most of a normal receipt, and a check that cries
+ * wolf is one people learn to tap past, which costs more than not having it. At
+ * 4x it fires on the mismatches and essentially nothing else.
+ */
+const PRICE_CAUTION_FACTOR = 4;
+
+/**
+ * Everything questionable about one confirmed match, or an empty list.
+ *
+ * **Silence is the default and it is load-bearing**, the same discipline
+ * `tripMarkerFor` runs on: an item nobody has ever priced, a quantity nothing
+ * can measure, a store with no history — all of them produce no caution at all,
+ * because not knowing is not evidence. Most rows on most receipts say nothing
+ * here, and that is what makes the ones that do worth reading.
+ */
+export function receiptCautionsFor(
+  match: ReceiptMatch,
+  items: readonly GroceryItem[],
+  shopId: string | null,
+  links: readonly ItemShopLink[],
+): ReceiptCaution[] {
+  if (!match.itemId) return [];
+  const item = items.find(i => i.id === match.itemId);
+  if (!item) return [];
+
+  const cautions: ReceiptCaution[] = [];
+
+  const baseline = lastPricedAmountFor(item, shopId, links);
+  if (baseline && match.line.priceMinor !== null) {
+    const ratio = comparablePriceRatio(
+      match.line.priceMinor, match.line.quantity,
+      baseline.minor, baseline.quantity,
+    );
+    if (ratio !== null && (ratio >= PRICE_CAUTION_FACTOR || ratio <= 1 / PRICE_CAUTION_FACTOR)) {
+      cautions.push({
+        kind: 'price',
+        baselineMinor: baseline.minor,
+        baselineQuantity: baseline.quantity,
+      });
+    }
+  }
+
+  // Only when both sides actually name an amount, and only when they disagree
+  // by enough to be a different purchase rather than a rounding of the same one.
+  const wanted = item.quantity?.trim();
+  if (wanted && match.line.quantity.trim() && quantitiesDisagree(match.line.quantity, wanted)) {
+    cautions.push({ kind: 'quantity', wanted });
+  }
+
+  return cautions;
+}
+
+/**
+ * How many times the baseline the receipt's price is, comparing like with like,
+ * or null when the two can't be compared honestly.
+ *
+ * This is the whole reason the check is trustworthy. "$4.99" against "$9.98"
+ * is a doubling *or* it's the same product in a pack twice the size, and
+ * without the quantities there is no way to tell — so the two are compared per
+ * unit whenever both name a measurable amount, and refused outright when they
+ * name amounts that can't be reconciled. Same all-or-nothing rule
+ * `unitPricesFor` follows, and for the same reason: a comparison that quietly
+ * drops the part it couldn't read is worse than no comparison.
+ *
+ * Both sides naming nothing is the common case and is compared as-is — two
+ * unqualified prices for one catalog row are the same kind of measurement,
+ * whatever that kind is.
+ */
+function comparablePriceRatio(
+  minor: number,
+  quantity: string,
+  baseMinor: number,
+  baseQuantity: string | null,
+): number | null {
+  if (baseMinor <= 0) return null;
+  const a = quantity.trim();
+  const b = baseQuantity?.trim() ?? '';
+
+  if (!a && !b) return minor / baseMinor;
+  // One side qualified and the other not: nothing says whether they describe
+  // the same amount, so there's no comparison to make.
+  if (!a || !b) return null;
+  if (a.toLowerCase() === b.toLowerCase()) return minor / baseMinor;
+
+  const measuredA = measureQuantity(a);
+  const measuredB = measureQuantity(b);
+  if (!measuredA || !measuredB || measuredA.dimension !== measuredB.dimension) return null;
+  return (minor / measuredA.base) / (baseMinor / measuredB.base);
+}
+
+/**
+ * Whether two amounts are different enough to be worth mentioning.
+ *
+ * Refuses far more than it answers, on purpose: unless both sides measure in
+ * one dimension there is nothing to compare, and "2" against "2 lb" is a
+ * question about what the row meant rather than a disagreement about how much.
+ */
+function quantitiesDisagree(a: string, b: string): boolean {
+  if (a.trim().toLowerCase() === b.trim().toLowerCase()) return false;
+  const measuredA = measureQuantity(a);
+  const measuredB = measureQuantity(b);
+  if (!measuredA || !measuredB || measuredA.dimension !== measuredB.dimension) return false;
+  // A tenth either way is a scale reading, not a different purchase.
+  const ratio = measuredA.base / measuredB.base;
+  return ratio > 1.1 || ratio < 1 / 1.1;
+}
+
+/**
+ * Which rows arrive already checked.
+ *
+ * **The one place that rule lives.** It used to be a field on the match result,
+ * which was fine while the answer depended only on the name — a price check
+ * depends on which store you say you were at, so the answer changes under a
+ * store the user picks after the fact, and two places computing it is how the
+ * checkbox and the caption would come to disagree about the same row.
+ *
+ * A price caution demotes; a quantity caution doesn't. Coming home with the
+ * big pack is an ordinary thing that happened and the row is still the right
+ * row, whereas a price four times off is the app's best evidence that the line
+ * was read onto the wrong one.
+ */
+export function acceptedByDefault(
+  matches: readonly ReceiptMatch[],
+  items: readonly GroceryItem[],
+  shopId: string | null,
+  links: readonly ItemShopLink[],
+): string[] {
+  return matches
+    .filter(m => m.itemId !== null && m.confidence !== 'weak')
+    .filter(m => !receiptCautionsFor(m, items, shopId, links).some(c => c.kind === 'price'))
+    .map(m => m.itemId as string);
 }

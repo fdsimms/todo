@@ -1,11 +1,13 @@
 import {
+  acceptedByDefault,
   matchReceiptLines,
   matchReceiptShop,
+  receiptCautionsFor,
   receiptMatchConfidence,
 } from '../utils/receiptMatch';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { ReceiptLine } from '../services/aiSuggestions';
-import type { GroceryItem, Shop } from '../types';
+import type { GroceryItem, ItemShopLink, Shop } from '../types';
 
 let seq = 0;
 function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
@@ -111,7 +113,8 @@ describe('matchReceiptLines', () => {
     const items = [makeItem({ name: 'Milk' })];
     const lines = [line({ label: 'GV MLK 2% GAL', name: 'milk', priceMinor: 348 })];
 
-    const { matches, confidentIds } = matchReceiptLines(lines, items);
+    const matches = matchReceiptLines(lines, items);
+    const confidentIds = acceptedByDefault(matches, items, null, []);
 
     expect(matches[0].itemId).toBe(items[0].id);
     expect(matches[0].confidence).toBe('exact');
@@ -122,7 +125,8 @@ describe('matchReceiptLines', () => {
     const items = [makeItem({ name: 'Chicken thighs' })];
     const lines = [line({ name: 'chicken breast' })];
 
-    const { matches, confidentIds } = matchReceiptLines(lines, items);
+    const matches = matchReceiptLines(lines, items);
+    const confidentIds = acceptedByDefault(matches, items, null, []);
 
     // Still surfaced — the user may well have meant it — but never pre-ticked.
     expect(matches[0].itemId).toBe(items[0].id);
@@ -134,7 +138,8 @@ describe('matchReceiptLines', () => {
     const items = [makeItem({ name: 'Milk', onList: false })];
     const lines = [line({ name: 'milk' })];
 
-    const { matches, confidentIds } = matchReceiptLines(lines, items);
+    const matches = matchReceiptLines(lines, items);
+    const confidentIds = acceptedByDefault(matches, items, null, []);
 
     expect(matches[0].itemId).toBeNull();
     expect(confidentIds).toEqual([]);
@@ -144,7 +149,7 @@ describe('matchReceiptLines', () => {
     const items = [makeItem({ name: 'Milk' })];
     const lines = [line({ name: 'AA batteries' })];
 
-    const { matches } = matchReceiptLines(lines, items);
+    const matches = matchReceiptLines(lines, items);
 
     expect(matches[0].itemId).toBeNull();
     expect(matches[0].confidence).toBeNull();
@@ -158,7 +163,8 @@ describe('matchReceiptLines', () => {
       line({ label: 'MILK GAL', name: 'milk', priceMinor: 348 }),
     ];
 
-    const { matches, confidentIds } = matchReceiptLines(lines, items);
+    const matches = matchReceiptLines(lines, items);
+    const confidentIds = acceptedByDefault(matches, items, null, []);
 
     expect(matches[0].itemId).toBe(items[0].id);
     expect(matches[1].itemId).toBeNull();
@@ -174,7 +180,7 @@ describe('matchReceiptLines', () => {
       line({ name: 'chicken breast' }),  // exact
     ];
 
-    const { matches } = matchReceiptLines(lines, items);
+    const matches = matchReceiptLines(lines, items);
 
     expect(matches[1].itemId).toBe(items[0].id);
     expect(matches[1].confidence).toBe('exact');
@@ -189,7 +195,7 @@ describe('matchReceiptLines', () => {
     ];
     const lines = [line({ name: 'chicken' })];
 
-    const { matches } = matchReceiptLines(lines, items);
+    const matches = matchReceiptLines(lines, items);
 
     expect(matches[0].itemId).toBe(items[1].id);
     expect(matches[0].confidence).toBe('exact');
@@ -200,20 +206,19 @@ describe('matchReceiptLines', () => {
     const b = makeItem({ name: 'Chicken' });
     const lines = [line({ name: 'chicken' })];
 
-    expect(matchReceiptLines(lines, [a, b]).matches[0].itemId)
-      .toBe(matchReceiptLines(lines, [b, a]).matches[0].itemId);
+    expect(matchReceiptLines(lines, [a, b])[0].itemId)
+      .toBe(matchReceiptLines(lines, [b, a])[0].itemId);
   });
 
   it('returns nothing for an empty receipt', () => {
-    expect(matchReceiptLines([], [makeItem({ name: 'Milk' })]))
-      .toEqual({ matches: [], confidentIds: [] });
+    expect(matchReceiptLines([], [makeItem({ name: 'Milk' })])).toEqual([]);
   });
 
   it('carries the line through untouched so the sheet can show what was printed', () => {
     const items = [makeItem({ name: 'Bananas' })];
     const lines = [line({ label: 'BANANAS 1.32 LB', name: 'bananas', quantity: '1.32 lb', priceMinor: 77 })];
 
-    const { matches } = matchReceiptLines(lines, items);
+    const matches = matchReceiptLines(lines, items);
 
     expect(matches[0].line.label).toBe('BANANAS 1.32 LB');
     expect(matches[0].line.quantity).toBe('1.32 lb');
@@ -253,5 +258,173 @@ describe('matchReceiptShop', () => {
 
   it('returns null when the user has no stores', () => {
     expect(matchReceiptShop('Safeway', [])).toBeNull();
+  });
+});
+
+// ─── receiptCautionsFor ──────────────────────────────────────────────────────
+
+function makeLink(overrides: Partial<ItemShopLink> & { itemId: string; shopId: string }): ItemShopLink {
+  return {
+    purchaseCount: 1,
+    lastPurchasedAt: '2026-08-01T00:00:00.000Z',
+    unavailableAt: null,
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
+    brand: null,
+    brandUnavailableAt: null,
+    ...overrides,
+  };
+}
+
+/** The one match a line/item pair produces, for the caution tests below. */
+function only(item: GroceryItem, l: Partial<ReceiptLine> & { name: string }) {
+  return matchReceiptLines([line(l)], [item])[0];
+}
+
+describe('receiptCautionsFor', () => {
+  it('flags a price wildly off what the item last cost', () => {
+    const item = makeItem({ name: 'Milk', lastPriceMinor: 348 });
+    const match = only(item, { name: 'milk', priceMinor: 1840 });
+
+    const cautions = receiptCautionsFor(match, [item], null, []);
+
+    expect(cautions).toEqual([{ kind: 'price', baselineMinor: 348, baselineQuantity: null }]);
+  });
+
+  it('says nothing about ordinary price movement', () => {
+    // A sale and a year of inflation both live well inside the threshold.
+    const item = makeItem({ name: 'Milk', lastPriceMinor: 348 });
+    expect(receiptCautionsFor(only(item, { name: 'milk', priceMinor: 232 }), [item], null, [])).toEqual([]);
+    expect(receiptCautionsFor(only(item, { name: 'milk', priceMinor: 449 }), [item], null, [])).toEqual([]);
+  });
+
+  it('flags a price far below the baseline too', () => {
+    const item = makeItem({ name: 'Olive oil', lastPriceMinor: 1599 });
+    const match = only(item, { name: 'olive oil', priceMinor: 99 });
+
+    expect(receiptCautionsFor(match, [item], null, [])).toContainEqual(
+      { kind: 'price', baselineMinor: 1599, baselineQuantity: null }
+    );
+  });
+
+  it('says nothing when the item has never been priced', () => {
+    // Ignorance, not evidence — the default state of most of the catalog.
+    const item = makeItem({ name: 'Tahini', lastPriceMinor: null });
+    const match = only(item, { name: 'tahini', priceMinor: 9999 });
+
+    expect(receiptCautionsFor(match, [item], null, [])).toEqual([]);
+  });
+
+  it('prefers the named store’s own price as the baseline', () => {
+    const item = makeItem({ name: 'Olive oil', lastPriceMinor: 399 });
+    const links = [makeLink({ itemId: item.id, shopId: 'costco', lastPriceMinor: 1599 })];
+    const match = only(item, { name: 'olive oil', priceMinor: 1699 });
+
+    // Against the item's own 3.99 this would be a 4x jump; against Costco's
+    // 15.99 it's an ordinary one.
+    expect(receiptCautionsFor(match, [item], 'costco', links)).toEqual([]);
+    expect(receiptCautionsFor(match, [item], null, links)).toHaveLength(1);
+  });
+
+  it('compares per unit when both sides name a measurable amount', () => {
+    // Twice the price for twice the cheese is not a mismatch.
+    const item = makeItem({ name: 'Cheddar', lastPriceMinor: 499, lastPriceQuantity: '8 oz' });
+    const match = only(item, { name: 'cheddar', quantity: '32 oz', priceMinor: 1996 });
+
+    expect(receiptCautionsFor(match, [item], null, [])).toEqual([]);
+  });
+
+  it('refuses to compare a qualified price against an unqualified one', () => {
+    // "$4.99 for 8 oz" against a bare "$0.99" says nothing either way.
+    const item = makeItem({ name: 'Cheddar', lastPriceMinor: 99, lastPriceQuantity: null });
+    const match = only(item, { name: 'cheddar', quantity: '8 oz', priceMinor: 499 });
+
+    expect(receiptCautionsFor(match, [item], null, [])).toEqual([]);
+  });
+
+  it('refuses to compare across dimensions', () => {
+    const item = makeItem({ name: 'Milk', lastPriceMinor: 100, lastPriceQuantity: '1 gal' });
+    const match = only(item, { name: 'milk', quantity: '2 lb', priceMinor: 9999 });
+
+    expect(receiptCautionsFor(match, [item], null, [])).toEqual([]);
+  });
+
+  it('flags a quantity that disagrees with what the row asked for', () => {
+    const item = makeItem({ name: 'Chicken', quantity: '3 lb' });
+    const match = only(item, { name: 'chicken', quantity: '1 lb' });
+
+    expect(receiptCautionsFor(match, [item], null, [])).toContainEqual(
+      { kind: 'quantity', wanted: '3 lb' }
+    );
+  });
+
+  it('tolerates a scale reading a little either side of what was asked', () => {
+    const item = makeItem({ name: 'Chicken', quantity: '2 lb' });
+    const match = only(item, { name: 'chicken', quantity: '2.05 lb' });
+
+    expect(receiptCautionsFor(match, [item], null, [])).toEqual([]);
+  });
+
+  it('says nothing about quantity when only one side names one', () => {
+    const item = makeItem({ name: 'Chicken', quantity: null });
+    const match = only(item, { name: 'chicken', quantity: '1.32 lb' });
+
+    expect(receiptCautionsFor(match, [item], null, [])).toEqual([]);
+  });
+
+  it('returns nothing for an unmatched line', () => {
+    const item = makeItem({ name: 'Milk', lastPriceMinor: 348 });
+    const match = only(item, { name: 'AA batteries', priceMinor: 9999 });
+
+    expect(match.itemId).toBeNull();
+    expect(receiptCautionsFor(match, [item], null, [])).toEqual([]);
+  });
+});
+
+// ─── acceptedByDefault ───────────────────────────────────────────────────────
+
+describe('acceptedByDefault', () => {
+  it('checks a confident match with nothing questionable about it', () => {
+    const items = [makeItem({ name: 'Milk', lastPriceMinor: 348 })];
+    const matches = matchReceiptLines([line({ name: 'milk', priceMinor: 379 })], items);
+
+    expect(acceptedByDefault(matches, items, null, [])).toEqual([items[0].id]);
+  });
+
+  it('does not check a match whose price says it is the wrong row', () => {
+    const items = [makeItem({ name: 'Milk', lastPriceMinor: 348 })];
+    const matches = matchReceiptLines([line({ name: 'milk', priceMinor: 1840 })], items);
+
+    // Still shown — the user may know something the app doesn't — but the
+    // burden is on them to say so.
+    expect(matches[0].itemId).toBe(items[0].id);
+    expect(acceptedByDefault(matches, items, null, [])).toEqual([]);
+  });
+
+  it('still checks a match that merely came in a different size', () => {
+    const items = [makeItem({ name: 'Chicken', quantity: '3 lb' })];
+    const matches = matchReceiptLines([line({ name: 'chicken', quantity: '1 lb' })], items);
+
+    expect(acceptedByDefault(matches, items, null, [])).toEqual([items[0].id]);
+  });
+
+  it('never checks a weak match', () => {
+    const items = [makeItem({ name: 'Chicken thighs' })];
+    const matches = matchReceiptLines([line({ name: 'chicken breast' })], items);
+
+    expect(acceptedByDefault(matches, items, null, [])).toEqual([]);
+  });
+
+  it('re-decides when the named store changes', () => {
+    const items = [makeItem({ name: 'Olive oil', lastPriceMinor: 399 })];
+    const links = [makeLink({ itemId: items[0].id, shopId: 'costco', lastPriceMinor: 1599 })];
+    const matches = matchReceiptLines([line({ name: 'olive oil', priceMinor: 1699 })], items);
+
+    // The same receipt reads as a mismatch against the item's own price and as
+    // ordinary against Costco's — which is exactly why this can't be settled
+    // once at match time.
+    expect(acceptedByDefault(matches, items, null, links)).toEqual([]);
+    expect(acceptedByDefault(matches, items, 'costco', links)).toEqual([items[0].id]);
   });
 });

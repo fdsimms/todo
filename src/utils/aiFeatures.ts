@@ -111,6 +111,14 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     recipeExtraction: { enabled: true, model: DEFAULT_AI_MODEL },
     mealIdeas: { enabled: true, model: DEFAULT_AI_MODEL },
     substitutes: { enabled: true, model: DEFAULT_AI_MODEL },
-    receiptImport: { enabled: true, model: DEFAULT_AI_MODEL },
+    // The one feature that doesn't take the default model, because it's the
+    // hardest read in the app: a recipe is clean high-contrast type, and a
+    // receipt is faded thermal print in store-specific shorthand that has to be
+    // understood ("BNLS SKNLS CHKN BRST") rather than merely transcribed. A
+    // misread here is also the most expensive one — it checks the wrong row off
+    // a list and files a price against it — while the difference in what a scan
+    // costs is a couple of cents a trip. Still per-feature switchable, so
+    // anyone who disagrees can turn it down without touching the rest.
+    receiptImport: { enabled: true, model: 'claude-sonnet-5' },
   };
 }

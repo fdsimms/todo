@@ -30,8 +30,15 @@ import { PillGroup } from './PillGroup';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
 import { useRecipePhotoSource } from '../hooks/useRecipePhotoSource';
 import { extractReceipt, describeAIError, type ExtractedReceipt } from '../services/aiSuggestions';
-import { matchReceiptLines, matchReceiptShop, type ReceiptMatch } from '../utils/receiptMatch';
-import { formatPrice, priceToInput } from '../utils/groceryPrice';
+import {
+  acceptedByDefault,
+  matchReceiptLines,
+  matchReceiptShop,
+  receiptCautionsFor,
+  type ReceiptCaution,
+  type ReceiptMatch,
+} from '../utils/receiptMatch';
+import { formatPrice } from '../utils/groceryPrice';
 import { haptics } from '../utils/haptics';
 import { SHOP_NAME_MAX_LENGTH } from '../types';
 
@@ -92,6 +99,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
 
   const items = useGroceryStore(useShallow(s => s.items));
   const shops = useGroceryStore(useShallow(s => s.shops));
+  const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const addShop = useGroceryStore(s => s.addShop);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
@@ -130,10 +138,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
     setError(null);
     try {
       const result = await extractReceipt(photo);
-      const matched = matchReceiptLines(result.lines, items);
       setReceipt(result);
-      setMatches(matched.matches);
-      setAccepted(new Set(matched.confidentIds));
+      setMatches(matchReceiptLines(result.lines, items));
       setShopId(matchReceiptShop(result.storeName, shops)?.id ?? null);
       if (result.lines.length > 0) haptics.success();
     } catch (e) {
@@ -142,6 +148,26 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
       setLoading(false);
     }
   }, [photo, items, shops]);
+
+  /**
+   * What arrives checked, re-decided whenever the reading or the named store
+   * changes.
+   *
+   * The store is in here because the price check reads that store's own price
+   * as its baseline, so the same receipt can be plausible at Costco and
+   * suspicious at Safeway. Re-deciding does discard ticks made by hand, which
+   * is the same call `FinishShoppingSheet` makes when its store changes: the
+   * answers are about the store, so refiling them onto a different one would be
+   * asserting something nobody said. In practice the store is set once off the
+   * receipt's own header and never touched again.
+   */
+  useEffect(() => {
+    setAccepted(new Set(acceptedByDefault(matches, items, shopId, itemShops)));
+    // `items`/`itemShops` are deliberately not dependencies: this is a decision
+    // about the receipt just read, and re-running it because an unrelated row
+    // changed elsewhere would silently undo the user's review.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matches, shopId]);
 
   const toggle = (itemId: string) => {
     haptics.tap();
@@ -174,13 +200,50 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
   const nameFor = (itemId: string) => items.find(i => i.id === itemId)?.name ?? '';
 
   const claimed = matches.filter((m): m is ReceiptMatch & { itemId: string } => m.itemId !== null);
+  /**
+   * What the checked rows add up to.
+   *
+   * Deliberately *not* reconciled against the receipt's own total — tax,
+   * deposits and anything not on your list are all real parts of that number
+   * and none of them become rows, so a gap is the normal case rather than a
+   * sign the read went wrong. It's stated so a large gap is visible to someone
+   * who knows what they bought, which is the only reader who can judge it.
+   */
+  const recordedMinor = matches.reduce(
+    (sum, m) =>
+      m.itemId && accepted.has(m.itemId) && m.line.priceMinor !== null
+        ? sum + m.line.priceMinor
+        : sum,
+    0
+  );
   const unclaimed = matches.filter(m => m.itemId === null);
   const acceptedCount = accepted.size;
+
+  /**
+   * Why a row is worth a second look, in the app's own words.
+   *
+   * A price caution is orange and a quantity one is quiet, matching what each
+   * actually does: the first takes the row's tick away, the second is a note
+   * about a purchase that still happened.
+   */
+  const describeCaution = (caution: ReceiptCaution): { text: string; warn: boolean } => {
+    if (caution.kind === 'quantity') {
+      return { text: `Your list asked for ${caution.wanted}.`, warn: false };
+    }
+    const paid = formatPrice(caution.baselineMinor, currencySymbol);
+    return {
+      text: caution.baselineQuantity
+        ? `You last paid ${paid} for ${caution.baselineQuantity}. Check this is the right row.`
+        : `You last paid ${paid} for this. Check this is the right row.`,
+      warn: true,
+    };
+  };
 
   const renderMatch = (match: ReceiptMatch & { itemId: string }, index: number) => {
     const on = accepted.has(match.itemId);
     const weak = match.confidence === 'weak';
     const name = nameFor(match.itemId);
+    const cautions = receiptCautionsFor(match, items, shopId, itemShops);
     return (
       <TouchableOpacity
         key={`${match.itemId}-${index}`}
@@ -207,6 +270,14 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
               Not sure this is the same thing — check before you accept it.
             </Text>
           )}
+          {cautions.map((caution, i) => {
+            const { text, warn } = describeCaution(caution);
+            return (
+              <Text key={i} style={warn ? styles.rowWeak : styles.rowLabel}>
+                {text}
+              </Text>
+            );
+          })}
         </View>
         {match.line.priceMinor !== null && (
           <Text style={styles.rowPrice}>{formatPrice(match.line.priceMinor, currencySymbol)}</Text>
@@ -321,6 +392,15 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
               Checked rows come off the list when you finish, with the receipt’s price on each.
             </Text>
             <View style={styles.card}>{claimed.map(renderMatch)}</View>
+            {recordedMinor > 0 && (
+              <Text style={styles.tally}>
+                Recording {formatPrice(recordedMinor, currencySymbol)}
+                {receipt.totalMinor !== null
+                  ? ` of the ${formatPrice(receipt.totalMinor, currencySymbol)} on this receipt`
+                  : ''}
+                .
+              </Text>
+            )}
           </>
         )}
 
@@ -427,6 +507,15 @@ function makeStyles(colors: Colors) {
       marginBottom: spacing.sm,
     },
     pills: { marginBottom: spacing.lg },
+    tally: {
+      color: colors.textTertiary,
+      fontSize: font.sm,
+      // Pulled back toward the card it sums — the card carries a full
+      // `spacing.lg` beneath it, which reads as a detached statement rather
+      // than as this list's own total.
+      marginTop: -spacing.sm,
+      marginBottom: spacing.lg,
+    },
     card: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.lg,
