@@ -31,7 +31,9 @@ import {
   extractRecipe, type ExtractedRecipe, type RecipeGroceryItem,
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
-import { normalizeIngredient, cleanRecipeName, formatServingsRange } from '../utils/recipeUtils';
+import {
+  normalizeIngredient, cleanRecipeName, describeExtractedDetails,
+} from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { aisleForName } from '../utils/groceryAisles';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -86,6 +88,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const setServings = useRecipeStore(s => s.setServings);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
+  const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
   const setSource = useRecipeStore(s => s.setSource);
   const setAuthor = useRecipeStore(s => s.setAuthor);
@@ -142,7 +145,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       // one — a page that says what it's called is not a recipe with no name.
       setName(result.name || resolved.page?.title || '');
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
-      setApplyDetails(result.servings !== null || result.prepMinutes !== null);
+      setApplyDetails(!!describeExtractedDetails(result));
     } catch (e) {
       setError(describeImportError(e));
       setCanRetry(isRetryableImportError(e));
@@ -213,6 +216,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       // from cook. A total in the cook half leaves `totalMinutes()` correct;
       // in the prep half it would claim the whole recipe is mise en place.
       if (extracted.prepMinutes !== null) setEstimatedMinutes(recipe.id, extracted.prepMinutes);
+      if (extracted.recipeYield) setRecipeYield(recipe.id, extracted.recipeYield);
     }
     // Everything a page told us about itself. Only ever set from structured
     // markup, so a paste and a photo leave all of it null as they always did.
@@ -233,13 +237,9 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
 
   const canCreate = !loading && !!extracted && !!cleaned && !duplicate;
 
-  // One checkbox applying two facts has to name both when it has both, and it
-  // reads out exactly what the row shows rather than a second phrasing of it.
-  const detailsLabel = !extracted ? ''
-    : extracted.servings !== null
-      ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}${
-          extracted.prepMinutes !== null ? `, about ${extracted.prepMinutes} min` : ''}`
-      : `About ${extracted.prepMinutes} min`;
+  const details = extracted ? describeExtractedDetails(extracted) : null;
+  // Reads out exactly what the row shows rather than a second phrasing of it.
+  const detailsLabel = details ? [details.title, details.meta].filter(Boolean).join(', ') : '';
 
   // The method isn't in the review list — it's taken verbatim off the page, so
   // there's nothing to tick or correct — but arriving with steps nobody
@@ -313,7 +313,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       );
     }
 
-    if (ingredients.length === 0 && !extracted.name) {
+    if (ingredients.length === 0 && !extracted.name && !details) {
       return (
         <View style={styles.centered}>
           <EmptyState
@@ -371,7 +371,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
           {stepCount > 0 && ` The method comes across too — ${stepCount} step${stepCount === 1 ? '' : 's'}.`}
         </Text>
 
-        {(extracted.servings !== null || extracted.prepMinutes !== null) && (
+        {!!details && (
           <TouchableOpacity
             style={styles.row}
             activeOpacity={interaction.activeOpacity}
@@ -384,14 +384,8 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
               {applyDetails && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
             </View>
             <View style={styles.body}>
-              <Text style={styles.name}>
-                {extracted.servings !== null
-                  ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
-                  : `About ${extracted.prepMinutes} min`}
-              </Text>
-              {extracted.servings !== null && extracted.prepMinutes !== null && (
-                <Text style={styles.meta}>About {extracted.prepMinutes} min</Text>
-              )}
+              <Text style={styles.name}>{details.title}</Text>
+              {!!details.meta && <Text style={styles.meta}>{details.meta}</Text>}
             </View>
           </TouchableOpacity>
         )}
