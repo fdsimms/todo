@@ -14,6 +14,8 @@ import type { Leftover, MealPlanEntry, MealSlot, Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { InlineAction } from '../components/InlineAction';
+import { SegmentedControl } from '../components/SegmentedControl';
+import { WeekPlanOverview } from '../components/WeekPlanOverview';
 import { MealSlotRow } from '../components/MealSlotRow';
 import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
@@ -77,7 +79,6 @@ import {
 } from '../utils/recipeComponents';
 import {
   dayKeyRange,
-  daysWithoutMeal,
   describeAddedToList,
   describeWeekPlan,
   describeWeekRange,
@@ -89,9 +90,17 @@ import { liveGeneratedTask } from '../utils/generatedTasks';
 import { buildWeekPlanShareText } from '../utils/shareText';
 import {
   classifyPlanned,
+  collectPlannedIngredients,
   plannedIngredientsForRecipe,
   restockRows,
 } from '../utils/mealPlanGroceries';
+import {
+  decidableNights,
+  describeBareWeek,
+  describeWeekShopping,
+  summarizeWeekShopping,
+  weekNights,
+} from '../utils/weekPlan';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
 
@@ -241,6 +250,21 @@ export function MealPlanScreen() {
   const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
   // Any date inside the week on screen. Paging moves the anchor, never the days.
   const [anchor, setAnchor] = useState(() => new Date());
+  /**
+   * Which lens the week is read through (#1669) — a `viewMode` sub-view, the
+   * same call `TodayScreen` makes for Today/Later/Unscheduled/Inbox, and for
+   * the same two reasons.
+   *
+   * The first is the one in CLAUDE.md's navigation note: a lens is not a
+   * destination, so it must not be a route handed a param. The second is this
+   * store's own: `entries` is a *single shared window* that this screen owns,
+   * and a second mounted surface calling `loadRange` for the week it wanted
+   * would clobber whichever week this one has open — the failure
+   * `selectTodayMealEntries` and `plannedSlotCounts` both document at length.
+   * A lens shares the anchor, the window and every selector below, so there is
+   * nothing to contend over.
+   */
+  const [viewMode, setViewMode] = useState<'byDay' | 'week'>('byDay');
 
   const days = useMemo(() => buildWeekDays(anchor, weekStartsOn), [anchor, weekStartsOn]);
   const range = useMemo(() => dayKeyRange(days), [days]);
@@ -594,6 +618,10 @@ export function MealPlanScreen() {
     if (focusStamp === undefined || focusStamp === handledFocus || !focusDay) return;
     setHandledFocus(focusStamp);
     setAnchor(dayKeyToDate(focusDay));
+    // A link naming one day wants the list of days, whichever lens the screen
+    // was last left on — the week lens has no row to scroll to and would answer
+    // "Wednesday 19 Aug" with a summary of the week it happens to be in.
+    setViewMode('byDay');
     // A day the user (or `collapsePastDays`) folded away is one the link would
     // otherwise arrive at showing nothing. Opening it is the whole point of
     // naming a day.
@@ -1041,13 +1069,24 @@ export function MealPlanScreen() {
     ? recipeChoiceGroups(selectedRecipe, recipesById, selectedResolution)
     : [];
 
-  // The nights this week still has room for. Both the gate on the shelf below
-  // and the days it may plan onto — see daysWithoutMeal for why those have to
-  // be the same answer.
-  const openDinnerDays = useMemo(
-    () => daysWithoutMeal(entries, days, 'dinner'),
+  // The week as the deciding lens reads it: what's on each day, which nights
+  // have no dinner, and which of those have already gone past.
+  const nights = useMemo(
+    () => weekNights(entries, days, dayKeyOf(new Date())),
     [entries, days]
   );
+
+  // The nights this week still has room for. Both the gate on the shelf below
+  // and the days it may plan onto — see decidableNights for why those have to
+  // be the same answer.
+  //
+  // **A night that has already passed is not one of them.** It used to be a
+  // bare `daysWithoutMeal` over the whole week, so a suggestion accepted on a
+  // Thursday landed on Monday — the sheet fills the days it's given in order,
+  // without consulting the plan. Recording a meal you ate on Monday is a real
+  // thing to want and is exactly what the day list's own + button is for; a
+  // shelf offering to *plan* one is just wrong about which way time runs.
+  const openDinnerDays = useMemo(() => decidableNights(nights), [nights]);
 
   // Offline "what can I make from what I've got", ranked over the recipe box
   // and the grocery catalog.
@@ -1194,6 +1233,36 @@ export function MealPlanScreen() {
     addedStamp ? describeAddedToList(addedStamp, new Date(), weekStartsOn) : null,
   ].filter(Boolean).join(' · ');
 
+  /**
+   * What the week still owes the shop — the same `collectPlannedIngredients` →
+   * `classifyPlanned` pass `AddWeekToListSheet` commits, read rather than
+   * re-derived so the number on the lens and the sheet it opens can't disagree.
+   *
+   * Computed only for the lens that renders it: it walks every planned recipe's
+   * flattened ingredients against the whole catalog, and the day list has no
+   * use for it. Null both when the other lens is up and when the week has
+   * nothing shoppable behind it, which is the same "render no section" answer
+   * either way.
+   */
+  const weekShopping = useMemo(() => {
+    if (viewMode !== 'week' || !range) return null;
+    const planned = collectPlannedIngredients(entries, recipesById, range, standingSwaps);
+    if (planned.length === 0) return null;
+    const classified = classifyPlanned(planned, groceryItems, new Date(), itemSubs);
+    return describeWeekShopping(summarizeWeekShopping(classified));
+  }, [viewMode, entries, recipesById, range, standingSwaps, groceryItems, itemSubs]);
+
+  // Deliberately no animateLayout: this swaps the whole body rather than
+  // inserting rows, and TodayScreen's own view-mode pills don't animate their
+  // swap either. The control fires its own haptic.
+  const switchLens = useCallback((mode: 'byDay' | 'week') => {
+    // Selection is a day-list gesture and its bulk bar only ever acts on rows
+    // that lens renders — carrying it across would leave a bar acting on rows
+    // nobody can see.
+    if (selectionMode) exitSelection();
+    setViewMode(mode);
+  }, [selectionMode, exitSelection]);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
@@ -1203,6 +1272,27 @@ export function MealPlanScreen() {
         actions={headerActions}
       />
       <GroceriesHubPills active="MealPlan" />
+
+      {/*
+        A track, not a second row of pills. The hub's own pills sit directly
+        above it and *navigate*; these switch a lens on the week already on
+        screen, and two rows of the same accent-filled pill would read as one
+        confused eight-item row. A `SegmentedControl` is what the app reaches
+        for to pick one of a small closed set, and `surface="page"` is what
+        finally lets it sit straight on the page in the light theme.
+      */}
+      <View style={styles.lensRow}>
+        <SegmentedControl
+          options={[
+            { value: 'byDay' as const, label: 'By day' },
+            { value: 'week' as const, label: 'Whole week' },
+          ]}
+          value={viewMode}
+          onChange={switchLens}
+          surface="page"
+          label="Meal plan view"
+        />
+      </View>
 
       {/* Both post-cook offers are siblings of the list rather than part of its
           header, like ActiveTripBanner and unlike the cards inside
@@ -1234,6 +1324,39 @@ export function MealPlanScreen() {
         />
       )}
 
+      {viewMode === 'week' && (
+        <WeekPlanOverview
+          nights={nights}
+          recipesById={recipesById}
+          hint={describeBareWeek(entries.length, recipes.length)}
+          onPlanDay={setPlanningDay}
+          shopping={weekShopping}
+          onAddWeekToList={() => setAddingToList(true)}
+          // The same ranking the day list's own shelf is built from, capped at
+          // what a glance can carry — the full set is one tap away in the sheet
+          // below.
+          suggestions={mealSuggestions.slice(0, 3)}
+          pantryByRecipeId={suggestionPantryCoverage}
+          planTarget={openDinnerDays[0] ?? null}
+          onPlanSuggestion={recipe => {
+            const target = openDinnerDays[0];
+            if (target) planSuggestion(recipe, dayKeyOf(target));
+          }}
+          onSuggestMeals={canSuggestMeals ? () => setSuggesting({
+            recipes: mealSuggestions,
+            cookAgainRecipes: cookAgainSuggestions,
+            days: openDinnerDays,
+          }) : null}
+          copyWeekLabel={copySourceKey ? copySourceLabel : null}
+          onCopyWeek={handleCopyWeek}
+          bottomInset={tabBarHeight + spacing.xl}
+        />
+      )}
+
+      {/* The day list. Left at its original indentation inside the branch
+          rather than re-flowed — see CLAUDE.md on not reformatting untouched
+          lines. */}
+      {viewMode === 'byDay' && (
       <FabDropZoneProvider
         ref={dropZonesRef}
         onIntentChange={fabIntentChannel.publish}
@@ -1431,6 +1554,7 @@ export function MealPlanScreen() {
           }
         />
       </FabDropZoneProvider>
+      )}
 
       {/*
         The container in flight, over everything else on the screen. Always
@@ -1784,6 +1908,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
   },
+  lensRow: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm },
   card: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,

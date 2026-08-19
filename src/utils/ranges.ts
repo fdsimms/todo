@@ -1,10 +1,18 @@
 /**
- * Highlight ranges, as `[start, end)` pairs into some string.
+ * Matching one string against another, and the highlight ranges that fall out
+ * of it — `[start, end)` pairs into the haystack.
  *
  * Its own module rather than a corner of `fuzzySearch` because the settings
  * search needs it too, and `fuzzySearch` reaches the task stores — which reach
  * `expo-sqlite`, which throws on sight in the `node` test environment. Pure
- * array arithmetic shouldn't drag a database in behind it.
+ * string and array arithmetic shouldn't drag a database in behind it.
+ *
+ * `scoreSubstring` sits here for exactly that reason and by exactly that
+ * argument: it's the thing that *produces* the ranges `mergeRanges` merges, and
+ * three of its callers (the settings search, the archive matcher, the Logbook's
+ * cooking lens) want the matcher without the task model attached.
+ * `fuzzySearch` re-exports both, so the call sites that predate the split keep
+ * importing them from where they always did.
  */
 
 /**
@@ -28,4 +36,37 @@ export function mergeRanges(ranges: [number, number][]): [number, number][] {
     else merged.push([start, end]);
   }
   return merged;
+}
+
+export function scoreSubstring(haystack: string, needle: string): { score: number; ranges: [number, number][] } {
+  if (!needle) return { score: 0, ranges: [] };
+  const h = haystack.toLowerCase();
+  const n = needle.toLowerCase();
+
+  // Exact substring match
+  const exactIdx = h.indexOf(n);
+  if (exactIdx !== -1) {
+    return { score: 100 + (exactIdx === 0 ? 20 : 0), ranges: [[exactIdx, exactIdx + n.length]] };
+  }
+
+  // Fuzzy: all chars of needle appear in order in haystack
+  let hi = 0;
+  let ni = 0;
+  let firstMatch = -1;
+  let lastMatch = -1;
+  while (hi < h.length && ni < n.length) {
+    if (h[hi] === n[ni]) {
+      if (firstMatch === -1) firstMatch = hi;
+      lastMatch = hi;
+      ni++;
+    }
+    hi++;
+  }
+
+  if (ni < n.length) return { score: 0, ranges: [] }; // not all chars found
+
+  const span = lastMatch - firstMatch + 1;
+  const density = n.length / span; // 1.0 = all chars consecutive
+  const score = Math.round(density * 60);
+  return { score, ranges: firstMatch !== -1 ? [[firstMatch, lastMatch + 1]] : [] };
 }

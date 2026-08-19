@@ -1,4 +1,4 @@
-import { scoreSubstring } from './fuzzySearch';
+import { scoreSubstring } from './ranges';
 
 // High bar (near-exact title match, not just "shares some letters") — this
 // only fires to catch "I'm re-adding the thing I archived months ago", not

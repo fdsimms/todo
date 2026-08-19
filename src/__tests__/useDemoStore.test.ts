@@ -23,6 +23,7 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
 import { flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
+import { kitchenEvents, kitchenHistoryDays } from '../utils/kitchenHistory';
 import {
   countLikelyInPantry,
   describePantryCoverage,
@@ -319,6 +320,21 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // #1255: a task with nothing seeded carrying streakRequiresWindow reads as
+  // a feature the app doesn't have, so one recurring habit that already has a
+  // window (timeSegments) and an established streak opts in.
+  it('seeds a habit whose streak requires on-time completion', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const standup = tasks.find(t => t.title === 'Morning standup');
+    expect(standup?.streakRequiresWindow).toBe(true);
+    expect(standup?.timeSegments).toEqual(['morning']);
+    expect(standup?.streakCount).toBeGreaterThan(0);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // The month grid's one distinctive mark is a dot for an occurrence that has
   // no row yet, and only a fixed-schedule recurrence with a due date produces
   // one (see canProject). Nothing else in the seed asserts that combination
@@ -507,6 +523,22 @@ describe('demo mode', () => {
     const decisions = projectDecisions(kitchen!.id, useTaskStore.getState().tasks);
     expect(decisions.length).toBeGreaterThan(0);
     expect(decisions.every(t => formatTaskDeliverable(t) !== null)).toBe(true);
+  });
+
+  // The project screen captions each row with its own date (TaskItem.showDate),
+  // which renders nothing at all on a project whose steps are undated.
+  it('dates the project steps that are still open', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    const open = useTaskStore.getState().tasks.filter(t => t.projectId === kitchen?.id && !t.completed);
+
+    expect(open.length).toBeGreaterThan(0);
+    expect(open.every(t => t.dueDate !== null || t.deferUntil !== null)).toBe(true);
+    // One of each, so both readings of the chip are on screen: a due date, and
+    // a task that isn't there yet.
+    expect(open.some(t => t.dueDate !== null)).toBe(true);
+    expect(open.some(t => t.deferUntil !== null)).toBe(true);
   });
 
   it('seeds a reference-list project excluded from every nudge', () => {
@@ -1059,6 +1091,15 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(Math.max(...perSlot.values())).toBeGreaterThan(1);
     // "Added to list on X" on the week header.
     expect(Object.keys(useMealPlanStore.getState().addedToListAt).length).toBeGreaterThan(0);
+
+    // The deciding lens (#1669) has to have a night to be about, and the run
+    // deliberately ends on one: a day still ahead, holding a meal, with its
+    // dinner still open. A fortnight where every dinner is spoken for shows
+    // that surface only in the one state it isn't for.
+    const todayKey = dayKeyOf(new Date());
+    const ahead = new Set(entries.filter(e => e.date > todayKey).map(e => e.date));
+    const dinners = new Set(entries.filter(e => e.slot === 'dinner').map(e => e.date));
+    expect([...ahead].some(date => !dinners.has(date))).toBe(true);
   });
 
   it('leaves no post-cook offer standing, but sets tonight up to raise one', () => {
@@ -1320,6 +1361,33 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // And a leaderboard that actually ranks rather than a single row.
     expect(cooked.length).toBeGreaterThan(1);
     expect(cooked[0].count).toBeGreaterThan(1);
+  });
+
+  it("fills the Logbook's cooking lens, every row treatment included", () => {
+    // Reads the loaded window rather than refreshCookHistory, which goes
+    // straight to SQLite — the seed's cooked nights are all inside it, and this
+    // is about the rows existing, not about the store's snapshot plumbing.
+    const events = kitchenEvents(
+      useMealPlanStore.getState().entries,
+      useLeftoverStore.getState().leftovers,
+      useRecipeStore.getState().recipes
+    );
+
+    // Several days, or the day sections read as one block with a heading.
+    expect(kitchenHistoryDays(events).length).toBeGreaterThan(2);
+    // Both kinds of row, since the lens exists to put them in one chronology.
+    expect(events.some(e => e.kind === 'cooked')).toBe(true);
+    expect(events.some(e => e.kind === 'leftover')).toBe(true);
+    // Both endings, which are two different glyphs on the row.
+    expect(events.some(e => e.outcome === 'eaten')).toBe(true);
+    expect(events.some(e => e.outcome === 'tossed')).toBe(true);
+    // A row that opens its recipe, and one that can't — a free-text meal
+    // ("Takeout curry") has nowhere to go and shows no chevron.
+    expect(events.some(e => e.kind === 'cooked' && e.recipeId)).toBe(true);
+    expect(events.some(e => e.kind === 'cooked' && !e.recipeId)).toBe(true);
+    // The scale clause, which is silent at 1× and so invisible without a night
+    // that was cooked for a crowd.
+    expect(events.some(e => e.scale !== 1)).toBe(true);
   });
 
   it('seeds a use-up task for every live leftover in "soon", "due" or "over"', () => {

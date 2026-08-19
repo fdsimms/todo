@@ -97,11 +97,12 @@ export function seedDemoData(): void {
 
   const standup = addTask({
     title: 'Morning standup',
-    notes: 'Fifteen minutes, camera optional.',
+    notes: "Fifteen minutes, camera optional. The streak only counts if it's actually done in the morning.",
     category: 'Work',
     recurrenceType: 'weekly',
     recurrenceDays: [1, 2, 3, 4, 5],
     timeSegments: ['morning'],
+    streakRequiresWindow: true,
     effort: 1,
   });
   updateTask(standup.id, { streakCount: 9, streakDate: subDays(today, 1).toISOString() });
@@ -379,21 +380,33 @@ export function seedDemoData(): void {
   // the project's Decisions block reads those answers back above the tasks.
   // Without a project holding one, that block never appears in demo mode and
   // the feature reads as one the app doesn't have.
+  // The two live steps carry dates, and different ones: the project screen
+  // shows each row's own date, and a project whose tasks were all undated
+  // would render that chip nowhere.
   const projectTasks: Array<{
     title: string;
     effort: 1 | 2 | 3;
     done: boolean;
     deliverableKind?: DeliverableKind;
     answer?: string;
+    dueDate?: string;
+    deferUntil?: string;
   }> = [
     { title: 'Measure the counters', effort: 1, done: true },
     { title: 'Pick a tile', effort: 2, done: true, deliverableKind: 'text', answer: 'Matte white 4x12' },
     { title: 'Set the budget', effort: 1, done: true, deliverableKind: 'number', answer: '6500' },
-    { title: 'Get three quotes', effort: 3, done: false },
-    { title: 'Book the installer', effort: 2, done: false },
+    { title: 'Get three quotes', effort: 3, done: false, dueDate: addDays(today, 2).toISOString() },
+    { title: 'Book the installer', effort: 2, done: false, deferUntil: addDays(today, 9).toISOString() },
   ];
-  projectTasks.forEach(({ title, effort, done, deliverableKind, answer }) => {
-    const t = addTask({ title, category: 'Home', effort, deliverableKind: deliverableKind ?? null });
+  projectTasks.forEach(({ title, effort, done, deliverableKind, answer, dueDate, deferUntil }) => {
+    const t = addTask({
+      title,
+      category: 'Home',
+      effort,
+      deliverableKind: deliverableKind ?? null,
+      dueDate: dueDate ?? null,
+      deferUntil: deferUntil ?? null,
+    });
     addExistingToProject(t.id, kitchen.id);
     if (done) completeTask(t.id, answer !== undefined ? { deliverableValue: answer } : undefined);
   });
@@ -1617,8 +1630,13 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
 
   seedMealPlanNudgeStack(today, weekStartsOn, plan);
 
+  // The run ends on a night nobody has decided yet, and that's the seed for
+  // the deciding lens (#1669): breakfast planned, dinner open, which is the one
+  // state a "No dinner" marker actually has to be shown for — a day holding
+  // something already can't be read as empty at a glance. It also leaves the
+  // suggestion shelf somewhere to land, which a fortnight with every dinner
+  // spoken for does not.
   plan(6, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
-  plan(6, 'dinner', { title: "Dinner at Sam's" });
 
   // This week's ingredients have been through "Add week to list" already —
   // a stamp on the week header, never a lock on adding again.

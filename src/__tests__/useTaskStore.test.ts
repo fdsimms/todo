@@ -243,6 +243,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakCount: 0,
   previousStreakDate: null,
   showStreak: false,
+  streakRequiresWindow: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -1535,6 +1536,61 @@ describe('completeTask', () => {
       const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
       expect(completed?.previousStreakCount).toBe(3);
       expect(completed?.previousStreakDate).toBe(yesterdayStart);
+    });
+
+    // #1255: a task opted into streakRequiresWindow. System time throughout
+    // this describe is June 10, 2025, 10:00 AM (the outer beforeEach).
+    describe('streakRequiresWindow', () => {
+      it('continues the streak on a completion inside the window', () => {
+        const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
+        const task = makeTask({
+          recurrenceType: 'daily', streakCount: 3, streakDate: yesterdayStart,
+          streakRequiresWindow: true, windowStart: '08:00', windowEnd: '18:00',
+        });
+        useTaskStore.setState({ tasks: [task] });
+        useTaskStore.getState().completeTask(task.id);
+        const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
+        expect(completed?.streakCount).toBe(4);
+      });
+
+      it('still logs the completion but resets the streak on a completion outside the window', () => {
+        const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
+        const task = makeTask({
+          recurrenceType: 'daily', streakCount: 3, streakDate: yesterdayStart,
+          streakRequiresWindow: true, windowStart: '07:00', windowEnd: '09:00', // closed by 10:00 AM
+        });
+        useTaskStore.setState({ tasks: [task] });
+        useTaskStore.getState().completeTask(task.id);
+        const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
+        expect(completed?.completed).toBe(true);
+        expect(completed?.completedAt).toBeTruthy();
+        expect(completed?.streakCount).toBe(1);
+        expect(completed?.streakDate).toBeTruthy();
+      });
+
+      it('is inert on a task with no window at all', () => {
+        const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
+        const task = makeTask({
+          recurrenceType: 'daily', streakCount: 3, streakDate: yesterdayStart,
+          streakRequiresWindow: true,
+        });
+        useTaskStore.setState({ tasks: [task] });
+        useTaskStore.getState().completeTask(task.id);
+        const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
+        expect(completed?.streakCount).toBe(4);
+      });
+
+      it('behaves like an on-time completion when the setting is off, even outside a window', () => {
+        const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
+        const task = makeTask({
+          recurrenceType: 'daily', streakCount: 3, streakDate: yesterdayStart,
+          streakRequiresWindow: false, windowStart: '07:00', windowEnd: '09:00',
+        });
+        useTaskStore.setState({ tasks: [task] });
+        useTaskStore.getState().completeTask(task.id);
+        const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
+        expect(completed?.streakCount).toBe(4);
+      });
     });
   });
 
