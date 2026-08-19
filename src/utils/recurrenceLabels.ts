@@ -1,4 +1,4 @@
-import type { RecurrenceType } from '../types';
+import type { RecurrenceType, Task } from '../types';
 import { ordinal } from './ordinal';
 
 const RECURRENCE_UNIT_SINGULAR: Record<Exclude<RecurrenceType, 'none'>, string> = {
@@ -41,6 +41,25 @@ export interface RecurrenceRule {
   monthDay?: number | null;
   /** Nth-weekday-of-month ("2nd Tuesday"); -1 = last. Null = not in that mode. */
   weekOrdinal?: number | null;
+}
+
+/**
+ * A stored task's recurrence fields as the rule `describeRecurrence` takes.
+ *
+ * The editor builds the same object out of its own draft state rather than
+ * from a row, which is why this takes a task and that stays inline — there is
+ * no `Task` there to hand it.
+ */
+export function recurrenceRuleOf(
+  task: Pick<Task, 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceWeekOrdinal'>,
+): RecurrenceRule {
+  return {
+    type: task.recurrenceType,
+    interval: task.recurrenceInterval,
+    days: task.recurrenceDays,
+    monthDay: task.recurrenceMonthDay,
+    weekOrdinal: task.recurrenceWeekOrdinal,
+  };
 }
 
 /** "Mon, Wed", "weekdays", "3 days" — how a set of weekdays reads in a summary. */

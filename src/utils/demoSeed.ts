@@ -51,6 +51,7 @@ export function seedDemoData(): void {
     addNewGroupedTask,
     addExistingToProject,
     addTag,
+    archiveTask,
     pinGroup,
     completeProject,
   } = useTaskStore.getState();
@@ -280,6 +281,25 @@ export function seedDemoData(): void {
     effort: 1,
     blockedById: cancelPlan.id,
   });
+
+  // --- Archived (a recurring task paused indefinitely) ---------------------
+  // The Archived screen is empty by default on a fresh install and reads as a
+  // feature that does nothing without a row in it. Recurring on purpose: the
+  // row names the schedule it's paused from, which is the thing you need to
+  // decide whether to bring it back.
+  const swim = addTask({
+    title: 'Swim before work',
+    notes: 'Paused while the pool is closed for refurbishment.',
+    category: 'Health',
+    recurrenceType: 'weekly',
+    recurrenceDays: [2, 4],
+    timeSegments: ['morning'],
+    effort: 2,
+  });
+  archiveTask(swim.id);
+  // Backdated so the row doesn't read as having been paused this morning —
+  // archiveTask stamps the moment it runs, which is the seed's own runtime.
+  updateTask(swim.id, { archivedAt: subDays(today, 26).toISOString() });
 
   // --- A stack (three independently-scheduled tasks under one label) --------
   const supplements = createGroup('Supplements', 'Health');

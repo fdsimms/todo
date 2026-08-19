@@ -51,7 +51,7 @@ const CATEGORY_LIST_MAX_HEIGHT = 172;
 
 /**
  * Floating bulk-action bar for list screens whose rows aren't tasks — Templates
- * and Projects. Same shape as BulkActionBar and LogbookBulkBar (select-all /
+ * and Projects. Same shape as BulkActionBar and SimpleBulkBar (select-all /
  * count / dismiss, then a row of actions), but the actions come from the caller
  * instead of being spelled out: there is nothing a template and a project want
  * to do in common beyond being filed and being deleted, and a fourth hand-rolled
