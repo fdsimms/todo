@@ -1166,15 +1166,21 @@ export function suggestRecipesForEmptyNight(
 const BARE_URL = /^(https?:\/\/|www\.)\S+$/i;
 
 /**
- * Whether pasted text is *only* links — the case the recipe importers have to
- * refuse rather than run.
+ * Whether pasted text is *only* links — the case the paste box has to refuse
+ * rather than run.
  *
- * The importers send what you paste straight to the model, which has no way to
+ * The paste box sends what you type straight to the model, which has no way to
  * open a page: handed a bare URL it does the only thing it can and writes a
  * plausible recipe from the words in the address, which arrives looking exactly
  * like a successful import (#1607). That's the worst failure this app has —
  * silently invented data the user has no reason to distrust — so it's blocked
  * up front rather than defended against downstream.
+ *
+ * **Still a refusal now that the Link tab exists**, because it is a fact about
+ * the *paste* box and nothing about that changed: the model still can't open a
+ * page, and the address still contains no ingredients. What changed is where it
+ * sends you — `RecipeSourcePicker` turns this into the offer of the tab that
+ * fetches the page, carrying the address over with it.
  *
  * Deliberately requires *every* non-empty line to be a bare address. A real
  * paste from a recipe site is prose and quantities with a URL somewhere in it,
@@ -1183,4 +1189,36 @@ const BARE_URL = /^(https?:\/\/|www\.)\S+$/i;
 export function looksLikeBareUrl(text: string): boolean {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   return lines.length > 0 && lines.every(line => BARE_URL.test(line));
+}
+
+/**
+ * Whether a recipe already carries a method of its own.
+ *
+ * `notes` counts, and that's the conservative half: every recipe predating
+ * `Recipe.steps` keeps its method in that blob (see the cook mode notes), and
+ * nothing can tell a method there apart from "I like this with extra chilli".
+ * Reading non-empty `notes` as a method means the odd recipe whose notes are
+ * only a remark gets `RecipeExtractSheet`'s method row unticked when it could
+ * have been ticked — one extra tap, weighed against silently writing a second
+ * copy of a method the recipe already shows.
+ *
+ * Deliberately a question about *having* one, not about which field holds it:
+ * every caller is deciding whether there is something here to land on top of.
+ */
+export function recipeHasMethod(recipe: Recipe | null | undefined): boolean {
+  return !!recipe && (recipe.steps.length > 0 || !!recipe.notes.trim());
+}
+
+/**
+ * Whether a recipe carries any attribution at all.
+ *
+ * The three fields are independent by design (a recipe can name a person and
+ * no publication, or a URL and neither), so this asks whether *any* of them is
+ * set — an import filling in the blanks is only uncontroversial when they are
+ * all blank. `sourceName` is the legacy field nothing writes any more and is
+ * read here for the same reason `describeRecipe` still falls back to it: an old
+ * recipe carrying only that one is still a recipe that says where it came from.
+ */
+export function recipeHasAttribution(recipe: Recipe | null | undefined): boolean {
+  return !!recipe && (!!recipe.sourceUrl || !!recipe.source || !!recipe.author || !!recipe.sourceName);
 }

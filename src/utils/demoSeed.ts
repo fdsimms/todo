@@ -935,10 +935,20 @@ function seedRecipes(): DemoRecipes {
   // Fish, so the log sheet opens on one day rather than three.
   setLeftoverKeepDays(salmon.id, 1);
   // The website attribution shape: a person and a publication, independently.
+  // It's also what a link import leaves behind — url, site, author, and the
+  // method taken verbatim off the page's own markup — so this is the recipe
+  // that shows what "From a link" actually produces, which is otherwise a
+  // capability with nothing in the box to point at.
   setSourceUrl(salmon.id, 'https://www.example-recipes.com/lemon-garlic-salmon');
   setAuthor(salmon.id, 'Alison Roman');
   setSource(salmon.id, 'NYT Cooking');
   setSourceType(salmon.id, 'website');
+  [
+    'Heat the oven to 425°F and pat the fillets dry.',
+    'Toss the asparagus with olive oil and spread it on a sheet pan.',
+    'Sit the salmon on top, dot with butter and the sliced garlic, and squeeze over half the lemon.',
+    'Roast for 12 minutes, until the salmon flakes. Serve with the rest of the lemon.',
+  ].forEach(text => addStep(salmon.id, text));
   const defrost = addPrepTask(salmon.id, 'Move the salmon to the fridge to defrost');
   if (defrost) updatePrepTask(salmon.id, defrost.id, { offsetDays: -1, reminderOffsetMinutes: 120 });
   [0, 1].forEach(() => markCooked(salmon.id));

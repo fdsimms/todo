@@ -34,7 +34,8 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
-import { useRecipePhotoSource } from '../hooks/useRecipePhotoSource';
+import { describeImportError, isRetryableImportError } from '../services/recipePage';
+import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 
@@ -77,11 +78,14 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Whether the error state offers a retry or a way back to the input —
+  // a mistyped address fails identically however many times you ask.
+  const [canRetry, setCanRetry] = useState(true);
   const [tidyRows, setTidyRows] = useState<TidyRow[]>([]);
   const [recipeRows, setRecipeRows] = useState<RecipeGroceryItem[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
-  const recipeInput = useRecipePhotoSource();
-  const { source: recipeSource, reset: resetRecipeInput } = recipeInput;
+  const recipeInput = useRecipeImportSource();
+  const { resolveSource: resolveRecipeSource, reset: resetRecipeInput } = recipeInput;
 
   // Anything currently sitting in the catch-all and on the list — the exact
   // gap the lexicon left.
@@ -125,19 +129,22 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   }, [unsorted, aisleOrder]);
 
   const runRecipe = useCallback(async () => {
-    if (!recipeSource) return;
     setLoading(true);
     setError(null);
     try {
-      const rows = await suggestRecipeGroceries(recipeSource, [...aisleOrder]);
+      // A link is fetched first; a paste and a photo resolve to themselves.
+      const resolved = await resolveRecipeSource();
+      if (!resolved) return;
+      const rows = await suggestRecipeGroceries(resolved.source, [...aisleOrder]);
       setRecipeRows(rows);
       setAccepted(new Set(rows.map((_, i) => i)));
     } catch (e) {
-      setError(describeAIError(e));
+      setError(describeImportError(e));
+      setCanRetry(isRetryableImportError(e));
     } finally {
       setLoading(false);
     }
-  }, [recipeSource, aisleOrder]);
+  }, [resolveRecipeSource, aisleOrder]);
 
   // Tidy has everything it needs the moment it opens; recipe needs text first.
   useEffect(() => {
@@ -200,15 +207,23 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const rowCount = mode === 'tidy' ? tidyRows.length : recipeRows.length;
   const canApply = !loading && accepted.size > 0;
 
+
+  // A deterministic failure — a mistyped address, a site that refuses us, a page
+  // that builds its recipe in the browser — fails identically however many times
+  // you ask. What it needs is the input back, not another attempt at it.
+  const backLabel = recipeInput.usingLink ? 'Change the link' : 'Go back';
+  const goBack = () => { setError(null); setRecipeRows([]); };
+
   const renderBody = () => {
     if (loading) {
       return (
         <View style={styles.centered}>
           <ActivityIndicator color={colors.purple} />
           <Text style={styles.loadingText}>
-            {mode === 'tidy'
-              ? 'Working out where these live…'
-              : recipeInput.usingPhoto ? 'Reading the photo…' : 'Reading the recipe…'}
+            {mode === 'tidy' ? 'Working out where these live…'
+              : recipeInput.fetching ? 'Opening the page…'
+              : recipeInput.usingPhoto ? 'Reading the photo…'
+              : 'Reading the recipe…'}
           </Text>
         </View>
       );
@@ -221,8 +236,8 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
             icon="alert-circle-outline"
             title="That didn’t work"
             subtitle={error}
-            actionLabel="Try again"
-            onAction={mode === 'tidy' ? runTidy : runRecipe}
+            actionLabel={canRetry || mode === 'tidy' ? 'Try again' : backLabel}
+            onAction={canRetry || mode === 'tidy' ? (mode === 'tidy' ? runTidy : runRecipe) : goBack}
           />
         </View>
       );
@@ -232,11 +247,13 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       return (
         <ScrollView contentContainerStyle={styles.pasteWrap} keyboardShouldPersistTaps="handled">
           <RecipeSourcePicker
-            intro="Paste a recipe or photograph the page. You’ll get back what to buy, named the way a store labels it rather than the way the recipe chops it."
+            intro="Open a recipe link, paste a recipe, or photograph the page. You’ll get back what to buy, named the way a store labels it rather than the way the recipe chops it."
             mode={recipeInput.mode}
             onChangeMode={recipeInput.setMode}
             text={recipeInput.text}
             onChangeText={recipeInput.setText}
+            url={recipeInput.url}
+            onChangeUrl={recipeInput.setUrl}
             photo={recipeInput.photo}
             onPickPhoto={recipeInput.pick}
             onClearPhoto={recipeInput.clearPhoto}
