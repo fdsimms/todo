@@ -28,7 +28,7 @@ import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
@@ -108,10 +108,21 @@ interface Props {
   onSelect?: (id: string) => void;
   onSwipeSelect?: (id: string) => void;
   spotlightDisabled?: boolean;
-  hideTodayLabel?: boolean;
   showCategory?: boolean;
   showProject?: boolean;
   showGroup?: boolean;
+  /**
+   * Shows when the task is scheduled, as a meta chip. For lists whose rows are
+   * dated all over the place and have no section header saying so — a
+   * project's own screen, where the rows are in the project's own order rather
+   * than by date. Today's list needs nothing (every row is today) and Later's
+   * rows sit under a date header already.
+   *
+   * A row with no date of its own renders no chip: "not scheduled" is the
+   * default state of most of a project, and captioning it would put a chip on
+   * nearly every row (the same call tripMarkerFor makes about silence).
+   */
+  showDate?: boolean;
   showActions?: boolean;
   /** Narrower than `showActions`: drops just the row's pin button, for lists where pinning (a Today concept) doesn't apply but the link and timer actions still do. */
   showPin?: boolean;
@@ -215,10 +226,10 @@ export const TaskItem = React.memo(function TaskItem({
   onSelect,
   onSwipeSelect,
   spotlightDisabled = false,
-  hideTodayLabel = false,
   showCategory = false,
   showProject = false,
   showGroup = false,
+  showDate = false,
   showActions = true,
   showPin = true,
   duplicateRow = false,
@@ -907,6 +918,15 @@ export const TaskItem = React.memo(function TaskItem({
   // completed row is history: neither has anything left to explain.
   const autoScheduled = task.autoScheduledAt !== null && task.dueDate !== null && !task.completed;
 
+  // The row's own date, for a list that doesn't say so anywhere else (see
+  // showDate). getEffectiveTaskDate is the same "which of the two dates is the
+  // one that matters" rule the expanded row's date button reads, so the chip
+  // and the button can't name different days. A deferred date is a different
+  // fact from a due one — the task isn't there yet — so it takes the eye-off
+  // glyph and says so out loud to a screen reader.
+  const scheduledIso = showDate ? getEffectiveTaskDate(task) : null;
+  const scheduledHidden = scheduledIso !== null && scheduledIso === task.deferUntil && scheduledIso !== task.dueDate;
+
   // Self-gating: only an Apple Reminders import ever sets pendingImport, and it
   // clears the moment the suggestion is taken or dropped — so nothing else has
   // to decide whether this row is the kind that shows one.
@@ -1496,8 +1516,30 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || timed || plannedMeals !== undefined || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || timed || plannedMeals !== undefined || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
+            {/* Leads the meta line: on the screens that ask for it, "when" is
+                what the row is being read for, and every other chip here
+                describes the task rather than placing it. */}
+            {scheduledIso !== null && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={
+                  scheduledHidden
+                    ? `Hidden until ${formatScheduledDate(scheduledIso)}`
+                    : `Scheduled for ${formatScheduledDate(scheduledIso)}`
+                }
+              >
+                <Ionicons
+                  name={scheduledHidden ? 'eye-off-outline' : 'calendar-outline'}
+                  size={iconSize.xs}
+                  color={colors.textTertiary}
+                />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>
+                  {formatScheduledDate(scheduledIso)}
+                </Text>
+              </View>
+            )}
             {/* What this task is holding back — the only place the queue is
                 visible from a list, since the waiters themselves are hidden. */}
             {waitingCount > 0 && (
@@ -2808,6 +2850,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
   groupLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  scheduledLabel: {
     color: colors.textTertiary,
     fontSize: font.xs,
   },

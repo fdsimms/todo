@@ -310,6 +310,7 @@ export function ProjectDetailScreen() {
                   onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
                   showCategory
                   showGroup
+                  showDate
                   showPin={false}
                   highlighted={item.id === flashTaskId}
                 />
