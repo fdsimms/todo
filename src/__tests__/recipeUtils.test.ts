@@ -40,6 +40,8 @@ import {
   describePantryCoverage,
   formatServingsRange,
   looksLikeBareUrl,
+  recipeHasMethod,
+  recipeHasAttribution,
 } from '../utils/recipeUtils';
 import type { GroceryItem, ItemSubLink, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 
@@ -1742,5 +1744,51 @@ describe('looksLikeBareUrl', () => {
 
   it('is false for ordinary text', () => {
     expect(looksLikeBareUrl('2 cups flour')).toBe(false);
+  });
+});
+
+describe('recipeHasMethod', () => {
+  it('is true for a recipe with structured steps', () => {
+    expect(recipeHasMethod(recipe('Chilli', {
+      steps: [{ id: 's1', text: 'Simmer.' }],
+    }))).toBe(true);
+  });
+
+  it('is true for a recipe whose method is still a notes blob', () => {
+    // Every recipe predating Recipe.steps is this shape, which is most of them.
+    expect(recipeHasMethod(recipe('Chilli', { notes: 'Soften the onion, then simmer.' }))).toBe(true);
+  });
+
+  it('is false for a recipe with neither', () => {
+    expect(recipeHasMethod(recipe('Chilli'))).toBe(false);
+    expect(recipeHasMethod(recipe('Chilli', { notes: '   \n ' }))).toBe(false);
+  });
+
+  it('shrugs off a missing recipe', () => {
+    expect(recipeHasMethod(null)).toBe(false);
+    expect(recipeHasMethod(undefined)).toBe(false);
+  });
+});
+
+describe('recipeHasAttribution', () => {
+  it('is true for any one of the fields on its own', () => {
+    // Independent by design — a recipe can name a person and no publication.
+    expect(recipeHasAttribution(recipe('Chilli', { sourceUrl: 'https://example.com/c' }))).toBe(true);
+    expect(recipeHasAttribution(recipe('Chilli', { source: 'NYT Cooking' }))).toBe(true);
+    expect(recipeHasAttribution(recipe('Chilli', { author: 'Alison Roman' }))).toBe(true);
+  });
+
+  it('counts the legacy sourceName, which old recipes may still carry alone', () => {
+    expect(recipeHasAttribution(recipe('Chilli', { sourceName: 'Alison Roman, Nothing Fancy' })))
+      .toBe(true);
+  });
+
+  it('is false when every field is empty', () => {
+    expect(recipeHasAttribution(recipe('Chilli'))).toBe(false);
+  });
+
+  it('shrugs off a missing recipe', () => {
+    expect(recipeHasAttribution(null)).toBe(false);
+    expect(recipeHasAttribution(undefined)).toBe(false);
   });
 });

@@ -1,0 +1,4 @@
+{
+  "message": "Importing a link into a recipe you already have can now bring its method and its source across too, each as its own tick — starting unticked when the recipe already has one, and adding the steps after what's there rather than over it",
+  "date": "2026-08-19"
+}

@@ -20,11 +20,13 @@ import {
   interaction,
   type Colors,
 } from '../theme';
+import { InlineAction } from './InlineAction';
 import { haptics } from '../utils/haptics';
 import { looksLikeBareUrl } from '../utils/recipeUtils';
+import { normalizeRecipeUrl } from '../utils/recipeUrl';
 import type { RecipePhoto, RecipePhotoSource } from '../utils/recipePhoto';
 
-export type RecipeInputMode = 'paste' | 'photo';
+export type RecipeInputMode = 'paste' | 'link' | 'photo';
 
 interface Props {
   /** One line saying where the result lands. Differs per surface. */
@@ -33,6 +35,8 @@ interface Props {
   onChangeMode: (mode: RecipeInputMode) => void;
   text: string;
   onChangeText: (text: string) => void;
+  url: string;
+  onChangeUrl: (url: string) => void;
   photo: RecipePhoto | null;
   onPickPhoto: (source: RecipePhotoSource) => void;
   onClearPhoto: () => void;
@@ -51,15 +55,22 @@ interface Props {
 }
 
 /**
- * The input step shared by every recipe import: paste some text, or photograph
- * the page. Extracted because it is otherwise the same markup in three sheets —
- * `RecipeExtractSheet`, `GroceryAISheet`'s recipe mode, and `RecipeCreateSheet`.
+ * The input step shared by every recipe import: paste some text, open a link,
+ * or photograph the page. Extracted because it is otherwise the same markup in
+ * three sheets — `RecipeExtractSheet`, `GroceryAISheet`'s recipe mode, and
+ * `RecipeCreateSheet`.
  *
  * A segmented control rather than a photo button hanging off the paste box:
  * having pasted text *and* an attached photo would otherwise be representable,
  * and the question of which one wins is better settled by the layout than by a
  * precedence rule nobody can see. `paste` is the default, so nothing about the
- * existing flow changes until someone taps Photo.
+ * existing flow changes until someone taps another tab.
+ *
+ * **Link is its own tab rather than a smart paste box.** The URL still gets
+ * *noticed* in the paste box, because someone who pastes one there is exactly
+ * the person this is for — but it's noticed as a nudge onto the tab that
+ * handles it, not as a second job for a multiline field with the wrong keyboard
+ * and the wrong autocapitalisation. A mode nobody can see is one nobody uses.
  *
  * Owns no scroll view — the two sheets that need `useKeyboardInsetScroll` keep
  * it on their own ScrollView, where it already is.
@@ -70,6 +81,8 @@ export function RecipeSourcePicker({
   onChangeMode,
   text,
   onChangeText,
+  url,
+  onChangeUrl,
   photo,
   onPickPhoto,
   onClearPhoto,
@@ -82,12 +95,29 @@ export function RecipeSourcePicker({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  // A pasted link is the one input that has to be refused rather than run —
-  // see looksLikeBareUrl. Nothing here can open a page, and the model handed an
-  // address writes a recipe out of the words in it.
+  // A link pasted into the *text* box still can't be extracted as text — it's
+  // the Link tab's job now, so the refusal became a way over to it.
+  //
+  // Both text modes are read through locals rather than off `mode` directly,
+  // because `photoOnly` removes them: a caller with no text form at all must
+  // not be able to land on a refusal about a box it never renders.
   const paste = mode === 'paste' && !photoOnly;
+  const link = mode === 'link' && !photoOnly;
   const bareUrl = paste && looksLikeBareUrl(text);
-  const ready = paste ? !!text.trim() && !bareUrl : !!photo;
+  const typedUrl = url.trim();
+  const badUrl = link && !!typedUrl && !normalizeRecipeUrl(typedUrl);
+  const ready =
+    paste ? !!text.trim() && !bareUrl
+    : link ? !!normalizeRecipeUrl(typedUrl)
+    : !!photo;
+
+  const useLinkTab = () => {
+    haptics.tap();
+    // Carrying the address over is the whole point of the nudge — retyping it
+    // is what someone who already pasted it would not do.
+    onChangeUrl(text.trim());
+    onChangeMode('link');
+  };
 
   const renderTab = (value: RecipeInputMode, label: string, icon: React.ComponentProps<typeof Ionicons>['name']) => {
     const active = mode === value;
@@ -140,6 +170,7 @@ export function RecipeSourcePicker({
       {!photoOnly && (
         <View style={styles.tabs}>
           {renderTab('paste', 'Paste', 'clipboard-outline')}
+          {renderTab('link', 'Link', 'link-outline')}
           {renderTab('photo', 'Photo', 'camera-outline')}
         </View>
       )}
@@ -155,6 +186,28 @@ export function RecipeSourcePicker({
           textAlignVertical="top"
           accessibilityLabel="Recipe text"
         />
+      ) : link ? (
+        <View style={styles.linkWrap}>
+          <TextInput
+            style={styles.linkInput}
+            value={url}
+            onChangeText={onChangeUrl}
+            placeholder="e.g. example.com/chili-recipe"
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="url"
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+            returnKeyType="go"
+            onSubmitEditing={() => { if (ready) onRun(); }}
+            accessibilityLabel="Recipe link"
+          />
+          <Text style={badUrl ? styles.linkBad : styles.linkHint}>
+            {badUrl
+              ? 'That doesn’t look like a web address yet.'
+              : 'Works on most recipe sites. Some build their page in the browser — for those, copy the recipe and paste it instead.'}
+          </Text>
+        </View>
       ) : photo ? (
         <View style={styles.preview}>
           <Image
@@ -195,13 +248,20 @@ export function RecipeSourcePicker({
 
       {bareUrl && (
         <View style={styles.warning}>
-          <Ionicons name="alert-circle-outline" size={iconSize.sm} color={colors.warning} />
+          <Ionicons name="link-outline" size={iconSize.sm} color={colors.warning} />
           <View style={styles.warningBody}>
-            <Text style={styles.warningTitle}>That's a link, not a recipe</Text>
+            <Text style={styles.warningTitle}>That's a link</Text>
             <Text style={styles.warningDetail}>
-              dundundun can't open a web page. Open the link, copy the ingredients and method,
-              and paste those here — or photograph the page instead.
+              The Link tab opens the page and reads the recipe off it. Pasted here it's only
+              an address, with no ingredients in it.
             </Text>
+            <InlineAction
+              label="Use the Link tab"
+              icon="arrow-forward"
+              onPress={useLinkTab}
+              style={styles.warningAction}
+              accessibilityLabel="Open this link on the Link tab"
+            />
           </View>
         </View>
       )}
@@ -236,7 +296,7 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
       padding: spacing.sm,
     },
-    warningBody: { flex: 1, gap: 2 },
+    warningBody: { flex: 1, gap: 2, alignItems: 'flex-start' },
     warningTitle: {
       color: colors.text,
       fontSize: font.sm,
@@ -247,6 +307,7 @@ function makeStyles(colors: Colors) {
       fontSize: font.xs,
       lineHeight: font.xs * 1.4,
     },
+    warningAction: { marginTop: spacing.xs },
     tabs: { flexDirection: 'row', gap: spacing.xs },
     tab: {
       flexDirection: 'row',
@@ -268,6 +329,37 @@ function makeStyles(colors: Colors) {
       fontSize: font.md,
       color: colors.text,
       minHeight: 220,
+    },
+    // Same 220 as the paste box and the photo choices, so switching tabs doesn't
+    // walk the CTA up and down the sheet under the finger reaching for it.
+    linkWrap: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      minHeight: 220,
+      gap: spacing.sm,
+    },
+    linkInput: {
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      // Height rather than lineHeight — see the note in CLAUDE.md on what
+      // lineHeight does to a TextInput's glyph baseline on iOS.
+      height: 44,
+      fontSize: font.md,
+      color: colors.text,
+    },
+    linkHint: {
+      color: colors.textTertiary,
+      fontSize: font.xs,
+      lineHeight: font.xs * 1.4,
+      textAlign: 'center',
+    },
+    linkBad: {
+      color: colors.red,
+      fontSize: font.xs,
+      lineHeight: font.xs * 1.4,
+      textAlign: 'center',
     },
     photoChoices: {
       backgroundColor: colors.bgSecondary,

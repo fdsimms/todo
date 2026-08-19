@@ -28,7 +28,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { PillGroup } from './PillGroup';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
-import { useRecipePhotoSource } from '../hooks/useRecipePhotoSource';
+import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { extractReceipt, describeAIError, type ExtractedReceipt } from '../services/aiSuggestions';
 import {
   acceptedByDefault,
@@ -112,7 +112,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
   const [shopId, setShopId] = useState<string | null>(null);
 
-  const input = useRecipePhotoSource('photo', 'read a receipt');
+  const input = useRecipeImportSource('photo', 'read a receipt');
   const { photo, reset: resetInput } = input;
 
   const reset = useCallback(() => {
@@ -307,6 +307,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
             onChangeMode={() => {}}
             text=""
             onChangeText={() => {}}
+            url=""
+            onChangeUrl={() => {}}
             photo={photo}
             onPickPhoto={input.pick}
             onClearPhoto={input.clearPhoto}

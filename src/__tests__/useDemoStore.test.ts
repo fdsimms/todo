@@ -1125,6 +1125,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.sourceUrl)).toBe(true);
     expect(recipes.some(r => r.author && r.source)).toBe(true);
     expect(recipes.some(r => r.sourceType === 'cookbook' && r.sourcePage)).toBe(true);
+    // What a link import leaves behind, all on one recipe: the address, the
+    // site, the byline, and the method read off the page's own markup.
+    expect(recipes.some(r =>
+      r.sourceType === 'website' && r.sourceUrl && r.source && r.author && r.steps.length > 0,
+    )).toBe(true);
   });
 
   it('seeds a plan with history, a scaled meal, a picked side and a doubled-up night', () => {
