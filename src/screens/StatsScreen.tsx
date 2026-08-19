@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 import type { TimeOfDay } from '../types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { subDays } from 'date-fns/subDays';
@@ -38,12 +39,28 @@ import { rhythmOptionsFromSettings } from '../utils/rhythmsSettings';
 import { PressableScale } from '../components/PressableScale';
 import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useRecipeStore } from '../store/useRecipeStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
+import { describeFridgeHistory, outcomeCounts } from '../utils/leftovers';
+import { getLogicalToday } from '../utils/dateUtils';
+import {
+  cookingWindow,
+  hasCookingData,
+  leftoversFinishedIn,
+  mostCookedRecipes,
+  type CookingWindow,
+} from '../utils/cookingStats';
 
 const BAR_HEIGHT = 96;
 // Shallower than the 7-day chart: 24 bars is a wide, low shape, and a tall one
 // would push the headline under it off the first screen.
 const HOUR_BAR_HEIGHT = 64;
 const HABIT_DAYS = 30;
+// The same month HABIT_DAYS uses, and well inside MEAL_PLAN_RETENTION_DAYS (180)
+// and LEFTOVER_RETENTION_DAYS (60), so neither purge can quietly clip the window.
+const COOKING_DAYS = 30;
+const MOST_COOKED_LIMIT = 5;
 
 // Sections cascade in on mount: each fades and rises with a small delay.
 function StaggerIn({ index, children }: { index: number; children: React.ReactNode }) {
@@ -255,15 +272,70 @@ export function StatsScreen() {
 
   const onTime = useMemo(() => onTimeSummary(tasks), [tasks]);
 
+  // --- Cooking (#1367) ------------------------------------------------------
+  // Three sets, read three different ways. Recipes and leftovers are both held
+  // wholesale in memory, so those are plain memos; the meal plan is a window
+  // MealPlanScreen owns and this screen must not touch, so its half is the
+  // store's own snapshot read — see refreshCookingCounts.
+  const recipes = useRecipeStore(s => s.recipes);
+  const leftovers = useLeftoverStore(s => s.leftovers);
+  const storedCookingCounts = useMealPlanStore(s => s.cookingCounts);
+  const refreshCookingCounts = useMealPlanStore(s => s.refreshCookingCounts);
+  const [cookWindow, setCookWindow] = useState<CookingWindow | null>(null);
+
+  // Gated at the point of use rather than by writing anything off, like
+  // `mealsOnToday` in TodayScreen: someone who has put the kitchen away
+  // shouldn't be shown what they cooked, and turning it back on restores the
+  // section exactly as it was.
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const cookingCounts = kitchenEnabled ? storedCookingCounts : null;
+
+  // Rebuilt on focus rather than once on mount. `enableScreens(false)` keeps a
+  // blurred tab mounted for the life of the session (see CLAUDE.md), so a
+  // window computed at mount would still end on the day the app was opened —
+  // the same reason `now` above going stale is a known wart on this screen.
+  useFocusEffect(
+    useCallback(() => {
+      if (!kitchenEnabled) return;
+      const next = cookingWindow(getLogicalToday(), COOKING_DAYS);
+      setCookWindow(prev =>
+        prev && prev.startKey === next.startKey && prev.endKey === next.endKey ? prev : next,
+      );
+      refreshCookingCounts(next);
+    }, [kitchenEnabled, refreshCookingCounts]),
+  );
+
+  const fridge = useMemo(
+    () => (kitchenEnabled && cookWindow ? leftoversFinishedIn(leftovers, cookWindow) : []),
+    [kitchenEnabled, leftovers, cookWindow],
+  );
+  const fridgeText = useMemo(() => describeFridgeHistory(fridge), [fridge]);
+  const mostCooked = useMemo(
+    () => (kitchenEnabled ? mostCookedRecipes(recipes, MOST_COOKED_LIMIT) : []),
+    [kitchenEnabled, recipes],
+  );
+  const hasCooking = hasCookingData(cookingCounts, outcomeCounts(fridge), mostCooked);
+
+  // The screen used to be gated on completions alone, so someone whose history
+  // is in the kitchen rather than the task list was told there was no data.
+  const hasTaskData = done.length > 0;
+  const showCookingCard =
+    cookingCounts !== null &&
+    (cookingCounts.planned > 0 || cookingCounts.daysCooked > 0 || fridgeText !== '');
+  // The cascade counts from wherever the screen actually starts: for someone
+  // whose history is all kitchen, every task section above is gone, and a fixed
+  // index 9 would hold the whole screen blank for half a second.
+  const cookingStagger = hasTaskData ? 9 : 0;
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Stats" subtitle={`${done.length} completed`} />
+      <ScreenHeader title="Stats" subtitle={hasTaskData ? `${done.length} completed` : undefined} />
 
-      {done.length === 0 ? (
+      {!hasTaskData && !hasCooking ? (
         <EmptyState
           icon="bar-chart-outline"
           title="No data yet"
-          subtitle="Complete tasks to see your stats here"
+          subtitle="Complete tasks or cook a meal to see your stats here"
           bottomOffset={tabBarHeight}
         />
       ) : (
@@ -273,6 +345,7 @@ export function StatsScreen() {
         >
 
           {/* Summary cards */}
+          {hasTaskData && (
           <StaggerIn index={0}>
           <View style={styles.summaryRow}>
             <View style={styles.summaryCard}>
@@ -289,8 +362,10 @@ export function StatsScreen() {
             </View>
           </View>
           </StaggerIn>
+          )}
 
           {/* Completed per day — last 7 days */}
+          {hasTaskData && (
           <StaggerIn index={1}>
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>COMPLETED PER DAY</Text>
@@ -322,6 +397,7 @@ export function StatsScreen() {
             </View>
           </View>
           </StaggerIn>
+          )}
 
           {/* When completions actually land, by clock hour */}
           {rhythm.sampleCount > 0 && (
@@ -524,6 +600,83 @@ export function StatsScreen() {
             </StaggerIn>
           )}
 
+          {/*
+            Cooking (#1367). Counts, never a score — no percentage and no
+            red/green verdict, unlike ON TIME above. A planned meal that went
+            uncooked is very often the app working rather than failing (the
+            leftovers got eaten, or you went out), so grading it would be
+            grading someone for a good week. Same rule describeFridgeHistory
+            states for the fridge, whose wording this reuses verbatim.
+          */}
+          {showCookingCard && cookingCounts !== null && (
+            <StaggerIn index={cookingStagger}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>COOKING (LAST {COOKING_DAYS} DAYS)</Text>
+              <View style={styles.card}>
+                {cookingCounts.planned > 0 && (
+                  <View style={[styles.row, (cookingCounts.daysCooked > 0 || fridgeText !== '') && styles.rowBorder]}>
+                    <Text style={styles.rowText}>Planned meals cooked</Text>
+                    <Text style={styles.cookValue}>
+                      {cookingCounts.plannedCooked} of {cookingCounts.planned}
+                    </Text>
+                  </View>
+                )}
+                {cookingCounts.daysCooked > 0 && (
+                  <View style={[styles.row, fridgeText !== '' && styles.rowBorder]}>
+                    <Text style={styles.rowText}>Days you cooked</Text>
+                    <Text style={styles.cookValue}>
+                      {cookingCounts.daysCooked} of {cookingCounts.days}
+                    </Text>
+                  </View>
+                )}
+                {fridgeText !== '' && (
+                  <View style={styles.row}>
+                    <Text style={styles.rowText}>Leftovers</Text>
+                    <Text style={styles.cookValue}>{fridgeText}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {/*
+            All time, and it has to be: Recipe.cookCount is a standalone counter
+            that outlives the 180-day entry purge, so there is no way to window
+            it — hence the heading saying so rather than letting it sit under
+            the 30 days above.
+          */}
+          {mostCooked.length > 0 && (
+            <StaggerIn index={cookingStagger + 1}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>MOST COOKED (ALL TIME)</Text>
+              <View style={styles.card}>
+                {mostCooked.map((r, i) => {
+                  const meta = [
+                    r.lastCookedAt ? `Last cooked ${format(new Date(r.lastCookedAt), 'MMM d')}` : null,
+                    r.avgMinutes !== null ? `avg ${formatDuration(r.avgMinutes)}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ');
+                  return (
+                    <View key={r.id} style={[styles.row, i < mostCooked.length - 1 && styles.rowBorder]}>
+                      <Text style={styles.rank}>#{i + 1}</Text>
+                      <View style={styles.instanceMain}>
+                        <Text style={styles.instanceTitle} numberOfLines={1}>{r.name}</Text>
+                        {meta !== '' && <Text style={styles.instanceMeta}>{meta}</Text>}
+                      </View>
+                      <View style={styles.badge}>
+                        <Ionicons name="restaurant" size={13} color={colors.accent} />
+                        <Text style={[styles.badgeText, { color: colors.accent }]}>{r.count}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
         </ScrollView>
       )}
     </View>
@@ -683,6 +836,15 @@ const makeStyles = (colors: Colors) =>
       borderRadius: radius.full,
     },
     badgeText: { fontSize: font.sm, fontWeight: '700' },
+    // A value, not a verdict — textSecondary rather than the green/orange/red
+    // the rate rows above use, for the reason the cooking section's own comment
+    // gives.
+    cookValue: {
+      color: colors.textSecondary,
+      fontSize: font.md,
+      fontWeight: '600',
+      flexShrink: 0,
+    },
     instanceMain: {
       flex: 1,
       gap: 2,

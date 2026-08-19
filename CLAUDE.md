@@ -33,6 +33,26 @@ it, a plain question in chat otherwise — with the options you'd otherwise have
 Don't file it away as a "worth flagging" aside and move on; get a decision and act on it (fix it,
 open an issue, or leave it, whichever they pick) before you finish the task it turned up in.
 
+## Follow-up and out-of-scope work
+
+A PR description is not read again after it's opened. Don't rely on a "What's left" section, a
+closing summary, or a note buried in the diff to carry information forward — that's writing for
+an audience that isn't there. Anything worth remembering once the PR merges has to actually exist
+as a thing, not as a sentence: either fixed now, or filed as a real GitHub issue (apply the four
+labels from the scheme below same as any other issue).
+
+When finishing a task turns up adjacent work you've decided not to do — a related surface, a
+follow-up feature, a design question you scoped out — don't narrate that decision in the PR body
+and move on. Before you call the task done: fold it into the current PR if it's small enough, or
+file it as its own issue if it isn't. A PR body can reference the issue number for context, but
+the issue is what persists; the paragraph explaining your reasoning isn't. Do this for every
+scope decision the task surfaced, not just the one you'd think to mention — if a "What's left"
+list would otherwise have three items, that's three issues, not three bullet points.
+
+This is "Bugs found in passing" above, generalized past bugs specifically: the thing that must not
+happen is a decision (fix it / file it / leave it) sitting only in prose that nobody is going to
+reread.
+
 ## User-facing copy
 
 Say what a setting does in plain, literal terms — the way the rest of the app already talks

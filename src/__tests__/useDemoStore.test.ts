@@ -45,6 +45,13 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
+import {
+  cookingWindow,
+  hasCookingData,
+  leftoverHistoryIn,
+  mealCookCounts,
+  mostCookedRecipes,
+} from '../utils/cookingStats';
 import { describeKitchen, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { kitchenContextRows, plannedUsesToday } from '../utils/dayContextRows';
@@ -1273,6 +1280,29 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // "We ate it" and "it went off" are the two things the feature tells apart.
     expect(leftovers.some(l => l.outcome === 'eaten')).toBe(true);
     expect(leftovers.some(l => l.outcome === 'tossed')).toBe(true);
+  });
+
+  it("fills every row of Stats' cooking section", () => {
+    // The seed already holds the rows; this asserts the *read* over them lands
+    // non-empty, since a section that renders nothing in demo mode reads as a
+    // feature the app doesn't have.
+    const window = cookingWindow(getCurrentDayStart(), 30);
+    const counts = mealCookCounts(useMealPlanStore.getState().entries, window);
+    const history = leftoverHistoryIn(useLeftoverStore.getState().leftovers, window);
+    const cooked = mostCookedRecipes(useRecipeStore.getState().recipes);
+
+    expect(hasCookingData(counts, history, cooked)).toBe(true);
+    // A fraction, not a clean sweep — the point of the row is that some planned
+    // nights didn't get cooked.
+    expect(counts.plannedCooked).toBeGreaterThan(0);
+    expect(counts.plannedCooked).toBeLessThan(counts.planned);
+    expect(counts.daysCooked).toBeGreaterThan(0);
+    // Both endings, so the row reads "n eaten · n thrown out" rather than half of it.
+    expect(history.eaten).toBeGreaterThan(0);
+    expect(history.tossed).toBeGreaterThan(0);
+    // And a leaderboard that actually ranks rather than a single row.
+    expect(cooked.length).toBeGreaterThan(1);
+    expect(cooked[0].count).toBeGreaterThan(1);
   });
 
   it('seeds a use-up task for every live leftover in "soon", "due" or "over"', () => {

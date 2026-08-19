@@ -1480,6 +1480,12 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     title: 'Weeknight chicken stir-fry',
     recipeId: recipes.stirFry,
   });
+  // Planned and then not cooked — the night the week got away from you. Without
+  // one of these, Stats' "Planned meals cooked" row can only ever read "n of n"
+  // and the fraction looks like it has no other state (#1367). Opted out of a
+  // cook task for the same reason the cooked nights are: a task for a dinner
+  // three days ago wants neither spawning nor completing.
+  plan(-3, 'dinner', { title: 'Chicken tacos', cookTask: false });
 
   // --- What those left behind ---------------------------------------------
   // One container at each point on the clock, so the freshness ladder, the

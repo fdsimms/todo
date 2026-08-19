@@ -28,6 +28,7 @@ import { classifyPlanned, consumedRows, plannedIngredientsForRecipe } from '../u
 import { standingSwapMap } from '../utils/standingSwaps';
 import { generateId } from '../utils/id';
 import { normalizeScale } from '../utils/recipeScale';
+import { mealCookCounts, type CookingWindow, type MealCookCounts } from '../utils/cookingStats';
 import {
   cleanMealTitle,
   isKeyInRange,
@@ -203,6 +204,36 @@ interface MealPlanStore {
    * each time an unrelated meal moves.
    */
   refreshPlannedSlotCounts: (dayKeys: readonly string[]) => void;
+
+  /**
+   * What the last month of the plan says about cooking — the meal half of the
+   * Stats screen's cooking section (#1367). Null until something has asked,
+   * which is a third answer and renders no section rather than a row of zeroes,
+   * the same call `plannedSlotCounts` makes about an absent count.
+   *
+   * **Deliberately outside the window contract**, for the same reason and by
+   * the same mechanism as `plannedSlotCounts` above: Stats is a hidden tab
+   * asking about a rolling 30 days, which is never the week MealPlanScreen has
+   * open, and `loadRange`ing to fetch it would clobber that screen's window on
+   * a tab that stays mounted and never reloads (`enableScreens(false)`).
+   *
+   * Counts, not rows — the read is a month of entries but nothing keeps them,
+   * so this stays four integers however much someone plans.
+   */
+  cookingCounts: MealCookCounts | null;
+
+  /**
+   * Recounts `cookingCounts` from SQLite over the given window.
+   *
+   * **Pull, not push**, like the refresh above it: the reader calls this when
+   * the section is about to be seen, so none of this store's ~15 mutators needs
+   * a line to keep it in step, and the writes this store never sees at all (a
+   * restored backup, a demo swap) are covered for free.
+   *
+   * Returns without a `set` when nothing moved, so wiring it to a screen focus
+   * doesn't re-render on every visit.
+   */
+  refreshCookingCounts: (window: CookingWindow) => void;
 
   /** Null when the title is empty and no recipe was named. */
   planMeal: (draft: MealPlanDraft) => MealPlanEntry | null;
@@ -416,6 +447,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   rangeEnd: null,
   addedToListAt: {},
   plannedSlotCounts: {},
+  cookingCounts: null,
   initialized: false,
   lastAction: null,
   cookedOffer: null,
@@ -442,17 +474,23 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   initialize() {
     const addedToListAt = dbGetMealPlanAddedToList();
     const { rangeStart, rangeEnd } = get();
+    // cookingCounts goes back to "nobody has looked" rather than being
+    // recounted here: this runs on every database swap (demo, restore), and a
+    // count carried across describes a database that no longer exists. Its
+    // reader refreshes on focus, so the cost of clearing it is one render with
+    // no section rather than one render of the wrong numbers.
     if (rangeStart && rangeEnd) {
       set({
         entries: sortMealEntries(dbGetMealPlanEntries(rangeStart, rangeEnd)),
         addedToListAt,
+        cookingCounts: null,
         initialized: true,
       });
       return;
     }
     // Nothing has asked for a window yet, so there is nothing to hold. The
     // screen loads its own on mount.
-    set({ entries: [], addedToListAt, initialized: true });
+    set({ entries: [], addedToListAt, cookingCounts: null, initialized: true });
   },
 
   loadRange(startKey, endKey) {
@@ -488,6 +526,23 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (unchanged) return;
 
     set({ plannedSlotCounts: next });
+  },
+
+  refreshCookingCounts(window) {
+    const next = mealCookCounts(
+      dbGetMealPlanEntries(window.startKey, window.endKey),
+      window
+    );
+    const current = get().cookingCounts;
+    const unchanged =
+      current !== null &&
+      current.days === next.days &&
+      current.daysCooked === next.daysCooked &&
+      current.planned === next.planned &&
+      current.plannedCooked === next.plannedCooked;
+    if (unchanged) return;
+
+    set({ cookingCounts: next });
   },
 
   planMeal(draft) {
