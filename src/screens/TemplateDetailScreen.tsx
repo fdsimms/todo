@@ -20,6 +20,7 @@ import { TemplateItemQuickAdd } from '../components/TemplateItemQuickAdd';
 import { TemplateItemBulkBar } from '../components/TemplateItemBulkBar';
 import { TemplateSuggestionsSheet } from '../components/TemplateSuggestionsSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
+import { TaskEditor } from '../components/TaskEditor';
 import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { DetailHeader } from '../components/DetailHeader';
@@ -34,7 +35,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingRefs, describeMissingRefs } from '../utils/templateUtils';
 import { liveConditions } from '../utils/templateQuestions';
-import type { TaskTemplate, TemplateItem } from '../types';
+import type { Task, TaskTemplate, TemplateItem } from '../types';
 
 type RootStackParamList = {
   TemplateDetail: { templateId: string };
@@ -77,6 +78,10 @@ export function TemplateDetailScreen() {
   const allTags = useTaskStore(useShallow(s => s.allTags()));
 
   const [applyTemplateId, setApplyTemplateId] = useState<string | null>(null);
+  // Opened straight off a successful apply, to the first task it created —
+  // this screen has no task list of its own to land the created tasks in, so
+  // without this the run's only trace is wherever its container happens to be.
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   // Snapshot rather than the live row, like TemplatesScreen does: the editor
   // seeds its fields off this object's identity, so handing it a value that
   // changes under it would reset them mid-edit.
@@ -469,8 +474,15 @@ export function TemplateDetailScreen() {
           visible={applyTemplateObj !== null}
           template={applyTemplateObj}
           onClose={() => setApplyTemplateId(null)}
+          onApplied={tasks => { if (tasks[0]) setEditingTask(tasks[0]); }}
         />
       )}
+
+      <TaskEditor
+        visible={editingTask !== null}
+        task={editingTask}
+        onClose={() => setEditingTask(null)}
+      />
     </View>
   );
 }

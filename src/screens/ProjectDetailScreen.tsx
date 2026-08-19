@@ -501,6 +501,7 @@ export function ProjectDetailScreen() {
           template={applyTemplate}
           onClose={() => setApplyTemplate(null)}
           projectId={project?.id}
+          onApplied={tasks => { if (tasks[0]) openEditor(tasks[0]); }}
         />
 
         {/* Correcting a decision from where it's read — the same sheet in the

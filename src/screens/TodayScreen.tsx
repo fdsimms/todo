@@ -3237,6 +3237,7 @@ export function TodayScreen() {
           visible={applyTemplate !== null}
           template={applyTemplate}
           onClose={() => setApplyTemplate(null)}
+          onApplied={tasks => { if (tasks[0]) openEditor(tasks[0]); }}
         />
 
         <TaskEditor

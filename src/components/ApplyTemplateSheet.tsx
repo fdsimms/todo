@@ -46,7 +46,7 @@ import {
 } from '../utils/templateQuestions';
 import { WhenPicker } from './WhenPicker';
 import { EditorRow } from './EditorRow';
-import type { TaskTemplate, TemplateContainer, TemplateItem, TemplateQuestion } from '../types';
+import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateQuestion } from '../types';
 
 interface Props {
   visible: boolean;
@@ -54,6 +54,8 @@ interface Props {
   onClose: () => void;
   /** Land every created task in this existing project instead of the template's own container — see ApplyTemplateOptions.targetProjectId. */
   projectId?: string;
+  /** Fires once the sheet has finished dismissing, with every task the apply created (empty if the run had nothing selected). Lets a caller jump straight to the first one rather than leaving it to be found. */
+  onApplied?: (tasks: Task[]) => void;
 }
 
 /** Sub-label for a checklist row: live dates when its anchor is set, offset labels otherwise. */
@@ -100,7 +102,7 @@ function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceho
  * unchecked, including whole nested-template blocks; a conditioned one starts
  * on what the answers say), then create them all as real tasks.
  */
-export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Props) {
+export function ApplyTemplateSheet({ visible, template, onClose, projectId, onApplied }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -184,7 +186,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
     setSelectedIds(prev => reselectForAnswers(tree, questions, answers, prev));
   }, [answersKey, visible, tree]);
 
-  const dismiss = () => {
+  const dismiss = (onDismissed?: () => void) => {
     Animated.parallel([
       Animated.spring(translateY, {
         toValue: 700,
@@ -199,6 +201,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
     ]).start(() => {
       translateY.setValue(600);
       onClose();
+      onDismissed?.();
     });
   };
 
@@ -308,12 +311,15 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
     if (selectedCount === 0) return;
     haptics.success();
     const flatSelection = expandSelectionWithAncestors(tree, selectedIds);
-    applyTemplate(template.id, flatSelection, anchors, {
+    const created = applyTemplate(template.id, flatSelection, anchors, {
       runName,
       placeholders: { ...placeholderValues, ...answerValues },
       targetProjectId: projectId,
     });
-    dismiss();
+    // Waits for the sheet to be fully gone — a caller opening the task editor
+    // straight off this callback would stack two Modals mid-animation, the
+    // same touch-conflict openCalendar above avoids by sliding away first.
+    dismiss(() => onApplied?.(created));
   };
 
   const renderApplyTreeNodes = (nodes: ApplyTreeNode[], depth: number) =>
@@ -422,7 +428,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
       visible={visible}
       animationType="none"
       transparent
-      onRequestClose={dismiss}
+      onRequestClose={() => dismiss()}
     >
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView
@@ -432,7 +438,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
         />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
 
       <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
@@ -557,7 +563,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
+        <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity}>
           <Text style={styles.cancelLabel}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>
