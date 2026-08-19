@@ -15,7 +15,16 @@ import { haptics } from '../utils/haptics';
  * user-facing copy in all of them, and iOS only prompts once — without an alert
  * naming the permission, a second tap on "Take a photo" does nothing visible.
  */
-export function useRecipePhotoSource(initialMode: RecipeInputMode = 'paste') {
+export function useRecipePhotoSource(
+  initialMode: RecipeInputMode = 'paste',
+  /**
+   * What the photo is *for*, completing "Allow access to the camera to …".
+   * Parameterized rather than fixed because the denial alert is the one piece
+   * of user-facing copy in here, and a receipt scan telling someone it wants
+   * the camera "to read a recipe off a page" is simply the wrong sentence.
+   */
+  purpose = 'read a recipe off a page',
+) {
   const [mode, setMode] = useState<RecipeInputMode>(initialMode);
   const [text, setText] = useState('');
   const [photo, setPhoto] = useState<RecipePhoto | null>(null);
@@ -43,8 +52,8 @@ export function useRecipePhotoSource(initialMode: RecipeInputMode = 'paste') {
         Alert.alert(
           `dundundun can't reach ${what}`,
           result.canAskAgain
-            ? `Allow access to ${what} to read a recipe off a page.`
-            : `Turn on access to ${what} in Settings to read a recipe off a page.`,
+            ? `Allow access to ${what} to ${purpose}.`
+            : `Turn on access to ${what} in Settings to ${purpose}.`,
           result.canAskAgain
             ? [{ text: 'OK' }]
             : [
@@ -59,7 +68,7 @@ export function useRecipePhotoSource(initialMode: RecipeInputMode = 'paste') {
     } finally {
       setPicking(false);
     }
-  }, []);
+  }, [purpose]);
 
   const clearPhoto = useCallback(() => {
     setPhoto(null);

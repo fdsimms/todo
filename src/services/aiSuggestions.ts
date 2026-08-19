@@ -5,8 +5,10 @@ import {
   GROCERY_QUANTITY_MAX_LENGTH,
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
+  SHOP_NAME_MAX_LENGTH,
 } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
+import { parsePriceInput } from '../utils/groceryPrice';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import {
   clampIdeaCount, dedupeMealIdeas, MAX_MEAL_IDEAS, MIN_MEAL_IDEAS,
@@ -881,4 +883,203 @@ export async function suggestSubstitutes(
   if (!input?.substitutes) throw new Error('No suggestions returned');
 
   return dedupeSuggestedSubstitutes(input.substitutes, [name, ...excluded]);
+}
+
+/**
+ * How many lines of one receipt are worth reading. A big weekly shop is around
+ * sixty; the cap exists so a photo of a CVS receipt can't spend the whole
+ * completion budget on loyalty copy.
+ */
+const MAX_RECEIPT_LINES = 100;
+
+export interface ReceiptLine {
+  /**
+   * The line exactly as printed, abbreviations and all ("GV MLK 2% GAL").
+   *
+   * Kept verbatim and always shown, because the whole review step turns on it:
+   * `name` below is the model's reading of this, and the only way anyone can
+   * check that reading is against the words on the paper in their hand.
+   */
+  label: string;
+  /**
+   * The same line as a shopper would say it — "milk". This is what gets matched
+   * against the list, and asking for it here rather than expanding the
+   * abbreviations ourselves is deliberate: a receipt's shorthand is
+   * store-specific, unbounded and drifts, so an offline lexicon of it would be
+   * a guess-machine we'd be maintaining for ever. A vision model is already
+   * reading the page and is good at exactly this.
+   */
+  name: string;
+  /** As printed on the line ("1.32 lb", "2"); empty when the line doesn't say. */
+  quantity: string;
+  /**
+   * Minor units, or null when the line's price couldn't be read as one. Parsed
+   * with `parsePriceInput` — the same reader a hand-typed price goes through —
+   * so a discount line's negative and a garbled "3.4B" are refusals here for
+   * exactly the reasons they're refusals there, rather than a second opinion
+   * about what a price is.
+   */
+  priceMinor: number | null;
+}
+
+export interface ExtractedReceipt {
+  /** The store as printed on the header, empty when it doesn't name one. */
+  storeName: string;
+  /** Every line the receipt charged for, in printed order. */
+  lines: ReceiptLine[];
+  /**
+   * The printed total in minor units, null when unread.
+   *
+   * Nothing reconciles against this and nothing should — a receipt's total
+   * includes tax, deposits and discounts that never become list rows, so a sum
+   * that doesn't match is the normal case rather than a sign the read went
+   * wrong. It's here to be *shown*, so someone can tell at a glance whether the
+   * photo that was read is the receipt they meant.
+   */
+  totalMinor: number | null;
+}
+
+/**
+ * Reads a photo of a store receipt into the store's name and the lines it
+ * charged for.
+ *
+ * This is the "what did I actually buy, and what did it cost" half of a trip,
+ * which the app could otherwise only learn by someone typing a price per row
+ * into the finish sheet. The receipt already has all of it.
+ *
+ * **It extracts; it never decides.** Nothing here matches a line to a list row,
+ * ticks anything off or names a store id — that's `receiptMatch.ts`, offline
+ * and tested, and the user confirms its answers before a single row is
+ * written. The split is the same one `extractRecipe` makes, and it matters more
+ * here because the thing on the other side of the confirm (`finishShopping`)
+ * takes a whole list off in one go.
+ *
+ * The prompt spends most of its length on what *isn't* an item, because a
+ * receipt is mostly not items: totals, tax, tender, change, loyalty numbers,
+ * store addresses and a paragraph about a survey. Every one of those read as a
+ * line would arrive as an unmatched row for the user to dismiss by hand.
+ */
+export async function extractReceipt(image: RecipeImage): Promise<ExtractedReceipt> {
+  const { apiKey, model } = requireFeature('receiptImport');
+
+  const empty: ExtractedReceipt = { storeName: '', lines: [], totalMinor: null };
+  // Same "nothing in, no network call" guard the recipe path uses.
+  if (!image.base64) return empty;
+
+  const prompt = [
+    'This is a photo of a store receipt. Read it and extract the store\'s name and every line it charged for.',
+    'Include only lines that are a thing that was bought. Skip subtotals, totals, tax, tender and change, card and authorization details, loyalty and membership numbers, store address and phone, cashier and register numbers, survey invitations, coupons and discount lines, bag fees, and bottle deposits.',
+    'For each item give three things: the line exactly as printed including its abbreviations ("GV MLK 2% GAL"); what it plainly is, named the way a shopper would say it and would write it on a shopping list ("milk"); and the amount the line names if it gives one ("1.32 lb", "2").',
+    'The price is the amount that line was charged, which on a weighed line is the total for the weight rather than the price per pound. Give it exactly as printed, with a decimal point and no currency symbol ("3.48").',
+    'Receipts abbreviate hard and inconsistently. Read the abbreviation as the product it stands for when you can ("BNLS SKNLS CHKN BRST" is "chicken breast", "SHRP CHDR" is "sharp cheddar"). When a line is genuinely unreadable or you cannot tell what it stands for, copy the printed text into both fields rather than inventing a product.',
+    'If the photo is too blurry, too dark, cut off, or is not a receipt at all, return an empty store name and an empty line list rather than guessing.',
+  ].join('\n\n');
+
+  const data = await callAnthropic({
+    max_tokens: 4000,
+    tools: [{
+      name: 'extract_receipt',
+      description: 'Extract a store receipt\'s store name, purchased lines, and total',
+      input_schema: {
+        type: 'object',
+        properties: {
+          storeName: {
+            type: 'string',
+            description: 'The store\'s name as printed on the receipt, without a branch number or address ("Trader Joe\'s", not "TRADER JOE\'S #453"). Empty string if the receipt does not name one.',
+          },
+          total: {
+            type: 'string',
+            description: 'The receipt\'s printed grand total, exactly as printed, with a decimal point and no currency symbol. Empty string if not printed or not readable.',
+          },
+          lines: {
+            type: 'array',
+            description: 'Every line the receipt charged for, in printed order.',
+            items: {
+              type: 'object',
+              properties: {
+                label: {
+                  type: 'string',
+                  description: `The line exactly as printed, abbreviations included. Under ${GROCERY_NAME_MAX_LENGTH} characters.`,
+                },
+                name: {
+                  type: 'string',
+                  description: `What the line plainly is, as a shopper would write it on a list — "milk", "chicken breast", "bananas". No brand, no size, no packaging. Under ${GROCERY_NAME_MAX_LENGTH} characters.`,
+                },
+                quantity: {
+                  type: 'string',
+                  description: 'The amount the line names, as printed — "1.32 lb", "2", "12 oz". Empty string when the line does not give one.',
+                },
+                price: {
+                  type: 'string',
+                  description: 'What this line was charged, exactly as printed, with a decimal point and no currency symbol ("3.48"). Empty string if unreadable.',
+                },
+              },
+              required: ['label', 'name', 'price'],
+            },
+          },
+        },
+        required: ['storeName', 'lines'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'extract_receipt' },
+    messages: [{
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          source: { type: 'base64', media_type: image.mediaType, data: image.base64 },
+        },
+        { type: 'text', text: prompt },
+      ],
+    }],
+  }, apiKey, model, IMAGE_REQUEST_TIMEOUT_MS);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as {
+    storeName?: unknown; total?: unknown; lines?: unknown;
+  } | undefined;
+  if (!input) throw new Error('No suggestions returned');
+
+  return {
+    storeName: typeof input.storeName === 'string'
+      ? input.storeName.trim().slice(0, SHOP_NAME_MAX_LENGTH)
+      : '',
+    totalMinor: typeof input.total === 'string' ? parsePriceInput(input.total) : null,
+    lines: parseReceiptLines(input.lines),
+  };
+}
+
+/**
+ * Validates the model's line array into `ReceiptLine`s.
+ *
+ * Deliberately *not* deduped, unlike `parseExtractedItems` — a receipt listing
+ * milk twice is someone who bought two, each with its own price, and collapsing
+ * them would silently drop one of the two numbers this feature exists to
+ * capture. Matching is where the second one is dealt with, in front of the user.
+ */
+function parseReceiptLines(raw: unknown): ReceiptLine[] {
+  if (!Array.isArray(raw)) return [];
+  const result: ReceiptLine[] = [];
+  for (const line of raw) {
+    if (typeof line?.label !== 'string' && typeof line?.name !== 'string') continue;
+    const label = typeof line.label === 'string'
+      ? line.label.trim().slice(0, GROCERY_NAME_MAX_LENGTH)
+      : '';
+    const name = typeof line.name === 'string'
+      ? line.name.trim().slice(0, GROCERY_NAME_MAX_LENGTH)
+      : '';
+    // A line with neither is nothing to show and nothing to match; a line with
+    // only one of the two falls back to the other, since both are readable
+    // English to a person holding the receipt.
+    if (!label && !name) continue;
+    result.push({
+      label: label || name,
+      name: name || label,
+      quantity: typeof line.quantity === 'string'
+        ? line.quantity.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
+        : '',
+      priceMinor: typeof line.price === 'string' ? parsePriceInput(line.price) : null,
+    });
+  }
+  return result.slice(0, MAX_RECEIPT_LINES);
 }

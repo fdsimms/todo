@@ -38,6 +38,14 @@ interface Props {
   onClearPhoto: () => void;
   /** True while the picker/downscale is running — the shutter is slow enough to notice. */
   picking?: boolean;
+  /**
+   * Drops the Paste tab and shows only the camera. For a source that genuinely
+   * has no text form — a receipt is a piece of paper, and there is nothing to
+   * paste — where offering an empty box would be offering a dead end.
+   */
+  photoOnly?: boolean;
+  /** One line under the two photo buttons saying what a good shot looks like. */
+  photoHint?: string;
   ctaLabel: string;
   onRun: () => void;
 }
@@ -66,6 +74,8 @@ export function RecipeSourcePicker({
   onPickPhoto,
   onClearPhoto,
   picking = false,
+  photoOnly = false,
+  photoHint,
   ctaLabel,
   onRun,
 }: Props) {
@@ -75,8 +85,9 @@ export function RecipeSourcePicker({
   // A pasted link is the one input that has to be refused rather than run —
   // see looksLikeBareUrl. Nothing here can open a page, and the model handed an
   // address writes a recipe out of the words in it.
-  const bareUrl = mode === 'paste' && looksLikeBareUrl(text);
-  const ready = mode === 'paste' ? !!text.trim() && !bareUrl : !!photo;
+  const paste = mode === 'paste' && !photoOnly;
+  const bareUrl = paste && looksLikeBareUrl(text);
+  const ready = paste ? !!text.trim() && !bareUrl : !!photo;
 
   const renderTab = (value: RecipeInputMode, label: string, icon: React.ComponentProps<typeof Ionicons>['name']) => {
     const active = mode === value;
@@ -126,12 +137,14 @@ export function RecipeSourcePicker({
     <>
       <Text style={styles.intro}>{intro}</Text>
 
-      <View style={styles.tabs}>
-        {renderTab('paste', 'Paste', 'clipboard-outline')}
-        {renderTab('photo', 'Photo', 'camera-outline')}
-      </View>
+      {!photoOnly && (
+        <View style={styles.tabs}>
+          {renderTab('paste', 'Paste', 'clipboard-outline')}
+          {renderTab('photo', 'Photo', 'camera-outline')}
+        </View>
+      )}
 
-      {mode === 'paste' ? (
+      {paste ? (
         <TextInput
           style={styles.pasteInput}
           value={text}
@@ -172,8 +185,8 @@ export function RecipeSourcePicker({
               {renderPhotoButton('camera', 'Take a photo', 'camera-outline')}
               {renderPhotoButton('library', 'Choose a photo', 'images-outline')}
               <Text style={styles.photoHint}>
-                Works on a cookbook page, a recipe card, a clipping — anything with the
-                ingredients readable.
+                {photoHint
+                  ?? 'Works on a cookbook page, a recipe card, a clipping — anything with the ingredients readable.'}
               </Text>
             </>
           )}

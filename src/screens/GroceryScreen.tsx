@@ -36,6 +36,7 @@ import { KitchenSheet } from '../components/KitchenSheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
+import { ReceiptImportSheet } from '../components/ReceiptImportSheet';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { StartTripPrompt } from '../components/StartTripPrompt';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
@@ -54,7 +55,7 @@ import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { OTHER_AISLE } from '../utils/groceryAisles';
-import { describeListEstimate, estimateListTotal } from '../utils/groceryPrice';
+import { describeListEstimate, estimateListTotal, priceToInput } from '../utils/groceryPrice';
 import { buildGroceryListShareText } from '../utils/shareText';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -157,6 +158,14 @@ export function GroceryScreen() {
   const [kitchenOpen, setKitchenOpen] = useState(false);
   const [aislesOpen, setAislesOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  // What a scanned receipt read, held between the two sheets. Undefined rather
+  // than null when there's no receipt in play: the finish sheet tells the two
+  // apart, since a receipt naming no store is a real answer and not an absent
+  // one.
+  const [receiptSeed, setReceiptSeed] = useState<
+    { shopId: string | null; priceText: Record<string, string> } | null
+  >(null);
   const [tripOpen, setTripOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   // Which field the item sheet should open pre-expanded to — the swap glyph's
@@ -611,6 +620,9 @@ export function GroceryScreen() {
       substitutes: Array<{ itemId: string; subItemId: string }>
     ) => {
       setFinishOpen(false);
+      // The receipt was for the trip that just ended. Leaving it set would
+      // pre-fill the next shop with this one's prices.
+      setReceiptSeed(null);
       animateLayout();
       // Three writes rather than one, and they can't collide: finishShopping
       // only touches what was ticked into the trolley, and these are precisely
@@ -640,6 +652,31 @@ export function GroceryScreen() {
       setCartOpen(false);
     },
     [finishShopping, markItemsUnavailable, linkItemSub, endTrip, itemSubs]
+  );
+
+  /**
+   * A scanned receipt, confirmed. Ticks the rows it named and hands the store
+   * and the prices to the finish sheet, which is where the trip actually ends.
+   *
+   * Deliberately not a call to `finishShopping`. The receipt answers what came
+   * home and what it cost; it can't answer which of the leftovers the store
+   * didn't have, and that question is the finish sheet's whole second half. So
+   * this fills that sheet in and opens it rather than going around it.
+   */
+  const handleReceiptApply = useCallback(
+    (shopId: string | null, itemIds: string[], priceById: Record<string, number>) => {
+      animateLayout();
+      if (itemIds.length > 0) setCheckedMany(itemIds, true);
+      setReceiptSeed({
+        shopId,
+        priceText: Object.fromEntries(
+          Object.entries(priceById).map(([id, minor]) => [id, priceToInput(minor)])
+        ),
+      });
+      setReceiptOpen(false);
+      setFinishOpen(true);
+    },
+    [setCheckedMany]
   );
 
   const handleClearTrip = useCallback(() => {
@@ -983,6 +1020,19 @@ export function GroceryScreen() {
                 />
               </View>
             )}
+            {/* At the foot of the list for the same reason Clear is: you
+                reach for it when you're done, not mid-shop. Gated on a key
+                because the read is the whole feature — without one the button
+                would open a sheet that can only apologise. */}
+            {!!anthropicApiKey && listCount > 0 && (
+              <View style={styles.clearWrap}>
+                <InlineAction
+                  label="Scan a receipt"
+                  icon="receipt-outline"
+                  onPress={() => setReceiptOpen(true)}
+                />
+              </View>
+            )}
             {listCount > 0 && (
               <View style={styles.clearWrap}>
                 <InlineAction
@@ -1071,8 +1121,18 @@ export function GroceryScreen() {
         checkedCount={checkedCount}
         leftover={leftover}
         purchased={purchased}
-        onClose={() => setFinishOpen(false)}
+        seedShopId={receiptSeed?.shopId}
+        seedPriceText={receiptSeed?.priceText}
+        onClose={() => {
+          setFinishOpen(false);
+          setReceiptSeed(null);
+        }}
         onFinished={handleFinished}
+      />
+      <ReceiptImportSheet
+        visible={receiptOpen}
+        onClose={() => setReceiptOpen(false)}
+        onApply={handleReceiptApply}
       />
       <ShoppingTripSheet
         visible={tripOpen}

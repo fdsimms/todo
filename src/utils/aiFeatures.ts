@@ -5,11 +5,11 @@
 
 export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'groceryAisles' | 'recipeExtraction' | 'mealIdeas'
-  | 'substitutes';
+  | 'substitutes' | 'receiptImport';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'groceryAisles', 'recipeExtraction', 'mealIdeas',
-  'substitutes',
+  'substitutes', 'receiptImport',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -75,6 +75,12 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     hint: 'Proposes what to use instead of a grocery item when you ask',
     kitchen: true,
   },
+  {
+    id: 'receiptImport',
+    label: 'Receipt scanning',
+    hint: 'Reads a photo of a store receipt to check items off your list and record what they cost',
+    kitchen: true,
+  },
 ];
 
 /**
@@ -105,5 +111,6 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     recipeExtraction: { enabled: true, model: DEFAULT_AI_MODEL },
     mealIdeas: { enabled: true, model: DEFAULT_AI_MODEL },
     substitutes: { enabled: true, model: DEFAULT_AI_MODEL },
+    receiptImport: { enabled: true, model: DEFAULT_AI_MODEL },
   };
 }
