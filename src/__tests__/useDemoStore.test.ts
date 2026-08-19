@@ -492,6 +492,22 @@ describe('demo mode', () => {
     expect(decisions.every(t => formatTaskDeliverable(t) !== null)).toBe(true);
   });
 
+  // The project screen captions each row with its own date (TaskItem.showDate),
+  // which renders nothing at all on a project whose steps are undated.
+  it('dates the project steps that are still open', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    const open = useTaskStore.getState().tasks.filter(t => t.projectId === kitchen?.id && !t.completed);
+
+    expect(open.length).toBeGreaterThan(0);
+    expect(open.every(t => t.dueDate !== null || t.deferUntil !== null)).toBe(true);
+    // One of each, so both readings of the chip are on screen: a due date, and
+    // a task that isn't there yet.
+    expect(open.some(t => t.dueDate !== null)).toBe(true);
+    expect(open.some(t => t.deferUntil !== null)).toBe(true);
+  });
+
   it('seeds a reference-list project excluded from every nudge', () => {
     // A checklist project like Gift ideas has nothing but undated tasks —
     // exactly what would otherwise read as "gone quiet" — so the seed only

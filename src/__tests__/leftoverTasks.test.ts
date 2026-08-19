@@ -33,6 +33,18 @@ function leftover(overrides: Partial<Leftover> = {}): Leftover {
 
 const now = new Date('2026-08-13T09:00:00.000Z');
 
+// Every other function here takes `now` as an argument, but wantsUseUpTask asks
+// freshness.ts, which reads the clock itself — so without pinning it the
+// fixtures below are dated against whenever the suite happens to run, and the
+// "fresh, not urgent" case starts failing once the real date catches up.
+beforeAll(() => {
+  jest.useFakeTimers();
+  jest.setSystemTime(now);
+});
+afterAll(() => {
+  jest.useRealTimers();
+});
+
 describe('wantsUseUpTask', () => {
   it('needs the leftover to need attention — that is the whole trigger', () => {
     // Days left: 14th - 13th = 1 → "soon", needsAttention.
