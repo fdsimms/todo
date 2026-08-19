@@ -34,6 +34,7 @@ import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../uti
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { asksOnCompletion } from '../utils/deliverables';
+import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
@@ -166,36 +167,6 @@ interface Props {
   stepNumber?: number | null;
   /** Held back by an earlier step of a sequential project: the checkbox becomes a lock and completing is refused, the same way a recurrence that isn't due yet refuses. */
   locked?: boolean;
-}
-
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-const MONTH_DAY_SUFFIXES: Record<number, string> = { 1: 'st', 2: 'nd', 3: 'rd', 21: 'st', 22: 'nd', 23: 'rd', 31: 'st' };
-function ordinalMonthDay(n: number): string {
-  return `${n}${MONTH_DAY_SUFFIXES[n] ?? 'th'}`;
-}
-
-function describeRecurrence(task: Task): string {
-  const { recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceFromCompletion } = task;
-  let text = '';
-  if (recurrenceType === 'daily') {
-    text = recurrenceInterval === 1 ? 'Daily' : `Every ${recurrenceInterval} days`;
-  } else if (recurrenceType === 'weekly') {
-    const dayStr = recurrenceDays.map(d => DAY_NAMES[d]).join(', ');
-    const base = recurrenceInterval === 1 ? 'Weekly' : `Every ${recurrenceInterval} weeks`;
-    text = dayStr ? `${base} on ${dayStr}` : base;
-  } else if (recurrenceType === 'monthly') {
-    const base = recurrenceInterval === 1 ? 'Monthly' : `Every ${recurrenceInterval} months`;
-    text = recurrenceMonthDay === -1
-      ? 'Monthly on the last day'
-      : recurrenceMonthDay
-        ? `Monthly on the ${ordinalMonthDay(recurrenceMonthDay)}`
-        : base;
-  } else if (recurrenceType === 'yearly') {
-    text = recurrenceInterval === 1 ? 'Yearly' : `Every ${recurrenceInterval} years`;
-  }
-  if (recurrenceFromCompletion) text += ' · from completion';
-  return text;
 }
 
 /**
@@ -2034,7 +2005,7 @@ export const TaskItem = React.memo(function TaskItem({
                 (task.notes.length > 0 || subtasks.length > 0) && styles.sectionDivider,
               ]}>
                 <Ionicons name="repeat" size={12} color={colors.textTertiary} />
-                <Text style={styles.expandMeta}>{describeRecurrence(task)}</Text>
+                <Text style={styles.expandMeta}>{describeTaskRecurrence(task)}</Text>
                 {task.streakCount > 0 && (
                   <>
                     <Text style={styles.expandMeta}> · </Text>

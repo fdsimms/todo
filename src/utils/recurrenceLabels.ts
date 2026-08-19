@@ -44,6 +44,64 @@ export interface RecurrenceRule {
 }
 
 /**
+ * The same rule, as a **row** says it: "Weekly on Thu", not "Every week on Thu".
+ *
+ * There are deliberately two registers here, and the difference is the control
+ * each one sits next to — not drift to be tidied away:
+ *
+ * - `describeRecurrence` is a **read-back**, rendered in the editor's Repeat
+ *   row directly above the picker that sets it. It reads as a sentence stating
+ *   the rule, because that's the sentence the six controls beneath it add up
+ *   to, and it collapses more than three weekdays to a count because
+ *   `disclosureValue` renders on one line.
+ * - This one is a **caption** on a row, next to the repeat glyph. It was
+ *   shortened on purpose (patch note `recurrence-label-remove-repeats`, from
+ *   "Repeats weekly on Thu") precisely because that glyph already says the
+ *   task repeats, so the word doesn't have to. It has room to name the days
+ *   individually, and it carries the after-completion anchor, which the
+ *   read-back leaves out because the picker gives that its own labelled group.
+ *
+ * `parseTaskInput`'s `describeSchedule` is *not* a third copy of this: it
+ * describes a whole parsed schedule, including one with no recurrence at all
+ * ("Tue, Jun 17"), off a `ParsedSchedule` rather than a stored row.
+ */
+export function describeTaskRecurrence(
+  task: Pick<Task, 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceWeekOrdinal' | 'recurrenceFromCompletion'>,
+): string {
+  const { recurrenceType: type, recurrenceInterval: interval, recurrenceDays: days } = task;
+  if (type === 'none') return '';
+
+  let text: string;
+  if (type === 'daily') {
+    text = interval === 1 ? 'Daily' : `Every ${interval} days`;
+  } else if (type === 'weekly') {
+    const base = interval === 1 ? 'Weekly' : `Every ${interval} weeks`;
+    const named = days.map(d => DAY_NAMES[d]).join(', ');
+    text = named ? `${base} on ${named}` : base;
+  } else if (type === 'monthly') {
+    const base = interval === 1 ? 'Monthly' : `Every ${interval} months`;
+    const ordWord = ORDINAL_OPTIONS.find(o => o.value === task.recurrenceWeekOrdinal)?.label.toLowerCase();
+    if (task.recurrenceWeekOrdinal !== null && days.length > 0 && ordWord) {
+      // The one thing the row used to drop on the floor: an "every 2nd Tuesday"
+      // task read as a bare "Monthly", which is a different schedule.
+      text = `${base} on the ${ordWord} ${DAY_NAMES[days[0]]}`;
+    } else if (task.recurrenceMonthDay === -1) {
+      text = `${base} on the last day`;
+    } else if (task.recurrenceMonthDay) {
+      text = `${base} on the ${ordinal(task.recurrenceMonthDay)}`;
+    } else {
+      text = base;
+    }
+  } else {
+    text = interval === 1 ? 'Yearly' : `Every ${interval} years`;
+  }
+
+  // Named here and nowhere else: on a row there is nothing else on screen
+  // saying which end of the cycle the next date is measured from.
+  return task.recurrenceFromCompletion ? `${text} · from completion` : text;
+}
+
+/**
  * A stored task's recurrence fields as the rule `describeRecurrence` takes.
  *
  * The editor builds the same object out of its own draft state rather than

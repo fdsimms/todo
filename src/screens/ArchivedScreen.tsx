@@ -20,7 +20,7 @@ import { spacing, font, lineHeight, fontWeight, iconSize, radius, interaction, t
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor } from '../utils/visibilityUtils';
-import { describeRecurrence, recurrenceRuleOf } from '../utils/recurrenceLabels';
+import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { useRowSelection } from '../hooks/useRowSelection';
 import type { Task } from '../types';
 
@@ -278,7 +278,7 @@ function ArchivedRow({
   // The whole reason this screen exists is paused *recurring* tasks, and until
   // now the one thing it never said was what the schedule had been — so
   // deciding whether to bring something back meant opening it.
-  const repeat = task.recurrenceType !== 'none' ? describeRecurrence(recurrenceRuleOf(task)) : null;
+  const repeat = task.recurrenceType !== 'none' ? describeTaskRecurrence(task) : null;
   const pausedOn = task.archivedAt ? format(new Date(task.archivedAt), 'MMM d') : null;
 
   return (
