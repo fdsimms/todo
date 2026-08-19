@@ -86,8 +86,8 @@ interface Props<T> {
  * accessibility mode as well as a border does, and it leaves the accent to mean
  * "you can change this" the way it does everywhere else.
  *
- * Four things the #1497 sweep looked at and deliberately left as pills. They're
- * here so the next one doesn't have to re-derive them:
+ * Five things the #1497 sweep and #1786 looked at and deliberately left as
+ * pills. They're here so the next one doesn't have to re-derive them:
  *
  * - **Effort.** Eight options, each a name over a duration ("M" / "~1-2hr"),
  *   plus a Custom that opens a number pad. A segment is one line of text by
@@ -105,15 +105,23 @@ interface Props<T> {
  * - **A unit beside a `CountStepper`** (the nudge cadence's Days/Weeks/Months).
  *   It has a state no track can show — *no* unit lit, which is how "Never"
  *   reads — and it sits inline next to the stepper rather than owning a row.
+ * - **`RecipeScaleChips`'s factor row** (½ · 1 · 1½ · 2 · 3). It assumed a
+ *   card or sheet surface until #1669 added `surface="page"`, and #1786
+ *   mocked the conversion once that blocker was gone. The pairing with its
+ *   `CountStepper` reads fine either way; what doesn't survive is the accent
+ *   fill. A selected chip currently takes the same accent tint a scaled
+ *   ingredient quantity does elsewhere on the same screen (see Unit
+ *   conversion's `≈` note in CLAUDE.md) — chip and quantities visibly agree
+ *   that the recipe is being read scaled. This track's *raised*, not
+ *   accent-filled, selection would look identical at 1× and at 3×, breaking
+ *   that echo for the one control in the app where "not the recipe's own
+ *   number" is the entire point of the row. Stays pills.
  *
  * It assumed a card or sheet surface until #1669: `bgTertiary` against a light
  * theme's `bg` is nearly invisible, which is what kept it out of the one place
  * a lens switch belongs — straight under a screen's header. `surface="page"`
  * is that fix, and it's why the meal plan's By day / Whole week switch can be a
- * track rather than a second row of pills under the hub's own. `RecipeScaleChips`
- * — the factor row that note named — is still pills and is now unblocked rather
- * than settled: #1786 holds the question, including whether the `CountStepper`
- * it's paired with is its own reason to stay a chip row.
+ * track rather than a second row of pills under the hub's own.
  */
 export function SegmentedControl<T extends string | number | boolean | null>({
   options, value, onChange, columns, label, surface = 'card',
