@@ -1,0 +1,4 @@
+{
+  "message": "Meal plan: removed the duplicate \"Today\" card at the top of the week. Days before today now collapse into one \"Previous days\" row instead of showing separately.",
+  "date": "2026-08-19"
+}

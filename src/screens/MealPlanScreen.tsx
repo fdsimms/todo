@@ -215,24 +215,6 @@ const COPY_LOOKBACK_WEEKS = 4;
 /** How far a lifted fridge row swells. Deliberately SortableList's LIFT_SCALE. */
 const DRAG_LIFT_SCALE = 1.03;
 
-/**
- * The default `collapsedDays` set for a week: every day strictly before
- * today, so what's done is out of the way but what's still ahead — today
- * onward — stays open exactly as it always did. `dayKeyOf` sorts the same as
- * the date it names (`yyyy-MM-dd`), so a plain string compare against
- * today's own key is enough; no `Date` arithmetic needed. A future week pages
- * in fully expanded (nothing in it is before today yet); a past week pages in
- * fully collapsed (nothing in it is today or after).
- */
-function collapsePastDays(weekDays: Date[]): Set<string> {
-  const todayKey = dayKeyOf(new Date());
-  const set = new Set<string>();
-  for (const day of weekDays) {
-    if (dayKeyOf(day) < todayKey) set.add(dayKeyOf(day));
-  }
-  return set;
-}
-
 export function MealPlanScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -270,14 +252,12 @@ export function MealPlanScreen() {
   const range = useMemo(() => dayKeyRange(days), [days]);
 
   const entries = useMealPlanStore(useShallow(s => s.entries));
-  // Undefined once the week on screen has paged away from today — the hero
-  // card below reads this to decide whether it has anything to be about.
-  const todayDay = days.find(d => isToday(d));
-  const todayKey = todayDay ? dayKeyOf(todayDay) : null;
-  const todayEntries = useMemo(
-    () => (todayKey ? entriesForDay(entries, todayKey) : []),
-    [entries, todayKey]
-  );
+  // Real "today," independent of which week is on screen — decides which of
+  // this week's days fold into the "Previous days" section below
+  // (previousDaysInfo). Not gated on `days` finding a match the way the old
+  // hero card's `todayDay` was: a past week is entirely previous days, a
+  // future week has none, and both fall out of the same key compare.
+  const todayKey = dayKeyOf(new Date());
   const loadRange = useMealPlanStore(s => s.loadRange);
   const planMeal = useMealPlanStore(s => s.planMeal);
   const moveEntry = useMealPlanStore(s => s.moveEntry);
@@ -349,11 +329,28 @@ export function MealPlanScreen() {
   const [suggesting, setSuggesting] =
     useState<{ recipes: Recipe[]; cookAgainRecipes: Recipe[]; days: Date[] } | null>(null);
   // Per-day collapse, local-only — folding one away is just less to scroll
-  // past, not a decision worth persisting. Days before today start
-  // collapsed (already happened, nothing to plan there); today and every
-  // day after it start open, same as they always did. Explicit taps on
-  // `toggleDayCollapse` override this per key from then on.
-  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(() => collapsePastDays(days));
+  // past, not a decision worth persisting. Days before today are already
+  // folded away wholesale by `previousDaysExpanded` below, so this starts
+  // empty; today and every day after it start open, same as they always did.
+  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(() => new Set());
+  // Whether the "Previous days" section (every day before today, in this
+  // week) is unfolded. Collapsed by default — what's done is out of the way
+  // — and it's one toggle for the whole block rather than per-day, since
+  // per-day collapse used to mean paging in last week showed seven
+  // individually-collapsed headers in a row. A day inside it can still be
+  // folded again on its own via `collapsedDays` once the section is open.
+  const [previousDaysExpanded, setPreviousDaysExpanded] = useState(false);
+  // Which of this week's days are "previous" (before today), the first one
+  // (where the "Previous days" header renders), and the total planned across
+  // all of them (the collapsed row's count badge). A future week has none; a
+  // past week's `firstKey` is just its first day.
+  const previousDaysInfo = useMemo(() => {
+    const previous = days.filter(d => dayKeyOf(d) < todayKey);
+    return {
+      firstKey: previous.length > 0 ? dayKeyOf(previous[0]) : null,
+      count: previous.reduce((sum, d) => sum + entriesForDay(entries, dayKeyOf(d)).length, 0),
+    };
+  }, [days, entries, todayKey]);
 
   // ——— Bulk selection (#1110) ————————————————————————————————————————
   //
@@ -622,15 +619,16 @@ export function MealPlanScreen() {
     // was last left on — the week lens has no row to scroll to and would answer
     // "Wednesday 19 Aug" with a summary of the week it happens to be in.
     setViewMode('byDay');
-    // A day the user (or `collapsePastDays`) folded away is one the link would
-    // otherwise arrive at showing nothing. Opening it is the whole point of
-    // naming a day.
+    // A day the user folded away, on its own or as part of "Previous days",
+    // is one the link would otherwise arrive at showing nothing. Opening it
+    // is the whole point of naming a day.
     setCollapsedDays(prev => {
       if (!prev.has(focusDay)) return prev;
       const next = new Set(prev);
       next.delete(focusDay);
       return next;
     });
+    if (focusDay < dayKeyOf(new Date())) setPreviousDaysExpanded(true);
     pendingFocusRef.current = focusDay;
   }, [focusDay, focusStamp, handledFocus]);
 
@@ -667,7 +665,8 @@ export function MealPlanScreen() {
       const thisWeekStart = buildWeekDays(new Date(), weekStartsOn)[0];
       if (isBefore(days[0], thisWeekStart)) {
         setAnchor(new Date());
-        setCollapsedDays(collapsePastDays(buildWeekDays(new Date(), weekStartsOn)));
+        setCollapsedDays(new Set());
+        setPreviousDaysExpanded(false);
       }
       // days[0] alone decides this — weekStartsOn only changes which day a
       // week starts on, not whether the anchor's week is in the past.
@@ -933,102 +932,147 @@ export function MealPlanScreen() {
     // Whole-band target: any drop inside this day's zone means "plan a meal
     // here", so there's no anchor/before split to carry, unlike a task row.
     const zone: DropZone = { kind: 'day', key, dayKey: key, dayLabel: weekdayName };
+    const isPrevious = key < todayKey;
+    const isFirstPrevious = isPrevious && previousDaysInfo.firstKey === key;
+    // Folded into the "Previous days" header rendered by the first previous
+    // day below — every other previous day renders nothing of its own while
+    // that section is collapsed.
+    if (isPrevious && !isFirstPrevious && !previousDaysExpanded) return null;
     return (
       <FabDropZone zone={zone}>
         <DayDropTargetRow channel={fabIntentChannel} dayKey={key}>
           <View style={styles.section}>
             {/*
-              Every day carries its own add button, in its header rather than
-              under its meals. The header is a row that exists whether or not
-              the day has anything in it, so the button costs no vertical
-              space and sits in the same place on every day — which is what
-              lets an empty day stay one line tall (#1374) while still being
-              directly plannable.
-
-              A sibling of the collapse toggle rather than a child of it: two
-              nested touchables resolve fine, but "the whole header collapses
-              except this corner of it" is a rule worth expressing in the tree
-              rather than relying on hit resolution.
+              One toggle for the whole run of already-happened days, sitting
+              above the first of them — see previousDaysExpanded. Replaces
+              what used to be each past day starting individually collapsed,
+              which read as a repeated stutter of headers on a week (or a
+              whole past week) with nothing left to plan.
             */}
-            <View style={styles.dayHeaderRow}>
-              <TouchableOpacity
-                style={styles.dayHeader}
-                onPress={() => toggleDayCollapse(key)}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${dayLabel}`}
-                accessibilityState={{ expanded: !collapsed }}
-              >
-                <View style={styles.dayHeaderLeft}>
-                  <Text style={[styles.dayName, today && styles.dayNameToday]}>
-                    {weekdayName}
-                  </Text>
-                  {collapsed && dayEntries.length > 0 && (
-                    <Text style={styles.dayCount}>({dayEntries.length})</Text>
-                  )}
-                  <Ionicons
-                    name={collapsed ? 'chevron-forward' : 'chevron-down'}
-                    size={iconSize.xs}
-                    color={colors.textTertiary}
-                  />
-                </View>
-                <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
-              </TouchableOpacity>
-              {!selectionMode && (
+            {isFirstPrevious && (
+              <View style={styles.dayHeaderRow}>
                 <TouchableOpacity
-                  style={styles.dayAdd}
-                  onPress={() => { haptics.tap(); setPlanningDay(key); }}
+                  style={styles.dayHeader}
+                  onPress={() => {
+                    haptics.tap();
+                    animateLayout();
+                    setPreviousDaysExpanded(e => !e);
+                  }}
                   activeOpacity={interaction.activeOpacity}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Plan a meal on ${dayLabel}`}
+                  accessibilityLabel={`${previousDaysExpanded ? 'Collapse' : 'Expand'} previous days`}
+                  accessibilityState={{ expanded: previousDaysExpanded }}
                 >
-                  <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
+                  <View style={styles.dayHeaderLeft}>
+                    <Text style={styles.dayName}>Previous days</Text>
+                    {!previousDaysExpanded && previousDaysInfo.count > 0 && (
+                      <Text style={styles.dayCount}>({previousDaysInfo.count})</Text>
+                    )}
+                    <Ionicons
+                      name={previousDaysExpanded ? 'chevron-down' : 'chevron-forward'}
+                      size={iconSize.xs}
+                      color={colors.textTertiary}
+                    />
+                  </View>
                 </TouchableOpacity>
-              )}
-            </View>
+              </View>
+            )}
+            {(!isPrevious || previousDaysExpanded) && (
+              <>
+                {/*
+                  Every day carries its own add button, in its header rather than
+                  under its meals. The header is a row that exists whether or not
+                  the day has anything in it, so the button costs no vertical
+                  space and sits in the same place on every day — which is what
+                  lets an empty day stay one line tall (#1374) while still being
+                  directly plannable.
 
-            {/*
-              An empty day is its header and the band under it, and nothing
-              else. It used to carry "No meals planned yet" — plain status
-              text since #1092 took the per-day add button away — which cost
-              about 22pt a day for a sentence repeated up to seven times down
-              one screen, and on a normal week (three or four dinners planned)
-              that was most of what pushed the weekend below the fold (#1374).
-              The band stays the size it is because it is also the drop
-              target for a container dragged out of the fridge, and the
-              week-level hint above says the thing the seven copies were each
-              saying badly.
-            */}
-            {!collapsed && dayEntries.length > 0 && (
-              (
-                <View style={styles.card}>
-                  {dayEntries.map((entry, idx) => (
-                    <React.Fragment key={entry.id}>
-                      {idx > 0 && <View style={styles.sep} />}
-                      <MealSlotRow
-                        entry={entry}
-                        title={titleForEntry(entry, recipesById)}
-                        hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
-                        choices={describeEntryChoices(entry)}
-                        onPress={() => {
-                          if (selectionMode) toggleSelection(entry.id);
-                          else { haptics.tap(); setSelectedId(entry.id); }
-                        }}
-                        onToggleCooked={
-                          selectionMode ? undefined : () => setCooked(entry, !entry.cookedAt)
-                        }
-                        selectionMode={selectionMode}
-                        selected={selectedIds.has(entry.id)}
-                        onSwipeSelect={id => enterSelectionMode(id)}
-                        // Matches styles.card, so the swipe panel is uncovered
-                        // by the row rather than showing through it.
-                        surface={colors.bgSecondary}
+                  A sibling of the collapse toggle rather than a child of it: two
+                  nested touchables resolve fine, but "the whole header collapses
+                  except this corner of it" is a rule worth expressing in the tree
+                  rather than relying on hit resolution.
+                */}
+                <View style={styles.dayHeaderRow}>
+                  <TouchableOpacity
+                    style={styles.dayHeader}
+                    onPress={() => toggleDayCollapse(key)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${dayLabel}`}
+                    accessibilityState={{ expanded: !collapsed }}
+                  >
+                    <View style={styles.dayHeaderLeft}>
+                      <Text style={[styles.dayName, today && styles.dayNameToday]}>
+                        {weekdayName}
+                      </Text>
+                      {collapsed && dayEntries.length > 0 && (
+                        <Text style={styles.dayCount}>({dayEntries.length})</Text>
+                      )}
+                      <Ionicons
+                        name={collapsed ? 'chevron-forward' : 'chevron-down'}
+                        size={iconSize.xs}
+                        color={colors.textTertiary}
                       />
-                    </React.Fragment>
-                  ))}
+                    </View>
+                    <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
+                  </TouchableOpacity>
+                  {!selectionMode && (
+                    <TouchableOpacity
+                      style={styles.dayAdd}
+                      onPress={() => { haptics.tap(); setPlanningDay(key); }}
+                      activeOpacity={interaction.activeOpacity}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Plan a meal on ${dayLabel}`}
+                    >
+                      <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
+                    </TouchableOpacity>
+                  )}
                 </View>
-              )
+
+                {/*
+                  An empty day is its header and the band under it, and nothing
+                  else. It used to carry "No meals planned yet" — plain status
+                  text since #1092 took the per-day add button away — which cost
+                  about 22pt a day for a sentence repeated up to seven times down
+                  one screen, and on a normal week (three or four dinners planned)
+                  that was most of what pushed the weekend below the fold (#1374).
+                  The band stays the size it is because it is also the drop
+                  target for a container dragged out of the fridge, and the
+                  week-level hint above says the thing the seven copies were each
+                  saying badly.
+                */}
+                {!collapsed && dayEntries.length > 0 && (
+                  (
+                    <View style={styles.card}>
+                      {dayEntries.map((entry, idx) => (
+                        <React.Fragment key={entry.id}>
+                          {idx > 0 && <View style={styles.sep} />}
+                          <MealSlotRow
+                            entry={entry}
+                            title={titleForEntry(entry, recipesById)}
+                            hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
+                            choices={describeEntryChoices(entry)}
+                            onPress={() => {
+                              if (selectionMode) toggleSelection(entry.id);
+                              else { haptics.tap(); setSelectedId(entry.id); }
+                            }}
+                            onToggleCooked={
+                              selectionMode ? undefined : () => setCooked(entry, !entry.cookedAt)
+                            }
+                            selectionMode={selectionMode}
+                            selected={selectedIds.has(entry.id)}
+                            onSwipeSelect={id => enterSelectionMode(id)}
+                            // Matches styles.card, so the swipe panel is uncovered
+                            // by the row rather than showing through it.
+                            surface={colors.bgSecondary}
+                          />
+                        </React.Fragment>
+                      ))}
+                    </View>
+                  )
+                )}
+              </>
             )}
           </View>
         </DayDropTargetRow>
@@ -1040,7 +1084,7 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
@@ -1182,7 +1226,8 @@ export function MealPlanScreen() {
           if (selectionMode) exitSelection();
           animateLayout();
           setAnchor(new Date());
-          setCollapsedDays(collapsePastDays(buildWeekDays(new Date(), weekStartsOn)));
+          setCollapsedDays(new Set());
+          setPreviousDaysExpanded(false);
         },
         accessibilityLabel: 'Back to this week',
       });
@@ -1412,71 +1457,6 @@ export function MealPlanScreen() {
                   onHistory={() => { haptics.tap(); setHistoryVisible(true); }}
                   drag={fridgeDragHandlers}
                 />
-                {/*
-                  Today, above the week — a copy of its row(s) the same way
-                  Pinned Tasks puts a copy of a pinned task above Today's own
-                  category sections (both stay live; ticking either one does
-                  the same thing). The week always renders Sunday→Saturday
-                  below, so whichever day today happens to fall on, it would
-                  otherwise be wherever that leaves it — the last thing on
-                  the page on a Saturday, with nothing to scroll to once it
-                  gets there. This is the fix: today doesn't depend on where
-                  in the week it lands, or on how far there is left to scroll.
-                  Gone entirely once the week on screen isn't this one.
-                */}
-                {todayDay && (
-                  <View style={styles.todaySection}>
-                    <View style={styles.todayHeaderRow}>
-                      <View style={styles.todayHeaderLeft}>
-                        <Text style={styles.todayTitle}>
-                          Today · {format(todayDay, 'EEEE')}
-                        </Text>
-                        {todayEntries.length > 0 && (
-                          <Text style={styles.todayCount}>
-                            {todayEntries.length} planned
-                          </Text>
-                        )}
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => { haptics.tap(); setPlanningDay(todayKey); }}
-                        activeOpacity={interaction.activeOpacity}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Plan a meal for today"
-                      >
-                        <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
-                      </TouchableOpacity>
-                    </View>
-                    {todayEntries.length > 0 ? (
-                      <View style={styles.todayCard}>
-                        {todayEntries.map((entry, idx) => (
-                          <React.Fragment key={entry.id}>
-                            {idx > 0 && <View style={styles.sep} />}
-                            <MealSlotRow
-                              entry={entry}
-                              title={titleForEntry(entry, recipesById)}
-                              hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
-                              choices={describeEntryChoices(entry)}
-                              onPress={() => { haptics.tap(); setSelectedId(entry.id); }}
-                              onToggleCooked={() => setCooked(entry, !entry.cookedAt)}
-                            />
-                          </React.Fragment>
-                        ))}
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.todayEmpty}
-                        onPress={() => { haptics.tap(); setPlanningDay(todayKey); }}
-                        activeOpacity={interaction.activeOpacity}
-                        accessibilityRole="button"
-                        accessibilityLabel="Plan a meal for today"
-                      >
-                        <Text style={styles.todayEmptyText}>Nothing planned yet</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-
                 {/*
                   The two things you do to a *week* rather than to a meal, in
                   one row above it. "Add week to list" used to live in the
@@ -1918,55 +1898,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: border.hairline,
     backgroundColor: colors.separator,
     marginLeft: spacing.md + 32 + spacing.md,
-  },
-  todaySection: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-  },
-  todayHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
-  todayHeaderLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: spacing.xs,
-  },
-  todayTitle: {
-    color: colors.accent,
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  todayCount: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
-  },
-  todayCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.md,
-    borderWidth: border.hairline,
-    borderColor: colors.accentSubtle,
-    overflow: 'hidden',
-  },
-  todayEmpty: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.md,
-    borderWidth: border.hairline,
-    borderColor: colors.accentSubtle,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-  },
-  todayEmptyText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
   },
   emptyWeekHint: {
     color: colors.textTertiary,
