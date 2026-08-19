@@ -346,6 +346,8 @@ const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
   sortOrder: 1,
   category: null,
   applyContainer: 'stack',
+  schedule: null,
+  scheduleLastFiredKey: null,
   ...overrides,
 });
 

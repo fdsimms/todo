@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion } from '../types';
+import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule } from '../types';
 import {
   dbGetAllTemplates,
   dbInsertTemplate,
@@ -20,9 +20,18 @@ import {
   substituteDraftPlaceholders,
   substitutePlaceholders,
   majorityCategory,
+  buildApplyTree,
   RUN_PLACEHOLDER,
   type TemplateAnchors,
 } from '../utils/templateUtils';
+import {
+  questionsForTree,
+  resolveAnswers,
+  placeholderValuesFor,
+  initialLeafSelection,
+} from '../utils/templateQuestions';
+import { dueTemplateRun } from '../utils/templateSchedule';
+import { useSettingsStore } from './useSettingsStore';
 
 /** Everything the apply sheet collects beyond the item selection and anchors. */
 export interface ApplyTemplateOptions {
@@ -99,6 +108,13 @@ interface TemplateStore {
     anchors: TemplateAnchors,
     options?: ApplyTemplateOptions,
   ) => Task[];
+  /** Turn unattended firing on, off (`null`), or change when it happens. */
+  setSchedule: (templateId: string, schedule: TemplateSchedule | null) => void;
+  /**
+   * Apply every template whose schedule has come due. Called at launch and on
+   * foreground — see the note on the implementation.
+   */
+  checkScheduledTemplates: () => void;
 }
 
 export const useTemplateStore = create<TemplateStore>((set, get) => ({
@@ -122,6 +138,12 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       sortOrder: maxOrder + 1,
       category: null,
       applyContainer: 'none',
+      // A new template applies only when someone taps Apply. Opting one into
+      // firing by itself is a deliberate second step, the same call
+      // Project.nudgeOptIn makes — a template that started writing tasks the
+      // moment it was created would be the annoying half of the feature.
+      schedule: null,
+      scheduleLastFiredKey: null,
     };
     dbInsertTemplate(template);
     set(s => ({ templates: [...s.templates, template] }));
@@ -485,5 +507,81 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     });
 
     return createdTasks;
+  },
+
+  setSchedule(templateId, schedule) {
+    const template = get().templates.find(t => t.id === templateId);
+    if (!template) return;
+    // The last-fired key is cleared whenever the schedule *changes*, and kept
+    // when it's merely switched off and back on unchanged. Editing Sunday to
+    // Wednesday is a new question about this week — one this week hasn't
+    // answered — so holding the old key would silently swallow the first run
+    // under the new setting. Toggling off and on again isn't a new question,
+    // and clearing there would hand out a second run of the same period.
+    const changed = JSON.stringify(schedule) !== JSON.stringify(template.schedule);
+    const updated: TaskTemplate = {
+      ...template,
+      schedule,
+      scheduleLastFiredKey: changed ? null : template.scheduleLastFiredKey,
+    };
+    dbUpdateTemplate(updated);
+    set(s => ({ templates: s.templates.map(t => (t.id === templateId ? updated : t)) }));
+  },
+
+  /**
+   * Fire whatever is due, once per calendar period — the store half of
+   * `dueTemplateRun`, which owns every rule about *whether* a run is owed.
+   *
+   * Runs through the ordinary `applyTemplate` rather than a second write path,
+   * so a scheduled run and a tapped one produce identical rows: same container
+   * resolution, same item-group sub-stacks, same placeholder substitution. The
+   * only thing this supplies that a person would have is the answers, and it
+   * takes those from `resolveAnswers` with nothing typed — which is exactly the
+   * state the apply sheet opens in, so a scheduled run is the run you'd get by
+   * opening the sheet and pressing Apply without touching anything.
+   */
+  checkScheduledTemplates() {
+    const settings = useSettingsStore.getState();
+    // Every route past this point writes tasks with nobody watching, and
+    // vacation is a deliberate "hide work from me" the user set. Deliberately
+    // returns *without* recording a period key, the same way checkMealPlanNudge
+    // does, so the period fires for real on the first launch after vacation
+    // ends rather than being silently consumed while it was on.
+    if (settings.vacationMode) return;
+
+    const now = new Date();
+    const templatesById = new Map(get().templates.map(t => [t.id, t]));
+    // Snapshotted before the loop: applyTemplate writes tasks and setSchedule
+    // rewrites rows, so iterating the live array would be reading a list that
+    // moves underneath the loop.
+    const candidates = get().templates.filter(t => t.schedule !== null);
+
+    for (const template of candidates) {
+      const due = dueTemplateRun(template, now, settings.weekStartsOn, settings.dayResetTime);
+      if (!due) continue;
+
+      // Recorded before the apply, and unconditionally: a template that throws
+      // half way through — or one whose every item is conditioned off — must
+      // not be re-diagnosed as due on every later launch this period. The key
+      // means "this period has been dealt with", not "this period created
+      // tasks".
+      const fired: TaskTemplate = { ...template, scheduleLastFiredKey: due.periodKey };
+      dbUpdateTemplate(fired);
+      set(s => ({ templates: s.templates.map(t => (t.id === template.id ? fired : t)) }));
+
+      const tree = buildApplyTree(template.items, template.id, templatesById);
+      const questions = questionsForTree(tree, templatesById);
+      const answers = resolveAnswers(questions, {}, due.anchors);
+      const selectedIds = initialLeafSelection(tree, questions, answers);
+      if (selectedIds.size === 0) continue;
+
+      get().applyTemplate(template.id, selectedIds, due.anchors, {
+        runName: due.runName,
+        placeholders: placeholderValuesFor(questions, answers),
+      });
+    }
+    // Deliberately no setLastAction, same reasoning as dripStalledProjects and
+    // checkMealPlanNudge: an unattended write nobody saw happen shouldn't be
+    // sitting under the next shake-to-undo.
   },
 }));

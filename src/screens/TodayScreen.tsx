@@ -58,6 +58,7 @@ import {
 import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { kitchenInventory, type KitchenEntry } from '../utils/kitchenInventory';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -795,6 +796,13 @@ export function TodayScreen() {
           // After rolloverQuotas/sweepOvershootQuotas: either can complete and
           // spawn members, which changes what a project counts as scheduled.
           useTaskStore.getState().dripStalledProjects();
+          // And any template whose schedule came due while the app sat in the
+          // background (#1781) — a weekly run would otherwise wait for the next
+          // cold start, which for a phone left open all week never comes. Same
+          // reason dripStalledProjects is here as well as in the launch
+          // sequence; checkScheduledTemplates is idempotent within a period, so
+          // running it in both places can't double-fire.
+          useTemplateStore.getState().checkScheduledTemplates();
           // A leftover can age from "fresh" into "soon" purely by time
           // passing, with no store mutation to trigger a reconcile — same
           // reason the other checks above run here rather than waiting for

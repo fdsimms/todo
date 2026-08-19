@@ -1221,6 +1221,8 @@ describe('Templates', () => {
     sortOrder: 1,
     category: null,
     applyContainer: 'stack',
+    schedule: null,
+    scheduleLastFiredKey: null,
     ...overrides,
   });
 
@@ -1233,6 +1235,30 @@ describe('Templates', () => {
     const [tpl] = dbGetAllTemplates();
     expect(tpl.name).toBe('Pre-vacation');
     expect(tpl.items).toEqual(items);
+  });
+
+  it('insert → getAll round-trips a schedule and its last-fired key', () => {
+    const schedule = {
+      frequency: 'monthly' as const,
+      weekday: 0,
+      monthDay: 31,
+      month: 1,
+      time: '07:30',
+      anchorSpanDays: 7,
+    };
+    dbInsertTemplate(makeTemplate({ schedule, scheduleLastFiredKey: '2026-08' }));
+    const [tpl] = dbGetAllTemplates();
+    expect(tpl.schedule).toEqual(schedule);
+    expect(tpl.scheduleLastFiredKey).toBe('2026-08');
+  });
+
+  // The pre-migration state, and what every existing template reads as: no
+  // schedule at all, so nothing starts firing on an upgrade.
+  it('reads a template with no schedule as never firing by itself', () => {
+    dbInsertTemplate(makeTemplate());
+    const [tpl] = dbGetAllTemplates();
+    expect(tpl.schedule).toBeNull();
+    expect(tpl.scheduleLastFiredKey).toBeNull();
   });
 
   it('insert → getAll round-trips itemGroups JSON', () => {

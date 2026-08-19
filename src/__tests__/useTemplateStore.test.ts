@@ -35,6 +35,13 @@ jest.mock('../store/useProjectStore', () => ({
   useProjectStore: { getState: () => ({ createProject: mockCreateProject }) },
 }));
 
+// checkScheduledTemplates reads vacationMode/weekStartsOn/dayResetTime, and
+// templateSchedule reaches dateUtils which reaches this store too.
+const mockSettings = { vacationMode: false, weekStartsOn: 0 as const, dayResetTime: '00:00' };
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => mockSettings },
+}));
+
 const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   id: 'item-1',
   title: 'Pack bags',
@@ -82,6 +89,8 @@ const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
   sortOrder: 1,
   category: null,
   applyContainer: 'stack',
+  schedule: null,
+  scheduleLastFiredKey: null,
   ...overrides,
 });
 
@@ -609,6 +618,8 @@ describe('applyTemplate — naming the run', () => {
     useTemplateStore.setState({
       templates: [makeTemplate({
         applyContainer: 'stack',
+        schedule: null,
+        scheduleLastFiredKey: null,
         itemGroups: [{ id: 'g1', title: 'Flights', sortOrder: 1 }],
         questions: [],
         items: [makeItem({ id: 'a', title: 'Book', groupId: 'g1' })],
@@ -882,5 +893,191 @@ describe('renameItemCategory', () => {
     useTemplateStore.getState().renameItemCategory('Errands', 'Chores');
 
     expect(useTemplateStore.getState().templates[0].items[0].category).toBe('errands');
+  });
+});
+
+// ─── scheduled applies (#1781) ──────────────────────────────────────────────
+
+describe('setSchedule', () => {
+  const weekly = {
+    frequency: 'weekly' as const,
+    weekday: 0,
+    monthDay: 1,
+    month: 1,
+    time: '09:00',
+    anchorSpanDays: null,
+  };
+
+  beforeEach(() => {
+    (dbGetAllTemplates as jest.Mock).mockReturnValue([makeTemplate()]);
+    useTemplateStore.getState().initialize();
+  });
+
+  it('stores a schedule on the template', () => {
+    useTemplateStore.getState().setSchedule('tpl-1', weekly);
+    expect(useTemplateStore.getState().templates[0].schedule).toEqual(weekly);
+  });
+
+  // Editing the schedule asks a new question about this period, which this
+  // period hasn't answered — see the note on setSchedule.
+  it('clears the last-fired key when the schedule changes', () => {
+    (dbGetAllTemplates as jest.Mock).mockReturnValue([
+      makeTemplate({ schedule: weekly, scheduleLastFiredKey: '2026-08-23' }),
+    ]);
+    useTemplateStore.getState().initialize();
+
+    useTemplateStore.getState().setSchedule('tpl-1', { ...weekly, weekday: 3 });
+    expect(useTemplateStore.getState().templates[0].scheduleLastFiredKey).toBeNull();
+  });
+
+  it('keeps the key when the schedule is re-set to the same values', () => {
+    (dbGetAllTemplates as jest.Mock).mockReturnValue([
+      makeTemplate({ schedule: weekly, scheduleLastFiredKey: '2026-08-23' }),
+    ]);
+    useTemplateStore.getState().initialize();
+
+    useTemplateStore.getState().setSchedule('tpl-1', { ...weekly });
+    expect(useTemplateStore.getState().templates[0].scheduleLastFiredKey).toBe('2026-08-23');
+  });
+
+  it('turns firing off without forgetting which period already ran', () => {
+    (dbGetAllTemplates as jest.Mock).mockReturnValue([
+      makeTemplate({ schedule: weekly, scheduleLastFiredKey: '2026-08-23' }),
+    ]);
+    useTemplateStore.getState().initialize();
+
+    useTemplateStore.getState().setSchedule('tpl-1', null);
+    expect(useTemplateStore.getState().templates[0].schedule).toBeNull();
+  });
+});
+
+describe('checkScheduledTemplates', () => {
+  const weekly = {
+    frequency: 'weekly' as const,
+    weekday: 0,
+    monthDay: 1,
+    month: 1,
+    time: '09:00',
+    anchorSpanDays: null,
+  };
+
+  // Sunday 23 Aug 2026, 10am — past a 09:00 trigger.
+  const SUNDAY_10AM = new Date(2026, 7, 23, 10, 0, 0);
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(SUNDAY_10AM);
+    mockSettings.vacationMode = false;
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function seedDue(overrides: Partial<TaskTemplate> = {}) {
+    (dbGetAllTemplates as jest.Mock).mockReturnValue([
+      makeTemplate({
+        name: 'Sunday reset',
+        schedule: weekly,
+        items: [makeItem({ id: 'i1', title: 'Laundry' })],
+        ...overrides,
+      }),
+    ]);
+    useTemplateStore.getState().initialize();
+  }
+
+  it('applies a template whose schedule has come due', () => {
+    seedDue();
+    useTemplateStore.getState().checkScheduledTemplates();
+    expect(mockAddTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Laundry' }));
+  });
+
+  it('names the run with its own date, so two firings are told apart', () => {
+    seedDue();
+    useTemplateStore.getState().checkScheduledTemplates();
+    expect(mockCreateGroup).toHaveBeenCalledWith('Sunday reset · 23 Aug', null);
+  });
+
+  it('records the period so a second launch the same week does nothing', () => {
+    seedDue();
+    useTemplateStore.getState().checkScheduledTemplates();
+    expect(useTemplateStore.getState().templates[0].scheduleLastFiredKey).toBe('2026-08-23');
+
+    mockAddTask.mockClear();
+    useTemplateStore.getState().checkScheduledTemplates();
+    expect(mockAddTask).not.toHaveBeenCalled();
+  });
+
+  it('leaves a template with no schedule alone', () => {
+    seedDue({ schedule: null });
+    useTemplateStore.getState().checkScheduledTemplates();
+    expect(mockAddTask).not.toHaveBeenCalled();
+  });
+
+  // Vacation is a deliberate "hide work from me", and the period is
+  // deliberately not consumed while it's on.
+  it('writes nothing during vacation, and does not burn the period', () => {
+    mockSettings.vacationMode = true;
+    seedDue();
+    useTemplateStore.getState().checkScheduledTemplates();
+    expect(mockAddTask).not.toHaveBeenCalled();
+    expect(useTemplateStore.getState().templates[0].scheduleLastFiredKey).toBeNull();
+
+    mockSettings.vacationMode = false;
+    useTemplateStore.getState().checkScheduledTemplates();
+    expect(mockAddTask).toHaveBeenCalled();
+  });
+
+  it('answers a template’s questions with their own defaults', () => {
+    seedDue({
+      questions: [{
+        id: 'q1',
+        name: 'trip',
+        prompt: 'What kind?',
+        kind: 'choice',
+        options: ['Work', 'Leisure'],
+        defaultValue: '',
+        fromDates: 'none',
+      }],
+      items: [makeItem({ id: 'i1', title: 'Pack for a {trip} trip' })],
+    });
+    useTemplateStore.getState().checkScheduledTemplates();
+    expect(mockAddTask).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Pack for a Work trip' })
+    );
+  });
+
+  it('drops an item conditioned off by the default answer', () => {
+    seedDue({
+      questions: [{
+        id: 'q1',
+        name: 'trip',
+        prompt: 'What kind?',
+        kind: 'choice',
+        options: ['Leisure', 'Work'],
+        defaultValue: '',
+        fromDates: 'none',
+      }],
+      items: [
+        makeItem({ id: 'i1', title: 'Passport' }),
+        makeItem({
+          id: 'i2',
+          title: 'Laptop',
+          conditions: [{ questionId: 'q1', values: ['Work'] }],
+        }),
+      ],
+    });
+    useTemplateStore.getState().checkScheduledTemplates();
+    const titles = mockAddTask.mock.calls.map(c => c[0].title);
+    expect(titles).toContain('Passport');
+    expect(titles).not.toContain('Laptop');
+  });
+
+  // The period is still consumed — otherwise this is re-diagnosed as due on
+  // every launch for the rest of the week.
+  it('records the period even when the run creates nothing', () => {
+    seedDue({ items: [makeItem({ id: 'i1', title: 'Optional thing', optional: true })] });
+    useTemplateStore.getState().checkScheduledTemplates();
+    expect(mockAddTask).not.toHaveBeenCalled();
+    expect(useTemplateStore.getState().templates[0].scheduleLastFiredKey).toBe('2026-08-23');
   });
 });
