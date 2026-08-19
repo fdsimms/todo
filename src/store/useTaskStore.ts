@@ -58,7 +58,7 @@ import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import {
   postponeOutcome,
@@ -234,6 +234,7 @@ function newTaskFromDraft(
     previousStreakCount: 0,
     previousStreakDate: null,
     showStreak: draft.showStreak ?? false,
+    streakRequiresWindow: draft.streakRequiresWindow ?? false,
     parentId: draft.parentId ?? null,
     groupId: draft.groupId ?? null,
     projectId: draft.projectId ?? null,
@@ -433,7 +434,7 @@ type RecurrenceFields = Pick<
   Task,
   | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay'
   | 'recurrenceWeekOrdinal' | 'recurrenceEndDate' | 'recurrenceCount'
-  | 'recurrenceFromCompletion' | 'showStreak'
+  | 'recurrenceFromCompletion' | 'showStreak' | 'streakRequiresWindow'
 >;
 
 const NO_RECURRENCE: RecurrenceFields = {
@@ -448,6 +449,9 @@ const NO_RECURRENCE: RecurrenceFields = {
   // Only a recurring task has a streak to show, and the editor only offers the
   // toggle there — same reasoning as the showStreak reset in TaskEditor.
   showStreak: false,
+  // Same reasoning as showStreak above: a series row is a one-off with no
+  // streak of its own, so nothing is left on for it to be late against.
+  streakRequiresWindow: false,
 };
 
 // One row of a dated series (Task.seriesId). Every field but the date comes
@@ -1950,13 +1954,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // An explicit miss is the one case where the break is known at the time.
     let newStreakCount = 1;
     if (!missed && recurs && datesBySchedule && task.streakDate) {
-      const outcome = getStreakOutcome(task, dayResetTime);
+      // #1255: a task opted into streakRequiresWindow that's completed
+      // outside its own timeSegments/windowStart-windowEnd window forfeits
+      // the calendar-gap outcome below entirely — a late completion still
+      // logs (see `completed` below), it just can't continue or preserve the
+      // streak the way an on-time one does. isCompletionOnTime is vacuously
+      // true for a task with no window, so the setting is inert there.
+      const onTime = !task.streakRequiresWindow || isCompletionOnTime(task);
+      const outcome = onTime ? getStreakOutcome(task, dayResetTime) : 'reset';
       if (outcome === 'same-day') {
         newStreakCount = task.streakCount;
       } else if (outcome === 'continued') {
         newStreakCount = task.streakCount + 1;
       }
-      // else 'reset': missed too many cadence units → reset to 1 (already set above)
+      // else 'reset': missed too many cadence units, or completed outside the
+      // task's own window → reset to 1 (already set above)
     }
 
     // Per step, not per cycle, when the steps are scheduled — and that isn't a
@@ -3205,6 +3217,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakCount: 0,
       previousStreakDate: null,
       showStreak: false,
+      streakRequiresWindow: false,
       parentId,
       groupId: null,
       projectId: null,
@@ -3367,6 +3380,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakCount: 0,
       previousStreakDate: null,
       showStreak: false,
+      streakRequiresWindow: false,
       parentId: null,
       groupId,
       projectId: null,

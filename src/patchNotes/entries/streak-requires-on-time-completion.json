@@ -1,0 +1,4 @@
+{
+  "message": "New per-task option: \"Streak requires on-time completion.\" For a task with a time-of-day window (morning/afternoon/evening/night, or an explicit time window), turning this on means a late completion still logs as done but no longer extends the streak.",
+  "date": "2026-08-19"
+}

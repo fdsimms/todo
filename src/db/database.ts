@@ -755,6 +755,10 @@ export function initDatabase(): void {
     // of `archived`: see Project.completed.
     'ALTER TABLE projects ADD COLUMN completed INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE projects ADD COLUMN completed_at TEXT',
+    // 0 for every existing row — a habit tracked before this shipped always
+    // continued its streak on any same-day-or-cadence completion regardless
+    // of time, which is exactly what 0 preserves. See Task.streakRequiresWindow.
+    'ALTER TABLE tasks ADD COLUMN streak_requires_window INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1413,6 +1417,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     previousStreakCount: (row.previous_streak_count as number) ?? 0,
     previousStreakDate: (row.previous_streak_date as string) ?? null,
     showStreak: Boolean(row.show_streak),
+    streakRequiresWindow: Boolean(row.streak_requires_window),
     seriesDefaults: row.series_defaults ? (JSON.parse(row.series_defaults as string) as Partial<Task>) : null,
     archived: Boolean(row.archived),
     archivedAt: (row.archived_at as string) ?? null,
@@ -1454,8 +1459,9 @@ export function dbInsertTask(task: Task): void {
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, generated_kind,
       generated_source_id, postpone_count, postpone_muted, drifting_since,
       extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally,
-      deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id, time_block_event_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id, time_block_event_id,
+      streak_requires_window
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1504,6 +1510,7 @@ export function dbInsertTask(task: Task): void {
       task.deadlineOnCalendar ? 1 : 0,
       task.calendarEventId ?? null,
       task.timeBlockEventId ?? null,
+      task.streakRequiresWindow ? 1 : 0,
     ]
   );
 }
@@ -1524,7 +1531,8 @@ export function dbUpdateTask(task: Task): void {
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, generated_kind=?,
       generated_source_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
       extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?,
-      deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?, time_block_event_id=?
+      deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?, time_block_event_id=?,
+      streak_requires_window=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -1574,6 +1582,7 @@ export function dbUpdateTask(task: Task): void {
       task.deadlineOnCalendar ? 1 : 0,
       task.calendarEventId ?? null,
       task.timeBlockEventId ?? null,
+      task.streakRequiresWindow ? 1 : 0,
       task.id,
     ]
   );

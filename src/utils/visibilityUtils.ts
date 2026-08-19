@@ -48,14 +48,17 @@ export function isHeldBack(task: Task): boolean {
 // dayResetTime, a segment threshold at or before the reset hour would appear
 // to be "later today" (pointing at a clock time hours in the future) instead
 // of already having passed for the logical day that's still in progress.
-function getTimeOfDayThreshold(timeOfDay: TimeOfDay): Date {
+function segmentStartHHMM(timeOfDay: TimeOfDay): string {
   const { morningStart, afternoonStart, eveningStart, nightStart } = useSettingsStore.getState();
-  const hhmm = timeOfDay === 'morning' ? morningStart
+  return timeOfDay === 'morning' ? morningStart
     : timeOfDay === 'afternoon' ? afternoonStart
     : timeOfDay === 'evening' ? eveningStart
     : nightStart;
-  const [h, m] = hhmm.split(':').map(Number);
+}
+
+function getTimeOfDayThreshold(timeOfDay: TimeOfDay): Date {
   const t = getCurrentDayStart();
+  const [h, m] = segmentStartHHMM(timeOfDay).split(':').map(Number);
   t.setHours(h, m, 0, 0);
   return t;
 }
@@ -229,6 +232,62 @@ export function effectiveWindowEnd(task: Task): string | null {
   if (!task.windowEnd) return null;
   if (task.windowStart && hhmmMinutes(task.windowEnd) <= hhmmMinutes(task.windowStart)) return null;
   return task.windowEnd;
+}
+
+// Order used only to find the boundary *after* the latest segment a task is
+// placed in — every other reader in this file (earliestSegmentThreshold
+// included) only ever cares about the earliest one, so this isn't a general
+// ordering assumption.
+const TIME_SEGMENT_ORDER: TimeOfDay[] = ['morning', 'afternoon', 'evening', 'night'];
+
+// The task's own day for streak-window purposes: dueDate, else deferUntil,
+// else "today" — the same fallback windowClosedAt uses for a window-only
+// task with no day of its own. Anchoring to the task's placement day rather
+// than to "today" (as getWindowThreshold/getTimeOfDayThreshold do) matters
+// specifically for a 'night'-segment window, whose close spills into the
+// *next* calendar day: recomputed against "today" at evaluation time, that
+// boundary is tautologically always still ahead of "now" (today can never
+// have already become tomorrow), so it would never actually catch a late
+// completion. Anchored to the occurrence's own day instead, "tomorrow" is a
+// fixed calendar date rather than a moving target.
+function streakWindowAnchor(task: Task): Date {
+  const anchor = task.dueDate ?? task.deferUntil;
+  if (!anchor) return getCurrentDayStart();
+  const { dayResetTime } = useSettingsStore.getState();
+  return getTaskDayStart(new Date(anchor), dayResetTime);
+}
+
+// The instant a task's own intended window closes, for streakRequiresWindow
+// (#1255) — deliberately not isTaskExpired's job (that's windowEnd only, and
+// drives the Expired bucket). A task placed by an explicit windowStart/
+// windowEnd uses effectiveWindowEnd, same as expiry. A task placed by
+// timeSegments alone has no stored close time — its window reads as "this
+// segment, until the next one starts" (a morning-only task's window ends at
+// afternoonStart), which is what makes an 11pm completion of a morning habit
+// late rather than merely "still today". A 'night'-only task's window runs
+// to the *next* day's morning start, since there's no later segment to hand
+// it off to. Returns null for a task with neither — nothing to be late
+// against.
+function streakWindowEnd(task: Task): Date | null {
+  const dayStart = streakWindowAnchor(task);
+  const explicitEnd = effectiveWindowEnd(task);
+  if (explicitEnd) return hhmmToDate(explicitEnd, dayStart);
+  if (task.timeSegments.length === 0) return null;
+  const lastIndex = Math.max(...task.timeSegments.map(s => TIME_SEGMENT_ORDER.indexOf(s)));
+  const nextSegment = TIME_SEGMENT_ORDER[lastIndex + 1];
+  if (nextSegment) return hhmmToDate(segmentStartHHMM(nextSegment), dayStart);
+  return hhmmToDate(segmentStartHHMM('morning'), addDays(dayStart, 1));
+}
+
+// Whether completing the task right now lands inside its own intended window
+// (see streakWindowEnd) — used to gate a streak's continuation when
+// Task.streakRequiresWindow is on. A task with no window has nothing to be
+// late against, so every completion counts as on-time; that's what makes the
+// setting inert on such a task.
+export function isCompletionOnTime(task: Task): boolean {
+  const end = streakWindowEnd(task);
+  if (!end) return true;
+  return new Date() < end;
 }
 
 // True while a task with a time window is currently inside that window
