@@ -34,6 +34,20 @@ function leftover(overrides: Partial<Leftover> = {}): Leftover {
 const now = new Date('2026-08-13T09:00:00.000Z');
 
 describe('wantsUseUpTask', () => {
+  // The one function here that reads the *real* clock — `needsAttention` takes
+  // no `now` — so the suite pins it to the same day every other case passes
+  // explicitly. Left unpinned, these two fixtures were dated against a calendar
+  // that walks past them: "20th − 13th = 7 days" quietly became "−1", and the
+  // suite failed on a date rather than on a change.
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('needs the leftover to need attention — that is the whole trigger', () => {
     // Days left: 14th - 13th = 1 → "soon", needsAttention.
     expect(wantsUseUpTask(leftover({ keepUntil: '2026-08-14' }), true)).toBe(true);
