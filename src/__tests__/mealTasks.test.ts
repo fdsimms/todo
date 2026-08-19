@@ -97,6 +97,13 @@ describe('cookTaskFields', () => {
     expect(cookTaskDraft(entry({ id: 'm-9' })).generatedKind).toBe('mealCook');
     expect(cookTaskDraft(entry({ id: 'm-9' })).generatedSourceId).toBe('m-9');
   });
+
+  // #1625: tapping the task's link opens the meal plan on the meal's own
+  // day, the same destination the weekly nudge's day tasks already open.
+  it('links to the meal plan on the meal\'s own day', () => {
+    expect(cookTaskFields(entry({ date: '2026-08-11' })).linkUrl)
+      .toBe('dundundun://mealplan?date=2026-08-11');
+  });
 });
 
 describe('cookTaskNeedsUpdate', () => {
@@ -113,7 +120,12 @@ describe('cookTaskNeedsUpdate', () => {
     expect(cookTaskNeedsUpdate(current, entry({ slot: 'breakfast' }))).toBe(true);
   });
 
-  // Only three fields are the meal's; everything else on the row is the
+  it('notices a task whose link no longer points at the meal\'s day', () => {
+    expect(cookTaskNeedsUpdate({ ...current, linkUrl: 'dundundun://mealplan?date=2020-01-01' }, meal))
+      .toBe(true);
+  });
+
+  // Only four fields are the meal's; everything else on the row is the
   // user's and must never provoke a write.
   it('ignores a task the user has filed, prioritised or dated a reminder on', () => {
     expect(cookTaskNeedsUpdate({ ...current, timeSegments: ['evening'] }, meal)).toBe(false);
@@ -130,7 +142,7 @@ describe('cookTaskDraft category', () => {
     expect(cookTaskDraft(entry(), 'Kitchen').category).toBe('Kitchen');
   });
 
-  // Category is applied on creation only — it isn't one of the three fields
+  // Category is applied on creation only — it isn't one of the four fields
   // the meal owns, so a reconcile must never rewrite where the user filed it.
   it('is not one of the fields a reconcile compares', () => {
     const meal = entry();

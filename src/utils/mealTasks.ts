@@ -2,6 +2,7 @@ import type { MealPlanEntry, MealSlot, TaskDraft, TimeOfDay } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { generatedBy, wantsGeneratedTask } from './generatedTasks';
 import { resolveOffsetDate } from './templateUtils';
+import { mealPlanNudgeLinkUrl } from './mealPlanNudge';
 
 /**
  * Projecting a planned meal onto a "Cook X" task in the task list.
@@ -84,29 +85,36 @@ export function cookTaskTitle(entry: MealPlanEntry): string {
 
 /**
  * The fields the meal owns on its task: what it's called, which day it's on,
- * and which part of that day.
+ * which part of that day, and where tapping its link opens.
  *
  * **This is deliberately the complete list**, and reconciling writes exactly
- * these three. Everything else on the row belongs to the user — the category
+ * these four. Everything else on the row belongs to the user — the category
  * they filed it under, the notes they added, the priority they set, the
  * subtasks they hung off it — and a reconcile that reset any of that would
  * make the task worthless as a task. So a meal edit rewrites the title, the
- * date and the segment, and touches nothing else, for ever.
+ * date, the segment and the link, and touches nothing else, for ever.
  *
  * The day resolves through resolveOffsetDate, the same noon-normalized anchor
  * this meal's *prep* tasks use, so a cook task and the prep steps leading up
  * to it can't land on subtly different instants of the same day.
+ *
+ * `linkUrl` reuses mealPlanNudgeLinkUrl (#1625) rather than restating the
+ * `dundundun://mealplan?date=` scheme here — a cook task opening the meal
+ * plan and landing on its own day is the same destination the nudge's own
+ * day tasks already open, just reached from a different generator.
  */
 export function cookTaskFields(entry: MealPlanEntry): {
   title: string;
   dueDate: string;
   timeSegments: TimeOfDay[];
+  linkUrl: string;
 } {
   return {
     title: cookTaskTitle(entry),
     // Never null: dayKeyToDate always yields a real Date, and the offset is 0.
     dueDate: resolveOffsetDate(dayKeyToDate(entry.date), 0)!,
     timeSegments: MEAL_SLOT_SEGMENTS[entry.slot] ?? [],
+    linkUrl: mealPlanNudgeLinkUrl(entry.date),
   };
 }
 
@@ -138,13 +146,14 @@ export function cookTaskDraft(
  * every list holding it.
  */
 export function cookTaskNeedsUpdate(
-  task: { title: string; dueDate: string | null; timeSegments: TimeOfDay[] },
+  task: { title: string; dueDate: string | null; timeSegments: TimeOfDay[]; linkUrl: string | null },
   entry: MealPlanEntry
 ): boolean {
   const next = cookTaskFields(entry);
   return (
     task.title !== next.title ||
     task.dueDate !== next.dueDate ||
+    task.linkUrl !== next.linkUrl ||
     task.timeSegments.length !== next.timeSegments.length ||
     next.timeSegments.some((seg, i) => task.timeSegments[i] !== seg)
   );
