@@ -11,6 +11,7 @@ import { useTaskStore } from './src/store/useTaskStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { useMealPlanStore } from './src/store/useMealPlanStore';
 import { useLeftoverStore } from './src/store/useLeftoverStore';
+import { useTemplateStore } from './src/store/useTemplateStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
 import { useNotificationTapSync } from './src/utils/notificationTapSync';
@@ -117,6 +118,7 @@ function AppRoot() {
   const sweepOvershootQuotas = useTaskStore(s => s.sweepOvershootQuotas);
   const dripStalledProjects = useTaskStore(s => s.dripStalledProjects);
   const checkMealPlanNudge = useTaskStore(s => s.checkMealPlanNudge);
+  const checkScheduledTemplates = useTemplateStore(s => s.checkScheduledTemplates);
   const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
   const purgeOldMealPlanEntries = useMealPlanStore(s => s.purgeOldEntries);
   const purgeOldLeftovers = useLeftoverStore(s => s.purgeOldLeftovers);
@@ -162,6 +164,12 @@ function AppRoot() {
       // weekStartsOn, and after initTasks, whose fan-out creates the meal
       // plan tables it queries directly.
       ['check meal plan nudge', checkMealPlanNudge],
+      // Apply any template whose schedule came due while the app was closed
+      // (#1781). After initSettings, since "due" is measured in logical days
+      // and gated on vacationMode; after dripStalledProjects for the same
+      // reason that one sits after rolloverQuotas — a run can create tasks a
+      // project counts, so the cheaper pass goes first and sees a settled list.
+      ['check scheduled templates', checkScheduledTemplates],
       // Enforce the completed-task retention window, if the user set one. Last
       // of the maintenance passes on purpose: it only ever deletes rows old
       // enough to be out of every other pass's reach, and running it after
@@ -185,7 +193,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any

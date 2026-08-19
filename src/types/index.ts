@@ -878,6 +878,45 @@ export interface TemplateItemGroup {
 // means 'none'.
 export type TemplateContainer = 'none' | 'stack' | 'project' | 'task';
 
+// How often a scheduled template fires itself. Deliberately three coarse
+// buckets rather than an interval-plus-epoch: every one of these has a period
+// the calendar already names ("this week", "this month", "this year"), which
+// is what `scheduleLastFiredKey` stores and compares. An every-N-weeks option
+// needs an epoch to count from and a key that isn't a calendar period, so it
+// is its own change rather than a fourth member here.
+export type TemplateScheduleFrequency = 'weekly' | 'monthly' | 'yearly';
+
+// When a template applies itself, with no one present.
+//
+// Held on the template rather than in its own table: one schedule per template
+// is the whole of the feature, so a row would be a join to maintain for a
+// one-to-one. Null — the default, and what every existing template reads as —
+// means the template only ever runs when someone taps Apply.
+//
+// **`time` is a threshold, not an alarm.** There is no backend and nothing runs
+// while the app is closed (see checkScheduledTemplates), so a schedule fires on
+// the first launch at or after its trigger instant. The settings copy says this
+// in as many words; a schedule that implied 09:00 sharp would be lying.
+export interface TemplateSchedule {
+  frequency: TemplateScheduleFrequency;
+  // 'weekly': which day fires, date-fns `getDay()` convention (0 = Sunday).
+  // Ignored by the other two frequencies.
+  weekday: number;
+  // 'monthly'/'yearly': which day of the month fires, clamped to the length of
+  // the month it lands in, so 31 fires on the 30th in November and the 28th in
+  // February rather than skipping those months entirely.
+  monthDay: number;
+  // 'yearly' only: which month fires, 1-12.
+  month: number;
+  // "HH:mm" — the time of day at or after which the firing day's run is due.
+  time: string;
+  // How many days the run's anchor range spans, or null for a start anchor
+  // alone. This is what a template's own date offsets hang off, and what a
+  // number question with `fromDates` reads — so a trip template scheduled
+  // yearly can still answer "how many nights" without anyone typing it.
+  anchorSpanDays: number | null;
+}
+
 export interface TaskTemplate {
   id: string;
   name: string;
@@ -893,6 +932,20 @@ export interface TaskTemplate {
   // Templates page. Independent of task Category and ProjectCategory.
   category: string | null;
   applyContainer: TemplateContainer;
+  // When this template applies itself unattended, or null for tap-to-apply
+  // only (the default, and what every template written before this reads as).
+  schedule: TemplateSchedule | null;
+  // The calendar period this template last fired for — a week-start day key, a
+  // "YYYY-MM", or a "YYYY". Compared against the period a firing would be for,
+  // which is the whole of the once-per-period guarantee, and is why it is a
+  // period name rather than a timestamp: a stamp has to be reasoned about
+  // against the schedule to answer "was that this week's", and gets that
+  // reasoning wrong across a schedule the user edits mid-period.
+  //
+  // Written on **every** outcome of a due check, not just the ones that create
+  // tasks — a period that was skipped for vacation is the one exception, and
+  // it deliberately leaves this alone so the run happens when vacation ends.
+  scheduleLastFiredKey: string | null;
 }
 
 // One row of the grocery catalog — which is also the shopping list. A row is

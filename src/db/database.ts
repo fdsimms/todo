@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
@@ -755,6 +755,12 @@ export function initDatabase(): void {
     // of `archived`: see Project.completed.
     'ALTER TABLE projects ADD COLUMN completed INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE projects ADD COLUMN completed_at TEXT',
+    // NULL for every existing template, which parseTemplateSchedule reads as
+    // "never fires by itself" — so an install that upgrades into these columns
+    // has exactly the templates it had, all of them tap-to-apply.
+    // See TaskTemplate.schedule.
+    'ALTER TABLE templates ADD COLUMN schedule TEXT',
+    'ALTER TABLE templates ADD COLUMN schedule_last_fired_key TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2977,7 +2983,39 @@ function rowToTemplate(row: Record<string, unknown>): TaskTemplate {
     sortOrder: row.sort_order as number,
     category: (row.category as string) ?? null,
     applyContainer: parseApplyContainer(row.apply_container),
+    schedule: parseTemplateSchedule(row.schedule),
+    scheduleLastFiredKey: (row.schedule_last_fired_key as string) ?? null,
   };
+}
+
+/**
+ * Tolerates a null (pre-migration row), malformed JSON, and a frequency from a
+ * newer app version — same contract as parseTemplateItems above.
+ *
+ * A schedule that can't be read comes back null rather than as a repaired
+ * default: this is the field that makes the app write tasks unattended, and
+ * guessing a frequency for a blob we couldn't parse is how a template starts
+ * firing on a day nobody picked. Null means the template still applies fine by
+ * hand, which is the safe half of the feature.
+ */
+function parseTemplateSchedule(raw: unknown): TemplateSchedule | null {
+  if (typeof raw !== 'string' || raw === '') return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<TemplateSchedule>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    const frequency = parsed.frequency;
+    if (frequency !== 'weekly' && frequency !== 'monthly' && frequency !== 'yearly') return null;
+    return {
+      frequency,
+      weekday: typeof parsed.weekday === 'number' ? parsed.weekday : 0,
+      monthDay: typeof parsed.monthDay === 'number' ? parsed.monthDay : 1,
+      month: typeof parsed.month === 'number' ? parsed.month : 1,
+      time: typeof parsed.time === 'string' ? parsed.time : '09:00',
+      anchorSpanDays: typeof parsed.anchorSpanDays === 'number' ? parsed.anchorSpanDays : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Tolerates a null (pre-migration row), malformed JSON and unknown fields, same as parseTemplateItems above. */
@@ -3005,15 +3043,15 @@ export function dbGetAllTemplates(): TaskTemplate[] {
 
 export function dbInsertTemplate(template: TaskTemplate): void {
   db.runSync(
-    'INSERT INTO templates (id, name, items, item_groups, questions, created_at, sort_order, category, apply_container) VALUES (?,?,?,?,?,?,?,?,?)',
-    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.createdAt, template.sortOrder, template.category, template.applyContainer]
+    'INSERT INTO templates (id, name, items, item_groups, questions, created_at, sort_order, category, apply_container, schedule, schedule_last_fired_key) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.createdAt, template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey]
   );
 }
 
 export function dbUpdateTemplate(template: TaskTemplate): void {
   db.runSync(
-    'UPDATE templates SET name = ?, items = ?, item_groups = ?, questions = ?, sort_order = ?, category = ?, apply_container = ? WHERE id = ?',
-    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.sortOrder, template.category, template.applyContainer, template.id]
+    'UPDATE templates SET name = ?, items = ?, item_groups = ?, questions = ?, sort_order = ?, category = ?, apply_container = ?, schedule = ?, schedule_last_fired_key = ? WHERE id = ?',
+    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey, template.id]
   );
 }
 

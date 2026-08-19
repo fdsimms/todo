@@ -392,6 +392,23 @@ describe('demo mode', () => {
     expect(templates.some(t => declaresRunPlaceholder(t.items))).toBe(true);
   });
 
+  // A template that applies itself is invisible until one carries a schedule —
+  // every other template's Applies itself row reads "Never", which is what a
+  // capability nobody switched on looks like (#1781).
+  it('seeds a template that applies itself on a schedule', () => {
+    useDemoStore.getState().enterDemoMode();
+    const templates = useTemplateStore.getState().templates;
+
+    const scheduled = templates.find(t => t.schedule !== null)!;
+    expect(scheduled).toBeDefined();
+    expect(scheduled.schedule?.frequency).toBe('weekly');
+    // It has to have something to create, or the schedule demonstrates nothing.
+    expect(scheduled.items.length).toBeGreaterThan(0);
+    // And it lands in a container, so a run reads as one thing rather than
+    // four loose tasks appearing unattended.
+    expect(scheduled.applyContainer).not.toBe('none');
+  });
+
   // A template that asks nothing looks exactly like an app that can't ask, and
   // both kinds of question are invisible until one is declared — so the seed
   // needs a count read off the dates and a choice that decides an item.

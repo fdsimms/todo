@@ -552,6 +552,34 @@ function seedTemplates(): void {
     { title: 'Unpack and put a wash on', anchor: 'end', dueOffsetDays: 1, optional: true },
   ];
   ITEMS.forEach(item => addItem(template.id, item));
+
+  // A second template, and the only one that carries a schedule (#1781). A
+  // template that applies itself is invisible until one does — the Applies
+  // itself row reads "Never" on every other template in the app, which is
+  // exactly what a capability nobody has switched on looks like.
+  //
+  // Its *run* isn't seeded, and can't be: the only thing that could stamp a
+  // period key without also firing is checkScheduledTemplates, and the demo
+  // database is swapped in by initTasks rather than by the launch sequence
+  // that calls it. So this one fires for real the next time the app comes to
+  // the foreground, which is the honest demonstration anyway.
+  const reset = addTemplate('Sunday reset');
+  const RESET_ITEMS: Partial<TemplateItem>[] = [
+    { title: 'Sheets and towels', category: 'Home', dueOffsetDays: 0, effort: 2 },
+    { title: 'Bins out', category: 'Home', dueOffsetDays: 0, timeSegments: ['evening'] },
+    { title: 'Plan the week', category: 'Work', dueOffsetDays: 0, priority: 3 },
+    { title: 'Water the plants', category: 'Home', dueOffsetDays: 0, optional: true },
+  ];
+  RESET_ITEMS.forEach(item => addItem(reset.id, item));
+  useTemplateStore.getState().setTemplateContainer(reset.id, 'stack');
+  useTemplateStore.getState().setSchedule(reset.id, {
+    frequency: 'weekly',
+    weekday: 0,
+    monthDay: 1,
+    month: 1,
+    time: '09:00',
+    anchorSpanDays: null,
+  });
 }
 
 // ---------------------------------------------------------------------------
