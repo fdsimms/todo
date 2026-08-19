@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
@@ -20,6 +21,9 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useRecipeStore } from '../store/useRecipeStore';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SearchField } from '../components/SearchField';
@@ -39,7 +43,16 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
-import { formatTimeOfDay, getDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { dayKeyToDate, formatTimeOfDay, getDayStart, getLogicalDayKey, getLogicalToday } from '../utils/dateUtils';
+import { cookingWindow } from '../utils/cookingStats';
+import {
+  filterKitchenEvents,
+  kitchenEvents,
+  kitchenHistoryDays,
+  type KitchenEvent,
+} from '../utils/kitchenHistory';
+import { formatScale } from '../utils/recipeScale';
+import { MEAL_PLAN_RETENTION_DAYS, LEFTOVER_RETENTION_DAYS } from '../types';
 import { isQuotaPartial, isMissed, displayTitleFor } from '../utils/visibilityUtils';
 import { quotaFraction } from '../components/TaskItem';
 import { formatQuotaProgress } from '../utils/quotaUnit';
@@ -53,6 +66,46 @@ interface LogbookSection {
   dateKey: string;
   data: Task[];
 }
+
+interface KitchenSection {
+  title: string;
+  dateKey: string;
+  data: KitchenEvent[];
+}
+
+/**
+ * The two things the Logbook is a history *of*.
+ *
+ * **Two lists behind a switch, not one list of mixed rows** (#1779). Four
+ * things about a task row are meaningless on a cooked meal, and each of them
+ * would have had to grow a fork: the checkbox uncompletes, the swipes
+ * reschedule and select, the bulk bar offers Mark Incomplete and Delete (which
+ * on a meal would delete the *plan*, not the record of having cooked it), and
+ * the header's trash clears the whole logbook. `SelectionDot`'s own rule is an
+ * empty ring on every eligible row, so a mixed list would ring half of what's
+ * on screen and leave the rest looking excluded for no stated reason. The
+ * category and tag filters are the fifth: a meal has neither, so under an
+ * active filter the cooking rows would either vanish — making one control mean
+ * two things — or stay, making it a lie.
+ *
+ * The same call #1440 reached for Search and wrote down. Within the cooking
+ * lens a cooked meal and a finished leftover *are* mixed, and that's consistent
+ * rather than contradictory: both are read-only rows saying something happened
+ * in the kitchen on a day, so not one of the five objections applies to them.
+ *
+ * Pills rather than a `SegmentedControl`, matching the view-mode row TodayScreen
+ * has had all along — that component's own doc rules itself out on a page
+ * background, and its track is for setting a value rather than choosing which
+ * list you're reading.
+ */
+type LogbookLens = 'tasks' | 'cooking';
+
+const LENS_TITLES: Record<LogbookLens, string> = {
+  tasks: 'Tasks',
+  cooking: 'Cooking',
+};
+
+const LENSES: LogbookLens[] = ['tasks', 'cooking'];
 
 const CHECKBOX_SIZE = 20;
 
@@ -85,8 +138,14 @@ const SEARCH_DEBOUNCE_MS = 180;
 const ROW_HEIGHT = spacing.sm * 2 + lineHeight.md + 2 + lineHeight.xs; // 56
 const DAY_HEADER_HEIGHT = spacing.lg + lineHeight.xs + spacing.xs; // 44
 
-function formatDayHeader(iso: string, dayResetTime?: string): string {
-  const d = getDayStart(new Date(iso), dayResetTime);
+/**
+ * Takes the day *key* rather than the instant it came from, so both lenses can
+ * share it. The cooking lens has no instant to hand over for a cooked meal —
+ * `MealPlanEntry.date` is already a calendar day (see `kitchenEvents`) — and
+ * the task lens has already computed this key to group by.
+ */
+function formatDayHeader(dayKey: string, dayResetTime?: string): string {
+  const d = dayKeyToDate(dayKey);
   const today = getDayStart(new Date(), dayResetTime);
   if (isSameDay(d, today)) return 'Today';
   if (isSameDay(d, addDays(today, -1))) return 'Yesterday';
@@ -100,6 +159,7 @@ function formatTime(iso: string): string {
 export function LogbookScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+  const navigation = useNavigation<any>();
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const bulkUncompleteTasks = useTaskStore(s => s.bulkUncompleteTasks);
@@ -112,6 +172,39 @@ export function LogbookScreen() {
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Read at the point of use rather than latched, like StatsScreen's cooking
+  // section: putting the kitchen away takes this lens with it, and turning it
+  // back on restores it exactly as it was. `lens` is left alone so the switch
+  // doesn't quietly forget which one someone was reading.
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const [lens, setLens] = useState<LogbookLens>('tasks');
+  const activeLens: LogbookLens = kitchenEnabled ? lens : 'tasks';
+
+  const cookHistory = useMealPlanStore(s => s.cookHistory);
+  const refreshCookHistory = useMealPlanStore(s => s.refreshCookHistory);
+  const leftovers = useLeftoverStore(s => s.leftovers);
+  const recipes = useRecipeStore(s => s.recipes);
+
+  // Pulled on focus, not pushed: `cookHistory` is deliberately outside the meal
+  // plan's window contract (see its note there), and `enableScreens(false)`
+  // keeps this tab mounted, so a window computed once at mount would still end
+  // on the day the app was opened. Same shape as StatsScreen's.
+  useFocusEffect(
+    useCallback(() => {
+      if (!kitchenEnabled) return;
+      const window = cookingWindow(getLogicalToday(), MEAL_PLAN_RETENTION_DAYS);
+      refreshCookHistory(window.startKey, window.endKey);
+    }, [kitchenEnabled, refreshCookHistory])
+  );
+
+  const allKitchenEvents = useMemo(
+    () =>
+      kitchenEnabled
+        ? kitchenEvents(cookHistory ?? [], leftovers, recipes, dayResetTime)
+        : [],
+    [kitchenEnabled, cookHistory, leftovers, recipes, dayResetTime]
+  );
 
   // A completed task's projectId doesn't say which project — same map
   // SearchScreen builds once per projects change rather than looking each
@@ -184,7 +277,17 @@ export function LogbookScreen() {
     return tasks;
   }, [completedTasks, selectedCategory, selectedTag, debouncedQuery]);
 
-  const isFiltered = query.trim().length > 0 || selectedCategory !== null || selectedTag !== null;
+  // The category and tag filters are task vocabulary and don't reach this lens
+  // (see LogbookLens), so the query is all that narrows it.
+  const filteredEvents = useMemo(
+    () => filterKitchenEvents(allKitchenEvents, debouncedQuery),
+    [allKitchenEvents, debouncedQuery]
+  );
+
+  const isFiltered =
+    activeLens === 'cooking'
+      ? query.trim().length > 0
+      : query.trim().length > 0 || selectedCategory !== null || selectedTag !== null;
 
   // Extra bottom padding so the last rows aren't hidden behind the floating
   // bulk bar, same as the other bulk-selecting screens.
@@ -249,27 +352,73 @@ export function LogbookScreen() {
     });
 
     return Array.from(grouped.entries()).map(([dateKey, data]) => ({
-      title: formatDayHeader(data[0].completedAt!, dayResetTime),
+      title: formatDayHeader(dateKey, dayResetTime),
       dateKey,
       data,
     }));
   }, [filteredTasks, dayResetTime]);
 
+  const kitchenSections = useMemo(
+    (): KitchenSection[] =>
+      kitchenHistoryDays(filteredEvents).map(day => ({
+        title: formatDayHeader(day.dayKey, dayResetTime),
+        dateKey: day.dayKey,
+        data: day.events,
+      })),
+    [filteredEvents, dayResetTime]
+  );
+
+  // One layout for whichever list is on screen. A kitchen row is built to the
+  // same ROW_HEIGHT as a task row, on purpose — see the note on that constant;
+  // a second row height here would need a second set of pinned metrics and
+  // would put the list back out of getItemLayout's reach at scroll depth.
   const cellLayout = useMemo(
-    () => sectionListCellLayout(sections.map(s => s.data.length), DAY_HEADER_HEIGHT, ROW_HEIGHT),
-    [sections]
+    () =>
+      sectionListCellLayout(
+        (activeLens === 'cooking' ? kitchenSections : sections).map(s => s.data.length),
+        DAY_HEADER_HEIGHT,
+        ROW_HEIGHT
+      ),
+    [activeLens, sections, kitchenSections]
   );
   const getItemLayout = useCallback(
     (_data: unknown, index: number) => cellLayout[index] ?? { length: 0, offset: 0, index },
     [cellLayout]
   );
 
+  const openRecipe = useCallback(
+    (recipeId: string) => {
+      haptics.tap();
+      navigation.navigate('RecipeDetail', { recipeId });
+    },
+    [navigation]
+  );
+
+  const switchLens = (next: LogbookLens) => {
+    if (next === lens) return;
+    haptics.tap();
+    // Selection is over completed *tasks* and has no meaning on the other side,
+    // so it leaves with the list it was made in — same call TodayScreen's view
+    // pills make. The query deliberately stays: "salmon" is a fair question to
+    // ask of both.
+    if (selectionMode) exitSelection();
+    setLens(next);
+  };
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Logbook"
-        subtitle={`${completedTasks.length} completed`}
-        actions={completedTasks.length > 0 ? [
+        subtitle={
+          activeLens === 'cooking'
+            ? describeKitchenCount(allKitchenEvents.length)
+            : `${completedTasks.length} completed`
+        }
+        // The trash clears completed *tasks* (`clearLogbook` → bulkDeleteTasks),
+        // so it belongs to that lens alone. There is no equivalent here and
+        // there shouldn't be: the cooking rows are a read over the meal plan and
+        // the fridge, and clearing them would mean deleting the plan.
+        actions={activeLens === 'tasks' && completedTasks.length > 0 ? [
           {
             icon: 'trash-outline',
             onPress: handleClearLogbook,
@@ -279,7 +428,39 @@ export function LogbookScreen() {
         ] : undefined}
       />
 
-      {completedTasks.length > 0 && (
+      {kitchenEnabled && (
+        <View style={styles.lensRow}>
+          {LENSES.map(mode => {
+            const active = activeLens === mode;
+            return (
+              <TouchableOpacity
+                key={mode}
+                style={[styles.lensPill, active && styles.lensPillActive]}
+                onPress={() => switchLens(mode)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`${LENS_TITLES[mode]} view`}
+              >
+                <Text style={[styles.lensPillText, active && styles.lensPillTextActive]}>
+                  {LENS_TITLES[mode]}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      {activeLens === 'cooking' && allKitchenEvents.length > 0 && (
+        <SearchField
+          style={styles.searchBar}
+          placeholder="Search cooking…"
+          value={query}
+          onChangeText={setQuery}
+        />
+      )}
+
+      {activeLens === 'tasks' && completedTasks.length > 0 && (
         <>
           <SearchField
             style={styles.searchBar}
@@ -339,6 +520,63 @@ export function LogbookScreen() {
         </>
       )}
 
+      {activeLens === 'cooking' ? (
+        // Its own list rather than a union row type through the one above:
+        // every prop that list carries — the paint provider, the selection
+        // extraData, the bulk padding — is about a selection this lens doesn't
+        // have. What the two share is the metrics (see cellLayout) and the day
+        // header, which is what makes them read as one screen.
+        <SectionList
+          sections={kitchenSections}
+          keyExtractor={item => item.key}
+          getItemLayout={getItemLayout}
+          contentContainerStyle={
+            kitchenSections.length === 0 ? styles.emptyContainer : styles.listContent
+          }
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionHeaderText}>{section.title}</Text>
+              <Text style={styles.sectionHeaderCount}>{section.data.length}</Text>
+            </View>
+          )}
+          renderItem={({ item }) => (
+            <KitchenRow
+              event={item}
+              styles={styles}
+              colors={colors}
+              onOpenRecipe={openRecipe}
+            />
+          )}
+          // Named where the list stops, because it does stop and nothing else
+          // on screen says why. Both horizons, not the longer one: a leftover
+          // is purged four months before the meal it came from.
+          ListFooterComponent={
+            kitchenSections.length > 0 ? (
+              <Text style={styles.historyNote}>
+                Cooked meals are kept for {MEAL_PLAN_RETENTION_DAYS} days, leftovers for{' '}
+                {LEFTOVER_RETENTION_DAYS}.
+              </Text>
+            ) : null
+          }
+          ListEmptyComponent={
+            isFiltered ? (
+              <EmptyState
+                icon="search-outline"
+                title="No matches"
+                subtitle="Nothing you've cooked matches your search"
+                bottomOffset={tabBarHeight}
+              />
+            ) : (
+              <EmptyState
+                icon="restaurant-outline"
+                title="Nothing cooked yet"
+                subtitle="Meals you mark cooked, and leftovers you finish, appear here"
+                bottomOffset={tabBarHeight}
+              />
+            )
+          }
+        />
+      ) : (
       <PaintSelectionProvider {...paintProps}>
       <SectionList
         sections={sections}
@@ -403,6 +641,7 @@ export function LogbookScreen() {
         }
       />
       </PaintSelectionProvider>
+      )}
 
       {selectionMode && (
         <LogbookBulkBar
@@ -698,6 +937,98 @@ const LogbookRow = React.memo(function LogbookRow({
   );
 });
 
+/** "12 cooked and eaten" reads wrong, and so does a bare number. */
+function describeKitchenCount(count: number): string {
+  return `${count} kitchen ${count === 1 ? 'entry' : 'entries'}`;
+}
+
+interface KitchenRowProps {
+  event: KitchenEvent;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+  onOpenRecipe: (recipeId: string) => void;
+}
+
+/**
+ * One thing that happened in the kitchen.
+ *
+ * Built to the same ROW_HEIGHT as `LogbookRow` — title on one line, one meta
+ * line under it — because both lenses share `getItemLayout` (see the note on
+ * that constant, which this row is just as bound by).
+ *
+ * **Read-only, and every one of its differences from a task row follows from
+ * that.** The glyph is a `View` rather than a `TouchableOpacity`: there is
+ * nothing to un-cook here, and marking a meal not-cooked belongs on the meal
+ * plan where the plan is. No `SwipeableRow`, since both of that row's actions
+ * (reschedule the completion, start a selection) are task operations. No
+ * trailing `⋯`, because the menu behind it offers three things this row can't
+ * do. What it does have is the one thing a completed task genuinely doesn't:
+ * somewhere to go. A recipe-backed row opens the recipe — "when did we last
+ * have the ragù" is most of why this lens exists — and a free-text meal or a
+ * hand-logged container has no recipe, so it isn't pressable and shows no
+ * chevron rather than a dead one.
+ */
+const KitchenRow = React.memo(function KitchenRow({
+  event,
+  styles,
+  colors,
+  onOpenRecipe,
+}: KitchenRowProps) {
+  const cooked = event.kind === 'cooked';
+  const tossed = event.outcome === 'tossed';
+  // Its own glyph per kind rather than the task lens's checkmark for everything:
+  // two lists this similar need to say which one you're reading at a glance, and
+  // eaten-vs-thrown-out is the one distinction in here worth a shape.
+  const glyph = cooked ? 'restaurant' : tossed ? 'trash-outline' : 'checkmark';
+  // Deliberately not colors.red for a thrown-out container — the same call
+  // describeOutcome makes in choosing "Thrown out" over "Wasted". Nothing here
+  // is a grade.
+  const glyphColor = cooked ? colors.accent : tossed ? colors.textSecondary : colors.green;
+  const scale = event.scale !== 1 ? formatScale(event.scale) : null;
+
+  const body = (
+    <>
+      <View style={styles.kitchenGlyph}>
+        <Ionicons name={glyph} size={iconSize.sm} color={glyphColor} />
+      </View>
+      <View style={styles.rowContent}>
+        <Text style={styles.taskTitle} numberOfLines={1}>{event.title}</Text>
+        <View style={styles.metaRow}>
+          <Text style={styles.taskTime}>{event.detail}</Text>
+          {/* How much of it was made — the one fact about a particular cooking
+              that isn't already on the recipe, and the reason recipeScale is a
+              fact about the meal rather than about the dish. Silent at 1×,
+              which is nearly every row. */}
+          {scale && <Text style={styles.taskTime}>· {scale}</Text>}
+        </View>
+      </View>
+      {event.recipeId && (
+        <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+      )}
+    </>
+  );
+
+  const label = [event.title, event.detail, scale ? `scaled ${scale}` : null]
+    .filter(Boolean)
+    .join(', ');
+
+  if (!event.recipeId) {
+    return <View style={styles.row} accessible accessibilityLabel={label}>{body}</View>;
+  }
+  return (
+    <TouchableOpacity
+      style={styles.row}
+      onPress={() => onOpenRecipe(event.recipeId!)}
+      activeOpacity={interaction.activeOpacity}
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={`${label}. Open recipe`}
+    >
+      {body}
+    </TouchableOpacity>
+  );
+});
+
 // An applied filter, shown next to the Filter button so the current state is
 // readable without opening the sheet. Tapping anywhere on it clears it.
 function ActiveFilterPill({
@@ -737,6 +1068,25 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,
   },
+  // Matching TodayScreen's view-mode pills, which is the app's other
+  // list-screen lens switch — accent-filled for the active one. Two options
+  // fit a 390pt line with room to spare, so unlike Today's this doesn't need
+  // to scroll, and a plain row can't be shrunk by the list below it.
+  lensRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  lensPill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgQuaternary,
+  },
+  lensPillActive: { backgroundColor: colors.accent },
+  lensPillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  lensPillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   filterBarScroll: { flexGrow: 0, flexShrink: 0 },
   filterBar: {
     flexDirection: 'row',
@@ -920,5 +1270,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   menuButton: {
     padding: 4,
     flexShrink: 0,
+  },
+  // The same 20pt box `checkCircle` occupies, so the two lenses' titles start at
+  // the same x and the row still lays out to exactly ROW_HEIGHT — but **bare,
+  // with no ring around it**. A bordered circle at that position is this app's
+  // checkbox, and none of these rows can be ticked; drawing one would be the
+  // same affordance lie `styles.row` avoids by staying flat instead of taking
+  // the card treatment. The colour is set per row rather than here, since it's
+  // what says which of the three things happened.
+  kitchenGlyph: {
+    width: CHECKBOX_SIZE,
+    height: CHECKBOX_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  // Outside the cells, so it costs getItemLayout nothing — a SectionList's own
+  // footer isn't in the flat cell index the layout covers.
+  historyNote: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    lineHeight: lineHeight.sm,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
   },
 });
