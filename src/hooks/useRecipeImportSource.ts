@@ -29,10 +29,19 @@ export interface ResolvedRecipeSource {
  * sheets stayed one line different from what they were: `input.source` became
  * `await input.resolveSource()`.
  */
-export function useRecipeImportSource(initialMode: RecipeInputMode = 'paste') {
+export function useRecipeImportSource(
+  initialMode: RecipeInputMode = 'paste',
+  /**
+   * Seeds the Link field — a share arriving from Safari, which knows the
+   * address before the sheet exists. Reset restores it rather than clearing to
+   * empty, so backing out of a failed fetch leaves the shared link in the field
+   * to correct rather than making the user go back to Safari for it.
+   */
+  initialUrl = '',
+) {
   const [mode, setMode] = useState<RecipeInputMode>(initialMode);
   const [text, setText] = useState('');
-  const [url, setUrl] = useState('');
+  const [url, setUrl] = useState(initialUrl);
   const [photo, setPhoto] = useState<RecipePhoto | null>(null);
   const [picking, setPicking] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -42,13 +51,13 @@ export function useRecipeImportSource(initialMode: RecipeInputMode = 'paste') {
   const reset = useCallback(() => {
     setMode(initialMode);
     setText('');
-    setUrl('');
+    setUrl(initialUrl);
     setPhoto(null);
     setPicking(false);
     setPhotoError(null);
     setFetching(false);
     setPage(null);
-  }, [initialMode]);
+  }, [initialMode, initialUrl]);
 
   const pick = useCallback(async (source: RecipePhotoSource) => {
     setPicking(true);

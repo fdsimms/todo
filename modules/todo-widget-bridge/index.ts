@@ -4,6 +4,9 @@ interface TodoWidgetBridgeNativeModule {
   // Returns Bool rather than Void deliberately — see TodoWidgetBridgeModule.swift.
   writeSnapshot(jsonString: string): Promise<boolean>;
   drainPendingCompletions(): Promise<string[]>;
+  // The Share extension's queue of shared recipe page addresses — see
+  // src/utils/sharedRecipeImport.ts.
+  drainSharedRecipeUrls(): Promise<string[]>;
   // See src/utils/liveActivity.ts for the JSON shape (TimerRun[]) and the
   // reconciliation this drives.
   syncTimerLiveActivities(jsonString: string): Promise<boolean>;
@@ -21,6 +24,10 @@ export function writeWidgetSnapshot(jsonString: string): Promise<boolean> {
 
 export function drainPendingWidgetCompletions(): Promise<string[]> {
   return TodoWidgetBridge.drainPendingCompletions();
+}
+
+export function drainSharedRecipeUrls(): Promise<string[]> {
+  return TodoWidgetBridge.drainSharedRecipeUrls();
 }
 
 export function syncTimerLiveActivities(jsonString: string): Promise<boolean> {

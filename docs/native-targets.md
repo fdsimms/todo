@@ -41,3 +41,32 @@ needs to share data with the app will hit the same sharp edges this one did.
   `Activity.request` throws at runtime on the very device it's meant to work on; nothing at
   build time catches the omission, because the extension itself doesn't request activities, it
   only renders the ones the app process starts.
+
+## The Share extension (`targets/todo-share/`)
+
+Added second, against the list above — every item held, and `plugins/withShareExtension.js`
+is a near-copy of the widget's plugin for that reason. Four things that are specific to a
+*share* extension rather than to native targets generally:
+
+- **`NSExtensionPrincipalClass` must be `$(PRODUCT_MODULE_NAME).ClassName`**, not the bare
+  class name, for a Swift extension. The module name comes from `PRODUCT_NAME`, so the two
+  build settings have to agree — a mismatch is a share sheet entry that appears and then
+  fails to launch, with nothing at build time to catch it.
+- **`NSExtensionActivationRule` decides where your app appears in the share sheet.**
+  `NSExtensionActivationSupportsWebURLWithMaxCount: 1` is what keeps this one out of the sheet
+  for photos, files and selected text. Omitting the rule entirely makes the extension offer
+  itself for everything and then have nothing to do with most of it.
+- **A share extension gets no network budget worth relying on and no keychain access to the
+  app's API key.** This one writes the address to the App Group queue and stops; the app does
+  the fetch and the extraction on next foreground. Don't move work into the extension — it's a
+  short-lived, memory-capped process iOS kills without warning.
+- **`NSExtensionContext.open` is public API but not reliable from a share extension.** It
+  works on some iOS versions and quietly reports failure on others, which is why the queue is
+  written *first* and the result ignored: the feature works either way, and `open` only decides
+  whether the import happens now or on next launch. The responder-chain walk to
+  `UIApplication.openURL` that would make it reliable is a private-API trick — don't.
+
+The queue file (`shared_recipe_urls.json`) is written by the *extension* and drained by the
+app, inverting the single-writer convention above. That's the same shape
+`widget_pending_completions.json` already uses, and it holds for the same reason: exactly one
+process writes a given file and exactly one drains it, so there is still nothing to lock.

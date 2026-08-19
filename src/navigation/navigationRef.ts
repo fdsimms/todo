@@ -82,3 +82,17 @@ export function openFinishShoppingFromTripBar(): void {
     params: { openFinish: Date.now() },
   });
 }
+
+// Where a shared recipe page lands — "Share → dundundun" from Safari, drained
+// by useSharedRecipeImport(). Opens Recipes and asks it to pop the import sheet
+// on the Link tab with the address already in it, the same stamped-param
+// handoff openQuickAddFromShortcut uses, and stamped for the same reason:
+// sharing two pages in a row (or the same one twice) has to look different each
+// time or the screen ignores the second.
+export function openRecipeImportFromShare(url: string): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({
+    name: 'Recipes',
+    params: { importUrl: url, importStamp: Date.now() },
+  });
+}

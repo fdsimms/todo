@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
@@ -96,6 +96,7 @@ export function RecipesScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
@@ -120,6 +121,9 @@ export function RecipesScreen() {
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [importMode, setImportMode] = useState<RecipeInputMode>('photo');
+  // Prefills the Link tab when the sheet was opened by a share rather than by
+  // the add menu. Cleared on close so reopening from the menu starts empty.
+  const [importUrl, setImportUrl] = useState('');
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [groupByMealType, setGroupByMealType] = useState(true);
 
@@ -145,11 +149,26 @@ export function RecipesScreen() {
     { key: 'name', label: 'New recipe', icon: 'add-circle-outline' },
   ]), []);
 
+  // "Share → dundundun" from Safari, arriving via openRecipeImportFromShare.
+  // An effect rather than during-render handling, the same call TodayScreen's
+  // openQuickAdd makes: there's no wrong-view frame to avoid, just a sheet
+  // appearing a frame after the tab does.
+  const [handledImportStamp, setHandledImportStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const stamp = route.params?.importStamp;
+    const url = route.params?.importUrl;
+    if (stamp === undefined || stamp === handledImportStamp || typeof url !== 'string') return;
+    setHandledImportStamp(stamp);
+    setImportUrl(url);
+    setImportMode('link');
+    setImportVisible(true);
+  }, [route.params?.importStamp, route.params?.importUrl, handledImportStamp]);
+
   const handleAddMenuSelect = useCallback((key: string) => {
     // Both import items open the one sheet, on their own tab — see
     // RecipeCreateSheet's initialMode.
-    if (key === 'link') { setImportMode('link'); setImportVisible(true); }
-    else if (key === 'import') { setImportMode('photo'); setImportVisible(true); }
+    if (key === 'link') { setImportUrl(''); setImportMode('link'); setImportVisible(true); }
+    else if (key === 'import') { setImportUrl(''); setImportMode('photo'); setImportVisible(true); }
     else setAddVisible(true);
   }, []);
 
@@ -634,7 +653,8 @@ export function RecipesScreen() {
       <RecipeCreateSheet
         visible={importVisible}
         initialMode={importMode}
-        onClose={() => setImportVisible(false)}
+        initialUrl={importUrl}
+        onClose={() => { setImportVisible(false); setImportUrl(''); }}
         onCreated={recipeId => navigation.navigate('RecipeDetail', { recipeId })}
       />
 
