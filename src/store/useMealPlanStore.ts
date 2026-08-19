@@ -235,6 +235,34 @@ interface MealPlanStore {
    */
   refreshCookingCounts: (window: CookingWindow) => void;
 
+  /**
+   * Every meal ever marked cooked that hasn't been purged — the meal half of
+   * the Logbook's cooking lens (#1779). Null until something has asked, the
+   * same third answer `cookingCounts` and `plannedSlotCounts` keep.
+   *
+   * **Deliberately outside the window contract**, third and last of the reads
+   * that are, and for the identical reason: the Logbook is a hidden tab asking
+   * about the whole retention horizon, which is never the week MealPlanScreen
+   * has open, and `loadRange`ing to fetch it would clobber that screen's window
+   * on a tab that stays mounted and never reloads (`enableScreens(false)`).
+   *
+   * Rows, where `cookingCounts` keeps four integers — a per-row history has
+   * nothing to reduce to. What bounds it is the filter rather than the range:
+   * the read spans 180 days of plan and only the *cooked* rows are kept, so
+   * this holds as many meals as the user has actually cooked, not as many as
+   * they have planned.
+   */
+  cookHistory: MealPlanEntry[] | null;
+
+  /**
+   * Re-reads `cookHistory` over an inclusive day-key window.
+   *
+   * **Pull, not push**, like the two refreshes above it, and returning without
+   * a `set` when nothing moved so wiring it to a screen focus doesn't re-render
+   * the list on every visit.
+   */
+  refreshCookHistory: (startKey: string, endKey: string) => void;
+
   /** Null when the title is empty and no recipe was named. */
   planMeal: (draft: MealPlanDraft) => MealPlanEntry | null;
 
@@ -448,6 +476,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   addedToListAt: {},
   plannedSlotCounts: {},
   cookingCounts: null,
+  cookHistory: null,
   initialized: false,
   lastAction: null,
   cookedOffer: null,
@@ -474,23 +503,30 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   initialize() {
     const addedToListAt = dbGetMealPlanAddedToList();
     const { rangeStart, rangeEnd } = get();
-    // cookingCounts goes back to "nobody has looked" rather than being
-    // recounted here: this runs on every database swap (demo, restore), and a
-    // count carried across describes a database that no longer exists. Its
-    // reader refreshes on focus, so the cost of clearing it is one render with
-    // no section rather than one render of the wrong numbers.
+    // cookingCounts and cookHistory go back to "nobody has looked" rather than
+    // being re-read here: this runs on every database swap (demo, restore), and
+    // either one carried across describes a database that no longer exists.
+    // Both readers refresh on focus, so the cost of clearing them is one render
+    // with no section rather than one render of the wrong rows.
     if (rangeStart && rangeEnd) {
       set({
         entries: sortMealEntries(dbGetMealPlanEntries(rangeStart, rangeEnd)),
         addedToListAt,
         cookingCounts: null,
+        cookHistory: null,
         initialized: true,
       });
       return;
     }
     // Nothing has asked for a window yet, so there is nothing to hold. The
     // screen loads its own on mount.
-    set({ entries: [], addedToListAt, cookingCounts: null, initialized: true });
+    set({
+      entries: [],
+      addedToListAt,
+      cookingCounts: null,
+      cookHistory: null,
+      initialized: true,
+    });
   },
 
   loadRange(startKey, endKey) {
@@ -543,6 +579,31 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (unchanged) return;
 
     set({ cookingCounts: next });
+  },
+
+  refreshCookHistory(startKey, endKey) {
+    const next = dbGetMealPlanEntries(startKey, endKey).filter(entry => entry.cookedAt !== null);
+    const current = get().cookHistory;
+    // Compared on what a row is built from rather than by identity: the read
+    // allocates fresh objects every time, so anything shallower than this would
+    // never match and anything deeper would compare fields no row draws.
+    const unchanged =
+      current !== null &&
+      current.length === next.length &&
+      current.every((entry, i) => {
+        const other = next[i];
+        return (
+          entry.id === other.id &&
+          entry.date === other.date &&
+          entry.slot === other.slot &&
+          entry.title === other.title &&
+          entry.recipeId === other.recipeId &&
+          entry.cookedAt === other.cookedAt
+        );
+      });
+    if (unchanged) return;
+
+    set({ cookHistory: next });
   },
 
   planMeal(draft) {

@@ -66,6 +66,7 @@ const BASE: Task = {
   previousStreakCount: 0,
   previousStreakDate: null,
   showStreak: false,
+  streakRequiresWindow: false,
   reminderTime: null,
   reminderKind: 'notification',
   parentId: null,

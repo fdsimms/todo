@@ -354,6 +354,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
   const [streakDraft, setStreakDraft] = useState(0);
   const [showStreak, setShowStreak] = useState(false);
+  const [streakRequiresWindow, setStreakRequiresWindow] = useState(false);
 
   // Every picker section starts collapsed to its current value; opening one is
   // an explicit tap, so the form reads as a list of named fields rather than a
@@ -506,6 +507,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setChainStepOnSchedule(task.chainStepOnSchedule ?? false);
       setVacationPause(task.vacationPause ?? false);
       setShowStreak(task.showStreak ?? false);
+      setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setLinkUrl(task.linkUrl ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
@@ -532,6 +534,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems(initialDraft?.chainItems ?? []); setChainIndex(0);
       setVacationPause(false);
       setShowStreak(false);
+      setStreakRequiresWindow(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
@@ -600,6 +603,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
       vacationPause: task?.vacationPause ?? false,
       showStreak: task?.showStreak ?? false,
+      streakRequiresWindow: task?.streakRequiresWindow ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
@@ -781,6 +785,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // offered there — don't strand a stale `true` on a task that stopped
       // recurring, or the chip would be waiting if it ever recurs again.
       showStreak: recurrenceType !== 'none' && showStreak,
+      // Same reset reasoning as showStreak just above. Left on with no window
+      // to be late against is harmless (isCompletionOnTime is vacuously true
+      // for such a task), so this doesn't also need timeSegments/windowEnd to
+      // still be set — only the editor's own row is gated on that.
+      streakRequiresWindow: recurrenceType !== 'none' && streakRequiresWindow,
       linkUrl: resolveLinkUrl(),
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
@@ -1201,6 +1210,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, pinned, chainEnabled, chainItems, chainIndex, chainStepOnSchedule, vacationPause,
       showStreak,
+      streakRequiresWindow,
       linkUrl,
       phoneNumber,
       emailAddress,
@@ -3673,6 +3683,38 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   </View>
                   <View style={[styles.toggle, showStreak && styles.toggleOn]}>
                     <View style={[styles.toggleKnob, showStreak && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+              </>
+            ),
+          }] : []),
+          // Only offered once the task actually has a window to be late
+          // against (see Task.streakRequiresWindow) — a task with neither
+          // timeSegments nor a windowEnd has nothing for this to check, and
+          // the toggle would just be confusing sitting there.
+          ...(recurrenceType !== 'none' && (timeSegments.length > 0 || !!windowEnd) ? [{
+            key: 'streakRequiresWindow', label: 'Streak requires on-time completion', set: streakRequiresWindow,
+            keywords: ['late', 'window', 'on time', 'segment', 'morning', 'afternoon', 'evening', 'night'],
+            node: (
+              <>
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => {
+                    haptics.tap();
+                    setStreakRequiresWindow(v => !v);
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Streak requires on-time completion"
+                  accessibilityState={{ checked: streakRequiresWindow }}
+                >
+                  <Ionicons name="alarm-outline" size={18} color={streakRequiresWindow ? colors.orange : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Streak requires on-time completion</Text>
+                    <Text style={styles.optionHint}>Completing outside this task's time window still counts as done, but restarts the streak instead of continuing it</Text>
+                  </View>
+                  <View style={[styles.toggle, streakRequiresWindow && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, streakRequiresWindow && styles.toggleKnobOn]} />
                   </View>
                 </TouchableOpacity>
               </>

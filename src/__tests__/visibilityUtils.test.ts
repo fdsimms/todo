@@ -27,6 +27,7 @@ import {
   activeChainStepTitle,
   displayTitleFor,
   sameTimeSegments,
+  isCompletionOnTime,
 } from '../utils/visibilityUtils';
 import { registerTaskSource, registerProjectSource } from '../utils/blockerRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -120,6 +121,7 @@ const baseTask: Task = {
   previousStreakCount: 0,
   previousStreakDate: null,
   showStreak: false,
+  streakRequiresWindow: false,
   recurrenceFromCompletion: false,
   targetCount: null,
   targetUnit: null,
@@ -463,6 +465,89 @@ describe('isTaskExpired', () => {
   it('is true when the task was due on a past day and the window has closed', () => {
     const dueDate = new Date(2025, 5, 8, 0, 0, 0).toISOString(); // 2 days ago
     expect(isTaskExpired({ ...baseTask, dueDate, windowEnd: '09:00' })).toBe(true);
+  });
+});
+
+// ─── isCompletionOnTime ────────────────────────────────────────────────────────
+// #1255: what makes a completion "late" for Task.streakRequiresWindow — a
+// task with no window has nothing to be late against, an explicit
+// windowStart/windowEnd reuses effectiveWindowEnd (same as expiry), and a
+// timeSegments-only task's window ends at the start of the next segment
+// (morningStart=06:00, afternoonStart=12:00, eveningStart=18:00,
+// nightStart=21:00 — see mockSettingsState).
+
+describe('isCompletionOnTime', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is true for a task with no window at all', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 23, 59, 0));
+    expect(isCompletionOnTime(baseTask)).toBe(true);
+  });
+
+  it('follows an explicit windowStart/windowEnd, same as effectiveWindowEnd', () => {
+    const windowed = { ...baseTask, windowStart: '08:00', windowEnd: '13:00' };
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 12, 59, 0));
+    expect(isCompletionOnTime(windowed)).toBe(true);
+    jest.setSystemTime(new Date(2025, 5, 10, 13, 0, 0));
+    expect(isCompletionOnTime(windowed)).toBe(false);
+  });
+
+  it('is true for a windowStart with no windowEnd (open-ended, nothing to be late against)', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2030, 5, 10, 18, 0, 0));
+    expect(isCompletionOnTime({ ...baseTask, windowStart: '08:00', windowEnd: null })).toBe(true);
+  });
+
+  it('a morning-only task is on time up to afternoonStart', () => {
+    const morningHabit: Task = { ...baseTask, timeSegments: ['morning'] };
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 11, 59, 0));
+    expect(isCompletionOnTime(morningHabit)).toBe(true);
+    jest.setSystemTime(new Date(2025, 5, 10, 12, 0, 0));
+    expect(isCompletionOnTime(morningHabit)).toBe(false);
+  });
+
+  // The brush-teeth-at-11pm example from #1255 itself.
+  it('a morning-only task completed at 11pm is late', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 23, 0, 0));
+    expect(isCompletionOnTime({ ...baseTask, timeSegments: ['morning'] })).toBe(false);
+  });
+
+  it('uses the latest of several segments', () => {
+    const morningAndEvening: Task = { ...baseTask, timeSegments: ['morning', 'evening'] };
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 20, 59, 0)); // before nightStart
+    expect(isCompletionOnTime(morningAndEvening)).toBe(true);
+    jest.setSystemTime(new Date(2025, 5, 10, 21, 0, 0)); // nightStart
+    expect(isCompletionOnTime(morningAndEvening)).toBe(false);
+  });
+
+  // Anchored to the task's own dueDate (June 10), not to "today" at
+  // evaluation time — recomputed against "today" every call, this boundary
+  // would be tautologically always in the future (tomorrow can never have
+  // already arrived relative to whatever "now" the check runs at), and would
+  // never actually catch a late completion. See streakWindowAnchor.
+  it('a night-only task runs to the next day\'s morningStart', () => {
+    const nightHabit: Task = { ...baseTask, timeSegments: ['night'], dueDate: new Date(2025, 5, 10).toISOString() };
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 23, 0, 0));
+    expect(isCompletionOnTime(nightHabit)).toBe(true);
+    jest.setSystemTime(new Date(2025, 5, 11, 5, 59, 0));
+    expect(isCompletionOnTime(nightHabit)).toBe(true);
+    jest.setSystemTime(new Date(2025, 5, 11, 6, 0, 0));
+    expect(isCompletionOnTime(nightHabit)).toBe(false);
+  });
+
+  it('an explicit windowEnd takes precedence over timeSegments when both are set', () => {
+    const both: Task = { ...baseTask, timeSegments: ['morning'], windowStart: '08:00', windowEnd: '20:00' };
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 15, 0, 0)); // past the morning segment, before windowEnd
+    expect(isCompletionOnTime(both)).toBe(true);
   });
 });
 

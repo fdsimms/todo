@@ -50,6 +50,16 @@ interface Props<T> {
   columns?: number;
   /** Names the group for screen readers: "Repeats". */
   label?: string;
+  /**
+   * Which surface the track sits on. `card` (the default) is inside a
+   * `bgSecondary` card or sheet, where `bgTertiary` reads as a step down.
+   * `page` is straight onto `colors.bg`, where in the light theme those two are
+   * a shade apart and the track all but disappears — the reason this control
+   * used to be unusable outside a card. Same distinction `InlineAction` and
+   * `PillGroup` already draw, and it only changes the light theme: on either
+   * dark palette `bgTertiary` stands off the page perfectly well.
+   */
+  surface?: 'page' | 'card';
 }
 
 /**
@@ -96,17 +106,21 @@ interface Props<T> {
  *   It has a state no track can show — *no* unit lit, which is how "Never"
  *   reads — and it sits inline next to the stepper rather than owning a row.
  *
- * It also assumes a card or sheet surface: `bgTertiary` against a light theme's
- * `bg` is nearly invisible, which is why `RecipeScaleChips` (a factor row that
- * usually sits straight on the page) is still pills and would need this to take
- * a `surface` first.
+ * It assumed a card or sheet surface until #1669: `bgTertiary` against a light
+ * theme's `bg` is nearly invisible, which is what kept it out of the one place
+ * a lens switch belongs — straight under a screen's header. `surface="page"`
+ * is that fix, and it's why the meal plan's By day / Whole week switch can be a
+ * track rather than a second row of pills under the hub's own. `RecipeScaleChips`
+ * — the factor row that note named — is still pills and is now unblocked rather
+ * than settled: #1786 holds the question, including whether the `CountStepper`
+ * it's paired with is its own reason to stay a chip row.
  */
 export function SegmentedControl<T extends string | number | boolean | null>({
-  options, value, onChange, columns, label,
+  options, value, onChange, columns, label, surface = 'card',
 }: Props<T>) {
   const colors = useColors();
   const { isDark } = useTheme();
-  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const styles = useMemo(() => makeStyles(colors, isDark, surface), [colors, isDark, surface]);
 
   const renderSegment = (opt: SegmentOption<T>) => {
     const selected = opt.value === value;
@@ -166,10 +180,13 @@ export function SegmentedControl<T extends string | number | boolean | null>({
   );
 }
 
-const makeStyles = (colors: Colors, isDark: boolean) => StyleSheet.create({
+const makeStyles = (colors: Colors, isDark: boolean, surface: 'page' | 'card') => StyleSheet.create({
   track: {
     flexDirection: 'row',
-    backgroundColor: colors.bgTertiary,
+    // On a light page the track steps *down* rather than up: nothing sits above
+    // `bgSecondary` in that palette, so a lighter track would leave the raised
+    // segment below with no surface of its own to be raised onto.
+    backgroundColor: !isDark && surface === 'page' ? colors.bgSunken : colors.bgTertiary,
     borderRadius: radius.md,
     padding: 2,
     gap: 2,

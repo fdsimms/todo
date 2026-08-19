@@ -525,6 +525,17 @@ export interface Task {
   // recurs, which is the only place the editor offers the toggle.
   showStreak: boolean;
 
+  // Opt-in per task (#1255): a completion outside the task's own
+  // timeSegments/windowStart-windowEnd window still logs as done — it isn't
+  // lying about whether the work happened — but it doesn't continue the
+  // streak the way an on-time completion does; see
+  // visibilityUtils.isCompletionOnTime for what "on time" means for each kind
+  // of window. Only meaningful for a recurring task that actually carries a
+  // window, which is the only place the editor offers the toggle — a task
+  // with neither timeSegments nor a windowStart/windowEnd has nothing to be
+  // late against, and this is inert on it.
+  streakRequiresWindow: boolean;
+
   // Series — one commitment that falls on several hand-picked dates (e.g.
   // walking the neighbour's dog on the 10th and the 15th). Every date is its
   // own real row sharing this id, deliberately rather than one row holding a

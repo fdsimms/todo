@@ -171,7 +171,6 @@ export function CalendarScreen() {
               onSubtaskDragStateChange={setDraggingSubtask}
               // A day cell already says which day this is; repeating "Today" on
               // every row of the 13th is noise.
-              hideTodayLabel
               showCategory
             />
           );

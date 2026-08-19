@@ -186,6 +186,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakCount: 0,
   previousStreakDate: null,
   showStreak: false,
+  streakRequiresWindow: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -774,6 +775,21 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     const [before] = dbGetAllTasks();
     dbUpdateTask({ ...before, showStreak: true });
     expect(dbGetAllTasks()[0].showStreak).toBe(true);
+  });
+
+  it('round-trips streakRequiresWindow', () => {
+    dbInsertTask(makeTask({ id: 'habit', streakRequiresWindow: true }));
+    dbInsertTask(makeTask({ id: 'plain' }));
+    const tasks = dbGetAllTasks();
+    expect(tasks.find(t => t.id === 'habit')!.streakRequiresWindow).toBe(true);
+    expect(tasks.find(t => t.id === 'plain')!.streakRequiresWindow).toBe(false);
+  });
+
+  it('persists streakRequiresWindow through an update', () => {
+    dbInsertTask(makeTask({ id: 'habit-upd2' }));
+    const [before] = dbGetAllTasks();
+    dbUpdateTask({ ...before, streakRequiresWindow: true });
+    expect(dbGetAllTasks()[0].streakRequiresWindow).toBe(true);
   });
 
   it('round-trips seenAt', () => {
