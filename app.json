@@ -80,6 +80,7 @@
       ],
       "./plugins/withAppGroup",
       "./plugins/withWidgetExtension",
+      "./plugins/withShareExtension",
       "./plugins/withAlarmKit",
       "./plugins/withCloudKit",
       [
@@ -120,6 +121,15 @@
                 {
                   "targetName": "TodoWidget",
                   "bundleIdentifier": "com.fdsimms.dundundun.TodoWidget",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.fdsimms.dundundun"
+                    ]
+                  }
+                },
+                {
+                  "targetName": "TodoShare",
+                  "bundleIdentifier": "com.fdsimms.dundundun.TodoShare",
                   "entitlements": {
                     "com.apple.security.application-groups": [
                       "group.com.fdsimms.dundundun"

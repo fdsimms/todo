@@ -52,6 +52,8 @@ interface Props {
   visible: boolean;
   /** Which tab to open on — the add menu's item decides, see RecipesScreen. */
   initialMode?: RecipeInputMode;
+  /** Seeds the Link field, for a page shared in from Safari. */
+  initialUrl?: string;
   onClose: () => void;
   /** Handed the new (or matched existing) recipe id; the caller navigates. */
   onCreated: (recipeId: string) => void;
@@ -81,7 +83,9 @@ interface Props {
  * under instruction to ignore the method. A paste and a photo carry neither, so
  * neither is invented for them.
  */
-export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onCreated }: Props) {
+export function RecipeCreateSheet({
+  visible, initialMode = 'photo', initialUrl = '', onClose, onCreated,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -118,7 +122,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   // Whichever add-menu item opened it — "From a link" and "From a photo" both
   // land here, and each opens on its own tab rather than making that tap feel
   // ignored. Every other tab is still one tap away.
-  const input = useRecipeImportSource(initialMode);
+  const input = useRecipeImportSource(initialMode, initialUrl);
   const { resolveSource, reset: resetInput } = input;
 
   const reset = useCallback(() => {
@@ -133,8 +137,16 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     resetInput();
   }, [resetInput]);
 
+  // Reset on *both* edges, not just on close.
+  //
+  // Closing clears the last run, as it always did. Opening matters because
+  // `initialMode`/`initialUrl` are seeded into state, and the caller changes
+  // them in the same batch as `visible` — so there is never a render where the
+  // sheet is still closed and already holds the new values, and a close-only
+  // reset would show the tab the *previous* import used. Picking "From a photo"
+  // and then "From a link" landed on Photo.
   useEffect(() => {
-    if (!visible) reset();
+    reset();
   }, [visible, reset]);
 
   // `opts` rather than a bare boolean because this is handed to press handlers,
