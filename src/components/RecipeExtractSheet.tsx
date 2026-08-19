@@ -30,7 +30,9 @@ import {
   extractRecipe, type ExtractedRecipe, type RecipeGroceryItem,
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
-import { normalizeIngredient, formatServingsRange } from '../utils/recipeUtils';
+import {
+  normalizeIngredient, formatServingsRange, recipeHasMethod, recipeHasAttribution,
+} from '../utils/recipeUtils';
 import { aisleForName } from '../utils/groceryAisles';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
@@ -58,6 +60,17 @@ interface Props {
  * Never touches the recipe's name or notes: the recipe already exists (this
  * opens from RecipeDetailScreen), so overwriting what the user already typed
  * with whatever the model guessed would be a surprise, not a convenience.
+ *
+ * **The method and the attribution are the deliberate exception, and the
+ * reason is where they come from.** The rule above is about a *model's guess*
+ * landing on top of the user's own writing. A link import's steps and site
+ * aren't a guess — they're the page's own structured data, taken verbatim
+ * (see `parseRecipeJsonLd`), which is the same provenance as the ingredients
+ * this sheet has always applied. So they're offered as their own tick-to-apply
+ * rows, and the no-overwrite rule survives in where the ticks *start*: off
+ * whenever the recipe already has a method or an attribution of its own, and
+ * the method appends rather than replaces even then. A paste and a photo carry
+ * neither, so for them this sheet does exactly what it always did.
  */
 export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const colors = useColors();
@@ -67,6 +80,11 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const setServings = useRecipeStore(s => s.setServings);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
+  const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
+  const setSource = useRecipeStore(s => s.setSource);
+  const setAuthor = useRecipeStore(s => s.setAuthor);
+  const setSourceType = useRecipeStore(s => s.setSourceType);
+  const addStep = useRecipeStore(s => s.addStep);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
 
   const [loading, setLoading] = useState(false);
@@ -80,6 +98,12 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const [ingredients, setIngredients] = useState<RecipeGroceryItem[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const [applyDetails, setApplyDetails] = useState(true);
+  // Both default to *off* whenever the recipe already has the thing they'd
+  // write — see the defaults set in `run`. This sheet's standing rule is that
+  // it doesn't overwrite what the user already put here, and a tick is how
+  // they say otherwise.
+  const [applyMethod, setApplyMethod] = useState(false);
+  const [applySource, setApplySource] = useState(false);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   const input = useRecipeImportSource();
   const { resolveSource, reset: resetInput } = input;
@@ -91,6 +115,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setIngredients([]);
     setAccepted(new Set());
     setApplyDetails(true);
+    setApplyMethod(false);
+    setApplySource(false);
     resetInput();
   }, [resetInput]);
 
@@ -110,13 +136,19 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setIngredients(result.ingredients);
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
       setApplyDetails(result.servings !== null || result.prepMinutes !== null);
+      // A page's method and attribution are structured data taken verbatim,
+      // not a model's guess — so they're offered. Offered *ticked* only when
+      // there's nothing of the user's to land on top of.
+      const page = resolved.page;
+      setApplyMethod(!!page && page.steps.length > 0 && !recipeHasMethod(recipe));
+      setApplySource(!!page && !recipeHasAttribution(recipe));
     } catch (e) {
       setError(describeImportError(e));
       setCanRetry(isRetryableImportError(e));
     } finally {
       setLoading(false);
     }
-  }, [resolveSource, aisleOrder]);
+  }, [resolveSource, aisleOrder, recipe]);
 
   const toggle = (index: number) => {
     setAccepted(prev => {
@@ -164,12 +196,34 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       // in the prep half it would claim the whole recipe is mise en place.
       if (extracted.prepMinutes !== null) setEstimatedMinutes(recipe.id, extracted.prepMinutes);
     }
+    const page = input.page;
+    if (page) {
+      // Appended, never replacing what's there. A recipe with its own method
+      // arrives here unticked, so reaching this line at all means the user
+      // asked for these on top of it — and appending is the only version of
+      // that they can undo by hand.
+      if (applyMethod) page.steps.forEach(step => addStep(recipe.id, step));
+      if (applySource) {
+        setSourceUrl(recipe.id, page.url);
+        setSourceType(recipe.id, 'website');
+        if (page.siteName) setSource(recipe.id, page.siteName);
+        if (page.author) setAuthor(recipe.id, page.author);
+      }
+    }
     haptics.success();
     onClose();
   };
 
   const hasDetails = !!extracted && (extracted.servings !== null || extracted.prepMinutes !== null);
-  const canApply = !loading && !!extracted && (accepted.size > 0 || (applyDetails && hasDetails));
+  // Only ever the page's own structured data — a paste and a photo carry
+  // neither, so neither row exists for them.
+  const pageSteps = input.page?.steps ?? [];
+  const canApply = !loading && !!extracted && (
+    accepted.size > 0
+    || (applyDetails && hasDetails)
+    || (applyMethod && pageSteps.length > 0)
+    || (applySource && !!input.page)
+  );
 
   // One checkbox applying two facts has to name both when it has both, and it
   // reads out exactly what the row shows rather than a second phrasing of it.
@@ -185,6 +239,43 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // you ask. What it needs is the input back, not another attempt at it.
   const backLabel = input.usingLink ? 'Change the link' : 'Go back';
   const goBack = () => { setError(null); setExtracted(null); };
+
+  // Says what will happen rather than only what was found: the method row is
+  // the one place a recipe can end up with two methods, so the row that does
+  // it is where that has to be readable.
+  const methodMeta = `${pageSteps.length} step${pageSteps.length === 1 ? '' : 's'}${
+    recipeHasMethod(recipe) ? ', added after the method it already has' : ''}`;
+
+  const sourceMeta = [
+    [input.page?.siteName, input.page?.author].filter(Boolean).join(' · ') || input.page?.url,
+    recipeHasAttribution(recipe) ? 'replaces what’s there' : null,
+  ].filter(Boolean).join(' — ');
+
+  /** The tick-to-apply row this list is built from — three of them now. */
+  const renderToggle = ({ checked, onToggle, title, meta, label }: {
+    checked: boolean;
+    onToggle: () => void;
+    title: string;
+    meta: string | null;
+    label: string;
+  }) => (
+    <TouchableOpacity
+      style={styles.row}
+      activeOpacity={interaction.activeOpacity}
+      onPress={() => { haptics.tap(); onToggle(); }}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      accessibilityLabel={label}
+    >
+      <View style={[styles.checkbox, checked && styles.checkboxOn]}>
+        {checked && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+      </View>
+      <View style={styles.body}>
+        <Text style={styles.name}>{title}</Text>
+        {!!meta && <Text style={styles.meta}>{meta}</Text>}
+      </View>
+    </TouchableOpacity>
+  );
 
   const renderBody = () => {
     if (loading) {
@@ -246,7 +337,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       );
     }
 
-    if (ingredients.length === 0 && !hasDetails) {
+    if (ingredients.length === 0 && !hasDetails && pageSteps.length === 0) {
       return (
         <View style={styles.centered}>
           <EmptyState
@@ -270,30 +361,33 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           Untick anything you don't want added, or tap a name or amount to change it.
         </Text>
 
-        {hasDetails && (
-          <TouchableOpacity
-            style={styles.row}
-            activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); setApplyDetails(v => !v); }}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: applyDetails }}
-            accessibilityLabel={detailsLabel}
-          >
-            <View style={[styles.checkbox, applyDetails && styles.checkboxOn]}>
-              {applyDetails && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-            </View>
-            <View style={styles.body}>
-              <Text style={styles.name}>
-                {extracted.servings !== null
-                  ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
-                  : `About ${extracted.prepMinutes} min`}
-              </Text>
-              {extracted.servings !== null && extracted.prepMinutes !== null && (
-                <Text style={styles.meta}>About {extracted.prepMinutes} min</Text>
-              )}
-            </View>
-          </TouchableOpacity>
-        )}
+        {hasDetails && renderToggle({
+          checked: applyDetails,
+          onToggle: () => setApplyDetails(v => !v),
+          title: extracted.servings !== null
+            ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
+            : `About ${extracted.prepMinutes} min`,
+          meta: extracted.servings !== null && extracted.prepMinutes !== null
+            ? `About ${extracted.prepMinutes} min`
+            : null,
+          label: detailsLabel,
+        })}
+
+        {pageSteps.length > 0 && renderToggle({
+          checked: applyMethod,
+          onToggle: () => setApplyMethod(v => !v),
+          title: 'Method',
+          meta: methodMeta,
+          label: `Method, ${methodMeta}`,
+        })}
+
+        {!!input.page && renderToggle({
+          checked: applySource,
+          onToggle: () => setApplySource(v => !v),
+          title: 'Where it’s from',
+          meta: sourceMeta,
+          label: `Where it’s from, ${sourceMeta}`,
+        })}
 
         {ingredients.map((row, i) => {
           // A new heading whenever this row's section differs from the one
