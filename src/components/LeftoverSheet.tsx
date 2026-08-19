@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Modal,
   Platform,
   View,
@@ -26,6 +25,7 @@ import {
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { SafeBlurView } from './SafeBlurView';
 import { CountStepper } from './CountStepper';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -298,16 +298,13 @@ export function LeftoverSheet({
    * it asks, the same way deleting a recipe does, rather than relying on a
    * safety net that isn't there.
    */
-  const confirmDelete = () => {
+  const handleDeleteLeftover = () => {
     haptics.warning();
-    Alert.alert(
-      `Delete ${leftover?.title ?? 'this leftover'}?`,
-      'This takes it out of the fridge and out of the history. It can\'t be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => dismiss(onDelete) },
-      ],
-    );
+    confirmDelete({
+      title: `Delete ${leftover?.title ?? 'this leftover'}?`,
+      message: 'This takes it out of the fridge and out of the history. It can\'t be undone.',
+      onConfirm: () => dismiss(onDelete),
+    });
   };
 
   const pickDaysAgo = (days: number) => {
@@ -511,7 +508,7 @@ export function LeftoverSheet({
                 icon="close-circle-outline"
                 color={colors.red}
                 label="Delete"
-                onPress={confirmDelete}
+                onPress={handleDeleteLeftover}
                 accessibilityLabel="Delete this leftover"
               />
             </>

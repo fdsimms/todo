@@ -35,6 +35,8 @@ export function AppearanceSettings() {
   const setHapticsEnabled = useSettingsStore(s => s.setHapticsEnabled);
   const shakeToUndoEnabled = useSettingsStore(s => s.shakeToUndoEnabled);
   const setShakeToUndoEnabled = useSettingsStore(s => s.setShakeToUndoEnabled);
+  const confirmBeforeDeleting = useSettingsStore(s => s.confirmBeforeDeleting);
+  const setConfirmBeforeDeleting = useSettingsStore(s => s.setConfirmBeforeDeleting);
 
   const fontPreviewsLoaded = useFontPreviewsLoaded();
   const colors = useColors();
@@ -129,6 +131,17 @@ export function AppearanceSettings() {
             : 'Shaking your phone does nothing'}
           toggle={shakeToUndoEnabled}
           onPress={() => setShakeToUndoEnabled(!shakeToUndoEnabled)}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="trash-outline"
+          iconColor={confirmBeforeDeleting ? colors.accent : undefined}
+          label="Confirm before deleting"
+          hint={confirmBeforeDeleting
+            ? 'Shows an alert before deleting a recipe, template, tag, category, or clearing a list'
+            : 'Deletes immediately, without asking first'}
+          toggle={confirmBeforeDeleting}
+          onPress={() => setConfirmBeforeDeleting(!confirmBeforeDeleting)}
         />
       </SettingsSection>
     </>

@@ -94,6 +94,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['font', 'bricolage', 'fraunces', 'space grotesk', 'nunito', 'outfit', 'serif', 'mono'] },
   { id: 'haptics', groupId: 'appearance', label: 'Haptic feedback', section: 'Feedback',
     keywords: ['vibrate', 'vibration', 'taptic', 'buzz'] },
+  { id: 'confirmBeforeDeleting', groupId: 'appearance', label: 'Confirm before deleting', section: 'Feedback',
+    keywords: ['delete', 'alert', 'confirmation', 'undo', 'forget', 'clear'] },
 
   // Day & time
   { id: 'dayReset', groupId: 'dayTime', label: 'Morning', section: 'When the day turns over',

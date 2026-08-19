@@ -150,6 +150,14 @@ interface SettingsStore {
   // entirely rather than gating at the callback, so turning it off actually
   // stops the sensor from running.
   shakeToUndoEnabled: boolean;
+  // Whether a simple "delete this?" confirmation (recipe, template, tag,
+  // category, leftover, grocery item/aisle/shop, clearing a list, …) shows an
+  // Alert before firing — see src/utils/confirmDelete.ts, the one place that
+  // reads this. On by default, like shakeToUndoEnabled. Deliberately doesn't
+  // touch a dialog that's asking *which* delete to perform (a recurring
+  // task's series-vs-occurrence, a non-empty stack/project's cascade) — those
+  // are a choice, not confirmation friction, and stay unconditional.
+  confirmBeforeDeleting: boolean;
   // Today's sort & filter, persisted so they survive a cold launch. They're
   // view state rather than a preference — nothing in Settings shows them — but
   // they live here because losing your sort on every launch is the one thing
@@ -550,6 +558,7 @@ interface SettingsStore {
   setFabHand: (hand: FabHand) => void;
   setHapticsEnabled: (on: boolean) => void;
   setShakeToUndoEnabled: (on: boolean) => void;
+  setConfirmBeforeDeleting: (on: boolean) => void;
   setMealsOnToday: (mode: MealsOnToday) => void;
   setKitchenOnToday: (on: boolean) => void;
   setUnitSystem: (system: UnitSystem) => void;
@@ -631,6 +640,7 @@ const DEFAULT_SETTINGS = {
   fabHand: 'right' as FabHand,
   hapticsEnabled: true,
   shakeToUndoEnabled: true,
+  confirmBeforeDeleting: true,
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
   tripReminderEnabled: false,
@@ -880,6 +890,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   fabHand: 'right',
   hapticsEnabled: true,
   shakeToUndoEnabled: true,
+  confirmBeforeDeleting: true,
   sortOption: 'default',
   filterPriorities: [],
   filterEfforts: [],
@@ -971,6 +982,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // Same reasoning as hapticsEnabled above: defaults on so an install that
     // predates the setting keeps shake-to-undo working.
     const shakeToUndoEnabled = dbGetSetting('shakeToUndoEnabled') !== 'false';
+    const confirmBeforeDeleting = dbGetSetting('confirmBeforeDeleting') !== 'false';
     const storedSort = dbGetSetting('sortOption') as SortOption | null;
     const sortOption: SortOption =
       storedSort && SORT_OPTIONS.includes(storedSort) ? storedSort : 'default';
@@ -1149,7 +1161,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1257,6 +1269,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setShakeToUndoEnabled(on: boolean) {
     dbSetSetting('shakeToUndoEnabled', on ? 'true' : 'false');
     set({ shakeToUndoEnabled: on });
+  },
+
+  setConfirmBeforeDeleting(on: boolean) {
+    dbSetSetting('confirmBeforeDeleting', on ? 'true' : 'false');
+    set({ confirmBeforeDeleting: on });
   },
 
   setSortOption(sort: SortOption) {

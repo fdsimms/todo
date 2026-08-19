@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { TaskTemplate, TemplateContainer, TemplateQuestion, TemplateSchedule, TemplateScheduleFrequency } from '../types';
@@ -19,6 +18,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { confirmDelete } from '../utils/confirmDelete';
 import { findTemplatesReferencing } from '../utils/templateUtils';
 import { describeQuestion, questionLabel } from '../utils/templateQuestions';
 import { defaultTemplateSchedule, describeTemplateSchedule, ordinal } from '../utils/templateSchedule';
@@ -107,22 +107,15 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
       : referencing.length === 1
         ? `${base} It's used inside "${referencing[0].name}", which will show a warning until you remove or replace the reference.`
         : `${base} It's used inside ${referencing.length} other templates (${referencing.map(t => t.name).join(', ')}), which will show a warning until you remove or replace the reference.`;
-    Alert.alert(
-      'Delete Template',
+    confirmDelete({
+      title: 'Delete Template',
       message,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            deleteTemplate(template.id);
-            onClose();
-          },
-        },
-      ]
-    );
+      onConfirm: () => {
+        animateLayout();
+        deleteTemplate(template.id);
+        onClose();
+      },
+    });
   };
 
   if (!template) return null;

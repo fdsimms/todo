@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   FlatList,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -34,6 +33,7 @@ import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import type { GroceryItem } from '../types';
 
 const CHECKBOX_SIZE = 22;
@@ -174,40 +174,28 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
   const confirmForget = () => {
     const names = items.filter(i => selected.has(i.id)).map(i => i.name);
     if (names.length === 0) return;
-    Alert.alert(
-      `Forget ${names.length} ${names.length === 1 ? 'item' : 'items'}?`,
-      `${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}\n\nThis removes them from your catalog along with their purchase history, and can’t be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Forget',
-          style: 'destructive',
-          onPress: () => {
-            deleteItems([...selected]);
-            setSelected(new Set());
-            haptics.warning();
-          },
-        },
-      ]
-    );
+    confirmDelete({
+      title: `Forget ${names.length} ${names.length === 1 ? 'item' : 'items'}?`,
+      message: `${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}\n\nThis removes them from your catalog along with their purchase history, and can’t be undone.`,
+      confirmLabel: 'Forget',
+      onConfirm: () => {
+        deleteItems([...selected]);
+        setSelected(new Set());
+        haptics.warning();
+      },
+    });
   };
 
   const confirmPrune = () => {
-    Alert.alert(
-      `Forget ${pruneable.length} unused ${pruneable.length === 1 ? 'item' : 'items'}?`,
-      `${pruneable.map(i => i.name).slice(0, 6).join(', ')}${pruneable.length > 6 ? '…' : ''}\n\nThese have never been bought and haven't been added in months, usually typos. This can't be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Forget',
-          style: 'destructive',
-          onPress: () => {
-            deleteItems(pruneable.map(i => i.id));
-            haptics.warning();
-          },
-        },
-      ]
-    );
+    confirmDelete({
+      title: `Forget ${pruneable.length} unused ${pruneable.length === 1 ? 'item' : 'items'}?`,
+      message: `${pruneable.map(i => i.name).slice(0, 6).join(', ')}${pruneable.length > 6 ? '…' : ''}\n\nThese have never been bought and haven't been added in months, usually typos. This can't be undone.`,
+      confirmLabel: 'Forget',
+      onConfirm: () => {
+        deleteItems(pruneable.map(i => i.id));
+        haptics.warning();
+      },
+    });
   };
 
   const renderItem = ({ item }: { item: GroceryItem }) => {

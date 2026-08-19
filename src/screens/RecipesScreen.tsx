@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   View,
   Text,
   FlatList,
@@ -36,6 +35,7 @@ import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
   cleanRecipeName,
@@ -288,22 +288,15 @@ export function RecipesScreen() {
     const count = ids.length;
     const plural = count === 1 ? 'recipe' : 'recipes';
     haptics.warning();
-    Alert.alert(
-      `Delete ${count} ${plural}?`,
-      `You're about to delete ${count} ${plural}. Anything already on your grocery list stays there. This can't be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            bulkDeleteRecipes(ids);
-            exitSelection();
-          },
-        },
-      ],
-    );
+    confirmDelete({
+      title: `Delete ${count} ${plural}?`,
+      message: `You're about to delete ${count} ${plural}. Anything already on your grocery list stays there. This can't be undone.`,
+      onConfirm: () => {
+        animateLayout();
+        bulkDeleteRecipes(ids);
+        exitSelection();
+      },
+    });
   };
 
   const openRecipe = (recipe: Recipe) => {

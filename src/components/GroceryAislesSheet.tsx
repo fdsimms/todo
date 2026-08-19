@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -31,6 +30,7 @@ import { EmptyState } from './EmptyState';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { itemCountsByShop } from '../utils/groceryShops';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type Shop } from '../types';
 
 interface Props {
@@ -137,23 +137,16 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
 
   const confirmDeleteShop = (id: string, name: string) => {
     const count = shopCounts.get(id) ?? 0;
-    Alert.alert(
-      `Delete ${name}?`,
-      count > 0
+    confirmDelete({
+      title: `Delete ${name}?`,
+      message: count > 0
         ? `${count} ${count === 1 ? 'item is' : 'items are'} recorded as coming from here. Deleting the store forgets that. The items themselves stay. This can’t be undone.`
         : 'Nothing is recorded against this store yet.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            deleteShop(id);
-            haptics.warning();
-          },
-        },
-      ]
-    );
+      onConfirm: () => {
+        deleteShop(id);
+        haptics.warning();
+      },
+    });
   };
 
   // 'Other' rides along at the bottom outside the draggable set, so a drag can
@@ -175,23 +168,16 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
     // Everything filed here, not just what's on the list this week — the aisle
     // lives on the catalog row, so an off-list item moves too.
     const filed = items.filter(i => i.aisle === aisle).length;
-    Alert.alert(
-      `Delete ${aisle}?`,
-      filed > 0
+    confirmDelete({
+      title: `Delete ${aisle}?`,
+      message: filed > 0
         ? `${filed} ${filed === 1 ? 'item moves' : 'items move'} to ${OTHER_AISLE}. You can file them somewhere else afterwards.`
         : `Nothing is filed here. You can add it back at any time.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            deleteAisle(aisle);
-            haptics.warning();
-          },
-        },
-      ]
-    );
+      onConfirm: () => {
+        deleteAisle(aisle);
+        haptics.warning();
+      },
+    });
   };
 
   const handleAdd = () => {

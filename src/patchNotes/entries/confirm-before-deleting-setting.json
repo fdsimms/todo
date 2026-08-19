@@ -1,0 +1,4 @@
+{
+  "message": "Added a \"Confirm before deleting\" setting (Settings → Appearance → Feedback), on by default. Turn it off to skip the alert and delete immediately.",
+  "date": "2026-08-19"
+}
