@@ -9,6 +9,7 @@ import {
   fetchRecipePage,
   describeImportError,
   isRecipePageError,
+  isRetryableImportError,
   recipePageError,
   type RecipePageErrorCode,
 } from '../services/recipePage';
@@ -187,5 +188,45 @@ describe('isRecipePageError', () => {
     expect(isRecipePageError(new Error('API error 500'))).toBe(false);
     expect(isRecipePageError(null)).toBe(false);
     expect(isRecipePageError('blocked')).toBe(false);
+  });
+});
+
+describe('isRetryableImportError', () => {
+  it('offers a retry only where the same input could plausibly work', () => {
+    for (const code of ['timeout', 'offline', 'serverError'] as const) {
+      expect(isRetryableImportError(recipePageError(code))).toBe(true);
+    }
+  });
+
+  it('refuses one for every deterministic failure', () => {
+    // Each of these fails identically however many times you ask, and the
+    // error state offers a way back to the input instead.
+    for (const code of ['badUrl', 'blocked', 'notFound', 'notHtml', 'tooLarge', 'noRecipe'] as const) {
+      expect(isRetryableImportError(recipePageError(code))).toBe(false);
+    }
+  });
+
+  it('refuses one for the AI failures a retry never fixed either', () => {
+    expect(isRetryableImportError(new Error('No API key configured. Add your Anthropic API key in Settings.'))).toBe(false);
+    expect(isRetryableImportError(new Error('AI feature disabled'))).toBe(false);
+    expect(isRetryableImportError(new Error('API error 401'))).toBe(false);
+  });
+
+  it('keeps offering one for a transient model failure', () => {
+    for (const message of ['Request timed out', 'API error 429', 'API error 503', 'Response was truncated']) {
+      expect(isRetryableImportError(new Error(message))).toBe(true);
+    }
+    // An unrecognised throw is treated as transient, which is the safe default:
+    // an offered retry that fails is recoverable, a withheld one is a dead end.
+    expect(isRetryableImportError(new Error('kaboom'))).toBe(true);
+    expect(isRetryableImportError(null)).toBe(true);
+  });
+
+  it('covers every code the union declares', () => {
+    // Guards the set against a code added later and silently left retryable.
+    const codes: RecipePageErrorCode[] = ['badUrl', 'timeout', 'offline', 'blocked',
+      'notFound', 'serverError', 'notHtml', 'tooLarge', 'noRecipe'];
+    const retryable = codes.filter(c => isRetryableImportError(recipePageError(c)));
+    expect(retryable.sort()).toEqual(['offline', 'serverError', 'timeout']);
   });
 });

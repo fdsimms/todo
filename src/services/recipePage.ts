@@ -97,6 +97,36 @@ export function describeImportError(error: unknown): string {
   return describeAIError(error);
 }
 
+/**
+ * Codes where trying the *exact same input* again could plausibly work. The
+ * rest are deterministic: a 404 is a typo in the path, a site that refuses this
+ * user agent will refuse it again, and a page that builds its recipe in the
+ * browser will keep doing that. Retrying those spins forever.
+ */
+const RETRYABLE: ReadonlySet<RecipePageErrorCode> = new Set(['timeout', 'offline', 'serverError']);
+
+/**
+ * Whether the error state should offer "Try again" or a way back to the input.
+ *
+ * Only mattered once a link could fail. A paste and a photo failed almost
+ * exclusively at the model — rate limits, timeouts, 5xx — where a retry is both
+ * the right offer and the only one needed, so the sheets hard-coded it. A link
+ * fails at the *address* most of the time, and the fix for that is editing it,
+ * which a retry-only error state gives no way to reach.
+ *
+ * The three AI failures that are equally deterministic (no key, feature off, a
+ * key the API rejected) come along for free — a retry never fixed those either,
+ * it just looked like it might.
+ */
+export function isRetryableImportError(error: unknown): boolean {
+  if (isRecipePageError(error)) return RETRYABLE.has(error.recipePageCode);
+  const message = error instanceof Error ? error.message : '';
+  if (message.startsWith('No API key')) return false;
+  if (message === 'AI feature disabled') return false;
+  if (message === 'API error 401') return false;
+  return true;
+}
+
 export interface FetchedRecipePage extends ParsedRecipePage {
   /** The normalised address actually requested — what gets saved as `sourceUrl`. */
   url: string;

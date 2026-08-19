@@ -34,7 +34,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
-import { describeImportError } from '../services/recipePage';
+import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
@@ -78,6 +78,9 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Whether the error state offers a retry or a way back to the input —
+  // a mistyped address fails identically however many times you ask.
+  const [canRetry, setCanRetry] = useState(true);
   const [tidyRows, setTidyRows] = useState<TidyRow[]>([]);
   const [recipeRows, setRecipeRows] = useState<RecipeGroceryItem[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
@@ -137,6 +140,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       setAccepted(new Set(rows.map((_, i) => i)));
     } catch (e) {
       setError(describeImportError(e));
+      setCanRetry(isRetryableImportError(e));
     } finally {
       setLoading(false);
     }
@@ -203,6 +207,13 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const rowCount = mode === 'tidy' ? tidyRows.length : recipeRows.length;
   const canApply = !loading && accepted.size > 0;
 
+
+  // A deterministic failure — a mistyped address, a site that refuses us, a page
+  // that builds its recipe in the browser — fails identically however many times
+  // you ask. What it needs is the input back, not another attempt at it.
+  const backLabel = recipeInput.usingLink ? 'Change the link' : 'Go back';
+  const goBack = () => { setError(null); setRecipeRows([]); };
+
   const renderBody = () => {
     if (loading) {
       return (
@@ -225,8 +236,8 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
             icon="alert-circle-outline"
             title="That didn’t work"
             subtitle={error}
-            actionLabel="Try again"
-            onAction={mode === 'tidy' ? runTidy : runRecipe}
+            actionLabel={canRetry || mode === 'tidy' ? 'Try again' : backLabel}
+            onAction={canRetry || mode === 'tidy' ? (mode === 'tidy' ? runTidy : runRecipe) : goBack}
           />
         </View>
       );

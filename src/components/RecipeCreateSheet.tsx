@@ -30,7 +30,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import {
   extractRecipe, type ExtractedRecipe, type RecipeGroceryItem,
 } from '../services/aiSuggestions';
-import { describeImportError } from '../services/recipePage';
+import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import { normalizeIngredient, cleanRecipeName, formatServingsRange } from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { aisleForName } from '../utils/groceryAisles';
@@ -95,6 +95,9 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Whether the error state offers a retry or a way back to the input —
+  // a mistyped address fails identically however many times you ask.
+  const [canRetry, setCanRetry] = useState(true);
   const [extracted, setExtracted] = useState<ExtractedRecipe | null>(null);
   // A working copy of extracted.ingredients, edited in place before Create
   // (#1608) — extracted itself is left untouched, since its .name/.servings
@@ -142,6 +145,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       setApplyDetails(result.servings !== null || result.prepMinutes !== null);
     } catch (e) {
       setError(describeImportError(e));
+      setCanRetry(isRetryableImportError(e));
     } finally {
       setLoading(false);
     }
@@ -242,6 +246,13 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   // mentioned is a surprise, so the count is said out loud.
   const stepCount = input.page?.steps.length ?? 0;
 
+
+  // A deterministic failure — a mistyped address, a site that refuses us, a page
+  // that builds its recipe in the browser — fails identically however many times
+  // you ask. What it needs is the input back, not another attempt at it.
+  const backLabel = input.usingLink ? 'Change the link' : 'Go back';
+  const goBack = () => { setError(null); setExtracted(null); };
+
   const renderBody = () => {
     if (loading) {
       return (
@@ -263,8 +274,8 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
             icon="alert-circle-outline"
             title="That didn’t work"
             subtitle={error}
-            actionLabel="Try again"
-            onAction={run}
+            actionLabel={canRetry ? 'Try again' : backLabel}
+            onAction={canRetry ? run : goBack}
           />
         </View>
       );
