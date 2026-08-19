@@ -1,0 +1,4 @@
+{
+  "message": "The calendar and the date picker now show how full a day already is. A day carrying a lot draws a small bar under its number — a wider one when it's really full — counting the tasks dated there, the repeats landing on it and anything on your calendar. Picking a day on the Calendar screen also says how much time it holds, e.g. \"~2.5h · 1h of events\". Ordinary days are left unmarked",
+  "date": "2026-08-19"
+}

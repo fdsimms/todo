@@ -62,6 +62,7 @@ import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
 import { buildDayBuckets, canProject } from '../utils/calendarMonth';
+import { buildDayLoads, describeDayLoad, weightFor } from '../utils/dayLoad';
 import { buildCalendarGrid } from '../utils/calendarGrid';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -353,6 +354,29 @@ describe('demo mode', () => {
     // And the three date signals a cell can colour are all represented.
     const kinds = new Set([...buckets.values()].flatMap(b => b.dots.map(d => d.kind)));
     expect([...kinds].sort()).toEqual(['deadline', 'defer', 'due']);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  // The cue only ever marks the heavy end, so a seed where no day is heavy
+  // shows a calendar that looks exactly like one without the feature.
+  it('seeds a day heavy enough for the grid to say so', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const grid = buildCalendarGrid(new Date(), 0);
+    const buckets = buildDayBuckets(tasks, { from: grid[0], to: grid[grid.length - 1] });
+    const loads = buildDayLoads(grid, buckets, { taskById: new Map(tasks.map(t => [t.id, t])) });
+
+    const marked = [...loads.values()].filter(l => weightFor(l) !== null);
+    expect(marked.length).toBeGreaterThan(0);
+    // Ahead of today specifically: the cue is for the day you're about to
+    // schedule onto, and a seed where only today is heavy shows half of it.
+    const ahead = marked.filter(l => l.key > dayKeyOf(new Date()));
+    expect(ahead.length).toBeGreaterThan(0);
+    // And one of them can say how much, rather than only shading a cell —
+    // the sentence needs rows that carry an estimate between them.
+    expect(ahead.some(l => describeDayLoad(l) !== '')).toBe(true);
 
     useDemoStore.getState().exitDemoMode();
   });

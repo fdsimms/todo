@@ -29,6 +29,14 @@ import {
   type DayMarkKind,
   type DotState,
 } from '../utils/calendarMonth';
+import {
+  buildDayLoads,
+  describeDayLoad,
+  describeDayWeight,
+  weightFor,
+  type DayWeight,
+} from '../utils/dayLoad';
+import { useCalendarStore } from '../store/useCalendarStore';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2) / 7);
@@ -38,6 +46,11 @@ const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2) / 7);
 // to fit in.
 const CELL_HEIGHT = CELL_SIZE - 12;
 const DOT_SIZE = 6;
+// The weight bar's line under a day's circle, reserved on every cell. Small
+// enough to sit inside the slack a 33pt circle leaves in a 39pt cell, so the
+// grid keeps the height #1746 gave it.
+const WEIGHT_SLOT_HEIGHT = 3;
+const WEIGHT_SLOT_GAP = 2;
 
 /**
  * A month at a time.
@@ -67,6 +80,11 @@ export function CalendarScreen() {
   const allTasks = useTaskStore(s => s.tasks);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarLoaded = useCalendarStore(s => s.loaded);
+  const calendarWindowStart = useCalendarStore(s => s.windowStart);
+  const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
 
   const [displayMonth, setDisplayMonth] = useState(() => startOfMonth(new Date()));
   const [selectedKey, setSelectedKey] = useState(() => dayKeyOf(new Date()));
@@ -97,6 +115,28 @@ export function CalendarScreen() {
   const taskById = useMemo(() => new Map(allTasks.map(t => [t.id, t])), [allTasks]);
   const detail = useMemo(() => dayDetail(buckets.get(selectedKey), taskById), [buckets, selectedKey, taskById]);
   const summary = summarizeDay(detail);
+
+  /**
+   * How much each day holds, over the buckets the grid already built (#1791).
+   *
+   * The dots say what lands on a day and have never said how much — a Tuesday
+   * with one email and a Thursday with six hours of chores draw the same one.
+   * This is the other half, and it reuses the buckets rather than walking the
+   * task list again so the two can't disagree about what a day contains —
+   * including under the projections toggle, where a cue counting occurrences
+   * the grid has stopped drawing would be answering about a different month
+   * than the one on screen.
+   */
+  const dayLoads = useMemo(() => buildDayLoads(days, buckets, {
+    taskById,
+    busyEvents: calendarReadEnabled && calendarLoaded ? calendarEvents : [],
+    busyWindow: calendarWindowStart && calendarWindowEnd
+      ? { start: new Date(calendarWindowStart), end: new Date(calendarWindowEnd) }
+      : null,
+    dayResetTime,
+  }), [days, buckets, taskById, calendarReadEnabled, calendarLoaded, calendarEvents,
+       calendarWindowStart, calendarWindowEnd, dayResetTime]);
+  const selectedLoad = describeDayLoad(dayLoads.get(selectedKey));
 
   // Outstanding across the displayed month only — the grid's leading and
   // trailing cells belong to the neighbours, and counting them would make the
@@ -235,6 +275,7 @@ export function CalendarScreen() {
                 key={key}
                 day={day}
                 bucket={bucket}
+                weight={weightFor(dayLoads.get(key))}
                 inMonth={isSameMonth(day, displayMonth)}
                 isToday={key === todayKey}
                 isSelected={key === selectedKey}
@@ -251,9 +292,15 @@ export function CalendarScreen() {
         </View>
       </View>
 
-      <View style={styles.detailHeading}>
-        <Text style={styles.detailDate}>{format(selectedDate, 'EEEE, MMMM d')}</Text>
-        {summary !== '' && <Text style={styles.detailSummary}>{summary}</Text>}
+      <View style={styles.detailHeader}>
+        <View style={styles.detailHeading}>
+          <Text style={styles.detailDate}>{format(selectedDate, 'EEEE, MMMM d')}</Text>
+          {summary !== '' && <Text style={styles.detailSummary}>{summary}</Text>}
+        </View>
+        {/* How many, then how much. Its own line rather than a third clause on
+            the summary above, because counts and durations answer different
+            questions and only one of them is estimated. */}
+        {selectedLoad !== '' && <Text style={styles.detailLoad}>{selectedLoad}</Text>}
       </View>
 
       <ScrollView
@@ -323,10 +370,11 @@ function dotColor(kind: DayMarkKind, colors: Colors): string {
 }
 
 function DayCell({
-  day, bucket, inMonth, isToday, isSelected, colors, styles, onPress,
+  day, bucket, weight, inMonth, isToday, isSelected, colors, styles, onPress,
 }: {
   day: Date;
   bucket: DayBucket | undefined;
+  weight: DayWeight | null;
   inMonth: boolean;
   isToday: boolean;
   isSelected: boolean;
@@ -342,22 +390,35 @@ function DayCell({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: isSelected }}
-      accessibilityLabel={cellLabel(day, bucket)}
+      accessibilityLabel={cellLabel(day, bucket, weight)}
     >
       <View style={styles.inlineWrap}>
-        <View style={[
-          styles.dayCircle,
-          isSelected && styles.dayCircleSelected,
-          !isSelected && isToday && styles.dayCircleToday,
-        ]}>
-          <Text style={[
-            styles.dayText,
-            !inMonth && styles.dayTextOtherMonth,
-            isSelected && styles.dayTextSelected,
-            !isSelected && isToday && styles.dayTextToday,
+        <View style={styles.dayStack}>
+          <View style={[
+            styles.dayCircle,
+            isSelected && styles.dayCircleSelected,
+            !isSelected && isToday && styles.dayCircleToday,
           ]}>
-            {day.getDate()}
-          </Text>
+            <Text style={[
+              styles.dayText,
+              !inMonth && styles.dayTextOtherMonth,
+              isSelected && styles.dayTextSelected,
+              !isSelected && isToday && styles.dayTextToday,
+            ]}>
+              {day.getDate()}
+            </Text>
+          </View>
+          {/* Reserved on every cell, marked or not: a bar that only some cells
+              carried would sit their circles a couple of points higher than
+              their neighbours', and a grid is read by its rows. */}
+          <View style={styles.weightSlot}>
+            {weight && (
+              <View style={[
+                styles.weightBar,
+                weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
+              ]} />
+            )}
+          </View>
         </View>
         {dots.length > 0 && (
           <View style={styles.dotColumn}>
@@ -394,9 +455,12 @@ function dotStyle(state: DotState, color: string) {
   return { borderWidth: 1, borderColor: color };
 }
 
-function cellLabel(day: Date, bucket: DayBucket | undefined): string {
+function cellLabel(day: Date, bucket: DayBucket | undefined, weight: DayWeight | null): string {
   const date = format(day, 'MMMM d');
-  if (!bucket || bucket.marks.length === 0) return date;
+  // The cue is drawn, so it has to be spoken — and it can be the only thing a
+  // cell carries, since a day made heavy by meetings alone has no dots.
+  const suffix = weight ? `, ${describeDayWeight(weight)}` : '';
+  if (!bucket || bucket.marks.length === 0) return `${date}${suffix}`;
   const parts = bucket.dots.map(dot => {
     const noun = dot.kind === 'due' ? 'due' : dot.kind === 'deadline' ? 'deadline' : 'returning';
     if (dot.state === 'projected') {
@@ -407,7 +471,7 @@ function cellLabel(day: Date, bucket: DayBucket | undefined): string {
     const count = bucket.marks.filter(m => m.kind === dot.kind && !m.projected && !m.completed).length;
     return `${count} ${noun}`;
   });
-  return `${date}, ${parts.join(', ')}`;
+  return `${date}, ${parts.join(', ')}${suffix}`;
 }
 
 function makeStyles(colors: Colors) {
@@ -471,12 +535,40 @@ function makeStyles(colors: Colors) {
       flexDirection: 'row',
       alignItems: 'center',
     },
+    // The weight bar goes under the circle, not under the circle-and-dots
+    // pair: centred on the pair it reads as an underline for both, and which
+    // way it slid would depend on how many dots the day happened to have.
+    dayStack: {
+      alignItems: 'center',
+    },
     dayCircle: {
       width: CELL_SIZE - 18,
       height: CELL_SIZE - 18,
       borderRadius: (CELL_SIZE - 18) / 2,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    // Weight, not alarm: a full day is often exactly the day you meant to
+    // pick, so the cue takes the app's greys rather than red or orange. The
+    // slot fits inside the cell's existing slack (33pt circle in a 39pt cell),
+    // so nothing here grows the grid — #1746 shortened it on purpose.
+    weightSlot: {
+      height: WEIGHT_SLOT_HEIGHT,
+      marginTop: WEIGHT_SLOT_GAP,
+      justifyContent: 'center',
+    },
+    weightBar: {
+      height: 2.5,
+      borderRadius: 1.5,
+    },
+    weightBarBusy: {
+      width: 11,
+      backgroundColor: colors.textTertiary,
+    },
+    weightBarFull: {
+      width: 21,
+      height: 3,
+      backgroundColor: colors.textSecondary,
     },
     dayCircleSelected: {
       backgroundColor: colors.accent,
@@ -504,21 +596,28 @@ function makeStyles(colors: Colors) {
       flexDirection: 'column',
       gap: 2,
       marginLeft: 3,
+      // Offsets the weight slot the circle now stands on, so the dots stay
+      // centred on the circle rather than on the taller stack beside them.
+      marginBottom: WEIGHT_SLOT_HEIGHT + WEIGHT_SLOT_GAP,
     },
     dot: {
       width: DOT_SIZE,
       height: DOT_SIZE,
       borderRadius: DOT_SIZE / 2,
     },
+    // Both sides: the grid sits directly above and the scrolling detail
+    // directly below, and neither carries a margin of its own. The margins
+    // live on the block rather than the date row so the load line under it
+    // sits with the date instead of being spaced off it.
+    detailHeader: {
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
+    },
     detailHeading: {
       flexDirection: 'row',
       alignItems: 'baseline',
       justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
-      // Both sides: the grid sits directly above and the scrolling detail
-      // directly below, and neither carries a margin of its own.
-      marginTop: spacing.md,
-      marginBottom: spacing.sm,
     },
     detailDate: {
       color: colors.text,
@@ -528,6 +627,12 @@ function makeStyles(colors: Colors) {
     detailSummary: {
       color: colors.textSecondary,
       fontSize: font.sm,
+    },
+    detailLoad: {
+      color: colors.textTertiary,
+      fontSize: font.sm,
+      paddingHorizontal: spacing.md,
+      marginTop: 2,
     },
     detail: {
       flex: 1,

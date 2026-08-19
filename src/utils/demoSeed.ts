@@ -320,6 +320,19 @@ export function seedDemoData(): void {
     effort: 1,
   });
 
+  // Two hours on a day that already holds a couple of things, which is what
+  // puts the calendar's weight cue on a day *ahead* of today. Seeding only a
+  // busy today would show half the feature: the cue is for the day you're
+  // about to schedule onto, not the one you're standing in.
+  addTask({
+    title: 'Prep the offsite deck',
+    notes: 'Needs a clear couple of hours, not the gaps between things.',
+    category: 'Work',
+    priority: 3,
+    dueDate: addDays(today, 2).toISOString(),
+    estimatedMinutes: 120,
+  });
+
   addTask({
     title: 'Dentist at 2:40pm',
     category: 'Health',
