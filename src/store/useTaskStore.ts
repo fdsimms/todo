@@ -245,6 +245,7 @@ function newTaskFromDraft(
     chainStepOnSchedule: draft.chainStepOnSchedule ?? false,
     extraTaskEveryN: draft.extraTaskEveryN ?? null,
     extraTaskTitle: draft.extraTaskTitle ?? null,
+    extraTaskDraft: draft.extraTaskDraft ?? null,
     vacationPause: draft.vacationPause ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,
     actualMinutes: draft.actualMinutes ?? null,
@@ -2223,18 +2224,36 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // selector filters `!t.parentId`, so a subtask would only ever be visible
     // inside the practice row, couldn't be moved to another day on its own,
     // and would disappear the moment its parent was ticked.
+    //
+    // What the added task looks like past its title is the rule's own
+    // `draft` (Task.extraTaskDraft) when there is one. With none — every rule
+    // written before drafts existed — each field below falls back to exactly
+    // what it was: filed where the spawning task lives, and `undefined` for
+    // priority and effort so newTaskFromDraft's new-task defaults still
+    // apply. What the draft deliberately can't name is the stack: a stack
+    // owns its members' category and cascades over them, and this is a
+    // different piece of work that happens to have been earned by one of
+    // them.
     let extraTask: Task | null = null;
+    let extraSubtasks: Task[] = [];
     if (extraRule && extraAdvance?.spawns) {
       const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+      const spec = extraRule.draft;
       extraTask = newTaskFromDraft({
         title: extraRule.title,
         dueDate: nextTask?.dueDate ?? getCurrentDayStart().toISOString(),
-        // Filed where the task that spawned it lives, so it doesn't sit loose
-        // above the categories. Deliberately not the stack, tags, priority or
-        // effort — those describe the task that spawned it, and this is a
-        // different piece of work.
-        category: task.category,
-        projectId: task.projectId,
+        notes: spec?.notes ?? '',
+        // Null on the draft means "the same as the task that spawned it", so
+        // it doesn't sit loose above the categories — see ExtraTaskDraft.
+        category: spec?.category ?? task.category,
+        projectId: spec?.projectId ?? task.projectId,
+        tags: spec?.tags ?? [],
+        // undefined, not 0, when there's no draft: 0 is a real answer here
+        // and would override a configured new-task default.
+        priority: spec?.priority,
+        effort: spec?.effort,
+        estimatedMinutes: spec?.estimatedMinutes ?? null,
+        timeSegments: spec?.timeSegments ?? [],
         // Undo comes free: uncompleteTask deletes every uncompleted row
         // pointing back at the completion being undone, which is exactly the
         // scope wanted here — undoing the 4th practice takes the rosin task
@@ -2245,6 +2264,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // task per completion, however many devices saw that completion.
       extraTask = { ...extraTask, id: derivedId(spawnSeed.extra(task.id)) };
       dbInsertTask(extraTask);
+
+      // Real subtask rows, since that's the only thing a subtask ever is
+      // here — the draft holds title-only stubs, like TemplateItem.subtasks.
+      // They ride the same undo as their parent: uncompleteTask deletes the
+      // subtasks of every follow-up it takes back.
+      const parentId = extraTask.id;
+      extraSubtasks = (spec?.subtasks ?? []).map((sub, i) => newTaskFromDraft(
+        // The new-task defaults are for a task someone is creating, and a
+        // checklist step under one isn't that — addSubtask spells out a bare
+        // row for the same reason, so category, priority and effort are said
+        // rather than left to fall through.
+        { title: sub.title, parentId, priority: 0, effort: 0 },
+        now.toISOString(),
+        i + 1,
+        false,
+        derivedId(spawnSeed.subtask(parentId, sub.id)),
+        true,
+      ));
+      extraSubtasks.forEach(sub => dbInsertTask(sub));
     }
 
     // A repeating dated series rolls over as a whole set, not row by row:
@@ -2299,6 +2337,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...nextSubtasks,
         ...rolledOver,
         ...(extraTask ? [extraTask] : []),
+        ...extraSubtasks,
       ],
       completionHoldIds: [...s.completionHoldIds, id],
       // A daily target that completes mid-hold hands over to the completion
@@ -3220,6 +3259,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       chainStepOnSchedule: false,
       extraTaskEveryN: null,
       extraTaskTitle: null,
+      extraTaskDraft: null,
       extraTaskTally: 0,
       previousExtraTaskTally: 0,
       vacationPause: false,
@@ -3382,6 +3422,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       chainStepOnSchedule: false,
       extraTaskEveryN: null,
       extraTaskTitle: null,
+      extraTaskDraft: null,
       extraTaskTally: 0,
       previousExtraTaskTally: 0,
       vacationPause: false,

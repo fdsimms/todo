@@ -63,6 +63,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainStepOnSchedule: false,
   extraTaskEveryN: null,
   extraTaskTitle: null,
+  extraTaskDraft: null,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
   category: null,

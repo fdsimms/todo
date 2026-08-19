@@ -32,7 +32,7 @@ import {
 } from '../utils/recipeUtils';
 import { taskKindOf } from '../utils/taskKinds';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
-import { extraTaskRule } from '../utils/extraTask';
+import { extraTaskDraftIsEmpty, extraTaskRule } from '../utils/extraTask';
 import { isDialable } from '../utils/phone';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -459,6 +459,23 @@ describe('demo mode', () => {
     // The tally only advances on a completion that advances the schedule, so a
     // rule on a one-off task could never reach its count.
     expect(withRule[0].recurrenceType).not.toBe('none');
+  });
+
+  // A rule that only names its extra task reads as a rule that can only name
+  // it — the Details row says "just the title" and nothing hints otherwise.
+  it('seeds an extra-task rule that says what the added task looks like', () => {
+    useDemoStore.getState().enterDemoMode();
+    const withDraft = useTaskStore.getState().tasks
+      .map(t => extraTaskRule(t))
+      .filter((r): r is NonNullable<typeof r> => r !== null && r.draft !== null);
+
+    expect(withDraft.length).toBeGreaterThan(0);
+    const draft = withDraft[0].draft!;
+    expect(extraTaskDraftIsEmpty(draft)).toBe(false);
+    // The two that are invisible until the task exists, so a seed is the only
+    // way anyone sees they can be set at all.
+    expect(draft.subtasks.length).toBeGreaterThan(0);
+    expect(draft.notes).not.toBe('');
   });
 
   // No number on any task means no call/text button anywhere in the demo.

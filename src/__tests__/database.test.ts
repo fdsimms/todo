@@ -197,6 +197,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainStepOnSchedule: false,
   extraTaskEveryN: null,
   extraTaskTitle: null,
+  extraTaskDraft: null,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
   vacationPause: false,
@@ -568,6 +569,49 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       )
       .run('legacy', 'Old row', '', 0, '2026-01-01T00:00:00.000Z', '[]', null, 1, 1, 0, 0, 'none', 1, '[]', 0, 0, 0, 0, '[]', 0, 0, 0);
     expect(dbGetAllTasks()[0].pinnedOrder).toBe(0);
+  });
+
+  it('round-trips extraTaskDraft through both insert and update', () => {
+    // A JSON blob bound positionally in the middle of both long placeholder
+    // lists, so exercise the update path too — a misalignment there writes a
+    // neighbouring column's value instead of failing.
+    const draft = {
+      notes: 'In the case pocket',
+      category: 'Home',
+      projectId: null,
+      tags: ['upkeep'],
+      priority: 2 as const,
+      effort: 1 as const,
+      estimatedMinutes: 5,
+      timeSegments: ['evening' as const],
+      subtasks: [{ id: 's1', title: 'Wipe the strings' }],
+    };
+    dbInsertTask(makeTask({ id: 'xd', extraTaskEveryN: 4, extraTaskTitle: 'Rosin', extraTaskDraft: draft }));
+    expect(dbGetAllTasks()[0].extraTaskDraft).toEqual(draft);
+    expect(dbGetAllTasks()[0].extraTaskTitle).toBe('Rosin');
+
+    dbUpdateTask({ ...dbGetAllTasks()[0], extraTaskDraft: { ...draft, notes: 'Moved' }, title: 'Renamed' });
+    const [t] = dbGetAllTasks();
+    expect(t.extraTaskDraft?.notes).toBe('Moved');
+    expect(t.title).toBe('Renamed');
+    // The neighbours it would collide with if a placeholder were dropped.
+    expect(t.extraTaskTally).toBe(0);
+    expect(t.extraTaskEveryN).toBe(4);
+  });
+
+  it('reads a row written before the draft column as "just the title"', () => {
+    // Which is exactly how every rule behaved before drafts existed — the
+    // spawn falls back to the spawning task's own filing. dbInsertTask always
+    // supplies the column, so this goes straight to SQL the way a build
+    // predating the migration did.
+    mockRawDb
+      .prepare(
+        'INSERT INTO tasks (id, title, notes, completed, created_at, tags, category, sort_order, pinned, priority, effort, recurrence_type, recurrence_interval, recurrence_days, recurrence_from_completion, streak_count, cycle_enabled, cycle_index, cycle_items, vacation_pause, previous_streak_count, progress_count, extra_task_every_n, extra_task_title) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      )
+      .run('legacy', 'Practice violin', '', 0, '2026-01-01T00:00:00.000Z', '[]', null, 1, 0, 0, 0, 'none', 1, '[]', 0, 0, 0, 0, '[]', 0, 0, 0, 4, 'Rosin the bow');
+    const [t] = dbGetAllTasks();
+    expect(t.extraTaskTitle).toBe('Rosin the bow');
+    expect(t.extraTaskDraft).toBeNull();
   });
 
   it('round-trips phoneNumber through both insert and update', () => {

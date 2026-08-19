@@ -3,6 +3,7 @@ import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemS
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
+import { parseExtraTaskDraft } from '../utils/extraTask';
 import { parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
 import { parseRecipeTags } from '../utils/recipeTags';
 import { parseRecipeChoices, parseRecipeComponents } from '../utils/recipeComponents';
@@ -755,6 +756,11 @@ export function initDatabase(): void {
     // of `archived`: see Project.completed.
     'ALTER TABLE projects ADD COLUMN completed INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE projects ADD COLUMN completed_at TEXT',
+    // NULL on every existing row, which is exactly what "just the title"
+    // means — a rule written before this shipped says nothing else about the
+    // task it adds, and the spawn still reads it that way. See
+    // Task.extraTaskDraft.
+    'ALTER TABLE tasks ADD COLUMN extra_task_draft TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1399,6 +1405,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     chainStepOnSchedule: Boolean(row.chain_step_on_schedule),
     extraTaskEveryN: (row.extra_task_every_n as number | null) ?? null,
     extraTaskTitle: (row.extra_task_title as string | null) ?? null,
+    extraTaskDraft: parseExtraTaskDraft(row.extra_task_draft as string | null),
     extraTaskTally: (row.extra_task_tally as number) ?? 0,
     previousExtraTaskTally: (row.previous_extra_task_tally as number) ?? 0,
     vacationPause: Boolean(row.vacation_pause),
@@ -1453,9 +1460,9 @@ export function dbInsertTask(task: Task): void {
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, generated_kind,
       generated_source_id, postpone_count, postpone_muted, drifting_since,
-      extra_task_every_n, extra_task_title, extra_task_tally, previous_extra_task_tally,
+      extra_task_every_n, extra_task_title, extra_task_draft, extra_task_tally, previous_extra_task_tally,
       deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id, time_block_event_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1497,6 +1504,7 @@ export function dbInsertTask(task: Task): void {
       task.driftingSince ?? null,
       task.extraTaskEveryN ?? null,
       task.extraTaskTitle ?? null,
+      task.extraTaskDraft ? JSON.stringify(task.extraTaskDraft) : null,
       task.extraTaskTally,
       task.previousExtraTaskTally,
       task.deliverableKind ?? null,
@@ -1523,7 +1531,7 @@ export function dbUpdateTask(task: Task): void {
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, generated_kind=?,
       generated_source_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
-      extra_task_every_n=?, extra_task_title=?, extra_task_tally=?, previous_extra_task_tally=?,
+      extra_task_every_n=?, extra_task_title=?, extra_task_draft=?, extra_task_tally=?, previous_extra_task_tally=?,
       deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?, time_block_event_id=?
     WHERE id=?`,
     [
@@ -1567,6 +1575,7 @@ export function dbUpdateTask(task: Task): void {
       task.driftingSince ?? null,
       task.extraTaskEveryN ?? null,
       task.extraTaskTitle ?? null,
+      task.extraTaskDraft ? JSON.stringify(task.extraTaskDraft) : null,
       task.extraTaskTally,
       task.previousExtraTaskTally,
       task.deliverableKind ?? null,

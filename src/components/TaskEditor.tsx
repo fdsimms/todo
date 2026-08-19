@@ -26,7 +26,7 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind } from '../types';
+import type { Task, Priority, Effort, ExtraTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
@@ -41,7 +41,7 @@ import {
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
   MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N,
-  describeExtraTaskRule, extraTaskSummary,
+  describeExtraTaskDraft, describeExtraTaskRule, extraTaskSummary,
 } from '../utils/extraTask';
 import { ordinal } from '../utils/ordinal';
 import { tagColor } from '../utils/tagColor';
@@ -71,6 +71,7 @@ import { EditorGroup } from './EditorGroup';
 import { editorSearchTerms, matchesEditorQuery } from '../utils/editorSearch';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { ExtraTaskSheet } from './ExtraTaskSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { describeBlocks } from '../utils/blocking';
 import { displayTitleFor } from '../utils/visibilityUtils';
@@ -321,6 +322,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [showBlocksPicker, setShowBlocksPicker] = useState(false);
   const [extraTaskEveryN, setExtraTaskEveryN] = useState<number | null>(null);
   const [extraTaskTitle, setExtraTaskTitle] = useState('');
+  const [extraTaskDraft, setExtraTaskDraft] = useState<ExtraTaskDraft | null>(null);
+  const [showExtraTaskSheet, setShowExtraTaskSheet] = useState(false);
   const [showExtraTask, setShowExtraTask] = useState(false);
   // Just the blocker's title, for the row's value. Selecting the one task
   // rather than the whole list keeps unrelated task changes from re-rendering
@@ -511,6 +514,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setDeliverableKind(task.deliverableKind ?? null);
       setExtraTaskEveryN(task.extraTaskEveryN ?? null);
       setExtraTaskTitle(task.extraTaskTitle ?? '');
+      setExtraTaskDraft(task.extraTaskDraft ?? null);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
@@ -603,6 +607,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deliverableKind: task?.deliverableKind ?? null,
       extraTaskEveryN: task?.extraTaskEveryN ?? null,
       extraTaskTitle: task?.extraTaskTitle ?? '',
+      extraTaskDraft: task?.extraTaskDraft ?? null,
     });
   }, [visible, task]);
 
@@ -787,6 +792,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // from disagreeing with it.
       extraTaskEveryN: resolvedExtraTaskTitle ? extraTaskEveryN : null,
       extraTaskTitle: extraTaskEveryN !== null ? resolvedExtraTaskTitle : null,
+      // Follows the rule it details rather than surviving on its own: with no
+      // rule left there is no task for it to describe, and a draft stranded
+      // on the row would come back the moment a count and a name did.
+      extraTaskDraft: resolvedExtraTaskTitle && extraTaskEveryN !== null ? extraTaskDraft : null,
     };
 
     // The whole set of dates this task falls on, earliest first. A single
@@ -1199,6 +1208,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deliverableKind,
       extraTaskEveryN,
       extraTaskTitle,
+      extraTaskDraft,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -1646,6 +1656,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             excludeIds={blocksExcludeIds}
             onClose={() => setShowBlocksPicker(false)}
             onSelect={id => setBlocksIds(prev => (prev.includes(id) ? prev : [...prev, id]))}
+          />
+          <ExtraTaskSheet
+            visible={showExtraTaskSheet}
+            taskTitle={extraTaskTitle}
+            draft={extraTaskDraft}
+            onSave={setExtraTaskDraft}
+            onClose={() => setShowExtraTaskSheet(false)}
           />
           <NumberPadAccessory />
         </>
@@ -2840,7 +2857,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               expanded={showExtraTask}
               onPress={() => { animateLayout(); setShowExtraTask(v => !v); }}
               onClear={extraTaskEveryN !== null
-                ? () => { setExtraTaskEveryN(null); setExtraTaskTitle(''); setShowExtraTask(false); }
+                // The details go with the rule they detail, matching what the
+                // save writes — clearing the rule and setting a new one is a
+                // new extra task, not the old one with its name changed.
+                ? () => {
+                    setExtraTaskEveryN(null); setExtraTaskTitle('');
+                    setExtraTaskDraft(null); setShowExtraTask(false);
+                  }
                 : undefined}
             />
             {showExtraTask && (
@@ -2881,6 +2904,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <Text style={styles.targetStepperCaption}>
                   {describeExtraTaskRule(extraTaskEveryN, extraTaskTitle, recurrenceType !== 'none')}
                 </Text>
+                {/* Everything past the title, in a sheet of its own — eight
+                    pickers unfolded here would bury the task being edited
+                    under a second task's worth of form. Offered only once the
+                    rule can actually fire, since until then there is nothing
+                    for the details to be about. */}
+                {extraTaskEveryN !== null && extraTaskTitle.trim() !== '' && (
+                  <View style={styles.extraTaskDetailsIndent}>
+                    <EditorRow
+                      icon="options-outline"
+                      label="Details"
+                      hint="Notes, category, priority and a checklist for the task this adds"
+                      value={describeExtraTaskDraft(
+                        extraTaskDraft,
+                        extraTaskDraft?.category ? categoryLabel(extraTaskDraft.category, categories) : null,
+                        projects.find(p => p.id === extraTaskDraft?.projectId)?.title ?? null,
+                      )}
+                      onPress={() => setShowExtraTaskSheet(true)}
+                      onClear={extraTaskDraft ? () => setExtraTaskDraft(null) : undefined}
+                    />
+                  </View>
+                )}
               </>
             )}
               </>
@@ -3892,6 +3936,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.sm,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
   },
+  /**
+   * The Details row is an EditorRow inside another EditorRow's expanded body,
+   * which is the one place in this editor that happens — every other unfolded
+   * control is a pill row or a stepper, and so can't be mistaken for a
+   * sibling of the row above it. Indenting past the top-level rows' own label
+   * column is what says it belongs to Extra task rather than to Relationships.
+   */
+  extraTaskDetailsIndent: { paddingLeft: spacing.md },
   targetUnitInput: {
     flex: 1, color: colors.text, fontSize: font.sm,
     borderBottomWidth: border.sm, borderBottomColor: colors.separator,
