@@ -14,6 +14,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { normalizePlaceholderName } from '../utils/templateUtils';
 import { EditorSheet } from './EditorSheet';
@@ -130,22 +131,15 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
   const handleDelete = () => {
     if (!question) return;
     haptics.warning();
-    Alert.alert(
-      'Delete Question',
-      'Delete this question? Items that were only included for some of its answers go back to being included every time.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            deleteQuestion(templateId, question.id);
-            onClose();
-          },
-        },
-      ]
-    );
+    confirmDelete({
+      title: 'Delete Question',
+      message: 'Delete this question? Items that were only included for some of its answers go back to being included every time.',
+      onConfirm: () => {
+        animateLayout();
+        deleteQuestion(templateId, question.id);
+        onClose();
+      },
+    });
   };
 
   return (

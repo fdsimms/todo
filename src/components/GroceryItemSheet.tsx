@@ -34,6 +34,7 @@ import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { editorSearchTerms, matchesEditorQuery, filterEditorRows, type EditorSearchable } from '../utils/editorSearch';
 import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
@@ -572,27 +573,21 @@ export function GroceryItemSheet({
     );
   };
 
-  const confirmDelete = () => {
-    Alert.alert(
-      `Forget ${item.name}?`,
+  const handleForgetItem = () => {
+    confirmDelete({
+      title: `Forget ${item.name}?`,
       // No pointer at "Remove from list" for a provisional row: it does the
       // same thing there, so offering it as the gentler option is a lie.
-      item.inCatalog
+      message: item.inCatalog
         ? 'This removes it from your catalog along with its history, and can’t be undone. To just take it off this week’s list, use "Remove from list".'
         : 'This removes it altogether, and can’t be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Forget',
-          style: 'destructive',
-          onPress: () => {
-            deleteItem(item.id);
-            haptics.warning();
-            onClose();
-          },
-        },
-      ]
-    );
+      confirmLabel: 'Forget',
+      onConfirm: () => {
+        deleteItem(item.id);
+        haptics.warning();
+        onClose();
+      },
+    });
   };
 
   const aisleOptions: PillGroupOption[] = aisleOrder.map(aisle => ({
@@ -1451,7 +1446,7 @@ export function GroceryItemSheet({
             <TouchableOpacity
               style={styles.actionRow}
               activeOpacity={interaction.activeOpacity}
-              onPress={confirmDelete}
+              onPress={handleForgetItem}
               accessibilityRole="button"
               accessibilityLabel="Forget this item"
             >

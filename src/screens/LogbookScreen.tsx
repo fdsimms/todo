@@ -7,7 +7,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,6 +38,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, border, checkboxRadius, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { tagColor } from '../utils/tagColor';
@@ -295,42 +295,29 @@ export function LogbookScreen() {
 
   const handleClearLogbook = () => {
     haptics.warning();
-    Alert.alert(
-      'Clear Logbook',
-      `Delete all ${completedTasks.length} completed task${completedTasks.length === 1 ? '' : 's'} from the logbook? This can be undone with shake-to-undo.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            clearLogbook();
-          },
-        },
-      ]
-    );
+    confirmDelete({
+      title: 'Clear Logbook',
+      message: `Delete all ${completedTasks.length} completed task${completedTasks.length === 1 ? '' : 's'} from the logbook? This can be undone with shake-to-undo.`,
+      confirmLabel: 'Clear',
+      onConfirm: () => {
+        animateLayout();
+        clearLogbook();
+      },
+    });
   };
 
   // Deleting one entry, from its menu. Same wording as the bulk prompt below
   // it, since both land on the same shake-to-undo.
   const handleDeleteEntry = (task: Task) => {
     haptics.warning();
-    Alert.alert(
-      'Delete Entry',
-      `Delete "${displayTitleFor(task)}" from the logbook? You can undo this by shaking your phone right after.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            deleteTask(task.id);
-          },
-        },
-      ]
-    );
+    confirmDelete({
+      title: 'Delete Entry',
+      message: `Delete "${displayTitleFor(task)}" from the logbook? You can undo this by shaking your phone right after.`,
+      onConfirm: () => {
+        animateLayout();
+        deleteTask(task.id);
+      },
+    });
   };
 
   const handleBulkUncomplete = () => {

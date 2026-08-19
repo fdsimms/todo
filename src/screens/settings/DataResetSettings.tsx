@@ -6,6 +6,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useDemoStore } from '../../store/useDemoStore';
 import { dbExportTables, dbReplaceAllData, dbSetRecipeImagePath } from '../../db/database';
+import { confirmDelete } from '../../utils/confirmDelete';
 import {
   buildBackup, serializeBackup, parseBackup, summarizeBackup, backupFileName, type Backup,
 } from '../../utils/backup';
@@ -188,21 +189,14 @@ export function DataResetSettings() {
       setCompletedRetentionDays(days);
       return;
     }
-    Alert.alert(
-      `Delete ${doomed.length} completed task${doomed.length === 1 ? '' : 's'}?`,
-      `${doomed.length === 1 ? 'One task was' : `${doomed.length} tasks were`} completed more than ${retentionLabel(days).toLowerCase()} ago. They'll be deleted now, along with their Logbook entries and their share of Stats, and every completion that ages past ${retentionLabel(days).toLowerCase()} from here on goes the same way. This can't be undone, so export first if you want to keep them.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setCompletedRetentionDays(days);
-            purgeOldCompletedTasks();
-          },
-        },
-      ]
-    );
+    confirmDelete({
+      title: `Delete ${doomed.length} completed task${doomed.length === 1 ? '' : 's'}?`,
+      message: `${doomed.length === 1 ? 'One task was' : `${doomed.length} tasks were`} completed more than ${retentionLabel(days).toLowerCase()} ago. They'll be deleted now, along with their Logbook entries and their share of Stats, and every completion that ages past ${retentionLabel(days).toLowerCase()} from here on goes the same way. This can't be undone, so export first if you want to keep them.`,
+      onConfirm: () => {
+        setCompletedRetentionDays(days);
+        purgeOldCompletedTasks();
+      },
+    });
   };
 
   const onToggleDemo = () => {
@@ -221,27 +215,23 @@ export function DataResetSettings() {
   };
 
   const confirmResetStreaks = () => {
-    Alert.alert(
-      'Reset All Streaks',
-      'This sets every task\'s streak back to 0. You can undo this right after by shaking your phone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Reset', style: 'destructive', onPress: () => resetAllStreaks() },
-      ]
-    );
+    confirmDelete({
+      title: 'Reset All Streaks',
+      message: 'This sets every task\'s streak back to 0. You can undo this right after by shaking your phone.',
+      confirmLabel: 'Reset',
+      onConfirm: () => resetAllStreaks(),
+    });
   };
 
   const confirmResetToDefaults = () => {
-    Alert.alert(
-      'Reset Settings to Defaults',
+    confirmDelete({
+      title: 'Reset Settings to Defaults',
       // It also clears remindersImportEnabled, which no version of this copy
       // used to mention — so a reset quietly stopped Siri capture from working.
-      'This resets appearance, day and time, haptics, the daily agenda and the tasks and projects toggles back to their defaults, and turns off importing from Apple Reminders. Your tasks, API key, app lock, and vacation mode are not affected.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Reset', style: 'destructive', onPress: () => resetToDefaults() },
-      ]
-    );
+      message: 'This resets appearance, day and time, haptics, the daily agenda and the tasks and projects toggles back to their defaults, and turns off importing from Apple Reminders. Your tasks, API key, app lock, and vacation mode are not affected.',
+      confirmLabel: 'Reset',
+      onConfirm: () => resetToDefaults(),
+    });
   };
 
   return (

@@ -32,6 +32,7 @@ import { InlineAction } from './InlineAction';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatDuration } from '../utils/effort';
 import { describeKeepDays } from '../utils/leftovers';
@@ -225,22 +226,15 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
       : usedBy.length === 1
         ? `${base} It's used as a component of “${usedBy[0].name}”, which will show it as missing until you remove it there.`
         : `${base} It's used as a component of ${usedBy.length} other recipes (${usedBy.map(r => r.name).join(', ')}), which will show it as missing until you remove it there.`;
-    Alert.alert(
-      'Delete Recipe',
+    confirmDelete({
+      title: 'Delete Recipe',
       message,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            deleteRecipe(recipe.id);
-            onDeleted();
-          },
-        },
-      ]
-    );
+      onConfirm: () => {
+        animateLayout();
+        deleteRecipe(recipe.id);
+        onDeleted();
+      },
+    });
   };
 
   if (!recipe) return null;

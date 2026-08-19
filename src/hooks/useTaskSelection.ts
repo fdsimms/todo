@@ -3,6 +3,7 @@ import type { Task } from '../types';
 import { isLiveRecurring } from '../utils/visibilityUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRowSelection } from './useRowSelection';
+import { confirmDelete } from '../utils/confirmDelete';
 
 // Bulk selection for a task list: the shared row-selection machinery
 // (useRowSelection) plus the one thing that's specific to tasks — a delete
@@ -30,21 +31,14 @@ export function useTaskSelection(allTasks: Task[]) {
       return t ? isLiveRecurring(t) : false;
     });
     if (liveRecurringIds.length === 0) {
-      Alert.alert(
-        `Delete ${count} ${plural}?`,
-        `You're about to delete ${count} ${plural}. You can undo this by shaking your phone right after.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => {
-              bulkDeleteTasks(ids);
-              exitSelection();
-            },
-          },
-        ],
-      );
+      confirmDelete({
+        title: `Delete ${count} ${plural}?`,
+        message: `You're about to delete ${count} ${plural}. You can undo this by shaking your phone right after.`,
+        onConfirm: () => {
+          bulkDeleteTasks(ids);
+          exitSelection();
+        },
+      });
       return;
     }
     const restIds = ids.filter(id => !liveRecurringIds.includes(id));

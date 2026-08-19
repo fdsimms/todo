@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Share,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -66,6 +65,7 @@ import { resolveGroceryDrop, groceryDragRange, placeNewGroceryItems } from '../u
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import type { GroceryItem, Recipe, Shop } from '../types';
@@ -662,23 +662,17 @@ export function GroceryScreen() {
   );
 
   const confirmClear = useCallback(() => {
-    Alert.alert(
-      'Clear the list?',
-      'Everything comes off the list without being marked as bought. Items already in your catalog stay there; items typed just for this list are removed.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            clearList();
-            haptics.warning();
-            setCartOpen(false);
-          },
-        },
-      ]
-    );
+    confirmDelete({
+      title: 'Clear the list?',
+      message: 'Everything comes off the list without being marked as bought. Items already in your catalog stay there; items typed just for this list are removed.',
+      confirmLabel: 'Clear',
+      onConfirm: () => {
+        animateLayout();
+        clearList();
+        haptics.warning();
+        setCartOpen(false);
+      },
+    });
   }, [clearList]);
 
   // "Get groceries at X" — a real Task, so it can carry its own reminder and

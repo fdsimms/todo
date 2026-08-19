@@ -30,6 +30,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingRefs, describeMissingRefs } from '../utils/templateUtils';
 import { liveConditions } from '../utils/templateQuestions';
@@ -141,9 +142,16 @@ export function TemplateDetailScreen() {
 
   const handleDeleteItem = (itemId: string) => {
     if (!templateId) return;
-    haptics.tap();
-    animateLayout();
-    deleteItem(templateId, itemId);
+    confirmDelete({
+      title: 'Remove item?',
+      message: 'Remove this item from the template?',
+      confirmLabel: 'Remove',
+      onConfirm: () => {
+        haptics.tap();
+        animateLayout();
+        deleteItem(templateId, itemId);
+      },
+    });
   };
 
   const openItemEditor = (item: TemplateItem | null, draft?: Partial<TemplateItem> | null) => {
@@ -175,10 +183,19 @@ export function TemplateDetailScreen() {
 
   const handleBulkDelete = () => {
     if (!templateId) return;
-    haptics.impactMedium();
-    animateLayout();
-    selectedItemIds.forEach(id => deleteItem(templateId, id));
-    exitSelectionMode();
+    const count = selectedItemIds.size;
+    const plural = count === 1 ? 'item' : 'items';
+    confirmDelete({
+      title: `Remove ${count} ${plural}?`,
+      message: `Remove ${count} ${plural} from the template?`,
+      confirmLabel: 'Remove',
+      onConfirm: () => {
+        haptics.impactMedium();
+        animateLayout();
+        selectedItemIds.forEach(id => deleteItem(templateId, id));
+        exitSelectionMode();
+      },
+    });
   };
 
   const handleBulkGroup = (title: string) => {
@@ -201,18 +218,16 @@ export function TemplateDetailScreen() {
 
   const handleUngroup = (groupId: string, title: string) => {
     haptics.warning();
-    Alert.alert('Unstack', `Remove the "${title}" stack? Its items stay in the template.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Unstack',
-        style: 'destructive',
-        onPress: () => {
-          if (!templateId) return;
-          animateLayout();
-          deleteItemGroup(templateId, groupId);
-        },
+    confirmDelete({
+      title: 'Unstack',
+      message: `Remove the "${title}" stack? Its items stay in the template.`,
+      confirmLabel: 'Unstack',
+      onConfirm: () => {
+        if (!templateId) return;
+        animateLayout();
+        deleteItemGroup(templateId, groupId);
       },
-    ]);
+    });
   };
 
   // Which item in each group renders the header above it (first occurrence in

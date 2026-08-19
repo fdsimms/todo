@@ -1,6 +1,5 @@
 import React, { useRef, useState, useMemo } from 'react';
 import {
-  Alert,
   View,
   Text,
   TouchableOpacity,
@@ -42,6 +41,7 @@ import { groupTemplatesByCategory, resolveTemplateDrop, type TemplateListItem } 
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { templateHasBrokenRefs, templateHasMissingRefs } from '../utils/templateUtils';
 import type { TaskTemplate } from '../types';
@@ -222,22 +222,15 @@ export function TemplatesScreen() {
     const ids = Array.from(selectedIds);
     const plural = ids.length === 1 ? 'template' : 'templates';
     haptics.warning();
-    Alert.alert(
-      `Delete ${ids.length} ${plural}?`,
-      `You're about to delete ${ids.length} ${plural}. You can undo this by shaking your phone right after.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            bulkDeleteTemplates(ids);
-            exitSelection();
-          },
-        },
-      ],
-    );
+    confirmDelete({
+      title: `Delete ${ids.length} ${plural}?`,
+      message: `You're about to delete ${ids.length} ${plural}. You can undo this by shaking your phone right after.`,
+      onConfirm: () => {
+        animateLayout();
+        bulkDeleteTemplates(ids);
+        exitSelection();
+      },
+    });
   };
 
   return (

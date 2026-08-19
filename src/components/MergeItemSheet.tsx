@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -9,6 +9,7 @@ import { border, font, fontWeight, iconSize, interaction, radius, spacing, type 
 import { groceryNameKey } from '../utils/groceryParse';
 import { recipesUsingIngredient } from '../utils/recipeComponents';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import type { GroceryItem } from '../types';
@@ -91,24 +92,18 @@ export function MergeItemSheet({ visible, itemId, onClose, onMerged }: Props) {
   };
 
   const confirmKeep = (survivor: GroceryItem, loser: GroceryItem) => {
-    Alert.alert(
-      `Merge ${loser.name} into ${survivor.name}?`,
-      `${loser.name}’s purchases, store links and recipes combine into ${survivor.name}. ` +
+    confirmDelete({
+      title: `Merge ${loser.name} into ${survivor.name}?`,
+      message: `${loser.name}’s purchases, store links and recipes combine into ${survivor.name}. ` +
         `${loser.name} is deleted, and this can’t be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Merge',
-          style: 'destructive',
-          onPress: () => {
-            mergeItems(loser.id, survivor.id);
-            haptics.warning();
-            reset();
-            onMerged(survivor.id);
-          },
-        },
-      ]
-    );
+      confirmLabel: 'Merge',
+      onConfirm: () => {
+        mergeItems(loser.id, survivor.id);
+        haptics.warning();
+        reset();
+        onMerged(survivor.id);
+      },
+    });
   };
 
   if (!item) return null;

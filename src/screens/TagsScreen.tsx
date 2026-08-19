@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  Alert,
   type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -35,6 +34,7 @@ import {
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import type { Task } from '../types';
@@ -129,21 +129,14 @@ export function TagsScreen() {
 
   const handleDeleteTag = (tag: string) => {
     haptics.warning();
-    Alert.alert(
-      'Delete Tag',
-      `Remove "${tag}" from all tasks?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            deleteTag(tag);
-          },
-        },
-      ]
-    );
+    confirmDelete({
+      title: 'Delete Tag',
+      message: `Remove "${tag}" from all tasks?`,
+      onConfirm: () => {
+        animateLayout();
+        deleteTag(tag);
+      },
+    });
   };
 
   return (

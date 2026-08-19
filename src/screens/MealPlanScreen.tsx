@@ -57,6 +57,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { buildWeekDays } from '../utils/calendarGrid';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
@@ -848,22 +849,16 @@ export function MealPlanScreen() {
     const count = selectedIdList.length;
     const plural = count === 1 ? 'meal' : 'meals';
     haptics.warning();
-    Alert.alert(
-      `Remove ${count} ${plural}?`,
-      `You're about to take ${count} ${plural} off the plan. This can't be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            bulkDeleteEntries(selectedIdList);
-            exitSelection();
-          },
-        },
-      ],
-    );
+    confirmDelete({
+      title: `Remove ${count} ${plural}?`,
+      message: `You're about to take ${count} ${plural} off the plan. This can't be undone.`,
+      confirmLabel: 'Remove',
+      onConfirm: () => {
+        animateLayout();
+        bulkDeleteEntries(selectedIdList);
+        exitSelection();
+      },
+    });
   };
 
   /**

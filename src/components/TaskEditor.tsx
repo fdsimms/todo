@@ -31,6 +31,7 @@ import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
 import {
@@ -1286,22 +1287,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       );
       return;
     }
-    Alert.alert(
-      'Delete task?',
-      `Delete "${task.title}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            haptics.success();
-            deleteTask(task.id);
-            onClose();
-          },
-        },
-      ],
-    );
+    confirmDelete({
+      title: 'Delete task?',
+      message: `Delete "${task.title}"?`,
+      onConfirm: () => {
+        haptics.success();
+        deleteTask(task.id);
+        onClose();
+      },
+    });
   };
 
 

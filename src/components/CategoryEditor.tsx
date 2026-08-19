@@ -23,6 +23,7 @@ import { PressableScale } from './PressableScale';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
   DAY_LABELS,
@@ -248,20 +249,13 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const handleDelete = () => {
     if (!category) return;
     haptics.warning();
-    Alert.alert(
-      'Delete Category',
-      taskCount > 0
+    confirmDelete({
+      title: 'Delete Category',
+      message: taskCount > 0
         ? `Remove "${category}" from ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}? They'll become uncategorized. This can be undone with shake-to-undo.`
         : `Delete "${category}"? This can be undone with shake-to-undo.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => { animateLayout(); deleteCategory(category); onClose(); },
-        },
-      ],
-    );
+      onConfirm: () => { animateLayout(); deleteCategory(category); onClose(); },
+    });
   };
 
   if (!category) return null;
