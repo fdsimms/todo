@@ -934,10 +934,13 @@ export function TodayScreen() {
   // below.
   const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0 || filterHasReminder;
 
-  // Today stays current on its own (see the tick effect above), so pulling
-  // down doesn't refresh anything — it opens quick search. It used to open
-  // quick add, but the FAB and its add menu already cover adding; searching
-  // had no gesture of its own.
+  // Every view here stays current on its own (see the tick effect above for
+  // Today's), so pulling down on any of the four doesn't refresh anything —
+  // it opens quick search. It used to open quick add on Today alone, but the
+  // FAB and its add menu already cover adding; searching had no gesture of
+  // its own, on any sub-view, and a gesture that worked on one lens but
+  // silently did nothing on the other three was hard to learn (#821) —
+  // Later, Unscheduled and Inbox all wire the same refreshControl to this.
   const handlePullToSearch = useCallback(() => {
     setPullingToSearch(true);
     haptics.impactLight();
@@ -2890,6 +2893,13 @@ export function TodayScreen() {
                 {listFooter(laterSections.length === 0)}
               </>
             }
+            refreshControl={
+              <RefreshControl
+                refreshing={pullingToSearch}
+                onRefresh={handlePullToSearch}
+                tintColor={colors.textSecondary}
+              />
+            }
           />
         )}
 
@@ -3135,6 +3145,13 @@ export function TodayScreen() {
               />
             }
             ListFooterComponentStyle={unscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
+            refreshControl={
+              <RefreshControl
+                refreshing={pullingToSearch}
+                onRefresh={handlePullToSearch}
+                tintColor={colors.textSecondary}
+              />
+            }
           />
         )}
 
@@ -3201,6 +3218,13 @@ export function TodayScreen() {
               />
             }
             ListFooterComponentStyle={inboxTasks.length === 0 ? undefined : styles.listFooterCell}
+            refreshControl={
+              <RefreshControl
+                refreshing={pullingToSearch}
+                onRefresh={handlePullToSearch}
+                tintColor={colors.textSecondary}
+              />
+            }
           />
         )}
         </FabDropZoneProvider>
@@ -3230,7 +3254,8 @@ export function TodayScreen() {
           initialType={quickAddType}
         />
 
-        {/* Opened by pulling the Today list down. */}
+        {/* Opened by pulling any of the four lists down — Today, Later,
+            Unscheduled and Inbox all wire the same refreshControl to it. */}
         <QuickSearchModal
           visible={quickSearchVisible}
           onClose={() => setQuickSearchVisible(false)}
