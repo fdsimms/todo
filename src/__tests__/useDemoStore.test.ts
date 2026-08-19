@@ -319,6 +319,21 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // #1255: a task with nothing seeded carrying streakRequiresWindow reads as
+  // a feature the app doesn't have, so one recurring habit that already has a
+  // window (timeSegments) and an established streak opts in.
+  it('seeds a habit whose streak requires on-time completion', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const standup = tasks.find(t => t.title === 'Morning standup');
+    expect(standup?.streakRequiresWindow).toBe(true);
+    expect(standup?.timeSegments).toEqual(['morning']);
+    expect(standup?.streakCount).toBeGreaterThan(0);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // The month grid's one distinctive mark is a dot for an occurrence that has
   // no row yet, and only a fixed-schedule recurrence with a due date produces
   // one (see canProject). Nothing else in the seed asserts that combination

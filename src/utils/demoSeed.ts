@@ -97,11 +97,12 @@ export function seedDemoData(): void {
 
   const standup = addTask({
     title: 'Morning standup',
-    notes: 'Fifteen minutes, camera optional.',
+    notes: "Fifteen minutes, camera optional. The streak only counts if it's actually done in the morning.",
     category: 'Work',
     recurrenceType: 'weekly',
     recurrenceDays: [1, 2, 3, 4, 5],
     timeSegments: ['morning'],
+    streakRequiresWindow: true,
     effort: 1,
   });
   updateTask(standup.id, { streakCount: 9, streakDate: subDays(today, 1).toISOString() });
