@@ -1014,6 +1014,29 @@ export interface TaskTemplate {
 // Deliberately not a Task: a task is an occurrence you complete once, so
 // modelling groceries as tasks floods Inbox/Unscheduled (neither predicate has
 // an escape hatch but projectId) and leaves a completion tombstone per trip.
+/**
+ * One remembered price, as recorded by a finished trip.
+ *
+ * The whole point of keeping several is that a *single* last price is a poor
+ * baseline: last week's happened to be a sale, and everything measured against
+ * it reads as a jump. A short run of them answers "what does this usually
+ * cost", which is the question a price is actually asked.
+ *
+ * **The quantity travels with the amount** and is not optional bookkeeping —
+ * "$4.99" means nothing without "for 12 oz", which is the same ambiguity
+ * `lastPriceQuantity` exists to close. A run of observations at mixed sizes is
+ * normalized before anything is computed over it, or refused outright; see
+ * `priceHistory.ts`.
+ */
+export interface PriceObservation {
+  /** Minor units, same as every other price here. */
+  minor: number;
+  /** What that price was for, as written. Null when the row named no amount. */
+  quantity: string | null;
+  /** ISO. */
+  at: string;
+}
+
 export interface GroceryItem {
   id: string;
   // What the user last typed — the label. "Whole milk" and "milk" reading
@@ -1255,6 +1278,23 @@ export interface GroceryItem {
    * safe to default off.
    */
   useUpTask: boolean | null;
+  /**
+   * The last few prices this item was bought at, newest first, capped at
+   * `PRICE_HISTORY_LIMIT`.
+   *
+   * **Bounded by construction, which is what keeps it an aggregate rather than
+   * a log** — the objection `grocery_item_shops` was shaped around. A rolling
+   * window also answers non-stationarity for free: prices drift, packaging
+   * changes, and a median over everything ever paid would quietly mislead
+   * after a year. There is no window to choose because the window is the cap.
+   *
+   * **Written by a finished trip and nothing else.** A hand-typed price still
+   * sets `lastPriceMinor` and is deliberately not recorded here: a trip is the
+   * app watching a purchase happen, which is the same standard
+   * `probablyHaveReason` holds itself to (#1770), and it means clearing a price
+   * by hand has nothing here to un-say.
+   */
+  priceHistory: PriceObservation[];
 }
 
 // How many days before an item's expiry its "Use up X" task falls due.
@@ -1367,6 +1407,18 @@ export interface ItemShopLink {
   lastPriceMinor: number | null;
   lastPricedAt: string | null;
   lastPriceQuantity: string | null;
+  /**
+   * This store's own last few prices, newest first — same rules and same cap as
+   * `GroceryItem.priceHistory`.
+   *
+   * Kept per store as well as per item because the question is per store: what
+   * Costco usually charges and what Safeway usually charges are different
+   * numbers, and a median mixing them describes neither shop. The item's own
+   * run stays the fallback for a trip that named no store, which is a real and
+   * supported answer — so the same purchase lands in both, exactly as
+   * `lastPriceMinor` already does at both levels.
+   */
+  priceHistory: PriceObservation[];
   /**
    * The brand you last got here — "Good Culture" at Costco, "Lucerne" at
    * Safeway. An **observation**, paired with lastPurchasedAt above, and

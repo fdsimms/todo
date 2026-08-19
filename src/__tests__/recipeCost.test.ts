@@ -127,7 +127,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   } as GroceryItem;
 }
@@ -256,11 +256,11 @@ describe('estimateRecipeCost', () => {
     ]);
     const catalog = [
       item({
-        name: 'Flour', lastPriceMinor: 200, lastPriceQuantity: '2 lb',
+        name: 'Flour', lastPriceMinor: 200, lastPriceQuantity: '2 lb', priceHistory: [],
         lastPricedAt: '2026-08-01T00:00:00.000Z',
       }),
       item({
-        name: 'Sugar', lastPriceMinor: 300, lastPriceQuantity: '2 lb',
+        name: 'Sugar', lastPriceMinor: 300, lastPriceQuantity: '2 lb', priceHistory: [],
         lastPricedAt: '2026-03-01T00:00:00.000Z',
       }),
     ];

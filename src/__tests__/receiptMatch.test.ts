@@ -40,7 +40,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   };
 }
@@ -270,7 +270,7 @@ function makeLink(overrides: Partial<ItemShopLink> & { itemId: string; shopId: s
     unavailableAt: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     brand: null,
     brandUnavailableAt: null,
     ...overrides,
@@ -426,5 +426,80 @@ describe('acceptedByDefault', () => {
     // once at match time.
     expect(acceptedByDefault(matches, items, null, links)).toEqual([]);
     expect(acceptedByDefault(matches, items, 'costco', links)).toEqual([items[0].id]);
+  });
+});
+
+// ─── the baseline the price check measures against ───────────────────────────
+
+describe('receiptCautionsFor, against a run of prices', () => {
+  it('does not cry wolf over a correct match following a sale', () => {
+    // The reason a median exists. Measured against `lastPriceMinor` alone —
+    // last week's half-price 1.99 — this ordinary 4.09 is a 2x+ move, and with
+    // one more sale in the run it would clear the threshold outright.
+    const item = makeItem({
+      name: 'Olive oil',
+      lastPriceMinor: 199,
+      priceHistory: [
+        { minor: 199, quantity: null, at: '2026-08-01T00:00:00.000Z' },
+        { minor: 399, quantity: null, at: '2026-07-01T00:00:00.000Z' },
+        { minor: 419, quantity: null, at: '2026-06-01T00:00:00.000Z' },
+        { minor: 409, quantity: null, at: '2026-05-01T00:00:00.000Z' },
+      ],
+    });
+    const match = only(item, { name: 'olive oil', priceMinor: 409 });
+
+    expect(receiptCautionsFor(match, [item], null, [])).toEqual([]);
+  });
+
+  it('still catches a real mismatch, measured against the median', () => {
+    const item = makeItem({
+      name: 'Olive oil',
+      lastPriceMinor: 399,
+      priceHistory: [
+        { minor: 399, quantity: null, at: '2026-08-01T00:00:00.000Z' },
+        { minor: 419, quantity: null, at: '2026-07-01T00:00:00.000Z' },
+        { minor: 409, quantity: null, at: '2026-06-01T00:00:00.000Z' },
+      ],
+    });
+    const match = only(item, { name: 'olive oil', priceMinor: 4999 });
+
+    expect(receiptCautionsFor(match, [item], null, [])).toContainEqual(
+      { kind: 'price', baselineMinor: 409, baselineQuantity: null }
+    );
+  });
+
+  it('prefers the named store’s own run over the item’s', () => {
+    const item = makeItem({
+      name: 'Olive oil',
+      lastPriceMinor: 399,
+      priceHistory: [
+        { minor: 399, quantity: null, at: '2026-08-01T00:00:00.000Z' },
+        { minor: 399, quantity: null, at: '2026-07-01T00:00:00.000Z' },
+      ],
+    });
+    const links = [makeLink({
+      itemId: item.id,
+      shopId: 'costco',
+      priceHistory: [
+        { minor: 1599, quantity: null, at: '2026-08-01T00:00:00.000Z' },
+        { minor: 1649, quantity: null, at: '2026-07-01T00:00:00.000Z' },
+      ],
+    })];
+    const match = only(item, { name: 'olive oil', priceMinor: 1699 });
+
+    // Costco sells the big bottle; the item's own median describes a different
+    // shop entirely and would flag this for nothing.
+    expect(receiptCautionsFor(match, [item], 'costco', links)).toEqual([]);
+    expect(receiptCautionsFor(match, [item], null, links)).toHaveLength(1);
+  });
+
+  it('falls back to the last price when there is no run yet', () => {
+    // An install that upgraded into the column behaves exactly as it did.
+    const item = makeItem({ name: 'Milk', lastPriceMinor: 348, priceHistory: [] });
+    const match = only(item, { name: 'milk', priceMinor: 1840 });
+
+    expect(receiptCautionsFor(match, [item], null, [])).toContainEqual(
+      { kind: 'price', baselineMinor: 348, baselineQuantity: null }
+    );
   });
 });

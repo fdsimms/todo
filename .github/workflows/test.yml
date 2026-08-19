@@ -17,6 +17,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Ahead of the tests because it's the faster of the two and catches a
+      # different class of thing: a duplicate object key in a fixture is
+      # invisible to Jest (last one wins) and a compile error here. This is the
+      # first half of the verification loop CLAUDE.md asks for, and it went
+      # unenforced long enough for main to merge red on it.
+      - run: npx tsc --noEmit
       - run: npm test
       - run: npx expo export --platform ios --output-dir /tmp/expo-export
         env:

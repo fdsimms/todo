@@ -1,7 +1,7 @@
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { matchWeight } from './grocerySuggest';
-import { lastPricedAmountFor } from './groceryPrice';
+import { typicalPriceFor } from './groceryPrice';
 import { measureQuantity } from './unitConvert';
 import type { ReceiptLine } from '../services/aiSuggestions';
 
@@ -246,9 +246,13 @@ export function matchReceiptShop(storeName: string, shops: readonly Shop[]): Sho
  */
 export type ReceiptCaution =
   /**
-   * Wildly off what this item last cost. Read as a *matching* error rather than
-   * as news about prices: a 4x move is almost never inflation or a sale, it's
-   * the receipt line having been read onto the wrong row.
+   * Wildly off what this item *usually* costs. Read as a *matching* error rather
+   * than as news about prices: a 4x move is almost never inflation or a sale,
+   * it's the receipt line having been read onto the wrong row.
+   *
+   * The baseline is the median of the run kept for this item (`priceHistory`),
+   * which matters: measured against a single last price, a perfectly correct
+   * match following a sale week reads as a jump and gets demoted for nothing.
    */
   | { kind: 'price'; baselineMinor: number; baselineQuantity: string | null }
   /** The receipt names a different amount than the row asked for. */
@@ -287,7 +291,7 @@ export function receiptCautionsFor(
 
   const cautions: ReceiptCaution[] = [];
 
-  const baseline = lastPricedAmountFor(item, shopId, links);
+  const baseline = typicalPriceFor(item, shopId, links);
   if (baseline && match.line.priceMinor !== null) {
     const ratio = comparablePriceRatio(
       match.line.priceMinor, match.line.quantity,

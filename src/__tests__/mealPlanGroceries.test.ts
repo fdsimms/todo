@@ -129,7 +129,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   };
 }

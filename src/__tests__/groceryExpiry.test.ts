@@ -44,7 +44,7 @@ function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   };
 }

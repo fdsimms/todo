@@ -4,6 +4,7 @@ import { GROCERY_PRICE_MINOR_MAX } from '../types';
 import { isUnavailable } from './groceryShops';
 import { parseQuantity, rationalToNumber } from './quantity';
 import { measureQuantity, shelfUnit, type Dimension } from './unitConvert';
+import { priceBaseline } from './priceHistory';
 
 /**
  * What things cost — parsing a typed price, rendering one, and the one
@@ -507,4 +508,40 @@ export function lastPricedAmountFor(
   }
   if (item.lastPriceMinor == null) return null;
   return { minor: item.lastPriceMinor, quantity: item.lastPriceQuantity };
+}
+
+/**
+ * What this item *usually* costs — the median of the run kept for it, falling
+ * back to the last price when there is no run to take one of.
+ *
+ * The fallback is the whole reason this reads as an improvement rather than a
+ * migration: an install with no history behaves exactly as it did, and each
+ * trip makes the answer a little better. Same store-then-item precedence
+ * `lastPricedAmountFor` uses, and the same return shape, so a caller swaps one
+ * for the other and changes nothing else.
+ *
+ * **For measuring *against*, not for display.** A median is the right thing to
+ * ask "is this price odd" and the wrong thing to print as what something costs
+ * — that's `lastPriceMinor`, which is a number the user can actually point at a
+ * receipt for.
+ */
+export function typicalPriceFor(
+  item: GroceryItem,
+  shopId: string | null,
+  links: readonly ItemShopLink[]
+): { minor: number; quantity: string | null } | null {
+  if (shopId) {
+    const link = links.find(l => l.itemId === item.id && l.shopId === shopId);
+    // A store with a run of its own answers for itself: what Costco charges and
+    // what Safeway charges are different numbers, and a median across both
+    // describes neither.
+    if (link) {
+      const fromShop = priceBaseline(link.priceHistory);
+      if (fromShop) return fromShop;
+      if (link.lastPriceMinor != null) {
+        return { minor: link.lastPriceMinor, quantity: link.lastPriceQuantity };
+      }
+    }
+  }
+  return priceBaseline(item.priceHistory) ?? lastPricedAmountFor(item, shopId, links);
 }

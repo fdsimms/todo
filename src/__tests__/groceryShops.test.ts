@@ -55,7 +55,7 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   };
 }
@@ -68,7 +68,7 @@ function link(
 ): ItemShopLink {
   return {
     itemId, shopId, purchaseCount, lastPurchasedAt, unavailableAt: null,
-    lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null,
+    lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
     brand: null, brandUnavailableAt: null,
   };
 }
@@ -83,7 +83,7 @@ function notAt(itemId: string, shopId: string, purchaseCount = 0): ItemShopLink 
     unavailableAt: '2026-03-04T00:00:00.000Z',
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     brand: null,
     brandUnavailableAt: null,
   };
