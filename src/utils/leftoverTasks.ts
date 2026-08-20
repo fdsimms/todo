@@ -1,5 +1,6 @@
 import type { Leftover, TaskDraft } from '../types';
 import { generatedBy, wantsGeneratedTask } from './generatedTasks';
+import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
 import { needsAttention } from './leftovers';
 import { resolveOffsetDate } from './templateUtils';
 import { getCurrentDayStart } from './dateUtils';
@@ -47,10 +48,10 @@ export function useUpTaskTitle(leftover: Leftover): string {
 
 /**
  * The fields the leftover owns on its task: what it's called, when it comes
- * up, and the day it's actually about.
+ * up, the day it's actually about, and where tapping its link opens.
  *
  * **This is deliberately the complete list**, and reconciling writes exactly
- * these three — same discipline as the grocery and meal analogs, for the same
+ * these four — same discipline as the grocery and meal analogs, for the same
  * reason: the category, notes, reminder and subtasks belong to the user.
  *
  * `dueDate` is today (`now`), not some lead time back from `keepUntil` — the
@@ -58,17 +59,20 @@ export function useUpTaskTitle(leftover: Leftover): string {
  * starts mattering *is* the day it should surface. `deadline` carries
  * `keepUntil` itself, the same way a grocery use-up task's deadline carries
  * the expiry: due is when to act, deadline is the day the food is answerable
- * to.
+ * to. `linkUrl` opens straight to this container's own row —
+ * `kitchenLinkUrl(kitchenEntryId('leftover', leftover.id))` — the same link
+ * shape the grocery use-up task carries for its own row.
  */
 export function useUpTaskFields(
   leftover: Leftover,
   now: Date = getCurrentDayStart()
-): { title: string; dueDate: string; deadline: string } {
+): { title: string; dueDate: string; deadline: string; linkUrl: string } {
   return {
     title: useUpTaskTitle(leftover),
     // Never null: `now` is a real Date and the offset is 0.
     dueDate: resolveOffsetDate(now, 0)!,
     deadline: leftover.keepUntil,
+    linkUrl: kitchenLinkUrl(kitchenEntryId('leftover', leftover.id)),
   };
 }
 
@@ -93,7 +97,7 @@ export function useUpTaskDraft(
  * thing. Same shape as cookTaskNeedsUpdate/useUpTaskNeedsUpdate (grocery).
  */
 export function useUpTaskNeedsUpdate(
-  task: { title: string; dueDate: string | null; deadline: string | null },
+  task: { title: string; dueDate: string | null; deadline: string | null; linkUrl: string | null },
   leftover: Leftover,
   now: Date = getCurrentDayStart()
 ): boolean {
@@ -101,6 +105,7 @@ export function useUpTaskNeedsUpdate(
   return (
     task.title !== next.title ||
     task.dueDate !== next.dueDate ||
-    task.deadline !== next.deadline
+    task.deadline !== next.deadline ||
+    task.linkUrl !== next.linkUrl
   );
 }

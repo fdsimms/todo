@@ -271,6 +271,22 @@ describe('initialize', () => {
     useGroceryStore.getState().initialize();
     expect(useGroceryStore.getState().aisleOrder).toContain('Butcher');
   });
+
+  it('clears a pending use-up prompt — session-only, nothing to mean on a fresh load', () => {
+    useGroceryStore.setState({ pendingUseUpItemId: 'g-1' });
+    useGroceryStore.getState().initialize();
+    expect(useGroceryStore.getState().pendingUseUpItemId).toBeNull();
+  });
+});
+
+describe('setPendingUseUpItem', () => {
+  it('is what UseUpResolveSheet watches to open on the right item', () => {
+    useGroceryStore.getState().setPendingUseUpItem('g-1');
+    expect(useGroceryStore.getState().pendingUseUpItemId).toBe('g-1');
+
+    useGroceryStore.getState().setPendingUseUpItem(null);
+    expect(useGroceryStore.getState().pendingUseUpItemId).toBeNull();
+  });
 });
 
 // ─── addByName ───────────────────────────────────────────────────────────────

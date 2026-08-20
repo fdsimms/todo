@@ -32,6 +32,7 @@ import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
 import { PersistentTripBar } from '../components/PersistentTripBar';
 import { UndoBar } from '../components/UndoBar';
+import { UseUpResolveSheet } from '../components/UseUpResolveSheet';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
@@ -361,6 +362,11 @@ export default function AppNavigator() {
           the app is in for a few seconds, not a screen — see UndoBar's own
           doc comment for why it belongs beside these two. */}
       <UndoBar />
+      {/* Same placement again: completing a "Use up X" task can happen from
+          Today, Search, Waiting, the widget or a bulk-complete, so what it
+          triggers can't be owned by any one screen either — see its own doc
+          comment. */}
+      <UseUpResolveSheet />
     </>
   );
 }

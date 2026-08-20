@@ -2453,6 +2453,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ? useMealPlanStore.getState().setCookedPaired(cookedEntryId, true)
       : null;
 
+    // Ticking a "Use up X" task off is the moment the user can say what
+    // actually happened to the thing it's about — surfaced immediately as
+    // that item's own resolve sheet (UseUpResolveSheet, mounted in
+    // AppNavigator like the trip bar and demo banner, since completion can
+    // land here from Today, Search, Waiting, the widget, or a bulk-complete,
+    // not just one screen) rather than left as a checked-off reminder with
+    // the pantry or fridge untouched. Never on a miss, same as the cook
+    // pairing above: a missed deadline didn't resolve anything.
+    if (!missed) {
+      const groceryUseUpId = generatedSourceOf(task, 'groceryUseUp');
+      if (groceryUseUpId) useGroceryStore.getState().setPendingUseUpItem(groceryUseUpId);
+      const leftoverUseUpId = generatedSourceOf(task, 'leftoverUseUp');
+      if (leftoverUseUpId) useLeftoverStore.getState().setPendingUseUpLeftover(leftoverUseUpId);
+    }
+
     if (completionHoldTimer) clearTimeout(completionHoldTimer);
     completionHoldTimer = setTimeout(() => {
       completionHoldTimer = null;
@@ -2571,6 +2586,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // part of a completion's undo, so setCooked returns early.
     const uncookedEntryId = generatedSourceOf(task, 'mealCook');
     if (uncookedEntryId) useMealPlanStore.getState().setCooked(uncookedEntryId, false);
+
+    // Un-ticking a "Use up X" task retracts whatever resolve prompt it just
+    // triggered — same reasoning as the cook pairing above, and unconditional
+    // for the same reason setCooked's own clear is: the flag is session-only
+    // with nothing durable to reconcile, so clearing it outright is simpler
+    // than checking whose it currently is.
+    if (generatedSourceOf(task, 'groceryUseUp')) useGroceryStore.getState().setPendingUseUpItem(null);
+    if (generatedSourceOf(task, 'leftoverUseUp')) useLeftoverStore.getState().setPendingUseUpLeftover(null);
 
     // Un-completing a task (e.g. from the Logbook) is itself undoable via
     // shake-to-undo — this restores the exact prior completed state rather

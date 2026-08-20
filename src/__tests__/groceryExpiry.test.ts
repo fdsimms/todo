@@ -105,6 +105,11 @@ describe('useUpTaskFields', () => {
     const fields = useUpTaskFields(item({ expiresAt: '2026-08-17' }), -4);
     expect(fields.dueDate).toBe(fields.deadline);
   });
+
+  it('opens straight to this item\'s own row in the kitchen view', () => {
+    const spinach = item();
+    expect(useUpTaskFields(spinach, 1).linkUrl).toBe(`dundundun://kitchen?item=grocery-${spinach.id}`);
+  });
 });
 
 describe('useUpTaskDraft', () => {
@@ -140,5 +145,9 @@ describe('useUpTaskNeedsUpdate', () => {
 
   it('reads a task the user re-dated as drifted — the item owns the day', () => {
     expect(useUpTaskNeedsUpdate({ ...inStep, dueDate: '2026-09-01T12:00:00.000Z' }, spinach, 1)).toBe(true);
+  });
+
+  it('notices a task whose link no longer points at the kitchen', () => {
+    expect(useUpTaskNeedsUpdate({ ...inStep, linkUrl: null }, spinach, 1)).toBe(true);
   });
 });

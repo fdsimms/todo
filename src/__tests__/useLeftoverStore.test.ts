@@ -107,6 +107,22 @@ describe('initialize', () => {
 
     expect(useLeftoverStore.getState().leftovers.map(l => l.id)).toEqual(['sooner', 'later']);
   });
+
+  it('clears a pending use-up prompt — session-only, nothing to mean on a fresh load', () => {
+    useLeftoverStore.setState({ pendingUseUpLeftoverId: 'l-1' });
+    useLeftoverStore.getState().initialize();
+    expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBeNull();
+  });
+});
+
+describe('setPendingUseUpLeftover', () => {
+  it('is what UseUpResolveSheet watches to open on the right leftover', () => {
+    useLeftoverStore.getState().setPendingUseUpLeftover('l-1');
+    expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBe('l-1');
+
+    useLeftoverStore.getState().setPendingUseUpLeftover(null);
+    expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBeNull();
+  });
 });
 
 describe('logLeftover', () => {

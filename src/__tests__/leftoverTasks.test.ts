@@ -106,6 +106,11 @@ describe('useUpTaskFields', () => {
     expect(fields.deadline).toBe('2026-08-14');
   });
 
+  it('opens straight to this leftover\'s own row in the kitchen view', () => {
+    const chilli = leftover();
+    expect(useUpTaskFields(chilli, now).linkUrl).toBe(`dundundun://kitchen?item=leftover-${chilli.id}`);
+  });
+
   it('defaults to the logical day, honouring dayResetTime during the early-morning grace window', () => {
     // 1:30 AM on June 11, with a 2:00 AM reset — still "June 10" logically.
     settingsState.dayResetTime = '02:00';
@@ -152,5 +157,9 @@ describe('useUpTaskNeedsUpdate', () => {
 
   it('reads a task the user re-dated as drifted — the leftover owns the day', () => {
     expect(useUpTaskNeedsUpdate({ ...inStep, dueDate: '2026-09-01T12:00:00.000Z' }, chilli, now)).toBe(true);
+  });
+
+  it('notices a task whose link no longer points at the kitchen', () => {
+    expect(useUpTaskNeedsUpdate({ ...inStep, linkUrl: null }, chilli, now)).toBe(true);
   });
 });

@@ -7,6 +7,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import {
   initDatabase,
@@ -7620,6 +7621,92 @@ describe('deleting a use-up task', () => {
     useTaskStore.getState().deleteTask(task.id);
 
     expect(useGroceryStore.getState().items[0].useUpTask).toBeNull();
+  });
+});
+
+describe('completing a use-up task', () => {
+  const groceryItem = {
+    id: 'g-1', name: 'Spinach', nameKey: 'spinach', brand: null, brandStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
+    onList: false, checked: false, inCatalog: true, sortOrder: 1, purchaseCount: 3,
+    lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+    onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+    isStaple: false, expiresAt: '2026-08-17', shelfLifeDays: null, useUpTask: null,
+    lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
+  };
+  const seedItem = () => {
+    useGroceryStore.setState({
+      items: [{ ...groceryItem }], aisleOrder: [], hiddenAisles: [], aisleOverrides: {},
+      shops: [], itemShops: [], lastShopId: null, cartHoldIds: [], pendingUseUpItemId: null, initialized: true,
+    });
+  };
+
+  const leftover = {
+    id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
+    storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14', finishedAt: null,
+    outcome: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+  };
+  const seedLeftover = () => {
+    useLeftoverStore.setState({ leftovers: [{ ...leftover }], pendingUseUpLeftoverId: null, initialized: true });
+  };
+
+  it('points the pantry at the item whose use-up task was just completed', () => {
+    seedItem();
+    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', generatedKind: 'groceryUseUp', generatedSourceId: 'g-1' });
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useGroceryStore.getState().pendingUseUpItemId).toBe('g-1');
+  });
+
+  it('points the fridge at the leftover whose use-up task was just completed', () => {
+    seedLeftover();
+    const task = useTaskStore.getState().addTask({ title: 'Use up Chicken stir-fry', generatedKind: 'leftoverUseUp', generatedSourceId: 'l-1' });
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBe('l-1');
+  });
+
+  it('leaves an ordinary task\'s completion alone', () => {
+    seedItem();
+    seedLeftover();
+    const task = useTaskStore.getState().addTask({ title: 'Buy stamps' });
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useGroceryStore.getState().pendingUseUpItemId).toBeNull();
+    expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBeNull();
+  });
+
+  it('does not prompt when the deadline passed instead of it being resolved', () => {
+    seedItem();
+    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', generatedKind: 'groceryUseUp', generatedSourceId: 'g-1' });
+
+    useTaskStore.getState().completeTask(task.id, { missed: true });
+
+    expect(useGroceryStore.getState().pendingUseUpItemId).toBeNull();
+  });
+
+  it('retracts the prompt when the completion is undone', () => {
+    seedItem();
+    const task = useTaskStore.getState().addTask({ title: 'Use up Spinach', generatedKind: 'groceryUseUp', generatedSourceId: 'g-1' });
+    useTaskStore.getState().completeTask(task.id);
+    expect(useGroceryStore.getState().pendingUseUpItemId).toBe('g-1');
+
+    useTaskStore.getState().lastAction!.undo();
+
+    expect(useGroceryStore.getState().pendingUseUpItemId).toBeNull();
+  });
+
+  it('retracts the prompt on a direct uncomplete too, e.g. from the Logbook', () => {
+    seedLeftover();
+    const task = useTaskStore.getState().addTask({ title: 'Use up Chicken stir-fry', generatedKind: 'leftoverUseUp', generatedSourceId: 'l-1' });
+    useTaskStore.getState().completeTask(task.id);
+    expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBe('l-1');
+
+    useTaskStore.getState().uncompleteTask(task.id);
+
+    expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBeNull();
   });
 });
 
