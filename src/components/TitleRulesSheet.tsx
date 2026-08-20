@@ -87,7 +87,7 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
             <EmptyState
               icon="funnel-outline"
               title="No title rules"
-              subtitle="Give a word a home — anything you add starting with “expense” can file itself under Work, tagged and prioritized, without you picking anything."
+              subtitle="Pick a word, and anything you add starting with it files itself. A rule for “expense” can set the category, tags and priority every time, so you don't have to."
               actionLabel="New rule"
               onAction={() => setEditingId(null)}
             />
@@ -96,8 +96,8 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
           <ScrollView contentContainerStyle={styles.list}>
             <Text style={styles.caption}>
               A rule fills in a task as you type it. It never overrides something you picked
-              yourself, and it only ever applies to a task as it's created — renaming a task
-              later doesn't refile it.
+              yourself, and it only applies as a task is created. Renaming a task later doesn't
+              refile it.
             </Text>
             <View style={styles.card}>
               {titleRules.map((rule, i) => {
@@ -117,7 +117,7 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
                           {describeTitleRuleTrigger(rule)}
                         </Text>
                         <Text style={styles.meta} numberOfLines={1}>
-                          {targets || 'Nothing to set — open to finish it'}
+                          {targets || 'Nothing set yet. Open to finish it.'}
                           {rule.stripKeyword ? ' · word removed' : ''}
                         </Text>
                       </TouchableOpacity>
@@ -144,9 +144,9 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
               style={styles.addBtn}
             />
             <Text style={styles.footnote}>
-              Two rules that both want to set the same thing are settled by the longer, more
-              specific word — “expense report” beats “expense”. Tags from every matching rule
-              are added together.
+              When two rules want to set the same thing, the longer, more specific word wins:
+              “expense report” beats “expense”. Tags from every matching rule are added
+              together.
             </Text>
           </ScrollView>
         )}

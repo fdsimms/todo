@@ -201,9 +201,9 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             />
           </View>
           <Text style={styles.keywordHint}>
-            Matched on whole words, upper or lower case — “expense” never fires on “expensive”.
-            Plurals and other forms are separate words, so add “expenses” too if you type it.
-            At least {MIN_KEYWORD_LENGTH} letters.
+            Matched on whole words, upper or lower case, so “expense” never fires on
+            “expensive”. Plurals and other forms are separate words, so add “expenses” too if
+            you type it. At least {MIN_KEYWORD_LENGTH} letters.
           </Text>
         </View>
       </View>

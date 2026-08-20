@@ -604,7 +604,7 @@ export function TasksProjectsSettings() {
           icon="funnel-outline"
           iconColor={activeTitleRuleCount > 0 ? colors.accent : undefined}
           label="Title rules"
-          hint="File a task by a word in its name — anything starting with “expense” goes to Work"
+          hint="File a task by a word in its name, so anything starting with “expense” goes to Work"
           value={activeTitleRuleCount === 0
             ? 'None'
             : activeTitleRuleCount === 1 ? '1 rule' : `${activeTitleRuleCount} rules`}

@@ -88,6 +88,17 @@ text only — the codebase's comments and test descriptions have long used Briti
 phrasing (colour, behaviour, labelled, organised, and so on) as their own established internal
 style, and that's a separate, deliberate thing; don't go rewrite comments to "fix" this.
 
+**No em dashes.** A sentence held together by an em dash reads as machine-written, and they had
+spread through UI copy, patch notes and PR descriptions alike. Use the punctuation the sentence
+actually wants: a period when it's two thoughts, a colon when the second half explains the first,
+a comma or "so"/"because" when it's one clause leaning on another, parentheses for a genuine
+aside. If none of those fit, the sentence is doing too much and wants splitting. Applies to
+everything a person reads outside the code: UI text, hints, accessibility labels, alerts, empty
+states, placeholders, patch notes, demo-mode content, commit messages, PR descriptions and issue
+bodies. Not scoped to the codebase's own comments, which use them heavily as their established
+internal style, same carve-out as British spelling above; don't go rewrite comments to "fix" this.
+
+
 ## GitHub issue labels
 
 When creating an issue, apply exactly four labels from these fixed sets (verbatim strings — don't
