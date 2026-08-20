@@ -1,3 +1,13 @@
+// A task row: checkbox, swipes, inline editing, the expanded panel. One
+// component of ~2,450 lines, so grep a landmark rather than reading it start to
+// finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//
+// The row is rendered on several screens, and `duplicateRow` marks the pinned
+// copy so two rows never claim one task id in the paint-select registry (see
+// the Pinning note in CLAUDE.md).
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -265,6 +275,7 @@ export const TaskItem = React.memo(function TaskItem({
     reorderSubtasks,
     duplicateTask,
   } = useTaskStore.getState();
+  // ==== the row's outward actions: link, call, text, contact, email ====
   const handleOpenLink = async () => {
     if (!task.linkUrl) return;
     haptics.tap();
@@ -346,6 +357,7 @@ export const TaskItem = React.memo(function TaskItem({
   const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const reduceMotion = useReduceMotion();
+  // ==== local state (expansion, completion animation, inline editing) ====
   const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
@@ -502,6 +514,7 @@ export const TaskItem = React.memo(function TaskItem({
   const titleInputRef = useRef<TextInput>(null);
   const subtaskTitleInputRef = useRef<TextInput>(null);
 
+  // ==== effects: the completion hold, collapse animation, and now-tick ====
   useEffect(() => {
     // Only a row coming *down* from expanded has a collapse to wait out; a row
     // that merely mounted collapsed must keep drawing its scrim right away, or
@@ -740,6 +753,7 @@ export const TaskItem = React.memo(function TaskItem({
     if (timerRunning) haptics.success();
   }, [timed, timerRunning, remainingSeconds > 0, task.completed]);
 
+  // ==== timer controls ====
   const handleTimerToggle = async () => {
     if (timerRunning) {
       await haptics.success();
@@ -1045,6 +1059,7 @@ export const TaskItem = React.memo(function TaskItem({
     });
   };
 
+  // ==== completing, quota taps, and their undos ====
   const handleComplete = async () => {
     if (completingRef.current || pacingOutRef.current) return;
     if (completionLocked) {
@@ -1280,6 +1295,7 @@ export const TaskItem = React.memo(function TaskItem({
     uncompleteTask(task.id);
   };
 
+  // ==== inline title and subtask editing ====
   const handleTitleTap = () => {
     if (selectionMode) { onSelect?.(task.id); return; }
     setTitleEdit(task.title);
@@ -2458,6 +2474,7 @@ export const TaskItem = React.memo(function TaskItem({
     </Reanimated.View>
   );
 
+  // ==== render. Everything below is JSX ====
   return (
     <>
       <Reanimated.View

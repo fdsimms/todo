@@ -1,3 +1,16 @@
+// The task edit sheet. One component, ~1,370 lines of state/effects/handlers
+// followed by a single JSX return, so grep a landmark below rather than reading
+// it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   <EditorGroup label=     the cards, in render order: Kind, Schedule,
+//                           Relationships, Organize, Priority & effort,
+//                           Task actions, Streaks, Convert
+//   makeStyles              styles, at the bottom
+//
+// Adding a field? Read "Editors are progressive disclosure" and "The task
+// editor's fields are searchable" in CLAUDE.md first: the row needs a hint and
+// its own keywords, and nothing renders its picker expanded.
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Alert,
@@ -157,6 +170,7 @@ const SUBTASK_CHECKBOX_SIZE = 16;
 
 
 export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
+  // ==== store bindings ====
   const addTask = useTaskStore(s => s.addTask);
   const addTaskSeries = useTaskStore(s => s.addTaskSeries);
   const applyTaskDates = useTaskStore(s => s.applyTaskDates);
@@ -194,6 +208,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // stand down for the drag to survive the first finger move — a JS responder
   // nested *inside* a scroll view doesn't stop it from claiming the touch (see
   // SortableList's onDragStateChange).
+  // ==== local state (the draft, and the sheet's own UI state) ====
   const [draggingRow, setDraggingRow] = useState(false);
 
   // Field search — "where is Waiting on". Off by default and behind the
@@ -455,6 +470,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     targetUnit: string; chainItems: ChainItem[];
   }>({ timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [] });
 
+  // ==== effects: loading a task into the draft, and keeping fields in step ====
   useEffect(() => {
     if (!visible) return;
     // A search belongs to the trip you made to find one field, not to the
@@ -701,6 +717,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return next;
   };
 
+  // ==== save ====
   const save = () => {
     if (!title.trim()) return;
 
@@ -1129,6 +1146,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
    * quantity is split off and a name already in the catalog is put back on the
    * list rather than duplicated. Confirms because it deletes the task.
    */
+  // ==== the other exits: send to groceries, cancel, delete ====
   const handleSendToGroceries = () => {
     if (!task) return;
     const raw = title.trim() || task.title;
@@ -1434,6 +1452,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return next;
   };
 
+  // ==== inline editing of subtask and chain-step rows ====
   const handleSubtaskTitleTap = (sub: Task | DraftSubtask) => {
     setSubtaskTitleEdit(sub.title);
     setEditingSubtaskId(sub.id);
@@ -1527,6 +1546,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     }
   };
 
+  // ==== render. Everything below is JSX; grep `label="…"` for a card ====
   return (
     <EditorSheet
       visible={visible}
