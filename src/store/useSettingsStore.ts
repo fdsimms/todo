@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
-import { DEFAULT_APP_FONT, isAppFont, type AppFont } from '../theme/fonts';
+import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
 import type { SortOption, RecipeSortOption, Priority, Effort, TimeOfDay, TitleRule } from '../types';
 import {
   DEFAULT_CURRENCY_SYMBOL,
@@ -141,6 +141,14 @@ interface SettingsStore {
   quietHoursEnd: string | null;   // "HH:MM"
   themeMode: ThemeMode;
   appFont: AppFont; // typeface for the whole app — see src/theme/fonts.ts
+  // Pick a new appFont from appFontPool at random every cold start, instead of
+  // keeping whatever was last selected. See pickRandomAppFont in
+  // src/theme/fonts.ts and its call in initialize() below.
+  appFontRandomize: boolean;
+  // The fonts eligible for appFontRandomize's pick. Kept out of
+  // DEFAULT_SETTINGS/resetToDefaults for the same mechanical reason
+  // newTaskDefaults is (String(value) doesn't round-trip an array).
+  appFontPool: AppFont[];
   use24HourTime: boolean; // render clock times as "17:30" rather than "5:30 PM"
   weekStartsOn: WeekStart;
   fabHand: FabHand;
@@ -576,6 +584,8 @@ interface SettingsStore {
   setQuietHours: (start: string | null, end: string | null) => void;
   setThemeMode: (mode: ThemeMode) => void;
   setAppFont: (fontId: AppFont) => void;
+  setAppFontRandomize: (on: boolean) => void;
+  setAppFontPool: (pool: AppFont[]) => void;
   setDailyAgendaEnabled: (on: boolean) => void;
   setDailyAgendaTime: (time: string) => void;
   setTripReminderEnabled: (on: boolean) => void;
@@ -664,6 +674,7 @@ const DEFAULT_SETTINGS = {
   activeHoursEnd: '22:00',
   themeMode: 'dark' as ThemeMode,
   appFont: DEFAULT_APP_FONT,
+  appFontRandomize: false,
   use24HourTime: false,
   weekStartsOn: 0 as WeekStart,
   fabHand: 'right' as FabHand,
@@ -849,6 +860,17 @@ function parseRecipeTagList(raw: string | null): string[] {
   }
 }
 
+function parseAppFontPool(raw: string | null): AppFont[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isAppFont);
+  } catch {
+    return [];
+  }
+}
+
 function parseFilterArray<T extends number>(raw: string | null, max: number): T[] {
   if (!raw) return [];
   try {
@@ -914,6 +936,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   quietHoursEnd: null,
   themeMode: 'dark',
   appFont: DEFAULT_APP_FONT,
+  appFontRandomize: false,
+  appFontPool: [],
   use24HourTime: false,
   weekStartsOn: 0,
   fabHand: 'right',
@@ -1004,7 +1028,20 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const quietHoursEnd = dbGetSetting('quietHoursEnd') || null;
     const themeMode = (dbGetSetting('themeMode') as ThemeMode | null) ?? 'dark';
     const storedFont = dbGetSetting('appFont');
-    const appFont = isAppFont(storedFont) ? storedFont : DEFAULT_APP_FONT;
+    const appFontRandomize = dbGetSetting('appFontRandomize') === 'true';
+    const appFontPool = parseAppFontPool(dbGetSetting('appFontPool'));
+    let appFont = isAppFont(storedFont) ? storedFont : DEFAULT_APP_FONT;
+    if (appFontRandomize) {
+      // Written back to 'appFont' itself, not just held in memory — every
+      // other reader (widget sync, sync tracking, the next preloadAppFont
+      // call) reads that one key and must not need to know randomization
+      // exists.
+      const picked = pickRandomAppFont(appFontPool);
+      if (picked) {
+        appFont = picked;
+        dbSetSetting('appFont', appFont);
+      }
+    }
     const use24HourTime = dbGetSetting('use24HourTime') === 'true';
     const weekStartsOn: WeekStart = dbGetSetting('weekStartsOn') === '1' ? 1 : 0;
     const fabHand: FabHand = dbGetSetting('fabHand') === 'left' ? 'left' : 'right';
@@ -1198,7 +1235,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1266,6 +1303,16 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setAppFont(fontId: AppFont) {
     dbSetSetting('appFont', fontId);
     set({ appFont: fontId });
+  },
+
+  setAppFontRandomize(on: boolean) {
+    dbSetSetting('appFontRandomize', on ? 'true' : 'false');
+    set({ appFontRandomize: on });
+  },
+
+  setAppFontPool(pool: AppFont[]) {
+    dbSetSetting('appFontPool', JSON.stringify(pool));
+    set({ appFontPool: pool });
   },
 
   setDailyAgendaEnabled(on: boolean) {

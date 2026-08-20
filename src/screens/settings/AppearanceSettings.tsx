@@ -4,7 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore, type FabHand } from '../../store/useSettingsStore';
 import { useColors } from '../../theme/ThemeContext';
 import { interaction, type ThemeMode } from '../../theme';
-import { APP_FONT_OPTIONS, resolveFontFace } from '../../theme/fonts';
+import { APP_FONT_OPTIONS, resolveFontFace, type AppFont } from '../../theme/fonts';
 import { useFontPreviewsLoaded } from '../../theme/AppFont';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
@@ -31,6 +31,10 @@ export function AppearanceSettings() {
   const setFabHand = useSettingsStore(s => s.setFabHand);
   const appFont = useSettingsStore(s => s.appFont);
   const setAppFont = useSettingsStore(s => s.setAppFont);
+  const appFontRandomize = useSettingsStore(s => s.appFontRandomize);
+  const setAppFontRandomize = useSettingsStore(s => s.setAppFontRandomize);
+  const appFontPool = useSettingsStore(s => s.appFontPool);
+  const setAppFontPool = useSettingsStore(s => s.setAppFontPool);
   const hapticsEnabled = useSettingsStore(s => s.hapticsEnabled);
   const setHapticsEnabled = useSettingsStore(s => s.setHapticsEnabled);
   const shakeToUndoEnabled = useSettingsStore(s => s.shakeToUndoEnabled);
@@ -41,6 +45,20 @@ export function AppearanceSettings() {
   const fontPreviewsLoaded = useFontPreviewsLoaded();
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
+
+  const handleToggleRandomize = (on: boolean) => {
+    // Turning it on with nothing checked would randomize over an empty pool
+    // forever (pickRandomAppFont just leaves appFont where it was) — seed it
+    // with the font already showing so there's something to switch away from.
+    if (on && appFontPool.length === 0) setAppFontPool([appFont]);
+    setAppFontRandomize(on);
+  };
+
+  const toggleAppFontInPool = (id: AppFont) => {
+    setAppFontPool(
+      appFontPool.includes(id) ? appFontPool.filter(f => f !== id) : [...appFontPool, id]
+    );
+  };
 
   return (
     <>
@@ -70,10 +88,27 @@ export function AppearanceSettings() {
 
       <SettingsSection
         label="Typeface"
-        footer="Changes every screen at once. These all ship with the OS, so nothing downloads."
+        footer={
+          appFontRandomize
+            ? 'Picks one of the checked fonts at random every time the app cold starts.'
+            : 'Changes every screen at once. These are bundled with the app, so nothing downloads.'
+        }
       >
+        <SettingsRow
+          icon="shuffle-outline"
+          iconColor={appFontRandomize ? colors.accent : undefined}
+          label="Randomize"
+          hint={
+            appFontRandomize
+              ? 'Switches to a random checked font below on each cold start'
+              : 'Always use the font selected below'
+          }
+          toggle={appFontRandomize}
+          onPress={() => handleToggleRandomize(!appFontRandomize)}
+        />
+        <View style={styles.sep} />
         {APP_FONT_OPTIONS.map((opt, i) => {
-          const selected = appFont === opt.id;
+          const selected = appFontRandomize ? appFontPool.includes(opt.id) : appFont === opt.id;
           // Naming a family here is what stops the patched Text applying
           // the *selected* font to this row, so each option previews
           // itself. Undefined for System, which flattens over the
@@ -84,10 +119,10 @@ export function AppearanceSettings() {
               {i > 0 && <View style={styles.sep} />}
               <TouchableOpacity
                 style={styles.row}
-                onPress={() => setAppFont(opt.id)}
+                onPress={() => (appFontRandomize ? toggleAppFontInPool(opt.id) : setAppFont(opt.id))}
                 activeOpacity={interaction.activeOpacity}
-                accessibilityRole="radio"
-                accessibilityState={{ selected }}
+                accessibilityRole={appFontRandomize ? 'checkbox' : 'radio'}
+                accessibilityState={appFontRandomize ? { checked: selected } : { selected }}
                 accessibilityLabel={`${opt.label} typeface`}
               >
                 <Text
@@ -103,7 +138,15 @@ export function AppearanceSettings() {
                   </Text>
                   <Text style={styles.rowHint}>{opt.hint}</Text>
                 </View>
-                {selected && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+                {appFontRandomize ? (
+                  <Ionicons
+                    name={selected ? 'checkbox' : 'square-outline'}
+                    size={18}
+                    color={selected ? colors.accent : colors.textTertiary}
+                  />
+                ) : (
+                  selected && <Ionicons name="checkmark" size={18} color={colors.accent} />
+                )}
               </TouchableOpacity>
             </React.Fragment>
           );

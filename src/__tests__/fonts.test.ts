@@ -6,6 +6,7 @@ import {
   getAppFontOption,
   isAppFont,
   normalizeFontWeight,
+  pickRandomAppFont,
   resolveFontFace,
   type AppFont,
 } from '../theme/fonts';
@@ -146,5 +147,24 @@ describe('getAppFontOption', () => {
 
   it('returns undefined for an unknown id', () => {
     expect(getAppFontOption('nope' as AppFont)).toBeUndefined();
+  });
+});
+
+describe('pickRandomAppFont', () => {
+  it('returns null for an empty pool, rather than a default', () => {
+    expect(pickRandomAppFont([])).toBeNull();
+  });
+
+  it('returns the only entry for a single-font pool', () => {
+    expect(pickRandomAppFont(['nunito'])).toBe('nunito');
+  });
+
+  it('picks by index off the injected random source', () => {
+    const pool: AppFont[] = ['bricolage', 'fraunces', 'nunito'];
+    expect(pickRandomAppFont(pool, () => 0)).toBe('bricolage');
+    expect(pickRandomAppFont(pool, () => 0.5)).toBe('fraunces');
+    // Just under 1, not 1 itself — Math.random()'s own range — so the last
+    // index is reachable without ever rounding up past the array's end.
+    expect(pickRandomAppFont(pool, () => 0.999)).toBe('nunito');
   });
 });
