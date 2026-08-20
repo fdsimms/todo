@@ -335,6 +335,16 @@ export default function AppNavigator() {
             options={{ presentation: 'card' }}
           />
         </RootStack.Navigator>
+        {/* Global, not screen-scoped (see its own doc comment) — but still
+            inside NavigationContainer, unlike the three below. It nests
+            GroceryItemSheet, whose useKeyboardInsetScroll calls useIsFocused;
+            outside NavigationContainer entirely that throws "Couldn't find a
+            navigation object" on every render, crashing the app at launch.
+            Inside it but outside the RootStack, useNavigation() resolves to
+            the container's own root ref (isFocused() always true), which is
+            exactly the right behaviour for something not tied to any one
+            screen. */}
+        <UseUpResolveSheet />
       </NavigationContainer>
 
       <SideMenuDrawer
@@ -362,11 +372,6 @@ export default function AppNavigator() {
           the app is in for a few seconds, not a screen — see UndoBar's own
           doc comment for why it belongs beside these two. */}
       <UndoBar />
-      {/* Same placement again: completing a "Use up X" task can happen from
-          Today, Search, Waiting, the widget or a bulk-complete, so what it
-          triggers can't be owned by any one screen either — see its own doc
-          comment. */}
-      <UseUpResolveSheet />
     </>
   );
 }
