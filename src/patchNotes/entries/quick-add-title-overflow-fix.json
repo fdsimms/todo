@@ -1,0 +1,4 @@
+{
+  "message": "Fixed Quick Add's title scrolling off the top of the screen, behind the status bar, when enough fields are set and a panel is open with the keyboard up — its content now scrolls in place instead of growing past the screen.",
+  "date": "2026-08-20"
+}

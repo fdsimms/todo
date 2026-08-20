@@ -11,7 +11,9 @@ import {
   Keyboard,
   Platform,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
@@ -196,7 +198,8 @@ export function QuickAddModal({
   const [postCreateTask, setPostCreateTask] = useState<Task | null>(null);
   const colors = useColors();
   const { isDark, shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
   const tagInputRef = useRef<TextInput>(null);
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
@@ -240,6 +243,16 @@ export function QuickAddModal({
       hideSub.remove();
     };
   }, []);
+
+  // The sheet centers in the full screen and, once the keyboard is up,
+  // re-centers in what's left above it (see keyboardOffsetAnim). Left
+  // unbounded, a sheet tall enough to need that room — several attribute
+  // panels open, a long category grid — gets shifted until its own top,
+  // title input included, is off the top of the screen. Capping it to the
+  // space actually available and letting the rest scroll (below) keeps the
+  // title in view no matter how tall the open panel is.
+  const sheetMaxHeight = windowHeight - keyboardHeight - insets.top - insets.bottom - spacing.xl * 2;
+  const styles = useMemo(() => makeStyles(colors, sheetMaxHeight), [colors, sheetMaxHeight]);
 
   // `onDone` runs after `onClose`, once the sheet has actually faded out —
   // callers that also need to change what's on screen behind the sheet (e.g.
@@ -972,6 +985,13 @@ export function QuickAddModal({
       )}
       <View style={styles.centeredContainer} pointerEvents="box-none">
         <Animated.View style={[styles.sheet, shadows.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }, { translateY: Animated.add(translateYAnim, keyboardOffsetAnim) }] }]}>
+          {/* sheetMaxHeight bounds this view; with enough open panels or a
+              long category grid the content below the title can outgrow it,
+              which used to push the whole sheet — title input included —
+              up past the top of the screen once the keyboard's offset was
+              added on top. Scrolling the content keeps the title pinned at
+              the top of a sheet that can no longer grow past the screen. */}
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Where the button was dropped. Removable: the drop chose a place,
               it didn't commit you to one. */}
           {seedActive && seedLabel ? (
@@ -1810,6 +1830,7 @@ export function QuickAddModal({
               <Text style={styles.moreBtnText}>More details</Text>
             </TouchableOpacity>
           )}
+          </ScrollView>
         </Animated.View>
       </View>
       <WhenPicker
@@ -1848,7 +1869,7 @@ export function QuickAddModal({
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   keyboardBacking: {
     position: 'absolute',
@@ -1869,6 +1890,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
+    maxHeight: sheetMaxHeight,
   },
   row: {
     flexDirection: 'row',
