@@ -246,7 +246,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               label="Project"
               summary={projects.find(p => p.id === draft.projectId)?.title}
               emptySummary="Says nothing"
-              hint="Which project a matching task counts toward. Quick add has no project field of its own, so a rule is the way to get one on a task as you type it."
+              hint="Which project a matching task counts toward, when you add it from quick add. Quick add has no project field of its own, so a rule is the way to get one on a task as you type it. A task captured somewhere with nothing on screen to show it, like a dictated reminder, is left out of the project so it still lands in your Inbox."
               expanded={fieldOpen('project')}
               onToggle={() => toggleField('project')}
             >

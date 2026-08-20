@@ -1,4 +1,4 @@
-import type { TitleRule } from '../types';
+import type { Task, TitleRule } from '../types';
 import {
   describeTitleRuleTargets,
   describeTitleRuleTrigger,
@@ -8,6 +8,7 @@ import {
   normalizeKeywords,
   parseTitleRules,
   resolveTitleRules,
+  titleRuleBacklog,
   titleRuleIsUseless,
   titleRuleSaysNothing,
 } from '../utils/titleRules';
@@ -237,5 +238,146 @@ describe('descriptions', () => {
   it('says nothing about a field whose category or project has since been deleted', () => {
     expect(describeTitleRuleTargets(rule({ category: 'Gone', tags: ['receipts'] }), null, null))
       .toBe('#receipts');
+  });
+});
+
+const makeTask = (overrides: Partial<Task> = {}): Task => ({
+  id: '1',
+  title: 'Expense the client lunch',
+  notes: '',
+  completed: false,
+  completedAt: null,
+  missedAt: null,
+  autoScheduledAt: null,
+  createdAt: '2025-01-01T00:00:00.000Z',
+  seenAt: null,
+  dueDate: null,
+  deadline: null,
+  deadlineOffsetDays: null,
+  deadlineMonthDay: null,
+  deferUntil: null,
+  timeSegments: [],
+  windowStart: null,
+  windowEnd: null,
+  recurrenceType: 'none',
+  recurrenceInterval: 1,
+  recurrenceDays: [],
+  recurrenceMonthDay: null,
+  recurrenceWeekOrdinal: null,
+  recurrenceEndDate: null,
+  recurrenceCount: null,
+  recurrenceFromCompletion: false,
+  targetCount: null,
+  targetUnit: null,
+  allowOvershoot: false,
+  progressCount: 0,
+  tags: [],
+  category: null,
+  sortOrder: 1,
+  pinned: false,
+  pinnedOrder: 0,
+  postponeCount: 0,
+  postponeMuted: false,
+  driftingSince: null,
+  priority: 0,
+  effort: 0,
+  estimatedMinutes: null,
+  streakCount: 0,
+  streakDate: null,
+  previousStreakCount: 0,
+  previousStreakDate: null,
+  showStreak: false,
+  streakRequiresWindow: false,
+  parentId: null,
+  groupId: null,
+  projectId: null,
+  reminderTime: null,
+  reminderKind: 'notification',
+  chainEnabled: false,
+  chainIndex: 0,
+  chainItems: [],
+  chainStepOnSchedule: false,
+  extraTaskEveryN: null,
+  extraTaskTitle: null,
+  extraTaskDraft: null,
+  extraTaskTally: 0,
+  previousExtraTaskTally: 0,
+  vacationPause: false,
+  timerStartedAt: null,
+  timedMinutes: null,
+  timerElapsedSeconds: 0,
+  actualMinutes: null,
+  previousOccurrenceId: null,
+  seriesId: null,
+  seriesMonthDays: [],
+  seriesRepeatMonths: 1,
+  seriesDefaults: null,
+  archived: false,
+  archivedAt: null,
+  linkUrl: null,
+  phoneNumber: null,
+  emailAddress: null,
+  blockedById: null,
+  deliverableKind: null,
+  deliverableValue: null,
+  generatedKind: null,
+  generatedSourceId: null,
+  deadlineOnCalendar: false,
+  calendarEventId: null,
+  timeBlockEventId: null,
+  pendingImport: null,
+  ...overrides,
+});
+
+describe('titleRuleBacklog', () => {
+  const expense = rule({ keywords: ['expense'], category: 'Work', tags: ['admin'], effort: 1 });
+
+  it('names the live tasks a newly written rule would have filed', () => {
+    const tasks = [
+      makeTask({ id: 'a', title: 'Expense the client lunch' }),
+      makeTask({ id: 'b', title: 'Water the plants' }),
+    ];
+    expect(titleRuleBacklog(tasks, expense).map(e => e.task.id)).toEqual(['a']);
+  });
+
+  it('fills only what the task left blank, and adds tags rather than replacing them', () => {
+    const tasks = [makeTask({ id: 'a', category: 'Home', tags: ['bills'], effort: 3 })];
+    expect(titleRuleBacklog(tasks, expense)[0].updates).toEqual({ tags: ['bills', 'admin'] });
+  });
+
+  it('leaves out a task the rule has nothing left to say about', () => {
+    const tasks = [makeTask({ id: 'a', category: 'Home', tags: ['admin'], effort: 3 })];
+    expect(titleRuleBacklog(tasks, expense)).toEqual([]);
+  });
+
+  it('never touches completed or archived rows, or a subtask', () => {
+    const tasks = [
+      makeTask({ id: 'done', completed: true }),
+      makeTask({ id: 'filed', archived: true }),
+      makeTask({ id: 'step', parentId: 'a' }),
+    ];
+    expect(titleRuleBacklog(tasks, expense)).toEqual([]);
+  });
+
+  it('offers nothing for a rule saved switched off, or one that can never fire', () => {
+    const tasks = [makeTask({ id: 'a' })];
+    expect(titleRuleBacklog(tasks, rule({ ...expense, enabled: false }))).toEqual([]);
+    expect(titleRuleBacklog(tasks, rule({ keywords: ['expense'] }))).toEqual([]);
+  });
+
+  it('runs the one rule, not every rule that happens to match the same title', () => {
+    const tasks = [makeTask({ id: 'a' })];
+    const other = rule({ keywords: ['client'], match: 'contains', category: 'Personal' });
+    expect(titleRuleBacklog(tasks, other)[0].updates).toEqual({ category: 'Personal' });
+    expect(titleRuleBacklog(tasks, expense)[0].updates).toEqual({
+      category: 'Work', effort: 1, tags: ['admin'],
+    });
+  });
+
+  it('leaves the title alone even when the rule strips its keyword', () => {
+    const tasks = [makeTask({ id: 'a' })];
+    const entry = titleRuleBacklog(tasks, rule({ ...expense, stripKeyword: true }))[0];
+    expect(entry.updates).not.toHaveProperty('title');
+    expect(entry.task.title).toBe('Expense the client lunch');
   });
 });

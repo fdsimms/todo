@@ -36,7 +36,7 @@ import { KitchenSheet } from '../components/KitchenSheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
-import { ReceiptImportSheet } from '../components/ReceiptImportSheet';
+import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { StartTripPrompt } from '../components/StartTripPrompt';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
@@ -138,6 +138,8 @@ export function GroceryScreen() {
   const addAisle = useGroceryStore(s => s.addAisle);
   const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
   const finishShopping = useGroceryStore(s => s.finishShopping);
+  const addExisting = useGroceryStore(s => s.addExisting);
+  const addByName = useGroceryStore(s => s.addByName);
   const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
   const linkItemSub = useGroceryStore(s => s.linkItemSub);
   const swapForSubstitute = useGroceryStore(s => s.swapForSubstitute);
@@ -164,7 +166,7 @@ export function GroceryScreen() {
   // apart, since a receipt naming no store is a real answer and not an absent
   // one.
   const [receiptSeed, setReceiptSeed] = useState<
-    { shopId: string | null; priceText: Record<string, string> } | null
+    { shopId: string | null; priceText: Record<string, string>; purchasedAt: string } | null
   >(null);
   const [tripOpen, setTripOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -631,7 +633,8 @@ export function GroceryScreen() {
       shopId: string | null,
       unavailableIds: string[],
       priceById: Record<string, number>,
-      substitutes: Array<{ itemId: string; subItemId: string }>
+      substitutes: Array<{ itemId: string; subItemId: string }>,
+      purchasedAt?: string
     ) => {
       setFinishOpen(false);
       // The receipt was for the trip that just ended. Leaving it set would
@@ -658,7 +661,7 @@ export function GroceryScreen() {
       // The prices ride with the trip rather than being a fourth write: they're
       // about what it bought, so they have to land on the same rows in the same
       // pass that takes them off the list.
-      if (finishShopping(shopId, priceById) > 0) haptics.success();
+      if (finishShopping(shopId, priceById, purchasedAt) > 0) haptics.success();
       // Unconditional, and deliberately not inside finishShopping: that
       // early-returns on an empty trolley, and finishing a shop you bought
       // nothing at still ends the trip you were on.
@@ -669,28 +672,58 @@ export function GroceryScreen() {
   );
 
   /**
-   * A scanned receipt, confirmed. Ticks the rows it named and hands the store
-   * and the prices to the finish sheet, which is where the trip actually ends.
+   * A scanned receipt, confirmed. Ticks the rows it named, mints or promotes
+   * whatever the user chose to add as bought, and hands the store, the prices
+   * and the purchase date to the finish sheet, which is where the trip
+   * actually ends.
    *
    * Deliberately not a call to `finishShopping`. The receipt answers what came
    * home and what it cost; it can't answer which of the leftovers the store
    * didn't have, and that question is the finish sheet's whole second half. So
    * this fills that sheet in and opens it rather than going around it.
+   *
+   * `toAdd` is where the writing for #1805's "Add as bought" actually happens
+   * — `ReceiptImportSheet` only ever hands back a draft (see its own doc
+   * comment on why). Existing rows are promoted with `addExisting`; a line
+   * with no catalog match mints one with `addByName`, passing the printed
+   * label as the raw text a quick-add would have parsed and the line's own
+   * shopper-normalized name as the override, so the row is named the way the
+   * catalog already asks for it to be.
    */
   const handleReceiptApply = useCallback(
-    (shopId: string | null, itemIds: string[], priceById: Record<string, number>) => {
+    (
+      shopId: string | null,
+      itemIds: string[],
+      priceById: Record<string, number>,
+      purchasedAt: string,
+      toAdd: ReceiptAddDraft[]
+    ) => {
       animateLayout();
-      if (itemIds.length > 0) setCheckedMany(itemIds, true);
+      const allIds = [...itemIds];
+      const allPriceById = { ...priceById };
+      for (const draft of toAdd) {
+        let id: string;
+        if (draft.existingItemId) {
+          addExisting(draft.existingItemId);
+          id = draft.existingItemId;
+        } else {
+          id = addByName(draft.label, { name: draft.name, quantity: draft.quantity || null }).id;
+        }
+        allIds.push(id);
+        if (draft.priceMinor !== null) allPriceById[id] = draft.priceMinor;
+      }
+      if (allIds.length > 0) setCheckedMany(allIds, true);
       setReceiptSeed({
         shopId,
         priceText: Object.fromEntries(
-          Object.entries(priceById).map(([id, minor]) => [id, priceToInput(minor)])
+          Object.entries(allPriceById).map(([id, minor]) => [id, priceToInput(minor)])
         ),
+        purchasedAt,
       });
       setReceiptOpen(false);
       setFinishOpen(true);
     },
-    [setCheckedMany]
+    [setCheckedMany, addExisting, addByName]
   );
 
   const handleClearTrip = useCallback(() => {
@@ -772,15 +805,6 @@ export function GroceryScreen() {
       onPress: () => setBuyAgainOpen(true),
       disabled: selectionMode,
       accessibilityLabel: 'Buy again',
-    });
-    // Beside Buy again, since both read what you already have rather than the
-    // list: one is what to get, the other is what's in the kitchen — the
-    // pantry and the fridge in one read (#1670).
-    list.push({
-      icon: 'file-tray-stacked-outline',
-      onPress: () => setKitchenOpen(true),
-      disabled: selectionMode,
-      accessibilityLabel: 'Kitchen — what you have and what to use up',
     });
     list.push({
       icon: 'walk-outline',
@@ -1141,6 +1165,7 @@ export function GroceryScreen() {
         purchased={purchased}
         seedShopId={receiptSeed?.shopId}
         seedPriceText={receiptSeed?.priceText}
+        seedPurchasedAt={receiptSeed?.purchasedAt}
         onClose={() => {
           setFinishOpen(false);
           setReceiptSeed(null);

@@ -35,7 +35,7 @@ import { taskKindOf } from '../utils/taskKinds';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { extraTaskDraftIsEmpty, extraTaskRule } from '../utils/extraTask';
 import { isDialable } from '../utils/phone';
-import { resolveTitleRules } from '../utils/titleRules';
+import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -599,6 +599,20 @@ describe('demo mode', () => {
     expect(filed!.category).toBe(rule.category);
     expect(filed!.tags).toEqual(rule.tags);
     expect(filed!.effort).toBe(rule.effort);
+  });
+
+  it('leaves a backlog for a rule written in demo mode to offer to file', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const written = {
+      ...useSettingsStore.getState().titleRules[0],
+      id: 'demo-rule-invoice',
+      keywords: ['invoice'],
+      category: 'Work',
+    };
+    const backlog = titleRuleBacklog(useTaskStore.getState().tasks, written);
+    expect(backlog.length).toBeGreaterThan(1);
+    expect(backlog.every(e => e.task.title.toLowerCase().startsWith('invoice'))).toBe(true);
   });
 
   // The Decisions block on a project's screen has nothing to render unless a

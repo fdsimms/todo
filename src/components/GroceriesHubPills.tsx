@@ -19,6 +19,14 @@ const HUB_TABS: { name: HubTab; label: string }[] = [
   { name: 'MealPlan', label: 'Meal plan' },
 ];
 
+// Not a fourth hub screen — Kitchen is a sheet over Groceries (KitchenSheet),
+// reached the same way the "Use up X" task link and the persistent trip
+// bar's Finish button already reach sheets on other screens: navigate to the
+// screen that owns it with a stamped param it's watching for
+// (`GroceryScreen`'s `route.params?.openKitchen` effect). So it never gets
+// an active/selected state like the three real tabs above it — it's an
+// action pill, not a destination.
+
 interface Props {
   active: HubTab;
 }
@@ -98,6 +106,18 @@ export function GroceriesHubPills({ active }: Props) {
           </TouchableOpacity>
         );
       })}
+      <TouchableOpacity
+        style={styles.pill}
+        onPress={() => {
+          haptics.tap();
+          navigation.navigate('Groceries', { openKitchen: Date.now() });
+        }}
+        activeOpacity={interaction.activeOpacity}
+        accessibilityRole="button"
+        accessibilityLabel="Kitchen — what you have and what to use up"
+      >
+        <Text style={styles.pillText}>Kitchen</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
