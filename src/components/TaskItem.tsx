@@ -939,11 +939,11 @@ export const TaskItem = React.memo(function TaskItem({
   const runCompletion = async (deliverableValue?: string | null) => {
     if (completingRef.current || pacingOutRef.current) return;
     if (isNew) markTaskSeen(task.id);
-    // A quota row completes through its meter, so it plays the same beats with
-    // the fill topping out where the checkmark would be: the circle is a level,
-    // not a box, and a checkmark stamped over it reads as a different control
-    // appearing at the last moment. Any completion of a row that's currently
-    // showing a meter takes this path, the widget's included.
+    // A quota row completes through its meter — the last unit tops the fill
+    // out to the brim first, since that's what the row has been doing all
+    // along — but it still ends on the same checkmark every other completion
+    // does; see the delayed checkScale spring below. Any completion of a row
+    // that's currently showing a meter takes this path, the widget's included.
     const viaMeter = isQuota;
     // The unit that meets the target can land inside a linger window (log the
     // seventh, then the eighth). The completion owns the row from here, so the
@@ -983,10 +983,20 @@ export const TaskItem = React.memo(function TaskItem({
       ]).start(({ finished }) => {
         if (finished) setQuotaToppedOut(true);
       });
-    } else {
-      checkScale.setValue(0);
-      Animated.spring(checkScale, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
     }
+    // The checkmark itself always plays, on every completion — a target that
+    // reaches its count is a completion like any other and should look like
+    // one. For a meter row it's delayed until the fill has finished rising,
+    // so it pops in at the same moment the circle does (see the sequence
+    // below, which delays its own pop by the same span) rather than
+    // appearing on top of a still-rising level.
+    checkScale.setValue(0);
+    Animated.spring(checkScale, {
+      toValue: 1,
+      delay: viaMeter ? QUOTA_TOPPING_MS : 0,
+      ...animation.spring.bouncy,
+      useNativeDriver: true,
+    }).start();
     const sequence = Animated.sequence([
       ...(viaMeter ? [Animated.delay(QUOTA_TOPPING_MS)] : []),
       Animated.spring(circleScale, { toValue: CIRCLE_POP_SCALE, ...animation.spring.snappy, useNativeDriver: true }),
@@ -1383,7 +1393,7 @@ export const TaskItem = React.memo(function TaskItem({
               so the glyph sits on top of the quota fill rather than being laid
               out beside it. */}
           <View pointerEvents="none" style={styles.circleContentLayer}>
-            {completing && !quotaCompleting && !quotaPartial && (
+            {completing && !quotaPartial && (
               // The spring (animation.spring.bouncy) overshoots past 1 for the pop
               // feel, but animating a native-driven `scale` transform on an Ionicons
               // glyph scales the already-rasterized bitmap up rather than

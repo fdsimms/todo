@@ -1,4 +1,4 @@
 {
-  "message": "A daily target that fell short of its count no longer shows the same checkmark as a full completion in Search and Calendar",
+  "message": "A daily target now gets the same checkmark and completion animation as any other task when it reaches its count, and no longer shows one when it closes out short",
   "date": "2026-08-20"
 }
