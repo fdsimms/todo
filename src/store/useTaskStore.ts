@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Task, TaskDraft, Priority, TimeOfDay } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -69,7 +69,7 @@ import {
   type DriftEntry,
 } from '../utils/postpone';
 import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
-import { resolveTitleRules } from '../utils/titleRules';
+import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
@@ -191,6 +191,8 @@ function resolveTimeSegments(draft: Partial<TaskDraft>, defaultSegment: TimeOfDa
  *    path, where every field a rule could fill is on screen and left empty is
  *    an answer;
  *  - a draft carrying no title at all, which has nothing to match.
+ *
+ * One *field* opts out rather than a caller: see `projectId` below.
  */
 function applyTitleRulesToDraft(
   draft: Partial<TaskDraft>,
@@ -207,7 +209,26 @@ function applyTitleRulesToDraft(
     ...draft,
     title: fill.cleanTitle,
     category: draft.category ?? fill.category,
-    projectId: draft.projectId ?? fill.projectId,
+    // **A rule's project is deliberately not filled here**, and it's the one
+    // field held back. Every field a rule sets is meant to be visible on the
+    // row it just created, and `projectId` is the exception: `isTaskVisible`
+    // bails on `projectId && !dueDate`, and both `isInboxTask` and
+    // `isUnscheduledTask` require a null one. So a rule filing an undated task
+    // into a project takes it off every list the person was looking at.
+    //
+    // In quick add that's fine and wanted — the caption names the project as
+    // you type and the ✕ takes it back — and quick add resolves the rules
+    // itself, so it isn't reached by this at all. What *is* reached by this is
+    // only the headless creations (a dictated Apple reminder, a deep link, a
+    // template run), where nothing ever says a project was chosen and there is
+    // no list left to find the task on. A dictated capture that lands nowhere
+    // is the failure this avoids; a dictated capture that merely lands unfiled
+    // is the Inbox working.
+    //
+    // The catch-up offer (titleRuleBacklog) still applies it, for the same
+    // reason quick add does: it's an explicit tap on a card naming what the
+    // rule sets, over rows already on screen, with an Undo beside it.
+    projectId: draft.projectId,
     // `!draft.priority` covers both an absent field and an explicit 0, which
     // is what "None" is everywhere one is picked. Left exactly as it arrived
     // when the rule says nothing, so an explicit 0 still means 0 rather than
@@ -954,6 +975,17 @@ interface TaskStore {
   // simpler because a pull candidate is undated, so there's no existing date to
   // protect and every move is a plain reschedule.
   pullProjectTasks: (moves: readonly { id: string; updates: Partial<Task> }[]) => void;
+  /**
+   * Files the tasks a rule just written would have filed, had it existed when
+   * they were typed (see utils/titleRules.titleRuleBacklog). Offered once, at
+   * the moment a rule is authored — a rule still never fires on its own after
+   * a task exists, so this is the one way an existing row is filed by one.
+   *
+   * Recomputes the backlog rather than taking a list of ids: the prompt names
+   * a count, and a task edited between reading it and answering it deserves
+   * the answer it has now. Returns how many rows it wrote to.
+   */
+  applyTitleRuleToExisting: (rule: TitleRule) => number;
   // Layer B of the same feature: projects the user opted into auto-scheduling
   // date their own next task when they run dry. Idempotent by construction —
   // dating a member makes the project non-stalled, so a second call in the same
@@ -2828,6 +2860,41 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
+  applyTitleRuleToExisting(rule) {
+    const entries = titleRuleBacklog(get().tasks, rule);
+    if (entries.length === 0) return 0;
+
+    // Snapshotted before anything is written, so the whole catch-up undoes as
+    // one action — the shape deloadTasks below uses, and for the same reason:
+    // a fan-out of N separate undo entries is N shakes to put one decision
+    // back. Only the five fields a rule can fill are captured; the undo is a
+    // narrow patch, never a whole-task replay.
+    const snapshots = entries.map(({ task }) => ({
+      id: task.id,
+      category: task.category,
+      projectId: task.projectId,
+      priority: task.priority,
+      effort: task.effort,
+      tags: task.tags,
+    }));
+
+    dbTransaction(() => {
+      entries.forEach(e => get().updateTask(e.task.id, e.updates));
+    });
+
+    get().setLastAction({
+      label: `${entries.length} task${entries.length === 1 ? '' : 's'} filed`,
+      undo: () => snapshots.forEach(s => get().updateTask(s.id, {
+        category: s.category,
+        projectId: s.projectId,
+        priority: s.priority,
+        effort: s.effort,
+        tags: s.tags,
+      })),
+    });
+    return entries.length;
+  },
+
   // A batch of approved deload moves. Each carries its own updates because the
   // mechanism differs per task — a recurring task gets deferUntil so its
   // schedule grid stays anchored, a one-off gets a real new dueDate (see
@@ -3019,11 +3086,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         category,
         groupId: group.id,
         ...generatedBy('mealPlanNudge', day.dayKey),
+        // skipTitleRules for the reason generatedTaskSync passes it: "Plan
+        // meals for Monday" is a title the app wrote, and this generator has
+        // its own "File them under" setting (mealPlanNudgeTaskCategory). A
+        // user rule matching one of its words would file it somewhere that
+        // setting didn't say.
       }, derivedId(spawnSeed.generated(
         'mealPlanNudge',
         day.dayKey,
         generatedTaskCountOf(get().tasks, 'mealPlanNudge', day.dayKey)
-      )));
+      )), { skipTitleRules: true });
       // The stack's own 1..K order, which is a separate number space from the
       // list order addTask just stamped (see reorderGroupChildren). Set the way
       // groupTasks sets it, so the rows read down the week.

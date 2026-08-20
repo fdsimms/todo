@@ -448,6 +448,12 @@ export function seedDemoData(): void {
   // --- Inbox (captured, not yet filed — no metadata at all) ----------------
   addTask({ title: 'Look into the bike repair place on 4th' });
   addTask({ title: 'Ask Sam about the cabin in October' });
+  // Two rows sharing a marker word no seeded rule claims. A title rule's
+  // catch-up offer (see titleRuleBacklog) only appears for a rule someone
+  // writes, so the seed can't hold one — what it can hold is a backlog for
+  // that rule to find, which is the half of the feature a screenshot shows.
+  addTask({ title: 'Invoice the workshop day' });
+  addTask({ title: 'Invoice the Ferndale rebrand' });
 
   // --- A project -----------------------------------------------------------
   const kitchen = createProject(
