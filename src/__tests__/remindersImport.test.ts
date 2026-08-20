@@ -339,6 +339,50 @@ describe('pendingImportFor', () => {
     expect(due.getHours()).toBe(12);
   });
 
+  it('parses a dictated date phrase against the logical day, not the wall clock', () => {
+    // 1am on the 8th, with a 2am dayResetTime: the user's day is still the
+    // 7th, so `logicalNow` is the 7th at 1am while `now` stays the real
+    // instant. "tomorrow" is the 8th by their clock, not the 9th.
+    const wallClock = new Date(2026, 7, 8, 1, 0, 0);
+    const logicalNow = new Date(2026, 7, 7, 1, 0, 0);
+
+    const out = pendingImportFor(
+      reminder({ title: 'Pay rent tomorrow' }),
+      wallClock,
+      logicalNow
+    );
+    const due = new Date(out!.dueDate!);
+    expect(due.getMonth()).toBe(7);
+    expect(due.getDate()).toBe(8);
+    expect(out!.title).toBe('Pay rent');
+  });
+
+  it('defaults the text clock to the wall clock, so callers outside the window need not care', () => {
+    const out = pendingImportFor(reminder({ title: 'Pay rent tomorrow' }), NOW);
+    const due = new Date(out!.dueDate!);
+    expect(due.getMonth()).toBe(7);
+    expect(due.getDate()).toBe(8);
+  });
+
+  it('keeps the alarm cutoff on the wall clock while the text reads the logical day', () => {
+    // The two clocks answer different questions, which is why they are two
+    // parameters. An alarm that fired an hour ago must stay dropped even
+    // though `logicalNow` sits a day behind it — rolling that back would
+    // resurrect a day of already-fired alarms as live reminders.
+    const wallClock = new Date(2026, 7, 8, 1, 0, 0);
+    const logicalNow = new Date(2026, 7, 7, 1, 0, 0);
+
+    const out = pendingImportFor(
+      reminder({
+        title: 'Pay rent tomorrow',
+        alarms: [{ absoluteDate: new Date(2026, 7, 8, 0, 0, 0).toISOString() }],
+      } as Partial<Reminder>),
+      wallClock,
+      logicalNow
+    );
+    expect(out!.reminderTime).toBeUndefined();
+  });
+
   it('reads a part of the day off a timed due date', () => {
     const evening = pendingImportFor(
       reminder({ title: 'Pay rent', dueDate: new Date(2026, 7, 8, 19, 0, 0).toISOString() }),

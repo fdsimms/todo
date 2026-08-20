@@ -50,7 +50,15 @@ jest.mock('../store/useGroceryStore', () => ({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockSettings: Record<string, any> = {};
 jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: { getState: () => mockSettings, subscribe: jest.fn() },
+  // The real store always carries a dayResetTime (default '00:00'), and the
+  // drain reads it to parse a dictated "tomorrow" against the user's own day.
+  // Defaulted here rather than in each block below so a case that doesn't care
+  // about the day boundary doesn't have to say so; a case that does can still
+  // set its own.
+  useSettingsStore: {
+    getState: () => ({ dayResetTime: '00:00', ...mockSettings }),
+    subscribe: jest.fn(),
+  },
 }));
 
 /**
@@ -198,6 +206,32 @@ describe('importReminders — the create/delete contract', () => {
     expect(mockAddTask).toHaveBeenCalledWith({ title: 'Task a' });
     expect(mockCalendar.deleteReminderAsync).toHaveBeenCalledWith('a');
     expect(outcome).toEqual({ imported: 1, deleteFailed: 0, skipped: 0, reason: 'ok' });
+  });
+
+  it('parses a dictated date phrase against the logical day, not the wall clock', async () => {
+    // 1am on Aug 8 with a 2am reset: the user's day is still Aug 7, so
+    // "tomorrow" is Aug 8 by their clock — not the Aug 9 the calendar date
+    // alone would give. Review is off here so the parse applies on the way in
+    // and the created task carries the date.
+    mockSettings.dayResetTime = '02:00';
+    mockSettings.remindersImportReview = false;
+    jest.useFakeTimers().setSystemTime(new Date(2026, 7, 8, 1, 0, 0));
+    try {
+      mockCalendar.getRemindersAsync.mockResolvedValue([
+        reminder('a', { title: 'Pay rent tomorrow' }),
+      ]);
+
+      await freshSync().importReminders();
+
+      expect(mockAddTask).toHaveBeenCalledTimes(1);
+      const saved = mockAddTask.mock.calls[0][0];
+      expect(saved.title).toBe('Pay rent');
+      const due = new Date(saved.dueDate);
+      expect(due.getMonth()).toBe(7);
+      expect(due.getDate()).toBe(8);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('imports in the order things were said', async () => {

@@ -11,9 +11,10 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { addDays } from 'date-fns/addDays';
 import type { Task } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { spacing, radius, font, fontWeight, iconSize, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
@@ -27,6 +28,17 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+
+/**
+ * Noon on a day, matching what WhenPicker commits for the same day — a
+ * date-only answer stored at local midnight is one DST shift away from
+ * formatting as the day before.
+ */
+const noonOf = (d: Date) => {
+  const n = new Date(d);
+  n.setHours(12, 0, 0, 0);
+  return n;
+};
 
 interface Props {
   visible: boolean;
@@ -64,6 +76,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
 
   const kind = task.deliverableKind ?? 'text';
   const meta = deliverableMeta(kind);
@@ -191,11 +204,20 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
                 </Text>
               </TouchableOpacity>
               <View style={styles.pills}>
-                {[{ label: 'Today', days: 0 }, { label: 'Tomorrow', days: 1 }].map(({ label, days }) => (
+                {/* The same two days WhenPicker's own quick buttons offer, off
+                    the same helpers and landing on the same instant (noon, via
+                    noonOf there) — both routes end in the same pickDate, so a
+                    bare `new Date()` here would have this pill and the calendar
+                    it opens disagree about which day is "today" for anyone
+                    whose dayResetTime is after midnight. */}
+                {[
+                  { label: 'Today', resolve: () => getLogicalToday(dayResetTime) },
+                  { label: 'Tomorrow', resolve: () => getLogicalTomorrow(dayResetTime) },
+                ].map(({ label, resolve }) => (
                   <TouchableOpacity
                     key={label}
                     style={styles.pill}
-                    onPress={() => pickDate(addDays(new Date(), days))}
+                    onPress={() => pickDate(noonOf(resolve()))}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
                     accessibilityLabel={label}
