@@ -119,6 +119,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'theme',
   'themeMode',
   'appFont',
+  'appFontRandomize',
+  'appFontPool',
 
   // The shape of a day. These decide what counts as due, so two devices
   // disagreeing about them show genuinely different task lists.

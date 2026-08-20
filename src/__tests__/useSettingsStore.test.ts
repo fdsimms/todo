@@ -104,6 +104,58 @@ describe('initialize', () => {
     useSettingsStore.getState().initialize();
     expect(useSettingsStore.getState().autoRemoveExpiredTasks).toBe(7);
   });
+
+  // ─── font randomization ────────────────────────────────────────────────────
+
+  it('leaves the stored appFont alone when randomize is off', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => {
+      if (key === 'appFont') return 'nunito';
+      if (key === 'appFontRandomize') return 'false';
+      if (key === 'appFontPool') return JSON.stringify(['bricolage', 'outfit']);
+      return null;
+    });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().appFont).toBe('nunito');
+    expect(dbSetSetting).not.toHaveBeenCalledWith('appFont', expect.anything());
+  });
+
+  it('picks the pool\'s only font when randomize is on with one font checked', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => {
+      if (key === 'appFont') return 'nunito';
+      if (key === 'appFontRandomize') return 'true';
+      if (key === 'appFontPool') return JSON.stringify(['fraunces']);
+      return null;
+    });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().appFont).toBe('fraunces');
+    // Written back so every other reader of the 'appFont' key — widget sync,
+    // sync tracking, the next preload — sees the pick without knowing
+    // randomization exists.
+    expect(dbSetSetting).toHaveBeenCalledWith('appFont', 'fraunces');
+  });
+
+  it('leaves appFont as stored when randomize is on but the pool is empty', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => {
+      if (key === 'appFont') return 'nunito';
+      if (key === 'appFontRandomize') return 'true';
+      if (key === 'appFontPool') return null;
+      return null;
+    });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().appFont).toBe('nunito');
+    expect(dbSetSetting).not.toHaveBeenCalledWith('appFont', expect.anything());
+  });
+
+  it('drops an unrecognized id from a stored pool', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => {
+      if (key === 'appFontRandomize') return 'true';
+      if (key === 'appFontPool') return JSON.stringify(['outfit', 'retired-font']);
+      return null;
+    });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().appFontPool).toEqual(['outfit']);
+    expect(useSettingsStore.getState().appFont).toBe('outfit');
+  });
 });
 
 // ─── setDayResetTime ──────────────────────────────────────────────────────────
@@ -137,6 +189,42 @@ describe('setThemeMode', () => {
     useSettingsStore.getState().setThemeMode('light');
     useSettingsStore.getState().setThemeMode('dark');
     expect(useSettingsStore.getState().themeMode).toBe('dark');
+  });
+});
+
+// ─── setAppFont / setAppFontRandomize / setAppFontPool ─────────────────────
+
+describe('setAppFont', () => {
+  it('updates appFont in state and persists it', () => {
+    useSettingsStore.getState().setAppFont('spaceGrotesk');
+    expect(useSettingsStore.getState().appFont).toBe('spaceGrotesk');
+    expect(dbSetSetting).toHaveBeenCalledWith('appFont', 'spaceGrotesk');
+  });
+});
+
+describe('setAppFontRandomize', () => {
+  it('updates appFontRandomize in state and persists it', () => {
+    useSettingsStore.getState().setAppFontRandomize(true);
+    expect(useSettingsStore.getState().appFontRandomize).toBe(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('appFontRandomize', 'true');
+
+    useSettingsStore.getState().setAppFontRandomize(false);
+    expect(useSettingsStore.getState().appFontRandomize).toBe(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('appFontRandomize', 'false');
+  });
+});
+
+describe('setAppFontPool', () => {
+  it('updates appFontPool in state and persists it as JSON', () => {
+    useSettingsStore.getState().setAppFontPool(['bricolage', 'nunito']);
+    expect(useSettingsStore.getState().appFontPool).toEqual(['bricolage', 'nunito']);
+    expect(dbSetSetting).toHaveBeenCalledWith('appFontPool', JSON.stringify(['bricolage', 'nunito']));
+  });
+
+  it('can clear the pool back to empty', () => {
+    useSettingsStore.getState().setAppFontPool(['outfit']);
+    useSettingsStore.getState().setAppFontPool([]);
+    expect(useSettingsStore.getState().appFontPool).toEqual([]);
   });
 });
 
@@ -260,6 +348,21 @@ describe('resetToDefaults', () => {
     useSettingsStore.getState().resetToDefaults();
     expect(dbSetSetting).toHaveBeenCalledWith('themeMode', 'dark');
     expect(dbSetSetting).toHaveBeenCalledWith('dayResetTime', '00:00');
+  });
+
+  it('resets the font to system and randomize off, but keeps the chosen pool', () => {
+    useSettingsStore.getState().setAppFont('nunito');
+    useSettingsStore.getState().setAppFontRandomize(true);
+    useSettingsStore.getState().setAppFontPool(['nunito', 'outfit']);
+
+    useSettingsStore.getState().resetToDefaults();
+
+    const state = useSettingsStore.getState();
+    expect(state.appFont).toBe('system');
+    expect(state.appFontRandomize).toBe(false);
+    // Array-typed, like titleRules/newTaskDefaults — String(value) doesn't
+    // round-trip it, so a reset leaves it for whoever re-enables randomize.
+    expect(state.appFontPool).toEqual(['nunito', 'outfit']);
   });
 
   // Same reasoning as the app lock below: a reset is about appearance and

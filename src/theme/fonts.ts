@@ -135,3 +135,16 @@ export function faceNamesFor(id: AppFont): string[] {
   const faces = getAppFontOption(id)?.faces;
   return faces ? FONT_WEIGHT_KEYS.map(w => faces[w]) : [];
 }
+
+/**
+ * One random pick from the user's chosen pool, for the "randomize on cold
+ * start" setting — `null` if the pool is empty rather than falling back to a
+ * default, so the caller can leave `appFont` exactly where it was.
+ *
+ * `random` takes a 0..1 source rather than reading `Math.random()` directly,
+ * so a test can hand it a fixed value and assert a specific pick.
+ */
+export function pickRandomAppFont(pool: AppFont[], random: () => number = Math.random): AppFont | null {
+  if (pool.length === 0) return null;
+  return pool[Math.floor(random() * pool.length)];
+}

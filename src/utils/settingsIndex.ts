@@ -92,6 +92,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['corner', 'left', 'right', 'handed', 'plus', 'fab'] },
   { id: 'typeface', groupId: 'appearance', label: 'Typeface', section: 'Typeface',
     keywords: ['font', 'bricolage', 'fraunces', 'space grotesk', 'nunito', 'outfit', 'serif', 'mono'] },
+  { id: 'appFontRandomize', groupId: 'appearance', label: 'Randomize', section: 'Typeface',
+    keywords: ['font', 'shuffle', 'mix', 'rotate', 'cold start', 'launch'] },
   { id: 'haptics', groupId: 'appearance', label: 'Haptic feedback', section: 'Feedback',
     keywords: ['vibrate', 'vibration', 'taptic', 'buzz'] },
   { id: 'confirmBeforeDeleting', groupId: 'appearance', label: 'Confirm before deleting', section: 'Feedback',
