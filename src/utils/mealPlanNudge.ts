@@ -1,4 +1,3 @@
-import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import type { MealPlanEntry, MealSlot, Task } from '../types';
 import type { WeekStart } from '../store/useSettingsStore';
@@ -18,7 +17,7 @@ import { isKeyInRange } from './mealPlan';
  * Deliberately a Task, not a banner. `ProjectNudgeBanner` works because it
  * rides `findProjectStalls`, which already runs on every Today render for the
  * accent-tint surfaces — there's no equivalent standing computation for "is
- * the coming week planned", and Today doesn't otherwise know or care about
+ * this week planned", and Today doesn't otherwise know or care about
  * the meal plan. A Task costs nothing extra to surface: it shows up wherever
  * a task already would (Today, widget, reminder), it's dismissible the same
  * way any task is, and CLAUDE.md's own caution about this — a task nobody
@@ -31,11 +30,22 @@ import { isKeyInRange } from './mealPlan';
  * (`mealPlanNudgeSuppressed`) — a reminder to plan a week you already planned
  * from the Meal Plan screen directly is noise, not help.
  *
+ * **Asks about the week it fires in, not the one after** (#1730 — this used
+ * to plan a week ahead of time, on the theory that firing before a week
+ * starts leaves room to plan it; in practice that meant a nudge on the 1st
+ * asking about the week of the 8th, a full week before anyone would act on
+ * it). Firing on a week's first day is what makes this line up cleanly — the
+ * settings default to that (`DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY` matches the
+ * app's own `weekStartsOn` default) — but nothing stops `weekday` from being
+ * set to a day mid-week, in which case some of the seven day tasks land on
+ * days already behind you. That's accepted as a consequence of the settings
+ * mismatch, not specially handled.
+ *
  * Unlike a real recurring task, this is a fresh write every week, not one row
  * that only spawns its successor on completion — so an unattended weekly write
  * with no further gate would pile up a "Plan meals for…" set a week for as long
  * as the user leaves the last one sitting there (`hasLiveMealPlanNudgeTask`).
- * One live nudge at a time is the rule: finishing or archiving last week's is
+ * One live nudge at a time is the rule: finishing or archiving this week's is
  * what lets next week's appear.
  *
  * **It fires as a stack of seven, one task per day of the week it's asking
@@ -56,10 +66,10 @@ import { isKeyInRange } from './mealPlan';
  *   `hasLiveMealPlanNudgeTask` can't ask `liveGeneratedTask` any more — that
  *   matches `sourceId === null`, which no nudge task has had since.
  * - **They all share one `dueDate`, the day the nudge fires** — deliberately
- *   *not* the day each is about. The whole point is to plan next week now; due
- *   dates spread across next week would hide six of the seven behind
- *   `isTaskVisible` until the week they're meant to have prepared for was
- *   already underway.
+ *   *not* the day each is about. The whole point is to plan the week right
+ *   now; due dates spread across the week would hide however many of the
+ *   seven are still ahead behind `isTaskVisible` until each of their own
+ *   days arrived.
  * - **Nothing here ticks a task off.** A day reaching 3/3 planned makes the row
  *   say so and no more — same call `timer.ts` makes about a countdown that has
  *   run out, and for the same reason: the tick box is what the user decided
@@ -161,11 +171,10 @@ export interface MealPlanNudgeDue {
    */
   days: MealPlanNudgeDay[];
   /**
-   * "Plan next week's meals" — a fixed string rather than the date range
-   * mealPlan.ts's own wording would give it (#1727): the nudge only ever
-   * fires about the week right after the one it fires in, so naming which
-   * week it is doesn't add anything the reader doesn't already know from
-   * "next".
+   * "Plan this week's meals" — a fixed string rather than the date range
+   * mealPlan.ts's own wording would give it (#1727): the nudge always fires
+   * about the week it's asking you to plan (#1730), so naming which week it
+   * is doesn't add anything the reader doesn't already know from "this".
    */
   title: string;
   /** Noon on the day the nudge fires — where the created task's `dueDate` lands. */
@@ -179,7 +188,7 @@ export interface MealPlanNudgeDay {
   /**
    * "Monday 08/17" — the task's title.
    *
-   * Doesn't repeat "Plan": the stack header above it already says "Plan next
+   * Doesn't repeat "Plan": the stack header above it already says "Plan this
    * week's meals", and seven rows each opening with the same verb is a
    * column of prefixes to read past. The weekday leads because that's what a
    * person picks a day by; the date follows for the week that straddles a
@@ -196,10 +205,10 @@ export interface MealPlanNudgeDay {
  * either this week's trigger (`weekday`/`time`) hasn't arrived yet, or it
  * already has (`lastFiredWeekKey` matches).
  *
- * The week the nudge asks about is always the one *after* the week the
- * trigger fires in, regardless of which day of that week `weekday` names —
- * "remind me Friday evening" and "remind me Sunday morning" both mean "get
- * next week planned", not "get the last two days of this week planned".
+ * The week the nudge asks about is the same one the trigger fires in (#1730)
+ * — firing on a week's first day, which is what the default `weekday`
+ * matches `weekStartsOn` to, means "get this week planned" the moment it
+ * starts rather than eight days ahead of anyone acting on it.
  *
  * Doesn't know about "already planned" — see `mealPlanNudgeSuppressed`, which
  * needs a real database read this module can't make and stays free of, the
@@ -222,7 +231,10 @@ export function dueMealPlanNudge(
   triggerInstant.setHours(Number.isFinite(hh) ? hh : 0, Number.isFinite(mm) ? mm : 0, 0, 0);
   if (now.getTime() < triggerInstant.getTime()) return null;
 
-  const targetDays = buildWeekDays(addDays(days[0], 7), weekStartsOn);
+  // The trigger's own week, not the one after (#1730) — see this function's
+  // doc comment for why, and the module comment for the mid-week-`weekday`
+  // caveat.
+  const targetDays = days;
   const dueDate = new Date(now);
   dueDate.setHours(12, 0, 0, 0);
 
@@ -234,7 +246,7 @@ export function dueMealPlanNudge(
       dayKey: dayKeyOf(day),
       title: format(day, 'EEEE MM/dd'),
     })),
-    title: "Plan next week's meals",
+    title: "Plan this week's meals",
     dueDate,
   };
 }

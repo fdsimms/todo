@@ -2256,7 +2256,7 @@ describe('checkMealPlanNudge', () => {
 
   // Sun Aug 3 2025 – Sat Aug 9 2025 is a real calendar week (see
   // mealPlanNudge.test.ts), so weekday 0 / time 09:00 fires right at the top
-  // of it and asks about Sun Aug 10 – Sat Aug 16.
+  // of it and asks about that same week, Sun Aug 3 – Sat Aug 9.
   const settings = (overrides: Record<string, unknown> = {}) => ({
     dayResetTime: '00:00',
     weekStartsOn: 0,
@@ -2343,15 +2343,15 @@ describe('checkMealPlanNudge', () => {
     const tasks = useTaskStore.getState().tasks;
     expect(tasks).toHaveLength(7);
     expect(tasks.map(t => t.title)).toEqual([
-      'Sunday 08/10',
-      'Monday 08/11',
-      'Tuesday 08/12',
-      'Wednesday 08/13',
-      'Thursday 08/14',
-      'Friday 08/15',
-      'Saturday 08/16',
+      'Sunday 08/03',
+      'Monday 08/04',
+      'Tuesday 08/05',
+      'Wednesday 08/06',
+      'Thursday 08/07',
+      'Friday 08/08',
+      'Saturday 08/09',
     ]);
-    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2025-08-10', '2025-08-16');
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2025-08-03', '2025-08-09');
     expect(s.setMealPlanNudgeLastFiredWeekKey).toHaveBeenCalledWith('2025-08-03');
   });
 
@@ -2364,15 +2364,15 @@ describe('checkMealPlanNudge', () => {
 
     const tasks = useTaskStore.getState().tasks;
     expect(tasks.map(t => t.generatedSourceId)).toEqual([
-      '2025-08-10', '2025-08-11', '2025-08-12', '2025-08-13',
-      '2025-08-14', '2025-08-15', '2025-08-16',
+      '2025-08-03', '2025-08-04', '2025-08-05', '2025-08-06',
+      '2025-08-07', '2025-08-08', '2025-08-09',
     ]);
     expect(tasks.every(t => t.generatedKind === 'mealPlanNudge')).toBe(true);
-    expect(tasks[3].linkUrl).toBe('dundundun://mealplan?date=2025-08-13');
+    expect(tasks[3].linkUrl).toBe('dundundun://mealplan?date=2025-08-06');
   });
 
   it('gives every day the firing day\'s due date, not its own', () => {
-    // Planning next week is work for today — a task due on Thursday would be
+    // Planning is work for today — a task due on Thursday would be
     // hidden until the week it was meant to prepare for had started.
     jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
     useSettingsStore.getState.mockReturnValue(settings());
@@ -2401,8 +2401,8 @@ describe('checkMealPlanNudge', () => {
 
     const firstRunIds = useTaskStore.getState().tasks.map(t => t.id);
     expect(firstRunIds).toEqual([
-      '2025-08-10', '2025-08-11', '2025-08-12', '2025-08-13',
-      '2025-08-14', '2025-08-15', '2025-08-16',
+      '2025-08-03', '2025-08-04', '2025-08-05', '2025-08-06',
+      '2025-08-07', '2025-08-08', '2025-08-09',
     ].map(dayKey => derivedId(spawnSeed.generated('mealPlanNudge', dayKey, 0))));
 
     // A second "device" that has never seen the first device's tasks —
@@ -2424,7 +2424,7 @@ describe('checkMealPlanNudge', () => {
 
     const groups = useTaskGroupStore.getState().groups;
     expect(groups).toHaveLength(1);
-    expect(groups[0].title).toBe("Plan next week's meals");
+    expect(groups[0].title).toBe("Plan this week's meals");
     // A stack that appears unattended showing "0 of 7 done today" and no rows
     // hides the whole week behind a chevron nobody was told to tap.
     expect(groups[0].collapsed).toBe(false);
@@ -2455,7 +2455,7 @@ describe('checkMealPlanNudge', () => {
 
     expect(useTaskGroupStore.getState().groups).toHaveLength(1);
     expect(useTaskGroupStore.getState().groups[0].id).toBe(groupId);
-    expect(useTaskGroupStore.getState().groups[0].title).toBe("Plan next week's meals");
+    expect(useTaskGroupStore.getState().groups[0].title).toBe("Plan this week's meals");
   });
 
   it('makes a new stack when the remembered one has been deleted', () => {
@@ -2506,10 +2506,10 @@ describe('checkMealPlanNudge', () => {
       // laid down, so a second one must not be.
       tasks: [makeTask({
         id: 'nudge-1',
-        title: 'Wednesday 20 Aug',
-        linkUrl: 'dundundun://mealplan?date=2025-08-20',
+        title: 'Wednesday 13 Aug',
+        linkUrl: 'dundundun://mealplan?date=2025-08-13',
         generatedKind: 'mealPlanNudge',
-        generatedSourceId: '2025-08-20',
+        generatedSourceId: '2025-08-13',
       })],
     });
 
@@ -2531,9 +2531,9 @@ describe('checkMealPlanNudge', () => {
       tasks: [
         makeTask({
           id: 'stale-1',
-          title: 'Saturday 16 Aug',
+          title: 'Saturday 9 Aug',
           generatedKind: 'mealPlanNudge',
-          generatedSourceId: '2025-08-16',
+          generatedSourceId: '2025-08-09',
         }),
         makeTask({ id: 'mine', title: 'Something I wrote' }),
       ],
@@ -2557,7 +2557,7 @@ describe('checkMealPlanNudge', () => {
       tasks: [makeTask({
         id: 'stale-1',
         generatedKind: 'mealPlanNudge',
-        generatedSourceId: '2025-08-16',
+        generatedSourceId: '2025-08-09',
       })],
       lastAction: null,
     });
@@ -2636,12 +2636,12 @@ describe('checkMealPlanNudge', () => {
     expect(useTaskStore.getState().tasks).toHaveLength(8);
   });
 
-  it('is suppressed — no task, but the week still counts as handled — when the coming week is already planned', () => {
+  it('is suppressed — no task, but the week still counts as handled — when this week is already planned', () => {
     jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
     const s = settings();
     useSettingsStore.getState.mockReturnValue(s);
     (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
-      { id: 'm1', date: '2025-08-12', slot: 'dinner', recipeId: null, title: 'Tacos', sortOrder: 1, createdAt: '2025-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [] },
+      { id: 'm1', date: '2025-08-05', slot: 'dinner', recipeId: null, title: 'Tacos', sortOrder: 1, createdAt: '2025-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [] },
     ]);
     useTaskStore.setState({ tasks: [] });
 

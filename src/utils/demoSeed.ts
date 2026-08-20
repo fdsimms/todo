@@ -12,9 +12,8 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import type { DeliverableKind, GroceryItem, MealSlot, Recipe, Shop, TemplateItem } from '../types';
-import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { buildWeekDays } from './calendarGrid';
-import { getCurrentDayStart, dayKeyOf, dayKeyToDate } from './dateUtils';
+import { getCurrentDayStart, dayKeyOf } from './dateUtils';
 import { generatedBy } from './generatedTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
@@ -1451,7 +1450,8 @@ function seedGroceries(recipes: DemoRecipes): void {
  * staying blank until the meal plan screen has been visited once.
  */
 /**
- * The weekly "plan next week" nudge, as the stack of seven it fires as (#1585).
+ * The weekly "plan this week" nudge, as the stack of seven it fires as (#1585,
+ * retargeted to the trigger's own week rather than the one after by #1730).
  *
  * Seeded rather than left to `checkMealPlanNudge`, which is off by default and
  * fires once a week at a configured hour — a demo can't wait for Sunday. The
@@ -1459,12 +1459,13 @@ function seedGroceries(recipes: DemoRecipes): void {
  * written out here, so the demo can't drift from what the generator actually
  * produces; only the trigger is faked, by asking it about today.
  *
- * Three of next week's days get meals so the row counters have something to
- * show, and one of them gets all three so the "ready to complete" state is on
- * screen: it's the half of the feature that never appears on a fresh install
- * until somebody has planned a full day, which is exactly the kind of thing
- * CLAUDE.md's seed rule exists for. The remaining four sit at 0/3, which is
- * what the nudge is for.
+ * The target week is now the same one `seedMealPlanAndFridge` above already
+ * fleshes out, so the row counters' range comes from that existing spread
+ * rather than from meals planted here: today (offset 0) is always planned end
+ * to end up there, which is the "ready to complete" state on its own, and most
+ * of the days around it already carry one or two meals, which is the partial
+ * state. Nothing is added here — adding a second "3/3" day on top of today's
+ * would be the very bug this retargeting introduced (#1730).
  */
 function seedMealPlanNudgeStack(
   today: Date,
@@ -1478,21 +1479,6 @@ function seedMealPlanNudgeStack(
   // weekday, never fired before.
   const due = dueMealPlanNudge(today, weekStartsOn, today.getDay(), '00:00', null);
   if (!due) return;
-
-  // Where next week's first day falls relative to today, so the meals below can
-  // go through the same `plan` helper the rest of the week uses.
-  const firstOffset = differenceInCalendarDays(dayKeyToDate(due.days[0].dayKey), today);
-  // A day already planned end to end — the row that reads "3/3 planned" with a
-  // green checkbox. Cook tasks off: seven days out, they'd crowd Today with
-  // meals nobody is cooking yet.
-  plan(firstOffset, 'breakfast', { title: 'Overnight oats', recipeId: undefined, cookTask: false });
-  plan(firstOffset, 'lunch', { title: 'Leftover salmon salad', cookTask: false });
-  plan(firstOffset, 'dinner', { title: 'Sheet-pan chicken', cookTask: false });
-  // And two part-planned days, so the counter is visibly a range rather than a
-  // pair of states.
-  plan(firstOffset + 1, 'dinner', { title: 'Pasta night', cookTask: false });
-  plan(firstOffset + 3, 'breakfast', { title: 'Overnight oats', cookTask: false });
-  plan(firstOffset + 3, 'dinner', { title: 'Eating out', cookTask: false });
 
   const group = createGroup(due.title, 'Meal Plan');
   setGroupCollapsed(group.id, false);
