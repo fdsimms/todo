@@ -33,6 +33,26 @@ it, a plain question in chat otherwise — with the options you'd otherwise have
 Don't file it away as a "worth flagging" aside and move on; get a decision and act on it (fix it,
 open an issue, or leave it, whichever they pick) before you finish the task it turned up in.
 
+## Similar components found in passing
+
+If a fix or a bit of polish applies to one component and you notice a near-identical sibling has
+the same issue — same copy-pasted structure, same missing treatment, same bug — don't leave it
+alone just because the user only pointed at the first one. Ask whether to apply it to the others
+too, the same "stop and ask, don't just mention" duty as "Bugs found in passing" above, and expect
+the answer to usually be yes: a request framed around one instance of a pattern is rarely a
+request to leave the rest inconsistent, it's just that the user only noticed (or only ran into)
+the one. Raise it as soon as you spot it — `AskUserQuestion` if the harness has it, a plain
+question in chat otherwise — rather than filing it away in a PR description as a "happy to also do
+the others" aside. This app already has a name for the failure mode a hand-rolled copy invites
+(the drift `SheetHeaderButton`, `InlineAction`, and this note's own siblings were created to undo);
+leaving three near-identical components unfixed because only the fourth was named is how that
+drift starts.
+
+This is distinct from "Stay in scope" below, which is about *unrelated* adjacent code that merely
+looks improvable — a different concern living near the one you were asked about. This is the same
+concern, in a component that shares the original's code shape closely enough that the fix is the
+same mechanical change applied again, not a fresh design judgment call.
+
 ## Follow-up and out-of-scope work
 
 A PR description is not read again after it's opened. Don't rely on a "What's left" section, a

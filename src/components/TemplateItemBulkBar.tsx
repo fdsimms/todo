@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, Animated } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, radius, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 
 interface Props {
   selectedCount: number;
@@ -25,6 +26,7 @@ type Panel = 'actions' | 'group';
 export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel, bottomInset }: Props) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const entranceStyle = useBulkBarEntrance();
   const [panel, setPanel] = useState<Panel>('actions');
   const [groupTitle, setGroupTitle] = useState('');
 
@@ -38,7 +40,7 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
   };
 
   return (
-    <View style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.md }]}>
+    <Animated.View style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.md }, entranceStyle]}>
       {panel === 'actions' && (
         <>
           <View style={styles.topRow}>
@@ -86,7 +88,7 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
           />
         </View>
       )}
-    </View>
+    </Animated.View>
   );
 }
 
