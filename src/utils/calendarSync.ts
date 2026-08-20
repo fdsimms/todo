@@ -137,39 +137,86 @@ function toBusyEvent(event: Event): BusyEvent | null {
   };
 }
 
+/** One calendar's outcome from a `fetchEvents` read. */
+export interface CalendarReadStatus {
+  /** How many events this calendar contributed to the window. */
+  eventCount: number;
+  /** False when this specific calendar's own `getEventsAsync` call threw. */
+  ok: boolean;
+}
+
+export interface FetchEventsResult {
+  /** Every event across every calendar that could be read, unfiltered. */
+  events: BusyEvent[];
+  /**
+   * One entry per chosen-and-still-live calendar, keyed by id (#1744). A
+   * calendar missing from this map was never asked about — either it isn't
+   * one of `calendarIds`, or it's since been removed from the device (see
+   * `validCalendarIds`), which is a different, already-surfaced problem.
+   */
+  perCalendar: Record<string, CalendarReadStatus>;
+}
+
 /**
  * Every event in the chosen calendars between two dates.
  *
- * Returns null when the calendars couldn't be read at all, which the caller
- * needs to tell apart from a genuinely empty window — an empty day and a failed
- * read look identical as `[]`, and only one of them should make the app claim
- * the day is free.
+ * Returns null when the calendars couldn't be read at all — permission
+ * revoked, `getCalendarsAsync` itself failing — which the caller needs to
+ * tell apart from a genuinely empty window: an empty day and a failed read
+ * look identical as `[]`, and only one of them should make the app claim the
+ * day is free.
  *
- * **Never pass an unvalidated or empty id array.** `getEventsAsync` reaches
- * `predicateForEvents(withStart:end:calendars:)`, whose `calendars: nil` means
- * *every calendar on the device* — so an empty array is at best undocumented
- * and at worst reads calendars the user didn't pick. Same rule the reminders
- * drain follows, and the same reason: cheap to rule out, not worth inferring.
+ * **One `getEventsAsync` call per calendar, not one batched call across all
+ * of them (#1744).** A batched call fails or succeeds as a unit, so a single
+ * calendar EventKit can't actually read right now — a shared calendar whose
+ * access was revoked, a CalDAV account mid-resync — used to blank the whole
+ * window and read as "calendar reading is broken" rather than naming the one
+ * calendar at fault. Reading one at a time costs nothing a person would
+ * notice (the window is 14 days, not a year, and this only runs on
+ * foreground/focus) and turns that into `perCalendar`, which Settings uses to
+ * say exactly which calendar(s) aren't contributing.
+ *
+ * **Never pass an unvalidated or empty id array to `getEventsAsync`.** It
+ * reaches `predicateForEvents(withStart:end:calendars:)`, whose
+ * `calendars: nil` means *every calendar on the device* — so an empty array
+ * is at best undocumented and at worst reads calendars the user didn't pick.
+ * Same rule the reminders drain follows, and the same reason: cheap to rule
+ * out, not worth inferring. That's still true per-calendar here: each id is
+ * already known live (from `validCalendarIds` below) before it's ever passed
+ * as a single-element array.
  */
 export async function fetchEvents(
   calendarIds: readonly string[],
   start: Date,
   end: Date
-): Promise<BusyEvent[] | null> {
+): Promise<FetchEventsResult | null> {
   if (Platform.OS !== 'ios') return null;
-  if (calendarIds.length === 0) return [];
+  if (calendarIds.length === 0) return { events: [], perCalendar: {} };
+  let calendars: DeviceCalendar[];
   try {
-    const calendars = await calendar().getCalendarsAsync(calendar().EntityTypes.EVENT);
-    const ids = validCalendarIds(calendars, calendarIds);
-    // Every chosen calendar has gone. Not a failure — there is genuinely
-    // nothing to read — but it is emphatically not "every calendar", which is
-    // what an empty array would risk asking for.
-    if (ids.length === 0) return [];
-    const events = await calendar().getEventsAsync(ids, start, end);
-    return events.map(toBusyEvent).filter((e): e is BusyEvent => e !== null);
+    calendars = await calendar().getCalendarsAsync(calendar().EntityTypes.EVENT);
   } catch {
     return null;
   }
+  const ids = validCalendarIds(calendars, calendarIds);
+  // Every chosen calendar has gone. Not a failure — there is genuinely
+  // nothing to read — but it is emphatically not "every calendar", which is
+  // what an empty array would risk asking for.
+  if (ids.length === 0) return { events: [], perCalendar: {} };
+
+  const events: BusyEvent[] = [];
+  const perCalendar: Record<string, CalendarReadStatus> = {};
+  for (const id of ids) {
+    try {
+      const raw = await calendar().getEventsAsync([id], start, end);
+      const mapped = raw.map(toBusyEvent).filter((e): e is BusyEvent => e !== null);
+      events.push(...mapped);
+      perCalendar[id] = { eventCount: mapped.length, ok: true };
+    } catch {
+      perCalendar[id] = { eventCount: 0, ok: false };
+    }
+  }
+  return { events, perCalendar };
 }
 
 /**

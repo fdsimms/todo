@@ -26,6 +26,13 @@ interface Props<T extends Option> {
   /** Shown in place of the choices when there are none to offer. */
   emptyText?: string;
   accessibilityLabelFor?: (option: T) => string;
+  /**
+   * A second line under an option's title — the calendar picker's per-source
+   * read status (#1744: "3 events" / "Couldn't read"). Returning undefined
+   * for an option renders no second line, same as omitting the prop entirely;
+   * every other tray leaves this unset.
+   */
+  subtitleFor?: (option: T) => string | undefined;
 }
 
 /**
@@ -41,7 +48,7 @@ interface Props<T extends Option> {
  * where resemblance said the opposite.
  */
 export function SettingsChoiceTray<T extends Option>({
-  options, selectedId, selectedIds, onSelect, caption, emptyText, accessibilityLabelFor,
+  options, selectedId, selectedIds, onSelect, caption, emptyText, accessibilityLabelFor, subtitleFor,
 }: Props<T>) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -53,6 +60,7 @@ export function SettingsChoiceTray<T extends Option>({
       {options.length === 0 && !!emptyText && <Text style={styles.empty}>{emptyText}</Text>}
       {options.map(option => {
         const selected = multiple ? selectedIds!.includes(option.id) : option.id === selectedId;
+        const subtitle = subtitleFor?.(option);
         return (
           <TouchableOpacity
             key={option.id}
@@ -61,7 +69,9 @@ export function SettingsChoiceTray<T extends Option>({
             activeOpacity={interaction.activeOpacity}
             accessibilityRole={multiple ? 'checkbox' : 'radio'}
             accessibilityState={multiple ? { checked: selected } : { selected }}
-            accessibilityLabel={accessibilityLabelFor?.(option) ?? option.title}
+            accessibilityLabel={
+              accessibilityLabelFor?.(option) ?? (subtitle ? `${option.title}, ${subtitle}` : option.title)
+            }
           >
             <Ionicons
               name={
@@ -72,9 +82,14 @@ export function SettingsChoiceTray<T extends Option>({
               size={iconSize.sm}
               color={selected ? colors.accent : colors.textTertiary}
             />
-            <Text style={[styles.optionText, selected && styles.optionTextSelected]} numberOfLines={1}>
-              {option.title}
-            </Text>
+            <View style={styles.optionTextGroup}>
+              <Text style={[styles.optionText, selected && styles.optionTextSelected]} numberOfLines={1}>
+                {option.title}
+              </Text>
+              {!!subtitle && (
+                <Text style={styles.optionSubtitle} numberOfLines={1}>{subtitle}</Text>
+              )}
+            </View>
           </TouchableOpacity>
         );
       })}
@@ -99,6 +114,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 10,
   },
-  optionText: { color: colors.text, fontSize: font.md, flexShrink: 1 },
+  optionTextGroup: { flexShrink: 1 },
+  optionText: { color: colors.text, fontSize: font.md },
   optionTextSelected: { color: colors.accent, fontWeight: fontWeight.medium },
+  optionSubtitle: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
 });

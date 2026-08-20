@@ -53,6 +53,7 @@ export function CalendarSettings() {
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const events = useCalendarStore(s => s.events);
   const loaded = useCalendarStore(s => s.loaded);
+  const perCalendar = useCalendarStore(s => s.perCalendar);
   const refreshEvents = useCalendarStore(s => s.refresh);
 
   const colors = useColors();
@@ -100,6 +101,21 @@ export function CalendarSettings() {
     selected.length === 0 ? undefined
     : selected.length === 1 ? `Events in “${selected[0].title}” are read`
     : `Events in ${selected.length} calendars are read`;
+
+  /**
+   * Per-calendar read status (#1744) — `fetchEvents` now reads each chosen
+   * calendar with its own `getEventsAsync` call, so a shared calendar whose
+   * access lapsed doesn't blank every other one's events, and this can say
+   * exactly which calendar it was. Shown as a second line under each option
+   * in the picker tray below, and rolled up into the warning row further
+   * down for when the tray itself is collapsed.
+   */
+  const calendarStatusSubtitle = (id: string): string | undefined => {
+    const status = perCalendar[id];
+    if (!status) return undefined;
+    return status.ok ? `${status.eventCount} event${status.eventCount === 1 ? '' : 's'}` : "Couldn't read";
+  };
+  const failedIds = Object.keys(perCalendar).filter(id => !perCalendar[id].ok);
 
   /**
    * What the app can currently see, said back. The one row that proves the
@@ -276,7 +292,11 @@ export function CalendarSettings() {
                 if (match) toggleCalendar(match);
               }}
               emptyText="There are no calendars on this device. Add an account in the Settings app under Calendar › Accounts."
-              accessibilityLabelFor={option => `Read ${option.title}`}
+              subtitleFor={option => calendarStatusSubtitle(option.id)}
+              accessibilityLabelFor={option => {
+                const subtitle = calendarStatusSubtitle(option.id);
+                return `Read ${option.title}${subtitle ? `, ${subtitle}` : ''}`;
+              }}
             />
           )}
         </>
@@ -294,6 +314,25 @@ export function CalendarSettings() {
               ? 'Those calendars aren’t on this device'
               : `${missingCount} chosen calendar${missingCount === 1 ? ' isn’t' : 's aren’t'} on this device`}
             hint="Pick again above, or turn this off."
+          />
+        </>
+      )}
+
+      {/* A calendar that's still on the device but failed its own
+          getEventsAsync call this pass (#1744) — a different problem from
+          missingCount above, which is about a calendar gone entirely. Shown
+          even with the picker collapsed, since that's where this is easy to
+          miss otherwise. */}
+      {calendarReadEnabled && permission === 'granted' && failedIds.length > 0 && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="alert-circle-outline"
+            iconColor={colors.warning}
+            label={failedIds.length === selected.length
+              ? 'None of your calendars could be read just now'
+              : `${failedIds.length} calendar${failedIds.length === 1 ? '' : 's'} couldn’t be read just now`}
+            hint="Often temporary. Try again later, or check the account in the Settings app under Calendar › Accounts."
           />
         </>
       )}

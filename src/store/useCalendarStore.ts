@@ -3,7 +3,7 @@ import { AppState, Platform } from 'react-native';
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
 import type { BusyEvent } from '../utils/calendarBusy';
-import { fetchEvents } from '../utils/calendarSync';
+import { fetchEvents, type CalendarReadStatus } from '../utils/calendarSync';
 import { getDayStart } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
 
@@ -33,6 +33,14 @@ export const CALENDAR_WINDOW_DAYS = 14;
 interface CalendarState {
   /** Every event in the window, unfiltered — `calendarBusy` owns what counts. */
   events: BusyEvent[];
+  /**
+   * How the last read went, per calendar (#1744) — keyed by calendar id, one
+   * entry per calendar `fetchEvents` actually attempted. See
+   * `CalendarReadStatus` for what each entry says; a calendar with no entry
+   * here was never asked about this pass (not chosen, or gone from the
+   * device — `loaded`/the missing-calendar check in Settings cover that).
+   */
+  perCalendar: Record<string, CalendarReadStatus>;
   /** Start of the window the events were read for; null before the first read. */
   windowStart: string | null;
   windowEnd: string | null;
@@ -41,6 +49,11 @@ interface CalendarState {
    * an empty day and a calendar we couldn't open both look like `[]`, and only
    * one of them means the day is free. Anything that would tell the user
    * something about their day has to check this first.
+   *
+   * This is the *whole-read* outcome (permission gone, `getCalendarsAsync`
+   * itself failing) — a read that reaches individual calendars but fails on
+   * one of them still sets this true, since every other calendar's events are
+   * genuinely current; `perCalendar` is where that partial failure shows up.
    */
   loaded: boolean;
   refresh: () => Promise<void>;
@@ -50,6 +63,7 @@ interface CalendarState {
 
 export const useCalendarStore = create<CalendarState>((set) => ({
   events: [],
+  perCalendar: {},
   windowStart: null,
   windowEnd: null,
   loaded: false,
@@ -57,23 +71,24 @@ export const useCalendarStore = create<CalendarState>((set) => ({
   async refresh() {
     const { calendarReadEnabled, calendarIds, dayResetTime } = useSettingsStore.getState();
     if (!calendarReadEnabled || calendarIds.length === 0 || Platform.OS !== 'ios') {
-      set({ events: [], windowStart: null, windowEnd: null, loaded: false });
+      set({ events: [], perCalendar: {}, windowStart: null, windowEnd: null, loaded: false });
       return;
     }
     // Anchored on the logical day rather than midnight, so a 2 AM day reset
     // reads "today" the way every other list in the app does.
     const start = getDayStart(new Date(), dayResetTime);
     const end = addDays(start, CALENDAR_WINDOW_DAYS);
-    const events = await fetchEvents(calendarIds, start, end);
-    if (events === null) {
-      // A failed read leaves the previous window in place rather than blanking
-      // it: yesterday's answer is better than a confident "nothing on", and
-      // `loaded` already says whether to trust it.
+    const result = await fetchEvents(calendarIds, start, end);
+    if (result === null) {
+      // A failed read leaves the previous window (and per-calendar status) in
+      // place rather than blanking it: yesterday's answer is better than a
+      // confident "nothing on", and `loaded` already says whether to trust it.
       set({ loaded: false });
       return;
     }
     set({
-      events,
+      events: result.events,
+      perCalendar: result.perCalendar,
       windowStart: start.toISOString(),
       windowEnd: end.toISOString(),
       loaded: true,
@@ -81,7 +96,7 @@ export const useCalendarStore = create<CalendarState>((set) => ({
   },
 
   clear() {
-    set({ events: [], windowStart: null, windowEnd: null, loaded: false });
+    set({ events: [], perCalendar: {}, windowStart: null, windowEnd: null, loaded: false });
   },
 }));
 
