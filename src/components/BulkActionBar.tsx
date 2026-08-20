@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TextInput,
   ScrollView,
+  Animated,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
@@ -14,6 +15,7 @@ import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { PRIORITY_LABELS, PRIORITY_COLORS, type Priority, type TimeOfDay } from '../types';
 import { tagColor } from '../utils/tagColor';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -77,6 +79,7 @@ export function BulkActionBar({
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const categories = useCategoryStore(useShallow(s => s.categories));
+  const entranceStyle = useBulkBarEntrance();
   const [panel, setPanel] = useState<Panel>('actions');
   const [whenVisible, setWhenVisible] = useState(false);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
@@ -176,8 +179,8 @@ export function BulkActionBar({
 
   return (
     <>
-      <View
-        style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.sm }]}
+      <Animated.View
+        style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.sm }, entranceStyle]}
         onLayout={onHeightChange ? e => onHeightChange(e.nativeEvent.layout.height) : undefined}
       >
         {panel === 'actions' && (
@@ -462,7 +465,7 @@ export function BulkActionBar({
             </View>
           </View>
         )}
-      </View>
+      </Animated.View>
 
       <WhenPicker
         visible={whenVisible}

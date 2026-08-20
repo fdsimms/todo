@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 
 interface Props {
   selectedCount: number;
@@ -58,12 +59,13 @@ export function SimpleBulkBar({
 }: Props) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const entranceStyle = useBulkBarEntrance();
   const allSelected = selectedCount === totalCount;
   const none = selectedCount === 0;
 
   return (
-    <View
-      style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.sm }]}
+    <Animated.View
+      style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.sm }, entranceStyle]}
       onLayout={onHeightChange ? e => onHeightChange(e.nativeEvent.layout.height) : undefined}
     >
       <View style={styles.topRow}>
@@ -98,7 +100,7 @@ export function SimpleBulkBar({
           <Text style={[styles.actionLabel, { color: colors.red }]}>Delete</Text>
         </PressableScale>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 

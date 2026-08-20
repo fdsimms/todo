@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Animated } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 
 export interface ListBulkAction {
   key: string;
@@ -71,6 +72,7 @@ export function ListBulkBar({
 }: Props) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const entranceStyle = useBulkBarEntrance();
   const [panel, setPanel] = useState<'actions' | 'category'>('actions');
   const [categoryText, setCategoryText] = useState('');
 
@@ -120,8 +122,8 @@ export function ListBulkBar({
   };
 
   return (
-    <View
-      style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.sm }]}
+    <Animated.View
+      style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.sm }, entranceStyle]}
       onLayout={onHeightChange ? e => onHeightChange(e.nativeEvent.layout.height) : undefined}
     >
       {panel === 'actions' && (
@@ -225,7 +227,7 @@ export function ListBulkBar({
           </ScrollView>
         </View>
       )}
-    </View>
+    </Animated.View>
   );
 }
 
