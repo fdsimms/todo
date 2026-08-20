@@ -44,10 +44,12 @@ import { MergeItemSheet } from './MergeItemSheet';
 import {
   cheapestShopFor,
   describePriceContext,
+  describePriceStanding,
   describeShopPrices,
   formatPriceInput,
   lastPriceFor,
   parsePriceInput,
+  priceStandingFor,
   priceToInput,
   shopPricesFor,
 } from '../utils/groceryPrice';
@@ -429,6 +431,10 @@ export function GroceryItemSheet({
   const storedPrice = activeTarget ? linkFor(activeTarget)?.lastPriceMinor ?? null : item.lastPriceMinor;
   const price = priceEdits[priceKey] ?? (storedPrice === null ? '' : priceToInput(storedPrice));
   const priceHint = lastPriceFor(item, activeTarget, itemShops);
+  // The verdict on what's stored, judged against the run kept for whichever
+  // target (item or store) the field is currently pointed at — never against
+  // what's mid-edit in the field, which isn't a price yet.
+  const priceStandingText = describePriceStanding(priceStandingFor(item, activeTarget, itemShops));
 
   const priceTargetOptions: PillGroupOption[] = [
     {
@@ -1313,6 +1319,12 @@ export function GroceryItemSheet({
           {!!priceContext && activeTarget === null && (
             <Text style={styles.hint}>{priceContext}</Text>
           )}
+          {/* The one arithmetic verdict on the stored price: the lowest ever
+              paid, close to usual, or a real step from it. Judged against the
+              same run priceContext is already reporting the age of, so it
+              tracks the field the same way — dropped for the same reason
+              whenever it has nothing to say. */}
+          {!!priceStandingText && <Text style={styles.hint}>{priceStandingText}</Text>}
           {!!shopPriceLine && <Text style={styles.hint}>{shopPriceLine}</Text>}
           </>
           )}

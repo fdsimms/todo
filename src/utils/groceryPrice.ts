@@ -4,7 +4,7 @@ import { GROCERY_PRICE_MINOR_MAX } from '../types';
 import { isUnavailable } from './groceryShops';
 import { parseQuantity, rationalToNumber } from './quantity';
 import { measureQuantity, shelfUnit, type Dimension } from './unitConvert';
-import { priceBaseline } from './priceHistory';
+import { priceBaseline, priceStanding, type PriceStanding } from './priceHistory';
 
 /**
  * What things cost — parsing a typed price, rendering one, and the one
@@ -544,4 +544,50 @@ export function typicalPriceFor(
     }
   }
   return priceBaseline(item.priceHistory) ?? lastPricedAmountFor(item, shopId, links);
+}
+
+/**
+ * Where the price on the field stands against the run kept for it — the
+ * question "is this a good price, right now" answers arithmetically instead
+ * of by feel. Store-first, exactly the run `typicalPriceFor` picks: a store
+ * with a run of its own is judged against its own prices, not a blend with
+ * everywhere else this item has been bought.
+ *
+ * Null whenever there's nothing priced yet, or `priceStanding` itself
+ * refuses — silence, never a guess, the same discipline `tripMarkerFor` and
+ * `describeKitchen` already run on.
+ */
+export function priceStandingFor(
+  item: GroceryItem,
+  shopId: string | null,
+  links: readonly ItemShopLink[]
+): PriceStanding | null {
+  if (shopId) {
+    const link = links.find(l => l.itemId === item.id && l.shopId === shopId);
+    if (link?.lastPriceMinor == null) return null;
+    return priceStanding(
+      { minor: link.lastPriceMinor, quantity: link.lastPriceQuantity },
+      link.priceHistory
+    );
+  }
+  if (item.lastPriceMinor == null) return null;
+  return priceStanding(
+    { minor: item.lastPriceMinor, quantity: item.lastPriceQuantity },
+    item.priceHistory
+  );
+}
+
+/**
+ * The verdict as a caption — never the baseline number itself. A line saying
+ * "usually $3.99" beside a field saying "$4.49" reads as a contradiction, not
+ * a comparison; stating only the verdict keeps them two different claims.
+ */
+export function describePriceStanding(standing: PriceStanding | null): string | null {
+  switch (standing) {
+    case 'lowest': return "The lowest you've paid";
+    case 'low': return 'Less than you usually pay';
+    case 'usual': return 'About what you usually pay';
+    case 'high': return 'More than usual';
+    default: return null;
+  }
 }

@@ -4,6 +4,7 @@ import {
   mergePriceHistories,
   parsePriceHistory,
   priceBaseline,
+  priceStanding,
 } from '../utils/priceHistory';
 import type { PriceObservation } from '../types';
 
@@ -120,6 +121,50 @@ describe('priceBaseline', () => {
   it('refuses when the newest names an amount nothing can measure', () => {
     // The basis has to be measurable for anything to be rebased onto it.
     expect(priceBaseline([obs(400, 'a bunch'), obs(400, '8 oz')])).toBeNull();
+  });
+});
+
+// ─── priceStanding ───────────────────────────────────────────────────────────
+
+describe('priceStanding', () => {
+  it('has no answer for an empty run', () => {
+    expect(priceStanding({ minor: 399, quantity: null }, [])).toBeNull();
+  });
+
+  it('is the lowest when it ties or beats every observation in the run', () => {
+    const history = [obs(399), obs(499), obs(449)];
+    expect(priceStanding({ minor: 399, quantity: null }, history)).toBe('lowest');
+    expect(priceStanding({ minor: 350, quantity: null }, history)).toBe('lowest');
+  });
+
+  it('is usual within a tenth of the median', () => {
+    // Median of 400/500/450 rebased against a bare current is 450.
+    const history = [obs(400), obs(500), obs(450)];
+    expect(priceStanding({ minor: 470, quantity: null }, history)).toBe('usual');
+  });
+
+  it('is high a real step above the median, low a real step below', () => {
+    const history = [obs(400), obs(500), obs(450)];
+    expect(priceStanding({ minor: 900, quantity: null }, history)).toBe('high');
+    // Above the run's own minimum (400) — otherwise it would be the lowest
+    // ever paid, a stronger and more literal claim than "low".
+    expect(priceStanding({ minor: 405, quantity: null }, history)).toBe('low');
+  });
+
+  it('reconciles onto the current price’s own quantity, not the run’s newest', () => {
+    // The run is all in 8 oz; the current price is for the 16 oz size, so the
+    // run has to be doubled (to 800/840/820) before it means anything against
+    // it — a bare "410 vs 830" would misread this as roughly double the run.
+    const history = [obs(400, '8 oz'), obs(420, '8 oz'), obs(410, '8 oz')];
+    expect(priceStanding({ minor: 830, quantity: '16 oz' }, history)).toBe('usual');
+  });
+
+  it('refuses a run mixing a qualified price with a bare one', () => {
+    expect(priceStanding({ minor: 400, quantity: '8 oz' }, [obs(400, null)])).toBeNull();
+  });
+
+  it('refuses a run spanning two dimensions', () => {
+    expect(priceStanding({ minor: 400, quantity: '8 oz' }, [obs(400, '1 l')])).toBeNull();
   });
 });
 
