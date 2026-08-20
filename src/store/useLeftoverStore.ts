@@ -50,6 +50,16 @@ interface LeftoverStore {
   /** Every leftover, live and closed out, most urgent first. */
   leftovers: Leftover[];
   initialized: boolean;
+  /**
+   * The leftover a just-completed "Use up X" task points at — the peer of
+   * useGroceryStore's pendingUseUpItemId, and what UseUpResolveSheet (mounted
+   * in AppNavigator) opens LeftoverSheet on as soon as it's set. Set by
+   * useTaskStore.completeTask, cleared by uncompleteTask and by the sheet's
+   * own onClose. Session-only — there's nothing for a just-made tap to mean
+   * on the next launch.
+   */
+  pendingUseUpLeftoverId: string | null;
+  setPendingUseUpLeftover: (id: string | null) => void;
 
   /**
    * Rides useTaskStore.initialize's fan-out for the same reason groceries,
@@ -159,9 +169,18 @@ function dropLeftoverTask(leftoverId: string): void {
 export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
   leftovers: [],
   initialized: false,
+  pendingUseUpLeftoverId: null,
 
   initialize() {
-    set({ leftovers: sortLeftovers(dbGetAllLeftovers()), initialized: true });
+    set({
+      leftovers: sortLeftovers(dbGetAllLeftovers()),
+      pendingUseUpLeftoverId: null,
+      initialized: true,
+    });
+  },
+
+  setPendingUseUpLeftover(id) {
+    set({ pendingUseUpLeftoverId: id });
   },
 
   logLeftover(draft) {

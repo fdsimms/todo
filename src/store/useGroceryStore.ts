@@ -196,6 +196,19 @@ interface GroceryStore {
    */
   groceryGroupBy: 'aisle' | 'recipe';
   setGroceryGroupBy: (groupBy: 'aisle' | 'recipe') => void;
+  /**
+   * The item a just-completed "Use up X" task points at — what
+   * UseUpResolveSheet (mounted in AppNavigator) shows as soon as it's set,
+   * so completing the task and correcting the pantry happen in one motion
+   * instead of the task going quiet with the pantry untouched. Set by
+   * useTaskStore.completeTask, cleared by uncompleteTask (same shape as
+   * useMealPlanStore's cookedOffer) and by the sheet's own onClose.
+   *
+   * Session-only, like the trip fields above: it's about a tap just made,
+   * so there's nothing for it to mean on the next launch.
+   */
+  pendingUseUpItemId: string | null;
+  setPendingUseUpItem: (id: string | null) => void;
   initialized: boolean;
 
   /**
@@ -844,6 +857,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   aisleOverrides: {},
   cartHoldIds: [],
   groceryGroupBy: 'aisle',
+  pendingUseUpItemId: null,
   initialized: false,
   lastAction: null,
 
@@ -911,6 +925,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       tripStartedAt,
       cartHoldIds: [],
       groceryGroupBy: dbGetGroceryGroupBy(),
+      pendingUseUpItemId: null,
       initialized: true,
     });
   },
@@ -918,6 +933,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setGroceryGroupBy(groupBy) {
     dbSetGroceryGroupBy(groupBy);
     set({ groceryGroupBy: groupBy });
+  },
+
+  setPendingUseUpItem(id) {
+    set({ pendingUseUpItemId: id });
   },
 
   /**
