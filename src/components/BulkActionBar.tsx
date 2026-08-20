@@ -13,7 +13,7 @@ import { PinIcon } from './PinIcon';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, border, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { PRIORITY_LABELS, PRIORITY_COLORS, type Priority, type TimeOfDay } from '../types';
@@ -501,6 +501,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: spacing.md,
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
+    borderWidth: border.md,
+    borderColor: colors.separator,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,

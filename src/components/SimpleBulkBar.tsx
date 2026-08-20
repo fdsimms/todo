@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -109,6 +109,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: spacing.md,
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
+    borderWidth: border.md,
+    borderColor: colors.separator,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
