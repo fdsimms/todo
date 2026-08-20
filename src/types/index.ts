@@ -121,6 +121,59 @@ export interface ExtraTaskDraft {
   subtasks: { id: string; title: string }[];
 }
 
+// How a quick-added title gets filed on its own — "anything starting with
+// 'expense' belongs to Work". A rule is *conditional new-task defaults*: it
+// sits between what the person typing actually picked and Settings'
+// newTaskDefaults, and like those defaults it only ever fills a field nobody
+// answered (see newTaskFromDraft).
+//
+// **It says where a task is filed and how it's ranked, never when it
+// happens.** No date, defer, reminder, time-of-day or repeat — the title's own
+// schedule phrase already owns "when" (parseTaskInput), and a rule quietly
+// dating a task is the one that can hide it outright (see the visibility
+// model). Nor notes and subtasks: a rule that writes a task's contents is a
+// template, and the app has templates.
+//
+// Stored as one JSON settings row rather than a table, the call aisleOrder
+// makes and stores don't: nothing points *at* a rule, so it needs no id that
+// survives a rename. What it does point at — a category name, a project id —
+// dangles resolve-or-shrug like every other cross-row pointer here, so
+// deleting the project a rule files into leaves a rule that fills one less
+// field, not a broken one.
+export interface TitleRule {
+  id: string;
+  // Every word or phrase that triggers it, matched case-insensitively and on
+  // whole words only, so "expense" never fires on "expensive". A list rather
+  // than one word because near-synonyms ("expense", "expenses", "reimburse")
+  // are one rule in the user's head; plurals are deliberately not guessed at,
+  // which is exactly why adding the second form has to be this cheap.
+  keywords: string[];
+  match: TitleRuleMatch;
+  // The filing half of ExtraTaskDraft, and null/0 mean the same thing here:
+  // this rule says nothing about that field, so whatever would have happened
+  // without it still happens.
+  category: string | null;
+  projectId: string | null;
+  tags: string[];
+  priority: Priority;
+  effort: Effort;
+  // Take the matched word back out of the title ("expense lunch" → "lunch").
+  // Off by default: the word is usually part of what the task is called, and
+  // a rule that silently rewrites what someone typed is a worse first
+  // impression than one that leaves it alone.
+  stripKeyword: boolean;
+  // Off keeps the rule written down but stops it applying — the same call
+  // ItemSubLink.standing makes, so reviewing a rule that misfiled something
+  // doesn't mean deleting the only record of it.
+  enabled: boolean;
+}
+
+// "Starts with" is the anchored one and the reason this feature exists: a
+// marker word people already type at the front of a title. "Contains" is the
+// looser second, for a word that shows up anywhere ("invoice", a client's
+// name). There is deliberately no regex mode — see titleRules.ts.
+export type TitleRuleMatch = 'startsWith' | 'contains';
+
 // A lightweight, collapsible label for grouping several independent tasks
 // together (e.g. "Take supplements" grouping Coq10/Vitamin D/Iron, each on
 // its own schedule). Deliberately NOT a Task — it has no dueDate, recurrence,

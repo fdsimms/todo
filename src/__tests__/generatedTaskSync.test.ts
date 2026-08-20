@@ -85,7 +85,7 @@ describe('reconcileGeneratedTask — creating', () => {
 
     const [draftArg, , optionsArg] = mockTaskState.addTask.mock.calls[0];
     expect(draftArg).toEqual({ title: 'Use up Spinach', category: null });
-    expect(optionsArg).toEqual({ skipCategoryDefault: true });
+    expect(optionsArg).toEqual({ skipCategoryDefault: true, skipTitleRules: true });
   });
 
   it('does not create one when the source does not want it', () => {

@@ -146,7 +146,7 @@ jest.mock('../store/useSettingsStore', () => ({
       // The settings that name a category — renaming or deleting one has to
       // carry them with it (see renameCategory/deleteCategory).
       mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
-      calendarEventCategory: null, collapsedCategories: [],
+      calendarEventCategory: null, collapsedCategories: [], titleRules: [],
       setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
       setLeftoverUseUpTaskCategory: jest.fn(), setCalendarEventCategory: jest.fn(),
       setCollapsedCategories: jest.fn(),
@@ -347,7 +347,7 @@ beforeEach(() => {
     dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
     mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
-    calendarEventCategory: null, collapsedCategories: [],
+    calendarEventCategory: null, collapsedCategories: [], titleRules: [],
     setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
     setLeftoverUseUpTaskCategory: jest.fn(), setCalendarEventCategory: jest.fn(),
     setCollapsedCategories: jest.fn(),
@@ -425,6 +425,99 @@ describe('addTask', () => {
   it('sets sortOrder to 1 when store is empty', () => {
     const task = useTaskStore.getState().addTask({ title: 'First' });
     expect(task.sortOrder).toBe(1);
+  });
+
+  // ─── title rules ───────────────────────────────────────────────────────────
+  // The headless half of the feature: quick add resolves rules itself (and
+  // passes skipTitleRules), so what these cover is every *other* way a task
+  // gets made — a dictated Apple reminder, a deep link, a template run.
+  describe('title rules', () => {
+    const settings = () =>
+      (jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } })
+        .useSettingsStore;
+
+    const withRules = (titleRules: unknown[], extra: Record<string, unknown> = {}) => {
+      const store = settings();
+      const base = store.getState();
+      store.getState.mockReturnValue({ ...base, titleRules, ...extra });
+    };
+
+    const expenseRule = {
+      id: 'r1', keywords: ['expense'], match: 'startsWith',
+      category: 'Work', projectId: null, tags: ['receipts'],
+      priority: 0, effort: 0, stripKeyword: false, enabled: true,
+    };
+
+    it('files a matching task by the rule', () => {
+      withRules([expenseRule]);
+      const task = useTaskStore.getState().addTask({ title: 'expense the client lunch' });
+      expect(task.category).toBe('Work');
+      expect(task.tags).toEqual(['receipts']);
+    });
+
+    it('leaves a title that does not match alone', () => {
+      withRules([expenseRule]);
+      const task = useTaskStore.getState().addTask({ title: 'expensive dinner' });
+      expect(task.category).toBeNull();
+      expect(task.tags).toEqual([]);
+    });
+
+    it('never overrides a category the caller named', () => {
+      withRules([expenseRule]);
+      const task = useTaskStore.getState().addTask({ title: 'expense lunch', category: 'Personal' });
+      expect(task.category).toBe('Personal');
+    });
+
+    it('adds its tags to the ones the caller named rather than replacing them', () => {
+      withRules([expenseRule]);
+      const task = useTaskStore.getState().addTask({ title: 'expense lunch', tags: ['urgent'] });
+      expect(task.tags).toEqual(['urgent', 'receipts']);
+    });
+
+    it('outranks the app-wide new-task default it is more specific than', () => {
+      withRules([expenseRule], {
+        newTaskDefaults: { category: 'Inbox', priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      });
+      expect(useTaskStore.getState().addTask({ title: 'expense lunch' }).category).toBe('Work');
+      expect(useTaskStore.getState().addTask({ title: 'buy milk' }).category).toBe('Inbox');
+    });
+
+    it('leaves an explicit priority of 0 at 0 rather than handing it back to the default', () => {
+      withRules([expenseRule], {
+        newTaskDefaults: { category: null, priority: 3, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      });
+      expect(useTaskStore.getState().addTask({ title: 'expense lunch', priority: 0 }).priority).toBe(0);
+    });
+
+    it('sets a priority the rule names on a draft that has none', () => {
+      withRules([{ ...expenseRule, priority: 4 }]);
+      expect(useTaskStore.getState().addTask({ title: 'expense lunch' }).priority).toBe(4);
+    });
+
+    it('strips the keyword when the rule asks', () => {
+      withRules([{ ...expenseRule, stripKeyword: true }]);
+      expect(useTaskStore.getState().addTask({ title: 'Expense: client lunch' }).title).toBe('client lunch');
+    });
+
+    it('ignores a disabled rule', () => {
+      withRules([{ ...expenseRule, enabled: false }]);
+      expect(useTaskStore.getState().addTask({ title: 'expense lunch' }).category).toBeNull();
+    });
+
+    it('leaves a subtask alone — a step inside a task files itself nowhere', () => {
+      withRules([expenseRule]);
+      const parent = useTaskStore.getState().addTask({ title: 'Trip admin' });
+      const sub = useTaskStore.getState().addTask({ title: 'expense the flights', parentId: parent.id });
+      expect(sub.category).toBeNull();
+      expect(sub.tags).toEqual([]);
+    });
+
+    it('leaves a caller that opts out alone', () => {
+      withRules([expenseRule]);
+      const task = useTaskStore.getState().addTask(
+        { title: 'expense lunch' }, undefined, { skipTitleRules: true });
+      expect(task.category).toBeNull();
+    });
   });
 
   it('sets sortOrder to maxExisting + 1', () => {

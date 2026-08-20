@@ -178,6 +178,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['postpone', 'procrastinate', 'snooze', 'defer', 'avoid'] },
   { id: 'postponeCheckThreshold', groupId: 'tasksProjects', label: 'Reschedule threshold', section: 'Rescheduling',
     keywords: ['postpone', 'how many'] },
+  // Keyworded for what someone types when a task landed somewhere they didn't
+  // put it — "why did this go to Work" is a search for the rule, not for the
+  // word "rule". The other New tasks rows are unindexed; this one earns an
+  // entry because it's the only thing in Settings that can explain a task
+  // filing itself.
+  { id: 'titleRules', groupId: 'tasksProjects', label: 'Title rules', section: 'New tasks',
+    keywords: ['keyword', 'expense', 'automatic', 'auto file', 'category', 'project', 'tag',
+      'starts with', 'parse', 'shortcut', 'prefix', 'why did this'] },
   { id: 'simpleTaskForm', groupId: 'tasksProjects', label: 'Show fewer fields', section: 'Task form',
     keywords: ['simple', 'quick add', 'editor', 'chips', 'declutter', 'basic', 'minimal'] },
   { id: 'autoArchiveProjects', groupId: 'tasksProjects', label: 'Auto-archive projects', section: 'Projects',

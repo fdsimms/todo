@@ -22,6 +22,7 @@ import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { PillGroup } from '../../components/PillGroup';
 import { StandingSwapsSheet } from '../../components/StandingSwapsSheet';
+import { TitleRulesSheet } from '../../components/TitleRulesSheet';
 import { standingSwaps } from '../../utils/standingSwaps';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
@@ -104,6 +105,7 @@ export function TasksProjectsSettings() {
   const setDefaultProjectNudgeCadenceDays = useSettingsStore(s => s.setDefaultProjectNudgeCadenceDays);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
   const setNewTaskDefaults = useSettingsStore(s => s.setNewTaskDefaults);
+  const titleRules = useSettingsStore(useShallow(s => s.titleRules));
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
   const categories = useCategoryStore(s => s.categories);
@@ -124,6 +126,16 @@ export function TasksProjectsSettings() {
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
   const [standingSwapsVisible, setStandingSwapsVisible] = useState(false);
+  const [titleRulesVisible, setTitleRulesVisible] = useState(false);
+
+  // What the row's value counts: rules that are actually filing things. A rule
+  // switched off is kept and listed, but reporting it here would have the row
+  // read as active when nothing is being applied — the same call
+  // StandingSwapsSheet's count makes about a swap whose other half has gone.
+  const activeTitleRuleCount = useMemo(
+    () => titleRules.filter(r => r.enabled).length,
+    [titleRules],
+  );
 
   // Not a segmented control: the categories are the user's own and there can be
   // fifteen of them, which is `PillGroup`'s job (it caps and filters) and not a
@@ -583,6 +595,21 @@ export function TasksProjectsSettings() {
           toggle={newTaskDefaults.openEditorAfterQuickAdd}
           onPress={() => setNewTaskDefaults({ openEditorAfterQuickAdd: !newTaskDefaults.openEditorAfterQuickAdd })}
         />
+        <View style={styles.sep} />
+        {/* In this section rather than its own: a title rule is the same
+            question these rows answer, asked one step more specifically. It
+            reads as the exception to the footer's "applied to every new task"
+            because that is exactly what it is. */}
+        <SettingsRow
+          icon="funnel-outline"
+          iconColor={activeTitleRuleCount > 0 ? colors.accent : undefined}
+          label="Title rules"
+          hint="File a task by a word in its name, so anything starting with “expense” goes to Work"
+          value={activeTitleRuleCount === 0
+            ? 'None'
+            : activeTitleRuleCount === 1 ? '1 rule' : `${activeTitleRuleCount} rules`}
+          onPress={() => { haptics.tap(); setTitleRulesVisible(true); }}
+        />
       </SettingsSection>
 
       <SettingsSection label="Projects">
@@ -659,6 +686,11 @@ export function TasksProjectsSettings() {
       <StandingSwapsSheet
         visible={standingSwapsVisible}
         onClose={() => setStandingSwapsVisible(false)}
+      />
+
+      <TitleRulesSheet
+        visible={titleRulesVisible}
+        onClose={() => setTitleRulesVisible(false)}
       />
     </>
   );

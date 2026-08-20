@@ -69,6 +69,7 @@ import {
   type DriftEntry,
 } from '../utils/postpone';
 import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
+import { resolveTitleRules } from '../utils/titleRules';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
@@ -165,6 +166,61 @@ function resolveTimeSegments(draft: Partial<TaskDraft>, defaultSegment: TimeOfDa
   }
   if (defaultSegment) return [defaultSegment];
   return draft.timeSegments ?? [];
+}
+
+/**
+ * Files a draft by whatever title rules its title fires (see utils/titleRules
+ * and TitleRule): a rule sits one step more specific than Settings'
+ * newTaskDefaults and obeys the same contract, filling a field the draft left
+ * unanswered and never overruling one it named. Precedence, top down: what the
+ * person picked → what a rule says → the app-wide default.
+ *
+ * It runs here rather than in newTaskFromDraft because that is also the
+ * *clone* builder (buildSeriesRow), where an unset field is the source row's
+ * own answer rather than an open question — re-filing every date of a series
+ * against a rule written afterwards is not what "add a second date" means.
+ *
+ * Three creations opt out, and each has a person or a rule that has already
+ * answered:
+ *  - a **subtask** (`parentId`), which is a step inside a task and never files
+ *    itself anywhere — it has no row in a category section to land in;
+ *  - anything passing `skipTitleRules`: the app's own generated tasks ("Cook
+ *    X", "Use up X" — titles it wrote itself, filed by their own settings);
+ *    quick add, which resolves the same rules a keystroke at a time so the
+ *    person can see and undo what fired before saving; and TaskEditor's create
+ *    path, where every field a rule could fill is on screen and left empty is
+ *    an answer;
+ *  - a draft carrying no title at all, which has nothing to match.
+ */
+function applyTitleRulesToDraft(
+  draft: Partial<TaskDraft>,
+  options?: { skipTitleRules?: boolean },
+): Partial<TaskDraft> {
+  if (options?.skipTitleRules || draft.parentId || !draft.title) return draft;
+  // `?? []` guards a partial settings state rather than a real absence — the
+  // store's own default is [].
+  const rules = useSettingsStore.getState().titleRules ?? [];
+  if (rules.length === 0) return draft;
+  const fill = resolveTitleRules(draft.title, rules);
+  if (!fill) return draft;
+  return {
+    ...draft,
+    title: fill.cleanTitle,
+    category: draft.category ?? fill.category,
+    projectId: draft.projectId ?? fill.projectId,
+    // `!draft.priority` covers both an absent field and an explicit 0, which
+    // is what "None" is everywhere one is picked. Left exactly as it arrived
+    // when the rule says nothing, so an explicit 0 still means 0 rather than
+    // being handed back to newTaskDefaults.
+    priority: fill.priority !== 0 && !draft.priority ? fill.priority : draft.priority,
+    effort: fill.effort !== 0 && !draft.effort ? fill.effort : draft.effort,
+    // Tags are additive rather than a slot to claim, the same split
+    // parseCategoryAndTagsInput makes — a rule's tag joins whatever the draft
+    // already carries instead of being refused by a non-empty list.
+    tags: fill.tags.length > 0
+      ? [...(draft.tags ?? []), ...fill.tags.filter(t => !(draft.tags ?? []).includes(t))]
+      : draft.tags,
+  };
 }
 
 // The one place a Task's defaults are spelled out. Shared by addTask and the
@@ -773,7 +829,11 @@ interface TaskStore {
    * one yet" and silently substitutes the unrelated newTaskDefaults.category
    * for the former (#1724).
    */
-  addTask: (draft: Partial<TaskDraft>, id?: string, options?: { skipCategoryDefault?: boolean }) => Task;
+  addTask: (
+    draft: Partial<TaskDraft>,
+    id?: string,
+    options?: { skipCategoryDefault?: boolean; skipTitleRules?: boolean },
+  ) => Task;
   duplicateTask: (id: string) => Task | null;
   /**
    * Opens the system event sheet to block out time for a task — the new-event
@@ -1184,7 +1244,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   addTask(draft, id, options) {
     const now = new Date().toISOString();
     const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
-    const task = newTaskFromDraft(draft, now, maxOrder + 1, true, id, options?.skipCategoryDefault);
+    const task = newTaskFromDraft(
+      applyTitleRulesToDraft(draft, options), now, maxOrder + 1, true, id, options?.skipCategoryDefault);
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
     scheduleTaskReminder(task);
