@@ -23,12 +23,14 @@ import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import type { Task, TaskGroup } from '../types';
 import type { SearchResult, GroupSearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch, searchGroups } from '../utils/fuzzySearch';
-import { displayTitleFor, groupRoster } from '../utils/visibilityUtils';
+import { displayTitleFor, groupRoster, isQuotaPartial } from '../utils/visibilityUtils';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
+import { formatQuotaProgress } from '../utils/quotaUnit';
 import { tagColor } from '../utils/tagColor';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, iconSize, interaction, checkboxRadius, type Colors } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { quotaFraction } from '../components/TaskItem';
 import { SearchField } from '../components/SearchField';
 import { EmptyState } from '../components/EmptyState';
 import { HighlightedText } from '../components/HighlightedText';
@@ -52,6 +54,10 @@ function SearchResultItem({ result, onPress, styles, colors }: {
 }) {
   const { task, titleMatches, projectName, projectMatches } = result;
   const isCompleted = task.completed;
+  // A daily target closed out short of its count (see rolloverQuotas) is still
+  // `completed`, but a plain green checkmark would read as the same full
+  // finish an on-target row gets. Same distinction Logbook's row draws.
+  const partial = isQuotaPartial(task);
 
   const completedDate = task.completedAt
     ? format(new Date(task.completedAt), 'MMM d')
@@ -64,7 +70,11 @@ function SearchResultItem({ result, onPress, styles, colors }: {
     displayTitle,
     projectName ? `in ${projectName}` : null,
     task.archived ? 'archived' : null,
-    isCompleted ? `completed${completedDate ? ` ${completedDate}` : ''}` : null,
+    isCompleted
+      ? partial
+        ? `fell short at ${formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit)}${completedDate ? `, ${completedDate}` : ''}`
+        : `completed${completedDate ? ` ${completedDate}` : ''}`
+      : null,
     isCompleted && asksOnCompletion(task) ? (answer !== null ? `answered ${answer}` : 'no answer') : null,
     !isCompleted && task.dueDate ? `due ${format(new Date(task.dueDate), 'MMM d')}` : null,
   ].filter(Boolean).join(', ');
@@ -79,8 +89,15 @@ function SearchResultItem({ result, onPress, styles, colors }: {
       accessibilityHint="Double tap to open task"
     >
       <View style={styles.statusIcon}>
-        <View style={[styles.checkbox, isCompleted && styles.checkboxDone]}>
-          {isCompleted && <Ionicons name="checkmark" size={12} color={colors.onAccent} />}
+        <View style={[styles.checkbox, isCompleted && !partial && styles.checkboxDone, partial && styles.checkboxQuota]}>
+          {partial ? (
+            <View
+              style={[styles.quotaFill, { height: `${Math.round(quotaFraction(task) * 100)}%` }]}
+              pointerEvents="none"
+            />
+          ) : (
+            isCompleted && <Ionicons name="checkmark" size={12} color={colors.onAccent} />
+          )}
         </View>
       </View>
 
@@ -509,6 +526,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   checkboxDone: {
     backgroundColor: colors.green,
     borderColor: colors.green,
+  },
+  // A partial daily target — same accent-bordered, proportionally-filled
+  // circle Logbook's row uses, painted at rest rather than animated.
+  checkboxQuota: {
+    borderColor: colors.accent,
+    overflow: 'hidden',
+  },
+  quotaFill: {
+    position: 'absolute',
+    left: -border.md,
+    right: -border.md,
+    bottom: 0,
+    backgroundColor: colors.accent,
   },
   // Same slot the checkbox sits in, for a stack result's icon badge.
   stackIcon: {
