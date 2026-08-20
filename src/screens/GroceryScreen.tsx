@@ -806,15 +806,6 @@ export function GroceryScreen() {
       disabled: selectionMode,
       accessibilityLabel: 'Buy again',
     });
-    // Beside Buy again, since both read what you already have rather than the
-    // list: one is what to get, the other is what's in the kitchen — the
-    // pantry and the fridge in one read (#1670).
-    list.push({
-      icon: 'file-tray-stacked-outline',
-      onPress: () => setKitchenOpen(true),
-      disabled: selectionMode,
-      accessibilityLabel: 'Kitchen — what you have and what to use up',
-    });
     list.push({
       icon: 'walk-outline',
       onPress: handleCreateGroceryTask,
