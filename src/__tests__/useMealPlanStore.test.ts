@@ -1540,7 +1540,9 @@ describe('cook tasks', () => {
     const spawned = cookTaskFor(meal.id)!;
 
     useMealPlanStore.getState().removeEntry(meal.id);
-    expect(mockTaskState.deleteTask).toHaveBeenCalledWith(spawned.id);
+    // Through dropGeneratedTask, which writes no opt-out — the entry it would
+    // be written on has just been deleted.
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith(spawned.id, { skipGeneratedOptOut: true });
   });
 
   it('leaves a completed cook task behind when the meal is removed', () => {

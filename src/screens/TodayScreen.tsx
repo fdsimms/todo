@@ -109,11 +109,9 @@ import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
-import { ProjectNudgeBanner } from '../components/ProjectNudgeBanner';
 import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
 import { TRIP_BAR_HEIGHT } from '../components/PersistentTripBar';
 import { FAB_SIZE } from '../components/Fab';
-import { findProjectStalls } from '../utils/projectPull';
 import { useProjectStore } from '../store/useProjectStore';
 import { DayContextRow } from '../components/DayContextRow';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -694,6 +692,26 @@ export function TodayScreen() {
     setQuickAddVisible(true);
   }, [route.params?.openQuickAdd, handledOpenQuickAdd]);
 
+  // The same stamped-param handoff, for a quiet project's review task: its
+  // linkUrl is dundundun://projects?pull=<id>, which lands here and pops the
+  // pull sheet scoped to that one project (see utils/projectReviewTasks.ts).
+  // The sheet is mounted by this screen, which is why the link routes to Today
+  // rather than to the Projects tab.
+  const [handledOpenPull, setHandledOpenPull] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (route.params?.openProjectPull === undefined || route.params.openProjectPull === handledOpenPull) return;
+    setHandledOpenPull(route.params.openProjectPull);
+    const projectId = route.params.pullProjectId as string | undefined;
+    // An unscoped link opens the sheet over the whole board, the same thing the
+    // options row does. A scoped one whose project has since been deleted or
+    // archived scopes to nothing and lands on the sheet's own empty state,
+    // which is the right answer and a narrow window anyway — the next sweep
+    // drops a review task whose project has stopped being quiet, and a project
+    // that no longer exists has certainly stopped.
+    setPullScopeProjectIds(projectId ? [projectId] : undefined);
+    setPullVisible(true);
+  }, [route.params?.openProjectPull, route.params?.pullProjectId, handledOpenPull]);
+
   // Claims completions queued by the Today widget's checkbox and by Live
   // Activity's Done button (see useWidgetCompletionStore / widgetSync.ts).
   // Handing a pending id off to a TaskItem via autoComplete triggers the real
@@ -818,6 +836,11 @@ export function TodayScreen() {
           // After rolloverQuotas/sweepOvershootQuotas: either can complete and
           // spawn members, which changes what a project counts as scheduled.
           useTaskStore.getState().dripStalledProjects();
+          // A project goes quiet purely by time passing, and stops being quiet
+          // the moment anything in it is dated — including from the review
+          // task's own row, which nothing else would then clear. Same reason
+          // the passes around it run here rather than waiting for a cold start.
+          useTaskStore.getState().checkProjectReviewTasks();
           // And any template whose schedule came due while the app sat in the
           // background (#1781) — a weekly run would otherwise wait for the next
           // cold start, which for a phone left open all week never comes. Same
@@ -943,8 +966,6 @@ export function TodayScreen() {
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const projects = useProjectStore(useShallow(s => s.projects));
-  const projectNudgeDismissedAt = useSettingsStore(s => s.projectNudgeDismissedAt);
-  const setProjectNudgeDismissedAt = useSettingsStore(s => s.setProjectNudgeDismissedAt);
 
   const activeFilterCount =
     (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length + (filterHasReminder ? 1 : 0);
@@ -2564,45 +2585,11 @@ export function TodayScreen() {
     flashTask(task.id);
   };
 
-  // Projects that have gone quiet. One bucketing pass inside a memo, not a
-  // filter per project — this screen re-renders on every store change plus a
-  // 30s tick.
-  //
-  // 'nudge' mode deliberately, unlike the sheet these feed into: this drives an
-  // accent tint and a count the user didn't ask for, so it stays gated on each
-  // project's own cadence. Opening the sheet asks a question and gets every
-  // quiet project back; sitting here does not, and shouldn't (see StallMode).
-  // The two counts disagreeing is the design, not a bug to reconcile.
-  const projectStalls = useMemo(
-    () => findProjectStalls(projects, allTasks, 'nudge').filter(s => !s.project.autoSchedule),
-    [projects, allTasks]
-  );
-  const nudgeDismissed = isDismissedToday(projectNudgeDismissedAt);
-  const dismissProjectNudge = () => {
-    animateLayout();
-    setProjectNudgeDismissedAt(new Date().toISOString());
-  };
-
-  // The quiet-projects nudge used to be a fixed strip above the list, pinned
-  // with the rest of the header controls. It's a suggestion to go read
-  // something, not a standing piece of chrome, so it scrolls with the page
-  // now — folded into the same ListHeaderComponent as the pinned block,
-  // ahead of it, rather than sitting outside the ScrollView.
-  const todayListHeader = (
-    <>
-      {projectStalls.length > 0 && !nudgeDismissed && (
-        <ProjectNudgeBanner
-          stalls={projectStalls}
-          onReview={projectIds => {
-            setPullScopeProjectIds(projectIds);
-            setPullVisible(true);
-          }}
-          onDismiss={dismissProjectNudge}
-        />
-      )}
-      {pinnedBlock}
-    </>
-  );
+  // The quiet-projects banner used to sit here, above the pinned block. It's a
+  // real task now (see utils/projectReviewTasks.ts), so the offer arrives in
+  // the list rather than as a strip over it and there is nothing left to put
+  // in the header but the pinned block itself.
+  const todayListHeader = pinnedBlock;
 
   const today = format(new Date(), 'EEEE, MMMM d');
 
@@ -3378,7 +3365,6 @@ export function TodayScreen() {
             setPullScopeProjectIds(undefined);
             setPullVisible(true);
           }}
-          quietProjectCount={projectStalls.length}
           onReorderCategories={() => {
             setOptionsMenuVisible(false);
             setCategoryOrderVisible(true);

@@ -165,6 +165,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'mealPlanNudgeTime',
   'mealPlanNudgeWeekday',
   'mealPlanNudgeTaskCategory',
+  'projectReviewTasks',
+  'projectReviewTaskCategory',
 
   // Vocabularies the user builds. These are data as much as preference — a
   // tag that exists but is unused, and the walk round the shop — and a device
@@ -199,7 +201,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   on the other.
  * - `aiFeatureConfig` — the API key it depends on is device-local by design,
  *   so syncing the config turns features on for a device that cannot run them.
- * - `grocery_trip_shop_id`, `grocery_trip_started_at`, `projectNudgeDismissedAt`,
+ * - `grocery_trip_shop_id`, `grocery_trip_started_at`,
  *   `mealPlanNudgeLastFiredWeekKey`, `mealPlanNudgeGroupId`,
  *   `meal_plan_added_to_list`, `patchNotesQaStatus`, `filterEfforts`,
  *   `filterPriorities` — transient state about what one device is doing right

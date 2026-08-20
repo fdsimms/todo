@@ -135,7 +135,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, targetStartDate: string | null, targetEndDate: string | null) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'targetStartDate' | 'targetEndDate' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'sequential' | 'nudgeOptIn'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'targetStartDate' | 'targetEndDate' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'sequential' | 'nudgeOptIn' | 'reviewDeclinedAt'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -188,6 +188,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       autoSchedule: false,
       sequential: false,
       nudgeOptIn: false,
+      reviewDeclinedAt: null,
     };
     dbInsertProject(project);
     set(s => ({ projects: [...s.projects, project] }));

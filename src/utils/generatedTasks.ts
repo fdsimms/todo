@@ -5,13 +5,19 @@ export type { GeneratedKind };
 /**
  * The one mechanism behind every task this app writes without being asked.
  *
- * Four features generate tasks unattended — a planned meal becomes "Cook X", a
+ * Five features generate tasks unattended — a planned meal becomes "Cook X", a
  * perishable grocery becomes "Use up X", a leftover about to go bad becomes
- * "Use up X", and an opt-in weekly trigger becomes "Plan meals for…". Each was
- * built by copying the last, which is fine twice and had reached four: four
- * nullable back-pointer columns on `Task`, four hand-written "don't pile up"
- * rules, and three near-identical copies of the same three-input opt-out, two
- * of which said so in their own headers (#1524).
+ * "Use up X", an opt-in weekly trigger becomes "Plan meals for…", and a project
+ * that has gone quiet becomes "Review X". The first four were each built by
+ * copying the last, which is fine twice and had reached four: four nullable
+ * back-pointer columns on `Task`, four hand-written "don't pile up" rules, and
+ * three near-identical copies of the same three-input opt-out, two of which
+ * said so in their own headers (#1524).
+ *
+ * The fifth is what that refactor was for. `projectReview` needed no
+ * column and no reconcile of its own: a registry entry, a rules module
+ * (`projectReviewTasks.ts`) and a firing beside the meal-plan nudge's, which is
+ * the shape the note below promised.
  *
  * What's shared is the *plumbing*, and only the plumbing:
  *
@@ -48,6 +54,7 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   'groceryUseUp',
   'leftoverUseUp',
   'mealPlanNudge',
+  'projectReview',
 ];
 
 /**
@@ -138,6 +145,16 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     sourced: true,
     categorized: true,
     defaultCategory: 'Leftovers',
+  },
+  projectReview: {
+    kind: 'projectReview',
+    label: 'Review tasks for quiet projects',
+    onHint: 'A project with nothing scheduled adds a task to pick its next one',
+    offHint: 'A project with nothing scheduled adds no task',
+    icon: 'folder-outline',
+    sourced: true,
+    categorized: true,
+    defaultCategory: 'Projects',
   },
   mealPlanNudge: {
     kind: 'mealPlanNudge',

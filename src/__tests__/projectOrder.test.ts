@@ -114,6 +114,7 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   autoSchedule: false,
   sequential: false,
   nudgeOptIn: false,
+  reviewDeclinedAt: null,
   ...overrides,
 });
 

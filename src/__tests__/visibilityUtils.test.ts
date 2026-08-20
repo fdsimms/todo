@@ -1728,6 +1728,7 @@ describe('isSequenceBlocked', () => {
       autoSchedule: false,
       sequential,
       nudgeOptIn: false,
+      reviewDeclinedAt: null,
     }]);
     registerTaskSource(() => tasks);
   };

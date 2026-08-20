@@ -48,9 +48,12 @@ import { makeSettingsStyles } from './settingsStyles';
  * A fifth generator gets a row here by being added to the registry, and needs
  * an `extrasFor` case only if it has a knob nobody else has.
  *
- * The nudge is in the list despite having no category to file under and no
- * source row to opt out of, because from the user's side it is exactly the same
- * kind of thing: a task that appears in the list because the app put it there.
+ * The nudge is in the list despite having no source row to opt out of, because
+ * from the user's side it is exactly the same kind of thing: a task that
+ * appears in the list because the app put it there. So is the project review
+ * task, which is the first entry here that has nothing to do with the kitchen —
+ * and which arrived needing no `extrasFor` case at all, which is the claim
+ * above being cashed.
  */
 
 // Full names for the hint sentence and screen reader labels; single letters on
@@ -97,19 +100,29 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
   // settings keys. Renaming them to a generic pair would be a migration over
   // preferences people have already set, for no gain a person can see — the
   // consolidation people asked for is the one in front of them, not in SQLite.
-  const enabledOf = (kind: GeneratedKind): boolean => (
-    kind === 'mealCook' ? s.mealCookTasks
-    : kind === 'groceryUseUp' ? s.groceryUseUpTasks
-    : kind === 'leftoverUseUp' ? s.leftoverUseUpTasks
-    : s.mealPlanNudgeEnabled
-  );
+  // A switch per kind rather than a ternary chain ending in a default: with
+  // four generators the last arm was the nudge's, and a fifth added to the
+  // registry would silently have read and written the nudge's own setting
+  // instead of its own. An exhaustive switch makes that a typecheck failure.
+  const enabledOf = (kind: GeneratedKind): boolean => {
+    switch (kind) {
+      case 'mealCook': return s.mealCookTasks;
+      case 'groceryUseUp': return s.groceryUseUpTasks;
+      case 'leftoverUseUp': return s.leftoverUseUpTasks;
+      case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
+      case 'projectReview': return s.projectReviewTasks;
+    }
+  };
 
   const toggle = (kind: GeneratedKind): void => {
     const next = !enabledOf(kind);
-    if (kind === 'mealCook') s.setMealCookTasks(next);
-    else if (kind === 'groceryUseUp') s.setGroceryUseUpTasks(next);
-    else if (kind === 'leftoverUseUp') s.setLeftoverUseUpTasks(next);
-    else s.setMealPlanNudgeEnabled(next);
+    switch (kind) {
+      case 'mealCook': s.setMealCookTasks(next); break;
+      case 'groceryUseUp': s.setGroceryUseUpTasks(next); break;
+      case 'leftoverUseUp': s.setLeftoverUseUpTasks(next); break;
+      case 'mealPlanNudge': s.setMealPlanNudgeEnabled(next); break;
+      case 'projectReview': s.setProjectReviewTasks(next); break;
+    }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
     // reading "None" — which is the value that puts these tasks loose at the
@@ -118,20 +131,26 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
     if (next) ensureGeneratedTaskCategory(kind, { force: true });
   };
 
-  const categoryOf = (kind: GeneratedKind): string | null => (
-    kind === 'mealCook' ? s.mealCookTaskCategory
-    : kind === 'groceryUseUp' ? s.groceryUseUpTaskCategory
-    : kind === 'leftoverUseUp' ? s.leftoverUseUpTaskCategory
-    : s.mealPlanNudgeTaskCategory
-  );
+  const categoryOf = (kind: GeneratedKind): string | null => {
+    switch (kind) {
+      case 'mealCook': return s.mealCookTaskCategory;
+      case 'groceryUseUp': return s.groceryUseUpTaskCategory;
+      case 'leftoverUseUp': return s.leftoverUseUpTaskCategory;
+      case 'mealPlanNudge': return s.mealPlanNudgeTaskCategory;
+      case 'projectReview': return s.projectReviewTaskCategory;
+    }
+  };
 
   // No haptic here: `categoryPills` fires one in its own onPress, and two for
   // one tap reads as a stutter.
   const setCategory = (kind: GeneratedKind, category: string | null): void => {
-    if (kind === 'mealCook') s.setMealCookTaskCategory(category);
-    else if (kind === 'groceryUseUp') s.setGroceryUseUpTaskCategory(category);
-    else if (kind === 'leftoverUseUp') s.setLeftoverUseUpTaskCategory(category);
-    else s.setMealPlanNudgeTaskCategory(category);
+    switch (kind) {
+      case 'mealCook': s.setMealCookTaskCategory(category); break;
+      case 'groceryUseUp': s.setGroceryUseUpTaskCategory(category); break;
+      case 'leftoverUseUp': s.setLeftoverUseUpTaskCategory(category); break;
+      case 'mealPlanNudge': s.setMealPlanNudgeTaskCategory(category); break;
+      case 'projectReview': s.setProjectReviewTaskCategory(category); break;
+    }
   };
 
   const confirmTime = () => {

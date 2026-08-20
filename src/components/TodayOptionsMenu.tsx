@@ -23,12 +23,10 @@ interface Props {
   plannedLabel?: string;
   /**
    * Opens the "pull from projects" sheet. Passed unconditionally, unlike
-   * onLightenDay — the sheet is how you reach quiet projects once the banner
-   * has been dismissed, and it explains itself when nothing is quiet.
+   * onLightenDay — it's how you go looking for a quiet project rather than
+   * waiting to be offered one, and it explains itself when nothing is quiet.
    */
   onPullFromProjects: () => void;
-  /** How many projects have gone quiet, shown as the action's hint. */
-  quietProjectCount: number;
   /**
    * Opens the sheet that orders Today's category sections. This is the only way
    * to reorder them — dragging a section header on the list itself is gone.
@@ -51,7 +49,6 @@ export function TodayOptionsMenu({
   onLightenDay,
   plannedLabel,
   onPullFromProjects,
-  quietProjectCount,
   onReorderCategories,
   categoryCount,
 }: Props) {
@@ -125,19 +122,15 @@ export function TodayOptionsMenu({
             accessibilityRole="button"
             accessibilityLabel="Pull from projects"
           >
-            <Ionicons
-              name="albums-outline"
-              size={18}
-              color={quietProjectCount > 0 ? colors.accent : colors.textSecondary}
-            />
+            {/* No accent tint or count any more: a quiet project announces
+                itself with a task on the list now, so a second, quieter claim
+                buried in a menu would be the app saying it twice. This row is
+                the way *in* when you go looking. */}
+            <Ionicons name="albums-outline" size={18} color={colors.textSecondary} />
             <View style={styles.optionContent}>
-              <Text style={[styles.optionLabel, quietProjectCount > 0 && styles.optionLabelActive]}>
-                Pull from projects
-              </Text>
+              <Text style={styles.optionLabel}>Pull from projects</Text>
               <Text style={styles.optionHint}>
-                {quietProjectCount > 0
-                  ? `${quietProjectCount} project${quietProjectCount === 1 ? '' : 's'} gone quiet. Bring something in`
-                  : 'Bring the next thing from a quiet project into today'}
+                Bring the next thing from a quiet project into today
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />

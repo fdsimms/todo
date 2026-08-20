@@ -50,6 +50,11 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { MEAL_PLAN_NUDGE_SLOT_COUNT, mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
+import {
+  describeProjectQuiet,
+  projectQuietDays,
+  projectReviewProjectId,
+} from '../utils/projectReviewTasks';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -689,6 +694,25 @@ export const TaskItem = React.memo(function TaskItem({
   // (see mealPlanNudge.ts on why nothing here completes a task by itself).
   const mealPlanReady =
     plannedMeals !== undefined && plannedMeals >= MEAL_PLAN_NUDGE_SLOT_COUNT && !task.completed;
+
+  // A quiet project's review task: how long the project has actually been
+  // silent, which is what the banner this replaced showed beside each name.
+  //
+  // Both selectors return a primitive or one row, so every non-review task —
+  // which is all of them, nearly always — pays one null check and re-renders
+  // no more often than it did. The task-list pass runs only for the handful of
+  // rows that are review tasks (three at most, see MAX_PROJECT_REVIEW_TASKS),
+  // and only its *result* is subscribed to, so a task changing elsewhere in
+  // the list doesn't re-render this row unless the day count itself moved.
+  const reviewProjectId = projectReviewProjectId(task);
+  const reviewProject = useProjectStore(s =>
+    reviewProjectId ? s.projects.find(p => p.id === reviewProjectId) ?? null : null
+  );
+  const quietDays = useTaskStore(s =>
+    reviewProjectId
+      ? projectQuietDays(reviewProject, s.tasks.filter(t => t.projectId === reviewProjectId))
+      : null
+  );
 
   // The stretches the subtasks split the countdown into, and which one the
   // clock is in. Empty for a timed task nobody apportioned, which is what keeps
@@ -1513,7 +1537,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || timed || plannedMeals !== undefined || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || timed || plannedMeals !== undefined || quietDays !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -1653,6 +1677,27 @@ export const TaskItem = React.memo(function TaskItem({
                   numberOfLines={1}
                 >
                   {plannedMeals}/{MEAL_PLAN_NUDGE_SLOT_COUNT} planned
+                </Text>
+              </View>
+            )}
+            {/* How long this project has been silent — the one thing the
+                quiet-projects banner said that the row's own title doesn't.
+                Filled rather than a bare chip, which makes it the one thing in
+                the meta line with a shape: these rows are the app's own offers
+                sitting among tasks the user wrote, and at tertiary weight they
+                read as one more attribute and got skipped — the same finding
+                that made "Scheduled for you" the one accent chip here.
+                Deliberately not a "Review" badge before the title, which would
+                restate the title's own first word, and would have to take that
+                word *out* of it — leaving the row reading "Kitchen renovation"
+                on the widget, in Search and in the Logbook, none of which
+                render a meta line. This says the same thing with the fact the
+                row already had. */}
+            {quietDays !== null && (
+              <View style={[styles.metaChip, styles.quietChip]}>
+                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.accent} />
+                <Text style={styles.quietLabel} numberOfLines={1}>
+                  {describeProjectQuiet(quietDays)}
                 </Text>
               </View>
             )}
@@ -3171,6 +3216,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   plannedMealsLabelReady: {
     color: colors.green,
+  },
+  // "Quiet 21 days" on a quiet project's review task — the only filled chip in
+  // the meta line, and the only one that marks whose row this is rather than
+  // describing the task.
+  //
+  // accentSubtle rather than a border: it's the tint the app already uses for
+  // an informational surface that pairs with accent text (it was the
+  // quiet-projects banner's own background), so this reads as the same voice
+  // in a smaller place. Padding and a full radius rather than the bare
+  // icon-and-label every other chip is — the shape is what does the work at a
+  // glance, before any of it has been read.
+  quietChip: {
+    backgroundColor: colors.accentSubtle,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+  },
+  // No ready colour, unlike the meal-plan counter it sits in for: there is no
+  // threshold a project crosses into being handled, only the task being ticked.
+  quietLabel: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: fontWeight.semibold,
   },
   // Trails the countdown in the chip, so the number stays the thing the eye
   // lands on and a long subtask title truncates instead of pushing it out.
