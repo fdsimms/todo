@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a crash on launch that could leave the app stuck on a blank screen.",
+  "date": "2026-08-20"
+}

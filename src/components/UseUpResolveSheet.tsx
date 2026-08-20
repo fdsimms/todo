@@ -20,9 +20,13 @@ import { LeftoverSheet } from './LeftoverSheet';
  * correcting the kitchen happen in one motion.
  *
  * **Mounted once, in AppNavigator beside DemoBanner/PersistentTripBar/UndoBar,
- * not on any one screen.** Completion can land here from Today, Search,
+ * not on any one screen** — but, unlike those three, inside NavigationContainer
+ * (just outside the RootStack). Completion can land here from Today, Search,
  * Waiting, the widget, or a bulk-complete, and the flag has to open the sheet
- * wherever the tap happened to come from.
+ * wherever the tap happened to come from. GroceryItemSheet's
+ * useKeyboardInsetScroll calls useIsFocused, which throws outside any
+ * navigation context at all; inside NavigationContainer it resolves to the
+ * container's own always-focused root ref instead.
  *
  * **Opens immediately rather than behind a banner**, unlike CookedUseUpOffer.
  * Cooking a meal can implicate several ingredients at once, worth a beat to
