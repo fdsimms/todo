@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,14 +6,16 @@ import {
   StyleSheet,
   TextInput,
   ScrollView,
+  Animated,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useReduceMotion } from '../utils/useReduceMotion';
 import { PRIORITY_LABELS, PRIORITY_COLORS, type Priority, type TimeOfDay } from '../types';
 import { tagColor } from '../utils/tagColor';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -77,6 +79,8 @@ export function BulkActionBar({
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const categories = useCategoryStore(useShallow(s => s.categories));
+  const reduceMotion = useReduceMotion();
+  const entrance = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
   const [panel, setPanel] = useState<Panel>('actions');
   const [whenVisible, setWhenVisible] = useState(false);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
@@ -85,6 +89,13 @@ export function BulkActionBar({
   const [newCategoryText, setNewCategoryText] = useState('');
 
   const allSelected = selectedCount === totalCount;
+
+  // The bar mounts fresh every time selection starts (`{selectionMode && <BulkActionBar />}`),
+  // so a plain mount-time rise-and-fade is the whole entrance — no exit to animate.
+  useEffect(() => {
+    if (reduceMotion) return;
+    Animated.spring(entrance, { toValue: 1, ...animation.spring.smooth, useNativeDriver: true }).start();
+  }, [entrance, reduceMotion]);
 
   const handleConfirmWhen = (date: Date | null, segs: TimeOfDay[]) => {
     setWhenVisible(false);
@@ -176,8 +187,16 @@ export function BulkActionBar({
 
   return (
     <>
-      <View
-        style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.sm }]}
+      <Animated.View
+        style={[
+          styles.container,
+          shadows.sheet,
+          {
+            bottom: bottomInset + spacing.sm,
+            opacity: entrance,
+            transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
+          },
+        ]}
         onLayout={onHeightChange ? e => onHeightChange(e.nativeEvent.layout.height) : undefined}
       >
         {panel === 'actions' && (
@@ -462,7 +481,7 @@ export function BulkActionBar({
             </View>
           </View>
         )}
-      </View>
+      </Animated.View>
 
       <WhenPicker
         visible={whenVisible}
