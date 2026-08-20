@@ -1682,12 +1682,20 @@ export const TaskItem = React.memo(function TaskItem({
             )}
             {/* How long this project has been silent — the one thing the
                 quiet-projects banner said that the row's own title doesn't.
-                Tertiary and unhurried on purpose: it's the reason the offer
-                exists, not an alarm about it, and the whole point of moving
-                this into the list was to stop it demanding attention. */}
+                Filled rather than a bare chip, which makes it the one thing in
+                the meta line with a shape: these rows are the app's own offers
+                sitting among tasks the user wrote, and at tertiary weight they
+                read as one more attribute and got skipped — the same finding
+                that made "Scheduled for you" the one accent chip here.
+                Deliberately not a "Review" badge before the title, which would
+                restate the title's own first word, and would have to take that
+                word *out* of it — leaving the row reading "Kitchen renovation"
+                on the widget, in Search and in the Logbook, none of which
+                render a meta line. This says the same thing with the fact the
+                row already had. */}
             {quietDays !== null && (
-              <View style={styles.metaChip}>
-                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textTertiary} />
+              <View style={[styles.metaChip, styles.quietChip]}>
+                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.accent} />
                 <Text style={styles.quietLabel} numberOfLines={1}>
                   {describeProjectQuiet(quietDays)}
                 </Text>
@@ -3209,13 +3217,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   plannedMealsLabelReady: {
     color: colors.green,
   },
-  // "Quiet 21 days" on a quiet project's review task. Same size and weight as
-  // the meal-plan counter beside it, because it's the same kind of thing: this
-  // row's own state, rather than one more count hung off it. No ready colour —
-  // there is no threshold a project crosses into being handled, only the task
-  // being ticked.
+  // "Quiet 21 days" on a quiet project's review task — the only filled chip in
+  // the meta line, and the only one that marks whose row this is rather than
+  // describing the task.
+  //
+  // accentSubtle rather than a border: it's the tint the app already uses for
+  // an informational surface that pairs with accent text (it was the
+  // quiet-projects banner's own background), so this reads as the same voice
+  // in a smaller place. Padding and a full radius rather than the bare
+  // icon-and-label every other chip is — the shape is what does the work at a
+  // glance, before any of it has been read.
+  quietChip: {
+    backgroundColor: colors.accentSubtle,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+  },
+  // No ready colour, unlike the meal-plan counter it sits in for: there is no
+  // threshold a project crosses into being handled, only the task being ticked.
   quietLabel: {
-    color: colors.textTertiary,
+    color: colors.accent,
     fontSize: 11,
     fontWeight: fontWeight.semibold,
   },

@@ -508,6 +508,17 @@ registry entry, a firing beside the nudge's, and no `extrasFor` case in Settings
   - **It ships on, unlike the nudge beside it**, because it replaced a surface that was already
     there rather than adding one. The real gate is per-project and unchanged (`nudgeOptIn` +
     `nudgeCadenceDays`, both still "never ask" by default), so nobody sees anything new.
+  - **Its "Quiet 21 days" chip is filled, and that's the row's marker.** These rows are the app's
+    own offers sitting among tasks the user wrote, and at `textTertiary` the chip read as one more
+    attribute — the same finding that made `autoScheduledLabel` ("Scheduled for you") the one accent
+    chip on a task row. **Deliberately not a "Review" badge before the title**: that restates the
+    title's own first word, and to avoid saying it twice the title would have to drop the verb,
+    leaving the row reading "Kitchen renovation" (a task to *do* the renovation) on the widget, in
+    Search and in the Logbook, none of which render a meta line. The fact the row already carries
+    does the job. **And it stays this generator's alone** — a shared "the app wrote this" chip
+    across all five was mocked and rejected: a planned week is seven cook tasks the user chose by
+    planning the meals, and captioning every one of them is the noise `tripMarkerFor`'s
+    silence-by-default rule exists to avoid.
   - **It's the one generator whose reconcile can't ride a source mutation.** A project goes quiet
     by time passing and stops being quiet when some *other* task gets a date, so the check runs on
     the launch sequence and the Today foreground sweep, and `staleProjectReviewTasks` is what
