@@ -97,3 +97,22 @@ export function resetToKitchen(focusEntryId?: string | null): void {
       : { openKitchen: Date.now() },
   });
 }
+
+// Where `dundundun://projects[?pull=…]` lands — a quiet project's review task
+// (see utils/projectReviewTasks.ts). Lands on Today and asks it to pop
+// ProjectPullSheet open, the same stamped-param handoff resetToKitchen uses.
+//
+// Today rather than Projects, which is the tab the name suggests: the sheet is
+// mounted by TodayScreen, and it's a "what am I doing now" question rather than
+// a board-management one — the same call the Today options row's "Pull from
+// projects" already makes. A null id opens it unscoped, over every quiet
+// project.
+export function resetToProjectPull(projectId?: string | null): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({
+    name: 'Today',
+    params: projectId
+      ? { openProjectPull: Date.now(), pullProjectId: projectId }
+      : { openProjectPull: Date.now() },
+  });
+}

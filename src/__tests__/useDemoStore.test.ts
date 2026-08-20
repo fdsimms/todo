@@ -56,6 +56,8 @@ import {
 } from '../utils/cookingStats';
 import { describeKitchen, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { liveGeneratedTask } from '../utils/generatedTasks';
+import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
+import { findProjectStalls } from '../utils/projectPull';
 import { kitchenContextRows, plannedUsesToday } from '../utils/dayContextRows';
 import { planTrip, summarizeTrip, describeShopCoverage } from '../utils/shoppingTrip';
 import {
@@ -1249,6 +1251,53 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Nothing spawned for free text or for a leftover night.
     const freeOrLeftover = entries.filter(e => !e.recipeId || e.leftoverId).map(e => e.id);
     expect(cookTasks.every(t => !freeOrLeftover.includes(t.generatedSourceId!))).toBe(true);
+  });
+
+  it('seeds a quiet project and the review task the app writes about it', () => {
+    const { tasks } = useTaskStore.getState();
+    const { projects } = useProjectStore.getState();
+
+    const garage = projects.find(p => p.title === 'Garage shelving');
+    expect(garage).toBeDefined();
+    // Opted in and past its cadence: the state the feature exists for, and the
+    // one that is otherwise invisible everywhere, since an undated project
+    // task appears in no list at all.
+    expect(garage!.nudgeOptIn).toBe(true);
+    expect(garage!.nudgeCadenceDays).toBeGreaterThan(0);
+
+    const review = tasks.find(t => t.generatedKind === 'projectReview');
+    expect(review).toBeDefined();
+    expect(review!.title).toBe('Review Garage shelving');
+    expect(review!.generatedSourceId).toBe(garage!.id);
+    // Tapping it opens the pull sheet on this project alone.
+    expect(review!.linkUrl).toBe(`dundundun://projects?pull=${garage!.id}`);
+    // Filed, not loose — an uncategorized generated task renders above every
+    // section, which is exactly where the banner this replaced used to sit.
+    expect(review!.category).toBe('Projects');
+    // And never inside the project it describes: that would be a dated member,
+    // which is what makes a project *not* quiet (see projectReviewTasks.ts).
+    expect(review!.projectId).toBeNull();
+  });
+
+  it('makes that project read as genuinely quiet, not quiet for zero days', () => {
+    const { tasks } = useTaskStore.getState();
+    const { projects } = useProjectStore.getState();
+    const garage = projects.find(p => p.title === 'Garage shelving')!;
+
+    const members = tasks.filter(t => t.projectId === garage.id);
+    // Nothing live in it carries a date — one dated member and the project is
+    // not quiet at all.
+    expect(members.filter(t => !t.completed).every(t => t.dueDate === null && t.deferUntil === null)).toBe(true);
+    // The chip reads off the last completion, so the demo needs one with some
+    // age on it or the row says "Quiet 0 days" and demonstrates nothing.
+    expect(projectQuietDays(garage, members)).toBeGreaterThan(14);
+
+    // And the real rule agrees it's quiet — otherwise the seeded task would be
+    // swept away by the first foreground as describing a project that isn't
+    // stalled, and the demo would show the feature for exactly as long as
+    // nobody backgrounded the app.
+    const stalls = findProjectStalls(projects, tasks, 'nudge');
+    expect(wantedProjectReviews(stalls).map(w => w.projectId)).toContain(garage.id);
   });
 
   it('seeds the weekly meal-plan nudge as a stack of seven day tasks', () => {

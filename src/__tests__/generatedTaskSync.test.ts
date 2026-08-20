@@ -283,7 +283,10 @@ describe('reconcileGeneratedTask — removing', () => {
 
     reconcileGeneratedTask(opts({ wanted: false }));
 
-    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing');
+    // No skipGeneratedOptOut: this delete is reached only when the source has
+    // already said no, so writing that "no" back onto it is a no-op the store's
+    // own equality guard drops — and the path stays the one that *would* write.
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: undefined });
     expect(mockTaskState.tasks).toHaveLength(0);
   });
 
@@ -334,7 +337,11 @@ describe('dropGeneratedTask', () => {
 
     dropGeneratedTask('groceryUseUp', 'g-1');
 
-    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing');
+    // "Without deciding anything" — so no opt-out is written on the source.
+    // It was true by accident for the original callers, whose source row is
+    // already gone by this point; projectReview's outlives its task, so the
+    // skip has to be explicit (see dropGeneratedTask's own note).
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: true });
     expect(mockTaskState.setLastAction).toHaveBeenCalledWith(null);
   });
 
@@ -366,7 +373,7 @@ describe('deleteGeneratedTaskQuietly', () => {
 
     deleteGeneratedTaskQuietly('existing');
 
-    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing');
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: undefined });
     // Clearing first would leave whatever deleteTask armed sitting there.
     expect(mockTaskState.setLastAction.mock.invocationCallOrder[0])
       .toBeGreaterThan(mockTaskState.deleteTask.mock.invocationCallOrder[0]);

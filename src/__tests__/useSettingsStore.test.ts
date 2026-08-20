@@ -552,17 +552,25 @@ describe('the delete-after-importing settings', () => {
   });
 });
 
-describe('setProjectNudgeDismissedAt', () => {
-  it('stores and persists the stamp', () => {
-    useSettingsStore.getState().setProjectNudgeDismissedAt('2026-08-06T09:00:00.000Z');
-    expect(useSettingsStore.getState().projectNudgeDismissedAt).toBe('2026-08-06T09:00:00.000Z');
-    expect(dbSetSetting).toHaveBeenCalledWith('projectNudgeDismissedAt', '2026-08-06T09:00:00.000Z');
+describe('projectReviewTasks', () => {
+  it('defaults on, unlike the opt-in generators beside it', () => {
+    expect(useSettingsStore.getState().projectReviewTasks).toBe(true);
   });
 
-  it('clears back to null through an empty string', () => {
-    useSettingsStore.getState().setProjectNudgeDismissedAt(null);
-    expect(useSettingsStore.getState().projectNudgeDismissedAt).toBeNull();
-    expect(dbSetSetting).toHaveBeenCalledWith('projectNudgeDismissedAt', '');
+  it('stores and persists the switch', () => {
+    useSettingsStore.getState().setProjectReviewTasks(false);
+    expect(useSettingsStore.getState().projectReviewTasks).toBe(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('projectReviewTasks', 'false');
+  });
+
+  it('stores the category, clearing back to null through an empty string', () => {
+    useSettingsStore.getState().setProjectReviewTaskCategory('Projects');
+    expect(useSettingsStore.getState().projectReviewTaskCategory).toBe('Projects');
+    expect(dbSetSetting).toHaveBeenCalledWith('projectReviewTaskCategory', 'Projects');
+
+    useSettingsStore.getState().setProjectReviewTaskCategory(null);
+    expect(useSettingsStore.getState().projectReviewTaskCategory).toBeNull();
+    expect(dbSetSetting).toHaveBeenCalledWith('projectReviewTaskCategory', '');
   });
 });
 

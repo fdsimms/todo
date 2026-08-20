@@ -8,6 +8,7 @@ import {
   resetToRecipes,
   resetToMealPlan,
   resetToKitchen,
+  resetToProjectPull,
   openQuickAddFromShortcut,
 } from '../navigation/navigationRef';
 
@@ -154,6 +155,34 @@ export function mealPlanUrlDayKey(url: string): string | null {
 // opens, and opens straight to the one row named by `item` when there is one.
 const KITCHEN_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?kitchen\\/?(?:\\?(.*))?$`, 'i');
 
+// `dundundun://projects[?pull=…]` — a quiet project's review task (see
+// utils/projectReviewTasks.projectReviewLinkUrl). The bare form opens the pull
+// sheet over the whole board, the same thing the Today options row does; with
+// a project id it opens scoped to that one.
+const PROJECTS_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?projects\\/?(?:\\?(.*))?$`, 'i');
+
+export function isProjectsUrl(url: string): boolean {
+  return typeof url === 'string' && PROJECTS_RE.test(url.trim());
+}
+
+/**
+ * The project a projects link asks the pull sheet to scope to, or null for the
+ * bare link.
+ *
+ * Opaque like `kitchenUrlItemId`: it's whatever id the task was generated
+ * from, matched straight against the live project list, and it may well no
+ * longer resolve — the project can be deleted or archived between the task
+ * being written and the row being tapped. That scopes the plan to nothing and
+ * shows the sheet's own empty state, which is what it's for.
+ */
+export function projectsUrlPullId(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = PROJECTS_RE.exec(url.trim());
+  if (!match) return null;
+  const id = (parseQuery(match[1] ?? '').pull ?? '').trim();
+  return id || null;
+}
+
 export function isKitchenUrl(url: string): boolean {
   return typeof url === 'string' && KITCHEN_RE.test(url.trim());
 }
@@ -203,6 +232,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isKitchenUrl(url)) {
     resetToKitchen(kitchenUrlItemId(url));
+    return true;
+  }
+  if (isProjectsUrl(url)) {
+    resetToProjectPull(projectsUrlPullId(url));
     return true;
   }
   if (isOpenAppUrl(url)) {

@@ -276,6 +276,9 @@ describe('the registry', () => {
     expect(GENERATED_KIND_SPECS.mealCook.sourced).toBe(true);
     expect(GENERATED_KIND_SPECS.groceryUseUp.sourced).toBe(true);
     expect(GENERATED_KIND_SPECS.leftoverUseUp.sourced).toBe(true);
+    // Sourced by the project it speaks for — the id its linkUrl scopes the
+    // pull sheet to, and the row its opt-out is stamped on.
+    expect(GENERATED_KIND_SPECS.projectReview.sourced).toBe(true);
   });
 
   it('gives every kind a category to file under, the nudge included', () => {
@@ -283,7 +286,7 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['mealCook', 'groceryUseUp', 'leftoverUseUp', 'mealPlanNudge']);
+      .toEqual(['mealCook', 'groceryUseUp', 'leftoverUseUp', 'mealPlanNudge', 'projectReview']);
   });
 
   it('shares one default category between planning the week and cooking it', () => {

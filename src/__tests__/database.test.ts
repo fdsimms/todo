@@ -1413,6 +1413,7 @@ describe('Projects', () => {
     autoSchedule: false,
     sequential: false,
     nudgeOptIn: true,
+    reviewDeclinedAt: null,
     ...overrides,
   });
 
@@ -1596,6 +1597,7 @@ describe('backup and restore', () => {
       category: null, sortOrder: 1, archived: false, archivedAt: null, completed: false, completedAt: null,
       createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false, sequential: false,
       nudgeOptIn: true,
+      reviewDeclinedAt: null,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');

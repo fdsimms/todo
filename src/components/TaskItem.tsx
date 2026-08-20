@@ -50,6 +50,11 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { MEAL_PLAN_NUDGE_SLOT_COUNT, mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
+import {
+  describeProjectQuiet,
+  projectQuietDays,
+  projectReviewProjectId,
+} from '../utils/projectReviewTasks';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -689,6 +694,25 @@ export const TaskItem = React.memo(function TaskItem({
   // (see mealPlanNudge.ts on why nothing here completes a task by itself).
   const mealPlanReady =
     plannedMeals !== undefined && plannedMeals >= MEAL_PLAN_NUDGE_SLOT_COUNT && !task.completed;
+
+  // A quiet project's review task: how long the project has actually been
+  // silent, which is what the banner this replaced showed beside each name.
+  //
+  // Both selectors return a primitive or one row, so every non-review task —
+  // which is all of them, nearly always — pays one null check and re-renders
+  // no more often than it did. The task-list pass runs only for the handful of
+  // rows that are review tasks (three at most, see MAX_PROJECT_REVIEW_TASKS),
+  // and only its *result* is subscribed to, so a task changing elsewhere in
+  // the list doesn't re-render this row unless the day count itself moved.
+  const reviewProjectId = projectReviewProjectId(task);
+  const reviewProject = useProjectStore(s =>
+    reviewProjectId ? s.projects.find(p => p.id === reviewProjectId) ?? null : null
+  );
+  const quietDays = useTaskStore(s =>
+    reviewProjectId
+      ? projectQuietDays(reviewProject, s.tasks.filter(t => t.projectId === reviewProjectId))
+      : null
+  );
 
   // The stretches the subtasks split the countdown into, and which one the
   // clock is in. Empty for a timed task nobody apportioned, which is what keeps
@@ -1513,7 +1537,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || timed || plannedMeals !== undefined || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || timed || plannedMeals !== undefined || quietDays !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -1653,6 +1677,19 @@ export const TaskItem = React.memo(function TaskItem({
                   numberOfLines={1}
                 >
                   {plannedMeals}/{MEAL_PLAN_NUDGE_SLOT_COUNT} planned
+                </Text>
+              </View>
+            )}
+            {/* How long this project has been silent — the one thing the
+                quiet-projects banner said that the row's own title doesn't.
+                Tertiary and unhurried on purpose: it's the reason the offer
+                exists, not an alarm about it, and the whole point of moving
+                this into the list was to stop it demanding attention. */}
+            {quietDays !== null && (
+              <View style={styles.metaChip}>
+                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={styles.quietLabel} numberOfLines={1}>
+                  {describeProjectQuiet(quietDays)}
                 </Text>
               </View>
             )}
@@ -3171,6 +3208,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   plannedMealsLabelReady: {
     color: colors.green,
+  },
+  // "Quiet 21 days" on a quiet project's review task. Same size and weight as
+  // the meal-plan counter beside it, because it's the same kind of thing: this
+  // row's own state, rather than one more count hung off it. No ready colour —
+  // there is no threshold a project crosses into being handled, only the task
+  // being ticked.
+  quietLabel: {
+    color: colors.textTertiary,
+    fontSize: 11,
+    fontWeight: fontWeight.semibold,
   },
   // Trails the countdown in the chip, so the number stays the thing the eye
   // lands on and a long subtask title truncates instead of pushing it out.

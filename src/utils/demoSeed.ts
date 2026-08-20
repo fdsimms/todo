@@ -15,6 +15,7 @@ import type { DeliverableKind, GroceryItem, MealSlot, Recipe, Shop, TemplateItem
 import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
 import { generatedBy } from './generatedTasks';
+import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -55,7 +56,7 @@ export function seedDemoData(): void {
     completeProject,
   } = useTaskStore.getState();
   const { addCategory, setCategoryEmoji } = useCategoryStore.getState();
-  const { createProject } = useProjectStore.getState();
+  const { createProject, updateProject, removeProjectRow, restoreProject } = useProjectStore.getState();
   const { createGroup } = useTaskGroupStore.getState();
 
   const today = getCurrentDayStart();
@@ -498,6 +499,50 @@ export function seedDemoData(): void {
   ['Something for Mom\'s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, giftIdeas.id);
+  });
+
+  // A project that has gone quiet, and the task the app writes about it.
+  //
+  // Opted in and past its cadence with nothing scheduled, which is the exact
+  // state utils/projectReviewTasks.ts exists for — and the state that used to
+  // be invisible everywhere, since an undated project task appears in no list
+  // at all. Seeded rather than left to `checkProjectReviewTasks`: that reads
+  // the *real* install's settings, and demo mode swaps the database rather
+  // than the preferences (same reasoning as the kitchen categories below).
+  //
+  // Its one completed member is back-dated three weeks, which is what makes
+  // the project read as quiet — quiet is measured from the last completion, so
+  // a project created seconds ago with no history would render "Quiet 0 days"
+  // and demonstrate nothing.
+  const garage = createProject('Garage shelving', null, null);
+  updateProject(garage.id, { nudgeOptIn: true, nudgeCadenceDays: 14 });
+  // Quiet is measured from the project's own creation until something in it
+  // is completed, so a project minted seconds ago is never quiet however long
+  // its members have sat there — the seeded task would be swept away by the
+  // first foreground as describing a project that isn't stalled at all.
+  // createdAt has no setter of its own (and shouldn't: it's a fact about when
+  // the row was made), so the back-date goes through the delete/undo pair,
+  // which is a real store action writing a real Project.
+  removeProjectRow(garage.id);
+  restoreProject({ ...garage, nudgeOptIn: true, nudgeCadenceDays: 14, createdAt: subDays(today, 28).toISOString() });
+  const measured = addTask({ title: 'Measure the wall', category: 'Home' });
+  addExistingToProject(measured.id, garage.id);
+  completeTask(measured.id);
+  updateTask(measured.id, { completedAt: setHours(subDays(today, 21), 11).toISOString() });
+  // Undated on purpose — one dated member and the project isn't quiet.
+  ['Price out brackets', 'Cut the shelves to length'].forEach(title => {
+    const t = addTask({ title, category: 'Home' });
+    addExistingToProject(t.id, garage.id);
+  });
+  addCategory('Projects');
+  setCategoryEmoji('Projects', '📁');
+  useSettingsStore.getState().setProjectReviewTaskCategory('Projects');
+  addTask({
+    title: projectReviewTitle({ title: 'Garage shelving' }),
+    dueDate: today.toISOString(),
+    linkUrl: projectReviewLinkUrl(garage.id),
+    category: 'Projects',
+    ...generatedBy('projectReview', garage.id),
   });
 
   // Marked complete rather than archived — demonstrates Project.completed,

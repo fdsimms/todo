@@ -118,6 +118,7 @@ function AppRoot() {
   const sweepOvershootQuotas = useTaskStore(s => s.sweepOvershootQuotas);
   const dripStalledProjects = useTaskStore(s => s.dripStalledProjects);
   const checkMealPlanNudge = useTaskStore(s => s.checkMealPlanNudge);
+  const checkProjectReviewTasks = useTaskStore(s => s.checkProjectReviewTasks);
   const checkScheduledTemplates = useTemplateStore(s => s.checkScheduledTemplates);
   const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
   const purgeOldMealPlanEntries = useMealPlanStore(s => s.purgeOldEntries);
@@ -164,6 +165,12 @@ function AppRoot() {
       // weekStartsOn, and after initTasks, whose fan-out creates the meal
       // plan tables it queries directly.
       ['check meal plan nudge', checkMealPlanNudge],
+      // Give quiet projects their "Review X" task, and clear the ones whose
+      // project has since been scheduled. Straight after dripStalledProjects,
+      // which can date a member and so settle whether a project is quiet at
+      // all — running the cheaper pass first means this one never writes a
+      // task the drip is about to make wrong.
+      ['check project review tasks', checkProjectReviewTasks],
       // Apply any template whose schedule came due while the app was closed
       // (#1781). After initSettings, since "due" is measured in logical days
       // and gated on vacationMode; after dripStalledProjects for the same
@@ -193,7 +200,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any

@@ -8,6 +8,7 @@ const mockResetToGroceries = jest.fn();
 const mockResetToRecipes = jest.fn();
 const mockResetToMealPlan = jest.fn();
 const mockResetToKitchen = jest.fn();
+const mockResetToProjectPull = jest.fn();
 const mockOpenQuickAdd = jest.fn();
 
 jest.mock('react-native', () => ({
@@ -30,6 +31,7 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToRecipes: (...args: unknown[]) => mockResetToRecipes(...args),
   resetToMealPlan: (...args: unknown[]) => mockResetToMealPlan(...args),
   resetToKitchen: (...args: unknown[]) => mockResetToKitchen(...args),
+  resetToProjectPull: (...args: unknown[]) => mockResetToProjectPull(...args),
   openQuickAddFromShortcut: (...args: unknown[]) => mockOpenQuickAdd(...args),
 }));
 
@@ -41,6 +43,8 @@ import {
   mealPlanUrlDayKey,
   isKitchenUrl,
   kitchenUrlItemId,
+  isProjectsUrl,
+  projectsUrlPullId,
   isQuickAddUrl,
   openInAppUrl,
 } from '../utils/deepLinks';
@@ -235,6 +239,45 @@ describe('kitchenUrlItemId', () => {
   });
 });
 
+describe('isProjectsUrl', () => {
+  it('accepts every spelling of the projects link', () => {
+    expect(isProjectsUrl('dundundun://projects')).toBe(true);
+    expect(isProjectsUrl('dundundun:///projects')).toBe(true);
+    expect(isProjectsUrl('dundundun://projects/')).toBe(true);
+    expect(isProjectsUrl('DUNDUNDUN://Projects')).toBe(true);
+    expect(isProjectsUrl('  dundundun://projects  ')).toBe(true);
+  });
+
+  it('accepts the scoped form a review task carries', () => {
+    expect(isProjectsUrl('dundundun://projects?pull=proj-abc123')).toBe(true);
+    expect(isProjectsUrl('dundundun://projects/?pull=proj-abc123')).toBe(true);
+  });
+
+  it('rejects anything else, including its neighbours', () => {
+    expect(isProjectsUrl('dundundun://')).toBe(false);
+    expect(isProjectsUrl('dundundun://groceries')).toBe(false);
+    // A project is a query parameter, not a path segment.
+    expect(isProjectsUrl('dundundun://projects/kitchen-reno')).toBe(false);
+    expect(isProjectsUrl('')).toBe(false);
+  });
+});
+
+describe('projectsUrlPullId', () => {
+  it('reads the project off a scoped link', () => {
+    expect(projectsUrlPullId('dundundun://projects?pull=proj-abc123')).toBe('proj-abc123');
+  });
+
+  it('is null for the bare link, which means "the whole board"', () => {
+    expect(projectsUrlPullId('dundundun://projects')).toBeNull();
+    expect(projectsUrlPullId('dundundun://projects?pull=')).toBeNull();
+  });
+
+  it('ignores other parameters and other links', () => {
+    expect(projectsUrlPullId('dundundun://projects?foo=bar&pull=proj-1')).toBe('proj-1');
+    expect(projectsUrlPullId('dundundun://groceries?pull=proj-1')).toBeNull();
+  });
+});
+
 describe('isQuickAddUrl', () => {
   it('accepts an add link with nothing to capture', () => {
     expect(isQuickAddUrl('dundundun://add')).toBe(true);
@@ -271,6 +314,7 @@ describe('openInAppUrl', () => {
     mockResetToRecipes.mockClear();
     mockResetToMealPlan.mockClear();
     mockResetToKitchen.mockClear();
+    mockResetToProjectPull.mockClear();
     mockOpenQuickAdd.mockClear();
     mockAddTask.mockClear();
   });
@@ -279,6 +323,17 @@ describe('openInAppUrl', () => {
     expect(openInAppUrl('dundundun://mealplan')).toBe(true);
     expect(mockResetToMealPlan).toHaveBeenCalledTimes(1);
     expect(mockResetToToday).not.toHaveBeenCalled();
+  });
+
+  it('opens the pull sheet on one project — a review task\'s own link', () => {
+    expect(openInAppUrl('dundundun://projects?pull=proj-1')).toBe(true);
+    expect(mockResetToProjectPull).toHaveBeenCalledWith('proj-1');
+    expect(mockResetToToday).not.toHaveBeenCalled();
+  });
+
+  it('opens the pull sheet unscoped for the bare projects link', () => {
+    expect(openInAppUrl('dundundun://projects')).toBe(true);
+    expect(mockResetToProjectPull).toHaveBeenCalledWith(null);
   });
 
   it('navigates to the kitchen and claims the URL — the use-up tasks\' own link', () => {

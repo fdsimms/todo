@@ -183,6 +183,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see Template questions below |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see Generated tasks below |
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see Timed tasks below |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
@@ -400,15 +401,17 @@ the block would inherit none.
   it's due today. So the copy passes `hidesWhenOnPace: false`, and a pinned task that isn't visible
   today has only the one row rather than two.
 
-### Generated tasks — the four things that write a task unattended
+### Generated tasks — the five things that write a task unattended
 
 A planned meal becomes "Cook X", a perishable grocery and an ageing leftover each become "Use up
-X", and an opt-in weekly trigger becomes "Plan meals for…". Each was built by copying the last,
-which is fine twice and had reached four — four nullable back-pointer columns on `Task`, four
-hand-written "don't pile up" rules, three copies of one opt-out. They now share
-`src/utils/generatedTasks.ts` (pure: the kinds, the registry, the opt-out precedence, the lookups)
-and `src/store/generatedTaskSync.ts` (the create/update/delete). **A fifth generator should need
-neither a column nor a reconcile** — just its own rules module and a registry entry (#1524).
+X", an opt-in weekly trigger becomes "Plan meals for…", and a project that has gone quiet becomes
+"Review X". The first four were each built by copying the last, which is fine twice and had reached
+four — four nullable back-pointer columns on `Task`, four hand-written "don't pile up" rules, three
+copies of one opt-out. They now share `src/utils/generatedTasks.ts` (pure: the kinds, the registry,
+the opt-out precedence, the lookups) and `src/store/generatedTaskSync.ts` (the create/update/delete).
+**A fifth generator should need neither a column nor a reconcile** — just its own rules module and a
+registry entry (#1524). `projectReview` is that fifth, and it cost exactly that: a rules module, a
+registry entry, a firing beside the nudge's, and no `extrasFor` case in Settings at all.
 
 - **`Task.generatedKind` + `Task.generatedSourceId` replaced `mealEntryId`/`groceryItemId`/
   `leftoverId`.** Those three columns are still on the table, backfilled from and then left
@@ -476,6 +479,44 @@ neither a column nor a reconcile** — just its own rules module and a registry 
   generators on, the card runs to four rows apiece, and a hairline between one's "File them under"
   and the next one's name reads exactly like the hairline above it — the list stops saying where a
   generator ends.
+- **`projectReview` replaced the quiet-projects banner, and that swap is the argument for the
+  whole shape.** `ProjectNudgeBanner` was a strip above the Today list ("3 projects gone quiet",
+  Review, ✕) and it worked; what was wrong with it is that it sat outside the flow the app is
+  about. It couldn't be deferred, snoozed per project, given a reminder or found in Search, its
+  only refusal was one global "not today" covering every quiet project at once, and it held the
+  header slot above the pinned block whether or not now was the moment. A row can be put off till
+  Saturday. **Don't bring the banner back** — `projectNudgeDismissedAt` and the accent
+  `quietProjectCount` tint on the Today options row went with it; the "Pull from projects" row
+  stays as the way in when you go looking.
+  - **The task carries no `projectId`**, and that isn't tidiness. A dated member is exactly what
+    makes a project *not* quiet, so filing the row into the project it describes deletes it on the
+    next sweep and recreates it on the one after, for ever. It points at its project through
+    `generatedSourceId` like every other generator points at its source.
+  - **Its opt-out is a date, not a `false`** (`Project.reviewDeclinedAt`). The other four write a
+    permanent "no" onto their source, which is right for a staple bought every week and wrong
+    here: the only fields a project could carry that on are `nudgeOptIn`/`nudgeCadenceDays`, and
+    both mean "never chase me about this again" — far more than a swipe says. Read through
+    `isDismissedToday`, the same self-expiring stamp the banner's own dismissal used.
+  - **Being ticked off counts as an answer, for the day** (`projectsReviewedToday`). Completing a
+    task leaves nothing live, so without this the next foreground writes an identical row.
+    `blocksOnFinished` is the mechanism's own answer and is too strong — a project goes quiet again
+    every few months and must be able to ask again when it does.
+  - **`dropGeneratedTask` now genuinely writes no opt-out.** It always claimed to drop "without
+    deciding anything", but it routes through `deleteTask`, which stamps the source; that was
+    harmless only because its original callers run *after* the source row is gone. This is the
+    first generator whose source outlives its task, so the skip had to become explicit.
+  - **It ships on, unlike the nudge beside it**, because it replaced a surface that was already
+    there rather than adding one. The real gate is per-project and unchanged (`nudgeOptIn` +
+    `nudgeCadenceDays`, both still "never ask" by default), so nobody sees anything new.
+  - **It's the one generator whose reconcile can't ride a source mutation.** A project goes quiet
+    by time passing and stops being quiet when some *other* task gets a date, so the check runs on
+    the launch sequence and the Today foreground sweep, and `staleProjectReviewTasks` is what
+    clears a row whose reason has gone. It judges that against every stall, **not** against the
+    capped set `wantedProjectReviews` returns: the cap decides who gets a *new* task when several
+    projects are queued, and losing that contest is no reason to delete a row the user already
+    deferred to Saturday. The cost, stated plainly: a review task can be stale until the next
+    sweep, which the banner — being pure derivation — never could be.
+
 - **They still write straight to Today**, rather than proposing into a review surface the way
   `deloadPlan`/`projectPull` do. That fork is real and was deliberately left alone here: it's a
   product decision about all four at once, and this refactor is what makes it a change in one

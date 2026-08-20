@@ -256,6 +256,23 @@ export interface Project {
   // quiet was nudgeCadenceDays === 0, which only silenced the unprompted
   // surfaces and still showed up the moment someone opened the Pull sheet.
   nudgeOptIn: boolean;
+  // When the user last deleted this project's review task (see
+  // utils/projectReviewTasks.ts) — the per-source opt-out every generated task
+  // writes on its source row, and the one that had to be a *date* rather than
+  // the usual `false`.
+  //
+  // The other four generators' opt-outs are permanent by design: a staple
+  // bought every week can be told once that it doesn't need a use-up task, and
+  // stays told. A project has no such answer to give. The only fields it could
+  // write to are nudgeOptIn and nudgeCadenceDays, and both mean "never chase me
+  // about this again" — an enormous thing to have said by swiping one row away.
+  // What the swipe actually means is "not today", which is precisely what
+  // Task.autoScheduledAt already records for the drip, so this is the same
+  // idiom: a stamp read against the current logical day and ignored once that
+  // day is past. Deliberately not scoped to the project's own cadence, for the
+  // reason declinedToday gives — a fortnightly project would bury the offer for
+  // two weeks over one tap.
+  reviewDeclinedAt: string | null;
 }
 
 // Fallback cadence for a project row written before the nudge columns existed,
@@ -266,7 +283,7 @@ export interface Project {
 export const DEFAULT_NUDGE_CADENCE_DAYS = 0;
 
 /**
- * Which of the app's four unattended generators wrote a task — see
+ * Which of the app's five unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
  *
@@ -278,7 +295,8 @@ export type GeneratedKind =
   | 'mealCook'
   | 'groceryUseUp'
   | 'leftoverUseUp'
-  | 'mealPlanNudge';
+  | 'mealPlanNudge'
+  | 'projectReview';
 
 export interface Task {
   id: string;

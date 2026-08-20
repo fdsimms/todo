@@ -28,7 +28,7 @@ import {
   dbGetMealPlanEntries,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
-import { useCategoryStore, ensureCalendarEventCategory, ensureGeneratedTaskCategories } from './useCategoryStore';
+import { useCategoryStore, ensureCalendarEventCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory } from './useCategoryStore';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
@@ -38,7 +38,14 @@ import { useGroceryStore } from './useGroceryStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
-import { dripCandidate, projectPullUpdates } from '../utils/projectPull';
+import { dripCandidate, findProjectStalls, projectPullUpdates } from '../utils/projectPull';
+import {
+  projectReviewLinkUrl,
+  projectReviewProjectId,
+  projectsReviewedToday,
+  staleProjectReviewTasks,
+  wantedProjectReviews,
+} from '../utils/projectReviewTasks';
 import {
   dueMealPlanNudge,
   mealPlanNudgeLinkUrl,
@@ -48,7 +55,7 @@ import {
 // Imports this module back, like useMealPlanStore does — inert for the same
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
-import { deleteGeneratedTaskQuietly } from './generatedTaskSync';
+import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf } from '../utils/generatedTasks';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
@@ -404,6 +411,19 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
   const reconcileOff = { reconcile: false } as const;
   switch (task.generatedKind) {
     case 'mealPlanNudge':
+      return;
+    // A stamp, not a `false`, and the one generator whose opt-out expires. The
+    // fields a project could carry a permanent "no" on are nudgeOptIn and
+    // nudgeCadenceDays, and both mean "never chase me about this again" — far
+    // more than a swipe says. See Project.reviewDeclinedAt.
+    //
+    // `value === null` is the undo path, and restores exactly what the delete
+    // wrote: a stamp that was already there before the delete is a *previous*
+    // day's (today's would have suppressed the task in the first place), so
+    // clearing it changes nothing the reader can see.
+    case 'projectReview':
+      useProjectStore.getState()
+        .updateProject(sourceId, { reviewDeclinedAt: value === false ? new Date().toISOString() : null });
       return;
     case 'mealCook':
       useMealPlanStore.getState().setCookTask(sourceId, value);
@@ -905,7 +925,12 @@ interface TaskStore {
   markTasksSeen: (ids: string[]) => void;
   setLastAction: (action: UndoableAction | null) => void;
   undoLastAction: () => void;
-  deleteTask: (id: string) => void;
+  /**
+   * `skipGeneratedOptOut` is for a delete the app performs on its own behalf —
+   * see dropGeneratedTask. A user's delete is an instruction to the source and
+   * must keep writing it.
+   */
+  deleteTask: (id: string, opts?: { skipGeneratedOptOut?: boolean }) => void;
   /**
    * `deliverableValue` records the answer a decision task was completed with
    * (see Task.deliverableKind). Omitting it completes with no answer, which
@@ -966,6 +991,11 @@ interface TaskStore {
    * src/utils/mealPlanNudge.ts for the firing/suppression rules this wraps.
    */
   checkMealPlanNudge: () => void;
+  /**
+   * Give every quiet project a "Review X" task, and clear the ones whose
+   * project has stopped being quiet. See src/utils/projectReviewTasks.ts.
+   */
+  checkProjectReviewTasks: () => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook.
@@ -1875,7 +1905,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set({ lastAction: null });
   },
 
-  deleteTask(id) {
+  deleteTask(id, opts = {}) {
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
     const subtasks = get().subtasksOf(id);
@@ -1901,7 +1931,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Only this path, not bulkDeleteTasks: the sweeps and purges that route
     // through the bulk form aren't the user saying anything, and a generated
     // task they reach has been completed for months anyway.
-    writeGeneratedOptOut(task, false);
+    //
+    // And not when the app is the one deleting: a reconcile clearing a task
+    // whose reason has gone is tidying up, not the source changing its mind
+    // (see dropGeneratedTask, which is the only caller that passes this).
+    if (!opts.skipGeneratedOptOut) writeGeneratedOptOut(task, false);
 
     get().setLastAction({
       label: 'Task deleted',
@@ -1921,8 +1955,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         set(s => ({ tasks: [...s.tasks, task, ...subtasks] }));
         // Back to "the setting decides" rather than to whatever it was: the
         // opt-out above is the only thing that could have written it, so this
-        // is its exact inverse.
-        writeGeneratedOptOut(task, null);
+        // is its exact inverse — and skipped in the same breath when the
+        // delete never wrote one.
+        if (!opts.skipGeneratedOptOut) writeGeneratedOptOut(task, null);
       },
     });
   },
@@ -3032,6 +3067,92 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Deliberately no setLastAction, same reasoning as dripStalledProjects:
     // an unattended background write shouldn't occupy the shake-to-undo slot
     // for an action nobody saw happen.
+  },
+
+  checkProjectReviewTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.projectReviewTasks) return;
+
+    const tasks = get().tasks;
+    const projects = useProjectStore.getState().projects;
+    // 'nudge' mode, like the banner this replaced: every route out of here
+    // writes a task nobody asked for, so each project's own cadence still
+    // decides whether the app speaks first. Opening the pull sheet by hand
+    // asks in 'ask' mode and sees more (see StallMode) — the two disagreeing
+    // is the design.
+    //
+    // Vacation needs no gate of its own here: findProjectStalls returns
+    // nothing while it's on, so every live review task falls into `stale`
+    // below and is cleared. That's the right reading of a deliberate "hide
+    // work from me" — and clearing them costs nothing, since the sweep after
+    // vacation ends writes them straight back.
+    const stalls = findProjectStalls(projects, tasks, 'nudge');
+    // Anything already ticked off or archived today is left alone rather than
+    // handed straight back — see projectsReviewedToday.
+    const wanted = wantedProjectReviews(stalls, projectsReviewedToday(tasks));
+
+    // Clear first, create second, and never the reverse: the stale set
+    // includes the task for a project the user has just acted on from this
+    // very row, and a create pass that ran first would be deciding against a
+    // list still holding it. Judged against every stall rather than against
+    // the capped `wanted` — see staleProjectReviewTasks.
+    const stale = staleProjectReviewTasks(tasks, stalls);
+    // dropGeneratedTask, not deleteGeneratedTaskQuietly: that one routes
+    // through deleteTask, which writes the source's opt-out — here it would
+    // stamp reviewDeclinedAt on a project the user never touched, and so
+    // suppress tomorrow's task on the strength of the app's own tidying up.
+    // Only a delete the *user* performs is an instruction to the source.
+    stale.forEach(task => dropGeneratedTask('projectReview', projectReviewProjectId(task)));
+
+    if (wanted.length === 0) return;
+
+    // The category is ensured here as well as at startup, because this
+    // generator ships ON — nobody flips the switch that would otherwise create
+    // it, so without this the very first review task would land in the loose
+    // block above every section, which is exactly where the banner used to sit.
+    ensureGeneratedTaskCategory('projectReview');
+    const category = useSettingsStore.getState().projectReviewTaskCategory;
+    // Noon today, the same landing dripStalledProjects picks and for the same
+    // reason: an offer dated forward is an offer you can't see. Deferring it
+    // afterwards is the user's own call, and one the banner never allowed.
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    // Run over every want, not just the ones with no task yet: the shared
+    // reconcile is what turns "wanted, none exists" into a create and "wanted,
+    // one exists" into a drift check, and going through it is also what gets
+    // this generator the derived id two unsynced devices need to agree on.
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'projectReview',
+        sourceId: want.projectId,
+        // Never false: the not-wanted half of this generator is decided over
+        // the whole set at once, and was handled by the drop pass above. A
+        // `false` here would delete through deleteTask and stamp the project
+        // as declined.
+        wanted: true,
+        // The title is the only thing a live row chases, and only when the
+        // project has been renamed under it. Deliberately not the due date: by
+        // the time a second sweep runs the user may have deferred this row to
+        // Saturday, and rewriting it back to today would undo the one thing
+        // the banner could never do.
+        drift: existing => (existing.title === want.title ? null : { title: want.title }),
+        draft: () => ({
+          title: want.title,
+          dueDate: dueDate.toISOString(),
+          // Opens the pull sheet scoped to this project alone — the same thing
+          // tapping the banner's own project row used to do.
+          linkUrl: projectReviewLinkUrl(want.projectId),
+          category,
+          // Deliberately no projectId: a dated member is what makes a project
+          // *not* quiet, so filing this row into the project it describes
+          // would delete it on the next sweep and recreate it on the one
+          // after, for ever. See projectReviewTasks.ts.
+          ...generatedBy('projectReview', want.projectId),
+        }),
+      });
+    });
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
   },
 
   skipNextRecurrence(id) {

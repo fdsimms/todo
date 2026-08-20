@@ -488,11 +488,19 @@ interface SettingsStore {
   // shares it. Writing both into one calendar would put your work deadlines
   // on the family fridge.
   mealCalendarId: string | null;
-  // When the user last dismissed the quiet-projects banner. Read only through
-  // isProjectNudgeDismissedToday, which compares it against today rather than
-  // testing it for existence — so it expires at the day rollover on its own and
-  // nothing ever has to clear it (same idiom as TaskGroup.completedAt).
-  projectNudgeDismissedAt: string | null;
+  // Whether a project that has gone quiet gets a "Review X" task (see
+  // src/utils/projectReviewTasks.ts). Defaults ON, unlike the other opt-in
+  // generators: this replaced the quiet-projects banner rather than adding a
+  // surface, so an install upgrading into it would otherwise lose the feature
+  // silently. The real gate is per-project and unchanged — Project.nudgeOptIn
+  // and nudgeCadenceDays, both of which still default to "never ask" — so
+  // nobody who hadn't opted a project in sees anything new either way.
+  projectReviewTasks: boolean;
+  // Which category a review task files itself under, by name, or null for
+  // none — same setting as the other generators' for the same reason: loose
+  // tasks render above every category section on Today, which is the position
+  // this change exists to give back to real work.
+  projectReviewTaskCategory: string | null;
   // The opt-in "plan meals for the week" nudge (#1121) — a real Task,
   // auto-created once a week, off by default so an existing install sees no
   // new task until this is turned on. See src/utils/mealPlanNudge.ts for the
@@ -505,7 +513,7 @@ interface SettingsStore {
   // last fired in. Read only by dueMealPlanNudge, which compares it against
   // the current week rather than testing it for existence, so it "expires"
   // at the next week boundary on its own (same idiom as
-  // projectNudgeDismissedAt / TaskGroup.completedAt).
+  // TaskGroup.completedAt).
   mealPlanNudgeLastFiredWeekKey: string | null;
   // The stack the weekly nudge lays its seven day-tasks into — state, not a
   // preference, like the week key above it. One stack row is reused week after
@@ -548,7 +556,7 @@ interface SettingsStore {
   // The top-level screen (a bottom-tab or drawer route name — see
   // RESTORABLE_SCREENS in AppNavigator.tsx) the app was on when it last left
   // the foreground. State, not a preference — kept out of DEFAULT_SETTINGS/
-  // resetToDefaults like projectNudgeDismissedAt — so it's read once, as
+  // resetToDefaults like vacationEnd — so it's read once, as
   // Tab.Navigator's initialRouteName, to reopen where the user left off
   // instead of always on Today. Null (fresh install, or a name AppNavigator
   // no longer recognizes) falls back to Today.
@@ -624,7 +632,8 @@ interface SettingsStore {
   setReminderMeetingNudgeEnabled: (on: boolean) => void;
   setDeadlineCalendarId: (id: string | null) => void;
   setMealCalendarId: (id: string | null) => void;
-  setProjectNudgeDismissedAt: (at: string | null) => void;
+  setProjectReviewTasks: (on: boolean) => void;
+  setProjectReviewTaskCategory: (category: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
   setMealPlanNudgeWeekday: (weekday: number) => void;
@@ -969,7 +978,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   reminderMeetingNudgeEnabled: true,
   deadlineCalendarId: null,
   mealCalendarId: null,
-  projectNudgeDismissedAt: null,
+  projectReviewTasks: true,
+  projectReviewTaskCategory: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
@@ -1133,7 +1143,10 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const reminderMeetingNudgeEnabled = dbGetSetting('reminderMeetingNudgeEnabled') !== 'false';
     const deadlineCalendarId = dbGetSetting('deadlineCalendarId') || null;
     const mealCalendarId = dbGetSetting('mealCalendarId') || null;
-    const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
+    // `!== 'false'`: defaults on, the same reading mealCookTasks takes — see
+    // the field note for why this one isn't opt-in like the nudge beside it.
+    const projectReviewTasks = dbGetSetting('projectReviewTasks') !== 'false';
+    const projectReviewTaskCategory = dbGetSetting('projectReviewTaskCategory') || null;
     // Same TEXT-column parse as every other numeric setting here: an
     // unparseable or missing row (a fresh install, or one that predates this
     // setting) reads back as 0 — never nudge — matching DEFAULT_NUDGE_CADENCE_DAYS.
@@ -1185,7 +1198,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1386,9 +1399,14 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ vacationEnd: endDate });
   },
 
-  setProjectNudgeDismissedAt(at: string | null) {
-    dbSetSetting('projectNudgeDismissedAt', at ?? '');
-    set({ projectNudgeDismissedAt: at });
+  setProjectReviewTasks(on: boolean) {
+    dbSetSetting('projectReviewTasks', on ? 'true' : 'false');
+    set({ projectReviewTasks: on });
+  },
+
+  setProjectReviewTaskCategory(category: string | null) {
+    dbSetSetting('projectReviewTaskCategory', category ?? '');
+    set({ projectReviewTaskCategory: category });
   },
 
   setAutoRemoveExpiredTasks(days: ExpiredTaskGraceDays) {
@@ -1414,7 +1432,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ postponeCheckThreshold: clamped });
   },
 
-  // Stored as '' for forever, matching vacationEnd/projectNudgeDismissedAt —
+  // Stored as '' for forever, matching vacationEnd —
   // the settings table is all TEXT, and parseRetentionDays reads anything it
   // doesn't recognise back as forever.
   setCompletedRetentionDays(days: RetentionDays) {
@@ -1691,7 +1709,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ mealPlanNudgeTime: time });
   },
 
-  // Stored as '' for "never fired", matching projectNudgeDismissedAt — an
+  // Stored as '' for "never fired", matching vacationEnd — an
   // unrecognised or missing row reads back as null, never as some inherited
   // week.
   setMealPlanNudgeLastFiredWeekKey(weekKey: string | null) {

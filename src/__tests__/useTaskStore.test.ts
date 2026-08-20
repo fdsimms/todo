@@ -5,6 +5,7 @@ import { emptyExtraTaskDraft } from '../utils/extraTask';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { MAX_PROJECT_REVIEW_TASKS } from '../utils/projectReviewTasks';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -38,7 +39,7 @@ import {
 } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
-import type { Task, TaskGroup } from '../types';
+import type { Project, Task, TaskGroup } from '../types';
 
 jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
@@ -122,6 +123,10 @@ jest.mock('../store/useCategoryStore', () => ({
   // no-op here, since this suite's category store is a mock with no rows.
   ensureCalendarEventCategory: jest.fn(),
   ensureGeneratedTaskCategories: jest.fn(),
+  // Called by checkProjectReviewTasks before it writes its first task — that
+  // generator ships on, so nobody flips the switch that would otherwise create
+  // its category.
+  ensureGeneratedTaskCategory: jest.fn(),
   useCategoryStore: {
     getState: jest.fn(() => ({
       categories: [],
@@ -315,6 +320,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   autoSchedule: false,
   sequential: false,
   nudgeOptIn: true,
+  reviewDeclinedAt: null,
   ...overrides,
 });
 
@@ -2338,6 +2344,215 @@ describe('dripStalledProjects', () => {
 
     jest.useRealTimers();
     useSettingsStore.getState.mockReturnValue(defaultSettings);
+  });
+});
+
+// ─── checkProjectReviewTasks ────────────────────────────────────────────────
+
+describe('checkProjectReviewTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    projectReviewTasks: true,
+    projectReviewTaskCategory: 'Projects',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  // Quiet by construction: opted in, past its cadence, and holding one undated
+  // member so there is something to pull.
+  const quietProject = (overrides: Partial<Project> = {}) =>
+    makeProject({
+      id: 'p1',
+      title: 'Kitchen renovation',
+      nudgeOptIn: true,
+      nudgeCadenceDays: 14,
+      autoSchedule: false,
+      createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+      ...overrides,
+    });
+
+  const reviewTasks = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'projectReview');
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue(settings());
+  });
+
+  it('writes one review task per quiet project, pointed at the pull sheet', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    const [review] = reviewTasks();
+    expect(review.title).toBe('Review Kitchen renovation');
+    expect(review.generatedSourceId).toBe('p1');
+    expect(review.linkUrl).toBe('dundundun://projects?pull=p1');
+    expect(review.category).toBe('Projects');
+    expect(review.dueDate).not.toBeNull();
+  });
+
+  // The sharp one. A review task filed *into* the project it describes is a
+  // dated member, which makes the project not quiet, which deletes the task,
+  // which makes it quiet again — a flip-flop with no bottom.
+  it('never files the task into the project it is about', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+
+    useTaskStore.getState().checkProjectReviewTasks();
+    expect(reviewTasks()[0].projectId).toBeNull();
+
+    // And so the project is still quiet on the next pass, and the task it
+    // already has is left exactly where it is.
+    useTaskStore.getState().checkProjectReviewTasks();
+    expect(reviewTasks()).toHaveLength(1);
+  });
+
+  it('caps the set however many projects have gone quiet', () => {
+    const projects = Array.from({ length: 6 }, (_, i) =>
+      quietProject({ id: `p${i}`, title: `Project ${i}`, sortOrder: i })
+    );
+    useProjectStore.setState({ projects });
+    useTaskStore.setState({
+      tasks: projects.map((p, i) => makeTask({ id: `t${i}`, projectId: p.id })),
+    });
+
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(MAX_PROJECT_REVIEW_TASKS);
+  });
+
+  it('is a no-op while the setting is off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ projectReviewTasks: false }));
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  it('leaves an auto-scheduled project to the drip', () => {
+    useProjectStore.setState({ projects: [quietProject({ autoSchedule: true })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  // The drift the sweep exists for: acting on the offer is what makes it stale,
+  // and nothing about dating that task knows a row is describing the old state.
+  it('clears a task whose project has stopped being quiet', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+    expect(reviewTasks()).toHaveLength(1);
+
+    // Pull something in, exactly as tapping the row would.
+    useTaskStore.getState().updateTask('a', { dueDate: new Date().toISOString() });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  // …and clearing it must not read as the user declining. The reconcile's own
+  // delete path writes the source's opt-out; this one deliberately doesn't.
+  it('does not stamp the project as declined when it clears its own task', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useTaskStore.getState().updateTask('a', { dueDate: new Date().toISOString() });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    expect(useProjectStore.getState().projects[0].reviewDeclinedAt).toBeNull();
+  });
+
+  it('takes a deleted task as “not today”, and offers again once the day turns', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useTaskStore.getState().deleteTask(reviewTasks()[0].id);
+    expect(useProjectStore.getState().projects[0].reviewDeclinedAt).not.toBeNull();
+
+    useTaskStore.getState().checkProjectReviewTasks();
+    expect(reviewTasks()).toHaveLength(0);
+
+    // The stamp is a day, not a verdict — nudgeOptIn is what "never again"
+    // would have had to write, and a swipe must not be able to say that.
+    expect(useProjectStore.getState().projects[0].nudgeOptIn).toBe(true);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    useProjectStore.getState().updateProject('p1', { reviewDeclinedAt: yesterday });
+    useTaskStore.getState().checkProjectReviewTasks();
+    expect(reviewTasks()).toHaveLength(1);
+  });
+
+  // Ticking it off without pulling anything in is a refusal, and the row going
+  // away is what makes it one. Nothing here is live afterwards, so without the
+  // day scope the very next foreground would write an identical task.
+  it('does not hand back a task the user has just ticked off', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useTaskStore.getState().completeTask(reviewTasks()[0].id);
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    expect(reviewTasks().filter(t => !t.completed)).toHaveLength(0);
+  });
+
+  it('does not hand back one the user archived either', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useTaskStore.getState().archiveTask(reviewTasks()[0].id);
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    expect(reviewTasks().filter(t => !t.archived)).toHaveLength(0);
+  });
+
+  // …but only for the day. A project goes quiet again every few months, and
+  // blocking on a finished task for ever is the cook task's rule, not this one.
+  it('asks again once the day turns', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    const reviewId = reviewTasks()[0].id;
+    useTaskStore.getState().completeTask(reviewId);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    useTaskStore.getState().updateTask(reviewId, { completedAt: yesterday });
+
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    expect(reviewTasks().filter(t => !t.completed)).toHaveLength(1);
+  });
+
+  it('chases a renamed project, and leaves a rescheduled row where the user put it', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    // Put it off till later in the week, the thing the banner could never do.
+    const saturday = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    useTaskStore.getState().updateTask(reviewTasks()[0].id, { dueDate: saturday });
+    useProjectStore.getState().updateProject('p1', { title: 'Kitchen reno' });
+
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    const [review] = reviewTasks();
+    expect(review.title).toBe('Review Kitchen reno');
+    expect(review.dueDate).toBe(saturday);
   });
 });
 

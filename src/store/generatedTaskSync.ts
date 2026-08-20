@@ -46,9 +46,12 @@ import { useTaskStore } from './useTaskStore';
  * It also means the opt-out block in `deleteTask` still runs, which is exactly
  * what's wanted — see the note on `reconcileGeneratedTask` below.
  */
-export function deleteGeneratedTaskQuietly(taskId: string): void {
+export function deleteGeneratedTaskQuietly(
+  taskId: string,
+  opts: { skipOptOut?: boolean } = {}
+): void {
   const store = useTaskStore.getState();
-  store.deleteTask(taskId);
+  store.deleteTask(taskId, { skipGeneratedOptOut: opts.skipOptOut });
   store.setLastAction(null);
 }
 
@@ -164,8 +167,18 @@ export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void
  * deleted, a leftover eaten), so there is nothing to reconcile against and a
  * live "Use up spinach" pointing at a row the user has just forgotten is a
  * chore about nothing.
+ *
+ * **It writes no opt-out, which is what "without deciding anything" means.**
+ * For the original callers that was true by accident rather than by
+ * construction — they run after the source row is gone, so the write landed on
+ * a row that no longer existed and did nothing. `projectReview` is the first
+ * caller whose source outlives its task (a project stops being quiet, the task
+ * goes, the project stays), and there the accident stops holding: the write
+ * would stamp the project as declined for the day on the strength of the app's
+ * own tidying up, and suppress tomorrow's offer. Only a delete the *user*
+ * performs is an instruction to the source.
  */
 export function dropGeneratedTask(kind: GeneratedKind, sourceId: string | null): void {
   const existing = liveGeneratedTask(useTaskStore.getState().tasks, kind, sourceId);
-  if (existing) deleteGeneratedTaskQuietly(existing.id);
+  if (existing) deleteGeneratedTaskQuietly(existing.id, { skipOptOut: true });
 }
