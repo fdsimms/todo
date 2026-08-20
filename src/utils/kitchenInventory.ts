@@ -45,6 +45,17 @@ import { describeAge, isLiveLeftover } from './leftovers';
 export type KitchenKind = 'grocery' | 'leftover';
 
 /**
+ * Where `dundundun://kitchen` lands — the grocery and leftover use-up
+ * generators' own link (groceryExpiry.ts, leftoverTasks.ts), so a "Use up X"
+ * task opens straight into KitchenSheet rather than the bare grocery list a
+ * "Grocery run" task's `dundundun://groceries` link opens. One constant, one
+ * link, for both halves — KitchenSheet already renders the pantry and the
+ * fridge as one screen, so there's nowhere finer for either generator to
+ * point.
+ */
+export const KITCHEN_LINK_URL = 'dundundun://kitchen';
+
+/**
  * The heading a container files under, where a catalog row files under its
  * aisle.
  *

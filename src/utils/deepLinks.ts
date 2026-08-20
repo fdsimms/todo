@@ -7,6 +7,7 @@ import {
   resetToGroceries,
   resetToRecipes,
   resetToMealPlan,
+  resetToKitchen,
   openQuickAddFromShortcut,
 } from '../navigation/navigationRef';
 
@@ -147,6 +148,16 @@ export function mealPlanUrlDayKey(url: string): string | null {
   return DAY_KEY_RE.test(dayKey) ? dayKey : null;
 }
 
+// `dundundun://kitchen` — what the grocery and leftover "Use up X" tasks
+// carry (see kitchenInventory.KITCHEN_LINK_URL), so tapping one opens the
+// pantry/fridge view rather than the bare grocery list the groceries link
+// opens.
+const KITCHEN_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?kitchen\\/?$`, 'i');
+
+export function isKitchenUrl(url: string): boolean {
+  return typeof url === 'string' && KITCHEN_RE.test(url.trim());
+}
+
 /**
  * Handles a URL this app owns itself, returning true when it did.
  *
@@ -171,6 +182,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isMealPlanUrl(url)) {
     resetToMealPlan(mealPlanUrlDayKey(url));
+    return true;
+  }
+  if (isKitchenUrl(url)) {
+    resetToKitchen();
     return true;
   }
   if (isOpenAppUrl(url)) {

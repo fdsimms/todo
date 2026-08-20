@@ -1313,6 +1313,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Dated off the use-by day rather than off today, with the day itself
     // carried as the deadline.
     expect(useUpTasks[0].deadline).not.toBeNull();
+    // Opens straight into the kitchen view rather than nothing.
+    expect(useUpTasks[0].linkUrl).toBe('dundundun://kitchen');
   });
 
   it('seeds a remembered shelf life that has not been activated yet', () => {
@@ -1474,6 +1476,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       expect(leftover).toBeDefined();
       expect(task.title).toBe(`Use up ${leftover!.title}`);
       expect(task.deadline).toBe(leftover!.keepUntil);
+      // Same kitchen link the grocery use-up tasks carry — one destination
+      // for both halves of what's about to go off.
+      expect(task.linkUrl).toBe('dundundun://kitchen');
     });
     // The fresh one — furthest from its keep-until day — gets no task.
     const fresh = leftovers.find(l => isLiveLeftover(l) && freshnessOf(l) === 'fresh');

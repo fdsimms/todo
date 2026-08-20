@@ -7,6 +7,7 @@ const mockResetToToday = jest.fn();
 const mockResetToGroceries = jest.fn();
 const mockResetToRecipes = jest.fn();
 const mockResetToMealPlan = jest.fn();
+const mockResetToKitchen = jest.fn();
 const mockOpenQuickAdd = jest.fn();
 
 jest.mock('react-native', () => ({
@@ -28,6 +29,7 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToGroceries: (...args: unknown[]) => mockResetToGroceries(...args),
   resetToRecipes: (...args: unknown[]) => mockResetToRecipes(...args),
   resetToMealPlan: (...args: unknown[]) => mockResetToMealPlan(...args),
+  resetToKitchen: (...args: unknown[]) => mockResetToKitchen(...args),
   openQuickAddFromShortcut: (...args: unknown[]) => mockOpenQuickAdd(...args),
 }));
 
@@ -37,6 +39,7 @@ import {
   isGroceriesUrl,
   isMealPlanUrl,
   mealPlanUrlDayKey,
+  isKitchenUrl,
   isQuickAddUrl,
   openInAppUrl,
 } from '../utils/deepLinks';
@@ -190,6 +193,24 @@ describe('mealPlanUrlDayKey', () => {
   });
 });
 
+describe('isKitchenUrl', () => {
+  it('accepts every spelling of the kitchen link', () => {
+    expect(isKitchenUrl('dundundun://kitchen')).toBe(true);
+    expect(isKitchenUrl('dundundun:///kitchen')).toBe(true);
+    expect(isKitchenUrl('dundundun://kitchen/')).toBe(true);
+    expect(isKitchenUrl('DUNDUNDUN://Kitchen')).toBe(true);
+    expect(isKitchenUrl('  dundundun://kitchen  ')).toBe(true);
+  });
+
+  it('rejects anything else, including its neighbours', () => {
+    expect(isKitchenUrl('dundundun://')).toBe(false);
+    expect(isKitchenUrl('dundundun://groceries')).toBe(false);
+    expect(isKitchenUrl('dundundun://mealplan')).toBe(false);
+    expect(isKitchenUrl('dundundun://kitchen/spinach')).toBe(false);
+    expect(isKitchenUrl('')).toBe(false);
+  });
+});
+
 describe('isQuickAddUrl', () => {
   it('accepts an add link with nothing to capture', () => {
     expect(isQuickAddUrl('dundundun://add')).toBe(true);
@@ -225,6 +246,7 @@ describe('openInAppUrl', () => {
     mockResetToGroceries.mockClear();
     mockResetToRecipes.mockClear();
     mockResetToMealPlan.mockClear();
+    mockResetToKitchen.mockClear();
     mockOpenQuickAdd.mockClear();
     mockAddTask.mockClear();
   });
@@ -232,6 +254,12 @@ describe('openInAppUrl', () => {
   it('navigates to the week plan and claims the URL', () => {
     expect(openInAppUrl('dundundun://mealplan')).toBe(true);
     expect(mockResetToMealPlan).toHaveBeenCalledTimes(1);
+    expect(mockResetToToday).not.toHaveBeenCalled();
+  });
+
+  it('navigates to the kitchen and claims the URL — the use-up tasks\' own link', () => {
+    expect(openInAppUrl('dundundun://kitchen')).toBe(true);
+    expect(mockResetToKitchen).toHaveBeenCalledTimes(1);
     expect(mockResetToToday).not.toHaveBeenCalled();
   });
 

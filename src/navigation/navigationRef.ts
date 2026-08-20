@@ -82,3 +82,15 @@ export function openFinishShoppingFromTripBar(): void {
     params: { openFinish: Date.now() },
   });
 }
+
+// Where `dundundun://kitchen` lands — the grocery and leftover "Use up X"
+// tasks' own link (see kitchenInventory.KITCHEN_LINK_URL). Lands on Groceries
+// and asks it to pop KitchenSheet open, same stamped-param handoff
+// openFinishShoppingFromTripBar uses.
+export function resetToKitchen(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({
+    name: 'Groceries',
+    params: { openKitchen: Date.now() },
+  });
+}

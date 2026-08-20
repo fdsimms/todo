@@ -268,6 +268,16 @@ export function GroceryScreen() {
     if (!selectionMode) setFinishOpen(true);
   }, [route.params?.openFinish, handledOpenFinish, selectionMode]);
 
+  // The grocery/leftover "Use up X" tasks' own link (resetToKitchen in
+  // navigationRef.ts) — this screen may not be mounted when it's tapped, so
+  // it's the same stamped-param handoff openFinish above uses.
+  const [handledOpenKitchen, setHandledOpenKitchen] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (route.params?.openKitchen === undefined || route.params.openKitchen === handledOpenKitchen) return;
+    setHandledOpenKitchen(route.params.openKitchen);
+    if (!selectionMode) setKitchenOpen(true);
+  }, [route.params?.openKitchen, handledOpenKitchen, selectionMode]);
+
   // Computed here rather than in the row for the reason `alternatives` is:
   // only the screen has the links, and a row that subscribed to them would
   // re-render every one of them on any purchase. Empty whenever no trip is

@@ -2,6 +2,7 @@ import type { GroceryItem, TaskDraft } from '../types';
 import { GROCERY_USE_UP_LEAD_DAYS_MAX, GROCERY_USE_UP_LEAD_DAYS_MIN } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { generatedBy, wantsGeneratedTask } from './generatedTasks';
+import { KITCHEN_LINK_URL } from './kitchenInventory';
 import { resolveOffsetDate } from './templateUtils';
 
 /**
@@ -68,10 +69,10 @@ export function clampUseUpLeadDays(days: number): number {
 
 /**
  * The fields the item owns on its task: what it's called, when it comes up,
- * and the day it's actually about.
+ * the day it's actually about, and where tapping its link opens.
  *
  * **This is deliberately the complete list**, and reconciling writes exactly
- * these three. Everything else on the row belongs to the user — the category,
+ * these four. Everything else on the row belongs to the user — the category,
  * the notes, the reminder they added, the subtasks — and a reconcile that
  * reset any of it would make the task worthless as a task.
  *
@@ -84,17 +85,22 @@ export function clampUseUpLeadDays(days: number): number {
  * the day the food is answerable to, and it renders as the quiet countdown the
  * field already exists for. Without it a task due Thursday would say nothing
  * about what happens on Friday.
+ *
+ * `linkUrl` is `kitchenInventory.KITCHEN_LINK_URL` — the same link
+ * leftoverTasks.ts's use-up task carries, since "Use up spinach" and "Use up
+ * last night's chili" both mean the kitchen view, not the bare grocery list.
  */
 export function useUpTaskFields(
   item: GroceryItem,
   leadDays: number
-): { title: string; dueDate: string; deadline: string } {
+): { title: string; dueDate: string; deadline: string; linkUrl: string } {
   const expiry = dayKeyToDate(item.expiresAt!);
   return {
     title: useUpTaskTitle(item),
     // Never null: expiry is a real Date and the offset is a real number.
     dueDate: resolveOffsetDate(expiry, -clampUseUpLeadDays(leadDays))!,
     deadline: resolveOffsetDate(expiry, 0)!,
+    linkUrl: KITCHEN_LINK_URL,
   };
 }
 
@@ -125,7 +131,7 @@ export function useUpTaskDraft(
  * re-render every list holding it.
  */
 export function useUpTaskNeedsUpdate(
-  task: { title: string; dueDate: string | null; deadline: string | null },
+  task: { title: string; dueDate: string | null; deadline: string | null; linkUrl: string | null },
   item: GroceryItem,
   leadDays: number
 ): boolean {
@@ -133,6 +139,7 @@ export function useUpTaskNeedsUpdate(
   return (
     task.title !== next.title ||
     task.dueDate !== next.dueDate ||
-    task.deadline !== next.deadline
+    task.deadline !== next.deadline ||
+    task.linkUrl !== next.linkUrl
   );
 }
