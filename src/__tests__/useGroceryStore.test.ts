@@ -717,6 +717,20 @@ describe('finishShopping', () => {
     const flourAfter = useGroceryStore.getState().itemById(flour.id)!;
     expect(flourAfter.quantity).toBe('2 bags');
   });
+
+  // #1806 — a scanned receipt's own date, not the moment it got scanned.
+  it('stamps the purchase with an explicit purchasedAt instead of now', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true });
+    seed([milk]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
+
+    const receiptDate = '2026-08-15T12:00:00.000Z';
+    useGroceryStore.getState().finishShopping(null, {}, receiptDate);
+
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(receiptDate, null, expect.any(Object), {});
+    expect(useGroceryStore.getState().items.find(i => i.id === milk.id)!.lastPurchasedAt)
+      .toBe(receiptDate);
+  });
 });
 
 describe('clearList', () => {
@@ -3561,6 +3575,24 @@ describe('use-up tasks', () => {
 
       expect(useGroceryStore.getState().items.find(i => i.id === spinach.id)!.expiresAt)
         .not.toBe('2026-01-01');
+    });
+
+    it('dates a shelf-life day from an explicit purchasedAt rather than now (#1806)', () => {
+      mockUseUpTasks = true;
+      const spinach = makeItem({ name: 'spinach', onList: true, checked: true });
+      seed([spinach]);
+      (dbFinishGroceryShopping as jest.Mock).mockReturnValue([spinach.id]);
+
+      const now = new Date();
+      // Spinach's lexicon shelf life is 5 days (see the sibling test above) —
+      // dated from 5 days ago, the use-by day lands on today rather than 5
+      // days from now.
+      const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString();
+
+      useGroceryStore.getState().finishShopping(null, {}, fiveDaysAgo);
+
+      const stored = useGroceryStore.getState().items.find(i => i.id === spinach.id)!;
+      expect(expiryDaysFromNow(stored.expiresAt!, now)).toBe(0);
     });
 
     it('gives this month\'s bag its own task even though last month\'s is ticked off', () => {

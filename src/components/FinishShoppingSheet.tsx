@@ -58,12 +58,21 @@ interface Props {
    */
   seedShopId?: string | null;
   seedPriceText?: Record<string, string>;
+  /**
+   * A scanned receipt's purchase date, read off the paper (or defaulted to
+   * today when it wasn't readable or looked implausible) — passed straight
+   * through to `onFinished`. This sheet doesn't offer its own date field;
+   * `ReceiptImportSheet` is where it's shown and corrected. Absent for a
+   * hand-finished trip, which stamps `now` exactly as it always has (#1806).
+   */
+  seedPurchasedAt?: string;
   onClose: () => void;
   onFinished: (
     shopId: string | null,
     unavailableIds: string[],
     priceById: Record<string, number>,
-    substitutes: Array<{ itemId: string; subItemId: string }>
+    substitutes: Array<{ itemId: string; subItemId: string }>,
+    purchasedAt?: string
   ) => void;
 }
 
@@ -136,6 +145,7 @@ export function FinishShoppingSheet({
   purchased,
   seedShopId,
   seedPriceText,
+  seedPurchasedAt,
   onClose,
   onFinished,
 }: Props) {
@@ -258,7 +268,8 @@ export function FinishShoppingSheet({
       selected,
       selected ? unavailable : [],
       priceById,
-      selected ? resolveShoppingSubstitutes(unavailable, substituteFor) : []
+      selected ? resolveShoppingSubstitutes(unavailable, substituteFor) : [],
+      seedPurchasedAt
     );
   };
 

@@ -1,5 +1,6 @@
 import {
   acceptedByDefault,
+  isPlausibleReceiptDate,
   matchReceiptLines,
   matchReceiptShop,
   receiptCautionsFor,
@@ -223,6 +224,88 @@ describe('matchReceiptLines', () => {
     expect(matches[0].line.label).toBe('BANANAS 1.32 LB');
     expect(matches[0].line.quantity).toBe('1.32 lb');
     expect(matches[0].line.priceMinor).toBe(77);
+  });
+
+  // ─── offListMatchId ──────────────────────────────────────────────────────
+
+  it('offers an off-list catalog row for a line nothing on the list claimed', () => {
+    const onListItem = makeItem({ name: 'Milk' });
+    const offListItem = makeItem({ name: 'Bananas', onList: false });
+    const lines = [line({ name: 'bananas' })];
+
+    const matches = matchReceiptLines(lines, [onListItem, offListItem]);
+
+    expect(matches[0].itemId).toBeNull();
+    expect(matches[0].offListMatchId).toBe(offListItem.id);
+  });
+
+  it('never offers a catalog match for a line the list already claimed', () => {
+    const items = [makeItem({ name: 'Milk' })];
+    const lines = [line({ name: 'milk' })];
+
+    const matches = matchReceiptLines(lines, items);
+
+    expect(matches[0].itemId).toBe(items[0].id);
+    expect(matches[0].offListMatchId).toBeNull();
+  });
+
+  it('leaves offListMatchId null when nothing off-list matches either', () => {
+    const items = [
+      makeItem({ name: 'Milk' }),
+      makeItem({ name: 'Bananas', onList: false }),
+    ];
+    const lines = [line({ name: 'AA batteries' })];
+
+    const matches = matchReceiptLines(lines, items);
+
+    expect(matches[0].itemId).toBeNull();
+    expect(matches[0].offListMatchId).toBeNull();
+  });
+
+  it('only lets one line claim a contested off-list row', () => {
+    const offListItem = makeItem({ name: 'Milk', onList: false });
+    const lines = [
+      line({ label: 'MILK GAL', name: 'milk', priceMinor: 348 }),
+      line({ label: 'MILK GAL', name: 'milk', priceMinor: 348 }),
+    ];
+
+    const matches = matchReceiptLines(lines, [offListItem]);
+
+    const withMatch = matches.filter(m => m.offListMatchId === offListItem.id);
+    expect(withMatch).toHaveLength(1);
+  });
+});
+
+// ─── isPlausibleReceiptDate ──────────────────────────────────────────────────
+
+describe('isPlausibleReceiptDate', () => {
+  // No 'Z' — local time, matching how the function itself parses the date
+  // key, so the comparison can't drift a day depending on the test runner's
+  // timezone.
+  const now = new Date('2026-08-20T10:00:00');
+
+  it('accepts today', () => {
+    expect(isPlausibleReceiptDate('2026-08-20', now)).toBe(true);
+  });
+
+  it('accepts a date in the past within the stale window', () => {
+    expect(isPlausibleReceiptDate('2026-08-01', now)).toBe(true);
+  });
+
+  it('accepts exactly the stale boundary', () => {
+    expect(isPlausibleReceiptDate('2026-05-22', now)).toBe(true); // 90 days back
+  });
+
+  it('rejects a date further back than the stale window', () => {
+    expect(isPlausibleReceiptDate('2026-05-21', now)).toBe(false); // 91 days back
+  });
+
+  it('rejects a date in the future', () => {
+    expect(isPlausibleReceiptDate('2026-08-21', now)).toBe(false);
+  });
+
+  it('rejects an unparseable date', () => {
+    expect(isPlausibleReceiptDate('not-a-date', now)).toBe(false);
   });
 });
 

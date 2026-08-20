@@ -27,11 +27,13 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { PillGroup } from './PillGroup';
+import { WhenPicker } from './WhenPicker';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { extractReceipt, describeAIError, type ExtractedReceipt } from '../services/aiSuggestions';
 import {
   acceptedByDefault,
+  isPlausibleReceiptDate,
   matchReceiptLines,
   matchReceiptShop,
   receiptCautionsFor,
@@ -39,8 +41,27 @@ import {
   type ReceiptMatch,
 } from '../utils/receiptMatch';
 import { formatPrice } from '../utils/groceryPrice';
+import { formatScheduledDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { SHOP_NAME_MAX_LENGTH } from '../types';
+
+/**
+ * One "Left alone" line the user opted to add as bought instead — either
+ * promoting an existing off-list catalog row or minting a new one. Handed to
+ * `onApply` alongside the matched rows; nothing is written from this sheet
+ * (see the component doc comment), so `GroceryScreen` is where these actually
+ * become catalog rows (#1805).
+ */
+export interface ReceiptAddDraft {
+  /** An existing catalog row to promote back onto the list, or null to mint a new one from `name`. */
+  existingItemId: string | null;
+  /** The line's shopper-normalized name — what a minted row is named. */
+  name: string;
+  /** The line exactly as printed, passed through as the raw text a new row is added from. */
+  label: string;
+  quantity: string;
+  priceMinor: number | null;
+}
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
 const CHECK_SIZE = 22;
@@ -61,6 +82,8 @@ interface Props {
     shopId: string | null,
     itemIds: string[],
     priceById: Record<string, number>,
+    purchasedAt: string,
+    toAdd: ReceiptAddDraft[],
   ) => void;
 }
 
@@ -88,10 +111,19 @@ interface Props {
  * chicken thighs bought because the receipt said breast.
  *
  * **What the receipt doesn't mention is not a claim about anything.** Lines
- * that match nothing are listed and ignored; list rows the receipt never named
- * are left exactly where they are, unticked. Same call `FinishShoppingSheet`
- * makes about a leftover — the usual reason something is missing is that you
- * didn't get to it.
+ * that match nothing are listed and ignored by default; list rows the receipt
+ * never named are left exactly where they are, unticked. Same call
+ * `FinishShoppingSheet` makes about a leftover — the usual reason something is
+ * missing is that you didn't get to it. A left-alone line can still be added
+ * as bought, but only if the user checks it (#1805) — nothing here decides
+ * that on its own.
+ *
+ * **The purchase is dated when it actually happened, not when it's scanned.**
+ * `receipt.date` seeds the date field below the store picker; an implausible
+ * one (future, or far enough in the past to be suspicious) is shown as a
+ * caution and defaulted back to today rather than trusted outright — see
+ * `isPlausibleReceiptDate` (#1806). Either way it's editable, and it's what
+ * every checked row — matched or added as bought — is dated with.
  */
 export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
   const colors = useColors();
@@ -111,6 +143,13 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
   /** Which matched rows are going to be checked off. Ids, not indices. */
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
   const [shopId, setShopId] = useState<string | null>(null);
+  /** When the trip happened — the receipt's own date once it's read, today until then. */
+  const [purchasedDate, setPurchasedDate] = useState<Date>(new Date());
+  /** Set once, on read, when the receipt named a date outside a sane range (#1806). */
+  const [dateImplausible, setDateImplausible] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  /** "Left alone" rows opted in to "Add as bought", by index into `unclaimed` (#1805). */
+  const [addAsBought, setAddAsBought] = useState<Set<number>>(new Set());
 
   const input = useRecipeImportSource('photo', 'read a receipt');
   const { photo, reset: resetInput } = input;
@@ -122,6 +161,10 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
     setMatches([]);
     setAccepted(new Set());
     setShopId(null);
+    setPurchasedDate(new Date());
+    setDateImplausible(false);
+    setDatePickerOpen(false);
+    setAddAsBought(new Set());
     resetInput();
   }, [resetInput]);
 
@@ -141,6 +184,12 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
       setReceipt(result);
       setMatches(matchReceiptLines(result.lines, items));
       setShopId(matchReceiptShop(result.storeName, shops)?.id ?? null);
+      const now = new Date();
+      const plausible = !!result.date && isPlausibleReceiptDate(result.date, now);
+      // Noon rather than midnight, so the day it names can't slip across a
+      // timezone boundary on the way to an ISO timestamp.
+      setPurchasedDate(plausible ? new Date(`${result.date}T12:00:00`) : now);
+      setDateImplausible(!!result.date && !plausible);
       if (result.lines.length > 0) haptics.success();
     } catch (e) {
       setError(describeAIError(e));
@@ -179,14 +228,34 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
     });
   };
 
+  const toggleAddAsBought = (index: number) => {
+    haptics.tap();
+    setAddAsBought(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
   const handleApply = () => {
     const priceById: Record<string, number> = {};
     for (const match of matches) {
       if (!match.itemId || !accepted.has(match.itemId)) continue;
       if (match.line.priceMinor !== null) priceById[match.itemId] = match.line.priceMinor;
     }
+    const toAdd: ReceiptAddDraft[] = matches
+      .filter(m => m.itemId === null)
+      .filter((_, i) => addAsBought.has(i))
+      .map(m => ({
+        existingItemId: m.offListMatchId,
+        name: m.line.name,
+        label: m.line.label,
+        quantity: m.line.quantity,
+        priceMinor: m.line.priceMinor,
+      }));
     haptics.success();
-    onApply(shopId, Array.from(accepted), priceById);
+    onApply(shopId, Array.from(accepted), priceById, purchasedDate.toISOString(), toAdd);
   };
 
   /** Returning the message rejects the name and holds the field open. */
@@ -200,8 +269,9 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
   const nameFor = (itemId: string) => items.find(i => i.id === itemId)?.name ?? '';
 
   const claimed = matches.filter((m): m is ReceiptMatch & { itemId: string } => m.itemId !== null);
+  const unclaimed = matches.filter(m => m.itemId === null);
   /**
-   * What the checked rows add up to.
+   * What the checked rows add up to, matched or added as bought.
    *
    * Deliberately *not* reconciled against the receipt's own total — tax,
    * deposits and anything not on your list are all real parts of that number
@@ -209,15 +279,19 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
    * sign the read went wrong. It's stated so a large gap is visible to someone
    * who knows what they bought, which is the only reader who can judge it.
    */
-  const recordedMinor = matches.reduce(
-    (sum, m) =>
-      m.itemId && accepted.has(m.itemId) && m.line.priceMinor !== null
-        ? sum + m.line.priceMinor
-        : sum,
-    0
-  );
-  const unclaimed = matches.filter(m => m.itemId === null);
-  const acceptedCount = accepted.size;
+  const recordedMinor =
+    matches.reduce(
+      (sum, m) =>
+        m.itemId && accepted.has(m.itemId) && m.line.priceMinor !== null
+          ? sum + m.line.priceMinor
+          : sum,
+      0
+    ) +
+    unclaimed.reduce(
+      (sum, m, i) => (addAsBought.has(i) && m.line.priceMinor !== null ? sum + m.line.priceMinor : sum),
+      0
+    );
+  const acceptedCount = accepted.size + addAsBought.size;
 
   /**
    * Why a row is worth a second look, in the app's own words.
@@ -387,6 +461,30 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
           />
         </View>
 
+        <Text style={styles.label}>WHEN DID YOU SHOP?</Text>
+        <Text style={styles.hint}>
+          Everything checked gets dated when the trip actually happened, and any use-by day it
+          starts is worked out from there.
+        </Text>
+        <View style={styles.dateSection}>
+          <TouchableOpacity
+            style={styles.dateRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => setDatePickerOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`Purchased ${formatScheduledDate(purchasedDate.toISOString())}`}
+          >
+            <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.textSecondary} />
+            <Text style={styles.dateValue}>{formatScheduledDate(purchasedDate.toISOString())}</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+          </TouchableOpacity>
+          {dateImplausible && (
+            <Text style={styles.dateCaution}>
+              The date on the receipt didn’t look right, so this defaulted to today. Check it.
+            </Text>
+          )}
+        </View>
+
         {claimed.length > 0 && (
           <>
             <Text style={styles.label}>ON YOUR LIST</Text>
@@ -411,31 +509,52 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
             {/* Covers two different reasons on purpose. "Not on your list"
                 would be a lie about a duplicate, which is on the list — the
                 list just doesn't have two of them. What both share is that
-                nothing happens to them, which is what the heading says. */}
+                nothing happens to them unless checked, which is what the
+                heading says. */}
             <Text style={styles.label}>LEFT ALONE</Text>
             <Text style={styles.hint}>
               {claimed.length > 0
-                ? 'Nothing happens to these — they didn’t match anything on your list, or your list only asked for one.'
-                : 'None of these matched anything on your list, so nothing will be checked off.'}
+                ? 'These didn’t match anything on your list, or your list only asked for one. Check one to add it as bought.'
+                : 'None of these matched anything on your list. Check one to add it as bought.'}
             </Text>
             <View style={styles.card}>
-              {unclaimed.map((match, i) => (
-                <View key={`u-${i}`} style={[styles.row, i > 0 && styles.rowDivided]}>
-                  <View style={styles.rowBody}>
-                    <Text style={styles.rowSkipped} numberOfLines={1}>{match.line.label}</Text>
-                    {match.duplicateOf !== null && (
+              {unclaimed.map((match, i) => {
+                const on = addAsBought.has(i);
+                const catalogName = match.offListMatchId ? nameFor(match.offListMatchId) : null;
+                return (
+                  <TouchableOpacity
+                    key={`u-${i}`}
+                    style={[styles.row, i > 0 && styles.rowDivided]}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => toggleAddAsBought(i)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: on }}
+                    accessibilityLabel={`Add ${match.line.label} as bought`}
+                  >
+                    <View style={[styles.check, on && styles.checkOn]}>
+                      {on && <Ionicons name="checkmark" size={14} color={colors.onAccent} />}
+                    </View>
+                    <View style={styles.rowBody}>
+                      <Text style={styles.rowSkipped} numberOfLines={1}>{match.line.label}</Text>
+                      {match.duplicateOf !== null && (
+                        <Text style={styles.rowLabel} numberOfLines={1}>
+                          A second {nameFor(match.duplicateOf)} — the first one is above.
+                        </Text>
+                      )}
                       <Text style={styles.rowLabel} numberOfLines={1}>
-                        A second {nameFor(match.duplicateOf)} — the first one is above.
+                        {catalogName
+                          ? `Matches “${catalogName}” already in your catalog.`
+                          : 'Adds it as a new item.'}
+                      </Text>
+                    </View>
+                    {match.line.priceMinor !== null && (
+                      <Text style={styles.rowPriceOff}>
+                        {formatPrice(match.line.priceMinor, currencySymbol)}
                       </Text>
                     )}
-                  </View>
-                  {match.line.priceMinor !== null && (
-                    <Text style={styles.rowPriceOff}>
-                      {formatPrice(match.line.priceMinor, currencySymbol)}
-                    </Text>
-                  )}
-                </View>
-              ))}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </>
         )}
@@ -444,33 +563,47 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
-          <Text style={styles.headerTitle}>Scan a receipt</Text>
-          {receipt && receipt.lines.length > 0 ? (
-            <SheetHeaderButton
-              label="Apply"
-              onPress={handleApply}
-              disabled={acceptedCount === 0}
-              minWidth={64}
-            />
-          ) : (
-            <View style={styles.headerSpacer} />
-          )}
-        </View>
+    <>
+      <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+        <View style={styles.root}>
+          <View style={styles.header}>
+            <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
+            <Text style={styles.headerTitle}>Scan a receipt</Text>
+            {receipt && receipt.lines.length > 0 ? (
+              <SheetHeaderButton
+                label="Apply"
+                onPress={handleApply}
+                disabled={acceptedCount === 0}
+                minWidth={64}
+              />
+            ) : (
+              <View style={styles.headerSpacer} />
+            )}
+          </View>
 
-        <ScrollView
-          ref={keyboardScroll.ref}
-          contentContainerStyle={styles.body}
-          keyboardShouldPersistTaps="handled"
-          {...keyboardScroll.props}
-        >
-          {body()}
-        </ScrollView>
-      </View>
-    </Modal>
+          <ScrollView
+            ref={keyboardScroll.ref}
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            {...keyboardScroll.props}
+          >
+            {body()}
+          </ScrollView>
+        </View>
+      </Modal>
+      <WhenPicker
+        visible={datePickerOpen}
+        value={purchasedDate}
+        title="Purchased"
+        showTimeOfDay={false}
+        showSuggest={false}
+        onConfirm={date => {
+          if (date) setPurchasedDate(date);
+          setDatePickerOpen(false);
+        }}
+        onCancel={() => setDatePickerOpen(false)}
+      />
+    </>
   );
 }
 
@@ -509,6 +642,18 @@ function makeStyles(colors: Colors) {
       marginBottom: spacing.sm,
     },
     pills: { marginBottom: spacing.lg },
+    dateSection: { marginBottom: spacing.lg },
+    dateRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.lg,
+    },
+    dateValue: { flex: 1, color: colors.text, fontSize: font.md },
+    dateCaution: { color: colors.orange, fontSize: font.xs, marginTop: spacing.xs },
     tally: {
       color: colors.textTertiary,
       fontSize: font.sm,
