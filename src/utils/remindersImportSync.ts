@@ -5,6 +5,7 @@ import { dbGetSetting, dbSetSetting } from '../db/database';
 import { useTaskStore } from '../store/useTaskStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { getLogicalNow } from './dateUtils';
 import {
   draftFromReminder,
   findReminderList,
@@ -321,8 +322,13 @@ function takenNames(sink: Sink, deleteAfterImport: boolean): Set<string> | null 
 async function drainOnce(): Promise<ImportOutcome> {
   if (Platform.OS !== 'ios') return NOTHING('unsupported');
 
-  const { remindersImportEnabled, groceryImportEnabled, kitchenEnabled, remindersImportReview } =
-    useSettingsStore.getState();
+  const {
+    remindersImportEnabled,
+    groceryImportEnabled,
+    kitchenEnabled,
+    remindersImportReview,
+    dayResetTime,
+  } = useSettingsStore.getState();
   // The grocery half only counts while the area it feeds exists — the same
   // gate drainTargets applies below, repeated here so the two can't disagree.
   // Without it, turning the groceries area off reported 'no-list' ("the list
@@ -350,6 +356,13 @@ async function drainOnce(): Promise<ImportOutcome> {
     // One clock for the whole drain, so a batch of reminders parsed together
     // can't straddle a minute boundary and land on different days.
     const now = new Date();
+    // And the same instant read as the user's own day, for the half of the
+    // parse that means a day rather than a moment. The two are the same
+    // outside the early-morning window before dayResetTime; inside it, a
+    // dictated "tomorrow" belongs to the logical day, while `now` stays the
+    // wall clock because dropping already-fired alarms is a real-time
+    // question. See pendingImportFor.
+    const logicalNow = getLogicalNow(dayResetTime);
 
     // Each target is drained in full before the next. The handled record,
     // `draining` and `rerunRequested` stay global and stay correct: EventKit
@@ -431,7 +444,7 @@ async function drainOnce(): Promise<ImportOutcome> {
             // threw could never leave a deleted reminder behind — though it
             // can't: the whole path is string and date arithmetic over data
             // already in hand.
-            const pending = pendingImportFor(reminder, now);
+            const pending = pendingImportFor(reminder, now, logicalNow);
             // With review on, the schedule waits beside the task as a suggestion
             // and the row stays bare enough for isInboxTask — a capture nobody
             // has read must not file itself onto Today. With review off the user

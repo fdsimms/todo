@@ -25,6 +25,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { useSettingsStore } from '../store/useSettingsStore';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
+import { getLogicalNow } from '../utils/dateUtils';
 import { isAlarmKitAvailable } from 'todo-alarmkit-bridge';
 import type { ReminderKind } from '../types';
 
@@ -80,6 +81,7 @@ export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCan
   }, [visible]);
 
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const calendarDays = useMemo(
     () => buildCalendarGrid(displayMonth, weekStartsOn),
     [displayMonth, weekStartsOn]
@@ -88,7 +90,10 @@ export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCan
 
   const onNlChange = (text: string) => {
     setNlText(text);
-    const parsed = parseNaturalDate(text);
+    // Resolved against the logical day, not the wall clock: typed at 1am under
+    // a 2am dayResetTime, "tomorrow" means tomorrow by the user's own day —
+    // the same clock quick add and the task editor parse against.
+    const parsed = parseNaturalDate(text, getLogicalNow(dayResetTime));
     if (parsed) {
       setSelectedDate(parsed);
       setDisplayMonth(startOfMonth(parsed));

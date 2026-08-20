@@ -23,7 +23,7 @@ import { spacing, radius, font, fontWeight, interaction, animation, type Colors 
 import { useSettingsStore } from '../store/useSettingsStore';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
-import { dayKeyOf } from '../utils/dateUtils';
+import { dayKeyOf, getLogicalNow } from '../utils/dateUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
@@ -102,6 +102,7 @@ export function CalendarPicker({
   }, [visible]);
 
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const calendarDays = useMemo(
     () => buildCalendarGrid(displayMonth, weekStartsOn),
     [displayMonth, weekStartsOn]
@@ -110,7 +111,10 @@ export function CalendarPicker({
 
   const onNlChange = (text: string) => {
     setNlText(text);
-    const parsed = parseNaturalDate(text);
+    // Resolved against the logical day, not the wall clock: typed at 1am under
+    // a 2am dayResetTime, "tomorrow" means tomorrow by the user's own day —
+    // the same clock quick add and the task editor parse against.
+    const parsed = parseNaturalDate(text, getLogicalNow(dayResetTime));
     if (parsed) {
       setSelectedDate(parsed);
       setDisplayMonth(startOfMonth(parsed));

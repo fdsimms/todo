@@ -193,7 +193,11 @@ export function scheduleToDraft(schedule: ParsedSchedule): Partial<Task> {
  * day after completion" comes out as daily *and* from-completion whether Siri
  * parsed the repeat or left the whole phrase in the title.
  */
-export function pendingImportFor(reminder: Reminder, now: Date = new Date()): Partial<Task> | null {
+export function pendingImportFor(
+  reminder: Reminder,
+  now: Date = new Date(),
+  logicalNow: Date = now
+): Partial<Task> | null {
   const suggestion: Partial<Task> = {};
 
   const fromRule = recurrenceFromRule(reminder.recurrenceRule);
@@ -216,7 +220,13 @@ export function pendingImportFor(reminder: Reminder, now: Date = new Date()): Pa
   if (reminderTime) suggestion.reminderTime = reminderTime;
 
   const title = reminder.title?.trim() ?? '';
-  const parsed = title ? parseTaskInput(title, now) : null;
+  // Parsed against the *logical* now, not the wall clock: "buy milk tomorrow"
+  // dictated to Siri and drained at 1am under a 2am dayResetTime means
+  // tomorrow by the user's own day, one day earlier than the calendar says.
+  // Same clock QuickAddModal and TaskEditor hand this function. It is
+  // deliberately not the `now` above, which is a real-time cutoff for dropping
+  // alarms that have already gone off and would resurrect a day of them.
+  const parsed = title ? parseTaskInput(title, logicalNow) : null;
   if (parsed) {
     const fromText = scheduleToDraft(parsed.schedule);
     // EventKit wins field by field rather than wholesale: a reminder can carry
