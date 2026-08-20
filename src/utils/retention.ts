@@ -18,7 +18,7 @@
  * device first.
  */
 
-import { subDays } from 'date-fns';
+import { subDays } from 'date-fns/subDays';
 import { getDayStart } from './dateUtils';
 import type { Task } from '../types';
 

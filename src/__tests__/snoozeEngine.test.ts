@@ -1,4 +1,5 @@
-import { addDays, format } from 'date-fns';
+import { addDays } from 'date-fns/addDays';
+import { format } from 'date-fns/format';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 import type { Task } from '../types';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -366,4 +367,4 @@ describe('computeSnoozeSuggestion', () => {
 });
 
 // need differenceInCalendarDays for the priority test above
-import { differenceInCalendarDays } from 'date-fns';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';

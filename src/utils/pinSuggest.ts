@@ -1,4 +1,5 @@
-import { differenceInCalendarDays, startOfDay } from 'date-fns';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { startOfDay } from 'date-fns/startOfDay';
 import { PRIORITY_LABELS, type Task, type TimeOfDay } from '../types';
 import { getCurrentDayStart, getDeadlineCountdown, getLogicalToday } from './dateUtils';
 import { sumEstimatedMinutes } from './effort';
