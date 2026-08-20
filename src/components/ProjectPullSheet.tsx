@@ -24,6 +24,7 @@ import {
 } from '../utils/projectPull';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { WhenPicker } from './WhenPicker';
 import type { Task } from '../types';
 
@@ -63,6 +64,8 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
   const allTasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(s => s.projects);
   const pullProjectTasks = useTaskStore(s => s.pullProjectTasks);
+  const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
+  const setVacationMode = useSettingsStore(s => s.setVacationMode);
 
   // The plan is computed once per opening, not derived live: it's a snapshot
   // the user is deciding on, and re-running it as the store changes underneath
@@ -193,6 +196,20 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
     dismiss();
   };
 
+  // Same sequence Settings uses to turn vacation mode off (protected streaks
+  // are forgiven first, or a paused daily habit would read as broken the
+  // moment the pause lifts). Rebuilds the plan in place rather than closing
+  // the sheet, since the whole point is answering "what would I pull" right
+  // where the question was asked.
+  const handleTurnOffVacation = () => {
+    haptics.tap();
+    forgivVacationStreaks();
+    setVacationMode(false);
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds);
+    setPlan(next);
+    setSelectedIds(new Set(next.proposals.filter(p => p.selected).map(p => p.project.id)));
+  };
+
   const renderRow = (p: ProjectPullProposal) => {
     const task = candidateFor(p);
     const dest = destinationFor(p);
@@ -274,9 +291,22 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
           </View>
 
           {plan.proposals.length === 0 ? (
-            <Text style={styles.emptyHint}>
-              {plan.empty ? describePullEmpty(plan.empty) : 'Nothing waiting.'}
-            </Text>
+            <>
+              <Text style={styles.emptyHint}>
+                {plan.empty ? describePullEmpty(plan.empty) : 'Nothing waiting.'}
+              </Text>
+              {plan.empty?.reason === 'vacation' && (
+                <TouchableOpacity
+                  style={styles.vacationOffBtn}
+                  onPress={handleTurnOffVacation}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel="Turn off vacation mode"
+                >
+                  <Text style={styles.vacationOffText}>Turn off vacation mode</Text>
+                </TouchableOpacity>
+              )}
+            </>
           ) : (
             <Text style={styles.hint}>Tap to include or skip. Long press to pick a different day.</Text>
           )}
@@ -380,6 +410,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.md,
     textAlign: 'center',
   },
+  vacationOffBtn: {
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSubtle,
+  },
+  vacationOffText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.semibold },
   list: { maxHeight: 340 },
   row: {
     flexDirection: 'row',
