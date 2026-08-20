@@ -132,6 +132,16 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
     setTitleRules(titleRules.map(r => (r.id === rule.id ? { ...r, enabled: !r.enabled } : r)));
   };
 
+  // "Starts with “expense”, filed as Work · #admin" — the whole rule in one
+  // line. A rule whose only category or project has since been deleted has
+  // nothing left to name, so it falls back to the trigger alone rather than
+  // trailing off after "filed as".
+  const describeBacklogRule = (rule: TitleRule) => {
+    const targets = targetsOf(rule);
+    const trigger = describeTitleRuleTrigger(rule);
+    return targets ? `${trigger}, filed as ${targets}` : trigger;
+  };
+
   const targetsOf = (rule: TitleRule) => describeTitleRuleTargets(
     rule,
     rule.category ? categoryLabel(rule.category, categories) : null,
@@ -178,10 +188,14 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
                       : `${backlog.count} ${backlog.count === 1 ? 'task' : 'tasks'} already ${backlog.count === 1 ? 'matches' : 'match'}`}
                   </Text>
                 </View>
+                {/* Names what the rule sets, not just the word it fires on: the
+                    fill is about to be written to rows the person can't see
+                    from here, and a project in particular moves a task off
+                    Today (see applyTitleRulesToDraft's note on projectId). */}
                 <Text style={styles.backlogBody}>
                   {backlog.filed
                     ? 'Only the fields left blank were filled in. From here on the rule applies as you add a task, not to tasks you rename.'
-                    : `${describeTitleRuleTrigger(backlog.rule)}. File them the same way? Only the fields you left blank get filled in. Completed and archived tasks are left alone.`}
+                    : `${describeBacklogRule(backlog.rule)}. File them the same way? Only the fields you left blank get filled in. Completed and archived tasks are left alone.`}
                 </Text>
                 <View style={styles.backlogActions}>
                   {!backlog.filed && (

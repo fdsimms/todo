@@ -191,6 +191,8 @@ function resolveTimeSegments(draft: Partial<TaskDraft>, defaultSegment: TimeOfDa
  *    path, where every field a rule could fill is on screen and left empty is
  *    an answer;
  *  - a draft carrying no title at all, which has nothing to match.
+ *
+ * One *field* opts out rather than a caller: see `projectId` below.
  */
 function applyTitleRulesToDraft(
   draft: Partial<TaskDraft>,
@@ -207,7 +209,26 @@ function applyTitleRulesToDraft(
     ...draft,
     title: fill.cleanTitle,
     category: draft.category ?? fill.category,
-    projectId: draft.projectId ?? fill.projectId,
+    // **A rule's project is deliberately not filled here**, and it's the one
+    // field held back. Every field a rule sets is meant to be visible on the
+    // row it just created, and `projectId` is the exception: `isTaskVisible`
+    // bails on `projectId && !dueDate`, and both `isInboxTask` and
+    // `isUnscheduledTask` require a null one. So a rule filing an undated task
+    // into a project takes it off every list the person was looking at.
+    //
+    // In quick add that's fine and wanted — the caption names the project as
+    // you type and the ✕ takes it back — and quick add resolves the rules
+    // itself, so it isn't reached by this at all. What *is* reached by this is
+    // only the headless creations (a dictated Apple reminder, a deep link, a
+    // template run), where nothing ever says a project was chosen and there is
+    // no list left to find the task on. A dictated capture that lands nowhere
+    // is the failure this avoids; a dictated capture that merely lands unfiled
+    // is the Inbox working.
+    //
+    // The catch-up offer (titleRuleBacklog) still applies it, for the same
+    // reason quick add does: it's an explicit tap on a card naming what the
+    // rule sets, over rows already on screen, with an Undo beside it.
+    projectId: draft.projectId,
     // `!draft.priority` covers both an absent field and an explicit 0, which
     // is what "None" is everywhere one is picked. Left exactly as it arrived
     // when the rule says nothing, so an explicit 0 still means 0 rather than
@@ -3065,11 +3086,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         category,
         groupId: group.id,
         ...generatedBy('mealPlanNudge', day.dayKey),
+        // skipTitleRules for the reason generatedTaskSync passes it: "Plan
+        // meals for Monday" is a title the app wrote, and this generator has
+        // its own "File them under" setting (mealPlanNudgeTaskCategory). A
+        // user rule matching one of its words would file it somewhere that
+        // setting didn't say.
       }, derivedId(spawnSeed.generated(
         'mealPlanNudge',
         day.dayKey,
         generatedTaskCountOf(get().tasks, 'mealPlanNudge', day.dayKey)
-      )));
+      )), { skipTitleRules: true });
       // The stack's own 1..K order, which is a separate number space from the
       // list order addTask just stamped (see reorderGroupChildren). Set the way
       // groupTasks sets it, so the rows read down the week.

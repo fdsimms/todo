@@ -519,6 +519,24 @@ describe('addTask', () => {
         { title: 'expense lunch' }, undefined, { skipTitleRules: true });
       expect(task.category).toBeNull();
     });
+
+    // The one field held back here rather than by a caller: only the headless
+    // creations reach this at all, and none of them has anywhere to say a
+    // project was chosen — while an undated project task is on no list.
+    it('never files a project, since nothing reaching this can say it did', () => {
+      withRules([{ ...expenseRule, projectId: 'p1' }]);
+      const task = useTaskStore.getState().addTask({ title: 'expense the client lunch' });
+      expect(task.projectId).toBeNull();
+      // The rest of the rule still applies — this is a field opting out, not
+      // the rule.
+      expect(task.category).toBe('Work');
+    });
+
+    it('still honours a project the caller named itself', () => {
+      withRules([{ ...expenseRule, projectId: 'p1' }]);
+      const task = useTaskStore.getState().addTask({ title: 'expense lunch', projectId: 'p2' });
+      expect(task.projectId).toBe('p2');
+    });
   });
 
   it('sets sortOrder to maxExisting + 1', () => {
@@ -2446,6 +2464,27 @@ describe('checkMealPlanNudge', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  // Its rows are titled "Monday 08/04" — words the app chose, on a task with
+  // its own "File them under" setting, same as the other three generators. A
+  // rule written about a weekday must not reach them.
+  it('files its rows by its own setting rather than by a title rule', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings({
+      titleRules: [{
+        id: 'r1', keywords: ['monday'], match: 'startsWith',
+        category: 'Work', projectId: null, tags: ['admin'],
+        priority: 0, effort: 0, stripKeyword: false, enabled: true,
+      }],
+    }));
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    const rows = useTaskStore.getState().tasks;
+    expect(rows.some(t => t.title.startsWith('Monday'))).toBe(true);
+    expect(rows.every(t => t.category === null && t.tags.length === 0)).toBe(true);
   });
 
   it('is a no-op while the setting is off', () => {
