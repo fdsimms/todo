@@ -148,7 +148,12 @@ export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void
   // setting, already resolved and possibly deliberately null — not an
   // unanswered field that should fall back to the unrelated
   // newTaskDefaults.category the way a fresh editor draft's null would (#1724).
-  addTask(draft(), id, { skipCategoryDefault: true });
+  //
+  // skipTitleRules, for the same reason one step further: "Use up spinach" is
+  // a title the app wrote, so a rule matching a word in it would be filing a
+  // task against a phrase nobody typed — and each generator already has its
+  // own "File them under" setting saying where its tasks go.
+  addTask(draft(), id, { skipCategoryDefault: true, skipTitleRules: true });
 }
 
 /**

@@ -35,6 +35,7 @@ import { taskKindOf } from '../utils/taskKinds';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { extraTaskDraftIsEmpty, extraTaskRule } from '../utils/extraTask';
 import { isDialable } from '../utils/phone';
+import { resolveTitleRules } from '../utils/titleRules';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -569,6 +570,27 @@ describe('demo mode', () => {
     expect(persistent.length).toBeGreaterThan(0);
     // A reminder kind only means anything with a time attached to it.
     expect(persistent.every(t => t.reminderTime !== null)).toBe(true);
+  });
+
+  // A title rule is invisible until something has actually been filed by one,
+  // so proving the rule exists isn't enough — what this pins is that the
+  // seeded task got its category, tag and effort from the rule and not from
+  // its own draft, which is the whole of what the feature does.
+  it('seeds a title rule, and a task the rule filed', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const rules = useSettingsStore.getState().titleRules;
+    expect(rules.length).toBeGreaterThan(0);
+    const rule = rules[0];
+    expect(rule.enabled).toBe(true);
+    expect(rule.keywords).toContain('expense');
+
+    const filed = useTaskStore.getState().tasks.find(t => t.title === 'Expense the client lunch');
+    expect(filed).toBeDefined();
+    expect(resolveTitleRules(filed!.title, rules)).not.toBeNull();
+    expect(filed!.category).toBe(rule.category);
+    expect(filed!.tags).toEqual(rule.tags);
+    expect(filed!.effort).toBe(rule.effort);
   });
 
   // The Decisions block on a project's screen has nothing to render unless a

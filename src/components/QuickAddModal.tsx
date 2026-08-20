@@ -22,6 +22,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { PillGroup } from './PillGroup';
 import { useShallow } from 'zustand/react/shallow';
@@ -57,6 +58,7 @@ import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseCategoryAndTagsInput, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { describeTitleRuleTargets, resolveTitleRules } from '../utils/titleRules';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
@@ -175,9 +177,13 @@ export function QuickAddModal({
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
+  // Read only to name a project a title rule files into — quick add has no
+  // project picker; see the projectId state below.
+  const projects = useProjectStore(useShallow(s => s.projects));
   const tasks = useTaskStore(s => s.tasks);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
+  const titleRules = useSettingsStore(useShallow(s => s.titleRules));
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleTaskForm = useSettingsStore(s => s.simpleTaskForm);
   // Which list this actually lands in: the caller's explicit choice (a
@@ -273,6 +279,14 @@ export function QuickAddModal({
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [category, setCategory] = useState<string | null>(null);
+  // Quick add has no project picker of its own — this is only ever written by
+  // a title rule, which is the point: filing into a project as you type is
+  // something you could otherwise only do by opening the full editor after.
+  const [projectId, setProjectId] = useState<string | null>(null);
+  // "Not on this task" for whatever a rule filled in. Sheet-lifetime, like
+  // showAllChips: the next task starts from the rules again rather than
+  // inheriting a decision made once about a different title.
+  const [rulesOptedOut, setRulesOptedOut] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [emailAddress, setEmailAddress] = useState<string | null>(null);
@@ -363,6 +377,9 @@ export function QuickAddModal({
       setRecurrenceEndDate(null);
       setRecurrenceCount(null);
       setRecurrenceFromCompletion(false);
+      setProjectId(null);
+      setRulesOptedOut(false);
+      appliedRuleRef.current = null;
       setPrefixW(null);
       setMatchW(null);
       tooltipAnim.setValue(0);
@@ -385,6 +402,82 @@ export function QuickAddModal({
       inputRef.current?.focus();
     }
   }, [visible, effectiveContext, initialType, initialTitle]);
+
+  // Title rules — the authored counterpart to the four parsers below (see
+  // utils/titleRules.ts). Those read English and guess, so nothing they find
+  // is applied until the tooltip is tapped; a rule is a filing decision the
+  // user already wrote down, so it applies itself and says so in the caption
+  // under the input. The strip half is deliberately *not* live: rewriting the
+  // field someone is typing in would fight the cursor, so `cleanTitle` is
+  // taken at handleAdd.
+  const ruleFill = useMemo(
+    () => (!rulesOptedOut && titleRules.length > 0 && title.trim()
+      ? resolveTitleRules(title, titleRules)
+      : null),
+    [title, titleRules, rulesOptedOut],
+  );
+
+  /**
+   * Exactly what the effect below last wrote, so a field the user has since
+   * changed by hand is recognised and left alone — and so a rule that stops
+   * matching (a keystroke later, the word is gone) takes its own values back
+   * out instead of leaving them stranded. Comparing against the last write is
+   * what makes this need no per-field "touched" bookkeeping: a value that
+   * isn't what we put there is, by definition, someone else's.
+   */
+  const appliedRuleRef = useRef<{
+    category: string | null;
+    projectId: string | null;
+    priority: Priority;
+    effort: Effort;
+    tags: string[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    // The baseline is what the sheet would hold with no rules at all — the
+    // drop's category or Settings' default. A rule is one step more specific
+    // than those, so it wins them, and losing the match hands the field back.
+    const baseCategory = seedRef.current?.category ?? newTaskDefaults.category;
+    const basePriority: Priority = newTaskDefaults.priority ?? 0;
+    const baseEffort: Effort = newTaskDefaults.effort ?? 0;
+    const prev = appliedRuleRef.current
+      ?? { category: baseCategory, projectId: null, priority: basePriority, effort: baseEffort, tags: [] };
+    const next = {
+      category: ruleFill?.category ?? baseCategory,
+      projectId: ruleFill?.projectId ?? null,
+      priority: ruleFill && ruleFill.priority !== 0 ? ruleFill.priority : basePriority,
+      effort: ruleFill && ruleFill.effort !== 0 ? ruleFill.effort : baseEffort,
+      tags: ruleFill?.tags ?? [],
+    };
+    setCategory(cur => (cur === prev.category ? next.category : cur));
+    setProjectId(cur => (cur === prev.projectId ? next.projectId : cur));
+    setPriority(cur => (cur === prev.priority ? next.priority : cur));
+    setEffort(cur => (cur === prev.effort ? next.effort : cur));
+    // Tags accumulate rather than claim a slot (see resolveTitleRules), so the
+    // reconcile is per tag: drop the ones this put there and the rule no
+    // longer names, keep everything else exactly where it was.
+    setTags(cur => {
+      const kept = cur.filter(t => !prev.tags.includes(t) || next.tags.includes(t));
+      return [...kept, ...next.tags.filter(t => !kept.includes(t))];
+    });
+    appliedRuleRef.current = next;
+    // newTaskDefaults is read through a ref-like baseline that only matters at
+    // open; re-running on it would fight a value already applied.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ruleFill, visible]);
+
+  /** "“expense” · Work · #receipts" — the word that fired, and what it filled in. */
+  const ruleCaption = useMemo(() => {
+    if (!ruleFill) return null;
+    const targets = describeTitleRuleTargets(
+      ruleFill,
+      ruleFill.category ? categoryLabel(ruleFill.category, categories) : null,
+      projects.find(p => p.id === ruleFill.projectId)?.title ?? null,
+    );
+    const word = ruleFill.matched[0].match.keyword;
+    return targets ? `“${word}” · ${targets}` : `“${word}”`;
+  }, [ruleFill, categories, projects]);
 
   // Natural-language scheduling: detect a trailing date/recurrence phrase in
   // the title ("go for a run on tuesday", "water plants every 3 days"). The
@@ -659,6 +752,7 @@ export function QuickAddModal({
       linkUrl,
       phoneNumber,
       emailAddress,
+      projectId,
       // recurrenceType deliberately absent — it comes from `baked` above,
       // which is what turns a Target into a daily task.
       recurrenceInterval,
@@ -673,7 +767,10 @@ export function QuickAddModal({
       ...(seedActive && seed?.groupId ? { groupId: seed.groupId } : {}),
       ...(seedActive && seed?.pinned ? { pinned: true } : {}),
       ...(seedActive && seed?.windowStart ? { windowStart: seed.windowStart, windowEnd: seed.windowEnd ?? null } : {}),
-    });
+    // skipTitleRules: this sheet already resolved them, a keystroke at a time
+    // and visibly — re-running them here would put back a category the ✕ on
+    // the rule caption just took off.
+    }, undefined, { skipTitleRules: true });
     // Files the task exactly as before either way; the setting only decides
     // whether the sheet hands off straight into the full editor for it
     // (postCreateTask, rendered below) instead of just closing.
@@ -688,7 +785,11 @@ export function QuickAddModal({
   };
 
   const handleAdd = () => {
-    const finalTitle = title.trim();
+    // A rule that strips takes its word out here rather than as you type —
+    // rewriting the field under the cursor is the one way this feature would
+    // be unusable. Nothing strips unless a rule asked to, and a strip that
+    // would empty the title is refused (see stripMatchedKeywords).
+    const finalTitle = (ruleFill?.cleanTitle ?? title).trim();
     if (!finalTitle || !canSaveType(type, typeValues)) return;
 
     const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), finalTitle);
@@ -1138,6 +1239,26 @@ export function QuickAddModal({
                 </PressableScale>
               </View>
             </Animated.View>
+          )}
+
+          {/* What a title rule just filled in. Not a tooltip: the tooltips
+              below offer a guess and wait to be tapped, while a rule has
+              already applied — so this states it and offers the way out.
+              Rendered after them so a rule can't displace the caret the
+              schedule tooltip aims at its phrase. */}
+          {!!ruleCaption && (
+            <View style={styles.ruleRow}>
+              <Ionicons name="funnel-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.ruleText} numberOfLines={1}>{ruleCaption}</Text>
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); setRulesOptedOut(true); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Don't use title rules on this task"
+              >
+                <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
           )}
 
           {/* What the chosen type decides for you, in one line. These modes
@@ -2081,6 +2202,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
+  ruleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    marginTop: spacing.xs, marginBottom: spacing.sm,
+  },
+  ruleText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   tooltipRow: {
     marginTop: -4,
     marginBottom: spacing.sm,

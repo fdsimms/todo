@@ -73,6 +73,26 @@ export function seedDemoData(): void {
   });
   ['bills', 'quick', 'reading', 'admin'].forEach(addTag);
 
+  // --- Title rules ---------------------------------------------------------
+  // Seeded before the tasks on purpose: the "Expense the client lunch" task
+  // below names no category and no tag, so what files it under Work is the
+  // rule itself. A seeded rule with nothing visibly filed by it would read as
+  // a settings row rather than as a thing the app does.
+  useSettingsStore.getState().setTitleRules([
+    {
+      id: 'demo-rule-expense',
+      keywords: ['expense', 'reimburse'],
+      match: 'startsWith',
+      category: 'Work',
+      projectId: null,
+      tags: ['admin'],
+      priority: 0,
+      effort: 1,
+      stripKeyword: false,
+      enabled: true,
+    },
+  ]);
+
   // --- Today ---------------------------------------------------------------
   addTask({
     title: 'Send the Q3 roadmap to Priya',
@@ -84,6 +104,14 @@ export function seedDemoData(): void {
     deadline: addDays(today, 2).toISOString(),
     tags: ['admin'],
     pinned: true,
+  });
+
+  // Nothing here says Work, #admin or XXS — the seeded title rule above does,
+  // the same way it would if this were typed into quick add.
+  addTask({
+    title: 'Expense the client lunch',
+    notes: 'Receipt photo is in the shared album.',
+    dueDate: today.toISOString(),
   });
 
   addTask({

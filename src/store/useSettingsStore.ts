@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import { DEFAULT_APP_FONT, isAppFont, type AppFont } from '../theme/fonts';
-import type { SortOption, RecipeSortOption, Priority, Effort, TimeOfDay } from '../types';
+import type { SortOption, RecipeSortOption, Priority, Effort, TimeOfDay, TitleRule } from '../types';
 import {
   DEFAULT_CURRENCY_SYMBOL,
   CURRENCY_SYMBOL_MAX_LENGTH,
@@ -24,6 +24,7 @@ import { DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY } from '.
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
 import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
 import { normalizeRecipeTags } from '../utils/recipeTags';
+import { parseTitleRules } from '../utils/titleRules';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
 
@@ -535,6 +536,15 @@ interface SettingsStore {
   // the same mechanical reason as aiFeatureConfig: it's an object, and
   // String(value) doesn't round-trip one.
   newTaskDefaults: NewTaskDefaults;
+  // Conditional new-task defaults, keyed on a word in the title — "anything
+  // starting with 'expense' goes to Work". Sits one step more specific than
+  // newTaskDefaults above and obeys the same contract: it only ever fills a
+  // field nobody answered. See TitleRule and utils/titleRules.ts. Kept out of
+  // DEFAULT_SETTINGS/resetToDefaults for the mechanical reason newTaskDefaults
+  // is (String(value) doesn't round-trip an array) and the same reason the app
+  // lock is: "reset appearance and formatting" is not a request to throw away
+  // rules somebody wrote.
+  titleRules: TitleRule[];
   // The top-level screen (a bottom-tab or drawer route name — see
   // RESTORABLE_SCREENS in AppNavigator.tsx) the app was on when it last left
   // the foreground. State, not a preference — kept out of DEFAULT_SETTINGS/
@@ -630,6 +640,7 @@ interface SettingsStore {
   setUseUpTaskCap: (cap: number | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   setNewTaskDefaults: (patch: Partial<NewTaskDefaults>) => void;
+  setTitleRules: (rules: TitleRule[]) => void;
   setLastVisitedScreen: (screen: string | null) => void;
   resetToDefaults: () => void;
 }
@@ -907,6 +918,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   recipeSortOption: 'default',
   recipeFavoritesOnly: false,
   excludedRecipeTags: [],
+  titleRules: [],
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
   tripReminderEnabled: false,
@@ -1171,8 +1183,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
+    const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1698,6 +1711,16 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       dbSetSetting('newTaskDefaults', JSON.stringify(next));
       return { newTaskDefaults: next };
     });
+  },
+
+  /**
+   * Written whole rather than patched, unlike setNewTaskDefaults above: the
+   * list is what's being edited (added to, reordered by deletion, toggled),
+   * and the sheet already holds it.
+   */
+  setTitleRules(rules: TitleRule[]) {
+    dbSetSetting('titleRules', JSON.stringify(rules));
+    set({ titleRules: rules });
   },
 
   setLastVisitedScreen(screen: string | null) {

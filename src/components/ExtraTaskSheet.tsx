@@ -129,16 +129,26 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
   };
 
   const saveAndClose = () => {
+    // Whatever is still sitting unsubmitted in the tag and subtask fields
+    // counts. Both commit on blur, and pressing Done blurs them — but that
+    // commit is a state update this render hasn't seen, so reading `tags` and
+    // `subtasks` alone silently drops the last thing typed. Merged rather than
+    // read from state so it can't depend on whether RN happens to blur before
+    // the press handler runs.
+    const pendingTag = newTag.trim();
+    const pendingSubtask = newSubtaskTitle.trim();
     const next: ExtraTaskDraft = {
       notes: notes.trim(),
       category,
       projectId,
-      tags,
+      tags: pendingTag && !tags.includes(pendingTag) ? [...tags, pendingTag] : tags,
       priority,
       effort,
       estimatedMinutes,
       timeSegments,
-      subtasks,
+      subtasks: pendingSubtask
+        ? [...subtasks, { id: generateId(), title: pendingSubtask }]
+        : subtasks,
     };
     // An untouched draft is stored as null, so a rule that says nothing past
     // its title keeps reading that way — and keeps spawning the task exactly

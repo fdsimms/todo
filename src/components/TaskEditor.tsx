@@ -866,7 +866,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // call the fan-out in updateTask makes about a shared blocker.
           if (rows[0] && blocksIds.length > 0) setBlockedTasks(rows[0].id, blocksIds);
         } else {
-          const created = addTask(newData);
+          // skipTitleRules: this form shows every field a rule could fill, so
+          // one left empty here is an answer rather than an unanswered
+          // question — filling it behind a form the user just went through is
+          // the one place the rules aren't wanted. It also keeps the two
+          // branches of this if consistent: addTaskSeries never applies them.
+          // Quick add is where a rule fires, and it says so as you type.
+          const created = addTask(newData, undefined, { skipTitleRules: true });
           if (blocksIds.length > 0) setBlockedTasks(created.id, blocksIds);
           // Subtasks typed in before the parent existed (see draftSubtasks) —
           // flush them to real rows now that there's a parent id to hang off.
