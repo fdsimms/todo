@@ -1,3 +1,4 @@
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { matchWeight } from './grocerySuggest';
@@ -28,6 +29,13 @@ import type { ReceiptLine } from '../services/aiSuggestions';
  * call `FinishShoppingSheet` already makes about an unticked row. So nothing
  * here ever produces an `unavailableAt`, and an unmatched line is reported as a
  * line nobody claimed rather than as a fact about anything.
+ *
+ * **Only a list row can be pre-checked, but an unclaimed line still gets a
+ * second read against the catalog** (`offListMatchId`) — a line for something
+ * that simply wasn't on this week's list. That read is never selected by
+ * default; it's what "Add as bought" in the sheet offers to reuse instead of
+ * minting a second catalog row for something already there under a name close
+ * enough to match.
  */
 
 /**
@@ -62,6 +70,16 @@ export interface ReceiptMatch {
    * the receipt; they can see there are two.
    */
   duplicateOf: string | null;
+  /**
+   * An existing catalog row — not currently on the list — whose name reads as
+   * this line, set only when nothing on the list claimed it (`itemId` null).
+   * Never pre-selected and never touched by `acceptedByDefault`: it's a
+   * second-choice read offered for "Add as bought", not a match this module
+   * is confident enough to check off on its own. Null when nothing off-list
+   * matches either, in which case adding the line as bought mints a new row
+   * from its own name.
+   */
+  offListMatchId: string | null;
 }
 
 /**
@@ -119,28 +137,28 @@ export function receiptMatchConfidence(
 
 const TIER_RANK: Record<ReceiptMatchConfidence, number> = { exact: 3, likely: 2, weak: 1 };
 
+type LineMatch = {
+  itemId: string | null;
+  confidence: ReceiptMatchConfidence | null;
+  duplicateOf: string | null;
+};
+
 /**
- * Reads a receipt's lines against the rows currently on the list.
+ * The core "which row does this line read as" algorithm, run once for the
+ * list and again, restricted to lines nothing on the list claimed, for the
+ * catalog — see `matchReceiptLines` for why there are two passes.
  *
- * **Only rows on the list are candidates**, and that bound is deliberate. A
- * receipt line for something nobody planned is a real purchase and its price is
- * real, but it has no row to be checked off and `finishShopping` only ever
- * touches what was ticked *on the list* — so claiming it here would mean
- * inventing a row and marking it bought in the same breath. Those lines come
- * back unclaimed instead, and the sheet says so.
- *
- * Ties are broken toward the row whose name is closest in length, then
- * alphabetically, so the result is stable rather than dependent on list order:
- * a receipt read twice must propose the same thing twice.
+ * Best line per row rather than best row per line: two lines reading as
+ * "milk" must not both claim it, and the one that claims it should be the
+ * better read of the two regardless of which is printed first. Ties are
+ * broken toward the row whose name is closest in length, then alphabetically,
+ * so the result is stable rather than dependent on candidate order: a receipt
+ * read twice must propose the same thing twice.
  */
-export function matchReceiptLines(
+function resolveAgainst(
   lines: readonly ReceiptLine[],
-  items: readonly GroceryItem[],
-): ReceiptMatch[] {
-  const candidates = items.filter(i => i.onList);
-  // Best line per row rather than best row per line: two lines reading as
-  // "milk" must not both claim it, and the one that claims it should be the
-  // better read of the two regardless of which is printed first.
+  candidates: readonly GroceryItem[],
+): LineMatch[] {
   const claimed = new Map<string, { lineIndex: number; rank: number }>();
   const best: Array<{ itemId: string; confidence: ReceiptMatchConfidence } | null> = [];
 
@@ -172,21 +190,63 @@ export function matchReceiptLines(
     }
   });
 
-  const matches: ReceiptMatch[] = lines.map((line, index) => {
+  return lines.map((line, index) => {
     const winner = best[index];
-    if (!winner) return { line, itemId: null, confidence: null, duplicateOf: null };
+    if (!winner) return { itemId: null, confidence: null, duplicateOf: null };
     const holder = claimed.get(winner.itemId);
     // The row is this line's only if this line is the one holding the claim.
     const mine = holder?.lineIndex === index;
     return {
-      line,
       itemId: mine ? winner.itemId : null,
       confidence: mine ? winner.confidence : null,
       duplicateOf: mine ? null : winner.itemId,
     };
   });
+}
 
-  return matches;
+/**
+ * Reads a receipt's lines against the rows currently on the list, then reads
+ * whatever's left against the rest of the catalog.
+ *
+ * **Only a list row can be pre-checked**, and that bound is deliberate. A
+ * receipt line for something nobody planned is a real purchase and its price
+ * is real, but it has no row to be checked off and `finishShopping` only ever
+ * touches what was ticked *on the list* — so claiming it here would mean
+ * inventing a row and marking it bought in the same breath, a bigger decision
+ * than a match on names alone should make. Those lines come back unclaimed
+ * instead, and the sheet says so.
+ *
+ * **A line the list didn't claim still gets read against the catalog**
+ * (`offListMatchId`) — an existing row for the same thing that simply isn't on
+ * this week's list. That second pass runs only over lines the list left open,
+ * so a row a duplicate line lost to a better read never also gets offered as
+ * a catalog match instead. Nothing here selects it; it's what "Add as bought"
+ * offers to reuse rather than mint a second row for something already in the
+ * catalog under a name close enough to match.
+ */
+export function matchReceiptLines(
+  lines: readonly ReceiptLine[],
+  items: readonly GroceryItem[],
+): ReceiptMatch[] {
+  const onList = resolveAgainst(lines, items.filter(i => i.onList));
+
+  const openLines: ReceiptLine[] = [];
+  const openIndices: number[] = [];
+  onList.forEach((m, index) => {
+    if (m.itemId === null) {
+      openLines.push(lines[index]);
+      openIndices.push(index);
+    }
+  });
+  const offList = resolveAgainst(openLines, items.filter(i => !i.onList));
+  const offListMatchId = new Array<string | null>(lines.length).fill(null);
+  offList.forEach((m, i) => { offListMatchId[openIndices[i]] = m.itemId; });
+
+  return lines.map((line, index) => ({
+    line,
+    ...onList[index],
+    offListMatchId: offListMatchId[index],
+  }));
 }
 
 /**
@@ -395,4 +455,33 @@ export function acceptedByDefault(
     .filter(m => m.itemId !== null && m.confidence !== 'weak')
     .filter(m => !receiptCautionsFor(m, items, shopId, links).some(c => c.kind === 'price'))
     .map(m => m.itemId as string);
+}
+
+/**
+ * How many days old a receipt's printed date can be before it's shown with a
+ * caution instead of trusted outright. Generous on purpose — a receipt found
+ * at the bottom of a bag a couple of weeks later is normal, and the cost of
+ * getting this wrong is a caution nobody needed, not a bad purchase date.
+ */
+const RECEIPT_DATE_STALE_DAYS = 90;
+
+/**
+ * Whether a receipt's extracted date is worth stamping the purchase with
+ * outright, rather than defaulting to today and asking the user to check it.
+ *
+ * A future date can't be a purchase that already happened — the read was
+ * wrong, full stop, so there's nothing to weigh. A date further in the past
+ * than `RECEIPT_DATE_STALE_DAYS` is possible but unlikely enough that it's
+ * worth a second look before it backdates a purchase, a price and every
+ * shelf-life day that rides on it (#1806).
+ *
+ * Wall-clock, not `dayResetTime`-aware — the same call `isTaskExpired` makes
+ * with bare `Date.now()` (see CLAUDE.md's dayResetTime note). This is when a
+ * purchase actually happened, not a scheduling decision.
+ */
+export function isPlausibleReceiptDate(dateKey: string, now: Date): boolean {
+  const parsed = new Date(`${dateKey}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const days = differenceInCalendarDays(now, parsed);
+  return days >= 0 && days <= RECEIPT_DATE_STALE_DAYS;
 }

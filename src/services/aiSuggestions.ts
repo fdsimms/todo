@@ -941,6 +941,16 @@ export interface ExtractedReceipt {
    * photo that was read is the receipt they meant.
    */
   totalMinor: number | null;
+  /**
+   * The date printed on the receipt, `YYYY-MM-DD`, or null when it wasn't
+   * readable. This is when the shop actually happened — most receipts print
+   * one, usually in the header or footer — and it's what a scanned trip
+   * should be dated with instead of the moment someone got round to scanning
+   * it. Read but never trusted outright: `ReceiptImportSheet` is where it's
+   * shown and, when it looks implausible, corrected — see
+   * `isPlausibleReceiptDate`.
+   */
+  date: string | null;
 }
 
 /**
@@ -966,12 +976,13 @@ export interface ExtractedReceipt {
 export async function extractReceipt(image: RecipeImage): Promise<ExtractedReceipt> {
   const { apiKey, model } = requireFeature('receiptImport');
 
-  const empty: ExtractedReceipt = { storeName: '', lines: [], totalMinor: null };
+  const empty: ExtractedReceipt = { storeName: '', lines: [], totalMinor: null, date: null };
   // Same "nothing in, no network call" guard the recipe path uses.
   if (!image.base64) return empty;
 
   const prompt = [
-    'This is a photo of a store receipt. Read it and extract the store\'s name and every line it charged for.',
+    'This is a photo of a store receipt. Read it and extract the store\'s name, the date it was printed, and every line it charged for.',
+    'The date is when the purchase actually happened, not today\'s date — receipts print it in the header or footer, often next to a time or a transaction number. Give it as YYYY-MM-DD. Leave it empty if the receipt does not print one or it is not legible.',
     'Include only lines that are a thing that was bought. Skip subtotals, totals, tax, tender and change, card and authorization details, loyalty and membership numbers, store address and phone, cashier and register numbers, survey invitations, coupons and discount lines, bag fees, and bottle deposits.',
     'For each item give three things: the line exactly as printed including its abbreviations ("GV MLK 2% GAL"); what it plainly is, named the way a shopper would say it and would write it on a shopping list ("milk"); and the amount the line names if it gives one ("1.32 lb", "2").',
     'The price is the amount that line was charged, which on a weighed line is the total for the weight rather than the price per pound. Give it exactly as printed, with a decimal point and no currency symbol ("3.48").',
@@ -994,6 +1005,10 @@ export async function extractReceipt(image: RecipeImage): Promise<ExtractedRecei
           total: {
             type: 'string',
             description: 'The receipt\'s printed grand total, exactly as printed, with a decimal point and no currency symbol. Empty string if not printed or not readable.',
+          },
+          date: {
+            type: 'string',
+            description: 'The date the receipt was printed, as YYYY-MM-DD — when the purchase happened, not today. Empty string if the receipt does not print one or it is not legible.',
           },
           lines: {
             type: 'array',
@@ -1040,7 +1055,7 @@ export async function extractReceipt(image: RecipeImage): Promise<ExtractedRecei
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
-    storeName?: unknown; total?: unknown; lines?: unknown;
+    storeName?: unknown; total?: unknown; date?: unknown; lines?: unknown;
   } | undefined;
   if (!input) throw new Error('No suggestions returned');
 
@@ -1049,8 +1064,23 @@ export async function extractReceipt(image: RecipeImage): Promise<ExtractedRecei
       ? input.storeName.trim().slice(0, SHOP_NAME_MAX_LENGTH)
       : '',
     totalMinor: typeof input.total === 'string' ? parsePriceInput(input.total) : null,
+    date: typeof input.date === 'string' ? parseReceiptDate(input.date) : null,
     lines: parseReceiptLines(input.lines),
   };
+}
+
+/**
+ * Validates the model's date string into a real `YYYY-MM-DD`, or null.
+ *
+ * A model can return well-formed-looking nonsense ("2026-13-40"), so the
+ * shape check alone isn't enough — this also confirms the string round-trips
+ * through a real calendar date before anything downstream trusts it as one.
+ */
+function parseReceiptDate(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const parsed = new Date(`${trimmed}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : trimmed;
 }
 
 /**

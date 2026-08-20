@@ -415,8 +415,18 @@ interface GroceryStore {
    * `priceById` is optional in the same way and for the same reason: whatever
    * the user typed at the checkout, in minor units, and nothing for the rest.
    * An unpriced item keeps the price it had.
+   *
+   * `purchasedAt` defaults to now, same as always — a hand-finished trip has
+   * no other answer. A scanned receipt can pass its own printed date instead,
+   * so the purchase, its price and any shelf-life day it starts are dated
+   * when the shop actually happened rather than when it got round to being
+   * scanned (#1806).
    */
-  finishShopping: (shopId?: string | null, priceById?: Readonly<Record<string, number>>) => number;
+  finishShopping: (
+    shopId?: string | null,
+    priceById?: Readonly<Record<string, number>>,
+    purchasedAt?: string,
+  ) => number;
   /**
    * Records what one item cost, by hand. Writes the item's own price and — with
    * a store named — that store's, so a correction made while looking at a
@@ -1885,8 +1895,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     for (const id of ids) dropUseUpTask(id);
   },
 
-  finishShopping(shopId = null, priceById = {}) {
-    const purchasedAt = new Date().toISOString();
+  finishShopping(shopId = null, priceById = {}, purchasedAt = new Date().toISOString()) {
     const now = new Date(purchasedAt);
     // A shop deleted between opening the finish sheet and confirming it would
     // otherwise write links nothing can resolve.
