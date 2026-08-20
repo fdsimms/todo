@@ -86,6 +86,24 @@ export function appendPriceObservation(
  * without converting anything itself. That also makes the return shape identical
  * to `lastPricedAmountFor`'s, which is what lets a caller swap one for the other.
  *
+ * The reconciliation, and the refusals it makes, live in `rebaseOnto`.
+ */
+export function priceBaseline(
+  history: readonly PriceObservation[],
+): { minor: number; quantity: string | null } | null {
+  if (history.length === 0) return null;
+  const basis = history[0];
+  const rebased = rebaseOnto(basis.quantity, history);
+  if (!rebased) return null;
+  return { minor: median(rebased), quantity: basis.quantity };
+}
+
+/**
+ * Every observation in a run, expressed as what it would have cost at
+ * `basisQuantity`'s size — or null when the run can't be reconciled onto it.
+ * The shared arithmetic behind `priceBaseline` (basis: the newest
+ * observation) and `priceStanding` (basis: whatever price is being judged).
+ *
  * Refusals, all of them deliberate:
  * - an empty run has no baseline;
  * - a run mixing a qualified price with a bare one can't be reconciled, since
@@ -96,21 +114,22 @@ export function appendPriceObservation(
  * both the common case and the one that keeps "a bunch" — unmeasurable, but
  * consistently so — from being refused for no reason.
  */
-export function priceBaseline(
+function rebaseOnto(
+  basisQuantity: string | null,
   history: readonly PriceObservation[],
-): { minor: number; quantity: string | null } | null {
+): number[] | null {
   if (history.length === 0) return null;
-  const basis = history[0];
-  if (history.length === 1) return { minor: basis.minor, quantity: basis.quantity };
 
   const key = (q: string | null) => (q ?? '').trim().toLowerCase();
-  // Every observation named the same amount (or none named one): the prices are
-  // already comparable, whether or not anything could measure them.
-  if (history.every(o => key(o.quantity) === key(basis.quantity))) {
-    return { minor: median(history.map(o => o.minor)), quantity: basis.quantity };
+  const basisKey = key(basisQuantity);
+  // Every observation named the same amount as the basis (or none named one):
+  // the prices are already comparable, whether or not anything could measure
+  // them.
+  if (history.every(o => key(o.quantity) === basisKey)) {
+    return history.map(o => o.minor);
   }
 
-  const basisMeasure = measureQuantity(basis.quantity ?? '');
+  const basisMeasure = measureQuantity(basisQuantity ?? '');
   if (!basisMeasure) return null;
 
   const rebased: number[] = [];
@@ -120,7 +139,47 @@ export function priceBaseline(
     // What this observation would have cost at the basis size.
     rebased.push(observation.minor * (basisMeasure.base / measure.base));
   }
-  return { minor: median(rebased), quantity: basis.quantity };
+  return rebased;
+}
+
+/**
+ * Where a price stands against the run kept for it: exactly the lowest ever
+ * paid, a real step below or above what's usual, or close enough to usual to
+ * call it that. See the header for why this is a verdict and never a number —
+ * `current` is judged, never printed.
+ *
+ * Reconciled onto **`current`'s own quantity**, not the run's newest — this is
+ * "how does the price on the field compare", so the run has to be expressed
+ * in the size that price is actually for, and refuses under the identical
+ * conditions `priceBaseline` does when it can't be (see `rebaseOnto`).
+ *
+ * `'lowest'` wins over the ratio bands whenever it applies: a price tying or
+ * beating everything in the run is the strongest, most literal thing that can
+ * be said about it, and correct however wide the tolerance band below is.
+ * `PRICE_STANDING_TOLERANCE` reuses `quantitiesDisagree`'s "a tenth either
+ * way" reasoning (`receiptMatch.ts`), applied to price instead of amount —
+ * one existing threshold rather than a second one invented beside it.
+ */
+export type PriceStanding = 'lowest' | 'low' | 'usual' | 'high';
+
+const PRICE_STANDING_TOLERANCE = 1.1;
+
+export function priceStanding(
+  current: { minor: number; quantity: string | null },
+  history: readonly PriceObservation[],
+): PriceStanding | null {
+  const rebased = rebaseOnto(current.quantity, history);
+  if (!rebased) return null;
+
+  const minMinor = Math.min(...rebased);
+  if (current.minor <= minMinor) return 'lowest';
+
+  const medianMinor = median(rebased);
+  if (medianMinor <= 0) return null;
+  const ratio = current.minor / medianMinor;
+  if (ratio >= PRICE_STANDING_TOLERANCE) return 'high';
+  if (ratio <= 1 / PRICE_STANDING_TOLERANCE) return 'low';
+  return 'usual';
 }
 
 /**

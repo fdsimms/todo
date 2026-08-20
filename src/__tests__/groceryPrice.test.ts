@@ -3,12 +3,14 @@ import {
   describeListEstimate,
   describePriceAge,
   describePriceContext,
+  describePriceStanding,
   describeShopPrices,
   estimateListTotal,
   formatPrice,
   formatPriceInput,
   lastPriceFor,
   parsePriceInput,
+  priceStandingFor,
   priceToInput,
   shopPricesFor,
   unitPricesFor,
@@ -73,6 +75,10 @@ function link(overrides: Partial<ItemShopLink> & Pick<ItemShopLink, 'itemId' | '
     brandUnavailableAt: null,
     ...overrides,
   };
+}
+
+function obs(minor: number, quantity: string | null = null, at = '2026-08-01T00:00:00.000Z') {
+  return { minor, quantity, at };
 }
 
 const costco = makeShop('Costco', 1);
@@ -213,6 +219,50 @@ describe('describePriceContext', () => {
         now
       )
     ).toBe('Last paid · Mar');
+  });
+});
+
+describe('describePriceStanding', () => {
+  it('never shows the baseline number, only the verdict', () => {
+    expect(describePriceStanding('lowest')).toBe("The lowest you've paid");
+    expect(describePriceStanding('low')).toBe('Less than you usually pay');
+    expect(describePriceStanding('usual')).toBe('About what you usually pay');
+    expect(describePriceStanding('high')).toBe('More than usual');
+    expect(describePriceStanding(null)).toBeNull();
+  });
+});
+
+describe('priceStandingFor', () => {
+  it('is null when nothing has been priced', () => {
+    expect(priceStandingFor(makeItem(), null, [])).toBeNull();
+  });
+
+  it('reads the item-level run when no store is targeted', () => {
+    const item = makeItem({
+      lastPriceMinor: 900,
+      lastPriceQuantity: null,
+      priceHistory: [obs(900), obs(400), obs(450)],
+    });
+    expect(priceStandingFor(item, null, [])).toBe('high');
+  });
+
+  it('judges a targeted store against its own run, not the item’s', () => {
+    const item = makeItem({ lastPriceMinor: 900, priceHistory: [obs(900), obs(400)] });
+    const l = link({
+      itemId: item.id,
+      shopId: costco.id,
+      lastPriceMinor: 399,
+      priceHistory: [obs(399)],
+    });
+    // Costco's own run says this is the only, and so the lowest, price seen
+    // there — the item-level run above would have called it 'high'.
+    expect(priceStandingFor(item, costco.id, [l])).toBe('lowest');
+  });
+
+  it('is null for a targeted store with no run of its own', () => {
+    const item = makeItem({ lastPriceMinor: 900, priceHistory: [obs(900), obs(400)] });
+    const l = link({ itemId: item.id, shopId: costco.id, lastPriceMinor: 399, priceHistory: [] });
+    expect(priceStandingFor(item, costco.id, [l])).toBeNull();
   });
 });
 

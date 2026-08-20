@@ -58,7 +58,13 @@ import { describeKitchen, kitchenInventory, useUpEntries } from '../utils/kitche
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { kitchenContextRows, plannedUsesToday } from '../utils/dayContextRows';
 import { planTrip, summarizeTrip, describeShopCoverage } from '../utils/shoppingTrip';
-import { cheapestShopFor, describeShopPrices, shopPricesFor } from '../utils/groceryPrice';
+import {
+  cheapestShopFor,
+  describePriceStanding,
+  describeShopPrices,
+  priceStandingFor,
+  shopPricesFor,
+} from '../utils/groceryPrice';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
@@ -1014,6 +1020,14 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(ricePrices.map(p => p.quantity)).toEqual(['1 lb', '5 lb']);
     expect(cheapestShopFor(rice.id, itemShops, shops)?.shop.name).toBe('Costco');
     expect(describeShopPrices(ricePrices, '$', 'x')).toContain('≈$1.60/lb');
+
+    // The run this feeds: Rice's last (Trader Joe's) price reads as more than
+    // usual once its own cheaper Costco price is in the mix, which is exactly
+    // what the per-store comparison above already knows and this now says in
+    // words on the item sheet.
+    const standing = priceStandingFor(rice, null, itemShops);
+    expect(standing).toBe('high');
+    expect(describePriceStanding(standing)).toBe('More than usual');
   });
 
   it('seeds a recipe whose cost estimate actually clears the coverage floor', () => {
