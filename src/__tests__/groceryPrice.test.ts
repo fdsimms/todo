@@ -45,7 +45,7 @@ function makeItem(overrides: Partial<GroceryItem> = {}): GroceryItem {
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   };
 }
@@ -68,7 +68,7 @@ function link(overrides: Partial<ItemShopLink> & Pick<ItemShopLink, 'itemId' | '
     unavailableAt: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     brand: null,
     brandUnavailableAt: null,
     ...overrides,

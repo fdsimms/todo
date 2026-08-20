@@ -102,7 +102,6 @@ const BASE: Task = {
   calendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
-  extraTaskDraft: null,
 };
 
 let seq = 0;

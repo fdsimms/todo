@@ -38,7 +38,7 @@ function link(
     unavailableAt: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     brand: null,
     brandUnavailableAt: null,
     ...overrides,
@@ -84,7 +84,7 @@ function item(id: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   };
 }

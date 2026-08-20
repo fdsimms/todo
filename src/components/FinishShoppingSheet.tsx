@@ -47,6 +47,17 @@ interface Props {
   leftover: ReadonlyArray<{ id: string; name: string }>;
   /** What's in the trolley, in list order — the rows a price can be put on. */
   purchased: ReadonlyArray<{ id: string; name: string; quantity: string | null }>;
+  /**
+   * A store and per-row prices already read off a scanned receipt, applied on
+   * opening in place of the usual defaults. Absent for a hand-finished trip,
+   * which is every trip that didn't come through `ReceiptImportSheet`.
+   *
+   * The prices arrive as field text rather than minor units because that's what
+   * the fields hold and what `handleFinish` re-parses — seeding the parsed form
+   * would mean a second path into the same state that could round differently.
+   */
+  seedShopId?: string | null;
+  seedPriceText?: Record<string, string>;
   onClose: () => void;
   onFinished: (
     shopId: string | null,
@@ -123,6 +134,8 @@ export function FinishShoppingSheet({
   checkedCount,
   leftover,
   purchased,
+  seedShopId,
+  seedPriceText,
   onClose,
   onFinished,
 }: Props) {
@@ -176,13 +189,24 @@ export function FinishShoppingSheet({
   // as real work about to be lost; re-confirming the same default doesn't.
   const initialSelectedRef = useRef<string | null>(null);
 
+  // A scanned receipt's answers, read on opening for the same reason the
+  // default store is: they belong to the trip being finished now, and letting
+  // a prop change reach `selected`/`priceText` while the sheet is up would undo
+  // an edit the user had already made on top of them.
+  const seedRef = useRef({ shopId: seedShopId, priceText: seedPriceText });
+  seedRef.current = { shopId: seedShopId, priceText: seedPriceText };
+
   useEffect(() => {
     if (visible) {
-      setSelected(defaultShopRef.current);
-      initialSelectedRef.current = defaultShopRef.current;
+      const seed = seedRef.current;
+      // `undefined` means no receipt; `null` is a receipt that named no store,
+      // which is a real answer and must not fall back to the default.
+      const shopId = seed.shopId === undefined ? defaultShopRef.current : seed.shopId;
+      setSelected(shopId);
+      initialSelectedRef.current = shopId;
       // Same reset and the same reason: last week's typed prices belong to last
-      // week's trolley.
-      setPriceText({});
+      // week's shop. A scanned receipt's prices are this shop's, so they seed.
+      setPriceText(seed.priceText ?? {});
     }
   }, [visible]);
 

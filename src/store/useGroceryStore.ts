@@ -37,6 +37,7 @@ import { useRecipeStore } from './useRecipeStore';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
+import { appendPriceObservation, mergePriceHistories } from '../utils/priceHistory';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import { describeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
@@ -708,6 +709,7 @@ function newItemRow(fields: {
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null,
+    priceHistory: [],
   };
 }
 
@@ -1364,6 +1366,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           shopId,
           purchaseCount,
           lastPurchasedAt: laterOf(survivorLink.lastPurchasedAt, loserLink.lastPurchasedAt),
+          // Neither side is dropped: both are prices actually paid for what is
+          // now one item. The cap keeps the most recent of the two runs.
+          priceHistory: mergePriceHistories(survivorLink.priceHistory, loserLink.priceHistory),
           // A purchase on either side refutes an "unavailable" claim, same as
           // a fresh purchase already does to a single link.
           unavailableAt:
@@ -1933,12 +1938,23 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
               lastPriceMinor: existing?.lastPriceMinor ?? null,
               lastPricedAt: existing?.lastPricedAt ?? null,
               lastPriceQuantity: existing?.lastPriceQuantity ?? null,
+              // An unpriced row records no observation, for the same reason it
+              // leaves the last price standing: this trip said nothing about
+              // what it costs.
+              priceHistory: existing?.priceHistory ?? [],
             };
           }
+          const quantity = pricedQuantityById.get(id) ?? null;
           return {
             lastPriceMinor: minor,
             lastPricedAt: purchasedAt,
-            lastPriceQuantity: pricedQuantityById.get(id) ?? null,
+            lastPriceQuantity: quantity,
+            // Mirrors the append dbFinishGroceryShopping just made against the
+            // same row — the patch and the write have to agree, or the window
+            // shifts under the next read.
+            priceHistory: appendPriceObservation(existing?.priceHistory ?? [], {
+              minor, quantity, at: purchasedAt,
+            }),
           };
         };
         // What this trip is entitled to record about which one they stock.
@@ -2018,6 +2034,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                       lastPriceMinor: priceById[i.id],
                       lastPricedAt: purchasedAt,
                       lastPriceQuantity: i.quantity,
+                      // Same append the db just made at the item level. An
+                      // unpriced row falls through and keeps the run it had.
+                      priceHistory: appendPriceObservation(i.priceHistory, {
+                        minor: priceById[i.id], quantity: i.quantity, at: purchasedAt,
+                      }),
                     }
                   : null),
               }
@@ -2389,6 +2410,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         lastPriceMinor: existing?.lastPriceMinor ?? null,
         lastPricedAt: existing?.lastPricedAt ?? null,
         lastPriceQuantity: existing?.lastPriceQuantity ?? null,
+        // An availability claim is not a purchase, so it records no
+        // observation — it just doesn't throw away the ones already there.
+        priceHistory: existing?.priceHistory ?? [],
       };
       dbSetItemShopLink(link);
       links.push(link);
@@ -2684,6 +2708,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         lastPriceMinor: existing?.lastPriceMinor ?? null,
         lastPricedAt: existing?.lastPricedAt ?? null,
         lastPriceQuantity: existing?.lastPriceQuantity ?? null,
+        // An availability claim is not a purchase, so it records no
+        // observation — it just doesn't throw away the ones already there.
+        priceHistory: existing?.priceHistory ?? [],
       };
       dbSetItemShopLink(link);
       links.push(link);
@@ -2764,6 +2791,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           lastPriceMinor: null,
           lastPricedAt: null,
           lastPriceQuantity: null,
+          priceHistory: [],
           brand: null,
           brandUnavailableAt: next,
         };

@@ -52,7 +52,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   };
 }

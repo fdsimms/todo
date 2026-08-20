@@ -169,7 +169,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   };
 }
@@ -1183,7 +1183,7 @@ describe('shops', () => {
   it('renameShop leaves every link alone — they point at the id', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
-    const links = [{ itemId: milk.id, shopId: costco.id, purchaseCount: 3, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null, brandUnavailableAt: null }];
+    const links = [{ itemId: milk.id, shopId: costco.id, purchaseCount: 3, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [], brand: null, brandUnavailableAt: null }];
     seed([milk], { shops: [costco], itemShops: links });
 
     expect(useGroceryStore.getState().renameShop(costco.id, 'Costco Wholesale')).toBe(true);
@@ -1238,8 +1238,8 @@ describe('shops', () => {
     seed([milk], {
       shops: [costco, safeway],
       itemShops: [
-        { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
-        { itemId: milk.id, shopId: safeway.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+        { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
+        { itemId: milk.id, shopId: safeway.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
       ],
     });
 
@@ -1270,7 +1270,7 @@ describe('shops', () => {
     useGroceryStore.getState().linkItemShop(milk.id, costco.id);
 
     expect(useGroceryStore.getState().itemShops).toEqual([
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ]);
     expect(dbSetItemShopLink).toHaveBeenCalledTimes(1);
   });
@@ -1279,7 +1279,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().linkItemShop(milk.id, costco.id);
@@ -1334,8 +1334,8 @@ describe('shops', () => {
     useGroceryStore.getState().linkItemShopMany([milk.id, bread.id], costco.id);
 
     expect(useGroceryStore.getState().itemShops).toEqual([
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
-      { itemId: bread.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
+      { itemId: bread.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ]);
   });
 
@@ -1344,7 +1344,7 @@ describe('shops', () => {
     const milk = makeItem({ name: 'Milk' });
     const bread = makeItem({ name: 'Bread' });
     seed([milk, bread], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().linkItemShopMany([milk.id, bread.id], costco.id);
@@ -1382,7 +1382,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
     const before = useGroceryStore.getState().itemShops;
 
@@ -1412,7 +1412,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 6, lastPurchasedAt: '2026-05-01T00:00:00.000Z', unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 6, lastPurchasedAt: '2026-05-01T00:00:00.000Z', unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().markItemsUnavailable([milk.id], costco.id);
@@ -1439,7 +1439,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
     const before = useGroceryStore.getState().itemShops;
 
@@ -1454,7 +1454,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().clearItemUnavailable(milk.id, costco.id);
@@ -1469,13 +1469,13 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().clearItemUnavailable(milk.id, costco.id);
 
     expect(useGroceryStore.getState().itemShops).toEqual([
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ]);
     expect(dbDeleteItemShopLink).not.toHaveBeenCalled();
   });
@@ -1484,13 +1484,13 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().linkItemShopMany([milk.id], costco.id);
 
     expect(useGroceryStore.getState().itemShops).toEqual([
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ]);
   });
 
@@ -1499,8 +1499,8 @@ describe('shops', () => {
     const milk = makeItem({ name: 'Milk' });
     const eggs = makeItem({ name: 'Eggs' });
     seed([milk, eggs], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
-      { itemId: eggs.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
+      { itemId: eggs.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().unlinkItemShop(milk.id, costco.id);
@@ -1512,7 +1512,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
 
     useGroceryStore.getState().deleteItem(milk.id);
@@ -1551,7 +1551,7 @@ describe('prices by hand', () => {
     unavailableAt: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   });
 
@@ -1590,13 +1590,13 @@ describe('prices by hand', () => {
       name: 'Milk',
       lastPriceMinor: 429,
       lastPricedAt: '2026-08-01T00:00:00.000Z',
-      lastPriceQuantity: '2 L',
+      lastPriceQuantity: '2 L', priceHistory: [],
     });
     seed([milk], {
       shops: [costco, safeway],
       itemShops: [
-        link(milk.id, costco.id, { lastPriceMinor: 319, lastPricedAt: '2026-07-01T00:00:00.000Z', lastPriceQuantity: '2 L' }),
-        link(milk.id, safeway.id, { lastPriceMinor: 429, lastPricedAt: '2026-08-01T00:00:00.000Z', lastPriceQuantity: '2 L' }),
+        link(milk.id, costco.id, { lastPriceMinor: 319, lastPricedAt: '2026-07-01T00:00:00.000Z', lastPriceQuantity: '2 L', priceHistory: [] }),
+        link(milk.id, safeway.id, { lastPriceMinor: 429, lastPricedAt: '2026-08-01T00:00:00.000Z', lastPriceQuantity: '2 L', priceHistory: [] }),
       ],
     });
 
@@ -1699,7 +1699,7 @@ describe('finishShopping with a store', () => {
     seed([cc], { shops: [costco], itemShops: [
       { itemId: cc.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null,
         unavailableAt: null, lastPriceMinor: null, lastPricedAt: null,
-        lastPriceQuantity: null, brand: 'Lucerne',
+        lastPriceQuantity: null, priceHistory: [], brand: 'Lucerne',
         brandUnavailableAt: '2026-03-04T00:00:00.000Z' },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([cc.id]);
@@ -1713,7 +1713,7 @@ describe('finishShopping with a store', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true, purchaseCount: 2 });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: '2026-01-01T00:00:00.000Z', unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: '2026-01-01T00:00:00.000Z', unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
@@ -1729,7 +1729,7 @@ describe('finishShopping with a store', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 3, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 3, lastPurchasedAt: null, unavailableAt: '2026-03-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
@@ -1764,11 +1764,11 @@ describe('finishShopping with a store', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({
       name: 'Milk', onList: true, checked: true,
-      lastPriceMinor: 399, lastPricedAt: '2026-01-01T00:00:00.000Z', lastPriceQuantity: '1 gal',
+      lastPriceMinor: 399, lastPricedAt: '2026-01-01T00:00:00.000Z', lastPriceQuantity: '1 gal', priceHistory: [],
     });
     seed([milk], { shops: [costco], itemShops: [
       { itemId: milk.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null,
-        lastPriceMinor: 399, lastPricedAt: '2026-01-01T00:00:00.000Z', lastPriceQuantity: '1 gal',
+        lastPriceMinor: 399, lastPricedAt: '2026-01-01T00:00:00.000Z', lastPriceQuantity: '1 gal', priceHistory: [],
         brand: null, brandUnavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
@@ -1780,6 +1780,46 @@ describe('finishShopping with a store', () => {
     expect(after.lastPriceMinor).toBe(399);
     expect(after.lastPricedAt).toBe('2026-01-01T00:00:00.000Z');
     expect(useGroceryStore.getState().itemShops[0].lastPriceMinor).toBe(399);
+  });
+
+  it('records a priced trip into the rolling window, at both levels', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, quantity: '1 gal' });
+    seed([milk], { shops: [costco], itemShops: [
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null,
+        lastPriceMinor: 399, lastPricedAt: '2026-01-01T00:00:00.000Z', lastPriceQuantity: '1 gal',
+        priceHistory: [{ minor: 399, quantity: '1 gal', at: '2026-01-01T00:00:00.000Z' }],
+        brand: null, brandUnavailableAt: null },
+    ] });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
+
+    useGroceryStore.getState().finishShopping(costco.id, { [milk.id]: 429 });
+
+    // The same purchase lands in both runs, exactly as lastPriceMinor does —
+    // the item's is the fallback for a trip that named no store.
+    const item = useGroceryStore.getState().items.find(i => i.id === milk.id)!;
+    expect(item.priceHistory[0]).toMatchObject({ minor: 429, quantity: '1 gal' });
+
+    const link = useGroceryStore.getState().itemShops[0];
+    expect(link.priceHistory.map(o => o.minor)).toEqual([429, 399]);
+  });
+
+  it('leaves the window alone for a row the trip did not price', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true });
+    seed([milk], { shops: [costco], itemShops: [
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null, unavailableAt: null,
+        lastPriceMinor: 399, lastPricedAt: '2026-01-01T00:00:00.000Z', lastPriceQuantity: null,
+        priceHistory: [{ minor: 399, quantity: null, at: '2026-01-01T00:00:00.000Z' }],
+        brand: null, brandUnavailableAt: null },
+    ] });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
+
+    // Silence about the price is not an observation of one.
+    useGroceryStore.getState().finishShopping(costco.id);
+
+    expect(useGroceryStore.getState().items[0].priceHistory).toEqual([]);
+    expect(useGroceryStore.getState().itemShops[0].priceHistory).toHaveLength(1);
   });
 
   it('records a price on the item alone when no store is named', () => {
@@ -1797,7 +1837,7 @@ describe('finishShopping with a store', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
     seed([milk], { shops: [costco], itemShops: [
-      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
@@ -1811,7 +1851,7 @@ describe('finishShopping with a store', () => {
     const safeway = makeShop('Safeway');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
     seed([milk], { shops: [costco, safeway], itemShops: [
-      { itemId: milk.id, shopId: safeway.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null , brand: null, brandUnavailableAt: null },
+      { itemId: milk.id, shopId: safeway.id, purchaseCount: 4, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [] , brand: null, brandUnavailableAt: null },
     ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
@@ -1923,7 +1963,7 @@ describe('finishShopping undo', () => {
       itemShops: [
         { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: '2026-01-01T00:00:00.000Z',
           unavailableAt: '2026-02-01T00:00:00.000Z', lastPriceMinor: null, lastPricedAt: null,
-          lastPriceQuantity: null, brand: null, brandUnavailableAt: null },
+          lastPriceQuantity: null, priceHistory: [], brand: null, brandUnavailableAt: null },
       ],
     });
     // Last week's store — this trip is at a different one.
@@ -2526,10 +2566,10 @@ describe('mergeItems', () => {
 
   it('moves price fields as a group from whichever side was priced more recently, never averaged', () => {
     const cilantro = makeItem({
-      name: 'Cilantro', lastPriceMinor: 199, lastPricedAt: '2026-08-01T00:00:00.000Z', lastPriceQuantity: '1 bunch',
+      name: 'Cilantro', lastPriceMinor: 199, lastPricedAt: '2026-08-01T00:00:00.000Z', lastPriceQuantity: '1 bunch', priceHistory: [],
     });
     const coriander = makeItem({
-      name: 'Coriander', lastPriceMinor: 249, lastPricedAt: '2026-08-10T00:00:00.000Z', lastPriceQuantity: '2 bunch',
+      name: 'Coriander', lastPriceMinor: 249, lastPricedAt: '2026-08-10T00:00:00.000Z', lastPriceQuantity: '2 bunch', priceHistory: [],
     });
     seed([cilantro, coriander]);
 
@@ -2552,12 +2592,12 @@ describe('mergeItems', () => {
           {
             itemId: cilantro.id, shopId: shop.id, purchaseCount: 3,
             lastPurchasedAt: '2026-08-01T00:00:00.000Z', unavailableAt: '2026-07-01T00:00:00.000Z',
-            lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null, brandUnavailableAt: null,
+            lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [], brand: null, brandUnavailableAt: null,
           },
           {
             itemId: coriander.id, shopId: shop.id, purchaseCount: 1,
             lastPurchasedAt: '2026-08-15T00:00:00.000Z', unavailableAt: null,
-            lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null, brandUnavailableAt: null,
+            lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [], brand: null, brandUnavailableAt: null,
           },
         ],
       });
@@ -2581,12 +2621,12 @@ describe('mergeItems', () => {
           {
             itemId: cilantro.id, shopId: shop.id, purchaseCount: 0, lastPurchasedAt: null,
             unavailableAt: '2026-07-01T00:00:00.000Z',
-            lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null, brandUnavailableAt: null,
+            lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [], brand: null, brandUnavailableAt: null,
           },
           {
             itemId: coriander.id, shopId: shop.id, purchaseCount: 0, lastPurchasedAt: null,
             unavailableAt: '2026-08-01T00:00:00.000Z',
-            lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null, brandUnavailableAt: null,
+            lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [], brand: null, brandUnavailableAt: null,
           },
         ],
       });
@@ -2605,7 +2645,7 @@ describe('mergeItems', () => {
         itemShops: [{
           itemId: coriander.id, shopId: shop.id, purchaseCount: 2,
           lastPurchasedAt: '2026-08-01T00:00:00.000Z', unavailableAt: null,
-          lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, brand: null, brandUnavailableAt: null,
+          lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [], brand: null, brandUnavailableAt: null,
         }],
       });
 
@@ -2927,7 +2967,7 @@ describe('setBrandUnavailable', () => {
       itemShops: [{
         itemId: cc.id, shopId: safeway.id, purchaseCount: 6,
         lastPurchasedAt: '2026-01-01T00:00:00.000Z', unavailableAt: null,
-        lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null,
+        lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
         brand: 'Lucerne', brandUnavailableAt: null,
       }],
     });
@@ -2962,7 +3002,7 @@ describe('setBrandUnavailable', () => {
       itemShops: [{
         itemId: cc.id, shopId: safeway.id, purchaseCount: 3, lastPurchasedAt: null,
         unavailableAt: null, lastPriceMinor: null, lastPricedAt: null,
-        lastPriceQuantity: null, brand: null,
+        lastPriceQuantity: null, priceHistory: [], brand: null,
         brandUnavailableAt: '2026-03-04T00:00:00.000Z',
       }],
     });

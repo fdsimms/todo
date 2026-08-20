@@ -29,7 +29,17 @@ export interface ResolvedRecipeSource {
  * sheets stayed one line different from what they were: `input.source` became
  * `await input.resolveSource()`.
  */
-export function useRecipeImportSource(initialMode: RecipeInputMode = 'paste') {
+export function useRecipeImportSource(
+  initialMode: RecipeInputMode = 'paste',
+  /**
+   * What the photo is *for*, completing "Allow access to the camera to …".
+   * Parameterized rather than fixed because the denial alert is the one piece
+   * of user-facing copy in here, and the receipt scanner — which reuses this
+   * hook's photo half — telling someone it wants the camera "to read a recipe
+   * off a page" is simply the wrong sentence.
+   */
+  purpose = 'read a recipe off a page',
+) {
   const [mode, setMode] = useState<RecipeInputMode>(initialMode);
   const [text, setText] = useState('');
   const [url, setUrl] = useState('');
@@ -63,8 +73,8 @@ export function useRecipeImportSource(initialMode: RecipeInputMode = 'paste') {
         Alert.alert(
           `dundundun can't reach ${what}`,
           result.canAskAgain
-            ? `Allow access to ${what} to read a recipe off a page.`
-            : `Turn on access to ${what} in Settings to read a recipe off a page.`,
+            ? `Allow access to ${what} to ${purpose}.`
+            : `Turn on access to ${what} in Settings to ${purpose}.`,
           result.canAskAgain
             ? [{ text: 'OK' }]
             : [
@@ -79,7 +89,7 @@ export function useRecipeImportSource(initialMode: RecipeInputMode = 'paste') {
     } finally {
       setPicking(false);
     }
-  }, []);
+  }, [purpose]);
 
   const clearPhoto = useCallback(() => {
     setPhoto(null);

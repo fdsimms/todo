@@ -55,6 +55,7 @@ import {
   dbDeleteGroceryItem,
   dbFinishGroceryShopping,
   dbGetAllItemShopLinks,
+  dbInsertGroceryShop,
   dbGetAllItemSubLinks,
   dbSetItemSubLink,
   dbDeleteItemSubLink,
@@ -1766,7 +1767,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     useUpTask: null,
     lastPriceMinor: null,
     lastPricedAt: null,
-    lastPriceQuantity: null,
+    lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   };
 }
@@ -1797,6 +1798,48 @@ describe('grocery items', () => {
     dbInsertGroceryItem(item);
 
     expect(dbGetAllGroceryItems()).toEqual([item]);
+  });
+
+  // A trip is the only thing that writes the rolling window, and it has to land
+  // at both levels — the item's run is the fallback for a trip that named no
+  // store. See GroceryItem.priceHistory.
+  it('records a priced trip into the rolling window, at both levels', () => {
+    const shop = { id: 's1', name: 'Costco', nameKey: 'costco', sortOrder: 1,
+      createdAt: '2026-01-01T00:00:00.000Z', excludeFromSuggestions: false };
+    dbInsertGroceryShop(shop);
+    const item = makeGroceryItem({
+      id: 'g1', name: 'Olive oil', onList: true, checked: true, quantity: '1 l',
+    });
+    dbInsertGroceryItem(item);
+
+    dbFinishGroceryShopping('2026-08-01T00:00:00.000Z', shop.id, {}, { g1: 1299 });
+
+    expect(dbGetAllGroceryItems()[0].priceHistory).toEqual([
+      { minor: 1299, quantity: '1 l', at: '2026-08-01T00:00:00.000Z' },
+    ]);
+    expect(dbGetAllItemShopLinks()[0].priceHistory).toEqual([
+      { minor: 1299, quantity: '1 l', at: '2026-08-01T00:00:00.000Z' },
+    ]);
+  });
+
+  it('appends each trip to the window, newest first', () => {
+    const item = makeGroceryItem({ id: 'g1', name: 'Olive oil', onList: true, checked: true });
+    dbInsertGroceryItem(item);
+
+    dbFinishGroceryShopping('2026-06-01T00:00:00.000Z', null, {}, { g1: 1299 });
+    dbUpdateGroceryItem({ ...dbGetAllGroceryItems()[0], onList: true, checked: true });
+    dbFinishGroceryShopping('2026-08-01T00:00:00.000Z', null, {}, { g1: 1399 });
+
+    expect(dbGetAllGroceryItems()[0].priceHistory.map(o => o.minor)).toEqual([1399, 1299]);
+  });
+
+  it('records nothing for a trip that named no price', () => {
+    const item = makeGroceryItem({ id: 'g1', name: 'Olive oil', onList: true, checked: true });
+    dbInsertGroceryItem(item);
+
+    dbFinishGroceryShopping('2026-08-01T00:00:00.000Z', null, {}, {});
+
+    expect(dbGetAllGroceryItems()[0].priceHistory).toEqual([]);
   });
 
   // The brand is a clause beside the name, never part of it — so a branded row

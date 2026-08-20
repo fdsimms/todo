@@ -2,6 +2,7 @@ import * as SQLite from 'expo-sqlite';
 import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
 import { generateId } from '../utils/id';
+import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
 import { parseChainItems } from '../utils/chain';
 import { parseExtraTaskDraft } from '../utils/extraTask';
 import { parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
@@ -771,6 +772,14 @@ export function initDatabase(): void {
     // See TaskTemplate.schedule.
     'ALTER TABLE templates ADD COLUMN schedule TEXT',
     'ALTER TABLE templates ADD COLUMN schedule_last_fired_key TEXT',
+    // '[]' at both levels — a price recorded before this shipped left no
+    // observation behind it, and back-filling one from `last_price_minor`
+    // would invent a history of exactly one that reads as a baseline. An
+    // install that upgrades into these columns starts collecting on its next
+    // trip and falls back to `last_price_minor` until it has any, which is
+    // what it already did. See GroceryItem.priceHistory.
+    "ALTER TABLE grocery_items ADD COLUMN price_history TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE grocery_item_shops ADD COLUMN price_history TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2018,6 +2027,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     useUpTask: row.use_up_task === null || row.use_up_task === undefined
       ? null
       : Boolean(row.use_up_task),
+    priceHistory: parsePriceHistory(row.price_history as string | null),
   };
 }
 
@@ -2132,8 +2142,10 @@ export function dbFinishGroceryShopping(
     quantity: string | null;
     brand: string | null;
     brand_strict: number | null;
+    price_history: string | null;
   }>(
-    'SELECT id, quantity, brand, brand_strict FROM grocery_items WHERE checked = 1 AND on_list = 1'
+    `SELECT id, quantity, brand, brand_strict, price_history
+       FROM grocery_items WHERE checked = 1 AND on_list = 1`
   );
   if (rows.length === 0) return [];
   db.runSync(
@@ -2166,9 +2178,20 @@ export function dbFinishGroceryShopping(
     // trip is not a claim that the old price is wrong.
     const price = priceById[row.id];
     if (price !== undefined) {
+      // The rolling window rides the same statement as the price it is a
+      // record of, so the two can never disagree about what this trip paid.
+      // Read off the row selected above rather than re-queried — the UPDATE
+      // that ran before this loop touches neither column.
+      const history = appendPriceObservation(
+        parsePriceHistory(row.price_history),
+        { minor: price, quantity: row.quantity ?? null, at: purchasedAt }
+      );
       db.runSync(
-        'UPDATE grocery_items SET last_price_minor = ?, last_priced_at = ?, last_price_quantity = ? WHERE id = ?',
-        [price, purchasedAt, row.quantity ?? null, row.id]
+        `UPDATE grocery_items
+            SET last_price_minor = ?, last_priced_at = ?, last_price_quantity = ?,
+                price_history = ?
+          WHERE id = ?`,
+        [price, purchasedAt, row.quantity ?? null, JSON.stringify(history), row.id]
       );
     }
   }
@@ -2210,11 +2233,23 @@ export function dbFinishGroceryShopping(
       // exists to prevent.
       const price = priceById[row.id];
       if (price !== undefined) {
+        // Read back rather than carried down from the SELECT above, because
+        // the upsert may have only just minted this link — there was no row to
+        // have read a history off when the trip started.
+        const existing = db.getFirstSync<{ price_history: string | null }>(
+          'SELECT price_history FROM grocery_item_shops WHERE item_id = ? AND shop_id = ?',
+          [row.id, shopId]
+        );
+        const history = appendPriceObservation(
+          parsePriceHistory(existing?.price_history ?? null),
+          { minor: price, quantity: row.quantity ?? null, at: purchasedAt }
+        );
         db.runSync(
           `UPDATE grocery_item_shops
-              SET last_price_minor = ?, last_priced_at = ?, last_price_quantity = ?
+              SET last_price_minor = ?, last_priced_at = ?, last_price_quantity = ?,
+                  price_history = ?
             WHERE item_id = ? AND shop_id = ?`,
-          [price, purchasedAt, row.quantity ?? null, row.id, shopId]
+          [price, purchasedAt, row.quantity ?? null, JSON.stringify(history), row.id, shopId]
         );
       }
     }
@@ -2383,6 +2418,7 @@ function rowToItemShopLink(row: Record<string, unknown>): ItemShopLink {
     lastPriceMinor: (row.last_price_minor as number) ?? null,
     lastPricedAt: (row.last_priced_at as string) ?? null,
     lastPriceQuantity: (row.last_price_quantity as string) ?? null,
+    priceHistory: parsePriceHistory(row.price_history as string | null),
     brand: (row.brand as string) ?? null,
     brandUnavailableAt: (row.brand_unavailable_at as string) ?? null,
   };
