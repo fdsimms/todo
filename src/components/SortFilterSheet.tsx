@@ -27,6 +27,14 @@ interface Props {
   onEffortsChange: (e: Effort[]) => void;
   hasReminder: boolean;
   onHasReminderChange: (on: boolean) => void;
+  /**
+   * Later, Unscheduled and Inbox share this sheet with Today (#1798), but only
+   * the reminder filter reaches those three views — sort and priority/effort
+   * stay Today-only (see TodayScreen's filteredDeferredTasks and friends).
+   * Hides the sections that wouldn't do anything there, rather than showing
+   * controls that silently have no effect.
+   */
+  remindersOnly?: boolean;
 }
 
 const SORT_OPTIONS: { value: SortOption; label: string; icon: string }[] = [
@@ -44,7 +52,7 @@ function toggle<T>(arr: T[], item: T): T[] {
 
 export function SortFilterSheet({
   visible, onClose, sort, onSortChange, priorities, onPrioritiesChange, efforts, onEffortsChange,
-  hasReminder, onHasReminderChange,
+  hasReminder, onHasReminderChange, remindersOnly = false,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -110,13 +118,16 @@ export function SortFilterSheet({
     })
   ).current;
 
-  const activeCount =
-    (sort !== 'default' ? 1 : 0) + priorities.length + efforts.length + (hasReminder ? 1 : 0);
+  const activeCount = remindersOnly
+    ? (hasReminder ? 1 : 0)
+    : (sort !== 'default' ? 1 : 0) + priorities.length + efforts.length + (hasReminder ? 1 : 0);
 
   const reset = () => {
-    onSortChange('default');
-    onPrioritiesChange([]);
-    onEffortsChange([]);
+    if (!remindersOnly) {
+      onSortChange('default');
+      onPrioritiesChange([]);
+      onEffortsChange([]);
+    }
     onHasReminderChange(false);
   };
 
@@ -137,7 +148,7 @@ export function SortFilterSheet({
           </View>
 
           <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Sort & Filter</Text>
+            <Text style={styles.sheetTitle}>{remindersOnly ? 'Filter' : 'Sort & Filter'}</Text>
             <View style={styles.headerRight}>
               {activeCount > 0 && (
                 <TouchableOpacity onPress={reset} style={styles.resetBtn}>
@@ -151,87 +162,91 @@ export function SortFilterSheet({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-            {/* Sort */}
-            <Text style={styles.groupLabel}>Sort by</Text>
-            {SORT_OPTIONS.map(opt => (
-              <TouchableOpacity
-                key={opt.value}
-                style={[styles.sortRow, sort === opt.value && styles.sortRowActive]}
-                onPress={() => {
-                  haptics.tap();
-                  onSortChange(opt.value);
-                }}
-                activeOpacity={interaction.activeOpacity}
-              >
-                <Ionicons
-                  name={opt.icon as never}
-                  size={18}
-                  color={sort === opt.value ? colors.accent : colors.textSecondary}
-                />
-                <Text style={[styles.sortLabel, sort === opt.value && styles.sortLabelActive]}>
-                  {opt.label}
-                </Text>
-                {sort === opt.value && (
-                  <Ionicons name="checkmark" size={16} color={colors.accent} />
-                )}
-              </TouchableOpacity>
-            ))}
-
-            {/* Priority filter */}
-            <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Filter by priority</Text>
-            <View style={styles.chips}>
-              {([1, 2, 3, 4] as Priority[]).map(p => {
-                const active = priorities.includes(p);
-                return (
+            {!remindersOnly && (
+              <>
+                {/* Sort */}
+                <Text style={styles.groupLabel}>Sort by</Text>
+                {SORT_OPTIONS.map(opt => (
                   <TouchableOpacity
-                    key={p}
-                    style={[
-                      styles.chip,
-                      active && { backgroundColor: PRIORITY_COLORS[p] },
-                    ]}
+                    key={opt.value}
+                    style={[styles.sortRow, sort === opt.value && styles.sortRowActive]}
                     onPress={() => {
                       haptics.tap();
-                      onPrioritiesChange(toggle(priorities, p));
+                      onSortChange(opt.value);
                     }}
+                    activeOpacity={interaction.activeOpacity}
                   >
-                    {!active && (
-                      <View style={[styles.chipDot, { backgroundColor: PRIORITY_COLORS[p] }]} />
+                    <Ionicons
+                      name={opt.icon as never}
+                      size={18}
+                      color={sort === opt.value ? colors.accent : colors.textSecondary}
+                    />
+                    <Text style={[styles.sortLabel, sort === opt.value && styles.sortLabelActive]}>
+                      {opt.label}
+                    </Text>
+                    {sort === opt.value && (
+                      <Ionicons name="checkmark" size={16} color={colors.accent} />
                     )}
-                    <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                      {PRIORITY_LABELS[p]}
-                    </Text>
                   </TouchableOpacity>
-                );
-              })}
-            </View>
+                ))}
 
-            {/* Effort filter */}
-            <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Filter by effort</Text>
-            <View style={styles.chips}>
-              {([1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
-                const active = efforts.includes(e);
-                return (
-                  <TouchableOpacity
-                    key={e}
-                    style={[styles.chip, active && styles.chipActive]}
-                    onPress={() => {
-                      haptics.tap();
-                      onEffortsChange(toggle(efforts, e));
-                    }}
-                  >
-                    <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                      {EFFORT_LABELS[e]}
-                    </Text>
-                    <Text style={[styles.chipHint, active && styles.chipHintActive]}>
-                      {EFFORT_HINTS[e]}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+                {/* Priority filter */}
+                <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Filter by priority</Text>
+                <View style={styles.chips}>
+                  {([1, 2, 3, 4] as Priority[]).map(p => {
+                    const active = priorities.includes(p);
+                    return (
+                      <TouchableOpacity
+                        key={p}
+                        style={[
+                          styles.chip,
+                          active && { backgroundColor: PRIORITY_COLORS[p] },
+                        ]}
+                        onPress={() => {
+                          haptics.tap();
+                          onPrioritiesChange(toggle(priorities, p));
+                        }}
+                      >
+                        {!active && (
+                          <View style={[styles.chipDot, { backgroundColor: PRIORITY_COLORS[p] }]} />
+                        )}
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                          {PRIORITY_LABELS[p]}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Effort filter */}
+                <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Filter by effort</Text>
+                <View style={styles.chips}>
+                  {([1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
+                    const active = efforts.includes(e);
+                    return (
+                      <TouchableOpacity
+                        key={e}
+                        style={[styles.chip, active && styles.chipActive]}
+                        onPress={() => {
+                          haptics.tap();
+                          onEffortsChange(toggle(efforts, e));
+                        }}
+                      >
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                          {EFFORT_LABELS[e]}
+                        </Text>
+                        <Text style={[styles.chipHint, active && styles.chipHintActive]}>
+                          {EFFORT_HINTS[e]}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
 
             {/* Reminder filter */}
-            <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Filter by reminder</Text>
+            <Text style={styles.groupLabel}>Filter by reminder</Text>
             <View style={styles.chips}>
               <TouchableOpacity
                 style={[styles.chip, hasReminder && styles.chipActive]}
