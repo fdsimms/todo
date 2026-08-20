@@ -264,15 +264,23 @@ The suite is **155 test files**, and `npm test` runs all of them in about half a
 
 <!-- END GENERATED: repo-stats -->
 
-**The four biggest UI files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
-`TaskItem.tsx` and `QuickAddModal.tsx` are each a single component of 1,800 to 3,000 lines, so
-there are almost no top-level symbols to grep for — `TaskEditor.tsx` has six in 4,200 lines.
-Each now opens with a short header comment saying what's where, and its logic half is divided by
+**The ten single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
+`TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,
+`GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx` and `GroceryScreen.tsx`
+are each one component holding most of the file, so there are almost no top-level symbols to
+grep for — `TaskEditor.tsx` has six in 4,200 lines and `RecipeDetailScreen.tsx` has two in 1,900.
+Each opens with a short header comment saying what's where, and its logic half is divided by
 `// ==== <name> ====` banners; `grep -n '// ===='` on one of them is its table of contents. The
 banners stop at the JSX, because a `//` comment can't go inside a `return (`: past the render
 banner, the landmarks are the props already there (`<EditorGroup label="…">` for a card in the
 task editor). Keep a banner accurate when you move code across it, and add one when a file grows
 a region that isn't any of the ones listed.
+
+The other files over 1,000 lines don't need this and haven't got it: `useTaskStore.ts`,
+`useGroceryStore.ts`, `useSettingsStore.ts` and `useMealPlanStore.ts` each declare a store
+interface that already lists every action in order, `database.ts` has 150 top-level functions,
+`types/index.ts` is one commented type per block, and `demoSeed.ts` is data. A grep already lands
+on a real boundary in all of them.
 
 
 **Tests mirror source 1:1** — `src/utils/foo.ts` → `src/__tests__/foo.test.ts`, same for

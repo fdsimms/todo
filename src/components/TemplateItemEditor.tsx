@@ -1,3 +1,11 @@
+// One item inside a template. Same progressive-disclosure shape as TaskEditor
+// (cards under uppercase group labels, nothing expanded by default), but the
+// dates are offsets from the run rather than real dates.
+//
+//   ==== <name> ====        the section banners through the logic half
+//   OffsetRow, makeStyles   the offset row and styles, at the bottom
+//
+// What a run asks before it creates anything is docs/arch/template-questions.md.
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Alert,
@@ -84,6 +92,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     useShallow(s => (s.templates.find(t => t.id === templateId)?.questions ?? []).filter(q => q.kind === 'choice'))
   );
 
+  // ==== local state: the draft, one piece of state per field ====
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [optional, setOptional] = useState(false);
@@ -138,6 +147,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [showTimeOfDay, setShowTimeOfDay] = useState(false);
   const [showTimeWindow, setShowTimeWindow] = useState(false);
 
+  // ==== effects: loading the item into the draft ====
   useEffect(() => {
     if (!visible) return;
     const draft = item ? null : initialDraft;
@@ -227,6 +237,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setWindowPickerMode('none');
   };
 
+  // ==== save ====
   const handleSave = () => {
     if (!title.trim()) return;
     const updates = {
@@ -326,6 +337,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     ? `${windowStart ? formatHHMM(windowStart) : 'Any'} – ${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
     : undefined;
 
+  // ==== render. Everything below is JSX ====
   return (
     <EditorSheet
       visible={visible}

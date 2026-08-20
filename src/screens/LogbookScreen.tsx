@@ -1,3 +1,12 @@
+// Completed history, under two lenses (tasks and cooking). The screen component
+// is ~600 lines; the rows below it are separate memoised components:
+//
+//   ==== <name> ====        the section banners through the screen's logic half
+//   LogbookRow, KitchenRow, ActiveFilterPill   the rows, at module level
+//   makeStyles              styles, at the bottom
+//
+// Filtering by tag or category is a bottom sheet, not a scrolling chip row; see
+// the note on LogbookFilterSheet in CLAUDE.md before changing the filter control.
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
@@ -190,6 +199,7 @@ export function LogbookScreen() {
   // plan's window contract (see its note there), and `enableScreens(false)`
   // keeps this tab mounted, so a window computed once at mount would still end
   // on the day the app was opened. Same shape as StatsScreen's.
+  // ==== effects ====
   useFocusEffect(
     useCallback(() => {
       if (!kitchenEnabled) return;
@@ -218,6 +228,7 @@ export function LogbookScreen() {
   // The entry whose answer is being corrected. Read back off the live list by
   // id when rendering, so the sheet re-seeds from the store rather than from a
   // snapshot taken when the menu was opened.
+  // ==== local state (lens, filters, selection, sheets) ====
   const [answerTaskId, setAnswerTaskId] = useState<string | null>(null);
   const answerTask = answerTaskId !== null
     ? completedTasks.find(t => t.id === answerTaskId) ?? null
@@ -269,6 +280,7 @@ export function LogbookScreen() {
 
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
 
+  // ==== the lists: completed rows narrowed by lens, search and filters ====
   const filteredTasks = useMemo(() => {
     let tasks = completedTasks;
     if (selectedCategory) tasks = tasks.filter(t => t.category === selectedCategory);
@@ -293,6 +305,7 @@ export function LogbookScreen() {
   // bulk bar, same as the other bulk-selecting screens.
   const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
 
+  // ==== actions: clearing, bulk uncomplete, delete ====
   const handleClearLogbook = () => {
     haptics.warning();
     confirmDelete({
@@ -756,6 +769,7 @@ const LogbookRow = React.memo(function LogbookRow({
   // and "you didn't do this" is the more important of the two things to say.
   const missed = isMissed(task);
 
+  // ==== render. Everything below is JSX ====
   return (
     // Swipe right to move when it was completed — the same "when" slot tasks
     // use for rescheduling; swipe left to start bulk editing with this row
