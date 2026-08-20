@@ -42,6 +42,12 @@ import { haptics } from '../utils/haptics';
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /**
+   * A specific pantry item or fridge container to open straight to —
+   * KitchenEntry.id, what the use-up tasks' own kitchenLinkUrl carries.
+   * Null opens the plain list, same as the header's own Kitchen icon.
+   */
+  focusEntryId?: string | null;
 }
 
 /**
@@ -81,7 +87,7 @@ interface Props {
  * Quantities, per-row expiry editing and checking things back in are the
  * inventory, and stay out.
  */
-export function KitchenSheet({ visible, onClose }: Props) {
+export function KitchenSheet({ visible, onClose, focusEntryId = null }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -123,6 +129,22 @@ export function KitchenSheet({ visible, onClose }: Props) {
     () => buildKitchenSections(entries, aisleOrder, query),
     [entries, aisleOrder, query]
   );
+
+  // The use-up tasks' own link names one row — open straight to its own
+  // sheet, the same one a tap on the row opens, rather than leaving the
+  // plain list for the user to find it in. Runs once per opening (deps are
+  // deliberately just visible/focusEntryId, not entries: re-matching on
+  // every store change would reopen the sheet out from under a user who's
+  // already closed it). A focus id that no longer resolves — the item was
+  // used up before the link was tapped — falls back to the plain list.
+  useEffect(() => {
+    if (!visible || !focusEntryId) return;
+    const focused = entries.find(e => e.id === focusEntryId);
+    if (!focused) return;
+    if (focused.kind === 'leftover') setOpenLeftoverId(focused.sourceId);
+    else setOpenItemId(focused.sourceId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, focusEntryId]);
 
   // Read live from the store by id so the sheet's caption follows an edit it
   // just made — same discipline MealPlanScreen keeps for this sheet.

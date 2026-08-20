@@ -40,6 +40,7 @@ import {
   isMealPlanUrl,
   mealPlanUrlDayKey,
   isKitchenUrl,
+  kitchenUrlItemId,
   isQuickAddUrl,
   openInAppUrl,
 } from '../utils/deepLinks';
@@ -202,12 +203,35 @@ describe('isKitchenUrl', () => {
     expect(isKitchenUrl('  dundundun://kitchen  ')).toBe(true);
   });
 
+  it('accepts the item-scoped form the use-up tasks carry', () => {
+    expect(isKitchenUrl('dundundun://kitchen?item=grocery-abc123')).toBe(true);
+    expect(isKitchenUrl('dundundun://kitchen/?item=grocery-abc123')).toBe(true);
+  });
+
   it('rejects anything else, including its neighbours', () => {
     expect(isKitchenUrl('dundundun://')).toBe(false);
     expect(isKitchenUrl('dundundun://groceries')).toBe(false);
     expect(isKitchenUrl('dundundun://mealplan')).toBe(false);
+    // A row is a query parameter, not a path segment.
     expect(isKitchenUrl('dundundun://kitchen/spinach')).toBe(false);
     expect(isKitchenUrl('')).toBe(false);
+  });
+});
+
+describe('kitchenUrlItemId', () => {
+  it('reads the row off an item-scoped link', () => {
+    expect(kitchenUrlItemId('dundundun://kitchen?item=grocery-abc123')).toBe('grocery-abc123');
+    expect(kitchenUrlItemId('dundundun://kitchen?item=leftover-xyz789')).toBe('leftover-xyz789');
+  });
+
+  it('is null for the bare link, which means "just open the list"', () => {
+    expect(kitchenUrlItemId('dundundun://kitchen')).toBeNull();
+    expect(kitchenUrlItemId('dundundun://kitchen?item=')).toBeNull();
+  });
+
+  it('ignores other parameters and other links', () => {
+    expect(kitchenUrlItemId('dundundun://kitchen?foo=bar&item=grocery-abc123')).toBe('grocery-abc123');
+    expect(kitchenUrlItemId('dundundun://groceries?item=grocery-abc123')).toBeNull();
   });
 });
 
@@ -261,6 +285,11 @@ describe('openInAppUrl', () => {
     expect(openInAppUrl('dundundun://kitchen')).toBe(true);
     expect(mockResetToKitchen).toHaveBeenCalledTimes(1);
     expect(mockResetToToday).not.toHaveBeenCalled();
+  });
+
+  it('passes the specific row through to resetToKitchen', () => {
+    expect(openInAppUrl('dundundun://kitchen?item=grocery-abc123')).toBe(true);
+    expect(mockResetToKitchen).toHaveBeenCalledWith('grocery-abc123');
   });
 
   it('keeps the three kitchen links apart', () => {

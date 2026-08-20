@@ -270,13 +270,17 @@ export function GroceryScreen() {
 
   // The grocery/leftover "Use up X" tasks' own link (resetToKitchen in
   // navigationRef.ts) — this screen may not be mounted when it's tapped, so
-  // it's the same stamped-param handoff openFinish above uses.
+  // it's the same stamped-param handoff openFinish above uses. A link naming
+  // one row carries focusKitchenEntry alongside the stamp, read here and
+  // handed to KitchenSheet, which opens straight to it.
   const [handledOpenKitchen, setHandledOpenKitchen] = useState<number | undefined>(undefined);
+  const [kitchenFocusEntryId, setKitchenFocusEntryId] = useState<string | null>(null);
   useEffect(() => {
     if (route.params?.openKitchen === undefined || route.params.openKitchen === handledOpenKitchen) return;
     setHandledOpenKitchen(route.params.openKitchen);
+    setKitchenFocusEntryId(route.params.focusKitchenEntry ?? null);
     if (!selectionMode) setKitchenOpen(true);
-  }, [route.params?.openKitchen, handledOpenKitchen, selectionMode]);
+  }, [route.params?.openKitchen, route.params?.focusKitchenEntry, handledOpenKitchen, selectionMode]);
 
   // Computed here rather than in the row for the reason `alternatives` is:
   // only the screen has the links, and a row that subscribed to them would
@@ -1124,7 +1128,11 @@ export function GroceryScreen() {
         onAdded={handleItemsAdded}
       />
       <BuyAgainSheet visible={buyAgainOpen} onClose={() => setBuyAgainOpen(false)} />
-      <KitchenSheet visible={kitchenOpen} onClose={() => setKitchenOpen(false)} />
+      <KitchenSheet
+        visible={kitchenOpen}
+        onClose={() => { setKitchenOpen(false); setKitchenFocusEntryId(null); }}
+        focusEntryId={kitchenFocusEntryId}
+      />
       <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
       <FinishShoppingSheet
         visible={finishOpen}

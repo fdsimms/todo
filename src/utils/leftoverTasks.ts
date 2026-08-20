@@ -1,6 +1,6 @@
 import type { Leftover, TaskDraft } from '../types';
 import { generatedBy, wantsGeneratedTask } from './generatedTasks';
-import { KITCHEN_LINK_URL } from './kitchenInventory';
+import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
 import { needsAttention } from './leftovers';
 import { resolveOffsetDate } from './templateUtils';
 import { getCurrentDayStart } from './dateUtils';
@@ -59,9 +59,9 @@ export function useUpTaskTitle(leftover: Leftover): string {
  * starts mattering *is* the day it should surface. `deadline` carries
  * `keepUntil` itself, the same way a grocery use-up task's deadline carries
  * the expiry: due is when to act, deadline is the day the food is answerable
- * to. `linkUrl` is `kitchenInventory.KITCHEN_LINK_URL` — the same link the
- * grocery use-up task carries, so both land on the one screen that shows the
- * pantry and the fridge together.
+ * to. `linkUrl` opens straight to this container's own row —
+ * `kitchenLinkUrl(kitchenEntryId('leftover', leftover.id))` — the same link
+ * shape the grocery use-up task carries for its own row.
  */
 export function useUpTaskFields(
   leftover: Leftover,
@@ -72,7 +72,7 @@ export function useUpTaskFields(
     // Never null: `now` is a real Date and the offset is 0.
     dueDate: resolveOffsetDate(now, 0)!,
     deadline: leftover.keepUntil,
-    linkUrl: KITCHEN_LINK_URL,
+    linkUrl: kitchenLinkUrl(kitchenEntryId('leftover', leftover.id)),
   };
 }
 

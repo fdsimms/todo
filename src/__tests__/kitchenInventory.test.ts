@@ -3,7 +3,9 @@ import {
   compareKitchenEntries,
   describeKitchen,
   FRIDGE_SECTION,
+  kitchenEntryId,
   kitchenInventory,
+  kitchenLinkUrl,
   useUpEntries,
 } from '../utils/kitchenInventory';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -340,5 +342,25 @@ describe('buildKitchenSections', () => {
 
   it('is empty rather than unfiltered when nothing matches', () => {
     expect(sectionsOf([marked('Rice', 'Pantry')], [], ['Pantry'], 'saffron')).toEqual([]);
+  });
+});
+
+describe('kitchenEntryId', () => {
+  it('kind-prefixes the raw id — what KitchenEntry.id is built from', () => {
+    expect(kitchenEntryId('grocery', 'abc123')).toBe('grocery-abc123');
+    expect(kitchenEntryId('leftover', 'abc123')).toBe('leftover-abc123');
+  });
+});
+
+describe('kitchenLinkUrl', () => {
+  it('is the bare kitchen link when no entry is named', () => {
+    expect(kitchenLinkUrl()).toBe('dundundun://kitchen');
+    expect(kitchenLinkUrl(null)).toBe('dundundun://kitchen');
+  });
+
+  it('names one entry, so the sheet can open straight to it', () => {
+    expect(kitchenLinkUrl(kitchenEntryId('grocery', 'abc123'))).toBe(
+      'dundundun://kitchen?item=grocery-abc123'
+    );
   });
 });

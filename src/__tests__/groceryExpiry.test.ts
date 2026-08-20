@@ -106,8 +106,9 @@ describe('useUpTaskFields', () => {
     expect(fields.dueDate).toBe(fields.deadline);
   });
 
-  it('points at the kitchen view, same as the leftover use-up task', () => {
-    expect(useUpTaskFields(item(), 1).linkUrl).toBe('dundundun://kitchen');
+  it('opens straight to this item\'s own row in the kitchen view', () => {
+    const spinach = item();
+    expect(useUpTaskFields(spinach, 1).linkUrl).toBe(`dundundun://kitchen?item=grocery-${spinach.id}`);
   });
 });
 

@@ -148,14 +148,31 @@ export function mealPlanUrlDayKey(url: string): string | null {
   return DAY_KEY_RE.test(dayKey) ? dayKey : null;
 }
 
-// `dundundun://kitchen` — what the grocery and leftover "Use up X" tasks
-// carry (see kitchenInventory.KITCHEN_LINK_URL), so tapping one opens the
+// `dundundun://kitchen[?item=…]` — what the grocery and leftover "Use up X"
+// tasks carry (see kitchenInventory.kitchenLinkUrl), so tapping one opens the
 // pantry/fridge view rather than the bare grocery list the groceries link
-// opens.
-const KITCHEN_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?kitchen\\/?$`, 'i');
+// opens, and opens straight to the one row named by `item` when there is one.
+const KITCHEN_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?kitchen\\/?(?:\\?(.*))?$`, 'i');
 
 export function isKitchenUrl(url: string): boolean {
   return typeof url === 'string' && KITCHEN_RE.test(url.trim());
+}
+
+/**
+ * The specific pantry item or fridge container a kitchen link asks to open,
+ * or null for the bare link.
+ *
+ * Opaque on purpose: it's whatever kitchenEntryId built, and KitchenSheet
+ * matches it straight against a live KitchenEntry.id, so nothing here needs
+ * to know its shape — or that it might no longer resolve to anything (the
+ * item was used up and its row is gone by the time the link is tapped).
+ */
+export function kitchenUrlItemId(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = KITCHEN_RE.exec(url.trim());
+  if (!match) return null;
+  const id = (parseQuery(match[1] ?? '').item ?? '').trim();
+  return id || null;
 }
 
 /**
@@ -185,7 +202,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     return true;
   }
   if (isKitchenUrl(url)) {
-    resetToKitchen();
+    resetToKitchen(kitchenUrlItemId(url));
     return true;
   }
   if (isOpenAppUrl(url)) {

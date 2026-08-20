@@ -2,7 +2,7 @@ import type { GroceryItem, TaskDraft } from '../types';
 import { GROCERY_USE_UP_LEAD_DAYS_MAX, GROCERY_USE_UP_LEAD_DAYS_MIN } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { generatedBy, wantsGeneratedTask } from './generatedTasks';
-import { KITCHEN_LINK_URL } from './kitchenInventory';
+import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
 import { resolveOffsetDate } from './templateUtils';
 
 /**
@@ -86,9 +86,11 @@ export function clampUseUpLeadDays(days: number): number {
  * field already exists for. Without it a task due Thursday would say nothing
  * about what happens on Friday.
  *
- * `linkUrl` is `kitchenInventory.KITCHEN_LINK_URL` — the same link
- * leftoverTasks.ts's use-up task carries, since "Use up spinach" and "Use up
- * last night's chili" both mean the kitchen view, not the bare grocery list.
+ * `linkUrl` opens straight to this item's own row in the kitchen view —
+ * `kitchenLinkUrl(kitchenEntryId('grocery', item.id))` — the same link
+ * shape leftoverTasks.ts's use-up task carries for its own row, since "Use
+ * up spinach" and "Use up last night's chili" both mean "take me to that
+ * one thing", not the bare grocery list.
  */
 export function useUpTaskFields(
   item: GroceryItem,
@@ -100,7 +102,7 @@ export function useUpTaskFields(
     // Never null: expiry is a real Date and the offset is a real number.
     dueDate: resolveOffsetDate(expiry, -clampUseUpLeadDays(leadDays))!,
     deadline: resolveOffsetDate(expiry, 0)!,
-    linkUrl: KITCHEN_LINK_URL,
+    linkUrl: kitchenLinkUrl(kitchenEntryId('grocery', item.id)),
   };
 }
 

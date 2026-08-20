@@ -106,8 +106,9 @@ describe('useUpTaskFields', () => {
     expect(fields.deadline).toBe('2026-08-14');
   });
 
-  it('points at the kitchen view, same as the grocery use-up task', () => {
-    expect(useUpTaskFields(leftover(), now).linkUrl).toBe('dundundun://kitchen');
+  it('opens straight to this leftover\'s own row in the kitchen view', () => {
+    const chilli = leftover();
+    expect(useUpTaskFields(chilli, now).linkUrl).toBe(`dundundun://kitchen?item=leftover-${chilli.id}`);
   });
 
   it('defaults to the logical day, honouring dayResetTime during the early-morning grace window', () => {

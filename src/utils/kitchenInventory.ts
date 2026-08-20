@@ -45,15 +45,34 @@ import { describeAge, isLiveLeftover } from './leftovers';
 export type KitchenKind = 'grocery' | 'leftover';
 
 /**
- * Where `dundundun://kitchen` lands — the grocery and leftover use-up
- * generators' own link (groceryExpiry.ts, leftoverTasks.ts), so a "Use up X"
- * task opens straight into KitchenSheet rather than the bare grocery list a
- * "Grocery run" task's `dundundun://groceries` link opens. One constant, one
- * link, for both halves — KitchenSheet already renders the pantry and the
- * fridge as one screen, so there's nowhere finer for either generator to
- * point.
+ * The stable id one row of the kitchen goes by — what `KitchenEntry.id` is
+ * built from, and what a kitchen link's `item` query param carries. Kind-
+ * prefixed because a grocery item and a leftover both draw their raw id from
+ * the same `generateId()`, so the kind is what a collision (however
+ * unlikely) can't confuse into opening the wrong sheet.
+ */
+export function kitchenEntryId(kind: KitchenKind, sourceId: string): string {
+  return `${kind}-${sourceId}`;
+}
+
+/**
+ * Where the bare `dundundun://kitchen` link lands — the grocery and leftover
+ * use-up generators' own link (groceryExpiry.ts, leftoverTasks.ts) when built
+ * through `kitchenLinkUrl` below, so a "Use up X" task opens into KitchenSheet
+ * rather than the bare grocery list a "Grocery run" task's
+ * `dundundun://groceries` link opens.
  */
 export const KITCHEN_LINK_URL = 'dundundun://kitchen';
+
+/**
+ * The use-up generators' actual link: the bare kitchen link when `entryId` is
+ * omitted, or `dundundun://kitchen?item=…` when it names one row — which
+ * KitchenSheet opens straight to, rather than leaving the user to find "Use
+ * up spinach"'s spinach among everything else in the pantry.
+ */
+export function kitchenLinkUrl(entryId?: string | null): string {
+  return entryId ? `${KITCHEN_LINK_URL}?item=${encodeURIComponent(entryId)}` : KITCHEN_LINK_URL;
+}
 
 /**
  * The heading a container files under, where a catalog row files under its
@@ -181,7 +200,7 @@ export function kitchenInventory(
     const reason = describeAge(leftover, now);
     const useByCaption = describeUseBy(leftover.keepUntil, now);
     entries.push({
-      id: `leftover-${leftover.id}`,
+      id: kitchenEntryId('leftover', leftover.id),
       sourceId: leftover.id,
       kind: 'leftover',
       title: leftover.title,
@@ -201,7 +220,7 @@ export function kitchenInventory(
     const useBy = item.expiresAt;
     const useByCaption = useBy ? describeUseBy(useBy, now) : '';
     entries.push({
-      id: `grocery-${item.id}`,
+      id: kitchenEntryId('grocery', item.id),
       sourceId: item.id,
       kind: 'grocery',
       title: item.name,
