@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Task, TaskDraft, Priority, TimeOfDay } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -69,7 +69,7 @@ import {
   type DriftEntry,
 } from '../utils/postpone';
 import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
-import { resolveTitleRules } from '../utils/titleRules';
+import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
@@ -954,6 +954,17 @@ interface TaskStore {
   // simpler because a pull candidate is undated, so there's no existing date to
   // protect and every move is a plain reschedule.
   pullProjectTasks: (moves: readonly { id: string; updates: Partial<Task> }[]) => void;
+  /**
+   * Files the tasks a rule just written would have filed, had it existed when
+   * they were typed (see utils/titleRules.titleRuleBacklog). Offered once, at
+   * the moment a rule is authored — a rule still never fires on its own after
+   * a task exists, so this is the one way an existing row is filed by one.
+   *
+   * Recomputes the backlog rather than taking a list of ids: the prompt names
+   * a count, and a task edited between reading it and answering it deserves
+   * the answer it has now. Returns how many rows it wrote to.
+   */
+  applyTitleRuleToExisting: (rule: TitleRule) => number;
   // Layer B of the same feature: projects the user opted into auto-scheduling
   // date their own next task when they run dry. Idempotent by construction —
   // dating a member makes the project non-stalled, so a second call in the same
@@ -2826,6 +2837,41 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: 'Task rescheduled',
       undo: () => get().updateTask(snapshot.id, snapshot),
     });
+  },
+
+  applyTitleRuleToExisting(rule) {
+    const entries = titleRuleBacklog(get().tasks, rule);
+    if (entries.length === 0) return 0;
+
+    // Snapshotted before anything is written, so the whole catch-up undoes as
+    // one action — the shape deloadTasks below uses, and for the same reason:
+    // a fan-out of N separate undo entries is N shakes to put one decision
+    // back. Only the five fields a rule can fill are captured; the undo is a
+    // narrow patch, never a whole-task replay.
+    const snapshots = entries.map(({ task }) => ({
+      id: task.id,
+      category: task.category,
+      projectId: task.projectId,
+      priority: task.priority,
+      effort: task.effort,
+      tags: task.tags,
+    }));
+
+    dbTransaction(() => {
+      entries.forEach(e => get().updateTask(e.task.id, e.updates));
+    });
+
+    get().setLastAction({
+      label: `${entries.length} task${entries.length === 1 ? '' : 's'} filed`,
+      undo: () => snapshots.forEach(s => get().updateTask(s.id, {
+        category: s.category,
+        projectId: s.projectId,
+        priority: s.priority,
+        effort: s.effort,
+        tags: s.tags,
+      })),
+    });
+    return entries.length;
   },
 
   // A batch of approved deload moves. Each carries its own updates because the

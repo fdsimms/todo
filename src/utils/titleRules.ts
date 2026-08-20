@@ -1,4 +1,4 @@
-import type { Effort, Priority, TitleRule, TitleRuleMatch } from '../types';
+import type { Effort, Priority, Task, TitleRule, TitleRuleMatch } from '../types';
 import { EFFORT_LABELS, PRIORITY_LABELS } from '../types';
 import { generateId } from './id';
 
@@ -328,4 +328,60 @@ function isPriority(v: unknown): v is Priority {
 
 function isEffort(v: unknown): v is Effort {
   return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 6;
+}
+
+/**
+ * One existing task a newly written rule would have filed, and the fields it
+ * would fill (see `titleRuleBacklog`).
+ */
+export interface TitleRuleBacklogEntry {
+  task: Task;
+  /** Only the fields the rule fills — never a whole-task replacement. */
+  updates: Partial<Pick<Task, 'category' | 'projectId' | 'priority' | 'effort' | 'tags'>>;
+}
+
+/**
+ * Every live task `rule` would have filed had it existed when they were
+ * written — the backlog `TitleRulesSheet` offers to catch up on right after a
+ * rule is authored, which is exactly when a dozen of them are already sitting
+ * uncategorized.
+ *
+ * **It runs the one rule, not `resolveTitleRules`.** The offer is about the
+ * rule just written, so what another rule would have said about the same task
+ * is not this question — and running the whole set would re-file tasks against
+ * rules that had every chance to fire already.
+ *
+ * Four exclusions, all of them the same calls made elsewhere:
+ *  - **completed and archived rows are history**, not schedule — the call
+ *    `applyTaskDates` makes when it reconciles a series, and re-filing one
+ *    rewrites what the Logbook and Stats already say;
+ *  - a **subtask** never files itself anywhere, the same reason
+ *    `applyTitleRulesToDraft` skips one;
+ *  - a **disabled rule** matches nothing (`matchTitleRule` refuses it), so a
+ *    rule saved switched off offers no backlog either.
+ *
+ * The fill is the same contract a creation gets: a field the task already
+ * answered keeps its answer, tags accumulate, and a task the rule has nothing
+ * left to say about is left out entirely rather than counted and no-opped.
+ * `stripKeyword` is deliberately **not** applied — the rule may rewrite a
+ * title as it's being typed, but rewriting the name of a task that already
+ * exists is the other half of "renaming a task later doesn't refile it".
+ */
+export function titleRuleBacklog(tasks: Task[], rule: TitleRule): TitleRuleBacklogEntry[] {
+  if (titleRuleIsUseless(rule)) return [];
+  const out: TitleRuleBacklogEntry[] = [];
+  for (const task of tasks) {
+    if (task.parentId || task.completed || task.archived) continue;
+    if (!matchTitleRule(task.title, rule)) continue;
+    const updates: TitleRuleBacklogEntry['updates'] = {};
+    if (rule.category !== null && task.category === null) updates.category = rule.category;
+    if (rule.projectId !== null && task.projectId === null) updates.projectId = rule.projectId;
+    if (rule.priority !== 0 && !task.priority) updates.priority = rule.priority;
+    if (rule.effort !== 0 && !task.effort) updates.effort = rule.effort;
+    const newTags = rule.tags.filter(t => !task.tags.includes(t));
+    if (newTags.length > 0) updates.tags = [...task.tags, ...newTags];
+    if (Object.keys(updates).length === 0) continue;
+    out.push({ task, updates });
+  }
+  return out;
 }

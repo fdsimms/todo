@@ -38,7 +38,7 @@ import {
 } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
-import type { Task, TaskGroup } from '../types';
+import type { Task, TaskGroup, TitleRule } from '../types';
 
 jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
@@ -2147,6 +2147,76 @@ describe('deloadTasks', () => {
   it('records no action for an empty batch', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a' })], lastAction: null });
     useTaskStore.getState().deloadTasks([]);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+// ─── applyTitleRuleToExisting ───────────────────────────────────────────────
+
+describe('applyTitleRuleToExisting', () => {
+  const expenseRule: TitleRule = {
+    id: 'rule-1',
+    keywords: ['expense'],
+    match: 'startsWith',
+    category: 'Work',
+    projectId: null,
+    tags: ['admin'],
+    priority: 0,
+    effort: 1,
+    stripKeyword: false,
+    enabled: true,
+  };
+
+  it('files the matching live tasks and leaves everything else alone', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', title: 'Expense the client lunch' }),
+        makeTask({ id: 'b', title: 'Water the plants' }),
+        makeTask({ id: 'c', title: 'Expense the taxi', completed: true }),
+      ],
+    });
+
+    expect(useTaskStore.getState().applyTitleRuleToExisting(expenseRule)).toBe(1);
+
+    const [a, b, c] = useTaskStore.getState().tasks;
+    expect(a).toMatchObject({ category: 'Work', effort: 1, tags: ['admin'] });
+    expect(b.category).toBeNull();
+    expect(c.category).toBeNull();
+  });
+
+  it('fills a blank field without overriding one the task already answered', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', title: 'Expense the client lunch', category: 'Home', effort: 4 })],
+    });
+
+    useTaskStore.getState().applyTitleRuleToExisting(expenseRule);
+
+    expect(useTaskStore.getState().tasks[0]).toMatchObject({
+      category: 'Home', effort: 4, tags: ['admin'],
+    });
+  });
+
+  it('undoes the whole catch-up as one action', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', title: 'Expense the client lunch' }),
+        makeTask({ id: 'b', title: 'Expense the taxi', tags: ['bills'] }),
+      ],
+    });
+
+    useTaskStore.getState().applyTitleRuleToExisting(expenseRule);
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 tasks filed');
+
+    useTaskStore.getState().undoLastAction();
+
+    const [a, b] = useTaskStore.getState().tasks;
+    expect(a).toMatchObject({ category: null, effort: 0, tags: [] });
+    expect(b).toMatchObject({ category: null, effort: 0, tags: ['bills'] });
+  });
+
+  it('records no action when nothing matches', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', title: 'Water the plants' })], lastAction: null });
+    expect(useTaskStore.getState().applyTitleRuleToExisting(expenseRule)).toBe(0);
     expect(useTaskStore.getState().lastAction).toBeNull();
   });
 });

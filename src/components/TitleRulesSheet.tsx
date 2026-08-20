@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -6,12 +6,13 @@ import type { TitleRule } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { categoryLabel } from '../utils/categoryLabel';
-import { describeTitleRuleTargets, describeTitleRuleTrigger } from '../utils/titleRules';
+import { describeTitleRuleTargets, describeTitleRuleTrigger, titleRuleBacklog } from '../utils/titleRules';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -20,6 +21,22 @@ import { TitleRuleSheet } from './TitleRuleSheet';
 interface Props {
   visible: boolean;
   onClose: () => void;
+}
+
+/**
+ * The one-time "these already match" offer, and the confirmation it turns into
+ * once taken. Session state, like Today's `othersHidden`: it belongs to the
+ * rule that was just written, not to the rule list.
+ *
+ * `action` is the undo entry the fill registered, held by identity so the Undo
+ * button disappears the moment anything else claims the slot — offering to undo
+ * whatever happened to be last is worse than offering nothing.
+ */
+interface BacklogOffer {
+  rule: TitleRule;
+  count: number;
+  filed: boolean;
+  action: object | null;
 }
 
 /**
@@ -45,16 +62,64 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
   const setTitleRules = useSettingsStore(s => s.setTitleRules);
   const categories = useCategoryStore(useShallow(s => s.categories));
   const projects = useProjectStore(useShallow(s => s.projects));
+  const applyTitleRuleToExisting = useTaskStore(s => s.applyTitleRuleToExisting);
+  const lastAction = useTaskStore(s => s.lastAction);
+  const undoLastAction = useTaskStore(s => s.undoLastAction);
 
   // Null id = a new rule; undefined = the editor is closed. Held as an id
   // rather than the rule itself so an edit committed underneath can't leave
   // the sheet holding a stale copy.
   const [editingId, setEditingId] = useState<string | null | undefined>(undefined);
+  const [backlog, setBacklog] = useState<BacklogOffer | null>(null);
   const editing = editingId ? titleRules.find(r => r.id === editingId) ?? null : null;
+
+  // The offer belongs to the visit it was made in. Handing someone back a
+  // "12 tasks match" card next time they open the sheet, with no memory of the
+  // rule it was about, is a prompt with no context left around it.
+  useEffect(() => {
+    if (!visible) setBacklog(null);
+  }, [visible]);
 
   const save = (rule: TitleRule) => {
     const exists = titleRules.some(r => r.id === rule.id);
     setTitleRules(exists ? titleRules.map(r => (r.id === rule.id ? rule : r)) : [...titleRules, rule]);
+    if (exists) return;
+    // A rule is written the moment the pattern is noticed, which is also the
+    // moment a dozen tasks matching it are already sitting unfiled — the work
+    // the rule was written to stop doing. So the backlog is offered once, here,
+    // rather than as a standing behaviour: a rule still never fires on a task
+    // that already exists, and the caption below still says so.
+    //
+    // **New rules only.** A rule that has been running for months has already
+    // filed everything it was going to, so re-offering on every edit would
+    // attach a bulk-write prompt to fixing a typo.
+    //
+    // Read from `getState()` rather than a subscription: the question is what
+    // matches at the moment the rule is saved, and a settings sheet has no
+    // business re-rendering on every task change.
+    const count = titleRuleBacklog(useTaskStore.getState().tasks, rule).length;
+    if (count > 0) {
+      animateLayout();
+      setBacklog({ rule, count, filed: false, action: null });
+    }
+  };
+
+  const fileBacklog = () => {
+    if (!backlog) return;
+    haptics.success();
+    // Recomputed inside the store, so a task edited between the offer and the
+    // tap is filed as it stands now rather than as it was when counted.
+    const filed = applyTitleRuleToExisting(backlog.rule);
+    animateLayout();
+    setBacklog(filed > 0
+      ? { ...backlog, count: filed, filed: true, action: useTaskStore.getState().lastAction }
+      : null);
+  };
+
+  const dismissBacklog = () => {
+    haptics.tap();
+    animateLayout();
+    setBacklog(null);
   };
 
   const remove = (id: string) => {
@@ -97,8 +162,51 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
             <Text style={styles.caption}>
               A rule fills in a task as you type it. It never overrides something you picked
               yourself, and it only applies as a task is created. Renaming a task later doesn't
-              refile it.
+              refile it. A new rule offers to file the tasks you already have that match it.
             </Text>
+            {backlog && (
+              <View style={styles.backlogCard}>
+                <View style={styles.backlogHead}>
+                  <Ionicons
+                    name={backlog.filed ? 'checkmark-circle' : 'sparkles-outline'}
+                    size={iconSize.sm}
+                    color={colors.accent}
+                  />
+                  <Text style={styles.backlogTitle}>
+                    {backlog.filed
+                      ? `${backlog.count} ${backlog.count === 1 ? 'task' : 'tasks'} filed`
+                      : `${backlog.count} ${backlog.count === 1 ? 'task' : 'tasks'} already ${backlog.count === 1 ? 'matches' : 'match'}`}
+                  </Text>
+                </View>
+                <Text style={styles.backlogBody}>
+                  {backlog.filed
+                    ? 'Only the fields left blank were filled in. From here on the rule applies as you add a task, not to tasks you rename.'
+                    : `${describeTitleRuleTrigger(backlog.rule)}. File them the same way? Only the fields you left blank get filled in. Completed and archived tasks are left alone.`}
+                </Text>
+                <View style={styles.backlogActions}>
+                  {!backlog.filed && (
+                    <InlineAction
+                      icon="funnel-outline"
+                      label={backlog.count === 1 ? 'File it' : 'File them'}
+                      onPress={fileBacklog}
+                    />
+                  )}
+                  {backlog.filed && backlog.action !== null && lastAction === backlog.action && (
+                    <InlineAction
+                      icon="arrow-undo-outline"
+                      label="Undo"
+                      onPress={() => { haptics.tap(); undoLastAction(); setBacklog(null); }}
+                    />
+                  )}
+                  <InlineAction
+                    icon="close"
+                    label={backlog.filed ? 'Done' : 'Not now'}
+                    variant="neutral"
+                    onPress={dismissBacklog}
+                  />
+                </View>
+              </View>
+            )}
             <View style={styles.card}>
               {titleRules.map((rule, i) => {
                 const targets = targetsOf(rule);
@@ -188,6 +296,18 @@ function makeStyles(colors: Colors) {
     list: { padding: spacing.md, paddingBottom: spacing.xl },
     caption: { color: colors.textSecondary, fontSize: font.sm, marginBottom: spacing.md },
     card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md },
+    backlogCard: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.accent + '55',
+      padding: spacing.md,
+      marginBottom: spacing.md,
+    },
+    backlogHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    backlogTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+    backlogBody: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xs, lineHeight: 18 },
+    backlogActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
     sep: { height: border.hairline, backgroundColor: colors.separator, marginLeft: spacing.md },
     row: {
       flexDirection: 'row',
