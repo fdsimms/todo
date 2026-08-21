@@ -269,7 +269,7 @@ export const GroceryRow = React.memo(function GroceryRow({
               is shelf information, which is exactly what you're here for. */}
           {!item.note && !storeMarker && !!item.sourceRecipeTitle && (
             <Text style={styles.note} numberOfLines={1}>
-              From “{item.sourceRecipeTitle}”
+              For “{item.sourceRecipeTitle}”
             </Text>
           )}
           {/* Tappable only when the marker is carrying a substitute — every
