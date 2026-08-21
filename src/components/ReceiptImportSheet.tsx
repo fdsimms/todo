@@ -133,6 +133,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const addShop = useGroceryStore(s => s.addShop);
+  const rememberAliases = useGroceryStore(s => s.rememberAliases);
+  const aliasItemFor = useGroceryStore(s => s.aliasItemFor);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
@@ -182,8 +184,13 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
     try {
       const result = await extractReceipt(photo);
       setReceipt(result);
-      setMatches(matchReceiptLines(result.lines, items));
-      setShopId(matchReceiptShop(result.storeName, shops)?.id ?? null);
+      // The store has to be resolved before the lines are, since an alias is
+      // scoped to the printer that produced the text.
+      const readShopId = matchReceiptShop(result.storeName, shops)?.id ?? null;
+      setMatches(
+        matchReceiptLines(result.lines, items, line => aliasItemFor(readShopId, line.label))
+      );
+      setShopId(readShopId);
       const now = new Date();
       const plausible = !!result.date && isPlausibleReceiptDate(result.date, now);
       // Noon rather than midnight, so the day it names can't slip across a
@@ -196,7 +203,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [photo, items, shops]);
+  }, [photo, items, shops, aliasItemFor]);
 
   /**
    * What arrives checked, re-decided whenever the reading or the named store
@@ -254,6 +261,20 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
         quantity: m.line.quantity,
         priceMinor: m.line.priceMinor,
       }));
+    // Everything the user is applying with a row attached, printed text and
+    // all, so the same shorthand resolves without asking next time. Scoped to
+    // the store, because that is whose printer wrote it. The "add as bought"
+    // rows can only be remembered when they name an existing row — a line
+    // minting a brand new item has no id yet, and #1856 leaves catching those
+    // to the next receipt rather than plumbing ids back out of the screen.
+    rememberAliases([
+      ...matches
+        .filter(m => m.itemId !== null && accepted.has(m.itemId))
+        .map(m => ({ shopId, rawText: m.line.label, itemId: m.itemId as string })),
+      ...toAdd
+        .filter(d => d.existingItemId !== null)
+        .map(d => ({ shopId, rawText: d.label, itemId: d.existingItemId as string })),
+    ]);
     haptics.success();
     onApply(shopId, Array.from(accepted), priceById, purchasedDate.toISOString(), toAdd);
   };
@@ -341,8 +362,14 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
           </Text>
           {weak && (
             <Text style={styles.rowWeak}>
-              Not sure this is the same thing — check before you accept it.
+              Not sure this is the same thing. Check before you accept it.
             </Text>
+          )}
+          {/* Says why a line nothing could have matched by name is sitting on a
+              row anyway. Without it a remembered alias reads as the app having
+              guessed something inexplicable. */}
+          {match.confidence === 'remembered' && (
+            <Text style={styles.rowRemembered}>You matched this line before</Text>
           )}
           {cautions.map((caution, i) => {
             const { text, warn } = describeCaution(caution);
@@ -681,6 +708,7 @@ function makeStyles(colors: Colors) {
     rowTitle: { color: colors.text, fontSize: font.md },
     rowLabel: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
     rowWeak: { color: colors.orange, fontSize: font.xs, marginTop: 2 },
+    rowRemembered: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
     rowSkipped: { color: colors.textSecondary, fontSize: font.sm },
     rowPrice: { color: colors.text, fontSize: font.md, fontVariant: ['tabular-nums'] },
     rowPriceOff: {

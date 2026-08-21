@@ -1,6 +1,6 @@
 import type { GroceryItem } from '../types';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
-import { matchReceiptLines, type ReceiptMatch } from './receiptMatch';
+import { matchReceiptLines, type AliasResolver, type ReceiptMatch } from './receiptMatch';
 import type { ReceiptLine } from '../services/aiSuggestions';
 import type { ProductRecord } from '../services/productLookup';
 
@@ -124,6 +124,12 @@ export function alreadyScanned(scans: readonly ScannedItem[], gtin: string): boo
 /**
  * Each scan read against the catalog, aligned index for index with `scans`.
  *
+ * A scan's alias is looked up with no store, and that is the right shape
+ * rather than a limitation: at unpack time nobody has said where the bag came
+ * from, and a product name off a barcode database is the same phrase whichever
+ * shop it was bought at. A store's *printed* shorthand is the thing that needs
+ * scoping, and that only ever comes off a receipt.
+ *
  * Rows with no name yet are passed through as empty lines rather than skipped,
  * so the indexes still line up and a row the user is midway through naming
  * simply matches nothing until it says something.
@@ -131,6 +137,7 @@ export function alreadyScanned(scans: readonly ScannedItem[], gtin: string): boo
 export function matchScans(
   scans: readonly ScannedItem[],
   items: readonly GroceryItem[],
+  aliasFor?: AliasResolver,
 ): ReceiptMatch[] {
   const lines: ReceiptLine[] = scans.map(scan => ({
     label: scan.label,
@@ -138,5 +145,5 @@ export function matchScans(
     quantity: scan.quantity,
     priceMinor: null,
   }));
-  return matchReceiptLines(lines, items);
+  return matchReceiptLines(lines, items, aliasFor);
 }

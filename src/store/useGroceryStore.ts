@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, Shop } from '../types';
+import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, Shop, StoreAlias } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -21,6 +21,8 @@ import {
   dbSetItemSubLink,
   dbDeleteItemSubLink,
   dbGetAllItemProducts,
+  dbGetAllStoreAliases,
+  dbSetStoreAlias,
   dbSetItemProduct,
   dbDeleteItemProduct,
   dbGetLastShopId,
@@ -62,6 +64,7 @@ import { isTripLive, resolveActiveTrip } from '../utils/activeTrip';
 import { scheduleTripReminder, cancelTripReminder } from '../utils/notifications';
 import { substituteQuantity } from '../utils/itemSubs';
 import { productKeyFor, productsForItem } from '../utils/groceryProduct';
+import { aliasDraftsFrom, aliasItemIdFor, aliasKeyFor, type AliasDraft } from '../utils/storeAliases';
 
 /**
  * The grocery catalog, which is also the shopping list.
@@ -177,6 +180,15 @@ interface GroceryStore {
    * by `itemId`, resolve-or-shrug on a dangling pointer). See ItemProduct.
    */
   itemProducts: ItemProduct[];
+  /**
+   * What this app has been told a store's shorthand means. See StoreAlias.
+   *
+   * In the store rather than read per lookup like `gtin_lookups` is, because
+   * unlike that cache these are consulted on every render of a review sheet
+   * (once per line, against the whole set) and are small: bounded by the
+   * phrases a person has actually confirmed, not by everything ever scanned.
+   */
+  storeAliases: StoreAlias[];
   /** The store the last trip was finished at, if it still exists. */
   lastShopId: string | null;
   /**
@@ -540,6 +552,14 @@ interface GroceryStore {
    * while leaving manual linking and finishShopping untouched. */
   setShopExcludedFromSuggestions: (id: string, excluded: boolean) => void;
   /** Assert "this item is available here" without a purchase behind it. */
+  /**
+   * Records what a review sheet was applied with, so the same phrases resolve
+   * without asking next time. One write per phrase; see `aliasDraftsFrom` for
+   * why only a user's confirmation gets here.
+   */
+  rememberAliases: (drafts: readonly AliasDraft[]) => void;
+  /** "What does this line mean at this store" — null when nothing has said. */
+  aliasItemFor: (shopId: string | null, rawText: string) => string | null;
   linkItemShop: (itemId: string, shopId: string) => void;
   /**
    * The same assertion over a set — the shopping-trip sheet's "actually, it
@@ -960,6 +980,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   itemShops: [],
   itemSubs: [],
   itemProducts: [],
+  storeAliases: [],
   lastShopId: null,
   tripShopId: null,
   tripStartedAt: null,
@@ -1000,6 +1021,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const itemShops = dbGetAllItemShopLinks();
     const itemSubs = dbGetAllItemSubLinks();
     const itemProducts = dbGetAllItemProducts();
+    const storeAliases = dbGetAllStoreAliases();
     // Resolved against live shops rather than trusted: the setting outlives
     // the store it names, and a preselected shop that no longer exists would
     // record the next trip against nothing.
@@ -1031,6 +1053,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       itemProducts,
       itemShops,
       itemSubs,
+      storeAliases,
       lastShopId,
       tripShopId,
       tripStartedAt,
@@ -2663,6 +2686,54 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({
       shops: s.shops.map(x => (x.id === id ? { ...x, excludeFromSuggestions: excluded } : x)),
     }));
+  },
+
+  rememberAliases(drafts) {
+    const worth = aliasDraftsFrom(drafts);
+    if (worth.length === 0) return;
+    const now = new Date().toISOString();
+    const existing = get().storeAliases;
+    const written: StoreAlias[] = [];
+
+    dbTransaction(() => {
+      for (const draft of worth) {
+        const shopId = draft.shopId ?? '';
+        const rawKey = aliasKeyFor(draft.rawText);
+        const prior = existing.find(a => a.shopId === shopId && a.rawKey === rawKey);
+        // The row handed to the db is the one that should exist afterwards; the
+        // upsert bumps the count itself, since only SQLite knows whether the
+        // pair was already there. Same contract dbSetItemProduct has.
+        const row: StoreAlias = {
+          id: prior?.id ?? generateId(),
+          shopId,
+          rawKey,
+          itemId: draft.itemId,
+          hitCount: prior ? prior.hitCount + 1 : 1,
+          createdAt: prior?.createdAt ?? now,
+          lastUsedAt: now,
+        };
+        dbSetStoreAlias(row);
+        written.push(row);
+      }
+    });
+
+    set(s => ({
+      storeAliases: [
+        ...s.storeAliases.filter(
+          a => !written.some(w => w.shopId === a.shopId && w.rawKey === a.rawKey)
+        ),
+        ...written,
+      ],
+    }));
+  },
+
+  aliasItemFor(shopId, rawText) {
+    const itemId = aliasItemIdFor(get().storeAliases, shopId, rawText);
+    // Resolve-or-shrug, like every cross-row pointer here. A cascade clears
+    // aliases when an item is deleted, so this should not happen — but a reader
+    // that leaned on that would turn a stale row into a line that resolves to
+    // nothing *and* suppresses the name match that would have found the answer.
+    return itemId && get().items.some(i => i.id === itemId) ? itemId : null;
   },
 
   linkItemShop(itemId, shopId) {

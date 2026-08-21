@@ -114,6 +114,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const rememberAliases = useGroceryStore(s => s.rememberAliases);
+  const aliasItemFor = useGroceryStore(s => s.aliasItemFor);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -220,7 +222,12 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
     haptics.tap();
   }, [manual, addScan]);
 
-  const matches = useMemo(() => matchScans(rows, items), [rows, items]);
+  // No store: at unpack time nobody has said where the bag came from, and a
+  // product name off a barcode database reads the same whichever shop it was.
+  const matches = useMemo(
+    () => matchScans(rows, items, line => aliasItemFor(null, line.label)),
+    [rows, items, aliasItemFor]
+  );
   const includedCount = rows.filter(r => r.included && r.name.trim()).length;
 
   const handleApply = useCallback(() => {
@@ -244,8 +251,24 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
         priceMinor: null,
       });
     });
+    // Only rows whose label came off a lookup are worth remembering. A typed
+    // row's "label" is the name the user just wrote, so an alias from it would
+    // map a phrase to itself and teach nothing.
+    rememberAliases([
+      ...rows
+        .map((row, index) => ({ row, match: matches[index] }))
+        .filter(({ row, match }) => row.included && !!row.label && !!match?.itemId)
+        .map(({ row, match }) => ({
+          shopId: null,
+          rawText: row.label,
+          itemId: match.itemId as string,
+        })),
+      ...toAdd
+        .filter(d => d.existingItemId !== null && !!d.label)
+        .map(d => ({ shopId: null, rawText: d.label, itemId: d.existingItemId as string })),
+    ]);
     onApply(itemIds, toAdd);
-  }, [rows, matches, onApply]);
+  }, [rows, matches, onApply, rememberAliases]);
 
   /** What a row resolved to, or null when it has nothing to say yet. */
   const captionFor = (row: ScanRow, index: number): string | null => {
@@ -255,7 +278,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
     const match = matches[index];
     if (match?.itemId) {
       const item = items.find(i => i.id === match.itemId);
-      return item ? `On your list as ${item.name}` : null;
+      if (!item) return null;
+      return match.confidence === 'remembered'
+        ? `On your list as ${item.name}, as you matched it before`
+        : `On your list as ${item.name}`;
     }
     if (match?.offListMatchId) {
       const item = items.find(i => i.id === match.offListMatchId);

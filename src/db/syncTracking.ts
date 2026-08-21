@@ -73,6 +73,11 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // `ItemShopLink.productId` point at, so a merge that re-minted a product
   // under a new id would break both pointers on the receiving device.
   { name: 'grocery_item_products', key: ['id'] },
+  // Keyed by id rather than (shop_id, raw_key), which is the pair it is unique
+  // on: row_key joins a composite key with KEY_SEPARATOR, and that is only safe
+  // because every other key here is base36 from generateId(). This one is a
+  // receipt's printed text and can contain anything, '|' included.
+  { name: 'grocery_store_aliases', key: ['id'] },
   { name: 'recipes', key: ['id'] },
   { name: 'leftovers', key: ['id'] },
   { name: 'meal_plan_entries', key: ['id'] },

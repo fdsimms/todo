@@ -47,6 +47,14 @@ import type { ReceiptLine } from '../services/aiSuggestions';
  * which of these three buckets it's in.
  */
 export type ReceiptMatchConfidence =
+  /**
+   * A phrase this store has been told the meaning of before. Pre-checked, and
+   * it outranks every tier below because it is the only one that isn't a
+   * guess: someone confirmed this exact line against this exact row. See
+   * `storeAliases.ts`, and note that nothing mints one of these from the app's
+   * own reading.
+   */
+  | 'remembered'
   /** The names agree once keyed, plurals apart. Pre-checked. */
   | 'exact'
   /** One name starts or contains the other at a word boundary. Pre-checked. */
@@ -135,7 +143,18 @@ export function receiptMatchConfidence(
   return null;
 }
 
-const TIER_RANK: Record<ReceiptMatchConfidence, number> = { exact: 3, likely: 2, weak: 1 };
+const TIER_RANK: Record<ReceiptMatchConfidence, number> = {
+  remembered: 4, exact: 3, likely: 2, weak: 1,
+};
+
+/**
+ * "Has this store been told what this line means?" — a function rather than the
+ * alias table itself, so this module never learns that table's shape. It knows
+ * only that something outside it can answer with more authority than a name
+ * comparison can. See `storeAliases.ts` for the answer, and `useGroceryStore`
+ * for where the two are wired together.
+ */
+export type AliasResolver = (line: ReceiptLine) => string | null;
 
 type LineMatch = {
   itemId: string | null;
@@ -158,6 +177,7 @@ type LineMatch = {
 function resolveAgainst(
   lines: readonly ReceiptLine[],
   candidates: readonly GroceryItem[],
+  aliasFor?: AliasResolver,
 ): LineMatch[] {
   const claimed = new Map<string, { lineIndex: number; rank: number }>();
   const best: Array<{ itemId: string; confidence: ReceiptMatchConfidence } | null> = [];
@@ -175,8 +195,19 @@ function resolveAgainst(
       return near !== 0 ? near < 0 : a.key.localeCompare(b.key) < 0;
     };
 
-    let winner: Candidate | null = null;
-    for (const item of candidates) {
+    // A remembered phrase short-circuits scoring entirely rather than entering
+    // as a very high score. Scoring it would leave it competing on the
+    // tie-breakers below — nearest name length, then alphabetical — which are
+    // heuristics about *guesses*, and there is nothing to guess here.
+    const remembered = aliasFor?.(line);
+    const rememberedItem = remembered
+      ? candidates.find(i => i.id === remembered) ?? null
+      : null;
+
+    let winner: Candidate | null = rememberedItem
+      ? { itemId: rememberedItem.id, confidence: 'remembered', key: rememberedItem.nameKey }
+      : null;
+    for (const item of winner ? [] : candidates) {
       const confidence = receiptMatchConfidence(item.nameKey, lineKey);
       if (!confidence) continue;
       const candidate: Candidate = { itemId: item.id, confidence, key: item.nameKey };
@@ -227,8 +258,9 @@ function resolveAgainst(
 export function matchReceiptLines(
   lines: readonly ReceiptLine[],
   items: readonly GroceryItem[],
+  aliasFor?: AliasResolver,
 ): ReceiptMatch[] {
-  const onList = resolveAgainst(lines, items.filter(i => i.onList));
+  const onList = resolveAgainst(lines, items.filter(i => i.onList), aliasFor);
 
   const openLines: ReceiptLine[] = [];
   const openIndices: number[] = [];
@@ -238,7 +270,11 @@ export function matchReceiptLines(
       openIndices.push(index);
     }
   });
-  const offList = resolveAgainst(openLines, items.filter(i => !i.onList));
+  // The alias runs on this pass too: a phrase whose remembered meaning is a row
+  // that simply isn't on this week's list should still be offered as "add as
+  // bought" rather than minting a second row for a name the user has already
+  // filed once.
+  const offList = resolveAgainst(openLines, items.filter(i => !i.onList), aliasFor);
   const offListMatchId = new Array<string | null>(lines.length).fill(null);
   offList.forEach((m, i) => { offListMatchId[openIndices[i]] = m.itemId; });
 
@@ -453,7 +489,17 @@ export function acceptedByDefault(
 ): string[] {
   return matches
     .filter(m => m.itemId !== null && m.confidence !== 'weak')
-    .filter(m => !receiptCautionsFor(m, items, shopId, links).some(c => c.kind === 'price'))
+    // A price caution demotes a *guess*, not a rule. The check exists because a
+    // 4x move is better evidence of a misread than of a real price, and that
+    // reasoning only holds while the match is the app's own reading of two
+    // names. Once someone has told us this line means this row, a wild price is
+    // news about the price — a sale, a different pack size, a year of
+    // inflation — and refusing to tick the row teaches them their correction
+    // didn't take.
+    .filter(m =>
+      m.confidence === 'remembered'
+      || !receiptCautionsFor(m, items, shopId, links).some(c => c.kind === 'price')
+    )
     .map(m => m.itemId as string);
 }
 

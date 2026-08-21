@@ -68,6 +68,8 @@ jest.mock('../db/database', () => ({
   dbSetItemSubLink: jest.fn(),
   dbDeleteItemSubLink: jest.fn(),
   dbGetAllItemProducts: jest.fn(() => []),
+  dbGetAllStoreAliases: jest.fn(() => []),
+  dbSetStoreAlias: jest.fn(),
   dbSetItemProduct: jest.fn(),
   dbDeleteItemProduct: jest.fn(),
   dbGetLastShopId: jest.fn().mockReturnValue(null),

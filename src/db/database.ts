@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, StoreAlias, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -300,6 +300,22 @@ export function initDatabase(): void {
     -- too — a barcode nobody has heard of is exactly the one that would
     -- otherwise hit the network on every unpack — and they expire, where hits
     -- don't. See GtinLookup in types, and gtin.ts for why the key is GTIN-14.
+    -- "At this store, GV MLK 2% GAL means milk." Written only from a
+    -- confirmation in a review sheet, never from the app's own guess. Keyed by
+    -- id rather than the (shop_id, raw_key) pair it is unique on, because
+    -- sync's row_key joins composite keys with '|' and this one is receipt
+    -- text. shop_id is '' (never NULL) for a text that isn't store-specific:
+    -- SQLite treats NULLs as distinct in a UNIQUE index. See StoreAlias.
+    CREATE TABLE IF NOT EXISTS grocery_store_aliases (
+      id TEXT PRIMARY KEY NOT NULL,
+      shop_id TEXT NOT NULL DEFAULT '',
+      raw_key TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      hit_count INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      last_used_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS gtin_lookups (
       gtin TEXT PRIMARY KEY NOT NULL,
       found INTEGER NOT NULL DEFAULT 0,
@@ -459,6 +475,10 @@ export function initDatabase(): void {
     // both-ways tick and dbDeleteGroceryItem's second cascade both need.
     // item → substitutes needs no index: it's the leading column of the key.
     'CREATE INDEX IF NOT EXISTS idx_grocery_item_subs_sub ON grocery_item_subs(sub_item_id)',
+    // The pair a lookup keys on, and the guarantee that one phrase at one store
+    // can only ever mean one thing.
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_grocery_store_aliases_key ON grocery_store_aliases(shop_id, raw_key)',
+    'CREATE INDEX IF NOT EXISTS idx_grocery_store_aliases_item ON grocery_store_aliases(item_id)',
     // "1 clove" → "1/4 tsp" (#1573). Both null or both set — see
     // ItemSubLink.ratioFrom — so no default and no backfill: an existing link
     // simply has no ratio, which is the row it already was.
@@ -1101,6 +1121,7 @@ export const BACKUP_TABLES = [
   'grocery_item_shops',
   'grocery_item_subs',
   'grocery_item_products',
+  'grocery_store_aliases',
   'recipes',
   // Before meal_plan_entries: an entry can point at a leftover.
   'leftovers',
@@ -2252,6 +2273,12 @@ export function dbDeleteGroceryItem(id: string): void {
   // ride along inside grocery_item_shops.unavailable_product_ids, which the
   // first statement above already deleted for this item.
   db.runSync('DELETE FROM grocery_item_products WHERE item_id = ?', [id]);
+  // An alias whose meaning is gone means nothing. Unlike the pointers that are
+  // left to dangle elsewhere here, this one can't be shrugged off at read time
+  // and left in place: the phrase would keep claiming a line, resolve to
+  // nothing, and so silently suppress the name match that would have found the
+  // right row — a remembered alias outranks every similarity tier.
+  db.runSync('DELETE FROM grocery_store_aliases WHERE item_id = ?', [id]);
   db.runSync('DELETE FROM grocery_items WHERE id = ?', [id]);
 }
 
@@ -2591,6 +2618,11 @@ export function dbSetShopExcludeFromSuggestions(id: string, exclude: boolean): v
  */
 export function dbDeleteGroceryShop(id: string): void {
   db.runSync('DELETE FROM grocery_item_shops WHERE shop_id = ?', [id]);
+  // The store's remembered phrases go with it. They are claims about how *this
+  // printer* abbreviates, so they mean nothing once the store is gone, and
+  // leaving them would have a store re-added under a new id inherit nothing
+  // while the orphans went on matching against a shop nobody can name.
+  db.runSync('DELETE FROM grocery_store_aliases WHERE shop_id = ?', [id]);
   db.runSync('DELETE FROM grocery_shops WHERE id = ?', [id]);
 }
 
@@ -2748,6 +2780,61 @@ export function dbDeleteItemProduct(id: string): void {
     );
   }
   db.runSync('DELETE FROM grocery_item_products WHERE id = ?', [id]);
+}
+
+// ─── Store aliases ──────────────────────────────────────────────────────────
+
+function rowToStoreAlias(row: Record<string, unknown>): StoreAlias {
+  return {
+    id: row.id as string,
+    shopId: (row.shop_id as string) ?? '',
+    rawKey: row.raw_key as string,
+    itemId: row.item_id as string,
+    hitCount: (row.hit_count as number) ?? 0,
+    createdAt: row.created_at as string,
+    lastUsedAt: row.last_used_at as string,
+  };
+}
+
+export function dbGetAllStoreAliases(): StoreAlias[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM grocery_store_aliases')
+    .map(rowToStoreAlias);
+}
+
+/**
+ * Records a confirmation, creating the alias or bumping the one already there.
+ *
+ * Upserts on the unique pair rather than on the id, because the caller knows
+ * the phrase and the store but not whether this app has seen them together
+ * before — and minting a second id for the same pair is exactly what the index
+ * exists to refuse. A repeat confirmation bumps the count and the stamp; a
+ * confirmation naming a *different* item overwrites the pointer, since the
+ * latest thing a person said a phrase means is what it means.
+ */
+export function dbSetStoreAlias(alias: StoreAlias): void {
+  db.runSync(
+    `INSERT INTO grocery_store_aliases
+       (id, shop_id, raw_key, item_id, hit_count, created_at, last_used_at)
+     VALUES (?,?,?,?,?,?,?)
+     ON CONFLICT(shop_id, raw_key) DO UPDATE SET
+       item_id = excluded.item_id,
+       hit_count = grocery_store_aliases.hit_count + 1,
+       last_used_at = excluded.last_used_at`,
+    [
+      alias.id,
+      alias.shopId,
+      alias.rawKey,
+      alias.itemId,
+      alias.hitCount,
+      alias.createdAt,
+      alias.lastUsedAt,
+    ]
+  );
+}
+
+export function dbDeleteStoreAlias(id: string): void {
+  db.runSync('DELETE FROM grocery_store_aliases WHERE id = ?', [id]);
 }
 
 // ─── Barcode lookups ────────────────────────────────────────────────────────

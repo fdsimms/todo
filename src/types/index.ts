@@ -1515,6 +1515,53 @@ export interface ItemProduct {
 }
 
 /**
+ * "At this store, a line reading GV MLK 2% GAL means milk."
+ *
+ * The memory that makes matching improve instead of staying at 85%. A receipt
+ * line and a looked-up product name are both somebody else's words for
+ * something in your catalog, and until this the app re-guessed them from
+ * scratch every trip, getting the same ones wrong every time.
+ *
+ * **Written from a confirmation, not from a guess.** An alias is only recorded
+ * when a person applied a review sheet with the row resolved — see
+ * `rememberAliases`. The app's own reading is never fed back into itself, which
+ * would let one bad match harden into a permanent rule.
+ *
+ * **Keyed by `id`, not by the pair it is unique on**, for the reason
+ * `grocery_item_products` gives, plus one specific to this table: sync's
+ * `row_key` joins composite keys with `|`, safe only because every other key in
+ * the app is base36 from `generateId()`. This one would be a receipt's printed
+ * text, which can contain anything.
+ */
+export interface StoreAlias {
+  id: string;
+  /**
+   * The store whose printer produced this text, or `''` for a text that isn't
+   * store-specific (a product name off a barcode lookup).
+   *
+   * Empty string rather than null because the UNIQUE index over
+   * `(shop_id, raw_key)` is what stops two rows claiming one phrase, and SQLite
+   * treats NULLs as distinct in a unique index — so a nullable column here
+   * would enforce nothing at all for exactly the rows that need it.
+   */
+  shopId: string;
+  /** The printed text, normalized by `aliasKeyFor()`. */
+  rawKey: string;
+  /** The catalog row this text means. Resolve-or-shrug, like every pointer here. */
+  itemId: string;
+  /**
+   * How many times this has been confirmed. Not currently read by matching — a
+   * remembered alias already outranks every similarity tier, so there is
+   * nothing for a count to break a tie between. It's here because the write
+   * path has it for free and because "confirmed nine times" is what a future
+   * review screen would sort on.
+   */
+  hitCount: number;
+  createdAt: string;
+  lastUsedAt: string;
+}
+
+/**
  * What a barcode turned out to be, remembered so it is only ever looked up once.
  *
  * A cache of a *shared* fact, and the only thing in this app that is. Every
