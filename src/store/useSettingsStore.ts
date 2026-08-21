@@ -15,7 +15,7 @@ import {
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
-import { loadAnthropicApiKey, saveAnthropicApiKey } from '../utils/secureApiKey';
+import { FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadAnthropicApiKey, loadSecureKey, saveAnthropicApiKey, saveSecureKey } from '../utils/secureApiKey';
 import {
   AI_FEATURE_IDS, defaultAiFeatureConfig, isAiModelId,
   type AiFeatureConfig, type AiFeatureConfigMap, type AiFeatureId,
@@ -215,6 +215,19 @@ interface SettingsStore {
   // isn't, so initializeSecrets() fills it in (and migrates the old plaintext
   // row) right after. Everything that reads it already treats '' as "AI is off".
   anthropicApiKey: string;
+  /**
+   * Keys for the two barcode sources that need one. Both optional, and both
+   * simply drop their source out of the lookup chain when absent — which is the
+   * state every install starts in, since Open Food Facts needs no key and is
+   * what makes scanning work out of the box.
+   *
+   * FoodData Central is free but keyed, so it ranks first when present: a
+   * government dataset of US branded foods is a better first answer than a
+   * crowd-maintained one where both know a product. Go-UPC is paid and ranks
+   * last, after both free sources have said they don't know.
+   */
+  fdcApiKey: string;
+  goUpcApiKey: string;
   // Per-feature on/off + model choice for every place the app calls out to
   // Anthropic (see src/utils/aiFeatures.ts and src/services/aiSuggestions.ts).
   // Kept out of DEFAULT_SETTINGS/resetToDefaults for the same reason as
@@ -627,6 +640,8 @@ interface SettingsStore {
   setRecipeFavoritesOnly: (favoritesOnly: boolean) => void;
   setExcludedRecipeTags: (tags: string[]) => void;
   setAnthropicApiKey: (key: string) => void;
+  setFdcApiKey: (key: string) => void;
+  setGoUpcApiKey: (key: string) => void;
   setAiFeatureConfig: (id: AiFeatureId, patch: Partial<AiFeatureConfig>) => void;
   setPostponeCheckEnabled: (on: boolean) => void;
   setPostponeCheckThreshold: (count: number) => void;
@@ -974,6 +989,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   dailyAgendaTime: '08:00',
   tripReminderEnabled: false,
   anthropicApiKey: '',
+  fdcApiKey: '',
+  goUpcApiKey: '',
   aiFeatureConfig: defaultAiFeatureConfig(),
   appLockEnabled: false,
   appLockGraceSeconds: DEFAULT_APP_LOCK_GRACE_SECONDS,
@@ -1273,6 +1290,12 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   async initializeSecrets() {
     const anthropicApiKey = await loadAnthropicApiKey();
     set(state => (state.anthropicApiKey ? {} : { anthropicApiKey }));
+    // Same don't-clobber-a-live-edit rule, per key: a paste that landed while
+    // the read was in flight is the newer value.
+    const fdcApiKey = await loadSecureKey(FDC_KEY_SECURE_KEY);
+    set(state => (state.fdcApiKey ? {} : { fdcApiKey }));
+    const goUpcApiKey = await loadSecureKey(GO_UPC_KEY_SECURE_KEY);
+    set(state => (state.goUpcApiKey ? {} : { goUpcApiKey }));
   },
 
   setDayResetTime(time: string) {
@@ -1428,6 +1451,16 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setAnthropicApiKey(key: string) {
     set({ anthropicApiKey: key });
     saveAnthropicApiKey(key);
+  },
+
+  setFdcApiKey(key: string) {
+    set({ fdcApiKey: key });
+    saveSecureKey(FDC_KEY_SECURE_KEY, key);
+  },
+
+  setGoUpcApiKey(key: string) {
+    set({ goUpcApiKey: key });
+    saveSecureKey(GO_UPC_KEY_SECURE_KEY, key);
   },
 
   setAiFeatureConfig(id: AiFeatureId, patch: Partial<AiFeatureConfig>) {

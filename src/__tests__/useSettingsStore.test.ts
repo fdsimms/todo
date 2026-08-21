@@ -12,6 +12,10 @@ jest.mock('../db/database', () => ({
 jest.mock('../utils/secureApiKey', () => ({
   loadAnthropicApiKey: jest.fn().mockResolvedValue(''),
   saveAnthropicApiKey: jest.fn().mockResolvedValue(true),
+  loadSecureKey: jest.fn().mockResolvedValue(''),
+  saveSecureKey: jest.fn().mockResolvedValue(true),
+  FDC_KEY_SECURE_KEY: 'fdcApiKey',
+  GO_UPC_KEY_SECURE_KEY: 'goUpcApiKey',
 }));
 
 beforeEach(() => {

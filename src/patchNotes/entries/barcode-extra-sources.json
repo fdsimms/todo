@@ -1,0 +1,4 @@
+{
+  "message": "Barcode lookups can now check two more databases. Add a free FoodData Central key and it gets asked first; add a paid Go-UPC key and it gets asked only for codes the free ones don't know. Both are optional, and scanning works without either.",
+  "date": "2026-08-21"
+}

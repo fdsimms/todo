@@ -31,6 +31,10 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const productLookupEnabled = useSettingsStore(s => s.productLookupEnabled);
   const setProductLookupEnabled = useSettingsStore(s => s.setProductLookupEnabled);
+  const fdcApiKey = useSettingsStore(s => s.fdcApiKey);
+  const setFdcApiKey = useSettingsStore(s => s.setFdcApiKey);
+  const goUpcApiKey = useSettingsStore(s => s.goUpcApiKey);
+  const setGoUpcApiKey = useSettingsStore(s => s.setGoUpcApiKey);
   const aiFeatureConfig = useSettingsStore(s => s.aiFeatureConfig);
   const setAiFeatureConfig = useSettingsStore(s => s.setAiFeatureConfig);
 
@@ -46,11 +50,15 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   }, []);
 
   const [apiKeyDraft, setApiKeyDraft] = useState('');
+  const [fdcDraft, setFdcDraft] = useState('');
+  const [goUpcDraft, setGoUpcDraft] = useState('');
 
   useFocusEffect(
     React.useCallback(() => {
       refreshLockSupport();
       setApiKeyDraft(useSettingsStore.getState().anthropicApiKey ?? '');
+      setFdcDraft(useSettingsStore.getState().fdcApiKey ?? '');
+      setGoUpcDraft(useSettingsStore.getState().goUpcApiKey ?? '');
       const sub = AppState.addEventListener('change', state => {
         if (state === 'active') refreshLockSupport();
       });
@@ -213,7 +221,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
       {kitchenEnabled && (
         <SettingsSection
           label="Barcode lookups"
-          footer="Open Food Facts is a free product database run by volunteers. Scanning sends one barcode at a time and nothing else, with no account and no identifier attached. Answers are saved on this device, so a barcode is only looked up once. Turning this off still uses the barcodes already saved here."
+          footer="Open Food Facts is a free product database run by volunteers, and needs no key. Scanning sends one barcode at a time and nothing else, with no account and no identifier attached. Answers are saved on this device, so a barcode is only looked up once. Turning this off still uses the barcodes already saved here. The two keys below are optional and add more places to look."
         >
           <SettingsRow
             icon="barcode-outline"
@@ -224,6 +232,54 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
             onPress={() => setProductLookupEnabled(!productLookupEnabled)}
             accessibilityLabel="Look up scanned barcodes"
           />
+          {/* Only while lookups are on: a key for a service that isn't being
+              called is a field that can't do anything. */}
+          {productLookupEnabled && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                icon="key-outline"
+                iconColor={fdcApiKey ? colors.accent : undefined}
+                label="FoodData Central key"
+                hint="Optional. The USDA's own database of US branded foods, asked first when set."
+              >
+                <TextInput
+                  style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
+                  value={fdcDraft}
+                  onChangeText={setFdcDraft}
+                  onBlur={() => setFdcApiKey(fdcDraft.trim())}
+                  placeholder="e.g. a1b2c3..."
+                  placeholderTextColor={colors.textTertiary}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  accessibilityLabel="FoodData Central API key"
+                />
+              </SettingsRow>
+              <View style={styles.sep} />
+              <SettingsRow
+                icon="key-outline"
+                iconColor={goUpcApiKey ? colors.accent : undefined}
+                label="Go-UPC key"
+                hint="Optional and paid. Asked only for barcodes the two free databases don't know."
+              >
+                <TextInput
+                  style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
+                  value={goUpcDraft}
+                  onChangeText={setGoUpcDraft}
+                  onBlur={() => setGoUpcApiKey(goUpcDraft.trim())}
+                  placeholder="e.g. a1b2c3..."
+                  placeholderTextColor={colors.textTertiary}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  accessibilityLabel="Go-UPC API key"
+                />
+              </SettingsRow>
+            </>
+          )}
         </SettingsSection>
       )}
     </>

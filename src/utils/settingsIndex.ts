@@ -210,6 +210,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up scanned barcodes', section: 'Barcode lookups',
     keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy'],
     kitchen: true },
+  { id: 'fdcApiKey', groupId: 'privacyAi', label: 'FoodData Central key', section: 'Barcode lookups',
+    keywords: ['usda', 'api', 'barcode', 'scan', 'branded', 'nutrition'], kitchen: true },
+  { id: 'goUpcApiKey', groupId: 'privacyAi', label: 'Go-UPC key', section: 'Barcode lookups',
+    keywords: ['api', 'barcode', 'scan', 'paid', 'fallback'], kitchen: true },
   { id: 'tripLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'], kitchen: true },
   // The four generators, all in one section now (#1524) — they used to be three

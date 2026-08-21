@@ -389,7 +389,7 @@ piece of user data lives in a local SQLite file on device. Three things reach th
 not equivalent: `src/services/aiSuggestions.ts` posts task titles/notes straight to `api.anthropic.com`
 using a user-supplied API key, and every feature it powers is inert until the user pastes one into
 Settings; `src/services/recipePage.ts` fetches a recipe page the user pasted a link to;
-`src/services/productLookup.ts` asks Open Food Facts what a scanned barcode is. **That third one is the
+`src/services/productLookup.ts` asks up to three product databases what a scanned barcode is. **That third one is the
 only one that needs no key**, so "no key, no traffic" stopped being the whole privacy answer when it
 shipped — it carries its own switch (`productLookupEnabled`) instead. Anything else added on those terms
 needs one too.
