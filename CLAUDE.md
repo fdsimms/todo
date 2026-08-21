@@ -252,9 +252,9 @@ exports.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (4.7k), `components/TaskEditor.tsx` (4.2k),
-`screens/TodayScreen.tsx` (3.6k), `components/TaskItem.tsx` (3.3k), `db/database.ts` (3.1k),
-`store/useGroceryStore.ts` (2.9k), `components/QuickAddModal.tsx` (2.6k),
-`types/index.ts` (2.5k), `screens/MealPlanScreen.tsx` (1.9k),
+`screens/TodayScreen.tsx` (3.6k), `db/database.ts` (3.4k), `components/TaskItem.tsx` (3.3k),
+`store/useGroceryStore.ts` (3.1k), `types/index.ts` (2.6k),
+`components/QuickAddModal.tsx` (2.6k), `screens/MealPlanScreen.tsx` (1.9k),
 `screens/RecipeDetailScreen.tsx` (1.9k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
