@@ -47,6 +47,10 @@ import {
   dbTableColumns,
   dbExportTables,
   dbReplaceAllData,
+  dbGetGtinLookup,
+  dbSetGtinLookup,
+  dbCountGtinLookups,
+  dbClearGtinLookups,
   BACKUP_TABLES,
   BACKUP_EXCLUDED_TABLES,
   dbGetAllGroceryItems,
@@ -3222,5 +3226,50 @@ describe('schema completeness', () => {
     // reference the constant directly. This is what catches the two ever
     // drifting apart if the table is renamed and only one of them updated.
     expect(SYNC_EXCLUDED_TABLES).toContain(SYNC_DELETIONS_TABLE);
+  });
+});
+
+describe('the barcode cache', () => {
+  // The suite's shared beforeEach clears the tables it knows about, and this
+  // one is newer than that list. Clearing here keeps each case independent.
+  beforeEach(() => { dbClearGtinLookups(); });
+
+  const entry = (gtin: string, found = true) => ({
+    gtin, found, name: found ? 'Milk' : '', brand: null, quantity: null,
+    source: found ? 'openfoodfacts' : '', fetchedAt: '2026-08-21T12:00:00.000Z',
+  });
+
+  it('round-trips a hit', () => {
+    dbSetGtinLookup(entry('00036000291452'));
+    expect(dbGetGtinLookup('00036000291452')).toMatchObject({ found: true, name: 'Milk' });
+  });
+
+  it('round-trips a miss, which is the whole reason misses are stored', () => {
+    dbSetGtinLookup(entry('00000096385074', false));
+    expect(dbGetGtinLookup('00000096385074')).toMatchObject({ found: false, name: '' });
+  });
+
+  it('answers null for a barcode nobody has asked about', () => {
+    expect(dbGetGtinLookup('00000000000000')).toBeNull();
+  });
+
+  it('upserts rather than minting a second row for one barcode', () => {
+    dbSetGtinLookup(entry('00036000291452', false));
+    dbSetGtinLookup(entry('00036000291452', true));
+    expect(dbCountGtinLookups()).toBe(1);
+    expect(dbGetGtinLookup('00036000291452')).toMatchObject({ found: true });
+  });
+
+  it('counts what is saved', () => {
+    dbSetGtinLookup(entry('00036000291452'));
+    dbSetGtinLookup(entry('00000096385074'));
+    expect(dbCountGtinLookups()).toBe(2);
+  });
+
+  it('clears, which is the only way back from a hit that never expires', () => {
+    dbSetGtinLookup(entry('00036000291452'));
+    dbClearGtinLookups();
+    expect(dbCountGtinLookups()).toBe(0);
+    expect(dbGetGtinLookup('00036000291452')).toBeNull();
   });
 });

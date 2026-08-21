@@ -2846,6 +2846,29 @@ export function dbSetStoreAlias(alias: StoreAlias): void {
   );
 }
 
+/** How many barcodes this device has answers for, for the Settings row. */
+export function dbCountGtinLookups(): number {
+  return db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM gtin_lookups')?.n ?? 0;
+}
+
+/**
+ * Forgets every cached barcode.
+ *
+ * The escape hatch for the one thing this cache can get permanently wrong. A
+ * *miss* expires on its own after GTIN_MISS_TTL_DAYS, but a **hit is kept for
+ * ever** on the reasoning that what a GTIN denotes never changes — which is
+ * true of the barcode and not of this app's reading of it. A source that
+ * returns an ugly or wrong name, or a parser that mis-reads a field, writes
+ * that answer once and there is otherwise no way to ask again.
+ *
+ * Cheap to use and close to harmless: every row is reconstructible, and the
+ * cost of clearing is one request per barcode the next time it is scanned.
+ * That asymmetry is why this is a plain button rather than something guarded.
+ */
+export function dbClearGtinLookups(): void {
+  db.runSync('DELETE FROM gtin_lookups');
+}
+
 export function dbDeleteStoreAlias(id: string): void {
   db.runSync('DELETE FROM grocery_store_aliases WHERE id = ?', [id]);
 }

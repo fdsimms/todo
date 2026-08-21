@@ -214,6 +214,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['usda', 'api', 'barcode', 'scan', 'branded', 'nutrition'], kitchen: true },
   { id: 'goUpcApiKey', groupId: 'privacyAi', label: 'Go-UPC key', section: 'Barcode lookups',
     keywords: ['api', 'barcode', 'scan', 'paid', 'fallback'], kitchen: true },
+  { id: 'clearGtinLookups', groupId: 'privacyAi', label: 'Forget saved barcodes', section: 'Barcode lookups',
+    keywords: ['cache', 'clear', 'reset', 'wrong name', 'upc', 'gtin', 'scan again'], kitchen: true },
   { id: 'tripLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'], kitchen: true },
   // The four generators, all in one section now (#1524) — they used to be three

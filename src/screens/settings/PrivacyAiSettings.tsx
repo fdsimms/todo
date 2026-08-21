@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { View, TextInput, Alert, AppState, type ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { dbClearGtinLookups, dbCountGtinLookups } from '../../db/database';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useAppLockStore } from '../../store/useAppLockStore';
 import { APP_LOCK_GRACE_OPTIONS, graceLabel } from '../../utils/appLock';
@@ -52,6 +53,35 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const [fdcDraft, setFdcDraft] = useState('');
   const [goUpcDraft, setGoUpcDraft] = useState('');
+  /**
+   * Read on focus rather than held in a store: nothing else renders this, and a
+   * cache that grows on every scan would otherwise need a subscription to a
+   * table deliberately kept out of state — see dbGetGtinLookup's note.
+   */
+  const [cachedBarcodes, setCachedBarcodes] = useState(0);
+
+  /**
+   * Confirmed, but lightly. Nothing is lost that can't be fetched again, so the
+   * alert is here to catch a mis-tap rather than to guard anything: the cost of
+   * clearing is one request per barcode, next time each is scanned.
+   */
+  const confirmClearBarcodes = React.useCallback(() => {
+    Alert.alert(
+      'Forget saved barcodes?',
+      'Every barcode gets looked up again the next time you scan it. Nothing on your list or in your pantry changes.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Forget',
+          style: 'destructive',
+          onPress: () => {
+            dbClearGtinLookups();
+            setCachedBarcodes(0);
+          },
+        },
+      ]
+    );
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -59,6 +89,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
       setApiKeyDraft(useSettingsStore.getState().anthropicApiKey ?? '');
       setFdcDraft(useSettingsStore.getState().fdcApiKey ?? '');
       setGoUpcDraft(useSettingsStore.getState().goUpcApiKey ?? '');
+      setCachedBarcodes(dbCountGtinLookups());
       const sub = AppState.addEventListener('change', state => {
         if (state === 'active') refreshLockSupport();
       });
@@ -278,6 +309,21 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                   accessibilityLabel="Go-UPC API key"
                 />
               </SettingsRow>
+            </>
+          )}
+          {/* Shown whether or not lookups are on, because the reason to reach
+              for it is that something already saved is wrong, and switching
+              lookups off doesn't stop those answers being used. */}
+          {cachedBarcodes > 0 && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                icon="refresh-outline"
+                label="Forget saved barcodes"
+                hint={`${cachedBarcodes.toLocaleString()} saved on this device. Clear them to look everything up fresh.`}
+                onPress={confirmClearBarcodes}
+                accessibilityLabel="Forget saved barcodes"
+              />
             </>
           )}
         </SettingsSection>
