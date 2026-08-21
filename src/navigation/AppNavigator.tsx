@@ -49,7 +49,7 @@ const EDGE_WIDTH = 20;
 // Screens only reachable via the drawer — hidden from the tab bar.
 const HIDDEN = { tabBarButton: () => null };
 
-const DRAWER_TABS = new Set(['Calendar', 'Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Waiting', 'Drift', 'Archived', 'Groceries', 'Recipes', 'MealPlan', 'Kitchen']);
+const DRAWER_TABS = new Set(['Search', 'Calendar', 'Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Waiting', 'Drift', 'Archived', 'Recipes', 'MealPlan', 'Kitchen']);
 
 // Every screen it's safe to reopen the app directly on: the visible bottom
 // tabs plus every drawer screen, none of which take a route param. Excludes
@@ -58,7 +58,7 @@ const DRAWER_TABS = new Set(['Calendar', 'Tags', 'Categories', 'Stacks', 'Templa
 // app can't invent on a cold launch). Backs the lastVisitedScreen setting
 // (useSettingsStore) so the app reopens where it was left rather than always
 // on Today — see initialRouteName below.
-const RESTORABLE_SCREENS = new Set(['Today', 'Search', 'Projects', ...DRAWER_TABS]);
+const RESTORABLE_SCREENS = new Set(['Today', 'Groceries', 'Projects', ...DRAWER_TABS]);
 
 // The Groceries/Recipes/Meal plan/Kitchen hub (SideMenuDrawer's
 // GROCERIES_HUB_TABS) drops out of the drawer entirely while kitchenEnabled is
@@ -137,13 +137,17 @@ const MainTabs = React.memo(function MainTabs({
         }}
       />
       <Tab.Screen
-        name="Search"
-        component={SearchScreen}
+        name="Groceries"
+        component={GroceryScreen}
         listeners={tabPressHaptic}
-        options={{
-          tabBarAccessibilityLabel: 'Search',
-          tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
-        }}
+        // Drops out of the tab bar (rather than losing its icon/label) while
+        // kitchenEnabled is off, same gate SideMenuDrawer's "Groceries &
+        // Meals" row uses — a tab pointing at a feature the user just turned
+        // off in Settings would be a dead button.
+        options={kitchenEnabled ? {
+          tabBarAccessibilityLabel: 'Groceries',
+          tabBarIcon: ({ color, size }) => <Ionicons name="cart" size={size} color={color} />,
+        } : HIDDEN}
       />
       <Tab.Screen
         name="Projects"
@@ -176,7 +180,7 @@ const MainTabs = React.memo(function MainTabs({
       />
 
       {/* Drawer-only screens — not visible in the tab bar */}
-      <Tab.Screen name="Groceries" component={GroceryScreen} options={HIDDEN} />
+      <Tab.Screen name="Search" component={SearchScreen} options={HIDDEN} />
       <Tab.Screen name="Recipes" component={RecipesScreen} options={HIDDEN} />
       <Tab.Screen name="MealPlan" component={MealPlanScreen} options={HIDDEN} />
       <Tab.Screen name="Kitchen" component={KitchenScreen} options={HIDDEN} />
@@ -213,7 +217,7 @@ export default function AppNavigator() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [initialRouteName] = useState(initialScreenFromSettings);
   const [activeTab, setActiveTab] = useState(() =>
-    (initialRouteName === 'Today' || initialRouteName === 'Search' || initialRouteName === 'Projects')
+    (initialRouteName === 'Today' || initialRouteName === 'Groceries' || initialRouteName === 'Projects')
       ? initialRouteName
       : 'Today'
   );

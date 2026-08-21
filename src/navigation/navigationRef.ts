@@ -46,14 +46,16 @@ export function resetToMealPlan(focusDay?: string | null): void {
   });
 }
 
-// Where the "Search" and "Projects" Home Screen quick actions land — both
-// already top-level tabs, so this is just tab navigation triggered from
-// outside the component tree.
+// Where the "Search" Home Screen quick action lands. Search is a drawer
+// screen now (see AppNavigator's DRAWER_TABS), not a bottom tab, but it's
+// still a registered route, so this is the same tab navigation as before —
+// nothing here has to know it moved.
 export function resetToSearch(): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate('Search');
 }
 
+// Where the "Projects" Home Screen quick action lands — still a top-level tab.
 export function resetToProjects(): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate('Projects');

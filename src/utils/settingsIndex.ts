@@ -199,7 +199,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // setting with no way back.
   { id: 'kitchenEnabled', groupId: 'tasksProjects', label: 'Groceries & meals', section: 'Feature areas',
     keywords: ['grocery', 'recipes', 'meal plan', 'shopping', 'food', 'cooking',
-      'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer'] },
+      'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer', 'tab bar'] },
   { id: 'mealsOnToday', groupId: 'tasksProjects', label: 'Show the day\'s meals', section: 'Meals on Today',
     keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'takeaway'], kitchen: true },
   { id: 'kitchenOnToday', groupId: 'tasksProjects', label: 'Show what needs using up', section: 'Meals on Today',
