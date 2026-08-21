@@ -32,9 +32,11 @@ import { EmptyState } from './EmptyState';
 import type { ReceiptAddDraft } from './ReceiptImportSheet';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
 import { formatGtin, normalizeGtin } from '../utils/gtin';
+import { normalizePlu, pluNameFor } from '../utils/plu';
 import {
   alreadyScanned,
   matchScans,
+  pluScannedItem,
   scannedItemFor,
   unknownScannedItem,
   type ScannedItem,
@@ -200,8 +202,26 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
     const raw = manual.trim();
     if (!raw) return;
     const gtin = normalizeGtin(raw);
+    const plu = gtin ? null : normalizePlu(raw);
     if (gtin) {
       if (!alreadyScanned(rowsRef.current, gtin)) void addScan(gtin);
+    } else if (plu) {
+      // A produce sticker. It goes in as a row keyed on the code rather than
+      // named after it, so the alias table can answer for it now and learn it
+      // if it can't — see `pluScannedItem`. A seeded name is a suggestion and
+      // deliberately arrives unchecked: the built-in list is tiny and unverified,
+      // so a wrong one has to be visible rather than silently accepted.
+      const suggested = pluNameFor(plu);
+      setRows(current => [
+        ...current,
+        {
+          ...pluScannedItem(plu, suggested),
+          key: generateId(),
+          included: false,
+          pending: false,
+          error: null,
+        },
+      ]);
     } else {
       setRows(current => [
         ...current,

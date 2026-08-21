@@ -97,6 +97,25 @@ export function scannedItemFor(record: ProductRecord): ScannedItem {
 }
 
 /**
+ * A produce sticker as a row.
+ *
+ * The code goes in `label`, not in `name`, and that placement is the feature:
+ * `label` is what an alias is looked up and remembered against, so naming
+ * "4159" once teaches it for good. A seeded name arrives as a suggestion in
+ * `name`; most codes have none and arrive blank, which is the same row a
+ * barcode nobody has heard of produces.
+ */
+export function pluScannedItem(code: string, suggestedName: string | null): ScannedItem {
+  return {
+    gtin: null,
+    label: code,
+    name: suggestedName ?? '',
+    brand: null,
+    quantity: '',
+  };
+}
+
+/**
  * A barcode nothing could be found for, as a row the user can still name.
  *
  * A miss is not a dead end — the box is in their hand and they know what it is.
