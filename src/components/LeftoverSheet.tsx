@@ -515,7 +515,16 @@ export function LeftoverSheet({
           )}
         </ScrollView>
 
-        <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity}>
+        <TouchableOpacity
+          style={styles.cancelCard}
+          onPress={() => {
+            // Tapping Done can beat the title field's own blur — flush it
+            // first instead of dropping whatever was typed.
+            if (editing) commitRename();
+            dismiss();
+          }}
+          activeOpacity={interaction.activeOpacity}
+        >
           <Text style={styles.cancelLabel}>{editing ? 'Done' : 'Cancel'}</Text>
         </TouchableOpacity>
       </Animated.View>

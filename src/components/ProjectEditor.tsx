@@ -101,6 +101,18 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   // The cadence is stored in days; the picker shows it as a count and a unit.
   const cadence = toCadenceParts(nudgeCadenceDays);
 
+  // Done can fire before the new-category field's own blur or Enter has
+  // committed it — same race TaskEditor's resolveLinkUrl guards against.
+  // Read the live text box instead of trusting stale `category` state.
+  const resolveCategory = () => {
+    const c = newCategory.trim();
+    if (addingCategory && c) {
+      addCategory(c);
+      return c;
+    }
+    return category;
+  };
+
   const saveAndClose = () => {
     if (!project) { onClose(); return; }
     const trimmed = title.trim();
@@ -108,7 +120,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       updateProject(project.id, {
         title: trimmed,
         notes,
-        category,
+        category: resolveCategory(),
         targetStartDate: targetStartDate ? targetStartDate.toISOString() : null,
         targetEndDate: targetEndDate ? targetEndDate.toISOString() : null,
         nudgeCadenceDays,
