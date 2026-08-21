@@ -190,15 +190,24 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
     setNewAisle('');
   };
 
+  // Both renames commit on blur, but tapping Done can beat that blur — flush
+  // whichever one is mid-edit instead of dropping it, same fix as
+  // GroceryItemSheet's Done button.
+  const handleDone = () => {
+    commitRename();
+    commitAisleRename();
+    onClose();
+  };
+
   // fullScreen, not a page sheet: the sheet's own pull-down pan cancels the JS
   // touches this list's drag runs on. See EditorSheet's note (#1182).
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleDone}>
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
           <Text style={styles.headerTitle}>List settings</Text>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
+          <SheetHeaderButton label="Done" onPress={handleDone} minWidth={64} />
         </View>
 
         <View style={styles.segments}>

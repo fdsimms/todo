@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   View,
@@ -37,7 +37,7 @@ import { aisleForName } from '../utils/groceryAisles';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
-import { ExtractedIngredientRow } from './ExtractedIngredientRow';
+import { ExtractedIngredientRow, type ExtractedIngredientRowHandle } from './ExtractedIngredientRow';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { haptics } from '../utils/haptics';
 
@@ -75,6 +75,9 @@ interface Props {
 export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // One ref per visible row, so handleApply can flush whichever one is
+  // mid-edit — see ExtractedIngredientRowHandle.resolvePendingEdit.
+  const rowRefs = useRef(new Map<number, ExtractedIngredientRowHandle | null>());
 
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
@@ -177,7 +180,22 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
 
   const handleApply = () => {
     if (!recipe || !extracted) { onClose(); return; }
-    const chosen = ingredients
+    // Tapping Apply can beat a row's own blur — merge in whatever's still
+    // mid-edit instead of trusting `ingredients` state a pending edit
+    // hasn't reached yet (same race TaskEditor's resolveX functions guard
+    // against). Read directly rather than going through onEditName/
+    // onEditQuantity, which write via setState and wouldn't land in time
+    // for this same synchronous read.
+    const resolvedIngredients = ingredients.map((row, i) => {
+      const pending = rowRefs.current.get(i)?.resolvePendingEdit();
+      if (!pending) return row;
+      const next = { ...row, [pending.field]: pending.value };
+      if (pending.field === 'name') {
+        next.aisle = rememberedAisleFor(pending.value) ?? aisleForName(pending.value) ?? 'Other';
+      }
+      return next;
+    });
+    const chosen = resolvedIngredients
       .filter((_, i) => accepted.has(i))
       .map(item => normalizeIngredient(item))
       .filter((i): i is NonNullable<typeof i> => i !== null);
@@ -398,6 +416,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           return (
             <ExtractedIngredientRow
               key={`${row.name}-${i}`}
+              ref={el => { if (el) rowRefs.current.set(i, el); else rowRefs.current.delete(i); }}
               row={row}
               checked={accepted.has(i)}
               onToggle={() => toggle(i)}

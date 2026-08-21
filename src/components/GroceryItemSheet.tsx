@@ -441,6 +441,19 @@ export function GroceryItemSheet({
   // what's mid-edit in the field, which isn't a price yet.
   const priceStandingText = describePriceStanding(priceStandingFor(item, activeTarget, itemShops));
 
+  // Every field above commits on blur, but tapping Done (or the sheet being
+  // dismissed some other way) doesn't guarantee a focused field has blurred
+  // first — same race TaskEditor's save() guards against with
+  // commitPendingChainItem/resolveLinkUrl. Flush every field explicitly
+  // rather than trust that blur already ran.
+  const handleDone = () => {
+    commitName();
+    commitQuantity();
+    commitNote();
+    commitPrice(priceKey);
+    onClose();
+  };
+
   const priceTargetOptions: PillGroupOption[] = [
     {
       key: ITEM_PRICE_KEY,
@@ -1170,7 +1183,13 @@ export function GroceryItemSheet({
 
   // ==== render. Everything below is JSX ====
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={handleDone}
+      onDismiss={handleDone}
+    >
       <View style={styles.root}>
         <View style={styles.header}>
           <TouchableOpacity
@@ -1189,7 +1208,7 @@ export function GroceryItemSheet({
             />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Item</Text>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
+          <SheetHeaderButton label="Done" onPress={handleDone} minWidth={64} />
         </View>
 
         <ScrollView

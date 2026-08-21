@@ -84,11 +84,23 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
   const closeCategory = () => { animateLayout(); setCategoryOpen(false); };
   const closeContainer = () => { animateLayout(); setContainerOpen(false); };
 
+  // Done can fire before the new-category field's own blur or Enter has
+  // committed it — same race TaskEditor's resolveLinkUrl guards against.
+  // Read the live text box instead of trusting stale `category` state.
+  const resolveCategory = () => {
+    const c = newCategory.trim();
+    if (addingCategory && c) {
+      addCategory(c);
+      return c;
+    }
+    return category;
+  };
+
   const saveAndClose = () => {
     if (!template) { onClose(); return; }
     const trimmed = name.trim();
     if (trimmed) renameTemplate(template.id, trimmed);
-    setTemplateCategory(template.id, category);
+    setTemplateCategory(template.id, resolveCategory());
     setTemplateContainer(template.id, container);
     setSchedule(template.id, schedule);
     onClose();
