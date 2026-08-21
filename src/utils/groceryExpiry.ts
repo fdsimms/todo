@@ -2,6 +2,7 @@ import type { GroceryItem, TaskDraft } from '../types';
 import { GROCERY_USE_UP_LEAD_DAYS_MAX, GROCERY_USE_UP_LEAD_DAYS_MIN } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { generatedBy, wantsGeneratedTask } from './generatedTasks';
+import { liveExpiresAt } from './groceryShelfLife';
 import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
 import { resolveOffsetDate } from './templateUtils';
 
@@ -34,14 +35,37 @@ import { resolveOffsetDate } from './templateUtils';
  * The precedence is `wantsGeneratedTask`'s, shared with the other generators.
  * What qualifies an *item*:
  *
- * 1. **A use-by date is the whole trigger.** No date, no task: the shelf-life
- *    lexicon is a whitelist of things that actually go off, so a catalog of
- *    hundreds contributes a handful of dates and the rest stay silent.
+ * 1. **A *live* use-by date is the whole trigger.** No date, no task: the
+ *    shelf-life lexicon is a whitelist of things that actually go off, so a
+ *    catalog of hundreds contributes a handful of dates and the rest stay
+ *    silent. Live, because a frozen item's date is suspended rather than
+ *    cleared — read through `liveUseBy` and it goes quiet for exactly as long
+ *    as it's in the freezer, then counts again from a fresh shelf life on the
+ *    thaw. This is the case the whole freezer feature is for: the lexicon is at
+ *    its shortest precisely where a freezer is most used (chicken 2 days,
+ *    ground beef 2), so without it a month of meat is a fistful of tasks due
+ *    Monday about food under an inch of ice.
  * 2. **Nothing about being on the list matters.** A row can be both in the
  *    fridge and back on this week's list; the old bag still needs eating.
+ *
+ * Deliberately *not* an item-level opt-out (`useUpTask: false`), which was the
+ * only way to say this before: that's permanent, so silencing this month's
+ * frozen chicken would silence next month's fresh chicken too.
  */
 export function wantsUseUpTask(item: GroceryItem, enabled: boolean): boolean {
-  return wantsGeneratedTask(item.useUpTask, enabled, item.expiresAt !== null);
+  // A precondition rather than `wantsGeneratedTask`'s `qualifies` argument,
+  // which an explicit `true` deliberately outranks. That ordering is right for
+  // a *preference* — "I do want reminding about this one" should beat the
+  // global setting — but a live date isn't a preference, it's whether there is
+  // anything to remind about. No countdown, no task to want: `useUpTaskFields`
+  // dates the task off `expiresAt!`, so reaching it here would either
+  // dereference a null or, for a frozen row, date a task off a day the app has
+  // undertaken to ignore.
+  //
+  // An opt-in isn't lost by this, only deferred — it's still sitting on the row
+  // when the item thaws or is bought again, and takes effect then.
+  if (liveExpiresAt(item) === null) return false;
+  return wantsGeneratedTask(item.useUpTask, enabled, true);
 }
 
 /**

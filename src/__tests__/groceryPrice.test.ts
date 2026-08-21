@@ -44,6 +44,7 @@ function makeItem(overrides: Partial<GroceryItem> = {}): GroceryItem {
     choiceGroup: null,
     isStaple: false,
     expiresAt: null,
+    frozenAt: null,
     shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,

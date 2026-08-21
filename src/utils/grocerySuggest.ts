@@ -1,5 +1,6 @@
 import { format } from 'date-fns/format';
 import type { GroceryItem } from '../types';
+import { FROZEN_REASON } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { OTHER_AISLE } from './groceryAisles';
 
@@ -385,7 +386,27 @@ export function probablyHaveReason(item: GroceryItem, now: Date): string | null 
   if (item.isStaple) return 'always have it';
 
   const asserted = onHandAssertion(item, now);
-  if (asserted !== null) return asserted ? 'marked as on hand' : null;
+
+  // An explicit "Out of it" beats everything below, the freezer included. It
+  // has to be the ✕ on a Pantry row: that button writes exactly this bit, so if
+  // the freezer outranked it, tapping ✕ on a frozen row would leave the row
+  // sitting there and read as a dead control. "I'm out of it" is also simply a
+  // later and better-informed statement than "I put some in the freezer".
+  if (asserted === false) return null;
+
+  // The freezer then outranks the purchase reading below, for the reason the
+  // staple line above does: it's a fact the user handed over, not a guess. It
+  // has to, or the feature would defeat itself — the whole point of a freezer
+  // is that food outlives the window this function reasons in, so a bag of
+  // chicken frozen in July would drop out of the pantry in August while sitting
+  // in the freezer, and the app would offer to add it to the list.
+  //
+  // A standing fact with no date, exactly like the staple line: *when* it was
+  // frozen is a clock question, and the clock is `freshness`'s to describe —
+  // see `describeFrozenSince`, which the kitchen row pairs with this.
+  if (item.frozenAt) return FROZEN_REASON;
+
+  if (asserted === true) return 'marked as on hand';
 
   if (item.purchaseCount < 1 || !item.lastPurchasedAt) return null;
   if (daysBetween(now, item.lastPurchasedAt) >= onHandWindowDays(item, now)) return null;

@@ -1298,6 +1298,35 @@ export interface GroceryItem {
    */
   expiresAt: string | null;
   /**
+   * ISO instant this went in the freezer, or null for anything that didn't.
+   *
+   * **The clock stops while this is set, and restarts when it's cleared.**
+   * `finishShopping` stamps `expiresAt` from the shelf-life lexicon on
+   * everything it buys, and that lexicon is at its most aggressive exactly
+   * where a freezer is most used — chicken 2 days, ground beef 2, salmon 2.
+   * Without this, a month of meat bought on Saturday spawns a fistful of "Use
+   * up" tasks due Monday about food under an inch of ice, which is the
+   * "spawns a task about food that's fine" failure `groceryShelfLife.ts` names
+   * as the one that gets a feature turned off.
+   *
+   * **An instant, not a flag**, matching `lastPricedAt` and
+   * `ItemShopLink.unavailableAt` rather than `isStaple`: what a frozen row has
+   * to say is *when it went in*, since a freezer is the one place food outlives
+   * every window the rest of the pantry reasons in. It also means the pantry
+   * can keep showing it — see `probablyHaveReason`, which reads a live
+   * `frozenAt` as on hand the way it reads a staple, because a purchase window
+   * of two weeks would otherwise drop a frozen thing out of the kitchen while
+   * it's still very much in the kitchen.
+   *
+   * **`expiresAt` is left alone while this is set, never cleared.** The stored
+   * day goes quiet rather than away (`freshness.liveUseBy` is the single
+   * reader), because what ends a freeze is a thaw and a thaw restarts the
+   * count from a fresh shelf life. Stamping the new day at freeze time would
+   * assert a thaw date the user hasn't picked; clearing it would leave nothing
+   * to put back.
+   */
+  frozenAt: string | null;
+  /**
    * A remembered shelf life, in days — "spinach keeps 5 days" — kept apart
    * from `expiresAt` on purpose: this is a fact about the *item*, and
    * `expiresAt` is a fact about one purchase of it.
@@ -1406,6 +1435,19 @@ export const USE_UP_TASK_CAP_MAX = 20;
 // The furthest out a use-by date can be set by hand, in days. Long enough for a
 // freezer bag, short enough that the stepper can still reach the far end.
 export const GROCERY_EXPIRY_DAYS_MAX = 365;
+
+/**
+ * Why a frozen thing is in the kitchen — `probablyHaveReason`'s word for it,
+ * and the leading half of a frozen row's caption in `kitchenInventory`.
+ *
+ * Here rather than in `freshness.ts` beside `describeFrozenSince`, which is
+ * where it reads like it belongs, for a module-weight reason: `grocerySuggest`
+ * is one of the two producers and is deliberately free of `dateUtils` (which
+ * reaches `useSettingsStore` and so `expo-sqlite`), so importing `freshness`
+ * for one string would drag SQLite into every pure grocery test. `types` is
+ * already where the kitchen's other shared constants live and costs nothing.
+ */
+export const FROZEN_REASON = 'in the freezer';
 
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task
 // title, and a long one wrecks the row layout at the bigger grocery font size.
@@ -2574,6 +2616,25 @@ export interface Leftover {
   finishedAt: string | null;
   /** Which ending it got. Null exactly while `finishedAt` is null. */
   outcome: LeftoverOutcome | null;
+  /**
+   * ISO instant this container went in the freezer, or null while it's in the
+   * fridge. Exactly `GroceryItem.frozenAt`, and read through the same
+   * `freshness.liveUseBy`.
+   *
+   * Both halves of the kitchen get this or neither usefully does: a bag of
+   * spinach and a container of chilli going off Thursday are the same fact to
+   * the cook (#1670), and so are the two of them going in the freezer on
+   * Saturday. `isPlannedPastKeepUntil` already conceded as much in prose —
+   * planning a container past its day is fair because "it may be going in the
+   * freezer" — and this is that sentence with somewhere to be recorded.
+   *
+   * **It does not close the container out.** `finishedAt` is still the only
+   * thing that ends a leftover's life, and a frozen one is as live as any
+   * other: it stays plannable onto a night of the week, which is most of what
+   * anyone freezes a portion *for*. What stops is the countdown and the nudge
+   * (`needsAttention`).
+   */
+  frozenAt: string | null;
   createdAt: string;
   /**
    * The per-leftover answer to "does this get a use-up task" — true, false, or

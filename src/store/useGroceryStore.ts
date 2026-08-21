@@ -423,6 +423,23 @@ interface GroceryStore {
    */
   setExpiresAt: (id: string, expiresAt: string | null) => void;
   /**
+   * Puts this item in the freezer, or takes it back out.
+   *
+   * **Freezing suspends; thawing restarts.** Going in stamps the instant and
+   * touches nothing else — `expiresAt` keeps the day this purchase would have
+   * been answerable to, and simply stops being read (`liveExpiresAt`). Coming
+   * out re-stamps `expiresAt` from a *fresh* shelf life measured from now,
+   * through the same `expiresAtForPurchase` a finished trip uses, because
+   * that's what a thaw is: the food starts its clock over, and thawed chicken
+   * keeping two days from today is exactly right where the stale day it went in
+   * with is a fortnight past.
+   *
+   * An item the lexicon has never heard of, and that carries no
+   * `shelfLifeDays`, thaws to no date at all — the same silence it had before
+   * it was frozen, rather than a guess invented on the way out.
+   */
+  setFrozen: (id: string, frozen: boolean) => void;
+  /**
    * The remembered shelf life — a dumb setter, unlike setExpiresAt: this
    * never touches expiresAt or the use-up task on its own. See
    * GroceryItem.shelfLifeDays for when each one is the write to make.
@@ -844,6 +861,9 @@ function newItemRow(fields: {
     // it, and the shelf life doesn't start until it's in the fridge.
     // finishShopping is what stamps this — see expiresAtForPurchase.
     expiresAt: null,
+    // Nothing is created frozen: the freezer is somewhere the user puts a
+    // thing they already have, not a state a name arrives in.
+    frozenAt: null,
     // No one has corrected the lexicon guess for this row yet.
     shelfLifeDays: null,
     useUpTask: null,
@@ -949,10 +969,11 @@ function reconcileUseUpTask(item: GroceryItem): void {
   reconcileGeneratedTask({
     kind: 'groceryUseUp',
     sourceId: item.id,
-    // The date is re-checked outside wantsUseUpTask on purpose: an explicit
-    // `useUpTask: true` on an item with no date would otherwise reach
-    // useUpTaskFields, which dereferences `expiresAt!`.
-    wanted: item.expiresAt !== null && wantsUseUpTask(item, groceryUseUpTasks),
+    // No date guard here any more: wantsUseUpTask owns that precondition now,
+    // and owning it in one place is what keeps the frozen case honest — this
+    // used to re-check `expiresAt` because an explicit `useUpTask: true` could
+    // outrank the qualifier and reach useUpTaskFields' `expiresAt!`.
+    wanted: wantsUseUpTask(item, groceryUseUpTasks),
     drift: existing => (
       useUpTaskNeedsUpdate(existing, item, groceryUseUpLeadDays)
         ? useUpTaskFields(item, groceryUseUpLeadDays)
@@ -2007,6 +2028,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     reconcileUseUpTask(updated);
   },
 
+  setFrozen(id, frozen) {
+    const item = get().items.find(i => i.id === id);
+    if (!item || !!item.frozenAt === frozen) return;
+    const now = new Date();
+    const updated: GroceryItem = frozen
+      ? { ...item, frozenAt: now.toISOString() }
+      // The thaw is the only half that writes a date, and it writes today's:
+      // see setFrozen's note on the interface above.
+      : { ...item, frozenAt: null, expiresAt: expiresAtForPurchase(item, now) };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+    // Both directions reconcile, and they do opposite things: freezing drops a
+    // use-up task that's now about food under ice, thawing spawns the one the
+    // fresh date earns. Neither is a special case in reconcileUseUpTask — it
+    // reads liveExpiresAt and gets the right answer both ways.
+    reconcileUseUpTask(updated);
+  },
+
   setShelfLifeDays(id, days) {
     const item = get().items.find(i => i.id === id);
     if (!item || item.shelfLifeDays === days) return;
@@ -2343,6 +2382,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 // this column is that coming home with something refutes an
                 // "Out of it" sitting on it. Mirrors dbFinishGroceryShopping.
                 onHandUntil: null,
+                // Cleared for the same reason and in the same breath: the
+                // freezer claim was about the bag you had, and you have just
+                // come home with a new one. Leaving it would suspend the fresh
+                // `expiresAt` being stamped right below, so the new bag would
+                // inherit "in the freezer" and never count down.
+                frozenAt: null,
                 expiresAt: expiresAtById[i.id] ?? i.expiresAt,
                 // Mirrors the db's own CASE: the shop it was for has happened,
                 // so a recipe-owned quantity doesn't outlive it. A hand-set one

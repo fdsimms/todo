@@ -1,9 +1,11 @@
 import type { GroceryItem, Leftover, LeftoverFreshness } from '../types';
+import { FROZEN_REASON } from '../types';
 import { OTHER_AISLE } from './groceryAisles';
 import { groceryNameKey } from './groceryParse';
 import { matchWeight, pantryEntries, sectionsInAisleOrder } from './grocerySuggest';
-import { daysUntilDay, describeUseBy, freshnessFor, isUseUpSoon } from './freshness';
-import { describeAge, isLiveLeftover } from './leftovers';
+import { daysUntilDay, describeFrozenSince, describeUseBy, freshnessFor, isUseUpSoon } from './freshness';
+import { liveExpiresAt } from './groceryShelfLife';
+import { describeAge, isLiveLeftover, liveKeepUntil } from './leftovers';
 
 /**
  * What's in the kitchen, and what's about to be wasted — one read over the
@@ -28,8 +30,10 @@ import { describeAge, isLiveLeftover } from './leftovers';
  *
  * **The vocabulary, settled once so it can't drift.** The *kitchen* is
  * everything below: the *pantry* is the grocery half ("do I have it",
- * `probablyHaveReason`'s set), the *fridge* is the leftovers half, and a
- * *use-by* day is what either kind counts down to. `KitchenScreen` renders the
+ * `probablyHaveReason`'s set), the *fridge* is the leftovers half, the
+ * *freezer* cuts across both (either kind can be in it, and nothing in it is
+ * counting down), and a *use-by* day is what anything not frozen counts down
+ * to. `KitchenScreen` renders the
  * kitchen; `LeftoversCard` renders the fridge alone, because that card's rows
  * drag onto a night of the week and a bag of spinach is not a dinner.
  *
@@ -84,6 +88,25 @@ export function kitchenLinkUrl(entryId?: string | null): string {
  */
 export const FRIDGE_SECTION = 'In the fridge';
 
+/**
+ * Where anything frozen files, from either half of the kitchen — a bag of peas
+ * and a container of chilli sit under one heading, because in the kitchen they
+ * sit in one drawer.
+ *
+ * A place like the fridge, so it leads the aisles for the same reason (an aisle
+ * order is a walk round a shop and a freezer has no position in one), and it
+ * follows the fridge because the fridge is what's counting down. Everything
+ * here has a suspended clock, which `compareKitchenEntries` would sort last
+ * anyway.
+ *
+ * **This is the freezer's whole visible surface, and that's deliberate.** The
+ * feature could have been one flag that quietly stopped a task, but the thing
+ * that actually gets lost is the food, not the notification — a section is how
+ * you find the chicken you froze in July. It's also why a frozen *grocery* row
+ * leaves its aisle: nothing in the freezer is filed by which aisle it came from.
+ */
+export const FREEZER_SECTION = 'In the freezer';
+
 /** One thing in the kitchen, in the shape a row draws it. */
 export interface KitchenEntry {
   /**
@@ -101,7 +124,14 @@ export interface KitchenEntry {
   sourceId: string;
   kind: KitchenKind;
   title: string;
-  /** Which heading it files under — the item's aisle, or `FRIDGE_SECTION`. */
+  /**
+   * Which heading it files under — `FREEZER_SECTION` for anything frozen, else
+   * `FRIDGE_SECTION` for a container and the item's aisle for a catalog row.
+   *
+   * The freezer is checked first for both kinds, which is why this no longer
+   * follows from `kind`: a place beats a filing, and a bag of peas in the
+   * freezer is not in the Frozen aisle of a shop, it's in the freezer.
+   */
   section: string;
   /**
    * The `YYYY-MM-DD` day it's answerable to, or null when nothing is counting
@@ -197,17 +227,28 @@ export function kitchenInventory(
 
   for (const leftover of leftovers) {
     if (!isLiveLeftover(leftover)) continue;
-    const reason = describeAge(leftover, now);
-    const useByCaption = describeUseBy(leftover.keepUntil, now);
+    // Through liveKeepUntil, so a frozen container reads exactly like an
+    // undated catalog row: no day, no ladder, no rank. `describeLeftover` owns
+    // the caption either way, which is what keeps this row and the fridge
+    // card's row saying the same thing.
+    const useBy = liveKeepUntil(leftover);
+    // A frozen container answers both halves differently: the reason it's here
+    // is the freezer rather than its age (describeAge counts from `storedAt`,
+    // and a portion frozen on day two spent only one of those days in the
+    // fridge), and the clock clause is the freeze date rather than a countdown.
+    const reason = leftover.frozenAt ? FROZEN_REASON : describeAge(leftover, now);
+    const useByCaption = leftover.frozenAt
+      ? describeFrozenSince(leftover.frozenAt, now)
+      : describeUseBy(leftover.keepUntil, now);
     entries.push({
       id: kitchenEntryId('leftover', leftover.id),
       sourceId: leftover.id,
       kind: 'leftover',
       title: leftover.title,
-      section: FRIDGE_SECTION,
-      useBy: leftover.keepUntil,
-      freshness: freshnessFor(leftover.keepUntil, now),
-      daysLeft: daysUntilDay(leftover.keepUntil, now),
+      section: leftover.frozenAt ? FREEZER_SECTION : FRIDGE_SECTION,
+      useBy,
+      freshness: useBy ? freshnessFor(useBy, now) : null,
+      daysLeft: useBy ? daysUntilDay(useBy, now) : null,
       reason,
       useByCaption,
       caption: `${reason} · ${useByCaption}`,
@@ -217,14 +258,22 @@ export function kitchenInventory(
   }
 
   for (const { item, reason } of pantryEntries(items, now)) {
-    const useBy = item.expiresAt;
-    const useByCaption = useBy ? describeUseBy(useBy, now) : '';
+    // Same suspension as above, off the catalog's own pair of fields. The
+    // stored `expiresAt` is deliberately still there and deliberately not read:
+    // it's the day this purchase *would* be answerable to, waiting for a thaw
+    // to make it a countdown again.
+    const useBy = liveExpiresAt(item);
+    // `reason` is already FROZEN_REASON for a frozen row — probablyHaveReason
+    // returns it — so this only has to supply the clock half.
+    const useByCaption = item.frozenAt
+      ? describeFrozenSince(item.frozenAt, now)
+      : useBy ? describeUseBy(useBy, now) : '';
     entries.push({
       id: kitchenEntryId('grocery', item.id),
       sourceId: item.id,
       kind: 'grocery',
       title: item.name,
-      section: item.aisle || OTHER_AISLE,
+      section: item.frozenAt ? FREEZER_SECTION : item.aisle || OTHER_AISLE,
       useBy,
       freshness: useBy ? freshnessFor(useBy, now) : null,
       daysLeft: useBy ? daysUntilDay(useBy, now) : null,
@@ -303,8 +352,17 @@ export function buildKitchenSections(
   const matched = entries.filter(e => !queryKey || matchWeight(e.matchKey, queryKey) > 0);
 
   const fridge: KitchenEntry[] = [];
+  const freezer: KitchenEntry[] = [];
   const byAisle = new Map<string, KitchenEntry[]>();
   for (const entry of matched) {
+    // Both places are read off `section` now rather than off `kind`, which is
+    // the change the freezer forces: a frozen bag of peas is a grocery row that
+    // belongs under a place, so "which kind is it" stopped being the same
+    // question as "which heading does it file under".
+    if (entry.section === FREEZER_SECTION) {
+      freezer.push(entry);
+      continue;
+    }
     if (entry.kind === 'leftover') {
       fridge.push(entry);
       continue;
@@ -317,6 +375,9 @@ export function buildKitchenSections(
   const sections: KitchenSection[] = [];
   if (fridge.length > 0) {
     sections.push({ section: FRIDGE_SECTION, data: fridge.sort(compareKitchenEntries) });
+  }
+  if (freezer.length > 0) {
+    sections.push({ section: FREEZER_SECTION, data: freezer.sort(compareKitchenEntries) });
   }
   for (const { aisle, data } of sectionsInAisleOrder(byAisle, aisleOrder, compareKitchenEntries)) {
     sections.push({ section: aisle, data });

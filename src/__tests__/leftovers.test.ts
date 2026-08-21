@@ -20,6 +20,8 @@ import {
   keepUntilKeyFor,
   leftoverKeepDaysFor,
   leftoverPurgeCutoff,
+  liveFreshnessOf,
+  liveKeepUntil,
   liveLeftovers,
   leftoverPartsFor,
   mealTitleForLeftover,
@@ -56,6 +58,7 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
     keepUntil: '2026-08-16',
     finishedAt: null,
     outcome: null,
+    frozenAt: null,
     createdAt: new Date(2026, 7, 13, 9, 0, 0).toISOString(),
     useUpTask: null,
     ...overrides,
@@ -586,5 +589,50 @@ describe('leftoverPartsFor', () => {
     expect(leftoverPartsFor('Steak', steak, byId).map(p => p.title)).toEqual(['Steak', 'Mash']);
     expect(leftoverPartsFor('Steak', steak, byId, { chosen: [roastLink.id] }).map(p => p.title))
       .toEqual(['Steak', 'Roast potatoes']);
+  });
+});
+
+// ─── the freezer ────────────────────────────────────────────────────────────
+
+describe('a frozen container', () => {
+  const FROZEN_ON = '2026-07-12T09:00:00.000Z';
+  // Two days past its keep-until as of NOW, so every read below is one that
+  // would be shouting if the freezer weren't suspending it.
+  const frozen = makeLeftover({ keepUntil: '2026-08-11', frozenAt: FROZEN_ON });
+
+  it('has no live keep-until, while keeping the one it was given', () => {
+    expect(liveKeepUntil(frozen)).toBeNull();
+    expect(frozen.keepUntil).toBe('2026-08-11');
+  });
+
+  it('is not what the nudge is for, however far past its stored day', () => {
+    expect(needsAttention(frozen, NOW)).toBe(false);
+    expect(needsAttention({ ...frozen, frozenAt: null }, NOW)).toBe(true);
+  });
+
+  it('sits nowhere on the ladder for display, though freshnessOf still answers', () => {
+    // freshnessOf keeps answering because a history row wants to know what
+    // state it was in; a live row's colour must not come from a stopped clock.
+    expect(liveFreshnessOf(frozen, NOW)).toBeNull();
+    expect(freshnessOf(frozen, NOW)).toBe('over');
+  });
+
+  it('names the freezer instead of counting days in the fridge', () => {
+    expect(describeLeftover(frozen, NOW)).toBe('Frozen 12 Jul');
+  });
+
+  it('can be planned for any day, because it is not past anything', () => {
+    expect(isPlannedPastKeepUntil(frozen, '2026-09-20')).toBe(false);
+    expect(isPlannedPastKeepUntil({ ...frozen, frozenAt: null }, '2026-09-20')).toBe(true);
+  });
+
+  it('sorts after everything still counting down, not first on a stale day', () => {
+    const soon = makeLeftover({ title: 'Soup', keepUntil: '2026-08-14' });
+    expect(sortLeftovers([frozen, soon]).map(l => l.title)).toEqual(['Soup', 'Chilli']);
+  });
+
+  it('is still live, so it stays in the fridge list rather than being closed out', () => {
+    expect(isLiveLeftover(frozen)).toBe(true);
+    expect(liveLeftovers([frozen])).toHaveLength(1);
   });
 });

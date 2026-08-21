@@ -8105,7 +8105,7 @@ describe('deleting a use-up task', () => {
     onList: false, checked: false, inCatalog: true, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
-    isStaple: false, expiresAt: '2026-08-17', shelfLifeDays: null, useUpTask: null,
+    isStaple: false, expiresAt: '2026-08-17', frozenAt: null, shelfLifeDays: null, useUpTask: null,
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
   };
 
@@ -8152,7 +8152,7 @@ describe('completing a use-up task', () => {
     onList: false, checked: false, inCatalog: true, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
-    isStaple: false, expiresAt: '2026-08-17', shelfLifeDays: null, useUpTask: null,
+    isStaple: false, expiresAt: '2026-08-17', frozenAt: null, shelfLifeDays: null, useUpTask: null,
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
   };
   const seedItem = () => {
@@ -8165,7 +8165,7 @@ describe('completing a use-up task', () => {
   const leftover = {
     id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
     storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14', finishedAt: null,
-    outcome: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+    outcome: null, frozenAt: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
   };
   const seedLeftover = () => {
     useLeftoverStore.setState({ leftovers: [{ ...leftover }], pendingUseUpLeftoverId: null, initialized: true });

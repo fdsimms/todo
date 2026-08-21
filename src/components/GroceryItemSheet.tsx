@@ -74,7 +74,7 @@ import {
   defaultOnHandUntil,
   OUT_OF_IT_UNTIL,
 } from '../utils/grocerySuggest';
-import { describeExpiry, expiryDaysFromNow, expiryKeyFor } from '../utils/groceryShelfLife';
+import { describeExpiry, expiryDaysFromNow, expiryKeyFor, liveExpiresAt } from '../utils/groceryShelfLife';
 import { wantsUseUpTask } from '../utils/groceryExpiry';
 import { dayKeyToDate } from '../utils/dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -166,6 +166,7 @@ export function GroceryItemSheet({
   const addAisle = useGroceryStore(s => s.addAisle);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
   const setStaple = useGroceryStore(s => s.setStaple);
+  const setFrozen = useGroceryStore(s => s.setFrozen);
   const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
   const setShelfLifeDays = useGroceryStore(s => s.setShelfLifeDays);
   const setUseUpTask = useGroceryStore(s => s.setUseUpTask);
@@ -481,6 +482,7 @@ export function GroceryItemSheet({
   // at all, but rows stamped before that still carry the shape.
   const onHandFuture = !!item.onHandUntil && new Date(item.onHandUntil).getTime() >= Date.now();
   const onHandPast = item.onHandUntil === OUT_OF_IT_UNTIL;
+  const frozen = !!item.frozenAt;
   const markGotIt = () => {
     haptics.tap();
     setOnHandUntil(item.id, defaultOnHandUntil(item, new Date()));
@@ -498,6 +500,10 @@ export function GroceryItemSheet({
     haptics.tap();
     setStaple(item.id, !item.isStaple);
   };
+  const toggleFrozen = () => {
+    haptics.tap();
+    setFrozen(item.id, !item.frozenAt);
+  };
 
   // The stepper talks in days from today and the row stores a day; a date
   // survives the app being closed for a week, where "5 days" would quietly
@@ -508,13 +514,20 @@ export function GroceryItemSheet({
   // it isn't, there's nothing to count down from yet, so the stepper reads
   // and writes the remembered shelf life instead — see
   // GroceryItem.shelfLifeDays for why a purchase is what activates it.
-  const expiryDays = onHandFuture
+  //
+  // Frozen counts as "nothing to count down from", which is the whole point of
+  // the freezer: the stepper would otherwise write a date that liveExpiresAt
+  // immediately suspends, so the number on screen would be one the app has
+  // undertaken to ignore. Editing the shelf life is the useful thing to be
+  // doing here anyway — that's the window setFrozen hands back on the thaw.
+  const countingDown = onHandFuture && !frozen;
+  const expiryDays = countingDown
     ? (item.expiresAt ? expiryDaysFromNow(item.expiresAt, new Date()) : null)
     : item.shelfLifeDays;
   const pickExpiryDays = (days: number | null) => {
     haptics.tap();
     setShelfLifeDays(item.id, days);
-    if (onHandFuture) {
+    if (countingDown) {
       setExpiresAt(item.id, days === null ? null : expiryKeyFor(new Date(), days));
     }
   };
@@ -724,6 +737,21 @@ export function GroceryItemSheet({
         : 'Out of it, mark as not on hand',
       onPress: onHandPast ? clearOnHand : markOutOfIt,
     },
+    // In the Pantry field rather than beside Use by, where the clock it stops
+    // lives: this is the field that answers "do I have it, and in what state",
+    // it's the one the kitchen row opens straight into (`initialField`), and
+    // these pills are independently toggled rather than a single-select — a
+    // frozen thing is one you definitely have, not a fourth alternative to
+    // "Got it".
+    {
+      key: 'frozen',
+      label: 'In the freezer',
+      selected: frozen,
+      accessibilityLabel: frozen
+        ? 'In the freezer. Tap to take it out, which restarts how long it keeps.'
+        : 'In the freezer, mark as frozen. Pauses the use-by date.',
+      onPress: toggleFrozen,
+    },
   ];
 
   const linkedNames = shops.filter(s => linkedCounts.has(s.id)).map(s => s.name);
@@ -760,7 +788,11 @@ export function GroceryItemSheet({
     || matchesEditorQuery({ key: 'price', label: 'Last price', keywords: ['cost', 'spend', 'money', 'store price'] }, searchTerms);
   const noteVisible = !searching
     || matchesEditorQuery({ key: 'note', label: 'Note', keywords: ['comment', 'details', 'memo'] }, searchTerms);
-  const useUpTaskVisible = !!item.expiresAt && (!searching
+  // Through liveExpiresAt, so the row goes away while the item is frozen: it
+  // toggles whether this item gets a use-up task, and a frozen item can't have
+  // one whichever way the switch is set (see wantsUseUpTask). A live control
+  // over a suspended mechanism is worse than no control.
+  const useUpTaskVisible = liveExpiresAt(item) !== null && (!searching
     || matchesEditorQuery({ key: 'useUpTask', label: 'Use-up task', keywords: ['reminder', 'notification', 'task'] }, searchTerms));
   const removeFromListVisible = item.onList && (!searching
     || matchesEditorQuery({ key: 'removeFromList', label: 'Remove from list', keywords: ['take off', 'delete'] }, searchTerms));
@@ -966,7 +998,7 @@ export function GroceryItemSheet({
     {
       key: 'pantry',
       label: 'Pantry',
-      keywords: ['staple', 'always have it', 'have it', 'on hand', 'got it', 'out of it'],
+      keywords: ['staple', 'always have it', 'have it', 'on hand', 'got it', 'out of it', 'freezer', 'frozen', 'freeze', 'thaw', 'defrost'],
       node: (
         <View onLayout={(e: LayoutChangeEvent) => {
           fieldYRefs.current.pantry = e.nativeEvent.layout.y;
@@ -975,21 +1007,28 @@ export function GroceryItemSheet({
           <CollapsibleField
             label="Pantry"
             summary={
-              item.isStaple
-                ? 'Always have it'
-                : onHandFuture
-                  ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
-                  : onHandPast
-                    ? 'Out of it'
-                    : undefined
+              // The freezer leads, matching probablyHaveReason's own order: it's
+              // the state that changes what the app does, so a frozen staple
+              // should summarise as frozen rather than as a staple.
+              frozen
+                ? 'In the freezer'
+                : item.isStaple
+                  ? 'Always have it'
+                  : onHandFuture
+                    ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
+                    : onHandPast
+                      ? 'Out of it'
+                      : undefined
             }
             emptySummary="Automatic"
             hint={
-              item.isStaple
-                ? 'Treated as on hand at all times, and kept out of the way in its own group when a recipe adds ingredients to the list.'
-                : onHandPast
-                  ? 'Marked out of it. Won’t show as probably-have until you buy it again.'
-                  : 'Decided automatically from purchase history when this comes up in a week plan.'
+              frozen
+                ? 'In the freezer, so the use-by date is paused and there’s no use-up task. Taking it out starts the countdown again from a fresh shelf life.'
+                : item.isStaple
+                  ? 'Treated as on hand at all times, and kept out of the way in its own group when a recipe adds ingredients to the list.'
+                  : onHandPast
+                    ? 'Marked out of it. Won’t show as probably-have until you buy it again.'
+                    : 'Decided automatically from purchase history when this comes up in a week plan.'
             }
             expanded={openField === 'pantry'}
             onToggle={() => toggleField('pantry')}
@@ -1002,7 +1041,7 @@ export function GroceryItemSheet({
     {
       key: 'useBy',
       label: 'Use by',
-      keywords: ['expiry', 'expire', 'expires', 'goes off', 'best before', 'spoil', 'shelf life'],
+      keywords: ['expiry', 'expire', 'expires', 'goes off', 'best before', 'spoil', 'shelf life', 'freezer', 'frozen', 'thaw'],
       node: (
         <View onLayout={(e: LayoutChangeEvent) => {
           fieldYRefs.current.useBy = e.nativeEvent.layout.y;
@@ -1011,23 +1050,35 @@ export function GroceryItemSheet({
           <CollapsibleField
             label="Use by"
             summary={
-              item.expiresAt
-                ? `${format(dayKeyToDate(item.expiresAt), 'd MMM')} · ${describeExpiry(item.expiresAt)}`
-                : item.shelfLifeDays !== null
-                  ? `Keeps ${item.shelfLifeDays} ${item.shelfLifeDays === 1 ? 'day' : 'days'}`
-                  : undefined
+              // A frozen row never shows its stored expiresAt, which is the one
+              // place a suspended date could still read as a live countdown —
+              // "17 Aug · 4 days past" on something in the freezer is the app
+              // reporting a deadline it has itself stopped honouring.
+              frozen
+                ? item.shelfLifeDays !== null
+                  ? `Paused · keeps ${item.shelfLifeDays} ${item.shelfLifeDays === 1 ? 'day' : 'days'} once out`
+                  : 'Paused'
+                : item.expiresAt
+                  ? `${format(dayKeyToDate(item.expiresAt), 'd MMM')} · ${describeExpiry(item.expiresAt)}`
+                  : item.shelfLifeDays !== null
+                    ? `Keeps ${item.shelfLifeDays} ${item.shelfLifeDays === 1 ? 'day' : 'days'}`
+                    : undefined
             }
             emptySummary="None"
             hint={
-              item.expiresAt
-                ? "The day this should be used up by. Finishing a shopping trip fills it in for things that go off, and the use-up task is dated from it."
-                : "How long this keeps once bought. It doesn't count down yet — finishing a shopping trip starts the clock from there, and adds the use-up task."
+              frozen
+                ? "How long this keeps once it comes out of the freezer. Nothing counts down while it's frozen."
+                : item.expiresAt
+                  ? "The day this should be used up by. Finishing a shopping trip fills it in for things that go off, and the use-up task is dated from it."
+                  : "How long this keeps once bought. It doesn't count down yet — finishing a shopping trip starts the clock from there, and adds the use-up task."
             }
             expanded={openField === 'useBy'}
             onToggle={() => toggleField('useBy')}
           >
             <View style={styles.stepperRow}>
-              <Text style={styles.stepperHint}>{onHandFuture ? 'Days from today' : 'Days once bought'}</Text>
+              <Text style={styles.stepperHint}>
+                {countingDown ? 'Days from today' : frozen ? 'Days once out' : 'Days once bought'}
+              </Text>
               <CountStepper
                 value={expiryDays}
                 onChange={pickExpiryDays}
@@ -1035,11 +1086,12 @@ export function GroceryItemSheet({
                 max={GROCERY_EXPIRY_DAYS_MAX}
                 allowNull
                 emptyLabel="None"
-                format={n => (onHandFuture && n === 0 ? 'Today' : `${n}d`)}
+                format={n => (countingDown && n === 0 ? 'Today' : `${n}d`)}
                 label="Use by"
                 describeValue={n => {
-                  if (n === null) return onHandFuture ? 'No use-by date' : 'No shelf life recorded';
-                  if (onHandFuture) return n === 0 ? 'Use by today' : `${n} days from today`;
+                  if (n === null) return countingDown ? 'No use-by date' : 'No shelf life recorded';
+                  if (countingDown) return n === 0 ? 'Use by today' : `${n} days from today`;
+                  if (frozen) return `Keeps ${n} ${n === 1 ? 'day' : 'days'} once out of the freezer`;
                   return `Keeps ${n} ${n === 1 ? 'day' : 'days'} once bought`;
                 }}
               />

@@ -402,6 +402,79 @@ gesture onto it — that's the inventory again.
   row still drops you back into the list you were reading, because the screen underneath was never
   unmounted to begin with.
 
+### The freezer — a paused clock, not a place field
+
+`GroceryItem.frozenAt` and `Leftover.frozenAt` are one ISO instant each, and the whole rule
+they drive is `freshness.liveUseBy`: **a frozen thing's use-by day is suspended, never cleared.**
+
+The gap was bug-shaped. `finishShopping` stamps `expiresAt` from the shelf-life lexicon on every
+row it buys, and that lexicon is at its shortest exactly where a freezer is most used (chicken 2
+days, ground beef 2, salmon 2). Buy a month of meat, freeze it, and the app spawned a fistful of
+"Use up" tasks due Monday about food under an inch of ice, which `groceryShelfLife.ts` already
+names as the failure that gets a feature turned off. The only escape was `useUpTask: false`, which
+is permanent for the item, so silencing this month's frozen chicken silenced next month's fresh
+chicken too.
+
+- **One bit that changes behavior, not a location taxonomy.** A fridge/freezer/cupboard picker
+  would be data entry that changes nothing for two of its three values, which is the maintained
+  inventory this file rules out three times over. Only the freezer earns a field, because only the
+  freezer stops a clock.
+- **Suspended, not cleared, because the interesting event is the thaw.** `expiresAt` and
+  `keepUntil` sit untouched behind a live `frozenAt` and every countdown reads through
+  `liveUseBy` (bound per side as `groceryShelfLife.liveExpiresAt` and `leftovers.liveKeepUntil`).
+  Clearing on the way in would leave nothing to restart from; stamping a new day at freeze time
+  would assert a thaw date the user hasn't picked, and food sits in a freezer for a month or a
+  year.
+- **The thaw restarts the clock rather than resuming it.** A grocery item re-stamps `expiresAt`
+  through `expiresAtForPurchase` — the same shelf life a purchase gets — so thawed chicken keeps
+  two days from today. A container gets back *the whole window it was given*, and its `storedAt`
+  moves to now (leaving it would have a portion frozen in July read as "40 days in the fridge" the
+  moment it thaws). Not the days that were left: freezing arrests the spoiling the window is
+  about, so restarting whole is both truer and the safer way to be wrong.
+- **Both halves or neither.** A bag of spinach and a container of chilli going in the freezer are
+  one fact to the cook, the same argument #1670 made for merging the freshness ladder. The rule
+  therefore lives in `freshness.ts` beside that ladder, and `needsAttention` is the single choke
+  point on the fridge side — `attentionLeftovers`, `leftoverTasks.wantsUseUpTask`, `describeFridge`
+  and the hub pill all ask through it, so a frozen container goes quiet everywhere at once.
+- **`freshnessOf` still answers for a frozen container; `liveFreshnessOf` is what a row's colour
+  uses.** A history row wants to know what state it was in, and making every colour lookup
+  null-check is how one ends up not doing it. But a *live* row tinted from a suspended date is the
+  false alarm the feature exists to stop, so the fridge card and the meal-plan picker read the
+  nullable one and fall back to `textTertiary`.
+- **A live date is a precondition of a use-up task, not a `qualifies` argument.**
+  `wantsGeneratedTask` lets an explicit `true` outrank the qualifier, which is right for a
+  preference ("I do want reminding about this one") and wrong for this: no countdown means there
+  is nothing to want reminding about, and `useUpTaskFields` dates its task off `expiresAt!`. So
+  `wantsUseUpTask` returns false before consulting the tri-state, and the store's own duplicate
+  date guard is gone — one owner. The opt-in isn't lost, just deferred until the thaw.
+- **`FREEZER_SECTION` is the feature's visible surface**, leading the aisles right after the
+  fridge and holding both kinds. It could have been a flag that quietly stopped a task, but what
+  actually gets lost is the food, not the notification — a section is how you find the chicken you
+  froze in July. It's also why a frozen grocery row leaves its aisle: nothing in a freezer is
+  filed by the aisle it came from, so `buildKitchenSections` now routes on `section` rather than
+  on `kind`.
+- **A frozen container is still live.** `finishedAt` remains the only thing that ends a leftover,
+  and a frozen portion stays plannable onto a night of the week — which is most of what anyone
+  freezes one for. `isPlannedPastKeepUntil` is false while frozen, closing the hand-wave in its
+  own note ("it may be going in the freezer") now that the app can actually be told.
+- **`liveExpiresAt` lives in `groceryShelfLife.ts`, not `groceryExpiry.ts`** where it reads like it
+  belongs: that file imports `kitchenInventory` for the link helpers, and `kitchenInventory` is one
+  of the callers, so the natural home is a cycle. For the same class of reason `FROZEN_REASON` is a
+  constant in `types` rather than beside `describeFrozenSince` in `freshness.ts` —
+  `grocerySuggest` produces it and is deliberately free of `dateUtils`, which reaches the settings
+  store and so `expo-sqlite`.
+- **`probablyHaveReason` reads a live `frozenAt` as on hand.** It has to: the purchase window is
+  two weeks and a freezer is measured in months, so without it a bag of chicken frozen in July
+  would drop out of the pantry in August while sitting in the freezer, and the app would offer to
+  add it to the list. The precedence is exact and each step earns its place — an explicit **"Out of
+  it" outranks the freezer** (that bit is what the Pantry row's ✕ writes, so the button would read
+  as dead on a frozen row otherwise, and "I'm out of it" is the later statement anyway), the
+  freezer outranks the purchase reading, and a live "Got it" is read last.
+- **A purchase clears `frozenAt`**, alongside the `onHandUntil` it already cleared, in
+  `finishShopping` and its `dbFinishGroceryShopping` mirror. The claim was about the bag you had,
+  and the same statement stamps a fresh `expiresAt` — leaving it would suspend that new day the
+  instant it landed, so the new bag would read as frozen and never count down.
+
 ## Grocery either/or — two rows you pick between at the shelf
 
 Typing "apples or pears" into the add field offers to put **both on the list under

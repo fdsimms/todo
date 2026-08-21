@@ -115,6 +115,12 @@ interface Props {
   onSetStoredAt: (storedAt: string) => void;
   onSetKeepDays: (days: number) => void;
   onFinish: (outcome: 'eaten' | 'tossed') => void;
+  /**
+   * Into the freezer, or back out. Not an outcome — a frozen container is
+   * still live and still plannable (see `Leftover.frozenAt`), so this sits
+   * above the two rows that actually close one out.
+   */
+  onSetFrozen: (frozen: boolean) => void;
   onReopen: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -146,7 +152,7 @@ interface Props {
  */
 export function LeftoverSheet({
   visible, leftover, seed, onLog, onRename, onSetStoredAt, onSetKeepDays,
-  onFinish, onReopen, onDelete, onClose,
+  onFinish, onSetFrozen, onReopen, onDelete, onClose,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -187,6 +193,9 @@ export function LeftoverSheet({
 
   const editing = leftover !== null;
   const live = leftover ? isLiveLeftover(leftover) : true;
+  // A container being logged fresh is never frozen — logLeftover writes null,
+  // and the freezer is somewhere you move a container that already exists.
+  const frozen = !!leftover?.frozenAt;
 
   const [title, setTitle] = useState('');
   // Only meaningful while logging — an existing row's controls write straight
@@ -453,7 +462,11 @@ export function LeftoverSheet({
           <View style={styles.keepRow}>
             <View style={styles.keepText}>
               <Text style={styles.keepLabel}>Keep for</Text>
-              <Text style={styles.hintInline}>How long before it should be used or tossed</Text>
+              <Text style={styles.hintInline}>
+                {frozen
+                  ? 'How long it keeps once it comes out of the freezer'
+                  : 'How long before it should be used or tossed'}
+              </Text>
             </View>
             <CountStepper
               value={keepDays}
@@ -468,6 +481,24 @@ export function LeftoverSheet({
 
           {editing && live && (
             <>
+              <View style={styles.sep} />
+              {/* Above the two closing rows because it isn't one: freezing
+                  keeps the container, it doesn't end it. The sheet stays open
+                  rather than dismissing, unlike every row below — the state it
+                  writes is one the caption right above reports, so closing
+                  would hide the only confirmation there is. */}
+              <SheetActionRow
+                icon={frozen ? 'sunny-outline' : 'snow-outline'}
+                color={colors.accent}
+                label={frozen ? 'Take out of the freezer' : 'Put in the freezer'}
+                onPress={() => { haptics.tap(); onSetFrozen(!frozen); }}
+                accessibilityLabel={
+                  frozen
+                    ? 'Take this leftover out of the freezer, restarting how long it keeps'
+                    : 'Put this leftover in the freezer, pausing how long it keeps'
+                }
+              />
+
               <View style={styles.sep} />
               <SheetActionRow
                 icon="checkmark-circle-outline"

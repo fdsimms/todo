@@ -186,6 +186,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     choiceGroup: null,
     isStaple: false,
     expiresAt: null,
+    frozenAt: null,
     shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,
@@ -3573,6 +3574,111 @@ describe('setShelfLifeDays', () => {
   it('shrugs at an id it does not hold', () => {
     seed([]);
     useGroceryStore.getState().setShelfLifeDays('gone', 5);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('setFrozen', () => {
+  it('stamps the instant and leaves the stored use-by day alone', () => {
+    const spinach = makeItem({ name: 'Spinach', expiresAt: '2026-08-20' });
+    seed([spinach]);
+
+    useGroceryStore.getState().setFrozen(spinach.id, true);
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.frozenAt).not.toBeNull();
+    // Suspended, not cleared — there'd be nothing to restart from otherwise,
+    // and no way to tell a frozen row from one that never had a date.
+    expect(updated.expiresAt).toBe('2026-08-20');
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: spinach.id, expiresAt: '2026-08-20' })
+    );
+  });
+
+  it('drops the use-up task on the way in', () => {
+    mockUseUpTasks = true;
+    // Seeded dateless and given the day through the setter, which is what
+    // reconciles — setExpiresAt early-returns on a value the row already has.
+    const spinach = makeItem({ name: 'Spinach', expiresAt: null });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-20');
+    expect(useUpTaskFor(spinach.id)).toBeDefined();
+
+    useGroceryStore.getState().setFrozen(spinach.id, true);
+
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+  });
+
+  // The whole point of the thaw: chicken that keeps two days keeps two days
+  // from coming out, not two days from a purchase three months ago.
+  it('restarts the clock from a fresh shelf life on the way out', () => {
+    const chicken = makeItem({
+      name: 'Chicken',
+      expiresAt: '2026-05-01',
+      shelfLifeDays: 2,
+      frozenAt: '2026-05-01T09:00:00.000Z',
+    });
+    seed([chicken]);
+
+    useGroceryStore.getState().setFrozen(chicken.id, false);
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.frozenAt).toBeNull();
+    expect(expiryDaysFromNow(updated.expiresAt!, new Date())).toBe(2);
+  });
+
+  it('prefers the lexicon when the row carries no remembered shelf life', () => {
+    // "spinach" is in SHELF_LIFE_LEXICON at 5 days.
+    const spinach = makeItem({ name: 'Spinach', frozenAt: '2026-05-01T09:00:00.000Z' });
+    seed([spinach]);
+
+    useGroceryStore.getState().setFrozen(spinach.id, false);
+
+    const thawed = useGroceryStore.getState().items[0];
+    expect(expiryDaysFromNow(thawed.expiresAt!, new Date())).toBe(5);
+  });
+
+  it('thaws to no date at all for a name nothing knows a shelf life for', () => {
+    const gadget = makeItem({ name: 'Bicarbonate of soda', frozenAt: '2026-05-01T09:00:00.000Z' });
+    seed([gadget]);
+
+    useGroceryStore.getState().setFrozen(gadget.id, false);
+
+    // Silence, rather than a number invented on the way out.
+    expect(useGroceryStore.getState().items[0].expiresAt).toBeNull();
+  });
+
+  // Otherwise the fresh bag inherits the old bag's freezer claim and its
+  // brand-new use-by date is suspended the moment it's stamped.
+  it('is cleared by a purchase, along with the rest of the old bag\'s state', () => {
+    const spinach = makeItem({
+      name: 'Spinach',
+      onList: true,
+      checked: true,
+      frozenAt: '2026-05-01T09:00:00.000Z',
+    });
+    seed([spinach]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([spinach.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    const bought = useGroceryStore.getState().items[0];
+    expect(bought.frozenAt).toBeNull();
+    expect(expiryDaysFromNow(bought.expiresAt!, new Date())).toBe(5);
+  });
+
+  it('is a no-op when the item is already in that state', () => {
+    const spinach = makeItem({ name: 'Spinach', frozenAt: '2026-05-01T09:00:00.000Z' });
+    seed([spinach]);
+
+    useGroceryStore.getState().setFrozen(spinach.id, true);
+
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    seed([]);
+    useGroceryStore.getState().setFrozen('gone', true);
     expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
   });
 });

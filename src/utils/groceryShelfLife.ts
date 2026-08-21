@@ -1,7 +1,7 @@
 import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
-import { describeUseBy } from './freshness';
+import { describeUseBy, liveUseBy } from './freshness';
 import { groceryNameKey } from './groceryParse';
 import { GROCERY_EXPIRY_DAYS_MAX } from '../types';
 import type { GroceryItem } from '../types';
@@ -118,6 +118,28 @@ export function defaultExpiresAt(name: string, now: Date): string | null {
 export function expiresAtForPurchase(item: GroceryItem, now: Date): string | null {
   if (item.shelfLifeDays !== null) return expiryKeyFor(now, item.shelfLifeDays);
   return defaultExpiresAt(item.name, now);
+}
+
+/**
+ * This item's use-by day if anything is actually counting down, else null —
+ * `freshness.liveUseBy` bound to the catalog's own pair of fields.
+ *
+ * Its own name because four callers need the same two arguments in the same
+ * order (`groceryExpiry.wantsUseUpTask`, `reconcileUseUpTask`'s guard in the
+ * store, `kitchenInventory` and `GroceryItemSheet`), and threading
+ * `item.expiresAt, item.frozenAt` by hand at each is how one of them ends up
+ * reading the raw column. Same discipline `estimatedMinutesFor` imposes for a
+ * chain step's estimate.
+ *
+ * **Here rather than in `groceryExpiry.ts`, where it reads like it belongs,
+ * because that file imports `kitchenInventory` for the link helpers** — and
+ * `kitchenInventory` is one of the callers, so putting it there makes the two a
+ * cycle. This module is where the catalog's shelf life already lives and
+ * nothing imports back into it, which is the same reason `freshness.ts` gives
+ * for keeping its own imports pointing one way.
+ */
+export function liveExpiresAt(item: GroceryItem): string | null {
+  return liveUseBy(item.expiresAt, item.frozenAt);
 }
 
 /**
