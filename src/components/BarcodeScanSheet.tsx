@@ -30,11 +30,11 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import type { ReceiptAddDraft } from './ReceiptImportSheet';
+import type { ReceiptMatch } from '../utils/receiptMatch';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
 import { formatGtin, normalizeGtin } from '../utils/gtin';
 import { normalizePlu, pluNameFor } from '../utils/plu';
 import {
-  alreadyScanned,
   matchScans,
   pluScannedItem,
   scannedItemFor,
@@ -124,18 +124,23 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
   const [rows, setRows] = useState<ScanRow[]>([]);
   const [manual, setManual] = useState('');
   /**
-   * Live mirror of `rows` for the scan callback.
+   * GTINs already claimed in this session, checked and set synchronously in
+   * the scan callback itself rather than read off `rows`.
    *
-   * The camera hands its callback to a native view that keeps the first one it
-   * was given, so reading `rows` from the closure there would dedupe against an
-   * empty list for ever and every frame would add a row.
+   * A ref mirroring `rows` (`someRef.current = rows`, updated on every
+   * render) only catches up once React actually commits the render that
+   * follows `addScan`'s `setRows` — and a barcode held in frame for even a
+   * second fires several more scans before that commit lands, so every one
+   * of them would read the same stale, gtin-less state and each would start
+   * its own `addScan`. This set is mutated the instant a gtin is accepted,
+   * so nothing racing behind it can slip through.
    */
-  const rowsRef = useRef<ScanRow[]>([]);
-  rowsRef.current = rows;
+  const scannedGtinsRef = useRef<Set<string>>(new Set());
 
   const reset = useCallback(() => {
     setRows([]);
     setManual('');
+    scannedGtinsRef.current = new Set();
   }, []);
 
   // Reset on close rather than on open, same rule the receipt sheet follows: a
@@ -178,7 +183,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
 
   /**
    * Every frame the camera resolves a code fires this, so the dedupe is what
-   * makes it usable at all rather than a refinement — see `alreadyScanned`.
+   * makes it usable at all rather than a refinement — see `scannedGtinsRef`.
    */
   const handleBarcodeScanned = useCallback(
     ({ data }: { data: string }) => {
@@ -186,7 +191,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
       // A code that fails its own check digit is a misread, and a misread that
       // reached the network would file somebody else's product in the pantry.
       if (!gtin) return;
-      if (alreadyScanned(rowsRef.current, gtin)) return;
+      if (scannedGtinsRef.current.has(gtin)) return;
+      scannedGtinsRef.current.add(gtin);
       haptics.tap();
       void addScan(gtin);
     },
@@ -204,7 +210,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
     const gtin = normalizeGtin(raw);
     const plu = gtin ? null : normalizePlu(raw);
     if (gtin) {
-      if (!alreadyScanned(rowsRef.current, gtin)) void addScan(gtin);
+      if (!scannedGtinsRef.current.has(gtin)) {
+        scannedGtinsRef.current.add(gtin);
+        void addScan(gtin);
+      }
     } else if (plu) {
       // A produce sticker. It goes in as a row keyed on the code rather than
       // named after it, so the alias table can answer for it now and learn it
@@ -250,18 +259,31 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
   );
   const includedCount = rows.filter(r => r.included && r.name.trim()).length;
 
+  /**
+   * A weak match is a single coincidental word in common ("cream" in both
+   * "Boston Cream Pie" and "Heavy Cream") and nothing more — not confirmation
+   * this scan is that row. `acceptedByDefault` already refuses to pre-check
+   * one for a receipt; a scan gets no separate confirmation step at all, so
+   * it must refuse even harder and treat a weak read as no match.
+   */
+  const confidentItemId = (match: ReceiptMatch | undefined): string | null =>
+    match?.itemId && match.confidence !== 'weak' ? match.itemId : null;
+  const confidentOffListMatchId = (match: ReceiptMatch | undefined): string | null =>
+    match?.offListMatchId && match.offListConfidence !== 'weak' ? match.offListMatchId : null;
+
   const handleApply = useCallback(() => {
     const itemIds: string[] = [];
     const toAdd: ReceiptAddDraft[] = [];
     rows.forEach((row, index) => {
       if (!row.included || !row.name.trim()) return;
       const match = matches[index];
-      if (match?.itemId) {
-        itemIds.push(match.itemId);
+      const itemId = confidentItemId(match);
+      if (itemId) {
+        itemIds.push(itemId);
         return;
       }
       toAdd.push({
-        existingItemId: match?.offListMatchId ?? null,
+        existingItemId: confidentOffListMatchId(match),
         name: row.name.trim(),
         // The product's own full name is the raw text a new row is parsed from,
         // exactly as a receipt hands over its printed line. Falls back to the
@@ -273,15 +295,17 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
     });
     // Only rows whose label came off a lookup are worth remembering. A typed
     // row's "label" is the name the user just wrote, so an alias from it would
-    // map a phrase to itself and teach nothing.
+    // map a phrase to itself and teach nothing. A weak match is excluded for
+    // the same reason `confidentItemId` is: it's a coincidence, not a
+    // confirmed reading worth teaching the alias table.
     rememberAliases([
       ...rows
-        .map((row, index) => ({ row, match: matches[index] }))
-        .filter(({ row, match }) => row.included && !!row.label && !!match?.itemId)
-        .map(({ row, match }) => ({
+        .map((row, index) => ({ row, itemId: confidentItemId(matches[index]) }))
+        .filter(({ row, itemId }) => row.included && !!row.label && !!itemId)
+        .map(({ row, itemId }) => ({
           shopId: null,
           rawText: row.label,
-          itemId: match.itemId as string,
+          itemId: itemId as string,
         })),
       ...toAdd
         .filter(d => d.existingItemId !== null && !!d.label)
@@ -296,15 +320,17 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
     if (row.error) return row.error;
     if (!row.name.trim()) return 'Not found. Type what it is.';
     const match = matches[index];
-    if (match?.itemId) {
-      const item = items.find(i => i.id === match.itemId);
+    const itemId = confidentItemId(match);
+    if (itemId) {
+      const item = items.find(i => i.id === itemId);
       if (!item) return null;
-      return match.confidence === 'remembered'
+      return match?.confidence === 'remembered'
         ? `On your list as ${item.name}, as you matched it before`
         : `On your list as ${item.name}`;
     }
-    if (match?.offListMatchId) {
-      const item = items.find(i => i.id === match.offListMatchId);
+    const offListMatchId = confidentOffListMatchId(match);
+    if (offListMatchId) {
+      const item = items.find(i => i.id === offListMatchId);
       return item ? `Back on the list as ${item.name}` : null;
     }
     return 'New item';
@@ -437,7 +463,12 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
                       <TouchableOpacity
                         activeOpacity={interaction.activeOpacity}
                         style={styles.rowControl}
-                        onPress={() => setRows(current => current.filter(r => r.key !== row.key))}
+                        onPress={() => {
+                          setRows(current => current.filter(r => r.key !== row.key));
+                          // Removing a mistaken row un-claims its gtin, so
+                          // holding the same box up again isn't a no-op.
+                          if (row.gtin) scannedGtinsRef.current.delete(row.gtin);
+                        }}
                         accessibilityLabel={`Remove ${row.name.trim() || 'unnamed scan'}`}
                       >
                         <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
