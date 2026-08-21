@@ -411,8 +411,23 @@ interface GroceryStore {
    * rows too.
    *
    * Returns null for a name with nothing usable in it.
+   *
+   * `registerUndo: false` suppresses the per-call shake-to-undo entry, same as
+   * `addByName`'s option and for the same reason — `addManyToPantry` uses it
+   * and registers one combined action of its own after its loop.
    */
-  addToPantry: (raw: string) => GroceryItem | null;
+  addToPantry: (raw: string, opts?: { registerUndo?: boolean }) => GroceryItem | null;
+  /**
+   * `addToPantry`, for a whole scan session at once — the barcode sheet's
+   * "Add" button on the Pantry screen. Loops `addToPantry` with its undo
+   * suppressed and registers one combined entry, the same shape
+   * `addManyFromText` uses over `addByName`, and for the same reason: without
+   * it, only the last barcode of a five-item scan would be undoable.
+   *
+   * Returns the number of names that actually produced a row — a name that
+   * normalizes to nothing is skipped, same as a single `addToPantry` call.
+   */
+  addManyToPantry: (names: readonly string[]) => number;
   /**
    * The day this should be used up by, as a `YYYY-MM-DD` key, or null for
    * "doesn't go off on a schedule worth naming".
@@ -1866,7 +1881,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     return updates.length;
   },
 
-  addToPantry(raw) {
+  addToPantry(raw, opts) {
     // Parsed like a list line so "2 lb flour" files under flour rather than
     // minting a row whose name no purchase can ever match. The quantity it
     // strips off is deliberately dropped: how much you have is the inventory
@@ -1896,13 +1911,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       };
       dbUpdateGroceryItem(updated);
       set(s => ({ items: s.items.map(i => (i.id === existing.id ? updated : i)) }));
-      get().setLastAction({
-        label: `Added "${updated.name}" to the pantry`,
-        undo: () => {
-          dbUpdateGroceryItem(existing);
-          set(s => ({ items: s.items.map(i => (i.id === existing.id ? existing : i)) }));
-        },
-      });
+      if (opts?.registerUndo !== false) {
+        get().setLastAction({
+          label: `Added "${updated.name}" to the pantry`,
+          undo: () => {
+            dbUpdateGroceryItem(existing);
+            set(s => ({ items: s.items.map(i => (i.id === existing.id ? existing : i)) }));
+          },
+        });
+      }
       return updated;
     }
 
@@ -1925,11 +1942,45 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const item: GroceryItem = { ...row, onHandUntil: defaultOnHandUntil(row, now) };
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));
-    get().setLastAction({
-      label: `Added "${item.name}" to the pantry`,
-      undo: () => get().deleteItem(item.id),
-    });
+    if (opts?.registerUndo !== false) {
+      get().setLastAction({
+        label: `Added "${item.name}" to the pantry`,
+        undo: () => get().deleteItem(item.id),
+      });
+    }
     return item;
+  },
+
+  addManyToPantry(names) {
+    const addedIds: string[] = [];
+    const revertRows: GroceryItem[] = [];
+    let count = 0;
+    for (const raw of names) {
+      const key = groceryNameKey(parseGroceryInput(raw).name);
+      const before = key ? get().items.find(i => i.nameKey === key) : undefined;
+      const item = get().addToPantry(raw, { registerUndo: false });
+      if (!item) continue;
+      count++;
+      if (before) revertRows.push(before);
+      else addedIds.push(item.id);
+    }
+    // One combined undo for the whole scan session rather than addToPantry's
+    // per-call one, which the loop above suppresses — see addManyFromText.
+    if (count > 0) {
+      get().setLastAction({
+        label: `${count} ${count === 1 ? 'item' : 'items'} added to the pantry`,
+        undo: () => {
+          for (const b of revertRows) dbUpdateGroceryItem(b);
+          const revertById = new Map(revertRows.map(b => [b.id, b]));
+          set(s => ({
+            items: s.items
+              .filter(i => !addedIds.includes(i.id))
+              .map(i => revertById.get(i.id) ?? i),
+          }));
+        },
+      });
+    }
+    return count;
   },
 
   setItemPrice(id, minor, shopId = null) {

@@ -1238,6 +1238,7 @@ export function GroceryScreen() {
       />
       <BarcodeScanSheet
         visible={scanOpen}
+        context="shopping"
         onClose={() => setScanOpen(false)}
         onApply={handleScanApply}
       />

@@ -3508,6 +3508,59 @@ describe('addToPantry', () => {
   });
 });
 
+describe('addManyToPantry', () => {
+  it('adds a name per entry, mixing new rows and stamped ones', () => {
+    const milk = makeItem({ name: 'Milk', inCatalog: true });
+    seed([milk]);
+
+    const count = useGroceryStore.getState().addManyToPantry(['milk', 'Flour', 'Eggs']);
+
+    expect(count).toBe(3);
+    // The typed name wins on the stamped row, as addToPantry documents.
+    expect(useGroceryStore.getState().items.map(i => i.name).sort()).toEqual(
+      ['Eggs', 'Flour', 'milk'].sort()
+    );
+  });
+
+  it('skips a name with nothing usable and only counts what landed', () => {
+    seed([]);
+
+    const count = useGroceryStore.getState().addManyToPantry(['Flour', '   ', 'Eggs']);
+
+    expect(count).toBe(2);
+    expect(useGroceryStore.getState().items).toHaveLength(2);
+  });
+
+  it('registers no undo when nothing in the batch produced a row', () => {
+    seed([]);
+    useGroceryStore.setState({ lastAction: null });
+
+    useGroceryStore.getState().addManyToPantry(['   ', '']);
+
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+  });
+
+  it('registers one combined undo rather than addToPantry’s per-call one', () => {
+    seed([]);
+
+    useGroceryStore.getState().addManyToPantry(['Flour', 'Eggs']);
+
+    expect(useGroceryStore.getState().lastAction?.label).toBe('2 items added to the pantry');
+  });
+
+  it('undoes the whole session: deletes fresh rows, restores stamped ones', () => {
+    const milk = makeItem({ name: 'Milk', onHandUntil: null, inCatalog: false, onList: true });
+    seed([milk]);
+
+    useGroceryStore.getState().addManyToPantry(['milk', 'Flour']);
+    useGroceryStore.getState().undoLastAction();
+
+    const items = useGroceryStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual(milk);
+  });
+});
+
 describe('setStaple', () => {
   it('writes the given value and persists it', () => {
     const salt = makeItem({ name: 'Salt' });
