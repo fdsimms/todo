@@ -97,6 +97,13 @@ that pair are the argument for the whole shape:
   could not say. `ItemShopLink.productId` (what you last got here) is still an **observation** and
   must never filter anything, for exactly the reason its brand-string predecessor couldn't: a
   shelf holds several at once.
+- **A merge folds products, it never drops them** (`mergeItems`). The loser's boxes are boxes of
+  what is now one item, so they come across the way its purchase count and price run already do,
+  deduped by `productKey` with the survivor's row kept and the loser's counters folded in. Its
+  rating only fills a silence — two verdicts on one box is a disagreement nothing here can settle.
+  Pointers at a deduped id (`ItemShopLink.productId`, the claims, a `PriceObservation`) are
+  remapped rather than left to dangle: they would only *read* as absent, but a claim quietly
+  ceasing to apply because of a rename is the staleness this whole model was built to avoid.
 - **A purchase clears every claim about that store**, not just the one about the box that came
   home. Coming home with something refutes the whole shelf-shaped claim at once, and it's the one
   correction nobody should have to make by hand.
@@ -108,9 +115,35 @@ between two items. Within an item you pick among products; across items you fall
 substitute. Recipes are untouched by any of this — `RecipeIngredient.nameKey` bridges to the
 *item*, because a recipe calls for bread, not for Arnold's wheat.
 
-**Prices are still per item and per store, not per product.** `lastPriceMinor`/`priceHistory`
-live on `GroceryItem` and `ItemShopLink`, so a run of observations mixes whatever boxes were
-bought. That's a known gap rather than a decision that products don't affect price.
+**A price run is scoped to the product, and the stamp lives on the observation.** Each
+`PriceObservation` carries the `productId` the row preferred when the trip was finished, and
+`priceRunForProduct` filters the run at read time — so `typicalPriceFor` and `priceStandingFor`
+answer "what does the one I buy cost" instead of "what does bread cost". Three rules hold it up:
+
+- **A stamp, not a third price level.** The runs are already capped blobs on the rows that own
+  them, so scoping is a filter rather than a `grocery_product_shops` table with its own cascade
+  and its own write path in `dbFinishGroceryShopping`. Nothing outside an observation holds its
+  identity, which is the same test that sent `ItemProduct` *to* a table.
+- **Below `PRODUCT_RUN_MIN` (2) the whole run answers.** A run filtered to one observation is the
+  single-price baseline this whole file exists to reject, wearing a median's clothes — and an
+  install upgrading into this has no stamped observations at all, so a run that scoped itself to
+  nothing would turn every existing baseline into silence overnight.
+- **`lastPricedAmountFor` is deliberately not scoped.** It reads the stored scalar, which is also
+  what `setItemPrice` writes when a price is corrected by hand without touching the run; deriving
+  it from the filtered run would discard that correction. The *run* is what a product can scope;
+  the *last number* is one fact about the row, and the one a user can point at a receipt for.
+
+**The shelf offers the next box when yours isn't there.** A `withoutProduct` marker carries an
+`alternativeProduct` — the best thing on record at this store, taken in `productsForItem` order.
+Three exclusions: the preferred box (which the caption just refused), anything rated `avoid`, and
+anything this store is *also* on record as lacking. **The `avoid` exclusion is the one place a
+rating filters rather than sorts**, and the reason is that this is the app recommending rather
+than listing: "try the one you told me you hated" is the app not having read its own record. The
+caption trades the wanted product's name for the alternative (`Yours isn’t here · try Nancy’s
+whole milk`) because the row is one line and naming both cuts off the half that says what to do —
+the same trade the `unavailable` branch makes when a substitute joins it. It is deliberately not
+that branch's "Not here": the store has the item, just not your box, and collapsing the two
+claims would say a shop had nothing when it had the thing and not your version of it.
 
 ## Grocery stores (`Shop`) — which shop has which items
 

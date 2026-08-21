@@ -2544,6 +2544,88 @@ describe('mergeItems', () => {
     expect(survivor.lastPurchasedAt).toBe('2026-08-10T00:00:00.000Z');
   });
 
+  // A rating is the one thing on a product that can't be retyped from memory,
+  // so it is exactly what a merge must not throw away. Before this, the loser's
+  // products were cascaded out of SQLite by dbDeleteGroceryItem and left behind
+  // in memory as orphans pointing at an item that no longer existed.
+  it("carries the loser's products across, ratings and all", () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander]);
+    const own = useGroceryStore.getState().addProduct(coriander.id, { brand: 'Local', variant: null })!;
+    const theirs = useGroceryStore.getState().addProduct(cilantro.id, { brand: 'Store brand', variant: null })!;
+    useGroceryStore.getState().updateProduct(theirs.id, { rating: 'avoid', note: 'Wilts fast' });
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+
+    const products = useGroceryStore.getState().itemProducts;
+    expect(products).toHaveLength(2);
+    expect(products.every(p => p.itemId === coriander.id)).toBe(true);
+    // Its id survives, which is what keeps price observations and link
+    // references naming it valid.
+    expect(products.find(p => p.id === theirs.id)).toMatchObject({
+      brand: 'Store brand', rating: 'avoid', note: 'Wilts fast',
+    });
+    expect(products.find(p => p.id === own.id)).toBeDefined();
+  });
+
+  // productKey is the identity within an item, so both rows having a "store
+  // brand" is one box, not two.
+  it('folds two boxes with the same key into one, keeping the survivor', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander]);
+    const survivor = useGroceryStore.getState().addProduct(coriander.id, { brand: 'Store brand', variant: null })!;
+    useGroceryStore.getState().updateProduct(survivor.id, { rating: 'loved' });
+    const loser = useGroceryStore.getState().addProduct(cilantro.id, { brand: 'store brand', variant: null })!;
+    useGroceryStore.getState().updateProduct(loser.id, { rating: 'avoid', note: 'Wilts fast' });
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+
+    const products = useGroceryStore.getState().itemProducts;
+    expect(products).toHaveLength(1);
+    // The survivor's verdict stands: two ratings for one box is a disagreement
+    // nothing here can settle, and the loser's only fills a silence.
+    expect(products[0]).toMatchObject({ id: survivor.id, rating: 'loved', note: 'Wilts fast' });
+  });
+
+  // Pointers at a deduped id are rewritten rather than left to dangle — a claim
+  // quietly ceasing to apply because of a rename is the staleness this model
+  // was built to avoid.
+  it('remaps store claims and observations off a deduped product', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    const safeway = makeShop('Safeway');
+    seed([cilantro, coriander], { shops: [safeway] });
+    const survivor = useGroceryStore.getState().addProduct(coriander.id, { brand: 'Store brand', variant: null })!;
+    const loser = useGroceryStore.getState().addProduct(cilantro.id, { brand: 'Store brand', variant: null })!;
+    useGroceryStore.setState({
+      itemShops: [{
+        itemId: cilantro.id, shopId: safeway.id, purchaseCount: 0, lastPurchasedAt: null,
+        unavailableAt: null, lastPriceMinor: null, lastPricedAt: null,
+        lastPriceQuantity: null, priceHistory: [], productId: loser.id,
+        unavailableProductIds: { [loser.id]: '2026-03-04T00:00:00.000Z' },
+      }],
+    });
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+
+    const [link] = useGroceryStore.getState().itemShops;
+    expect(link.productId).toBe(survivor.id);
+    expect(link.unavailableProductIds).toEqual({ [survivor.id]: '2026-03-04T00:00:00.000Z' });
+  });
+
+  it("adopts the loser's preference only when the survivor had none", () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander]);
+    const theirs = useGroceryStore.getState().addProduct(cilantro.id, { brand: 'Store brand', variant: null })!;
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+
+    expect(useGroceryStore.getState().itemById(coriander.id)!.preferredProductId).toBe(theirs.id);
+  });
+
   it("keeps the surviving row's own name, preference, strictness, aisle and note", () => {
     const cilantro = makeItem({
       name: 'Cilantro', preferredProductId: 'p-store', productStrict: true,

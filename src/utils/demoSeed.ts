@@ -1192,6 +1192,17 @@ function seedGroceries(recipes: DemoRecipes): void {
   // this is also the demo's example of the ordinary case — an item where you
   // know which one you want and have never bothered to record an alternative.
   addProduct(itemNamed('Cottage cheese').id, { brand: 'Good Culture', variant: 'low fat' });
+  // A second box on the same row, and the only reason it's here: the shelf
+  // caption for a store that hasn't got your one can only offer an
+  // alternative if the item has one on record. Trader Joe's is where the
+  // seeded trip runs and is marked as not having the Good Culture below, so
+  // this is what makes "No Good Culture low fat here · try Nancy's" appear in
+  // the demo rather than the bare refusal.
+  //
+  // Unrated on purpose: an `avoid` box is never offered (see
+  // alternativeProductAt), so rating this one would seed the feature and hide
+  // it in the same stroke.
+  addProduct(itemNamed('Cottage cheese').id, { brand: "Nancy's", variant: 'whole milk' });
 
   // Bread is the demo's example of the other shape: an item you've tried
   // several of and have opinions about. Three boxes, one preferred and one

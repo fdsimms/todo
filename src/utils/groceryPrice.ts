@@ -1,10 +1,10 @@
 import { format } from 'date-fns/format';
-import type { GroceryItem, ItemShopLink, Shop } from '../types';
+import type { GroceryItem, ItemShopLink, PriceObservation, Shop } from '../types';
 import { GROCERY_PRICE_MINOR_MAX } from '../types';
 import { isUnavailable } from './groceryShops';
 import { parseQuantity, rationalToNumber } from './quantity';
 import { measureQuantity, shelfUnit, type Dimension } from './unitConvert';
-import { priceBaseline, priceStanding, type PriceStanding } from './priceHistory';
+import { priceBaseline, priceRunForProduct, priceStanding, type PriceStanding } from './priceHistory';
 
 /**
  * What things cost — parsing a typed price, rendering one, and the one
@@ -494,6 +494,14 @@ export function lastPriceFor(
  * them from two lookups is how the pair comes to disagree about which store's
  * price it's holding. `lastPriceFor` delegates here rather than restating the
  * rule beside it.
+ *
+ * **Deliberately not scoped to the preferred product**, unlike `typicalPriceFor`
+ * and `priceStandingFor` beside it. Those read the *run*, which carries a
+ * `productId` per observation; this reads the stored scalar, which is a single
+ * fact about the row and is also what `setItemPrice` writes when a price is
+ * corrected by hand without appending to the run. Deriving it from the filtered
+ * run instead would quietly discard that correction, and "the last price you
+ * recorded" is exactly the number a user can point at a receipt for.
  */
 export function lastPricedAmountFor(
   item: GroceryItem,
@@ -530,20 +538,29 @@ export function typicalPriceFor(
   shopId: string | null,
   links: readonly ItemShopLink[]
 ): { minor: number; quantity: string | null } | null {
+  // Scoped to the box the row is asking for, at both levels — the same call
+  // the store precedence below makes, one axis over: a median mixing Arnold's
+  // whole wheat with the store brand describes neither, exactly as a median
+  // mixing Costco with Safeway describes neither. `priceRunForProduct` falls
+  // back to the unfiltered run when there isn't enough of the preferred box to
+  // be a baseline, so this can never answer with less than it used to.
+  const run = (history: readonly PriceObservation[]) =>
+    priceRunForProduct(history, item.preferredProductId).history;
+
   if (shopId) {
     const link = links.find(l => l.itemId === item.id && l.shopId === shopId);
     // A store with a run of its own answers for itself: what Costco charges and
     // what Safeway charges are different numbers, and a median across both
     // describes neither.
     if (link) {
-      const fromShop = priceBaseline(link.priceHistory);
+      const fromShop = priceBaseline(run(link.priceHistory));
       if (fromShop) return fromShop;
       if (link.lastPriceMinor != null) {
         return { minor: link.lastPriceMinor, quantity: link.lastPriceQuantity };
       }
     }
   }
-  return priceBaseline(item.priceHistory) ?? lastPricedAmountFor(item, shopId, links);
+  return priceBaseline(run(item.priceHistory)) ?? lastPricedAmountFor(item, shopId, links);
 }
 
 /**
@@ -562,18 +579,24 @@ export function priceStandingFor(
   shopId: string | null,
   links: readonly ItemShopLink[]
 ): PriceStanding | null {
+  // Judged against the box's own run where there is one, for typicalPriceFor's
+  // reason: "more than usual" measured against a run that mixed in a cheaper
+  // product is a verdict about the wrong thing.
+  const run = (history: readonly PriceObservation[]) =>
+    priceRunForProduct(history, item.preferredProductId).history;
+
   if (shopId) {
     const link = links.find(l => l.itemId === item.id && l.shopId === shopId);
     if (link?.lastPriceMinor == null) return null;
     return priceStanding(
       { minor: link.lastPriceMinor, quantity: link.lastPriceQuantity },
-      link.priceHistory
+      run(link.priceHistory)
     );
   }
   if (item.lastPriceMinor == null) return null;
   return priceStanding(
     { minor: item.lastPriceMinor, quantity: item.lastPriceQuantity },
-    item.priceHistory
+    run(item.priceHistory)
   );
 }
 

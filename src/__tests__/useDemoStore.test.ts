@@ -1094,6 +1094,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(markers.some(m => m.kind === 'unavailable')).toBe(true);
     expect(markers.some(m => m.kind === 'only')).toBe(true);
     expect(markers.some(m => m.kind === 'withoutProduct')).toBe(true);
+    // ...and that one carries the next box worth reaching for, which is the
+    // whole reason the seed gives cottage cheese a second product. Without it
+    // the caption is a refusal with no way forward, and the feature reads as
+    // one the app doesn't have.
+    expect(markers.some(m => m.kind === 'withoutProduct' && m.alternativeProduct)).toBe(true);
     // ...and most of the list still says nothing, which is the point.
     expect(markers.length).toBeLessThan(items.filter(i => i.onList).length);
   });
