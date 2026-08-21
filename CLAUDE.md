@@ -189,6 +189,7 @@ exports.
 | what appears on Today / Later / Unscheduled / Inbox | `src/utils/visibilityUtils.ts` + the selectors in `useTaskStore` |
 | any task create/complete/defer/delete | `src/store/useTaskStore.ts` |
 | the task edit sheet | `src/components/TaskEditor.tsx` |
+| picking a task's category, anywhere | `src/components/CategoryPicker.tsx` (+ `src/utils/categoryPicker.ts`) |
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
@@ -619,7 +620,8 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   |---|---|
   | Pick one from a small **closed** set | **`SegmentedControl`** |
   | **Multi**-select toggles (weekdays, time-of-day segments) | pills |
-  | Pick from an **open** set the user builds (tags, categories, aisles, stores) | `PillGroup` |
+  | Pick from an **open** set the user builds (tags, aisles, stores) | `PillGroup` |
+  | Pick a **task category** | `CategoryPicker` |
   | An action ("New task", "Add tag") | `InlineAction` |
 
   N free-width pills read as N objects, so an editor holding four such rows read as sixteen
@@ -646,7 +648,20 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   list straight into `<TouchableOpacity>` pills whenever the set has no ceiling — that's what
   had the grocery item sheet rendering ~30 pills across two grids, pushing the name/quantity
   fields it exists to edit off the first screen.
-- `CollapsibleField` (`src/components/CollapsibleField.tsx`) — a picker section inside an editor card. Collapsed it is `LABEL … value ⌄`; expanded it shows a one-line `hint` explaining the field, then the pills. **Every editor picker (category, project, tags, priority, effort, …) uses this** — see the progressive disclosure note below.
+- `CategoryPicker` (`src/components/CategoryPicker.tsx`) — **the task-category picker, everywhere
+  one is chosen.** `CategoryPickerList` is a find-or-add field over every category, one per row;
+  `CategoryPickerSheet` is the same list in a bottom sheet for a host with no room of its own
+  (quick add, the bulk bar's Move). Rows, not pills, and no cap: quick add used to show seven and
+  hide the rest behind a "N more" that its own sheet — capped to the space above the keyboard —
+  usually cut off, so picking anything else meant typing a name from memory. Two columns were
+  tried in mock and rejected; "Expiring Groceries" truncates at half width, and a truncated
+  category is one you can't recognise, which is the whole problem. Order is the user's own
+  (`reorderCategories`), never re-ranked by recency, and the filter/Enter rules live in
+  `src/utils/categoryPicker.ts` with their tests. `value` is optional: omit it where there's no
+  single current value to tick (a bulk move across several categories). The Settings rows that
+  pick a *default* category are deliberately still `PillGroup` — they sit on a page that scrolls,
+  so their "N more" is reachable, and their neighbours are the other Settings pill grids.
+- `CollapsibleField` (`src/components/CollapsibleField.tsx`) — a picker section inside an editor card. Collapsed it is `LABEL … value ⌄`; expanded it shows a one-line `hint` explaining the field, then the pills (Category's own contents are a `CategoryPickerList` instead — same disclosure, a list inside it). **Every editor picker (category, project, tags, priority, effort, …) uses this** — see the progressive disclosure note below.
 - `EditorRow` (`src/components/EditorRow.tsx`) — the `icon — label — value ›` row every editor sheet is built from (Date, Deadline, Remind me, Link, …). Pass `expanded` for rows whose controls unfold in place rather than opening a picker, and the chevron becomes up/down.
 - **Filtering by an open-ended set of options (tags, categories) is a bottom sheet with wrapping chips, never a horizontal scrolling chip row.** `LogbookFilterSheet` and `RecipeTagFilterSheet` are the two instances — both replaced a scroll row that had shipped first. A scroll row hides every option past what fits on screen behind a swipe nobody is prompted to make, and a vocabulary the user builds themselves (tags especially) has no ceiling a phone-width row can assume; wrapping puts the whole set on screen at once. The screen itself keeps only a small trigger row: a "Filter"/"Tags" button that opens the sheet, plus whatever's *currently selected* as removable pills (`ActiveFilterPill` in `LogbookScreen`, the `activePill` styles in `RecipesScreen`) — that set stays small by construction, so a scrolling row is still the right shape for it. Don't reach for a horizontal `ScrollView` of chips as the *filter control itself* again; that's the mistake both of these fixed.
 - `SelectionDot` (`src/components/SelectionDot.tsx`) — the circle at a row's **trailing** edge that

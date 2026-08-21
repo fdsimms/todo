@@ -53,8 +53,6 @@ export function ProjectDetailScreen() {
   const projects = useProjectStore(useShallow(s => s.projects));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
-  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
-  const addCategory = useTaskStore(s => s.addCategory);
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
   const reorderProjectTasks = useTaskStore(s => s.reorderProjectTasks);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
@@ -394,12 +392,10 @@ export function ProjectDetailScreen() {
             selectedCount={selectedIds.size}
             totalCount={selectableTasks.length}
             existingTags={allTags}
-            existingCategories={allCategories}
             onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
             onDelete={handleBulkDelete}
             onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
             onSetCategory={cat => { bulkSetCategory(Array.from(selectedIds), cat); exitSelection(); }}
-            onAddCategory={addCategory}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
             onSelectAll={() => selectAll(selectableTasks.map(t => t.id))}
