@@ -163,7 +163,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
     return matches.slice().sort((a, b) => a.name.localeCompare(b.name));
   }, [items, itemId, taken, typed, typedKey, suggestedKeys]);
 
-  // The field both filters and adds, the way `KitchenSheet`'s and `PillGroup`'s
+  // The field both filters and adds, the way `KitchenScreen`'s and `PillGroup`'s
   // do: what the search can't find is exactly what you're offered the chance
   // to add, and "what about ghee" is the moment you find out ghee has no row.
   const canAdd = !!typed && !items.some(i => i.nameKey === typedKey);

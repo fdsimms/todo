@@ -2424,7 +2424,7 @@ export const MEAL_PLAN_RETENTION_DAYS = 180;
  * and it lands in the Logbook when it's done. A kitchen row states what the
  * kitchen is right now; it goes away when the food does, and the only two
  * answers it could offer ("eaten" / "thrown out", "got it" / "out of it") are
- * exactly the two-way questions `KitchenSheet` already refuses to guess at with
+ * exactly the two-way questions `KitchenScreen` already refuses to guess at with
  * a single glyph. So it opens the kitchen instead of finishing anything.
  *
  * **A view model, computed per render, never stored.** Nothing here is written

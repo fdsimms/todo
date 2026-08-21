@@ -23,6 +23,7 @@ import { TemplatesScreen } from '../screens/TemplatesScreen';
 import { RecipesScreen } from '../screens/RecipesScreen';
 import { RecipeDetailScreen } from '../screens/RecipeDetailScreen';
 import { MealPlanScreen } from '../screens/MealPlanScreen';
+import { KitchenScreen } from '../screens/KitchenScreen';
 import { TemplateDetailScreen } from '../screens/TemplateDetailScreen';
 import { ProjectDetailScreen } from '../screens/ProjectDetailScreen';
 import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
@@ -48,7 +49,7 @@ const EDGE_WIDTH = 20;
 // Screens only reachable via the drawer — hidden from the tab bar.
 const HIDDEN = { tabBarButton: () => null };
 
-const DRAWER_TABS = new Set(['Calendar', 'Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Waiting', 'Drift', 'Archived', 'Groceries', 'Recipes', 'MealPlan']);
+const DRAWER_TABS = new Set(['Calendar', 'Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Waiting', 'Drift', 'Archived', 'Groceries', 'Recipes', 'MealPlan', 'Kitchen']);
 
 // Every screen it's safe to reopen the app directly on: the visible bottom
 // tabs plus every drawer screen, none of which take a route param. Excludes
@@ -59,13 +60,13 @@ const DRAWER_TABS = new Set(['Calendar', 'Tags', 'Categories', 'Stacks', 'Templa
 // on Today — see initialRouteName below.
 const RESTORABLE_SCREENS = new Set(['Today', 'Search', 'Projects', ...DRAWER_TABS]);
 
-// The Groceries/Recipes/Meal plan hub (SideMenuDrawer's GROCERIES_HUB_TABS)
-// drops out of the drawer entirely while kitchenEnabled is off, so reopening
-// directly onto one would land somewhere the menu no longer offers a way
-// back to. Checked only on the read side below — kitchenEnabled can't change
-// out from under an *open* session onto one of these screens, since turning
-// it off removes the only way to reach them.
-const KITCHEN_SCREENS = new Set(['Groceries', 'Recipes', 'MealPlan']);
+// The Groceries/Recipes/Meal plan/Kitchen hub (SideMenuDrawer's
+// GROCERIES_HUB_TABS) drops out of the drawer entirely while kitchenEnabled is
+// off, so reopening directly onto one would land somewhere the menu no longer
+// offers a way back to. Checked only on the read side below — kitchenEnabled
+// can't change out from under an *open* session onto one of these screens,
+// since turning it off removes the only way to reach them.
+const KITCHEN_SCREENS = new Set(['Groceries', 'Recipes', 'MealPlan', 'Kitchen']);
 
 // RootStack cards, not tabs. Pushing one must leave the drawer's highlight on
 // whichever tab you pushed it *from*, so these never become the active tab.
@@ -178,6 +179,7 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Groceries" component={GroceryScreen} options={HIDDEN} />
       <Tab.Screen name="Recipes" component={RecipesScreen} options={HIDDEN} />
       <Tab.Screen name="MealPlan" component={MealPlanScreen} options={HIDDEN} />
+      <Tab.Screen name="Kitchen" component={KitchenScreen} options={HIDDEN} />
       <Tab.Screen name="Calendar" component={CalendarScreen} options={HIDDEN} />
       <Tab.Screen name="Categories" component={CategoriesScreen} options={HIDDEN} />
       <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />

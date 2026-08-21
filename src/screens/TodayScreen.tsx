@@ -72,7 +72,6 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { kitchenInventory, type KitchenEntry } from '../utils/kitchenInventory';
 import { standingSwapMap } from '../utils/standingSwaps';
-import { KitchenSheet } from '../components/KitchenSheet';
 import { isLiveLeftover } from '../utils/leftovers';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
@@ -1417,7 +1416,6 @@ export function TodayScreen() {
   const kitchenOnToday = kitchenEnabled && storedKitchenOnToday;
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
-  const [kitchenSheetVisible, setKitchenSheetVisible] = useState(false);
   const kitchenEntries = useMemo(
     () => (kitchenOnToday ? kitchenInventory(groceryItems, leftovers, new Date()) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2196,7 +2194,9 @@ export function TodayScreen() {
             // Every kitchen row lands in the same place, per-item and summary
             // alike: the merged inventory is where both halves are corrected,
             // and it asks the two-way question a row's glyph can't (#1689).
-            : item.row.kind === 'kitchen' ? () => setKitchenSheetVisible(true)
+            // Same navigation openMealPlan below makes for a meal row — the
+            // Kitchen screen is a hub tab now, not a sheet this screen owns.
+            : item.row.kind === 'kitchen' ? () => navigation.navigate('Kitchen' as never)
             : openMealPlan
           }
           onMarkCooked={
@@ -3399,14 +3399,6 @@ export function TodayScreen() {
           visible={eventsSheetVisible}
           onClose={() => setEventsSheetVisible(false)}
           events={todayCalendarEvents}
-        />
-
-        {/* Where a kitchen row goes. The same sheet the Groceries screen opens
-            — it nests GroceryItemSheet and LeftoverSheet inside its own Modal,
-            so correcting one row from here drops back into the list. */}
-        <KitchenSheet
-          visible={kitchenSheetVisible}
-          onClose={() => setKitchenSheetVisible(false)}
         />
 
         <DeloadSheet

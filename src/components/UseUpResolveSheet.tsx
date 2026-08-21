@@ -34,7 +34,7 @@ import { LeftoverSheet } from './LeftoverSheet';
  * the point of the task was to prompt this decision, so there's nothing to
  * review first.
  *
- * Both sheets share the same wiring KitchenSheet uses for the same rows — see
+ * Both sheets share the same wiring KitchenScreen uses for the same rows — see
  * that component's doc comment for why a container carries no ✕ and a
  * catalog row opens on the Pantry field.
  */
@@ -52,7 +52,7 @@ export function UseUpResolveSheet() {
   const reopenLeftover = useLeftoverStore(s => s.reopenLeftover);
   const deleteLeftover = useLeftoverStore(s => s.deleteLeftover);
 
-  // Read live from the store by id, same discipline KitchenSheet keeps, so
+  // Read live from the store by id, same discipline KitchenScreen keeps, so
   // the sheet's caption follows an edit it just made.
   const pendingLeftover = useMemo(
     () => leftovers.find(l => l.id === pendingLeftoverId) ?? null,
@@ -72,7 +72,7 @@ export function UseUpResolveSheet() {
         visible={pendingLeftover !== null}
         leftover={pendingLeftover}
         // Never called: this always opens an existing container, never logs
-        // a new one. Same as KitchenSheet's own wiring.
+        // a new one. Same as KitchenScreen's own wiring.
         onLog={() => {}}
         onRename={title => pendingLeftover && renameLeftover(pendingLeftover.id, title)}
         onSetStoredAt={storedAt => pendingLeftover && setLeftoverStoredAt(pendingLeftover.id, storedAt)}

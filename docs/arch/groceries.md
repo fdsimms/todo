@@ -210,12 +210,22 @@ Thursday are the same fact to the cook.
   arrive days early) and a leftover's fires the moment `needsAttention` turns true; folding those
   into one query would change what a grocery use-up task means.
 
-**`KitchenSheet` is a read plus one write, not a second model.** It renders that inventory, the
+**`KitchenScreen` is a read plus one write, not a second model.** It renders that inventory, the
 fridge first and then the pantry cut into aisles. That's the distinction the aggregate view turns
 on: nobody should have to check items in and out, but a set the app has already derived per-item
 is worth being able to look at, and until this there was no way to answer "do I have flour" short
 of opening items one at a time. Don't grow quantities, per-row expiry editing or a check-in
 gesture onto it — that's the inventory again.
+
+- **It's the fourth screen in the Groceries/Recipes/Meal plan hub, not a sheet popped over
+  Groceries.** It used to be — reached by stamping a param on a `navigate('Groceries', ...)` call
+  that `GroceryScreen` watched for — which meant it never got the hub row's active/selected state,
+  and every call site that wanted to open it (a use-up task's link, Today's own kitchen context
+  row) had to carry a copy of the sheet rather than just navigating. It's a real `Tab.Screen` now
+  (`AppNavigator`'s `KITCHEN_SCREENS`), so `resetToKitchen` (`navigationRef.ts`) and Today's kitchen
+  row both do what `resetToMealPlan`/the meal row already did: navigate there, with a
+  `focusKitchenEntry`/`focusStamp` pair (`MealPlanScreen`'s `focusDay`/`focusStamp` shape) when a
+  link names one row.
 
 - **A catalog row carries the ✕; a container doesn't.** "Out of it" is one bit and the ✕ writes
   exactly it (`markOutOfMany`). Closing a container out is a two-way question ("Eaten" / "Thrown
@@ -268,11 +278,12 @@ gesture onto it — that's the inventory again.
     twice, the two disagreed — the reading wanted three purchases before trusting a cadence and
     the assertion was happy with one, so a single purchase on a year-old row asserted on-hand for
     a year.
-- **`GroceryItemSheet` and `LeftoverSheet` are rendered *inside* `KitchenSheet`'s `Modal`, not
-  beside it.** A `Modal` presents from the view controller its React parent belongs to, so a
-  sibling would ask the screen's controller to present a second sheet while the kitchen is already
-  up. Nesting is what lets it stack — and keeping the kitchen mounted underneath is the point,
-  since correcting one row should drop you back into the list you were reading.
+- **`GroceryItemSheet` and `LeftoverSheet` render as plain sibling `Modal`s under the screen**,
+  the same way `GroceryScreen` renders its own item sheet — there's no outer `Modal` to nest inside
+  of any more now that the kitchen is a screen rather than a sheet, so the nesting `KitchenSheet`
+  needed (and `BuyAgainSheet` still needs, being itself a `Modal`) doesn't apply here. Correcting a
+  row still drops you back into the list you were reading, because the screen underneath was never
+  unmounted to begin with.
 
 ## Grocery either/or — two rows you pick between at the shelf
 
