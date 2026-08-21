@@ -13,6 +13,7 @@ import { allRecipeTags } from '../../utils/recipeTags';
 import { useColors } from '../../theme/ThemeContext';
 import { spacing } from '../../theme';
 import { CalendarPicker } from '../../components/CalendarPicker';
+import { getTaskDayStart } from '../../utils/dateUtils';
 import { EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, type ExpiredTaskGraceDays } from '../../utils/expiredTaskGrace';
 import { CountStepper } from '../../components/CountStepper';
 import { SettingsSection } from './SettingsSection';
@@ -675,9 +676,7 @@ export function TasksProjectsSettings() {
         mode="date"
         title="Vacation End Date"
         onConfirm={date => {
-          const endOfDay = new Date(date);
-          endOfDay.setHours(23, 59, 59, 999);
-          setVacationEnd(endOfDay.toISOString());
+          setVacationEnd(getTaskDayStart(date).toISOString());
           setShowVacationEndPicker(false);
         }}
         onCancel={() => setShowVacationEndPicker(false)}
