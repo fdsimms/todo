@@ -262,6 +262,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // slides the row off them, so a truly transparent header would show the
     // orange panel straight through its own text. It matches the tray exactly.
     backgroundColor: colors.bgSunken,
+    // Matches cardClip's radius (below) so this view's own background paints
+    // rounded too — same reasoning as TaskItem's itemWrapper/cardClip split.
+    // cardClip only clips its *children* (the row content and SpotlightScrim)
+    // to a rounded rect; without a matching radius here, band's flat corners
+    // sit just outside that clip and stay unpainted by the scrim, so a
+    // spotlighted task leaves this header's corners undimmed while the rest
+    // of it recedes.
+    borderRadius: radius.md,
   },
   cardClip: {
     borderRadius: radius.md,
