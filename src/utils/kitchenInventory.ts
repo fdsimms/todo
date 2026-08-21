@@ -260,8 +260,11 @@ export function useUpEntries(entries: readonly KitchenEntry[]): KitchenEntry[] {
 }
 
 /**
- * The kitchen in one line — "6 things in the kitchen · 2 to use up", or just
- * "6 things in the kitchen".
+ * The kitchen in one line — "6 things in the pantry · 2 to use up", or just
+ * "6 things in the pantry". "Pantry" because that's the screen's display
+ * name (see `GroceriesHubPills`' doc comment); the function itself keeps the
+ * `Kitchen` name this whole module uses for the merged pantry-plus-fridge
+ * concept.
  *
  * Shaped like `describeFridge`, which says the same thing about half of it.
  * Empty for an empty kitchen, so a caller renders no line rather than "0
@@ -269,7 +272,7 @@ export function useUpEntries(entries: readonly KitchenEntry[]): KitchenEntry[] {
  */
 export function describeKitchen(entries: readonly KitchenEntry[]): string {
   if (entries.length === 0) return '';
-  const base = `${entries.length} ${entries.length === 1 ? 'thing' : 'things'} in the kitchen`;
+  const base = `${entries.length} ${entries.length === 1 ? 'thing' : 'things'} in the pantry`;
   const urgent = useUpEntries(entries).length;
   return urgent > 0 ? `${base} · ${urgent} to use up` : base;
 }

@@ -55,7 +55,10 @@ import { haptics } from '../utils/haptics';
  *
  * The fourth of the Groceries/Recipes/Meal plan hub (`GroceriesHubPills`),
  * rather than a sheet popped over Groceries — see that component's doc
- * comment for why it moved.
+ * comment for why it moved. Displayed as "Pantry" (`GroceriesHubPills`'
+ * label, and this screen's own `ScreenHeader` title) while the route, this
+ * file and everything in `kitchenInventory.ts` keep the `Kitchen`/`kitchen*`
+ * name — see `GroceriesHubPills`' doc comment for why the two differ.
  *
  * **The corrections stay where the thing lives.** A catalog row's trailing ✕
  * is the one this screen exists for most — it writes exactly what
@@ -231,7 +234,7 @@ export function KitchenScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
-        title="Kitchen"
+        title="Pantry"
         subtitle={entries.length > 0 ? describeKitchen(entries) : undefined}
       />
       <GroceriesHubPills active="Kitchen" />
@@ -248,7 +251,7 @@ export function KitchenScreen() {
           autoCapitalize="none"
           returnKeyType={canAdd ? 'done' : 'search'}
           onSubmitEditing={canAdd ? handleAdd : undefined}
-          accessibilityLabel="Find something in the kitchen, or type a name to add it"
+          accessibilityLabel="Find something in the pantry, or type a name to add it"
         />
       </View>
 
@@ -290,7 +293,7 @@ export function KitchenScreen() {
         ListEmptyComponent={
           <EmptyState
             icon="file-tray-stacked-outline"
-            title={typed ? 'Nothing matches' : 'Nothing in the kitchen yet'}
+            title={typed ? 'Nothing matches' : 'Nothing in the pantry yet'}
             subtitle={
               typed
                 ? 'Nothing you probably have goes by that name. Add it above to say you do.'

@@ -160,7 +160,7 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
             accessibilityLabel={`${row.title}, ${row.caption}`}
             accessibilityHint={
               row.kind === 'event' ? "Opens the day's events"
-              : row.kind === 'kitchen' ? 'Opens the kitchen'
+              : row.kind === 'kitchen' ? 'Opens Pantry'
               : 'Opens Meal plan'
             }
           >

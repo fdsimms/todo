@@ -253,14 +253,14 @@ describe('describeKitchen', () => {
 
   it('counts, and adds the use-up clause only when there is one', () => {
     const quiet = kitchenInventory([makeItem({ name: 'Rice' })], [], NOW);
-    expect(describeKitchen(quiet)).toBe('1 thing in the kitchen');
+    expect(describeKitchen(quiet)).toBe('1 thing in the pantry');
 
     const urgent = kitchenInventory(
       [makeItem({ name: 'Rice' }), makeItem({ name: 'Spinach', expiresAt: '2026-08-13' })],
       [makeLeftover({ title: 'Chilli', keepUntil: '2026-08-12' })],
       NOW
     );
-    expect(describeKitchen(urgent)).toBe('3 things in the kitchen · 2 to use up');
+    expect(describeKitchen(urgent)).toBe('3 things in the pantry · 2 to use up');
   });
 });
 

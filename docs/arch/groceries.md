@@ -226,6 +226,15 @@ gesture onto it — that's the inventory again.
   row both do what `resetToMealPlan`/the meal row already did: navigate there, with a
   `focusKitchenEntry`/`focusStamp` pair (`MealPlanScreen`'s `focusDay`/`focusStamp` shape) when a
   link names one row.
+- **Displayed as "Pantry", not "Kitchen"** — the pill's label, the screen's own header title, and
+  every string a user actually reads (`describeKitchen`'s "N things in the pantry", the empty
+  state, the Settings copy about what turning "Show what needs using up" on does). The route name,
+  this screen's own filename, and every symbol in `kitchenInventory.ts` still say `Kitchen`/
+  `kitchen*`, the same split `TaskGroup` keeps under the user-facing "Stack": the internal name
+  predates the label and still describes what the model actually merges (pantry *and* fridge —
+  see above), where "Pantry" alone is a deliberately imperfect fit for a container of leftover
+  chili. Don't chase the two into agreement; the display string is what changes when this gets
+  renamed again.
 
 - **A catalog row carries the ✕; a container doesn't.** "Out of it" is one bit and the ✕ writes
   exactly it (`markOutOfMany`). Closing a container out is a two-way question ("Eaten" / "Thrown
