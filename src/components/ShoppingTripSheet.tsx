@@ -36,6 +36,16 @@ interface Props {
    * trip for later. One shop, never a list: you can only stand in one.
    */
   onStart: (shop: Shop) => void;
+  /**
+   * Why this sheet is open. The header icon's "plan for later or start one
+   * now" entry point is genuinely ambiguous, so it stays `'plan'`: the header
+   * button plans a task and starting now is the smaller link further down.
+   * `'start'` is for entry points that already said "start shopping" (the
+   * list's own prompt card, changing the active trip's store) — there the
+   * header button itself starts a single selected store instead of quietly
+   * making a task, which is what those callers actually promised.
+   */
+  intent: 'plan' | 'start';
 }
 
 /**
@@ -83,7 +93,7 @@ interface Props {
  * its own rather than a cancel, and it makes exactly the task this button made
  * before any of this existed.
  */
-export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props) {
+export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -159,6 +169,10 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
     () => (selected.length === 1 ? shops.find(s => s.id === selected[0]) ?? null : null),
     [selected, shops]
   );
+  // Only when this sheet was opened to start shopping (not to plan for
+  // later), and only when there's a single store to start at — the same
+  // condition `startable` already narrows to.
+  const startNow = intent === 'start' && !!startable;
 
   /**
    * The correction, and the reason this sheet can afford to be uncertain out
@@ -310,8 +324,12 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
       <View style={styles.root}>
         <View style={styles.header}>
           <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
-          <Text style={styles.headerTitle}>Shopping trip</Text>
-          <SheetHeaderButton label={addLabel} onPress={handleCreate} minWidth={72} />
+          <Text style={styles.headerTitle}>{startNow ? 'Start shopping' : 'Shopping trip'}</Text>
+          <SheetHeaderButton
+            label={startNow ? 'Start' : addLabel}
+            onPress={() => (startNow && startable ? onStart(startable) : handleCreate())}
+            minWidth={72}
+          />
         </View>
 
         <ScrollView contentContainerStyle={styles.body}>
@@ -322,7 +340,9 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
             {' '}
             {selected.length > 1
               ? `You'll get one task per store — ${selectedNames}.`
-              : 'You’ll get a task on Today that opens straight back here.'}
+              : startNow
+                ? 'Sets the store you’re at. Nothing goes on Today.'
+                : 'You’ll get a task on Today that opens straight back here.'}
           </Text>
 
           {next.length > 0 && (
@@ -474,8 +494,10 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
               in the place right now, which is what lets the list start naming
               stores. Offered only for a single pick, because that's the only
               selection the claim can be true of; a two-stop plan is still a
-              plan, and you start the trip when you get to the first one. */}
-          {startable && (
+              plan, and you start the trip when you get to the first one.
+              Skipped when the header button already starts the trip — this
+              would be a second, redundant way to do the one thing. */}
+          {startable && !startNow && (
             <>
               <Text style={styles.label}>SHOPPING NOW?</Text>
               <Text style={styles.hint}>

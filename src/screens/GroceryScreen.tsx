@@ -178,6 +178,10 @@ export function GroceryScreen() {
     { shopId: string | null; priceText: Record<string, string>; purchasedAt: string } | null
   >(null);
   const [tripOpen, setTripOpen] = useState(false);
+  // Which verb ShoppingTripSheet's header button should be, since the sheet
+  // is opened both from "plan a trip" and "start shopping" entry points and
+  // they promise different things — see the prop's own doc comment.
+  const [tripIntent, setTripIntent] = useState<'plan' | 'start'>('plan');
   const [editingId, setEditingId] = useState<string | null>(null);
   // Which field the item sheet should open pre-expanded to — the swap glyph's
   // whole point is skipping the ellipsis-then-scroll-to-Substitutes path an
@@ -802,6 +806,7 @@ export function GroceryScreen() {
       createGroceryTasks([]);
       return;
     }
+    setTripIntent('plan');
     setTripOpen(true);
   }, [suggestableShops, createGroceryTasks]);
 
@@ -997,7 +1002,10 @@ export function GroceryScreen() {
       {!selectionMode && !!activeTripShop && (
         <ActiveTripBanner
           shopName={activeTripShop.name}
-          onChange={() => setTripOpen(true)}
+          onChange={() => {
+            setTripIntent('start');
+            setTripOpen(true);
+          }}
           onClear={handleClearTrip}
         />
       )}
@@ -1049,7 +1057,10 @@ export function GroceryScreen() {
             <StartTripPrompt
               suggestable={suggestableShops}
               onStart={handleStartTrip}
-              onOpenSheet={() => setTripOpen(true)}
+              onOpenSheet={() => {
+                setTripIntent('start');
+                setTripOpen(true);
+              }}
             />
           )
         }
@@ -1190,6 +1201,7 @@ export function GroceryScreen() {
         onClose={() => setTripOpen(false)}
         onCreate={createGroceryTasks}
         onStart={handleStartTrip}
+        intent={tripIntent}
       />
       <GroceryItemSheet
         visible={editingId !== null}
