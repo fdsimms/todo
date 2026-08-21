@@ -58,6 +58,8 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     isStaple: false,
     expiresAt: null,
     frozenAt: null,
+    openedAt: null,
+    runningLowAt: null,
     shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,
@@ -463,5 +465,58 @@ describe('the freezer', () => {
     expect(sections).toHaveLength(1);
     expect(sections[0].section).toBe(FREEZER_SECTION);
     expect(sections[0].data.map(e => e.title).sort()).toEqual(['Chilli', 'Peas']);
+  });
+});
+
+// ─── opened, and running low ────────────────────────────────────────────────
+
+describe('the two other pantry states', () => {
+  it('adds the opening to the reason half, where the evidence lives', () => {
+    const salsa = makeItem({
+      name: 'Salsa',
+      expiresAt: '2026-08-14',
+      openedAt: '2026-08-12T09:00:00.000Z',
+    });
+    const [entry] = kitchenInventory([salsa], [], NOW);
+
+    expect(entry.reason).toContain('opened 12 Aug');
+    // The clock half is untouched: opening is evidence about the jar, not a
+    // state of the countdown.
+    expect(entry.useByCaption).toBe('Use by tomorrow');
+  });
+
+  // A frozen row has already replaced the reason with the freezer, and naming
+  // two places for one jar reads as a contradiction.
+  it('drops the opening clause on a frozen row', () => {
+    const salsa = makeItem({
+      name: 'Salsa',
+      openedAt: '2026-08-12T09:00:00.000Z',
+      frozenAt: '2026-08-12T09:00:00.000Z',
+    });
+    const [entry] = kitchenInventory([salsa], [], NOW);
+
+    expect(entry.reason).toBe('in the freezer');
+  });
+
+  // The distinction from "Out of it": there's some left, so it's still in the
+  // kitchen and a week plan still counts it.
+  it('keeps a running-low row in the pantry, saying so', () => {
+    const flour = makeItem({
+      name: 'Flour',
+      onHandUntil: null,
+      runningLowAt: '2026-08-12T09:00:00.000Z',
+    });
+    const [entry] = kitchenInventory([flour], [], NOW);
+
+    expect(entry.reason).toBe('running low');
+  });
+
+  it('still lets "Out of it" outrank running low', () => {
+    const flour = makeItem({
+      name: 'Flour',
+      runningLowAt: '2026-08-12T09:00:00.000Z',
+      onHandUntil: OUT_OF_IT_UNTIL,
+    });
+    expect(kitchenInventory([flour], [], NOW)).toHaveLength(0);
   });
 });

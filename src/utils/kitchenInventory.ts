@@ -3,7 +3,7 @@ import { FROZEN_REASON } from '../types';
 import { OTHER_AISLE } from './groceryAisles';
 import { groceryNameKey } from './groceryParse';
 import { matchWeight, pantryEntries, sectionsInAisleOrder } from './grocerySuggest';
-import { daysUntilDay, describeFrozenSince, describeUseBy, freshnessFor, isUseUpSoon } from './freshness';
+import { daysUntilDay, describeFrozenSince, describeOpenedOn, describeUseBy, freshnessFor, isUseUpSoon } from './freshness';
 import { liveExpiresAt } from './groceryShelfLife';
 import { describeAge, isLiveLeftover, liveKeepUntil } from './leftovers';
 
@@ -268,6 +268,13 @@ export function kitchenInventory(
     const useByCaption = item.frozenAt
       ? describeFrozenSince(item.frozenAt, now)
       : useBy ? describeUseBy(useBy, now) : '';
+    // Opening joins the reason half rather than the clock half — it's evidence
+    // about the jar, not a state of the countdown — so it reads
+    // "bought 4× · last on 19 Aug · opened 12 Aug · Use by tomorrow". Dropped
+    // for a frozen row, which has already replaced the reason with the freezer.
+    const reasonWithOpened = item.openedAt && !item.frozenAt
+      ? `${reason} · ${describeOpenedOn(item.openedAt, now)}`
+      : reason;
     entries.push({
       id: kitchenEntryId('grocery', item.id),
       sourceId: item.id,
@@ -277,9 +284,9 @@ export function kitchenInventory(
       useBy,
       freshness: useBy ? freshnessFor(useBy, now) : null,
       daysLeft: useBy ? daysUntilDay(useBy, now) : null,
-      reason,
+      reason: reasonWithOpened,
       useByCaption,
-      caption: useByCaption ? `${reason} · ${useByCaption}` : reason,
+      caption: useByCaption ? `${reasonWithOpened} · ${useByCaption}` : reasonWithOpened,
       onList: item.onList,
       matchKey: item.nameKey,
     });

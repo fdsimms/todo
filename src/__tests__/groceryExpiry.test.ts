@@ -40,6 +40,8 @@ function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
     isStaple: false,
     expiresAt: '2026-08-17',
     frozenAt: null,
+    openedAt: null,
+    runningLowAt: null,
     shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,

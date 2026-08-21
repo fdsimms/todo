@@ -1,6 +1,6 @@
 import { format } from 'date-fns/format';
 import type { GroceryItem } from '../types';
-import { FROZEN_REASON } from '../types';
+import { FROZEN_REASON, RUNNING_LOW_REASON } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { OTHER_AISLE } from './groceryAisles';
 
@@ -393,6 +393,13 @@ export function probablyHaveReason(item: GroceryItem, now: Date): string | null 
   // sitting there and read as a dead control. "I'm out of it" is also simply a
   // later and better-informed statement than "I put some in the freezer".
   if (asserted === false) return null;
+
+  // Nearly out, and so on this week's list — but still *had*, which is the
+  // whole distinction from "Out of it" above and the reason this reads as a
+  // pantry entry at all rather than as an absence. Above the freezer because a
+  // frozen thing you're nearly out of is a thing to buy, and that's the more
+  // actionable half; below "Out of it" because being out beats being low.
+  if (item.runningLowAt) return RUNNING_LOW_REASON;
 
   // The freezer then outranks the purchase reading below, for the reason the
   // staple line above does: it's a fact the user handed over, not a guess. It

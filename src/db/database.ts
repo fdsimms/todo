@@ -698,6 +698,14 @@ export function initDatabase(): void {
     // a freezer, so every item keeps counting down exactly as it did. See
     // GroceryItem.frozenAt.
     'ALTER TABLE grocery_items ADD COLUMN frozen_at TEXT',
+    // NULL on every existing row — nothing has been opened before there was an
+    // opened, so every item keeps counting from its purchase exactly as it did.
+    // See GroceryItem.openedAt.
+    'ALTER TABLE grocery_items ADD COLUMN opened_at TEXT',
+    // NULL on every existing row: nobody has said they're nearly out of
+    // anything, and null is what "no answer" already means for this column's
+    // two neighbours. See GroceryItem.runningLowAt.
+    'ALTER TABLE grocery_items ADD COLUMN running_low_at TEXT',
     // Superseded by generated_kind/generated_source_id, same as meal_entry_id.
     'ALTER TABLE tasks ADD COLUMN grocery_item_id TEXT',
     // NULL on every existing row — nobody has a rule for a feature that didn't
@@ -2198,6 +2206,8 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     isStaple: Boolean(row.is_staple),
     expiresAt: (row.expires_at as string) ?? null,
     frozenAt: (row.frozen_at as string) ?? null,
+    openedAt: (row.opened_at as string) ?? null,
+    runningLowAt: (row.running_low_at as string) ?? null,
     shelfLifeDays: (row.shelf_life_days as number) ?? null,
     lastPriceMinor: (row.last_price_minor as number) ?? null,
     lastPricedAt: (row.last_priced_at as string) ?? null,
@@ -2223,9 +2233,9 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, quantity_from_recipe, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
-       source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, shelf_life_days, use_up_task,
+       source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -2234,7 +2244,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
-      item.expiresAt ?? null, item.frozenAt ?? null, item.shelfLifeDays ?? null,
+      item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0,
@@ -2248,7 +2258,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        name=?, name_key=?, aisle=?, quantity=?, quantity_from_recipe=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
-       expires_at=?, frozen_at=?, shelf_life_days=?, use_up_task=?,
+       expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?
      WHERE id=?`,
@@ -2260,7 +2270,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
-      item.expiresAt ?? null, item.frozenAt ?? null, item.shelfLifeDays ?? null,
+      item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0,
@@ -2346,6 +2356,8 @@ export function dbFinishGroceryShopping(
             last_purchased_at = ?,
             on_hand_until = NULL,
             frozen_at = NULL,
+            opened_at = NULL,
+            running_low_at = NULL,
             quantity = CASE WHEN quantity_from_recipe = 1 THEN NULL ELSE quantity END,
             quantity_from_recipe = 0
       WHERE checked = 1 AND on_list = 1`,

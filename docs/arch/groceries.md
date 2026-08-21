@@ -475,6 +475,81 @@ chicken too.
   and the same statement stamps a fresh `expiresAt` — leaving it would suspend that new day the
   instant it landed, so the new bag would read as frozen and never count down.
 
+### Opened, and running low — the other two things a pantry row can say
+
+The freezer above is one of three states added together, and the three are deliberately different
+shapes. The freezer *stops* the clock; opening *re-anchors* it; running low doesn't touch the clock
+at all and instead reaches into the shopping list. Only the first needed a rule in `freshness.ts`.
+
+**`openedAt` is the third event that re-dates a use-by day**, alongside a purchase and a thaw. For a
+sealed thing the purchase is simply the wrong anchor: a jar of salsa bought five weeks ago and
+opened on Tuesday keeps a week from Tuesday.
+
+- **It needed a second lexicon, not a second column.** `OPEN_SHELF_LIFE_LEXICON` is a much shorter
+  table than `SHELF_LIFE_LEXICON` and holds only jars, tubs, cartons and vacuum packs, because
+  opening a bag of spinach restarts nothing — it was already exposed to the same air the fridge is
+  full of. Produce, meat and bakery are absent on purpose, and `setOpened` leaves their day alone.
+  Same whitelist restraint the first table runs on.
+- **It replaces the day; it does not take the earlier of the two.** "Only ever bring a deadline
+  forward" is the safer-sounding rule and is wrong here: a jar bought five weeks ago carries a day
+  that has long since passed, so the `min` is that passed day and opening would be inert in exactly
+  the case the feature exists for. Opening is *new information* about a jar the old guess wrote off.
+- **The opening is recorded even when it changes nothing**, and the row says "opened 12 Aug" either
+  way. Only the date is conditional on the lexicon knowing the name.
+- **`shelfLifeDays` is not consulted.** That field means "this one keeps N days once bought", which
+  is a claim about the shelf rather than about the open jar.
+- It joins the caption's **reason** half rather than the tinted clock half, because opening is
+  evidence about the jar and not a state of the countdown. A frozen row drops the clause: naming
+  two places for one jar reads as a contradiction.
+
+**`runningLowAt` is the state the "Got it" / "Out of it" pair was missing** — the interesting point
+on that scale is in the middle, and it's the one the app had no way to hear about.
+
+- **It couldn't live on `onHandUntil`.** That column is a timestamp with two sentinel readings
+  already, and a third would be a third thing for `onHandAssertion` to get wrong.
+- **Running low still means you have it**, so `probablyHaveReason` answers for it and a week plan
+  still counts it. Some left is exactly what distinguishes it from "Out of it", which still
+  outranks it.
+- **It never self-expires**, unlike `onHandUntil`. A "Got it" is a guess with a shelf life, so it
+  lapses into silence; being nearly out is a fact that stays true until a purchase refutes it.
+- **It is the one pantry assertion that touches `onList`**, and the exception that proves
+  `addToPantry`'s rule: saying you *have* something is not a plan to buy it, and saying you're
+  nearly out is nothing but one. **In one direction only** — marking adds, clearing leaves the list
+  alone. `onList` has several owners and nothing on the row records which of them put it there, so
+  a clear that removed it would be guessing with someone else's data. The add is undoable the
+  moment it happens, which is the honest answer for a mis-tap.
+
+All three are cleared by a purchase, alongside the `onHandUntil` that already was: the bag you
+froze, the jar you opened and the tub you were nearly out of are all the old one.
+
+### Cooking what's about to go off (`useUpRecipes.ts`)
+
+The kitchen knows what's dying and a recipe knows what it's made of, and nothing joined the two. A
+"Use up spinach" task tells you the spinach is going, which you can see, and stops exactly where the
+useful part starts.
+
+- **The join is `nameKey` and nothing else.** `RecipeIngredient.nameKey` is already "THE bridge to
+  the catalog" and `KitchenEntry.matchKey` is a catalog row's own key, so the match is exact. No
+  fuzzy matching: a wrong suggestion costs more than a missing one, and the app already refuses
+  this class of guess for a shelf life (`shelfLifeDaysFor`) for the same reason.
+- **Groceries only.** A leftover's `matchKey` comes from its own free-typed title rather than from
+  the catalog, so it would match only by accident — and you reheat last night's chilli, you don't
+  cook with it. Planning a container onto a night is `LeftoversCard`'s job.
+- **Ranked by how much dying food a recipe clears**, then by how urgent the worst of it is, then by
+  name. One dinner that saves the spinach *and* the mushrooms beats two that save one each, which
+  is the whole reason to rank rather than list.
+- **Deliberately not ranked by how much of the recipe you already have.** That reads as the better
+  question and can't be answered honestly: `probablyHaveReason` returning null is ignorance rather
+  than absence, so "you have 6 of 8 ingredients" would be a confident number built on a set that
+  was never meant to carry one.
+- **It reads; it writes nothing.** No task spawned, no meal planned. The two generators that write
+  unattended each had to earn it with a setting and a per-row opt-out, and a suggestion the user
+  taps is not in that category.
+- On `KitchenScreen` it's the list's `ListHeaderComponent` rather than fixed above it, so it scrolls
+  away with the content it's about, and it's hidden while the find-or-add field has text — that
+  field filters the list, and a block ignoring the query would be the one part of the screen not
+  answering it. Capped at two.
+
 ## Grocery either/or — two rows you pick between at the shelf
 
 Typing "apples or pears" into the add field offers to put **both on the list under

@@ -167,6 +167,8 @@ export function GroceryItemSheet({
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
   const setStaple = useGroceryStore(s => s.setStaple);
   const setFrozen = useGroceryStore(s => s.setFrozen);
+  const setOpened = useGroceryStore(s => s.setOpened);
+  const setRunningLow = useGroceryStore(s => s.setRunningLow);
   const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
   const setShelfLifeDays = useGroceryStore(s => s.setShelfLifeDays);
   const setUseUpTask = useGroceryStore(s => s.setUseUpTask);
@@ -483,6 +485,8 @@ export function GroceryItemSheet({
   const onHandFuture = !!item.onHandUntil && new Date(item.onHandUntil).getTime() >= Date.now();
   const onHandPast = item.onHandUntil === OUT_OF_IT_UNTIL;
   const frozen = !!item.frozenAt;
+  const opened = !!item.openedAt;
+  const runningLow = !!item.runningLowAt;
   const markGotIt = () => {
     haptics.tap();
     setOnHandUntil(item.id, defaultOnHandUntil(item, new Date()));
@@ -503,6 +507,14 @@ export function GroceryItemSheet({
   const toggleFrozen = () => {
     haptics.tap();
     setFrozen(item.id, !item.frozenAt);
+  };
+  const toggleOpened = () => {
+    haptics.tap();
+    setOpened(item.id, !item.openedAt);
+  };
+  const toggleRunningLow = () => {
+    haptics.tap();
+    setRunningLow(item.id, !item.runningLowAt);
   };
 
   // The stepper talks in days from today and the row stores a day; a date
@@ -728,6 +740,17 @@ export function GroceryItemSheet({
         : 'Got it, mark as on hand',
       onPress: onHandFuture ? clearOnHand : markGotIt,
     },
+    // Between its two neighbours because that is literally what it means, and
+    // the order of this row is the scale it sits on.
+    {
+      key: 'low',
+      label: 'Running low',
+      selected: runningLow,
+      accessibilityLabel: runningLow
+        ? 'Running low, and on the list. Tap to clear.'
+        : 'Running low, mark as nearly out and add it to the list',
+      onPress: toggleRunningLow,
+    },
     {
       key: 'out',
       label: 'Out of it',
@@ -751,6 +774,15 @@ export function GroceryItemSheet({
         ? 'In the freezer. Tap to take it out, which restarts how long it keeps.'
         : 'In the freezer, mark as frozen. Pauses the use-by date.',
       onPress: toggleFrozen,
+    },
+    {
+      key: 'opened',
+      label: 'Opened',
+      selected: opened,
+      accessibilityLabel: opened
+        ? `Opened${item.openedAt ? ` ${format(new Date(item.openedAt), 'd MMM')}` : ''}. Tap to clear.`
+        : 'Opened, record that this has been opened',
+      onPress: toggleOpened,
     },
   ];
 
@@ -998,7 +1030,7 @@ export function GroceryItemSheet({
     {
       key: 'pantry',
       label: 'Pantry',
-      keywords: ['staple', 'always have it', 'have it', 'on hand', 'got it', 'out of it', 'freezer', 'frozen', 'freeze', 'thaw', 'defrost'],
+      keywords: ['staple', 'always have it', 'have it', 'on hand', 'got it', 'out of it', 'freezer', 'frozen', 'freeze', 'thaw', 'defrost', 'opened', 'open', 'running low', 'low', 'nearly out', 'almost out'],
       node: (
         <View onLayout={(e: LayoutChangeEvent) => {
           fieldYRefs.current.pantry = e.nativeEvent.layout.y;
@@ -1010,25 +1042,31 @@ export function GroceryItemSheet({
               // The freezer leads, matching probablyHaveReason's own order: it's
               // the state that changes what the app does, so a frozen staple
               // should summarise as frozen rather than as a staple.
-              frozen
-                ? 'In the freezer'
-                : item.isStaple
-                  ? 'Always have it'
-                  : onHandFuture
-                    ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
-                    : onHandPast
-                      ? 'Out of it'
-                      : undefined
+              // Same order probablyHaveReason resolves in, so this summary and
+              // the Pantry row can't say different things about one item.
+              onHandPast
+                ? 'Out of it'
+                : runningLow
+                  ? 'Running low'
+                  : frozen
+                    ? 'In the freezer'
+                    : item.isStaple
+                      ? 'Always have it'
+                      : onHandFuture
+                        ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
+                        : undefined
             }
             emptySummary="Automatic"
             hint={
-              frozen
-                ? 'In the freezer, so the use-by date is paused and there’s no use-up task. Taking it out starts the countdown again from a fresh shelf life.'
-                : item.isStaple
-                  ? 'Treated as on hand at all times, and kept out of the way in its own group when a recipe adds ingredients to the list.'
-                  : onHandPast
-                    ? 'Marked out of it. Won’t show as probably-have until you buy it again.'
-                    : 'Decided automatically from purchase history when this comes up in a week plan.'
+              runningLow
+                ? 'Nearly out, and added to this week’s list. Still counts as on hand, because there’s some left.'
+                : frozen
+                  ? 'In the freezer, so the use-by date is paused and there’s no use-up task. Taking it out starts the countdown again from a fresh shelf life.'
+                  : item.isStaple
+                    ? 'Treated as on hand at all times, and kept out of the way in its own group when a recipe adds ingredients to the list.'
+                    : onHandPast
+                      ? 'Marked out of it. Won’t show as probably-have until you buy it again.'
+                      : 'Decided automatically from purchase history when this comes up in a week plan.'
             }
             expanded={openField === 'pantry'}
             onToggle={() => toggleField('pantry')}
@@ -1041,7 +1079,7 @@ export function GroceryItemSheet({
     {
       key: 'useBy',
       label: 'Use by',
-      keywords: ['expiry', 'expire', 'expires', 'goes off', 'best before', 'spoil', 'shelf life', 'freezer', 'frozen', 'thaw'],
+      keywords: ['expiry', 'expire', 'expires', 'goes off', 'best before', 'spoil', 'shelf life', 'freezer', 'frozen', 'thaw', 'opened'],
       node: (
         <View onLayout={(e: LayoutChangeEvent) => {
           fieldYRefs.current.useBy = e.nativeEvent.layout.y;
@@ -1068,7 +1106,9 @@ export function GroceryItemSheet({
             hint={
               frozen
                 ? "How long this keeps once it comes out of the freezer. Nothing counts down while it's frozen."
-                : item.expiresAt
+                : opened
+                  ? 'The day this should be used up by, counted from when you opened it.'
+                  : item.expiresAt
                   ? "The day this should be used up by. Finishing a shopping trip fills it in for things that go off, and the use-up task is dated from it."
                   : "How long this keeps once bought. It doesn't count down yet — finishing a shopping trip starts the clock from there, and adds the use-up task."
             }

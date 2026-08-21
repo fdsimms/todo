@@ -1298,6 +1298,50 @@ export interface GroceryItem {
    */
   expiresAt: string | null;
   /**
+   * ISO instant the user said they were nearly out, or null.
+   *
+   * **The state between "Got it" and "Out of it", and the one the pair was
+   * missing.** Those two are the ends of a scale whose interesting point is in
+   * the middle: noticing the jar is nearly empty is the moment you'd want it on
+   * the list, and it's a moment the app had no way to hear about. `onHandUntil`
+   * couldn't carry it — that column is a timestamp with two sentinel readings
+   * already, and a third would be a third thing for `onHandAssertion` to get
+   * wrong.
+   *
+   * **Running low still means you have it.** `probablyHaveReason` answers for a
+   * low row, so it stays in the pantry and a week plan still counts it: there
+   * is some left, which is exactly what distinguishes this from "Out of it".
+   * What changes is that the row goes on the list.
+   *
+   * **Unlike `onHandUntil` this never self-expires.** A "Got it" is a guess
+   * with a shelf life, so it lapses back into silence; being nearly out is a
+   * fact that stays true until something refutes it, and the thing that refutes
+   * it is buying more. So a purchase clears it, and so does saying either of
+   * the other two things.
+   */
+  runningLowAt: string | null;
+  /**
+   * ISO instant this was opened, or null for a jar still sealed and for the
+   * bulk of a catalog where opening means nothing.
+   *
+   * **The third event that re-anchors a use-by day**, alongside a purchase and
+   * a thaw. `expiresAt` is a fact about one purchase, and for a sealed thing
+   * the purchase is the wrong anchor: a jar of salsa bought five weeks ago and
+   * opened on Tuesday keeps a week from Tuesday, where the purchase-based guess
+   * wrote it off a month back. `OPEN_SHELF_LIFE_LEXICON` is the second, much
+   * shorter table that says which names that's true of.
+   *
+   * **Recorded even when it changes nothing.** A name the open lexicon has
+   * never heard of still stamps this and still says so on the row: opening a
+   * bag of spinach doesn't restart anything, but "opened 12 Aug" is a true and
+   * useful thing for the pantry row to say either way. Only the date is
+   * conditional.
+   *
+   * Cleared by a purchase, exactly like `frozenAt` and for the same reason: the
+   * jar you opened is not the jar you have just carried home.
+   */
+  openedAt: string | null;
+  /**
    * ISO instant this went in the freezer, or null for anything that didn't.
    *
    * **The clock stops while this is set, and restarts when it's cleared.**
@@ -1448,6 +1492,13 @@ export const GROCERY_EXPIRY_DAYS_MAX = 365;
  * already where the kitchen's other shared constants live and costs nothing.
  */
 export const FROZEN_REASON = 'in the freezer';
+
+/**
+ * Why a nearly-empty thing is still in the kitchen — `probablyHaveReason`'s
+ * word for it, beside `FROZEN_REASON` and here for the same module-weight
+ * reason.
+ */
+export const RUNNING_LOW_REASON = 'running low';
 
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task
 // title, and a long one wrecks the row layout at the bigger grocery font size.

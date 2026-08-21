@@ -161,6 +161,23 @@ export function liveUseBy(useBy: string | null, frozenAt: string | null): string
  * shop it came home from*. Same reasoning as `lastPricedAt` rendering "(March)"
  * rather than an age.
  */
+/**
+ * "opened 12 Aug" — the clause a pantry row adds once a jar has been opened.
+ *
+ * Lower case and dateful, because it lands beside `probablyHaveReason`'s own
+ * lower-case clauses ("bought 4× · last on 19 Aug · opened 12 Aug") rather than
+ * in the tinted clock slot `describeFrozenSince` fills. Opening doesn't stop
+ * the clock, so it doesn't take that slot; it's one more piece of evidence
+ * about the thing in the fridge.
+ */
+export function describeOpenedOn(openedAt: string, now: Date = new Date()): string {
+  const then = new Date(openedAt);
+  // Same two unusable-stamp cases `describeFrozenSince` guards, same answer:
+  // drop the date, keep the true half.
+  if (Number.isNaN(then.getTime()) || then.getTime() > now.getTime()) return 'opened';
+  return `opened ${format(then, 'd MMM')}`;
+}
+
 export function describeFrozenSince(frozenAt: string, now: Date = new Date()): string {
   const then = new Date(frozenAt);
   // "Frozen" alone for the two cases a date would be a lie: an unparseable

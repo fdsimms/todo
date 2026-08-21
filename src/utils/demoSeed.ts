@@ -1130,6 +1130,8 @@ function seedGroceries(recipes: DemoRecipes): void {
     addToPantry,
     setStaple,
     setFrozen,
+    setOpened,
+    setRunningLow,
     setExpiresAt,
     setShelfLifeDays,
     setUseUpTask,
@@ -1467,6 +1469,19 @@ function seedGroceries(recipes: DemoRecipes): void {
   addToPantry('Red bell pepper');
   setExpiresAt(itemNamed('Red bell pepper').id, dayKeyOf(addDays(new Date(), 1)));
   setExpiresAt(itemNamed('Cilantro').id, dayKeyOf(new Date()));
+
+  // An opened jar, which is the second lexicon's whole reason for existing.
+  // addToPantry deliberately doesn't date anything ("Got it" doesn't say
+  // *when*), so this row has no countdown at all until it's opened — and then
+  // it has a real one, dated from the opening rather than from a purchase.
+  addToPantry('Salsa');
+  setOpened(itemNamed('Salsa').id, true);
+
+  // Running low, which is the one pantry state that touches the shopping list:
+  // the row is on this week's list because of this line, not because anyone
+  // typed it there. Coffee, because it's the thing people actually notice
+  // running out of.
+  setRunningLow(itemNamed('Coffee').id, true);
 
   // The freezer, on both halves of the kitchen. Chicken is the case the feature
   // was built for: the shelf-life lexicon gives it two days, so the trip above

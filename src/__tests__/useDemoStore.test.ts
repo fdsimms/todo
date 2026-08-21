@@ -47,7 +47,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import { freshnessOf, isLiveLeftover, needsAttention } from '../utils/leftovers';
-import { liveExpiresAt } from '../utils/groceryShelfLife';
+import { liveExpiresAt, openShelfLifeDaysFor } from '../utils/groceryShelfLife';
 import {
   cookingWindow,
   hasCookingData,
@@ -56,6 +56,8 @@ import {
   mostCookedRecipes,
 } from '../utils/cookingStats';
 import { buildKitchenSections, describeKitchen, FREEZER_SECTION, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
+import { useUpRecipes } from '../utils/useUpRecipes';
+import { probablyHaveReason } from '../utils/grocerySuggest';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
 import { findProjectStalls } from '../utils/projectPull';
@@ -1573,6 +1575,44 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // The scale clause, which is silent at 1× and so invisible without a night
     // that was cooked for a crowd.
     expect(events.some(e => e.scale !== 1)).toBe(true);
+  });
+
+  it('seeds an opened jar whose countdown is dated from the opening', () => {
+    const { items } = useGroceryStore.getState();
+    const opened = items.filter(i => i.openedAt);
+    expect(opened.length).toBeGreaterThan(0);
+
+    // The point of the second lexicon: a jar addToPantry left dateless comes
+    // away from the opening with a real countdown.
+    const dated = opened.find(i => openShelfLifeDaysFor(i.name) !== null);
+    expect(dated).toBeDefined();
+    expect(dated!.expiresAt).not.toBeNull();
+  });
+
+  it('seeds something running low, which is what puts it on the list', () => {
+    const { items } = useGroceryStore.getState();
+    const low = items.filter(i => i.runningLowAt);
+    expect(low.length).toBeGreaterThan(0);
+    // The one pantry state that reaches into onList.
+    expect(low.every(i => i.onList)).toBe(true);
+    // Still had, which is the whole distinction from "Out of it".
+    expect(probablyHaveReason(low[0], new Date())).toBe('running low');
+  });
+
+  it('seeds a kitchen where something dying has a recipe that would use it', () => {
+    const { items } = useGroceryStore.getState();
+    const { leftovers } = useLeftoverStore.getState();
+    const { recipes } = useRecipeStore.getState();
+
+    const dying = useUpEntries(kitchenInventory(items, leftovers, new Date()));
+    expect(dying.length).toBeGreaterThan(0);
+
+    // Without this the Pantry screen's suggestion block never renders in the
+    // demo, and a feature with no row in the seed reads as one the app hasn't
+    // got.
+    const suggestions = useUpRecipes(dying, recipes);
+    expect(suggestions.length).toBeGreaterThan(0);
+    expect(suggestions[0].uses.length).toBeGreaterThan(0);
   });
 
   it('seeds a freezer with both halves of the kitchen in it', () => {
