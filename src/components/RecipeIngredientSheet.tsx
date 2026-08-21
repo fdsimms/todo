@@ -74,6 +74,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const catalogKeys = useMemo(
     () => new Set(groceryItems.map(i => i.nameKey)),
     [groceryItems]
@@ -201,7 +202,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const alternatives = splitAlternativeNames(name);
 
   const catalogSummary = catalogItem
-    ? describeCatalogItem(catalogItem, itemSubs, groceryItems, new Date())
+    ? describeCatalogItem(catalogItem, itemSubs, groceryItems, itemProducts, new Date())
     : null;
 
   // The standing swap that reaches this line, if there is one. Shown only when

@@ -1116,64 +1116,53 @@ export interface GroceryItem {
   // Normalised identity, from groceryNameKey(). UNIQUE in SQLite, which is
   // where the no-duplicates guarantee actually lives.
   nameKey: string;
-  // Which one to reach for — "Good Culture", "Oatly". A clause *beside* the
-  // name and deliberately never part of it, exactly like RecipeIngredient's
-  // `prep` and `purpose`: nameKey is the bridge to recipes, Buy again, the
-  // pantry and the aisle lexicon, so folding a brand into the name mints a
-  // second catalog row that can never match "cottage cheese" the ingredient,
-  // and splits one item's purchase history, pantry state and expiry in two.
+  // Which of this item's products the user wants — the one to reach for. Null
+  // (the common case) means no opinion: any bread is bread.
   //
-  // **Nothing parses this out of typed text, and that's the decision, not a
-  // gap.** `prep` and `purpose` are split off marked-up clauses — a comma, a
-  // trailing "for X" — while a brand has no marker at all, so telling "Good
-  // Culture cottage cheese" from "sliced almonds" means knowing what the
-  // words mean. That's the guess splitPrep already refuses to make. It's set
-  // by hand on GroceryItemSheet, and null (the common case) means the user
-  // has no opinion about which one.
+  // This pointer replaced a `brand`/`variant` pair of strings on this row. The
+  // pair could only ever hold the box you want *right now*, so switching from
+  // Arnold's wheat to Dave's Killer overwrote it — which left nowhere to
+  // record that you'd tried the first one and hated it, and no object for a
+  // rating to hang on. It also never really paired the two words: "Arnold's"
+  // and "wheat" named one box only because they sat on the row together.
   //
-  // On its own this says what to grab, not where to get it — see brandStrict
-  // below for the half that reaches store availability, and ItemShopLink.brand
-  // for the evidence it reads.
-  brand: string | null;
-  // "Only this brand" — whether a store has to be on record with *this* brand
-  // to count as having the item at all (shopsForItem and everything built on
-  // it, including trip coverage and the shelf captions).
+  // The item stays the Platonic ideal — one nameKey bridging recipes, Buy
+  // again, the pantry and the aisle lexicon, one purchase history, one expiry,
+  // one set of substitutes. The products hanging off it are the boxes on the
+  // shelf. See ItemProduct, and `docs/arch/groceries.md`.
   //
-  // **Default false, and that's what makes this safe to ship.** A brand set
-  // before this existed, or set as a note to self, is a preference and not a
-  // rule; turning every one of them into a filter would silently rewrite which
-  // stores the app suggests. Nothing infers it — the user says so.
+  // Resolve-or-shrug at every reader (`preferredProductOf`), like every other
+  // cross-row pointer here: a dangling id reads as "no opinion" rather than
+  // throwing. Nothing should dangle — deleting a product clears this — but the
+  // readers don't lean on that.
+  preferredProductId: string | null;
+  // "Only this one" — whether a store has to be on record with the preferred
+  // product to count as having the item at all (shopsForItem and everything
+  // built on it, including trip coverage and the shelf captions).
+  //
+  // **Default false, and that's what makes this safe to ship.** A preference
+  // set before this existed, or set as a note to self, is a preference and not
+  // a rule; turning every one of them into a filter would silently rewrite
+  // which stores the app suggests. Nothing infers it — the user says so.
+  //
+  // **The product chooses the granularity, which is why there is one flag and
+  // not two.** A product carrying a brand and no variant ("any Arnold's") is
+  // the brand-level rule; one carrying both ("Arnold's wheat") is the
+  // product-level rule its predecessor `brandStrict` couldn't express. That
+  // was a real gap — the old per-store evidence was a bare brand string, so
+  // there was no variant-level claim to filter on. `ItemShopLink.unavailableProductIds`
+  // is that claim now, and it's made against a product.
   //
   // It is deliberately a fact about the *item*, not about the occasion. The
-  // honest version of "the brand doesn't matter when it's for a recipe" needs
-  // to know why a row is on the list this week, and the only signal available
+  // honest version of "it doesn't matter when it's for a recipe" needs to know
+  // why a row is on the list this week, and the only signal available
   // (sourceRecipeId) is stamped solely on rows addFromPlan genuinely creates —
   // so a catalog staple re-added for a recipe carries none, which is exactly
   // the case it would have to get right. Guessing there would drop stores on
   // evidence the app doesn't have; this is a switch instead.
-  brandStrict: boolean;
-  // Which one *of* that brand — "low fat", "4%", "crunchy". A second clause on
-  // exactly the same footing as `brand` above, and kept out of `nameKey` for
-  // exactly the same reasons: the row has to stay the one a recipe calling for
-  // "cottage cheese" matches, with one purchase history, one pantry state, one
-  // expiry. Nothing parses it out of typed text either — "low fat" has no
-  // marker in front of it any more than "Good Culture" does.
   //
-  // It's separate from `brand` rather than more room inside it because the two
-  // are different kinds of fact: the maker is stable and is what a store gets
-  // recorded against (ItemShopLink.brand), while the product line is what
-  // actually varies within it. Written into the brand field, "Organic Valley
-  // low fat" would be recorded at a shop as a brand nobody stocks under that
-  // name.
-  //
-  // **It deliberately doesn't reach store availability, even now that
-  // brandStrict does.** The only per-store evidence there is a brand — what a
-  // link records, and what the user's "haven't got it here" claim is worded
-  // against — so a variant-level rule would need a variant-level claim to
-  // filter on, which nobody has made. Adding one belongs with the per-store
-  // brand work, not bolted onto a caption. Until then this says which box to
-  // reach for, and only that.
-  variant: string | null;
+  // Inert with no preferred product: there is nothing to be strict about.
+  productStrict: boolean;
   // Never null, unlike Task.category: an unrecognised item is *in* the Other
   // aisle rather than aisle-less, which keeps the null branch out of every
   // grouping and sorting path.
@@ -1398,10 +1387,105 @@ export const GROCERY_QUANTITY_MAX_LENGTH = 24;
 // Shorter than a name on purpose: this is a brand, not a second name for the
 // thing. Matches SHOP_NAME_MAX_LENGTH, which is the same kind of proper noun.
 export const GROCERY_BRAND_MAX_LENGTH = 40;
+// A product's note — "the blue bag", "too sweet". Room for a sentence and no
+// more: this is a reminder to yourself at the shelf, not the item's own note.
+export const GROCERY_PRODUCT_NOTE_MAX_LENGTH = 120;
 // Its own constant rather than a second use of the brand's, because the two
 // cap different things — a maker's name against a product line — and one of
 // them changing shouldn't silently move the other. Same length for now.
 export const GROCERY_VARIANT_MAX_LENGTH = 40;
+
+// What the user thought of one product, when they've bothered to say. Null —
+// the overwhelmingly common state — is no opinion, not "fine": a product
+// nobody has rated is one nobody has judged.
+//
+// Three states rather than a 1..5 scale on purpose. The question this answers
+// at the shelf is "have I had this and hated it", and a scale asks for a
+// precision nobody applies consistently to a loaf of bread — four stars versus
+// three is not a distinction anyone reproduces a month later, while "never
+// again" is. Two poles and silence is the whole vocabulary.
+export type ProductRating = 'loved' | 'avoid';
+
+// One box on the shelf — Arnold's wheat, Dave's Killer 21 grain, the store
+// brand. A product *of* a GroceryItem, never a GroceryItem itself.
+//
+// **The item is the Platonic ideal and this is a thing you can actually pick
+// up.** Bread is what recipes call for, what the pantry tracks, what has an
+// aisle and an expiry and a purchase history; the products under it are which
+// bread. That split is the whole reason this type exists: brand and variant
+// used to be two loose strings on the item, which meant the item could
+// remember the box you want *now* and nothing else — no record of the ones
+// you've tried, and nowhere for `rating` to live.
+//
+// It is deliberately **not** a second GroceryItem. Folding "Arnold's wheat"
+// into the catalog as its own row would mint a name that can never match
+// "bread" the ingredient, and split one item's purchase history, pantry state
+// and expiry in two — the exact reason brand was kept out of `nameKey` in the
+// first place.
+//
+// **And it is not a substitute.** A hamburger bun standing in for bread is a
+// different thing you buy, with its own aisle, its own pantry state and its own
+// recipes calling for it, so it's an ItemSubLink between two items. The line:
+// *same box → product, different thing → substitute*. Within an item you pick
+// among products; across items you fall back to a substitute.
+//
+// Its own table (`grocery_item_products`), shaped like `grocery_item_shops`
+// and `grocery_item_subs`, rather than a JSON blob on the item the way
+// `Recipe.ingredients` is one. That call turns on the same question every
+// time: does anything outside the row hold this id? Here it does —
+// `GroceryItem.preferredProductId` and `ItemShopLink.productId` both point at
+// a product, and a rating is a thing you'd want to look up across items.
+export interface ItemProduct {
+  id: string;
+  // The item this is a product of. Cascade-deleted with it by hand, since FKs
+  // are off — same as every other link table here.
+  itemId: string;
+  // Who makes it — "Arnold's", "Good Culture". Null is a variant with no maker
+  // worth naming ("the low fat one"), which is an ordinary state.
+  //
+  // **Nothing parses this out of typed text, and that's the decision, not a
+  // gap.** `RecipeIngredient.prep` and `purpose` are split off marked-up
+  // clauses — a comma, a trailing "for X" — while a brand has no marker at all,
+  // so telling "Good Culture cottage cheese" from "sliced almonds" means
+  // knowing what the words mean. That's the guess splitPrep already refuses to
+  // make.
+  brand: string | null;
+  // Which one of that brand — "wheat", "low fat", "4%", "crunchy".
+  //
+  // Separate from `brand` rather than more room inside it because the two are
+  // different kinds of fact, and because the pair is what makes a product: the
+  // maker is stable and is what a store gets recorded against, while the
+  // product line is what actually varies within it.
+  //
+  // **A product with a brand and no variant is the brand-level statement**
+  // ("any Arnold's"), and that's what lets `GroceryItem.productStrict` be one
+  // flag instead of two — see its note.
+  variant: string | null;
+  // Normalised identity from `productKeyFor()`, UNIQUE per item in SQLite,
+  // which is where "one row per box" actually lives. Same discipline as
+  // GroceryItem.nameKey, scoped to the item rather than the catalog: two items
+  // may both have a "store brand" product and those are different boxes.
+  //
+  // Invariant: never empty. A product with neither a brand nor a variant is
+  // the item itself, and `addProduct` refuses it.
+  productKey: string;
+  // See ProductRating. Null is no opinion.
+  rating: ProductRating | null;
+  // Free text — "the blue bag", "too sweet", "only at the big Safeway".
+  // A string whose empty value is "nothing written", like GroceryItem.note,
+  // rather than nullable: nothing tests it for null.
+  note: string;
+  // How many finished trips brought this one home, and when the last did.
+  //
+  // Partial in exactly the way ItemShopLink's counters are, and for the same
+  // reason: a trip finished before this feature existed, or one that bought an
+  // item with no preferred product, bumps `GroceryItem.purchaseCount` and
+  // writes nothing here. So the item's count is the total and these are a
+  // subset of it. Nothing sums them to produce a total.
+  purchaseCount: number;
+  lastPurchasedAt: string | null;
+  createdAt: string;
+}
 
 // A place you shop. "Store" everywhere the user can read; `Shop` in code,
 // because `store` is already Zustand's word here (useGroceryStore,
@@ -1491,46 +1575,61 @@ export interface ItemShopLink {
    */
   priceHistory: PriceObservation[];
   /**
-   * The brand you last got here — "Good Culture" at Costco, "Lucerne" at
-   * Safeway. An **observation**, paired with lastPurchasedAt above, and
+   * The product you last got here — Arnold's wheat at Safeway, the store brand
+   * at Costco. An **observation**, paired with lastPurchasedAt above, and
    * deliberately not a claim about what the store stocks.
    *
-   * **It must never filter anything, because a store carries several brands of
-   * a thing.** Having got Lucerne at Safeway once is not evidence that Safeway
-   * hasn't got Good Culture — it says nothing at all about the rest of the
-   * shelf. Reading a mismatch here as "they haven't got yours" is an absence
-   * inferred from something that isn't evidence of absence, which is the error
-   * shoppingTrip.ts removed `likelyItemIds` to be rid of. The only thing that
-   * drops a store is brandUnavailableAt below, which the user asserts.
+   * **It must never filter anything, because a store carries several products
+   * of a thing.** Having got the store brand at Safeway once is not evidence
+   * that Safeway hasn't got Arnold's wheat — it says nothing at all about the
+   * rest of the shelf. Reading a mismatch here as "they haven't got yours" is
+   * an absence inferred from something that isn't evidence of absence, which is
+   * the error shoppingTrip.ts removed `likelyItemIds` to be rid of. The only
+   * thing that drops a store is `unavailableProductIds` below, which the user
+   * asserts.
    *
    * A *match* is the safe direction and is all this is read for: if the last
-   * thing you got here was your brand, this store demonstrably had it.
+   * thing you got here was the one you want, this store demonstrably had it.
    *
    * Written by finishShopping, and only for a strict item — on a row with no
-   * brand rule there is nothing to record, since the app has no idea which one
-   * came home.
+   * rule there is nothing to record, since the app has no idea which box came
+   * home.
+   *
+   * Resolve-or-shrug, like every other cross-row pointer here.
    */
-  brand: string | null;
+  productId: string | null;
   /**
-   * "They haven't got the brand I want" — stamped when the user says so.
+   * "They haven't got *this one* here" — one entry per product the user has
+   * said this store is missing, mapping the product's id to when they said so.
    *
-   * The brand-level twin of unavailableAt, and a genuinely different claim: the
-   * store stocks the item, it just hasn't got yours. Every "where can I get
-   * this" read drops such a link when the item is strict, and **this is the
-   * only thing that does** — see brand above for why an observed mismatch
-   * can't.
+   * The product-level twin of unavailableAt, and a genuinely different claim:
+   * the store stocks the item, it just hasn't got the box you want. Every
+   * "where can I get this" read drops such a link when the item is strict and
+   * the claim names the *preferred* product, and **this is the only thing that
+   * does** — see productId above for why an observed mismatch can't.
    *
-   * A date rather than a flag, for exactly unavailableAt's reasons: stock
-   * changes, so the claim ages and says *when* you looked. Null is unknown, and
-   * unknown always counts — the app not having watched you check is ignorance.
-   * A purchase clears it automatically, since buying your brand here refutes it
-   * outright.
+   * **A map rather than one stamp, and keyed by product rather than implied.**
+   * Its predecessor was a bare `brandUnavailableAt` date, which said nothing
+   * about *which* brand it was about: switching the item's brand left the claim
+   * standing, so the shelf caption would go on reading "no Dave's Killer at
+   * Safeway" off a look you took for Arnold's. A claim stamped against the
+   * product it was made about can't do that — switch the preferred product and
+   * the old entry simply stops matching, and switching back finds it intact,
+   * with no rule anywhere that has to remember to clear it. It also lets one
+   * store be missing two of an item's products at once, which the single stamp
+   * could not say.
    *
-   * Read only while the item is strict. A brand nobody has made a rule of is a
-   * preference, and dropping a store over a preference is not something the
-   * user asked for.
+   * Dates rather than flags, for exactly unavailableAt's reasons: stock
+   * changes, so a claim ages and says *when* you looked. An absent key is
+   * unknown, and unknown always counts — the app not having watched you check
+   * is ignorance. A purchase here clears the whole map, since coming home with
+   * something refutes every claim about this store's shelf at once.
+   *
+   * JSON in SQLite, like `priceHistory` on this same row: nothing outside this
+   * link holds a claim's identity, and the map is bounded by how many products
+   * of one item you've actually looked for at one store.
    */
-  brandUnavailableAt: string | null;
+  unavailableProductIds: Record<string, string>;
 }
 
 // One (item, substitute) pair — "if there's no butter, use margarine".
@@ -1559,7 +1658,7 @@ export interface ItemShopLink {
 // stop and work out which way the row it's holding is facing — the same reason
 // two ingredient rows beat one line reading "serrano or jalapeño".
 //
-// **Nothing infers one.** Same discipline as `GroceryItem.brandStrict` and as
+// **Nothing infers one.** Same discipline as `GroceryItem.productStrict` and as
 // the deleted `likelyItemIds` bucket in shoppingTrip.ts: the user says so, or
 // it isn't recorded. There is no built-in substitution lexicon and there is not
 // going to be one.

@@ -225,7 +225,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
   const next = summary.suggestion;
   const gapGain = next.length > 0 ? countIn(next[0].itemIds, summary.gap) : 0;
   const missingGain = next.length > 0 ? countIn(next[0].itemIds, summary.missing) : 0;
-  const withoutBrandGain = next.length > 0 ? countIn(next[0].itemIds, summary.withoutBrand) : 0;
+  const withoutProductGain = next.length > 0 ? countIn(next[0].itemIds, summary.withoutProduct) : 0;
   // What the whole suggested itinerary would come to — everything already
   // covered, plus the gap it closes.
   const plannedTotal =
@@ -370,7 +370,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
                           `${next[0].shop.name} doesn’t, but it has ${gapGain} of the rest.`}
                     </Text>
                   </>
-                ) : summary.withoutBrand.length > 0 ? (
+                ) : summary.withoutProduct.length > 0 ? (
                   <>
                     {/* Also quoting the user back to them, and also allowed to
                         be flat about it — but it is a different claim from the
@@ -378,17 +378,17 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
                         thing; it hasn't got the one that was asked for, and
                         saying "doesn't have it" here would be false. */}
                     <Text style={styles.suggestionTitle}>
-                      {selectedNames} {selected.length > 1 ? 'haven’t' : 'hasn’t'} got your brand of{' '}
-                      {namesFor(summary.withoutBrand)}.
+                      {selectedNames} {selected.length > 1 ? 'haven’t' : 'hasn’t'} got the{' '}
+                      {namesFor(summary.withoutProduct)} you want.
                     </Text>
                     <Text style={styles.suggestionSub}>
-                      {withoutBrandGain > 0
+                      {withoutProductGain > 0
                         ? `${next[0].shop.name} has ${
-                            withoutBrandGain === summary.withoutBrand.length
-                              ? summary.withoutBrand.length === 1
+                            withoutProductGain === summary.withoutProduct.length
+                              ? summary.withoutProduct.length === 1
                                 ? 'yours'
                                 : 'all of yours'
-                              : `${withoutBrandGain} of them`
+                              : `${withoutProductGain} of them`
                           }.`
                         : `${next[0].shop.name} doesn’t, but it has ${gapGain} of the rest.`}
                     </Text>
@@ -514,10 +514,10 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart }: Props
                   {summary.missing.length === 1 ? 'it needs' : 'they need'} another stop.
                 </Text>
               )}
-              {summary.withoutBrand.length > 0 && (
+              {summary.withoutProduct.length > 0 && (
                 <Text style={styles.footerNote}>
-                  You’ve marked {namesFor(summary.withoutBrand)} as the wrong brand here, so{' '}
-                  {summary.withoutBrand.length === 1 ? 'it needs' : 'they need'} another stop.
+                  You’ve marked {namesFor(summary.withoutProduct)} as the wrong one here, so{' '}
+                  {summary.withoutProduct.length === 1 ? 'it needs' : 'they need'} another stop.
                 </Text>
               )}
               {summary.unknown.length > 0 && (

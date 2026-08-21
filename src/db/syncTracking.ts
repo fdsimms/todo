@@ -68,6 +68,11 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'grocery_shops', key: ['id'] },
   { name: 'grocery_item_shops', key: ['item_id', 'shop_id'] },
   { name: 'grocery_item_subs', key: ['item_id', 'sub_item_id'] },
+  // Keyed by id rather than (item_id, product_key) even though that pair is
+  // unique: the id is what `GroceryItem.preferredProductId` and
+  // `ItemShopLink.productId` point at, so a merge that re-minted a product
+  // under a new id would break both pointers on the receiving device.
+  { name: 'grocery_item_products', key: ['id'] },
   { name: 'recipes', key: ['id'] },
   { name: 'leftovers', key: ['id'] },
   { name: 'meal_plan_entries', key: ['id'] },

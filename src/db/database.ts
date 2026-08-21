@@ -1,8 +1,9 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
+import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
 import { parseChainItems } from '../utils/chain';
 import { parseExtraTaskDraft } from '../utils/extraTask';
 import { parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
@@ -273,6 +274,24 @@ export function initDatabase(): void {
       note TEXT,
       created_at TEXT NOT NULL,
       PRIMARY KEY (item_id, sub_item_id)
+    );
+
+    -- One box on the shelf, hanging off the item it's a product of: Arnold's
+    -- wheat under Bread. product_key is normalised and unique *within the
+    -- item*, not across the catalog — two items may both have a "store brand".
+    -- See ItemProduct in types for why this isn't a JSON column on the item and
+    -- isn't a second grocery_items row.
+    CREATE TABLE IF NOT EXISTS grocery_item_products (
+      id TEXT PRIMARY KEY NOT NULL,
+      item_id TEXT NOT NULL,
+      brand TEXT,
+      variant TEXT,
+      product_key TEXT NOT NULL,
+      rating TEXT,
+      note TEXT NOT NULL DEFAULT '',
+      purchase_count INTEGER NOT NULL DEFAULT 0,
+      last_purchased_at TEXT,
+      created_at TEXT NOT NULL
     );
 
     -- A dish, and what it takes to shop for it. The ingredients column is a
@@ -705,20 +724,32 @@ export function initDatabase(): void {
     // opinion about which one" is the honest default, and nothing backfills a
     // brand out of a name (see GroceryItem.brand for why that parse is unsafe).
     // Deliberately not part of name_key, so no key is stranded by this landing.
+    //
+    // LEGACY, unread since products landed — see the note on
+    // grocery_item_shops.brand below. The backfill in initDatabase turns
+    // whatever is in here into a real ItemProduct row once.
     'ALTER TABLE grocery_items ADD COLUMN brand TEXT',
     // 0 for every existing row: a brand recorded before this column existed is
-    // a preference, not a filter over stores. See GroceryItem.brandStrict.
+    // a preference, not a filter over stores. Still live, and still this
+    // column: it's `GroceryItem.productStrict` now. See its note for why one
+    // flag covers both the brand-level and the product-level rule.
     'ALTER TABLE grocery_items ADD COLUMN brand_strict INTEGER NOT NULL DEFAULT 0',
     // NULL like brand above, and for the same reasons — nothing infers a
     // product line out of a name, and it's out of name_key, so no key moves.
-    // See GroceryItem.variant.
+    // LEGACY alongside brand above, and back-filled with it.
     'ALTER TABLE grocery_items ADD COLUMN variant TEXT',
     // NULL on every link that predates this — "which one this store had" was
     // never asked, and NULL reads as unknown rather than as a conflict, so no
-    // existing store loses its coverage. See ItemShopLink.brand.
+    // existing store loses its coverage.
+    //
+    // LEGACY, unread since products landed — kept declared for the reason
+    // task_groups.completed_at is: the migration list is append-only and a
+    // column can't be dropped, so the honest thing is to say so here. The
+    // product_id column added further down replaced it. The backfill in
+    // initDatabase reads both of these once and then never again.
     'ALTER TABLE grocery_item_shops ADD COLUMN brand TEXT',
-    // The brand-level negative, and the only thing a brand rule filters on.
-    // NULL is unknown and always counts. See ItemShopLink.brandUnavailableAt.
+    // LEGACY, same as the column above: replaced by unavailable_product_ids,
+    // which keys the claim to the product it was made about.
     'ALTER TABLE grocery_item_shops ADD COLUMN brand_unavailable_at TEXT',
     // NULL for every existing recipe, which is what "use the standard three
     // days" already meant before a recipe could say otherwise — so nothing is
@@ -785,6 +816,29 @@ export function initDatabase(): void {
     // declined", which is the state that lets the first one appear. See
     // Project.reviewDeclinedAt for why this is a date rather than a boolean.
     'ALTER TABLE projects ADD COLUMN review_declined_at TEXT',
+    // Which of the item's products the user wants. NULL on every existing row;
+    // the one-time backfill below turns a legacy brand/variant pair into a
+    // product and points this at it, so an install that upgrades into these
+    // columns reads exactly as it did. See GroceryItem.preferredProductId.
+    'ALTER TABLE grocery_items ADD COLUMN preferred_product_id TEXT',
+    // The product you last got at this store, replacing the bare brand string
+    // in the column beside it. NULL on every existing link, and nothing
+    // backfills it: the old column recorded a brand *name*, and which of the
+    // item's products that named is exactly what the app can't work out for a
+    // row whose brand has since been edited. It reads as "we've never seen
+    // which one came home here", which is the honest answer and the state
+    // every link starts in anyway. See ItemShopLink.productId.
+    'ALTER TABLE grocery_item_shops ADD COLUMN product_id TEXT',
+    // The per-product negative claims, as a JSON map of product id → stamp.
+    // '{}' on every existing link; the backfill below migrates a legacy
+    // brand_unavailable_at onto the product it was actually about, which is
+    // the whole point of keying them. See ItemShopLink.unavailableProductIds.
+    "ALTER TABLE grocery_item_shops ADD COLUMN unavailable_product_ids TEXT NOT NULL DEFAULT '{}'",
+    // One row per box, unique within the item — see the CREATE above and
+    // ItemProduct in types. A migration rather than part of the CREATE for the
+    // same reason idx_grocery_items_name_key is: a device that got the table
+    // from an earlier build still picks the index up.
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_grocery_item_products_key ON grocery_item_products(item_id, product_key)',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -875,6 +929,67 @@ export function initDatabase(): void {
       try { db.runSync('UPDATE categories SET sort_order = ? WHERE id = ?', [i + 1, row.id]); } catch (_) {}
     });
     dbSetSetting('category_sort_order_migration_done', '1');
+  }
+
+  // One-time migration: an item's brand/variant pair becomes a real product
+  // row, and the item points at it.
+  //
+  // Every install that had ever set either field arrives here with exactly one
+  // box named, which is precisely what the old two-string model could hold —
+  // so this changes nothing on screen. It just gives that box an identity, so
+  // the next one you try is a second row rather than an overwrite.
+  //
+  // Guarded on a settings flag rather than on the table being empty: a user who
+  // adds products, deletes them all and relaunches must not have their old
+  // brand resurrected. (The flag is deliberately absent from SYNCED_SETTING_KEYS
+  // — sending it to a device that hasn't run this would skip the migration
+  // there permanently.)
+  if (dbGetSetting('grocery_products_migration_done') !== '1') {
+    const legacy = db.getAllSync<{ id: string; brand: string | null; variant: string | null }>(
+      `SELECT id, brand, variant FROM grocery_items
+        WHERE (brand IS NOT NULL AND brand != '') OR (variant IS NOT NULL AND variant != '')`
+    );
+    for (const row of legacy) {
+      try {
+        const productKey = productKeyFor(row.brand, row.variant);
+        if (!productKey) continue;
+        const productId = generateId();
+        db.runSync(
+          `INSERT OR IGNORE INTO grocery_item_products
+             (id, item_id, brand, variant, product_key, rating, note, purchase_count, last_purchased_at, created_at)
+           VALUES (?,?,?,?,?,NULL,'',0,NULL,?)`,
+          [productId, row.id, row.brand ?? null, row.variant ?? null, productKey, new Date().toISOString()]
+        );
+        db.runSync('UPDATE grocery_items SET preferred_product_id = ? WHERE id = ?', [productId, row.id]);
+        // The store-side evidence follows the same box. A link's legacy brand
+        // string is only safe to read as "this product" when it still matches
+        // what the item asks for — an item whose brand was edited since left
+        // that column naming something that is no longer any product of this
+        // item, and the honest reading of it is then "we don't know which one".
+        if (row.brand) {
+          db.runSync(
+            'UPDATE grocery_item_shops SET product_id = ? WHERE item_id = ? AND brand = ?',
+            [productId, row.id, row.brand]
+          );
+        }
+        // The negative claims, keyed to the product they were actually about —
+        // the whole reason unavailable_product_ids is a map. Per link because
+        // each carries its own stamp, which is the part that makes a claim
+        // weighable rather than permanent.
+        const claims = db.getAllSync<{ shop_id: string; brand_unavailable_at: string }>(
+          `SELECT shop_id, brand_unavailable_at FROM grocery_item_shops
+            WHERE item_id = ? AND brand_unavailable_at IS NOT NULL`,
+          [row.id]
+        );
+        for (const claim of claims) {
+          db.runSync(
+            'UPDATE grocery_item_shops SET unavailable_product_ids = ? WHERE item_id = ? AND shop_id = ?',
+            [JSON.stringify({ [productId]: claim.brand_unavailable_at }), row.id, claim.shop_id]
+          );
+        }
+      } catch (_) { /* a column this install never had */ }
+    }
+    dbSetSetting('grocery_products_migration_done', '1');
   }
 
   // One-time migration: collapse all existing task groups by default.
@@ -969,6 +1084,7 @@ export const BACKUP_TABLES = [
   'grocery_items',
   'grocery_item_shops',
   'grocery_item_subs',
+  'grocery_item_products',
   'recipes',
   // Before meal_plan_entries: an entry can point at a leftover.
   'leftovers',
@@ -2000,9 +2116,11 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     id: row.id as string,
     name: row.name as string,
     nameKey: row.name_key as string,
-    brand: (row.brand as string) ?? null,
-    brandStrict: Boolean(row.brand_strict),
-    variant: (row.variant as string) ?? null,
+    preferredProductId: (row.preferred_product_id as string) ?? null,
+    // The column is still called brand_strict: it predates products, and the
+    // migration list here is append-only. Same column/field split as
+    // cycle_enabled → chainEnabled on tasks.
+    productStrict: Boolean(row.brand_strict),
     aisle: (row.aisle as string) ?? 'Other',
     quantity: (row.quantity as string) ?? null,
     quantityFromRecipe: Boolean(row.quantity_from_recipe),
@@ -2049,8 +2167,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       (id, name, name_key, aisle, quantity, quantity_from_recipe, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, shelf_life_days, use_up_task,
-       last_price_minor, last_priced_at, last_price_quantity, brand, brand_strict, variant)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -2062,7 +2180,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.expiresAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
-      item.brand ?? null, item.brandStrict ? 1 : 0, item.variant ?? null,
+      item.preferredProductId ?? null, item.productStrict ? 1 : 0,
     ]
   );
 }
@@ -2074,8 +2192,8 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
        expires_at=?, shelf_life_days=?, use_up_task=?,
-       last_price_minor=?, last_priced_at=?, last_price_quantity=?, brand=?, brand_strict=?,
-       variant=?
+       last_price_minor=?, last_priced_at=?, last_price_quantity=?,
+       preferred_product_id=?, brand_strict=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -2088,7 +2206,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.expiresAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
-      item.brand ?? null, item.brandStrict ? 1 : 0, item.variant ?? null,
+      item.preferredProductId ?? null, item.productStrict ? 1 : 0,
       item.id,
     ]
   );
@@ -2106,6 +2224,11 @@ export function dbDeleteGroceryItem(id: string): void {
   // row off anyway (see substitutesFor), but leaving them would have a name
   // reused later silently inherit a swap nobody made for it.
   db.runSync('DELETE FROM grocery_item_subs WHERE item_id = ? OR sub_item_id = ?', [id, id]);
+  // The item's products go with it — a box that isn't a box *of* anything is
+  // unreadable, not merely orphaned. The per-store claims those products carry
+  // ride along inside grocery_item_shops.unavailable_product_ids, which the
+  // first statement above already deleted for this item.
+  db.runSync('DELETE FROM grocery_item_products WHERE item_id = ?', [id]);
   db.runSync('DELETE FROM grocery_items WHERE id = ?', [id]);
 }
 
@@ -2139,17 +2262,17 @@ export function dbFinishGroceryShopping(
   // alongside what it bought (see GroceryItem.lastPriceQuantity), and the
   // trolley's quantities are still on the rows at this point — the bulk UPDATE
   // below doesn't touch that column.
-  // brand/brand_strict come back for the same reason quantity does: the link
-  // written below can only record which one this store had if it knows what the
-  // row was asking for. See ItemShopLink.brand.
+  // preferred_product_id/brand_strict come back for the same reason quantity
+  // does: the link written below can only record which one this store had if it
+  // knows what the row was asking for. See ItemShopLink.productId.
   const rows = db.getAllSync<{
     id: string;
     quantity: string | null;
-    brand: string | null;
+    preferred_product_id: string | null;
     brand_strict: number | null;
     price_history: string | null;
   }>(
-    `SELECT id, quantity, brand, brand_strict, price_history
+    `SELECT id, quantity, preferred_product_id, brand_strict, price_history
        FROM grocery_items WHERE checked = 1 AND on_list = 1`
   );
   if (rows.length === 0) return [];
@@ -2172,6 +2295,24 @@ export function dbFinishGroceryShopping(
   // shop link's unavailableAt, and the same reason: nobody should have to take
   // that claim back by hand once they've come home with the thing.
   for (const row of rows) {
+    // The preferred product's own counter, which is what makes "bought 3
+    // times" sayable under one box on an item bought forty times. Only the
+    // preferred one: a trip that bought an item with no preference says
+    // nothing about which box came home, and inventing an answer here is the
+    // same unfalsifiable move ItemShopLink.productId refuses to make.
+    //
+    // It is not conditional on the item being strict, unlike the shop link
+    // below. Naming a product you want is already the statement that you
+    // bought that one; being *strict* is an extra claim about stores, and a
+    // purchase count has nothing to do with stores.
+    if (row.preferred_product_id) {
+      db.runSync(
+        `UPDATE grocery_item_products
+            SET purchase_count = purchase_count + 1, last_purchased_at = ?
+          WHERE id = ?`,
+        [purchasedAt, row.preferred_product_id]
+      );
+    }
     // A use-by day, unlike the clear above, is per item: it comes off the shelf
     // life of *this* row (see groceryShelfLife.ts), so it can't ride the bulk
     // UPDATE. Only the rows the lexicon recognises get one — a bag of rice is
@@ -2213,22 +2354,22 @@ export function dbFinishGroceryShopping(
          DO UPDATE SET purchase_count = purchase_count + 1,
                        last_purchased_at = excluded.last_purchased_at,
                        unavailable_at = NULL,
-                       brand_unavailable_at = NULL`,
+                       unavailable_product_ids = '{}'`,
         [row.id, shopId, purchasedAt]
       );
       // Which one they had, and only when the row insisted on one. A strict
       // item is a row the user would not have substituted, so a purchase here
-      // is real evidence this store carries their brand; on a row with no rule
-      // the same purchase says nothing about which one came home, so nothing is
-      // written and the link's brand stays whatever it was. Mirrored in
-      // useGroceryStore.finishShopping's in-memory patch.
+      // is real evidence this store carries the box they want; on a row with no
+      // rule the same purchase says nothing about which one came home, so
+      // nothing is written and the link's product stays whatever it was.
+      // Mirrored in useGroceryStore.finishShopping's in-memory patch.
       //
       // Its own statement for the same reason the price below is: "leave the
       // old value alone" and "write this one" can't share an upsert column.
-      if (row.brand_strict && row.brand) {
+      if (row.brand_strict && row.preferred_product_id) {
         db.runSync(
-          'UPDATE grocery_item_shops SET brand = ? WHERE item_id = ? AND shop_id = ?',
-          [row.brand, row.id, shopId]
+          'UPDATE grocery_item_shops SET product_id = ? WHERE item_id = ? AND shop_id = ?',
+          [row.preferred_product_id, row.id, shopId]
         );
       }
       // A second statement rather than more columns on the upsert above,
@@ -2424,8 +2565,8 @@ function rowToItemShopLink(row: Record<string, unknown>): ItemShopLink {
     lastPricedAt: (row.last_priced_at as string) ?? null,
     lastPriceQuantity: (row.last_price_quantity as string) ?? null,
     priceHistory: parsePriceHistory(row.price_history as string | null),
-    brand: (row.brand as string) ?? null,
-    brandUnavailableAt: (row.brand_unavailable_at as string) ?? null,
+    productId: (row.product_id as string) ?? null,
+    unavailableProductIds: parseUnavailableProductIds(row.unavailable_product_ids as string | null),
   };
 }
 
@@ -2445,7 +2586,7 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
   db.runSync(
     `INSERT INTO grocery_item_shops
        (item_id, shop_id, purchase_count, last_purchased_at, unavailable_at,
-        last_price_minor, last_priced_at, last_price_quantity, brand, brand_unavailable_at)
+        last_price_minor, last_priced_at, last_price_quantity, product_id, unavailable_product_ids)
      VALUES (?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(item_id, shop_id)
      DO UPDATE SET purchase_count = excluded.purchase_count,
@@ -2454,8 +2595,8 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
                    last_price_minor = excluded.last_price_minor,
                    last_priced_at = excluded.last_priced_at,
                    last_price_quantity = excluded.last_price_quantity,
-                   brand = excluded.brand,
-                   brand_unavailable_at = excluded.brand_unavailable_at`,
+                   product_id = excluded.product_id,
+                   unavailable_product_ids = excluded.unavailable_product_ids`,
     [
       link.itemId,
       link.shopId,
@@ -2465,14 +2606,108 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
       link.lastPriceMinor ?? null,
       link.lastPricedAt ?? null,
       link.lastPriceQuantity ?? null,
-      link.brand ?? null,
-      link.brandUnavailableAt ?? null,
+      link.productId ?? null,
+      JSON.stringify(link.unavailableProductIds ?? {}),
     ]
   );
 }
 
 export function dbDeleteItemShopLink(itemId: string, shopId: string): void {
   db.runSync('DELETE FROM grocery_item_shops WHERE item_id = ? AND shop_id = ?', [itemId, shopId]);
+}
+
+// ─── Item products ──────────────────────────────────────────────────────────
+
+function rowToItemProduct(row: Record<string, unknown>): ItemProduct {
+  return {
+    id: row.id as string,
+    itemId: row.item_id as string,
+    brand: (row.brand as string) ?? null,
+    variant: (row.variant as string) ?? null,
+    productKey: row.product_key as string,
+    // Anything that isn't one of the two known ratings reads as no opinion —
+    // a column written by a newer build, or a hand-edited backup, must not
+    // render as a rating this build can't explain.
+    rating: row.rating === 'loved' || row.rating === 'avoid' ? row.rating : null,
+    note: (row.note as string) ?? '',
+    purchaseCount: (row.purchase_count as number) ?? 0,
+    lastPurchasedAt: (row.last_purchased_at as string) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllItemProducts(): ItemProduct[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM grocery_item_products ORDER BY created_at ASC'
+  );
+  return rows.map(rowToItemProduct);
+}
+
+/**
+ * Upsert by id, so writing a product and editing its brand, variant, note or
+ * rating share one path — the same contract dbSetItemShopLink has: the caller
+ * passes the row it wants to exist, not a patch.
+ *
+ * The UNIQUE index on `(item_id, product_key)` is what refuses a duplicate, so
+ * this throws rather than silently merging two boxes into one. The store
+ * catches that and matches the existing product instead — see `addProduct`.
+ */
+export function dbSetItemProduct(product: ItemProduct): void {
+  db.runSync(
+    `INSERT INTO grocery_item_products
+       (id, item_id, brand, variant, product_key, rating, note, purchase_count, last_purchased_at, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(id)
+     DO UPDATE SET brand = excluded.brand,
+                   variant = excluded.variant,
+                   product_key = excluded.product_key,
+                   rating = excluded.rating,
+                   note = excluded.note,
+                   purchase_count = excluded.purchase_count,
+                   last_purchased_at = excluded.last_purchased_at`,
+    [
+      product.id,
+      product.itemId,
+      product.brand ?? null,
+      product.variant ?? null,
+      product.productKey,
+      product.rating ?? null,
+      product.note,
+      product.purchaseCount,
+      product.lastPurchasedAt ?? null,
+      product.createdAt,
+    ]
+  );
+}
+
+/**
+ * Deleting a product takes every pointer at it with it, in both directions:
+ * the item that preferred it goes back to "no opinion", the store links that
+ * recorded getting it here forget which one it was, and the per-store "they
+ * haven't got this one" claims about it go too.
+ *
+ * Hand-written like every other cascade here, because FKs are off. The claims
+ * live inside a JSON column, so that half is a read-modify-write rather than a
+ * DELETE — bounded by how many stores hold a claim about this one product.
+ */
+export function dbDeleteItemProduct(id: string): void {
+  db.runSync('UPDATE grocery_items SET preferred_product_id = NULL WHERE preferred_product_id = ?', [id]);
+  db.runSync('UPDATE grocery_item_shops SET product_id = NULL WHERE product_id = ?', [id]);
+  const links = db.getAllSync<{ item_id: string; shop_id: string; unavailable_product_ids: string | null }>(
+    `SELECT item_id, shop_id, unavailable_product_ids FROM grocery_item_shops
+      WHERE unavailable_product_ids LIKE ?`,
+    [`%${id}%`]
+  );
+  for (const link of links) {
+    const claims = parseUnavailableProductIds(link.unavailable_product_ids);
+    if (claims[id] === undefined) continue;
+    delete claims[id];
+    db.runSync(
+      'UPDATE grocery_item_shops SET unavailable_product_ids = ? WHERE item_id = ? AND shop_id = ?',
+      [JSON.stringify(claims), link.item_id, link.shop_id]
+    );
+  }
+  db.runSync('DELETE FROM grocery_item_products WHERE id = ?', [id]);
 }
 
 // ─── Substitutes ────────────────────────────────────────────────────────────

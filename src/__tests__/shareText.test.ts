@@ -170,8 +170,8 @@ describe('buildRecipeShareText', () => {
 describe('buildGroceryListShareText', () => {
   function item(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
     return {
-      id: `i-${++seq}`, name, nameKey: name.toLowerCase(), brand: null, brandStrict: false,
-      variant: null, aisle: 'Other', quantity: null, quantityFromRecipe: false, note: '',
+      id: `i-${++seq}`, name, nameKey: name.toLowerCase(), preferredProductId: null, productStrict: false,
+      aisle: 'Other', quantity: null, quantityFromRecipe: false, note: '',
       onList: true, checked: false, inCatalog: true, sortOrder: seq, purchaseCount: 0,
       lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
       onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,

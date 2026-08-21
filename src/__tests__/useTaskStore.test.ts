@@ -103,6 +103,7 @@ jest.mock('../db/database', () => ({
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbGetAllItemSubLinks: jest.fn().mockReturnValue([]),
+  dbGetAllItemProducts: jest.fn().mockReturnValue([]),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
   dbGetTripShopId: jest.fn().mockReturnValue(null),
   dbGetTripStartedAt: jest.fn().mockReturnValue(null),
@@ -7903,7 +7904,7 @@ describe('postponeCount', () => {
 
 describe('deleting a use-up task', () => {
   const item = {
-    id: 'g-1', name: 'Spinach', nameKey: 'spinach', brand: null, brandStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
+    id: 'g-1', name: 'Spinach', nameKey: 'spinach', preferredProductId: null, productStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, inCatalog: true, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
@@ -7950,7 +7951,7 @@ describe('deleting a use-up task', () => {
 
 describe('completing a use-up task', () => {
   const groceryItem = {
-    id: 'g-1', name: 'Spinach', nameKey: 'spinach', brand: null, brandStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
+    id: 'g-1', name: 'Spinach', nameKey: 'spinach', preferredProductId: null, productStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, inCatalog: true, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
