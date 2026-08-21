@@ -314,7 +314,7 @@ export function TasksProjectsSettings() {
           icon="cart-outline"
           iconColor={kitchenEnabled ? colors.accent : undefined}
           label="Groceries & meals"
-          hint={kitchenEnabled ? 'Shown in the menu' : 'Hidden from the menu'}
+          hint={kitchenEnabled ? 'Shown in the tab bar' : 'Hidden from the tab bar'}
           toggle={kitchenEnabled}
           onPress={() => setKitchenEnabled(!kitchenEnabled)}
         />

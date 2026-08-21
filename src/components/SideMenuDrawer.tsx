@@ -49,6 +49,10 @@ interface MenuItemWithGate extends MenuItem {
 
 const MENU_ITEMS: MenuItemWithGate[] = [
   { name: 'Today', icon: 'checkbox-outline', label: 'Tasks' },
+  // Search moved out of the bottom tab bar to make room for Groceries there.
+  // It keeps its pull-to-refresh gesture on Today/Later/Unscheduled/Inbox
+  // (opens QuickSearchModal) — this row is the way to the full Search screen.
+  { name: 'Search', icon: 'search-outline', label: 'Search' },
   // Sits with Tasks rather than down among Logbook/Archived: it's a peer
   // surface you go to on purpose, not somewhere things end up.
   { name: 'Groceries', icon: 'cart-outline', label: 'Groceries & Meals', alsoActiveFor: GROCERIES_HUB_TABS, kitchen: true },
