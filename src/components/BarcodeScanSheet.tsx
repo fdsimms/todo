@@ -70,6 +70,16 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   /**
+   * Which screen is scanning, and so what a matched row means to say.
+   *
+   * The session itself — camera, lookup, matching against the catalog — is
+   * identical either way; only the words are different. `'shopping'` (from
+   * `GroceryScreen`, mid-unpack) frames a match in terms of the list;
+   * `'pantry'` (from `KitchenScreen`) frames it in terms of the catalog,
+   * since scanning there never touches `onList` at all — see `onApply`.
+   */
+  context: 'shopping' | 'pantry';
+  /**
    * Hands the confirmed session back to the screen: rows to check off, and
    * rows to create or promote first.
    *
@@ -78,12 +88,21 @@ interface Props {
    * sheet is where they get answered anyway. **Nothing is written from here**,
    * for the reason that sheet gives: the thing on the other side of the confirm
    * takes a whole list off in one pass.
+   *
+   * In `'pantry'` context the caller reads only the names off these — see
+   * `KitchenScreen`'s `handleScanApply`, which resolves `itemIds` back to
+   * names and routes everything through `addManyToPantry` instead of
+   * checking anything off a list.
    */
   onApply: (itemIds: string[], toAdd: ReceiptAddDraft[]) => void;
 }
 
 /**
- * Scanning groceries into the pantry one barcode at a time, as you unpack.
+ * Scanning groceries one barcode at a time — mid-unpack from `GroceryScreen`
+ * (`context="shopping"`), or straight into the catalog from `KitchenScreen`'s
+ * Pantry screen (`context="pantry"`). The session is one flow either way;
+ * only the row captions and the header title read differently, since a
+ * pantry scan never puts anything on the shopping list at all.
  *
  * **Not one photo of a pile of shopping.** In a haul shot most barcodes are
  * angled, occluded or face-down, so a dozen items resolve to three, and the
@@ -111,7 +130,7 @@ interface Props {
  * rule `acceptedByDefault` applies to a weak receipt match, for the same
  * reason: an unchecked row is a question and a checked one is an assertion.
  */
-export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
+export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -299,13 +318,19 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
     if (match?.itemId) {
       const item = items.find(i => i.id === match.itemId);
       if (!item) return null;
+      if (context === 'pantry') {
+        return match.confidence === 'remembered'
+          ? `Matches “${item.name}”, as you matched it before`
+          : `Matches “${item.name}” in your pantry`;
+      }
       return match.confidence === 'remembered'
         ? `On your list as ${item.name}, as you matched it before`
         : `On your list as ${item.name}`;
     }
     if (match?.offListMatchId) {
       const item = items.find(i => i.id === match.offListMatchId);
-      return item ? `Back on the list as ${item.name}` : null;
+      if (!item) return null;
+      return context === 'pantry' ? `Matches “${item.name}”` : `Back on the list as ${item.name}`;
     }
     return 'New item';
   };
@@ -344,7 +369,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
       <View style={styles.root}>
         <View style={styles.header}>
           <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
-          <Text style={styles.headerTitle}>Scan groceries</Text>
+          <Text style={styles.headerTitle}>
+            {context === 'pantry' ? 'Scan into pantry' : 'Scan groceries'}
+          </Text>
           <SheetHeaderButton
             label="Add"
             onPress={handleApply}
@@ -365,7 +392,11 @@ export function BarcodeScanSheet({ visible, onClose, onApply }: Props) {
             <EmptyState
               icon="barcode-outline"
               title="Nothing scanned yet"
-              subtitle="Point the camera at a barcode as you unpack. Anything without one, type below."
+              subtitle={
+                context === 'pantry'
+                  ? 'Point the camera at a barcode to add it to the pantry. Anything without one, type below.'
+                  : 'Point the camera at a barcode as you unpack. Anything without one, type below.'
+              }
             />
           ) : (
             <View style={styles.card}>

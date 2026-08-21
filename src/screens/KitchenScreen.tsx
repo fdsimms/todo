@@ -37,6 +37,8 @@ import { InlineAction } from '../components/InlineAction';
 import { PressableScale } from '../components/PressableScale';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { LeftoverSheet } from '../components/LeftoverSheet';
+import { BarcodeScanSheet } from '../components/BarcodeScanSheet';
+import type { ReceiptAddDraft } from '../components/ReceiptImportSheet';
 import { freshnessColor } from '../components/LeftoversCard';
 import { useNowTick } from '../hooks/useNowTick';
 import { haptics } from '../utils/haptics';
@@ -71,14 +73,17 @@ import { haptics } from '../utils/haptics';
  * guessing "eaten" would quietly write a fridge-history row the user never
  * chose. Its row opens `LeftoverSheet`, which asks properly.
  *
- * The one thing this screen writes by itself is `addToPantry`, off the field
- * at the top — the same one-bit assertion the item sheet's "Got it" pill
- * writes. It exists because that correction was unreachable for anything with
- * no row yet: you can only open an item's sheet from the list or from Buy
- * again, so "I have flour" was unsayable until flour had been bought through
- * the app at least once. It adds to the pantry and never to the fridge; a
- * container is something you cooked, which is what `LeftoverSheet`'s log flow
- * is for.
+ * The two things this screen writes by itself are `addToPantry`, off the
+ * field at the top, and `addManyToPantry`, off the barcode action in the
+ * header — the same one-bit assertion the item sheet's "Got it" pill writes,
+ * one name or a whole scan session at a time. They exist because that
+ * correction was unreachable for anything with no row yet: you can only open
+ * an item's sheet from the list or from Buy again, so "I have flour" was
+ * unsayable until flour had been bought through the app at least once. Both
+ * add to the pantry and never to the fridge; a container is something you
+ * cooked, which is what `LeftoverSheet`'s log flow is for. The scan sheet
+ * itself is shared with `GroceryScreen` (`BarcodeScanSheet`, `context` prop)
+ * — same camera and lookup, only the row wording and the write path differ.
  *
  * That keeps the model the one #1040 settled on — computed from what you buy,
  * corrected when it's wrong, never an inventory anybody has to keep up.
@@ -94,6 +99,7 @@ export function KitchenScreen() {
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const addToPantry = useGroceryStore(s => s.addToPantry);
+  const addManyToPantry = useGroceryStore(s => s.addManyToPantry);
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
 
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
@@ -107,6 +113,7 @@ export function KitchenScreen() {
   const [query, setQuery] = useState('');
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [openLeftoverId, setOpenLeftoverId] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
 
   // This screen never unmounts once visited (the drawer's tabs stay mounted
   // under `enableScreens(false)`), so a use-by day computed once at mount
@@ -181,6 +188,23 @@ export function KitchenScreen() {
     if (markOutOfMany([entry.sourceId]) > 0) haptics.success();
   };
 
+  // The scan sheet only ever hands back which rows to check off a list
+  // (itemIds) and which to mint or promote (toAdd) — shopping-list concepts
+  // that don't apply here. What this screen wants out of a session is just
+  // the names: an already-matched row's current name, or a new row's shopper
+  // name, fed through addManyToPantry exactly like the typed field above.
+  const handleScanApply = (itemIds: string[], toAdd: ReceiptAddDraft[]) => {
+    const names = [
+      ...itemIds
+        .map(id => items.find(i => i.id === id)?.name)
+        .filter((name): name is string => !!name),
+      ...toAdd.map(draft => draft.name),
+    ];
+    setScanOpen(false);
+    if (names.length === 0) return;
+    if (addManyToPantry(names) > 0) haptics.success();
+  };
+
   const renderItem = ({ item: entry }: { item: KitchenEntry }) => {
     // Three levels for four states, the fridge card's own rule: `fresh` reads
     // as ordinary tertiary text, so most of a kitchen stays quiet and the one
@@ -236,6 +260,13 @@ export function KitchenScreen() {
       <ScreenHeader
         title="Pantry"
         subtitle={entries.length > 0 ? describeKitchen(entries) : undefined}
+        actions={[
+          {
+            icon: 'barcode-outline',
+            onPress: () => setScanOpen(true),
+            accessibilityLabel: 'Scan a barcode into the pantry',
+          },
+        ]}
       />
       <GroceriesHubPills active="Kitchen" />
 
@@ -297,7 +328,7 @@ export function KitchenScreen() {
             subtitle={
               typed
                 ? 'Nothing you probably have goes by that name. Add it above to say you do.'
-                : 'Finish a shopping trip and what you bought turns up here, along with anything you put in the fridge. Type a name above to add something you already have.'
+                : 'Finish a shopping trip and what you bought turns up here, along with anything you put in the fridge. Type a name above, or scan a barcode, to add something you already have.'
             }
           />
         }
@@ -311,6 +342,13 @@ export function KitchenScreen() {
         // the sheet is dense enough that a collapsed "Pantry" field halfway
         // down it was, in practice, no way to say you're out of something.
         initialField="pantry"
+      />
+
+      <BarcodeScanSheet
+        visible={scanOpen}
+        context="pantry"
+        onClose={() => setScanOpen(false)}
+        onApply={handleScanApply}
       />
 
       <LeftoverSheet
