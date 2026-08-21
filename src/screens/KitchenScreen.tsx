@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRoute } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -92,6 +93,7 @@ import { haptics } from '../utils/haptics';
  */
 export function KitchenScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const route = useRoute<any>();
@@ -320,7 +322,11 @@ export function KitchenScreen() {
         keyboardDismissMode="on-drag"
         // Full height when empty so the empty state's `flex: 1` has something
         // to centre in, and without the list's padding shifting that centre.
-        contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.list}
+        contentContainerStyle={
+          sections.length === 0
+            ? styles.emptyContainer
+            : [styles.list, { paddingBottom: tabBarHeight + spacing.xl }]
+        }
         ListEmptyComponent={
           <EmptyState
             icon="file-tray-stacked-outline"
@@ -330,6 +336,7 @@ export function KitchenScreen() {
                 ? 'Nothing you probably have goes by that name. Add it above to say you do.'
                 : 'Finish a shopping trip and what you bought turns up here, along with anything you put in the fridge. Type a name above, or scan a barcode, to add something you already have.'
             }
+            bottomOffset={tabBarHeight}
           />
         }
       />

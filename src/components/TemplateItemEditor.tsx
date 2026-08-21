@@ -237,11 +237,38 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setWindowPickerMode('none');
   };
 
+  // A step, subtask, tag or blank typed into its "add new" field but never
+  // submitted (no return, no blur — e.g. tapping Save while the field still
+  // has focus) would otherwise be silently dropped: handleSave reads this
+  // state as closed over from the current render, and there's no guarantee
+  // the field's onBlur has fired — or its setState flushed — before it
+  // runs. These mirror the onBlur commit logic so handleSave can run it
+  // explicitly instead of relying on blur ordering — same fix TaskEditor
+  // already applies to its own chain/subtask/link fields.
+  const resolvePendingChainItems = (): ChainItem[] => {
+    const t = newChainItemTitle.trim();
+    return t ? [...chainItems, { id: generateId(), title: t, estimatedMinutes: null }] : chainItems;
+  };
+  const resolvePendingSubtasks = (): { id: string; title: string }[] => {
+    const t = newSubtaskTitle.trim();
+    return t ? [...subtasks, { id: generateId(), title: t }] : subtasks;
+  };
+  const resolvePendingTags = (): string[] => {
+    const t = newTag.trim();
+    return t && !tags.includes(t) ? [...tags, t] : tags;
+  };
+  const resolvePendingTitle = (baseTitle: string): string => {
+    const name = normalizePlaceholderName(newBlank);
+    return name ? withPlaceholder(baseTitle, name) : baseTitle;
+  };
+
   // ==== save ====
   const handleSave = () => {
     if (!title.trim()) return;
+    const effectiveChainItems = resolvePendingChainItems();
+    const effectiveSubtasks = resolvePendingSubtasks();
     const updates = {
-      title: title.trim(),
+      title: resolvePendingTitle(title.trim()),
       notes,
       optional,
       conditions,
@@ -253,7 +280,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       windowEnd,
       reminderOffsetMinutes: dueOffsetDays !== null ? reminderOffsetMinutes : null,
       timeSegments,
-      tags,
+      tags: resolvePendingTags(),
       category,
       priority,
       effort,
@@ -266,10 +293,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceFromCompletion,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       deliverableKind,
-      chainEnabled: chainEnabled && chainItems.length > 0,
-      chainItems,
-      chainIndex: chainItems.length > 0 ? Math.min(chainIndex, chainItems.length - 1) : 0,
-      subtasks,
+      chainEnabled: chainEnabled && effectiveChainItems.length > 0,
+      chainItems: effectiveChainItems,
+      chainIndex: effectiveChainItems.length > 0 ? Math.min(chainIndex, effectiveChainItems.length - 1) : 0,
+      subtasks: effectiveSubtasks,
     };
     if (item) {
       updateItem(templateId, item.id, updates);

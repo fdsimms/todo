@@ -156,16 +156,24 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     if (ingredient) updateIngredient(recipeId, ingredient.id, { choiceGroup: clean });
   };
 
-  const commitGroupRename = () => {
+  // Returns the resolved label so saveAndClose can use it directly: a rename
+  // made through this same call writes the store immediately but the local
+  // `choiceGroup` state won't reflect that until a re-render, and Done can
+  // beat both the field's own blur and that render.
+  const commitGroupRename = (): string | null => {
     setEditingGroupName(false);
     const clean = cleanChoiceGroup(groupNameDraft);
-    if (!clean || clean === groupLabel) return;
+    if (!clean || clean === groupLabel) return cleanChoiceGroup(choiceGroup);
     const renamed = renameChoiceGroup(recipeId, groupLabel ?? '', clean);
     if (renamed) setChoiceGroup(renamed);
+    return renamed ?? cleanChoiceGroup(choiceGroup);
   };
 
   const saveAndClose = () => {
     if (!ingredient) { onClose(); return; }
+    // Tapping Done can beat the group name field's own blur — flush it here
+    // instead of trusting stale `choiceGroup` state.
+    const resolvedChoiceGroup = editingGroupName ? commitGroupRename() : cleanChoiceGroup(choiceGroup);
     const trimmed = name.trim();
     // An emptied name would strand the row — keep the old one rather than
     // storing something nothing can shop for.
@@ -175,7 +183,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       prep: prep.trim() || null,
       purpose: purpose.trim() || null,
       section: section.trim() || null,
-      choiceGroup: cleanChoiceGroup(choiceGroup),
+      choiceGroup: resolvedChoiceGroup,
       aisle,
       noSwap,
     });

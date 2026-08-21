@@ -766,6 +766,28 @@ export function QuickAddModal({
     setActivePanel(null);
   };
 
+  // Add/Open full can fire before the link/phone/email/tag fields' own blur
+  // or Enter has committed their text — same race TaskEditor's
+  // resolveLinkUrl/resolvePhoneNumber/resolveEmailAddress guard against.
+  // Read the live text box instead of trusting state that may not have
+  // caught up yet.
+  const resolveLinkUrl = () => {
+    const t = customLinkText.trim();
+    return activePanel === 'link' && t ? t : linkUrl;
+  };
+  const resolvePhoneNumber = () => {
+    const t = phoneText.trim();
+    return activePanel === 'phone' && t ? t : phoneNumber;
+  };
+  const resolveEmailAddress = () => {
+    const t = emailText.trim();
+    return activePanel === 'email' && t ? t : emailAddress;
+  };
+  const resolveTags = () => {
+    const t = tagInput.trim().toLowerCase();
+    return t && !tags.includes(t) ? [...tags, t] : tags;
+  };
+
   // ==== creating the task ====
   const createTask = (finalTitle: string) => {
     haptics.success();
@@ -778,11 +800,11 @@ export function QuickAddModal({
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
       timeSegments,
-      tags,
+      tags: resolveTags(),
       category,
-      linkUrl,
-      phoneNumber,
-      emailAddress,
+      linkUrl: resolveLinkUrl(),
+      phoneNumber: resolvePhoneNumber(),
+      emailAddress: resolveEmailAddress(),
       projectId,
       // recurrenceType deliberately absent — it comes from `baked` above,
       // which is what turns a Target into a daily task.
@@ -857,11 +879,11 @@ export function QuickAddModal({
       ...baked,
       dueDate,
       timeSegments,
-      tags,
+      tags: resolveTags(),
       category,
-      linkUrl,
-      phoneNumber,
-      emailAddress,
+      linkUrl: resolveLinkUrl(),
+      phoneNumber: resolvePhoneNumber(),
+      emailAddress: resolveEmailAddress(),
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,

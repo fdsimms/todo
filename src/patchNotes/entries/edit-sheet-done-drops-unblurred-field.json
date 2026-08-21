@@ -1,0 +1,4 @@
+{
+  "message": "Fixed several edit sheets (grocery item, aisles/stores, meal, leftover, recipe ingredient, project, stack, template, template item, quick add, and the recipe import review list) dropping whatever was still being typed if you tapped Done, Create, or Add without pressing return or tapping away first",
+  "date": "2026-08-21"
+}

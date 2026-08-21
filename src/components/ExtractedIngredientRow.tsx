@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, forwardRef, useImperativeHandle } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
@@ -21,6 +21,18 @@ interface Props {
   sectionHeader?: string | null;
 }
 
+export interface ExtractedIngredientRowHandle {
+  /**
+   * Whatever's typed but not yet committed for this row, still keyed to
+   * which field it's for — `null` when there's nothing pending. The
+   * parent's Create/Add button can fire before this row's own blur does
+   * (same race TaskEditor's resolveX functions guard against), so it reads
+   * this directly instead of trusting `onEditName`/`onEditQuantity` to
+   * have already landed in its own state.
+   */
+  resolvePendingEdit: () => { field: 'name' | 'quantity'; value: string } | null;
+}
+
 /**
  * One row of a recipe-import review list (#1608) — shared by `RecipeCreateSheet`
  * and `RecipeExtractSheet`, which otherwise render this identically.
@@ -40,9 +52,9 @@ interface Props {
  * the catalog item and read back through `probablyHaveReason`. Nothing here
  * writes to `grocery_item_subs`.
  */
-export function ExtractedIngredientRow({
+export const ExtractedIngredientRow = forwardRef<ExtractedIngredientRowHandle, Props>(function ExtractedIngredientRow({
   row, checked, onToggle, onEditName, onEditQuantity, sectionHeader,
-}: Props) {
+}: Props, ref) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -53,6 +65,21 @@ export function ExtractedIngredientRow({
     setDraft(value);
     setEditingField(field);
   };
+
+  // Mirrors commit()'s own validation, so what the ref reports pending is
+  // exactly what commit() would have written.
+  const resolvePendingEdit = (): { field: 'name' | 'quantity'; value: string } | null => {
+    if (!editingField) return null;
+    const trimmed = draft.trim();
+    if (editingField === 'name') {
+      if (!trimmed || trimmed === row.name) return null;
+      return { field: 'name', value: trimmed };
+    }
+    if (trimmed === row.quantity) return null;
+    return { field: 'quantity', value: trimmed };
+  };
+
+  useImperativeHandle(ref, () => ({ resolvePendingEdit }));
 
   const commit = () => {
     // onSubmitEditing fires onBlur right behind it, and unmounting the field
@@ -143,7 +170,7 @@ export function ExtractedIngredientRow({
       </View>
     </>
   );
-}
+});
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
