@@ -2632,6 +2632,22 @@ describe('checkProjectReviewTasks', () => {
     expect(reviewTasks()).toHaveLength(0);
   });
 
+  // The real entry point for "acting on the offer": tapping the review task
+  // opens the pull sheet, and pullProjectTasks is what commits it. That
+  // action shouldn't need a separate sweep to notice it just answered itself.
+  it('is cleared by pullProjectTasks itself, not just a later sweep', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+    expect(reviewTasks()).toHaveLength(1);
+
+    useTaskStore.getState().pullProjectTasks([
+      { id: 'a', updates: { dueDate: new Date().toISOString(), deferUntil: null } },
+    ]);
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
   // …and clearing it must not read as the user declining. The reconcile's own
   // delete path writes the source's opt-out; this one deliberately doesn't.
   it('does not stamp the project as declined when it clears its own task', () => {
