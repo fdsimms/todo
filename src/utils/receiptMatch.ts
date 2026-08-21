@@ -88,6 +88,8 @@ export interface ReceiptMatch {
    * from its own name.
    */
   offListMatchId: string | null;
+  /** How well `offListMatchId` matched, on the same tiers as `confidence`. Null exactly when it is. */
+  offListConfidence: ReceiptMatchConfidence | null;
 }
 
 /**
@@ -276,12 +278,17 @@ export function matchReceiptLines(
   // filed once.
   const offList = resolveAgainst(openLines, items.filter(i => !i.onList), aliasFor);
   const offListMatchId = new Array<string | null>(lines.length).fill(null);
-  offList.forEach((m, i) => { offListMatchId[openIndices[i]] = m.itemId; });
+  const offListConfidence = new Array<ReceiptMatchConfidence | null>(lines.length).fill(null);
+  offList.forEach((m, i) => {
+    offListMatchId[openIndices[i]] = m.itemId;
+    offListConfidence[openIndices[i]] = m.confidence;
+  });
 
   return lines.map((line, index) => ({
     line,
     ...onList[index],
     offListMatchId: offListMatchId[index],
+    offListConfidence: offListConfidence[index],
   }));
 }
 

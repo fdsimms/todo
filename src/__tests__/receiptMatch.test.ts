@@ -237,6 +237,17 @@ describe('matchReceiptLines', () => {
 
     expect(matches[0].itemId).toBeNull();
     expect(matches[0].offListMatchId).toBe(offListItem.id);
+    expect(matches[0].offListConfidence).toBe('exact');
+  });
+
+  it('reports offListConfidence as weak for a single coincidental shared word', () => {
+    const offListItem = makeItem({ name: 'Heavy Cream', onList: false });
+    const lines = [line({ name: 'Boston Cream Pie Ice Cream' })];
+
+    const matches = matchReceiptLines(lines, [offListItem]);
+
+    expect(matches[0].offListMatchId).toBe(offListItem.id);
+    expect(matches[0].offListConfidence).toBe('weak');
   });
 
   it('never offers a catalog match for a line the list already claimed', () => {
