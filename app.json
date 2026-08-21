@@ -63,8 +63,16 @@
         "expo-image-picker",
         {
           "photosPermission": "Lets dundundun read a recipe out of a photo you've already taken, so a cookbook page you snapped becomes a recipe instead of something to retype.",
-          "cameraPermission": "Lets dundundun read a recipe straight off the page you point the camera at \u2014 a cookbook, a recipe card, a clipping.",
+          "cameraPermission": "Lets dundundun read what you point the camera at: a recipe off a cookbook page or a clipping, a store receipt, or the barcode on a grocery item as you unpack it.",
           "microphonePermission": false
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Lets dundundun read what you point the camera at: a recipe off a cookbook page or a clipping, a store receipt, or the barcode on a grocery item as you unpack it.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       "expo-asset",

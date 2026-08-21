@@ -1514,6 +1514,47 @@ export interface ItemProduct {
   createdAt: string;
 }
 
+/**
+ * What a barcode turned out to be, remembered so it is only ever looked up once.
+ *
+ * A cache of a *shared* fact, and the only thing in this app that is. Every
+ * other grocery row records something about you — what you buy, where, what it
+ * cost, whether you liked it. This records what a GTIN denotes, which is the
+ * same answer for everyone and never changes, so it is keyed by the barcode
+ * rather than by an item and is safe to keep for ever.
+ *
+ * It deliberately does **not** point at a `GroceryItem`. The resolution from a
+ * scanned product to a row in your catalog is a judgement made in front of the
+ * user at review time (see `scanResolve.ts`), and freezing the first answer
+ * onto the cache row would mean a correction made once could never be revisited
+ * — and would put a personal decision inside a table whose whole point is that
+ * it holds none. Remembering the correction is `store_aliases`' job, which is
+ * its own change.
+ */
+export interface GtinLookup {
+  /** Canonical GTIN-14, from `normalizeGtin()`. */
+  gtin: string;
+  /**
+   * Whether any source knew this barcode.
+   *
+   * **A miss is cached too**, which is the point rather than an optimisation: a
+   * barcode nobody has heard of is the case that would otherwise hit the
+   * network on every single unpack for ever. Misses expire, hits don't — see
+   * `GTIN_MISS_TTL_DAYS`.
+   */
+  found: boolean;
+  /** The product as the source names it, full and unabbreviated. Empty on a miss. */
+  name: string;
+  /** Who makes it, when the source says. Null is ordinary, not a gap. */
+  brand: string | null;
+  /** The pack size as the source prints it ("1 gal", "500 g"). Null when unstated. */
+  quantity: string | null;
+  /** Which source answered, for telling a thin record from a good one later. Empty on a miss. */
+  source: string;
+  /** ISO. When this was asked, which is what expires a miss. */
+  fetchedAt: string;
+}
+
 // A place you shop. "Store" everywhere the user can read; `Shop` in code,
 // because `store` is already Zustand's word here (useGroceryStore,
 // useTaskStore) and `useGroceryStoreStore` is not a name anyone should type.

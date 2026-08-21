@@ -207,6 +207,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     kitchen: true },
   { id: 'restockOfferEnabled', groupId: 'tasksProjects', label: 'Restock after cooking', section: 'Meals on Today',
     keywords: ['banner', 'ingredients', 'shopping list', 'offer'], kitchen: true },
+  { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up scanned barcodes', section: 'Barcode lookups',
+    keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy'],
+    kitchen: true },
   { id: 'tripLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'], kitchen: true },
   // The four generators, all in one section now (#1524) — they used to be three

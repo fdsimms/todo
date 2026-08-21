@@ -92,6 +92,13 @@ export const SYNC_EXCLUDED_TABLES = [
   // peer that needs to know a tombstone row was written, only that the row it
   // describes was deleted, and the tombstone already says that.
   'sync_deletions',
+  // The barcode cache. It holds no user data — only what a GTIN denotes, which
+  // is the same answer on every device and for everyone — so there is nothing
+  // for two devices to disagree about and nothing a merge would resolve. A
+  // second device re-asks as it scans, at one free request per barcode, which
+  // is cheaper than a merge strategy for a table whose whole content is a
+  // cache of someone else's database.
+  'gtin_lookups',
 ] as const;
 
 /**

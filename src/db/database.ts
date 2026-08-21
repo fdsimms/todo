@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -292,6 +292,22 @@ export function initDatabase(): void {
       purchase_count INTEGER NOT NULL DEFAULT 0,
       last_purchased_at TEXT,
       created_at TEXT NOT NULL
+    );
+
+    -- What a barcode turned out to be. A cache of a shared, unchanging fact
+    -- (what a GTIN denotes), keyed by the code rather than by an item, and the
+    -- one grocery table that records nothing about the user. Misses are stored
+    -- too — a barcode nobody has heard of is exactly the one that would
+    -- otherwise hit the network on every unpack — and they expire, where hits
+    -- don't. See GtinLookup in types, and gtin.ts for why the key is GTIN-14.
+    CREATE TABLE IF NOT EXISTS gtin_lookups (
+      gtin TEXT PRIMARY KEY NOT NULL,
+      found INTEGER NOT NULL DEFAULT 0,
+      name TEXT NOT NULL DEFAULT '',
+      brand TEXT,
+      quantity TEXT,
+      source TEXT NOT NULL DEFAULT '',
+      fetched_at TEXT NOT NULL
     );
 
     -- A dish, and what it takes to shop for it. The ingredients column is a
@@ -1107,6 +1123,13 @@ export const BACKUP_EXCLUDED_TABLES = [
   // triggers; carrying the old ones forward would restore stale deletion
   // history rather than the task list the user actually asked for back.
   'sync_deletions',
+  // The barcode cache. Every row is reconstructible from the barcode alone,
+  // and reconstructing one costs a single free request the next time that item
+  // is scanned — so putting it in a backup would inflate the file with data
+  // that is not the user's and that a restore does not need to recover. What a
+  // GTIN means is also not something a restore could get *wrong*, which is the
+  // risk BACKUP_TABLES exists to manage.
+  'gtin_lookups',
 ] as const;
 
 /** The live column names of a table, straight from the schema. */
@@ -2725,6 +2748,66 @@ export function dbDeleteItemProduct(id: string): void {
     );
   }
   db.runSync('DELETE FROM grocery_item_products WHERE id = ?', [id]);
+}
+
+// ─── Barcode lookups ────────────────────────────────────────────────────────
+
+function rowToGtinLookup(row: Record<string, unknown>): GtinLookup {
+  return {
+    gtin: row.gtin as string,
+    found: row.found === 1,
+    name: (row.name as string) ?? '',
+    brand: (row.brand as string) ?? null,
+    quantity: (row.quantity as string) ?? null,
+    source: (row.source as string) ?? '',
+    fetchedAt: row.fetched_at as string,
+  };
+}
+
+/**
+ * One cached barcode, or null if it has never been asked.
+ *
+ * Read one at a time rather than loaded into a store like every other grocery
+ * table, and that's the deliberate difference: this is a cache nothing renders,
+ * queried on the way to the network at the moment a code is scanned. Holding it
+ * in memory would mean carrying every barcode ever seen for the lifetime of the
+ * app to save a keyed lookup on a table with a primary key.
+ */
+export function dbGetGtinLookup(gtin: string): GtinLookup | null {
+  const row = db.getFirstSync<Record<string, unknown>>(
+    'SELECT * FROM gtin_lookups WHERE gtin = ?',
+    [gtin]
+  );
+  return row ? rowToGtinLookup(row) : null;
+}
+
+/**
+ * Upsert by GTIN — same contract as `dbSetItemProduct`: the caller passes the
+ * row it wants to exist, not a patch. Re-asking a stale miss overwrites it in
+ * place, so the table is bounded by distinct barcodes seen rather than by how
+ * often they were asked about.
+ */
+export function dbSetGtinLookup(entry: GtinLookup): void {
+  db.runSync(
+    `INSERT INTO gtin_lookups (gtin, found, name, brand, quantity, source, fetched_at)
+     VALUES (?,?,?,?,?,?,?)
+     ON CONFLICT(gtin) DO UPDATE SET
+       found = excluded.found,
+       name = excluded.name,
+       brand = excluded.brand,
+       quantity = excluded.quantity,
+       source = excluded.source,
+       fetched_at = excluded.fetched_at`,
+    [
+      entry.gtin,
+      entry.found ? 1 : 0,
+      entry.name,
+      entry.brand,
+      entry.quantity,
+      entry.source,
+      entry.fetchedAt,
+    ]
+  );
 }
 
 // ─── Substitutes ────────────────────────────────────────────────────────────

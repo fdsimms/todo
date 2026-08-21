@@ -218,6 +218,7 @@ exports.
 | the store you're shopping at right now | `src/utils/activeTrip.ts` — see `docs/arch/groceries.md` |
 | what something costs, and which store is cheaper | `src/utils/groceryPrice.ts` |
 | what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
+| scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
 | what's in the kitchen and what's about to be wasted | `src/utils/kitchenInventory.ts` (+ the ladder in `src/utils/freshness.ts`) — see `docs/arch/groceries.md` |
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see `docs/arch/groceries.md` |
 | "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see `docs/arch/groceries.md` |
@@ -382,9 +383,14 @@ SQLite (expo-sqlite, WAL mode)
 ```
 
 All database calls are synchronous (expo-sqlite `runSync`/`getAllSync`). There is no backend, and every
-piece of user data lives in a local SQLite file on device. The one network call in the app is
-`src/services/aiSuggestions.ts`, which posts task titles/notes straight to `api.anthropic.com` using a
-user-supplied API key; every feature it powers is inert until the user pastes one into Settings.
+piece of user data lives in a local SQLite file on device. Three things reach the network, and they are
+not equivalent: `src/services/aiSuggestions.ts` posts task titles/notes straight to `api.anthropic.com`
+using a user-supplied API key, and every feature it powers is inert until the user pastes one into
+Settings; `src/services/recipePage.ts` fetches a recipe page the user pasted a link to;
+`src/services/productLookup.ts` asks Open Food Facts what a scanned barcode is. **That third one is the
+only one that needs no key**, so "no key, no traffic" stopped being the whole privacy answer when it
+shipped — it carries its own switch (`productLookupEnabled`) instead. Anything else added on those terms
+needs one too.
 
 Stores are initialized once at app startup (`initialize()` on each store). Mutations always write to SQLite first, then update Zustand state.
 

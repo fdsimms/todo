@@ -29,6 +29,8 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const setAnthropicApiKey = useSettingsStore(s => s.setAnthropicApiKey);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const productLookupEnabled = useSettingsStore(s => s.productLookupEnabled);
+  const setProductLookupEnabled = useSettingsStore(s => s.setProductLookupEnabled);
   const aiFeatureConfig = useSettingsStore(s => s.aiFeatureConfig);
   const setAiFeatureConfig = useSettingsStore(s => s.setAiFeatureConfig);
 
@@ -203,6 +205,27 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           );
         })}
       </SettingsSection>
+
+      {/* Its own section rather than a row among the AI features, because it is
+          not one: no Anthropic key, no model to pick, and a different service
+          on the other end. Gated on the groceries area for the same reason the
+          kitchen AI features are — it is only reachable from the scanner. */}
+      {kitchenEnabled && (
+        <SettingsSection
+          label="Barcode lookups"
+          footer="Open Food Facts is a free product database run by volunteers. Scanning sends one barcode at a time and nothing else, with no account and no identifier attached. Answers are saved on this device, so a barcode is only looked up once. Turning this off still uses the barcodes already saved here."
+        >
+          <SettingsRow
+            icon="barcode-outline"
+            iconColor={productLookupEnabled ? colors.accent : undefined}
+            label="Look up scanned barcodes"
+            hint="Finds out what a barcode is so a scanned item arrives named."
+            toggle={productLookupEnabled}
+            onPress={() => setProductLookupEnabled(!productLookupEnabled)}
+            accessibilityLabel="Look up scanned barcodes"
+          />
+        </SettingsSection>
+      )}
     </>
   );
 }

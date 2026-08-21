@@ -357,6 +357,22 @@ interface SettingsStore {
   // toggle for someone who never shops from a recipe, not a fix for a bad
   // default.
   restockOfferEnabled: boolean;
+  // Whether a scanned barcode may be looked up against Open Food Facts to find
+  // out what it is — see src/services/productLookup.ts.
+  //
+  // **The one setting in the app that governs sending data to a service the
+  // user has no account with.** Every other network feature here runs on an
+  // Anthropic key they pasted themselves, so "no key, no traffic" has always
+  // been the whole privacy answer; a barcode lookup needs no key, so it needs
+  // a switch instead. What leaves the device is one barcode at a time, with no
+  // identifier attached and nothing about the rest of the list, but a barcode
+  // is still a thing you bought, and that's worth being able to decline.
+  //
+  // Defaults on, because a scanner that can't identify anything until someone
+  // finds a switch is a scanner that reads as broken. Cached answers are still
+  // used while it's off — those were already paid for, and re-asking is
+  // exactly what the switch refuses.
+  productLookupEnabled: boolean;
   // Whether a grocery item with a use-by date gets a "Use up X" task a few days
   // before it. Off by default and deliberately so: this is the one feature here
   // that can put rows on a task list off the back of a shopping trip, and a
@@ -602,6 +618,7 @@ interface SettingsStore {
   setMealCookTasks: (on: boolean) => void;
   setMealCookTaskCategory: (category: string | null) => void;
   setRestockOfferEnabled: (on: boolean) => void;
+  setProductLookupEnabled: (on: boolean) => void;
   setSortOption: (sort: SortOption) => void;
   setFilterPriorities: (priorities: Priority[]) => void;
   setFilterEfforts: (efforts: Effort[]) => void;
@@ -699,6 +716,7 @@ const DEFAULT_SETTINGS = {
   mealCookTasks: true,
   mealCookTaskCategory: null,
   restockOfferEnabled: true,
+  productLookupEnabled: true,
   groceryUseUpTasks: false,
   groceryUseUpLeadDays: GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   groceryUseUpTaskCategory: null,
@@ -981,6 +999,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   mealCookTasks: true,
   mealCookTaskCategory: null,
   restockOfferEnabled: true,
+  productLookupEnabled: true,
   groceryUseUpTasks: false,
   groceryUseUpLeadDays: GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   groceryUseUpTaskCategory: null,
@@ -1114,6 +1133,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const mealCookTaskCategory = storedCookCategory ? storedCookCategory : null;
     // Defaults on, same reading as mealCookTasks above.
     const restockOfferEnabled = dbGetSetting('restockOfferEnabled') !== 'false';
+    // Reads `!== 'false'` like the booleans above it, so an install that
+    // predates this setting gets the default without a migration.
+    const productLookupEnabled = dbGetSetting('productLookupEnabled') !== 'false';
     // `=== 'true'`, the safe reading of a missing row: this one defaults OFF,
     // and an install that predates it has a catalog full of items whose next
     // trip would otherwise start writing tasks nobody asked for.
@@ -1235,7 +1257,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1577,6 +1599,16 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setRestockOfferEnabled(on: boolean) {
     dbSetSetting('restockOfferEnabled', on ? 'true' : 'false');
     set({ restockOfferEnabled: on });
+  },
+
+  // Switching this off leaves the gtin_lookups cache alone rather than clearing
+  // it. Those answers are already on the device and cost nothing to reuse, and
+  // a barcode's meaning isn't personal data — what the switch is about is
+  // whether new codes go out over the network, not whether old answers are
+  // remembered.
+  setProductLookupEnabled(on: boolean) {
+    dbSetSetting('productLookupEnabled', on ? 'true' : 'false');
+    set({ productLookupEnabled: on });
   },
 
   // Turning this off deliberately leaves the use-up tasks already spawned
