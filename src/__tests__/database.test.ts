@@ -1809,6 +1809,7 @@ function makeShop(overrides: { id: string; name: string }): Shop {
     sortOrder: 1,
     createdAt: '2026-01-01T00:00:00.000Z',
     excludeFromSuggestions: false,
+    receiptStyle: 'itemized' as const,
     ...overrides,
   };
 }
@@ -1861,7 +1862,8 @@ describe('grocery items', () => {
   // store. See GroceryItem.priceHistory.
   it('records a priced trip into the rolling window, at both levels', () => {
     const shop = { id: 's1', name: 'Costco', nameKey: 'costco', sortOrder: 1,
-      createdAt: '2026-01-01T00:00:00.000Z', excludeFromSuggestions: false };
+      createdAt: '2026-01-01T00:00:00.000Z', excludeFromSuggestions: false,
+      receiptStyle: 'itemized' as const };
     dbInsertGroceryShop(shop);
     const item = makeGroceryItem({
       id: 'g1', name: 'Olive oil', onList: true, checked: true, quantity: '1 l',

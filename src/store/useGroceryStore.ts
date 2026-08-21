@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, Shop, StoreAlias } from '../types';
+import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -14,6 +14,7 @@ import {
   dbUpdateGroceryShop,
   dbDeleteGroceryShop,
   dbSetShopExcludeFromSuggestions,
+  dbSetShopReceiptStyle,
   dbGetAllItemShopLinks,
   dbSetItemShopLink,
   dbDeleteItemShopLink,
@@ -551,6 +552,8 @@ interface GroceryStore {
    * primaryShopFor/exclusiveShopFor and the grocery-run task's store picker
    * while leaving manual linking and finishShopping untouched. */
   setShopExcludedFromSuggestions: (id: string, excluded: boolean) => void;
+  /** What this store's receipts are worth reading. See ReceiptStyle. */
+  setShopReceiptStyle: (id: string, style: ReceiptStyle) => void;
   /** Assert "this item is available here" without a purchase behind it. */
   /**
    * Records what a review sheet was applied with, so the same phrases resolve
@@ -2614,6 +2617,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       sortOrder: get().shops.reduce((m, s) => Math.max(m, s.sortOrder), 0) + 1,
       createdAt: new Date().toISOString(),
       excludeFromSuggestions: false,
+      // Nothing infers this. An ordinary receipt is the default, and a store
+      // that prints a bad one is something only the user can tell us.
+      receiptStyle: 'itemized',
     };
     dbInsertGroceryShop(shop);
     set(s => ({ shops: [...s.shops, shop] }));
@@ -2686,6 +2692,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({
       shops: s.shops.map(x => (x.id === id ? { ...x, excludeFromSuggestions: excluded } : x)),
     }));
+  },
+
+  setShopReceiptStyle(id, style) {
+    dbSetShopReceiptStyle(id, style);
+    set(s => ({ shops: s.shops.map(sh => (sh.id === id ? { ...sh, receiptStyle: style } : sh)) }));
   },
 
   rememberAliases(drafts) {

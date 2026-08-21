@@ -27,6 +27,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { PillGroup } from './PillGroup';
+import { SegmentedControl } from './SegmentedControl';
 import { WhenPicker } from './WhenPicker';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
@@ -40,10 +41,12 @@ import {
   type ReceiptCaution,
   type ReceiptMatch,
 } from '../utils/receiptMatch';
-import { formatPrice } from '../utils/groceryPrice';
+import { formatPrice, typicalPriceFor } from '../utils/groceryPrice';
+import { ReceiptPricePairing } from './ReceiptPricePairing';
+import { autoPairing, pricesByItemId, type Pairing } from '../utils/pricePairing';
 import { formatScheduledDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
-import { SHOP_NAME_MAX_LENGTH } from '../types';
+import { SHOP_NAME_MAX_LENGTH, type ReceiptStyle } from '../types';
 
 /**
  * One "Left alone" line the user opted to add as bought instead — either
@@ -133,6 +136,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const addShop = useGroceryStore(s => s.addShop);
+  const setShopReceiptStyle = useGroceryStore(s => s.setShopReceiptStyle);
   const rememberAliases = useGroceryStore(s => s.rememberAliases);
   const aliasItemFor = useGroceryStore(s => s.aliasItemFor);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
@@ -152,6 +156,13 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   /** "Left alone" rows opted in to "Add as bought", by index into `unclaimed` (#1805). */
   const [addAsBought, setAddAsBought] = useState<Set<number>>(new Set());
+  /**
+   * Which price on an opaque store's receipt belongs to which row. Empty until
+   * the user pairs, or until `autoPairing` finds an ordering that is forced.
+   */
+  const [pairing, setPairing] = useState<Pairing>({});
+  /** The row waiting for a price. Held here so a re-render doesn't drop it. */
+  const [pairSelectedId, setPairSelectedId] = useState<string | null>(null);
 
   const input = useRecipeImportSource('photo', 'read a receipt');
   const { photo, reset: resetInput } = input;
@@ -167,6 +178,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
     setDateImplausible(false);
     setDatePickerOpen(false);
     setAddAsBought(new Set());
+    setPairing({});
+    setPairSelectedId(null);
     resetInput();
   }, [resetInput]);
 
@@ -246,6 +259,20 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
   };
 
   const handleApply = () => {
+    if (opaque) {
+      // Nothing was matched, so there is nothing to remember and nothing to add
+      // as bought — an opaque line has no name to learn. The pairing is the
+      // whole answer: these rows came home, and this is what each cost.
+      haptics.success();
+      onApply(
+        shopId,
+        Object.keys(pairing),
+        pricesByItemId(pairing, pairPrices),
+        purchasedDate.toISOString(),
+        []
+      );
+      return;
+    }
     const priceById: Record<string, number> = {};
     for (const match of matches) {
       if (!match.itemId || !accepted.has(match.itemId)) continue;
@@ -289,6 +316,68 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
 
   const nameFor = (itemId: string) => items.find(i => i.id === itemId)?.name ?? '';
 
+  const receiptStyleOf = (id: string): ReceiptStyle =>
+    shops.find(s => s.id === id)?.receiptStyle ?? 'itemized';
+
+  const RECEIPT_STYLE_OPTIONS: { value: ReceiptStyle; label: string }[] = [
+    { value: 'itemized', label: 'Item names' },
+    { value: 'opaque', label: 'Prices only' },
+    { value: 'none', label: 'No receipt' },
+  ];
+
+  /**
+   * Whether the store now selected prints prices without names.
+   *
+   * Derived from the *currently picked* store rather than settled once when the
+   * receipt is read, so correcting the store switches the sheet's whole mode.
+   * That is the coherent behaviour: the claim is about a printer, and picking a
+   * different store is saying a different printer produced this paper.
+   */
+  const opaque = shops.find(s => s.id === shopId)?.receiptStyle === 'opaque';
+
+  /**
+   * The rows an opaque receipt's prices get paired onto: what's on the list
+   * right now.
+   *
+   * The list is the right source rather than the receipt, because at an opaque
+   * store the receipt has nothing on it to make rows *from* — that is the whole
+   * problem. What the trip bought is either already ticked here or was scanned
+   * in beforehand, and either way it is on the list.
+   */
+  const pairRows = useMemo(
+    () => items.filter(i => i.onList).map(i => ({ id: i.id, name: i.name })),
+    [items]
+  );
+
+  /** Every price the receipt charged, in printed order. */
+  const pairPrices = useMemo(
+    () => (receipt?.lines ?? [])
+      .map(l => l.priceMinor)
+      .filter((p): p is number => p !== null),
+    [receipt]
+  );
+
+  // Runs once per (receipt, store) rather than on every pairing change, or it
+  // would fight the user: clearing a pair they just undid would re-apply the
+  // guess on the next render. Almost always a no-op — see `autoPairing`.
+  useEffect(() => {
+    if (!opaque || !receipt) return;
+    setPairing(
+      autoPairing(
+        pairRows.map(row => {
+          const item = items.find(i => i.id === row.id);
+          return {
+            id: row.id,
+            baselineMinor: item ? typicalPriceFor(item, shopId, itemShops)?.minor ?? null : null,
+          };
+        }),
+        pairPrices
+      )
+    );
+    setPairSelectedId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opaque, receipt, shopId]);
+
   const claimed = matches.filter((m): m is ReceiptMatch & { itemId: string } => m.itemId !== null);
   const unclaimed = matches.filter(m => m.itemId === null);
   /**
@@ -312,7 +401,11 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
       (sum, m, i) => (addAsBought.has(i) && m.line.priceMinor !== null ? sum + m.line.priceMinor : sum),
       0
     );
-  const acceptedCount = accepted.size + addAsBought.size;
+  // In pair mode a pairing *is* the assertion that a row came home and cost
+  // this, so it stands in for the checkbox the itemized flow uses.
+  const acceptedCount = opaque
+    ? Object.keys(pairing).length
+    : accepted.size + addAsBought.size;
 
   /**
    * Why a row is worth a second look, in the app's own words.
@@ -387,6 +480,98 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
     );
   };
 
+  /**
+   * Extracted so pair mode can reuse them verbatim. Both questions are about
+   * the trip rather than about the lines, so they are asked identically
+   * whichever kind of receipt this is — and an opaque store *especially* needs
+   * the store picker, since that is the control that put the sheet in this mode
+   * and the only way back out of it.
+   */
+  const storePicker = () => (
+    <>
+      <Text style={styles.label}>WHERE DID YOU SHOP?</Text>
+      <Text style={styles.hint}>
+        {receipt?.storeName
+          ? `The receipt says “${receipt.storeName}”.`
+          : 'The receipt doesn’t name a store.'}{' '}
+        Naming a store is what lets you see which store has which items later.
+      </Text>
+
+      <View style={styles.pills}>
+        <PillGroup
+          key={String(visible)}
+          noun="store"
+          surface="page"
+          createMaxLength={SHOP_NAME_MAX_LENGTH}
+          onCreate={handleAddShop}
+          options={[
+            {
+              key: '__none__',
+              label: 'No store',
+              pinned: true,
+              selected: shopId === null,
+              onPress: () => { haptics.tap(); setShopId(null); },
+            },
+            ...shops.map(shop => ({
+              key: shop.id,
+              label: shop.name,
+              selected: shop.id === shopId,
+              onPress: () => { haptics.tap(); setShopId(shop.id); },
+            })),
+          ]}
+        />
+      </View>
+
+      {/* Asked here rather than in a settings screen, and only once a store is
+          named, on the same reasoning ItemShopLink.unavailableAt is captured in
+          the finish sheet: this is the only moment anyone knows the answer. You
+          have just photographed the thing and are looking at what came back. */}
+      {!!shopId && (
+        <View style={styles.styleSection}>
+          <Text style={styles.label}>WHAT THIS STORE'S RECEIPTS SHOW</Text>
+          <SegmentedControl
+            options={RECEIPT_STYLE_OPTIONS}
+            value={receiptStyleOf(shopId)}
+            onChange={value => {
+              haptics.tap();
+              setShopReceiptStyle(shopId, value);
+            }}
+            label="What this store's receipts show"
+            surface="page"
+          />
+        </View>
+      )}
+    </>
+  );
+
+  const datePicker = () => (
+    <>
+      <Text style={styles.label}>WHEN DID YOU SHOP?</Text>
+      <Text style={styles.hint}>
+        Everything checked gets dated when the trip actually happened, and any use-by day it
+        starts is worked out from there.
+      </Text>
+      <View style={styles.dateSection}>
+        <TouchableOpacity
+          style={styles.dateRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => setDatePickerOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Purchased ${formatScheduledDate(purchasedDate.toISOString())}`}
+        >
+          <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.textSecondary} />
+          <Text style={styles.dateValue}>{formatScheduledDate(purchasedDate.toISOString())}</Text>
+          <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+        </TouchableOpacity>
+        {dateImplausible && (
+          <Text style={styles.dateCaution}>
+            The date on the receipt didn’t look right, so this defaulted to today. Check it.
+          </Text>
+        )}
+      </View>
+    </>
+  );
+
   const body = () => {
     if (loading) {
       return (
@@ -445,6 +630,39 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
       );
     }
 
+    // Contradictory, and worth saying so rather than reading the paper anyway:
+    // the store picker above is the control that got here, so the way out is
+    // in front of the user.
+    if (receiptStyleOf(shopId ?? '') === 'none') {
+      return (
+        <>
+          {storePicker()}
+          <Text style={styles.hint}>
+            You've said this store doesn't give a receipt, so there's nothing here to read. Pick a
+            different store above, or change what its receipts show.
+          </Text>
+        </>
+      );
+    }
+
+    if (opaque) {
+      return (
+        <>
+          {storePicker()}
+          {datePicker()}
+          <ReceiptPricePairing
+            rows={pairRows}
+            prices={pairPrices}
+            pairing={pairing}
+            onChangePairing={setPairing}
+            selectedId={pairSelectedId}
+            onSelect={setPairSelectedId}
+            currencySymbol={currencySymbol}
+          />
+        </>
+      );
+    }
+
     return (
       <>
         <Text style={styles.intro}>
@@ -455,62 +673,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
           . Nothing is recorded until you finish shopping.
         </Text>
 
-        <Text style={styles.label}>WHERE DID YOU SHOP?</Text>
-        <Text style={styles.hint}>
-          {receipt.storeName
-            ? `The receipt says “${receipt.storeName}”.`
-            : 'The receipt doesn’t name a store.'}{' '}
-          Naming a store is what lets you see which store has which items later.
-        </Text>
-
-        <View style={styles.pills}>
-          <PillGroup
-            key={String(visible)}
-            noun="store"
-            surface="page"
-            createMaxLength={SHOP_NAME_MAX_LENGTH}
-            onCreate={handleAddShop}
-            options={[
-              {
-                key: '__none__',
-                label: 'No store',
-                pinned: true,
-                selected: shopId === null,
-                onPress: () => { haptics.tap(); setShopId(null); },
-              },
-              ...shops.map(shop => ({
-                key: shop.id,
-                label: shop.name,
-                selected: shop.id === shopId,
-                onPress: () => { haptics.tap(); setShopId(shop.id); },
-              })),
-            ]}
-          />
-        </View>
-
-        <Text style={styles.label}>WHEN DID YOU SHOP?</Text>
-        <Text style={styles.hint}>
-          Everything checked gets dated when the trip actually happened, and any use-by day it
-          starts is worked out from there.
-        </Text>
-        <View style={styles.dateSection}>
-          <TouchableOpacity
-            style={styles.dateRow}
-            activeOpacity={interaction.activeOpacity}
-            onPress={() => setDatePickerOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel={`Purchased ${formatScheduledDate(purchasedDate.toISOString())}`}
-          >
-            <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.textSecondary} />
-            <Text style={styles.dateValue}>{formatScheduledDate(purchasedDate.toISOString())}</Text>
-            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-          </TouchableOpacity>
-          {dateImplausible && (
-            <Text style={styles.dateCaution}>
-              The date on the receipt didn’t look right, so this defaulted to today. Check it.
-            </Text>
-          )}
-        </View>
+        {storePicker()}
+        {datePicker()}
 
         {claimed.length > 0 && (
           <>
@@ -670,6 +834,7 @@ function makeStyles(colors: Colors) {
     },
     pills: { marginBottom: spacing.lg },
     dateSection: { marginBottom: spacing.lg },
+    styleSection: { marginBottom: spacing.lg },
     dateRow: {
       flexDirection: 'row',
       alignItems: 'center',

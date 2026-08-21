@@ -115,6 +115,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring
 - `src/utils/gtin.ts` — gtinCheckDigit, normalizeGtin, isGtin, formatGtin, GTIN_MISS_TTL_DAYS, isCacheEntryFresh
 - `src/utils/storeAliases.ts` — aliasKeyFor, aliasItemIdFor, AliasDraft, aliasDraftsFrom
+- `src/utils/pricePairing.ts` — PairItem, Pairing, autoPairing, pairWith, unpair, unpairedPriceIndexes, pricesByItemId
 - `src/utils/scanResolve.ts` — ScannedItem, shopperNameFor, scannedItemFor, unknownScannedItem, alreadyScanned, matchScans
 - `src/utils/receiptMatch.ts` — ReceiptMatchConfidence, ReceiptMatch, receiptMatchConfidence, matchReceiptLines, matchReceiptShop, ReceiptCaution, receiptCautionsFor, acceptedByDefault, isPlausibleReceiptDate
 - `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, parseRecipeChoices, makeComponent, ChoiceResolution, choiceGroupKey, activeComponents, activeIngredients, recipeMap, ResolvedComponent, +19 more

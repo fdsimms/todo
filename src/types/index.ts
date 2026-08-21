@@ -1621,6 +1621,45 @@ export interface Shop {
   // primaryShopFor/exclusiveShopFor and the grocery-run task button's store
   // picker. Same naming convention as Category.excludeFromPinSuggestions.
   excludeFromSuggestions: boolean;
+  /**
+   * What this store's receipts are good for. See ReceiptStyle.
+   *
+   * **Data, not a hardcoded special case.** The store this was built for is one
+   * local shop whose register prints every line as "GROCERIES" with a price and
+   * no name, but nothing about that is special enough to earn a branch in the
+   * code — plenty of small stores do it, and the user is the only one who knows
+   * which of theirs does.
+   */
+  receiptStyle: ReceiptStyle;
+}
+
+/**
+ * Whether a store's receipt can be read, and what to offer when it can't.
+ *
+ * Three values rather than a flag, because two different things go wrong and
+ * they want different answers:
+ *
+ * - `itemized` — an ordinary receipt with names on it. Scan it.
+ * - `opaque` — it prints prices but not names ("GROCERIES ... 4.18"). There is
+ *   nothing for the extractor to match on, so reading it is a waste of a
+ *   request. But the *prices* are real, and they are the one thing a barcode
+ *   can't know, so this offers pairing instead: what you scanned in one column,
+ *   what you were charged in the other.
+ * - `none` — no useful paper at all. Offers nothing, because a store that hands
+ *   you nothing has no prices to pair either.
+ *
+ * `opaque` and `none` both skip extraction, which is why the pair looks
+ * collapsible. They must not be: the difference is whether there is a column of
+ * prices to work with, and collapsing them would either offer an empty pairing
+ * screen at a store with no receipt or hide pairing at the store it was built
+ * for.
+ */
+export type ReceiptStyle = 'itemized' | 'opaque' | 'none';
+
+export const RECEIPT_STYLES: ReceiptStyle[] = ['itemized', 'opaque', 'none'];
+
+export function isReceiptStyle(value: unknown): value is ReceiptStyle {
+  return RECEIPT_STYLES.includes(value as ReceiptStyle);
 }
 
 // One (item, shop) pair — an aggregate, deliberately NOT a log of trips.

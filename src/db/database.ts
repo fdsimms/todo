@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, StoreAlias, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
-import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
+import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, ReceiptStyle, Shop, StoreAlias, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
@@ -551,6 +551,10 @@ export function initDatabase(): void {
     // meant to drop out of suggestions. Same naming convention as
     // categories' exclude_from_pin_suggestions.
     'ALTER TABLE grocery_shops ADD COLUMN exclude_from_suggestions INTEGER NOT NULL DEFAULT 0',
+    // See ReceiptStyle. Text rather than an integer flag because it is three
+    // states and will read back as itself in a sqlite browser; 'itemized' for
+    // every existing row, which is what they have all been treated as.
+    "ALTER TABLE grocery_shops ADD COLUMN receipt_style TEXT NOT NULL DEFAULT 'itemized'",
     // Null for every existing recipe — splits the old single sourceName
     // attribution into author/source (#1266). Not backfilled from
     // source_name: an old value can't be reliably assigned to one or the
@@ -2583,6 +2587,11 @@ function rowToShop(row: Record<string, unknown>): Shop {
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
     excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
+    // Anything unrecognised reads as 'itemized', which is also what a row that
+    // predates the column gets: an ordinary receipt is the overwhelming default
+    // and the only value that costs nothing to be wrong about (you scan, and it
+    // works or it doesn't).
+    receiptStyle: isReceiptStyle(row.receipt_style) ? row.receipt_style : 'itemized',
   };
 }
 
@@ -2609,6 +2618,10 @@ export function dbUpdateGroceryShop(shop: Shop): void {
 
 export function dbSetShopExcludeFromSuggestions(id: string, exclude: boolean): void {
   db.runSync('UPDATE grocery_shops SET exclude_from_suggestions = ? WHERE id = ?', [exclude ? 1 : 0, id]);
+}
+
+export function dbSetShopReceiptStyle(id: string, style: ReceiptStyle): void {
+  db.runSync('UPDATE grocery_shops SET receipt_style = ? WHERE id = ?', [style, id]);
 }
 
 /**
