@@ -1,4 +1,5 @@
-import type { GroceryItem, ItemShopLink, Shop } from '../types';
+import type { GroceryItem, ItemProduct, ItemShopLink, Shop } from '../types';
+import { describePreferredProduct, lacksPreferredProduct } from './groceryProduct';
 import { groceryNameKey } from './groceryParse';
 
 /**
@@ -48,15 +49,15 @@ export function isAsserted(link: ItemShopLink): boolean {
 
 /**
  * The second negative, and the one this feature exists for: the user has said
- * this store hasn't got the brand they want. The store stocks the item — that's
+ * this store hasn't got the product they want. The store stocks the item — that's
  * what makes this a different claim from `isUnavailable` — it just hasn't got
  * yours.
  *
- * **Only an asserted claim counts, never an observed brand.** `ItemShopLink`
- * also records the brand you last got at a store, and it is tempting to read a
+ * **Only an asserted claim counts, never an observed product.** `ItemShopLink`
+ * also records the product you last got at a store, and it is tempting to read a
  * mismatch there as this: you got Lucerne at Safeway, so Safeway must not have
  * Good Culture. It mustn't, and the reason is simply that **a store carries
- * more than one brand of a thing**. Safeway stocking Lucerne is not evidence
+ * more than one version of a thing**. Safeway stocking Lucerne is not evidence
  * about whether it also stocks Good Culture; it is evidence about one purchase.
  * Inferring the absence would drop stores that have exactly what you want, and
  * it is the same unfalsifiable move shoppingTrip.ts deleted `likelyItemIds` to
@@ -65,11 +66,14 @@ export function isAsserted(link: ItemShopLink): boolean {
  * So this reads the stamped claim and nothing else. Unknown stays unknown, and
  * unknown always counts.
  *
- * Read only while the item is strict: a brand nobody made a rule of is a
- * preference, and a preference is not a reason to drop a store.
+ * Read only while the item is strict, and only for a claim naming the item's
+ * *current* preferred product: a preference nobody made a rule of isn't a
+ * reason to drop a store, and a claim about a box you no longer want is
+ * history rather than evidence. See `lacksPreferredProduct`, which owns both
+ * halves of that test.
  */
-export function lacksWantedBrand(link: ItemShopLink, item: GroceryItem): boolean {
-  return item.brandStrict && !!item.brand && link.brandUnavailableAt !== null;
+export function lacksWantedProduct(link: ItemShopLink, item: GroceryItem): boolean {
+  return lacksPreferredProduct(item, link);
 }
 
 /**
@@ -77,7 +81,7 @@ export function lacksWantedBrand(link: ItemShopLink, item: GroceryItem): boolean
  *
  * Two ways a store can fail it, and they're different claims: the user said the
  * store doesn't stock the item at all (`unavailableAt`), or that it hasn't got
- * the brand they want (`brandUnavailableAt`). Both mean "not a place to get
+ * the product they want (`unavailableProductIds`). Both mean "not a place to get
  * this"; only the first means "they haven't got it".
  *
  * Kept as one predicate rather than two filters at each call site because there
@@ -85,7 +89,7 @@ export function lacksWantedBrand(link: ItemShopLink, item: GroceryItem): boolean
  * having remembered the first rule and forgotten the second.
  */
 export function countsForItem(link: ItemShopLink, item: GroceryItem): boolean {
-  return !isUnavailable(link) && !lacksWantedBrand(link, item);
+  return !isUnavailable(link) && !lacksWantedProduct(link, item);
 }
 
 function byPurchasesThenRecency(a: ItemShopLink, b: ItemShopLink): number {
@@ -110,10 +114,10 @@ export interface ShopWithCount {
  * point of the negative claim is that the answer is "not here any more".
  * `unavailableShopsFor` is the other half, for the one caller that shows and
  * undoes those claims. **Nor is a store the user has said hasn't got their
- * brand**, when the item insists on one — `withoutBrandShopsFor` is that half,
+ * product**, when the item insists on one — `withoutProductShopsFor` is that half,
  * and `countsForItem` is the gate both go through.
  *
- * Takes the whole item rather than an id because the brand rule is a fact about
+ * Takes the whole item rather than an id because the product rule is a fact about
  * the item, not about the link — the id alone can't answer it.
  *
  * A link naming a store that no longer exists is dropped rather than rendered
@@ -159,7 +163,7 @@ export function unavailableShopsFor(
 }
 
 /**
- * The stores the user has said haven't got their brand — the parallel of
+ * The stores the user has said haven't got their product — the parallel of
  * `unavailableShopsFor`, and for the same reason: the default read must not
  * have to remember to filter, and the one surface that shows and undoes these
  * claims is asking a different question.
@@ -170,13 +174,13 @@ export function unavailableShopsFor(
  * Empty whenever the item isn't strict, so a caller can render it unguarded:
  * with the switch off there are no claims in force, only a preference.
  */
-export function withoutBrandShopsFor(
+export function withoutProductShopsFor(
   item: GroceryItem,
   links: readonly ItemShopLink[],
   shops: readonly Shop[]
 ): Shop[] {
   const marked = new Set(
-    links.filter(l => l.itemId === item.id && lacksWantedBrand(l, item)).map(l => l.shopId)
+    links.filter(l => l.itemId === item.id && lacksWantedProduct(l, item)).map(l => l.shopId)
   );
   return shops.filter(s => marked.has(s.id));
 }
@@ -239,7 +243,7 @@ export function itemIdsForShop(
     if (link.shopId !== shopId) continue;
     const item = byId.get(link.itemId);
     // Resolve-or-shrug on a link whose item is gone, same as shopsForItem does
-    // for a missing shop — and it can't be brand-judged without the item
+    // for a missing shop — and it can't be product-judged without the item
     // anyway.
     if (!item || !countsForItem(link, item)) continue;
     out.add(link.itemId);
@@ -276,7 +280,8 @@ export function itemCountsByShop(
 export function describeShops(
   item: GroceryItem,
   links: readonly ItemShopLink[],
-  shops: readonly Shop[]
+  shops: readonly Shop[],
+  products: readonly ItemProduct[] = []
 ): string | null {
   const bought = item.purchaseCount > 0
     ? `Bought ${item.purchaseCount} ${item.purchaseCount === 1 ? 'time' : 'times'}`
@@ -287,21 +292,27 @@ export function describeShops(
   // read as qualifying the count in front of them. An item bought 7 times that
   // Safeway has stopped stocking is both of those things at once.
   const notAt = unavailableShopsFor(item.id, links, shops);
-  // The brand-level negatives ride as their own trailing clause, after the
+  // The product-level negatives ride as their own trailing clause, after the
   // not-stocked one and worded differently on purpose: "not at Safeway" and
-  // "no Good Culture at Safeway" are different facts, and collapsing them would
-  // tell the user a shop had nothing when it had the item and not their brand.
-  const withoutBrand = withoutBrandShopsFor(item, links, shops);
+  // "no Good Culture low fat at Safeway" are different facts, and collapsing
+  // them would tell the user a shop had nothing when it had the item and not
+  // the box they want.
+  const withoutProduct = withoutProductShopsFor(item, links, shops);
+  // The preferred product's own words, from the one helper that owns them. Null
+  // only if the pointer dangles, which `withoutProductShopsFor` has already
+  // ruled out — a claim is only in force while it names the preferred product,
+  // and a preference that resolves to nothing can't be strict about anything.
+  const wanted = describePreferredProduct(item, products);
   const withClauses = (head: string | null): string | null => {
     let out = head;
     if (notAt.length > 0) {
       const names = notAt.map(s => s.name).join(', ');
       out = out ? `${out} · not at ${names}` : `Not at ${names}`;
     }
-    if (withoutBrand.length > 0) {
-      const names = withoutBrand.map(s => s.name).join(', ');
-      const clause = `no ${item.brand} at ${names}`;
-      out = out ? `${out} · ${clause}` : `No ${item.brand} at ${names}`;
+    if (withoutProduct.length > 0 && wanted) {
+      const names = withoutProduct.map(s => s.name).join(', ');
+      const clause = `no ${wanted} at ${names}`;
+      out = out ? `${out} · ${clause}` : `No ${wanted} at ${names}`;
     }
     return out;
   };

@@ -717,7 +717,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds a grocery catalog bigger than the list, with a trip in progress', () => {
-    const { items, itemShops } = useGroceryStore.getState();
+    const { items, itemShops, itemProducts } = useGroceryStore.getState();
     const onList = items.filter(i => i.onList);
 
     expect(onList.length).toBeGreaterThan(5);
@@ -727,31 +727,43 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(onList.some(i => i.checked)).toBe(true);
     expect(items.some(i => i.quantity)).toBe(true);
     expect(items.some(i => i.note)).toBe(true);
-    // A brand preference — invisible until a row carries one, so without a
+    // A product preference — invisible until a row carries one, so without a
     // seeded instance the feature reads as one the app doesn't have. It has to
     // sit beside the name rather than in it: the row is still plain "cottage
     // cheese" to a recipe and to its own purchase history.
-    const branded = items.find(i => i.brand);
-    expect(branded).toBeDefined();
-    expect(branded!.nameKey).not.toContain(branded!.brand!.toLowerCase());
-    // ...and the variant beside it, which is the pairing the caption exists to
-    // compose ("Good Culture low fat"). Out of the name key for the same reason
-    // the brand is: one row, one purchase history, whichever tub it names.
-    const varianted = items.find(i => i.variant);
-    expect(varianted).toBeDefined();
-    expect(varianted!.brand).toBeTruthy();
-    expect(varianted!.nameKey).not.toContain(varianted!.variant!.toLowerCase());
-    // ...and the rule that makes a brand reach store coverage, plus the claim
+    const preferred = items.find(i => i.preferredProductId);
+    expect(preferred).toBeDefined();
+    const preferredProduct = itemProducts.find(p => p.id === preferred!.preferredProductId)!;
+    expect(preferredProduct).toBeDefined();
+    expect(preferred!.nameKey).not.toContain(preferredProduct.brand!.toLowerCase());
+    // ...brand and variant together, which is the pairing the caption exists to
+    // compose ("Good Culture low fat"), and the brandless case beside it, which
+    // is ordinary for a store's own label.
+    expect(itemProducts.some(p => p.brand && p.variant)).toBe(true);
+    expect(itemProducts.some(p => !p.brand && p.variant)).toBe(true);
+    // ...an item with several boxes on record, which is the whole shape the
+    // remodel exists for: a pair of strings could hold only the first.
+    const counts = new Map<string, number>();
+    for (const p of itemProducts) counts.set(p.itemId, (counts.get(p.itemId) ?? 0) + 1);
+    expect(Math.max(...counts.values())).toBeGreaterThan(1);
+    // ...and a rating, on a box that isn't the preferred one — "the one I
+    // avoid" and "the one I want" being the same row would read as a bug.
+    const avoided = itemProducts.find(p => p.rating === 'avoid');
+    expect(avoided).toBeDefined();
+    expect(items.find(i => i.id === avoided!.itemId)!.preferredProductId).not.toBe(avoided!.id);
+    // ...and the rule that makes a product reach store coverage, plus the claim
     // it reads. A strict item nobody has ruled a store out for would filter
     // nothing, so the switch would look inert.
-    const strict = items.find(i => i.brandStrict);
+    const strict = items.find(i => i.productStrict);
     expect(strict).toBeDefined();
-    expect(itemShops.some(l => l.itemId === strict!.id && l.brandUnavailableAt)).toBe(true);
+    expect(itemShops.some(
+      l => l.itemId === strict!.id && l.unavailableProductIds[strict!.preferredProductId!]
+    )).toBe(true);
     // ...while another store is left unmarked, which is what shows that not
     // having ruled a shop out still counts as it having the item.
-    expect(
-      itemShops.some(l => l.itemId === strict!.id && !l.brandUnavailableAt)
-    ).toBe(true);
+    expect(itemShops.some(
+      l => l.itemId === strict!.id && !l.unavailableProductIds[strict!.preferredProductId!]
+    )).toBe(true);
     // Spread purchase counts, not a flat list of ones — the ranking signal.
     expect(Math.max(...items.map(i => i.purchaseCount))).toBeGreaterThan(1);
     // Attributed to the recipe that put it there.
@@ -1064,7 +1076,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds a trip in progress, with rows that have something to say about it', () => {
-    const { items, itemShops, shops, itemSubs } = useGroceryStore.getState();
+    const { items, itemShops, shops, itemSubs, itemProducts } = useGroceryStore.getState();
 
     // The banner, and the only state in which the list mentions stores at all.
     const trip = useGroceryStore.getState().activeShop();
@@ -1072,16 +1084,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     const markers = items
       .filter(i => i.onList)
-      .map(i => tripMarkerFor(i, itemShops, shops, trip!, itemSubs, items))
+      .map(i => tripMarkerFor(i, itemShops, shops, trip!, itemSubs, items, itemProducts))
       .filter((m): m is NonNullable<typeof m> => !!m);
 
     // The three kinds this seed can honestly produce: the store's own negative
     // claim, an item on record at exactly one other store, and a store the user
-    // has said hasn't got their brand. Without a row carrying one, the whole
+    // has said hasn't got their product. Without a row carrying one, the whole
     // feature is a banner and nothing else.
     expect(markers.some(m => m.kind === 'unavailable')).toBe(true);
     expect(markers.some(m => m.kind === 'only')).toBe(true);
-    expect(markers.some(m => m.kind === 'withoutBrand')).toBe(true);
+    expect(markers.some(m => m.kind === 'withoutProduct')).toBe(true);
     // ...and most of the list still says nothing, which is the point.
     expect(markers.length).toBeLessThan(items.filter(i => i.onList).length);
   });

@@ -76,7 +76,8 @@ import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
-import type { GroceryItem, Recipe, Shop } from '../types';
+import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
+import { preferredProductOf } from '../utils/groceryProduct';
 
 // The same scheme a recurring "Grocery run" task already carries in its
 // linkUrl — looked up by name rather than duplicated as a literal, so the two
@@ -139,6 +140,7 @@ export function GroceryScreen() {
   const groupBy = useGroceryStore(s => s.groceryGroupBy);
   const cartHoldIds = useGroceryStore(useShallow(s => s.cartHoldIds));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const toggleChecked = useGroceryStore(s => s.toggleChecked);
   const setCheckedMany = useGroceryStore(s => s.setCheckedMany);
   const setAisleMany = useGroceryStore(s => s.setAisleMany);
@@ -293,12 +295,25 @@ export function GroceryScreen() {
   // rather than `describeTripMarker`: the group's header already says "not
   // here" once for every row beneath it, so restating it per row would be
   // exactly the over-stuffed caption #1567 was shortened to avoid.
+  // The preferred product per row, resolved once for the whole list rather
+  // than in each row. Same call `storeMarkers` above makes: `GroceryRow` is
+  // memoised, so handing every row the products array would re-render all of
+  // them whenever any one item's products changed.
+  const preferredProductById = useMemo(() => {
+    const out = new Map<string, ItemProduct>();
+    for (const item of items) {
+      const product = preferredProductOf(item, itemProducts);
+      if (product) out.set(item.id, product);
+    }
+    return out;
+  }, [items, itemProducts]);
+
   const storeMarkers = useMemo(() => {
     const out = new Map<string, { text: string; substituteId?: string; unavailable: boolean }>();
     if (!activeTripShop) return out;
     for (const item of items) {
       if (!item.onList) continue;
-      const marker = tripMarkerFor(item, itemShops, shops, activeTripShop, itemSubs, items);
+      const marker = tripMarkerFor(item, itemShops, shops, activeTripShop, itemSubs, items, itemProducts);
       if (!marker) continue;
       const unavailable = marker.kind === 'unavailable';
       out.set(item.id, {
@@ -308,7 +323,7 @@ export function GroceryScreen() {
       });
     }
     return out;
-  }, [activeTripShop, items, itemShops, shops, itemSubs]);
+  }, [activeTripShop, items, itemShops, shops, itemSubs, itemProducts]);
 
   const checkedCount = useMemo(() => items.filter(i => i.onList && i.checked).length, [items]);
   // Empty for nothing left to buy, which is what the header action's disabled
@@ -943,6 +958,7 @@ export function GroceryScreen() {
           onSelect={toggleSelection}
           onSwipeSelect={id => enterSelectionMode(id)}
           alternatives={alternativeCaptionById.get(row.item.id)}
+          product={preferredProductById.get(row.item.id)}
           storeMarker={storeMarkers.get(row.item.id)?.text}
           swapSubstituteId={storeMarkers.get(row.item.id)?.substituteId}
           onSwapForSubstitute={handleSwapForSubstitute}

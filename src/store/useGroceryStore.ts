@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroceryItem, ItemShopLink, ItemSubLink, Shop } from '../types';
+import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, Shop } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -20,6 +20,9 @@ import {
   dbGetAllItemSubLinks,
   dbSetItemSubLink,
   dbDeleteItemSubLink,
+  dbGetAllItemProducts,
+  dbSetItemProduct,
+  dbDeleteItemProduct,
   dbGetLastShopId,
   dbSetLastShopId,
   dbGetTripShopId,
@@ -58,6 +61,7 @@ import {
 import { isTripLive, resolveActiveTrip } from '../utils/activeTrip';
 import { scheduleTripReminder, cancelTripReminder } from '../utils/notifications';
 import { substituteQuantity } from '../utils/itemSubs';
+import { productKeyFor, productsForItem } from '../utils/groceryProduct';
 
 /**
  * The grocery catalog, which is also the shopping list.
@@ -167,6 +171,12 @@ interface GroceryStore {
    * see ItemSubLink, and utils/itemSubs.ts for the reads.
    */
   itemSubs: ItemSubLink[];
+  /**
+   * Every box the user has named, across every item, in one flat list — the
+   * same shape `itemShops` and `itemSubs` take, and read the same way (filter
+   * by `itemId`, resolve-or-shrug on a dangling pointer). See ItemProduct.
+   */
+  itemProducts: ItemProduct[];
   /** The store the last trip was finished at, if it still exists. */
   lastShopId: string | null;
   /**
@@ -288,29 +298,70 @@ interface GroceryStore {
   mergeItems: (fromId: string, intoId: string) => boolean;
   setNote: (id: string, note: string) => void;
   /**
-   * Which one to reach for — "Good Culture". A dumb setter like setNote: the
-   * empty string clears it back to "no opinion" rather than storing a blank,
-   * so the field and the pill state can't disagree about what null means.
+   * Name a box under an item — "Arnold's wheat" under Bread. Returns the
+   * product, which may be one that already existed: the brand/variant pair is
+   * the identity (see `ensureProductFor`), so naming a box twice is one box.
+   *
+   * Null when neither field says anything, which is the caller's cue that
+   * there was nothing to add.
+   *
+   * **Only the first one becomes the preference**, and that asymmetry is
+   * deliberate: the first box named on an item with no opinion yet plainly is
+   * the answer to "which one?", while a second is a box you're recording, not
+   * a decision you've made. Promoting every new one would mean the list you
+   * build to compare products silently re-decides for you each time you add
+   * to it. `setPreferredProduct` is the deliberate version.
    */
-  setBrand: (id: string, brand: string) => void;
+  addProduct: (
+    itemId: string,
+    fields: { brand: string | null; variant: string | null; note?: string; rating?: ProductRating | null }
+  ) => ItemProduct | null;
   /**
-   * Which one of that brand — "low fat", "4%". Same dumb setter as setBrand,
-   * down to clearing on empty. See GroceryItem.variant.
+   * Edit one box in place — its spelling, its note, its rating.
+   *
+   * Re-keys on a brand or variant change, so the identity follows the words.
+   * False when the edit would collide with another product of the same item:
+   * two boxes can't be the same box, and silently merging them would throw one
+   * of their ratings and purchase counts away. The caller says so instead.
    */
-  setVariant: (id: string, variant: string) => void;
+  updateProduct: (
+    id: string,
+    patch: { brand?: string | null; variant?: string | null; note?: string; rating?: ProductRating | null }
+  ) => boolean;
   /**
-   * "Only this brand" — whether the brand filters store availability or is just
-   * shown on the row. See GroceryItem.brandStrict.
+   * Which of an item's products it's asking for — the pointer that replaced
+   * the old brand/variant strings. Null is "any of them will do".
+   *
+   * See GroceryItem.preferredProductId.
    */
-  setBrandStrict: (id: string, strict: boolean) => void;
+  setPreferredProduct: (itemId: string, productId: string | null) => void;
   /**
-   * "They haven't got the brand I want here", and taking it back. The only
-   * claim a brand rule filters on — see ItemShopLink.brandUnavailableAt.
+   * Forget a box entirely. Every pointer at it goes with it (the preference,
+   * the "last got here" observations, the per-store claims about it) — see
+   * dbDeleteItemProduct, which owns that cascade.
+   *
+   * Deleting is genuinely rare and genuinely destructive: a product carries
+   * the only record of having tried it. Marking one `avoid` is what the user
+   * usually wants, and the sheet says so.
+   */
+  deleteProduct: (id: string) => void;
+  /**
+   * "Only this one" — whether the preferred product filters store availability
+   * or is just shown on the row. See GroceryItem.productStrict.
+   */
+  setProductStrict: (id: string, strict: boolean) => void;
+  /**
+   * "They haven't got the one I want here", and taking it back. The only claim
+   * a product rule filters on — see ItemShopLink.unavailableProductIds.
+   *
+   * The claim is stamped against the item's *preferred* product, because that
+   * is what the user is standing in front of the shelf failing to find. On an
+   * item with no preference there is nothing to claim, and this does nothing.
    *
    * Creates the link if there isn't one: the claim is about a store that stocks
    * the item, so it would be strange to require linking it first.
    */
-  setBrandUnavailable: (itemId: string, shopId: string, unavailable: boolean) => void;
+  setProductUnavailable: (itemId: string, shopId: string, unavailable: boolean) => void;
   /**
    * The pantry override — "Got it" / "Out of it" on GroceryItemSheet. A dumb
    * setter, same as setQuantity/setNote: the caller decides the value
@@ -653,6 +704,58 @@ function clearOtherStandingLinks(
 }
 
 /**
+ * Find-or-create one box under an item, without writing anything.
+ *
+ * Find rather than always-create, because `productKeyFor` is the identity and
+ * the UNIQUE index enforces it: typing "Arnold's" on a row that already has an
+ * Arnold's product means *that* product, not a second one that would split its
+ * rating and its purchase count in two. The same rule as addByName's own
+ * find-or-insert on `nameKey`, one level down.
+ *
+ * Null when neither half names anything — a product with no brand and no
+ * variant is the item itself, so there's nothing to create. Callers read that
+ * as "the user cleared the field", not as a failure.
+ *
+ * Pure, so the caller owns the db write and the `set()`; both call sites need
+ * to do slightly different things with the result.
+ */
+function ensureProductFor(
+  itemId: string,
+  brand: string | null,
+  variant: string | null,
+  products: readonly ItemProduct[],
+  createdAt: string
+): { product: ItemProduct; created: boolean } | null {
+  const productKey = productKeyFor(brand, variant);
+  if (!productKey) return null;
+  const existing = products.find(p => p.itemId === itemId && p.productKey === productKey);
+  // The stored spelling is left alone on a match, the way addByName's own
+  // find-or-insert deliberately does *not*: an item's name is the label on a
+  // row the user is looking at, while a product's is a value they picked from
+  // their own list — re-typing "arnolds" under a product filed as "Arnold's"
+  // is a match, not a correction. Editing the spelling is the product sheet's
+  // job, where the field shows what it's about to change.
+  if (existing) return { product: existing, created: false };
+  return {
+    created: true,
+    product: {
+      id: generateId(),
+      itemId,
+      brand,
+      variant,
+      productKey,
+      // Never inferred, in either direction. A box you just named is one you
+      // have no opinion about yet, and buying something is not liking it.
+      rating: null,
+      note: '',
+      purchaseCount: 0,
+      lastPurchasedAt: null,
+      createdAt,
+    },
+  };
+}
+
+/**
  * A brand-new catalog row, with every field nobody passes in already decided.
  *
  * Both insert paths go through it — addByName's list add and addToPantry's
@@ -672,8 +775,6 @@ function newItemRow(fields: {
   inCatalog: boolean;
   quantity?: string | null;
   note?: string | null;
-  brand?: string | null;
-  variant?: string | null;
   choiceGroup?: string | null;
   source?: { recipeId: string; recipeTitle: string };
   onHandUntil?: string | null;
@@ -682,20 +783,17 @@ function newItemRow(fields: {
     id: generateId(),
     name: fields.name,
     nameKey: fields.nameKey,
-    // Never *parsed* out of the typed line itself (see GroceryItem.brand) —
-    // "Good Culture cottage cheese" typed as a name is still just a name. What
-    // can set this is an explicit override — GroceryAddField's own Brand chip,
-    // the same channel quantity/note already use — so it falls back to null
-    // rather than being hardcoded to it. addByName's `existing` branch carries
-    // an established brand through on every later re-add because it spreads
-    // the row it found.
-    brand: fields.brand ?? null,
-    // A preference is not a rule — see GroceryItem.brandStrict. Nothing infers
-    // this, including from a brand being set.
-    brandStrict: false,
-    // Unparsed exactly like the brand above, and settable the same explicit
-    // way via the Variant chip. Carried through a re-add by the same spread.
-    variant: fields.variant ?? null,
+    // A fresh row has no products and so no preference. A brand typed into
+    // GroceryAddField's chip becomes a real ItemProduct *after* the row exists
+    // (addByName does that, since it needs the item's id), which is why this
+    // isn't a field on the factory the way quantity and note are.
+    //
+    // Nothing is ever *parsed* out of the typed line: "Good Culture cottage
+    // cheese" typed as a name is still just a name — see ItemProduct.brand.
+    preferredProductId: null,
+    // A preference is not a rule — see GroceryItem.productStrict. Nothing
+    // infers this, including from a product being named.
+    productStrict: false,
     aisle: fields.aisle,
     quantity: fields.quantity ?? null,
     // Never true from this path — a fresh row's quantity, if any, came from
@@ -861,6 +959,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   shops: [],
   itemShops: [],
   itemSubs: [],
+  itemProducts: [],
   lastShopId: null,
   tripShopId: null,
   tripStartedAt: null,
@@ -900,6 +999,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const shops = dbGetAllGroceryShops();
     const itemShops = dbGetAllItemShopLinks();
     const itemSubs = dbGetAllItemSubLinks();
+    const itemProducts = dbGetAllItemProducts();
     // Resolved against live shops rather than trusted: the setting outlives
     // the store it names, and a preselected shop that no longer exists would
     // record the next trip against nothing.
@@ -928,6 +1028,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       hiddenAisles,
       aisleOverrides: dbGetGroceryAisleOverrides(),
       shops,
+      itemProducts,
       itemShops,
       itemSubs,
       lastShopId,
@@ -1002,16 +1103,23 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // the list makes that row one option of the new pair, but a plain
         // re-add of apples must not dissolve a pair it's already in.
         choiceGroup: choiceGroup ?? existing.choiceGroup,
-        // And again for brand/variant — GroceryAddField's chips are the only
-        // caller that ever passes these, and only when the user actually
-        // typed into one.
-        brand: brand ?? existing.brand,
-        variant: variant ?? existing.variant,
         lastAddedAt: now,
       };
+      // And the same rule again for the box: GroceryAddField's Brand/Variant
+      // chips are the only caller that passes these, and only when the user
+      // actually typed into one — so a bare re-add leaves whatever preference
+      // the row already had. Naming one here both files it under the item and
+      // makes it the preference, since typing it into the add field is a
+      // statement about what you're going shopping for.
+      const ensured = ensureProductFor(existing.id, brand, variant, get().itemProducts, now);
+      if (ensured) {
+        updated.preferredProductId = ensured.product.id;
+        if (ensured.created) dbSetItemProduct(ensured.product);
+      }
       dbUpdateGroceryItem(updated);
       set(s => ({
         items: s.items.map(i => (i.id === existing.id ? updated : i)),
+        itemProducts: ensured?.created ? [...s.itemProducts, ensured.product] : s.itemProducts,
         cartHoldIds: s.cartHoldIds.filter(x => x !== existing.id),
       }));
       if (opts?.registerUndo !== false && !wasOnList) {
@@ -1036,8 +1144,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       aisle: placeAisle(get().aisleOverrides[key] ?? aisleForName(name), get().aisleOrder),
       quantity,
       note,
-      brand,
-      variant,
       onList: true,
       // Provisional: a name nobody has bought or finished a trip with is on
       // the list, not in the catalog. removeFromList deletes it.
@@ -1047,8 +1153,16 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       choiceGroup,
       source,
     });
+    // After the row exists, because a product hangs off an item id. Nothing
+    // is ever parsed out of the typed name to get here — see ItemProduct.brand.
+    const ensured = ensureProductFor(item.id, brand, variant, get().itemProducts, now);
+    if (ensured) item.preferredProductId = ensured.product.id;
     dbInsertGroceryItem(item);
-    set(s => ({ items: [...s.items, item] }));
+    if (ensured?.created) dbSetItemProduct(ensured.product);
+    set(s => ({
+      items: [...s.items, item],
+      itemProducts: ensured?.created ? [...s.itemProducts, ensured.product] : s.itemProducts,
+    }));
     if (opts?.registerUndo !== false) {
       get().setLastAction({
         label: `Added "${item.name}"`,
@@ -1402,8 +1516,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           // a fresh purchase already does to a single link.
           unavailableAt:
             purchaseCount > 0 ? null : laterOf(survivorLink.unavailableAt, loserLink.unavailableAt),
-          brand: survivorLink.brand ?? loserLink.brand,
-          brandUnavailableAt: survivorLink.brandUnavailableAt ?? loserLink.brandUnavailableAt,
+          productId: survivorLink.productId ?? loserLink.productId,
+          // Both sides' claims, because they're keyed by product and the two
+          // rows' products are about to be one item's products. A key present
+          // on both keeps the survivor's stamp — an arbitrary tie-break over
+          // two dates for one claim, and the same call `pickPriceFields` makes.
+          unavailableProductIds: {
+            ...loserLink.unavailableProductIds,
+            ...survivorLink.unavailableProductIds,
+          },
           ...pickPriceFields(survivorLink, loserLink),
         });
       } else {
@@ -1484,57 +1605,114 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
-  setBrand(id, brand) {
-    const item = get().items.find(i => i.id === id);
-    if (!item) return;
-    // Trimmed to null rather than '', unlike note above: note is a string
-    // whose empty value is "nothing written", while brand is nullable and
-    // every reader tests it for null. Storing '' would render an empty
-    // caption line and read as a brand nobody can see.
-    const next = brand.trim() || null;
+  addProduct(itemId, fields) {
+    const item = get().items.find(i => i.id === itemId);
+    if (!item) return null;
+    const brand = fields.brand?.trim() || null;
+    const variant = fields.variant?.trim() || null;
+    const ensured = ensureProductFor(itemId, brand, variant, get().itemProducts, new Date().toISOString());
+    if (!ensured) return null;
+    const product: ItemProduct = ensured.created
+      ? { ...ensured.product, note: fields.note?.trim() ?? '', rating: fields.rating ?? null }
+      : ensured.product;
+    if (ensured.created) dbSetItemProduct(product);
     // Promotes a provisional row, the same way linkItemShop and addToPantry do
     // and for the same reason: which one you want is a standing fact about the
     // item, not about this week's list. Without it the next "Remove from list"
-    // deletes the row outright and silently takes the preference with it —
-    // which is precisely the retyping this field exists to stop.
+    // deletes the row outright and takes every box you named with it — which
+    // is precisely the retyping this exists to stop.
     //
-    // Only on setting one. Clearing a brand is not a reason to promote a row
-    // that was never in the catalog, and demoting one that already is would
-    // throw away purchase history over an edit to a caption.
-    const updated = {
+    // See the action's own note for why only the first product becomes the
+    // preference.
+    const preferredProductId = item.preferredProductId ?? product.id;
+    const updated: GroceryItem = { ...item, preferredProductId, inCatalog: true };
+    dbUpdateGroceryItem(updated);
+    set(s => ({
+      items: s.items.map(i => (i.id === itemId ? updated : i)),
+      itemProducts: ensured.created ? [...s.itemProducts, product] : s.itemProducts,
+    }));
+    return product;
+  },
+
+  updateProduct(id, patch) {
+    const product = get().itemProducts.find(p => p.id === id);
+    if (!product) return false;
+    const brand = patch.brand === undefined ? product.brand : patch.brand?.trim() || null;
+    const variant = patch.variant === undefined ? product.variant : patch.variant?.trim() || null;
+    const productKey = productKeyFor(brand, variant);
+    // A box with no words left is the item itself, so there is nothing to be a
+    // product of — refused rather than stored as a blank row that captions
+    // nothing. Clearing it properly is `deleteProduct`.
+    if (!productKey) return false;
+    // The UNIQUE index would throw; refusing here says why, and lets the sheet
+    // keep the user's text on screen rather than losing it to an exception.
+    const clash = get().itemProducts.some(
+      p => p.itemId === product.itemId && p.id !== id && p.productKey === productKey
+    );
+    if (clash) return false;
+    const updated: ItemProduct = {
+      ...product,
+      brand,
+      variant,
+      productKey,
+      note: patch.note === undefined ? product.note : patch.note.trim(),
+      rating: patch.rating === undefined ? product.rating : patch.rating,
+    };
+    dbSetItemProduct(updated);
+    set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === id ? updated : p)) }));
+    return true;
+  },
+
+  setPreferredProduct(itemId, productId) {
+    const item = get().items.find(i => i.id === itemId);
+    if (!item) return;
+    // Only ever one of this item's own products, so a stale id from a sheet
+    // rendered against an older state can't file Bread under a milk product.
+    const next = productId && get().itemProducts.some(p => p.id === productId && p.itemId === itemId)
+      ? productId
+      : null;
+    if (next === item.preferredProductId) return;
+    // Promoted on setting one, for addProduct's reason above. Clearing the
+    // preference promotes nothing, and demoting a row that is already catalog
+    // would throw away purchase history over an edit to a caption.
+    const updated: GroceryItem = {
       ...item,
-      brand: next,
+      preferredProductId: next,
       inCatalog: next !== null ? true : item.inCatalog,
     };
     dbUpdateGroceryItem(updated);
-    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+    set(s => ({ items: s.items.map(i => (i.id === itemId ? updated : i)) }));
   },
 
-  setVariant(id, variant) {
-    const item = get().items.find(i => i.id === id);
-    if (!item) return;
-    // Trimmed to null and promoting on the way up, both for the reasons spelled
-    // out in setBrand above: null is what every reader tests for, and which one
-    // of a brand you want is a standing fact about the item that has to outlive
-    // this week's list. Clearing promotes nothing, again like setBrand.
-    const next = variant.trim() || null;
-    const updated = {
-      ...item,
-      variant: next,
-      inCatalog: next !== null ? true : item.inCatalog,
-    };
-    dbUpdateGroceryItem(updated);
-    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  deleteProduct(id) {
+    const product = get().itemProducts.find(p => p.id === id);
+    if (!product) return;
+    dbDeleteItemProduct(id);
+    // Mirrors the cascade dbDeleteItemProduct just ran in SQLite. Written out
+    // rather than re-read from the db for the reason every other action here
+    // patches in memory: a full reload on a single delete would drop the
+    // cart hold and the trip state that only live in this store.
+    set(s => ({
+      itemProducts: s.itemProducts.filter(p => p.id !== id),
+      items: s.items.map(i => (i.preferredProductId === id ? { ...i, preferredProductId: null } : i)),
+      itemShops: s.itemShops.map(l => {
+        const claimed = l.unavailableProductIds[id] !== undefined;
+        if (l.productId !== id && !claimed) return l;
+        const unavailableProductIds = { ...l.unavailableProductIds };
+        delete unavailableProductIds[id];
+        return { ...l, productId: l.productId === id ? null : l.productId, unavailableProductIds };
+      }),
+    }));
   },
 
-  setBrandStrict(id, strict) {
+  setProductStrict(id, strict) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
-    // Promoted like setBrand, and only when switching on: the rule is a
+    // Promoted like addProduct, and only when switching on: the rule is a
     // standing fact about the item, so it has to outlive this week's list.
     const updated = {
       ...item,
-      brandStrict: strict,
+      productStrict: strict,
       inCatalog: strict ? true : item.inCatalog,
     };
     dbUpdateGroceryItem(updated);
@@ -1988,15 +2166,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // What this trip is entitled to record about which one they stock.
         // **Only for a strict item**, and that restriction is the whole
         // argument: strict means the user would not have bought a substitute,
-        // so a purchase here really is evidence this store had their brand. On
-        // an item with no rule, the same purchase says nothing about which one
-        // came home, and stamping it would manufacture the per-store evidence
-        // this feature is supposed to be waiting for. Mirrors
+        // so a purchase here really is evidence this store had the box they
+        // want. On an item with no rule, the same purchase says nothing about
+        // which one came home, and stamping it would manufacture the per-store
+        // evidence this feature is supposed to be waiting for. Mirrors
         // dbFinishGroceryShopping.
-        const brandPatch = (id: string, existing: ItemShopLink | null) => {
+        const productPatch = (id: string, existing: ItemShopLink | null) => {
           const item = s.items.find(i => i.id === id);
-          if (item?.brandStrict && item.brand) return { brand: item.brand };
-          return { brand: existing?.brand ?? null };
+          if (item?.productStrict && item.preferredProductId) return { productId: item.preferredProductId };
+          return { productId: existing?.productId ?? null };
         };
         itemShops = [
           ...s.itemShops.map(l =>
@@ -2009,12 +2187,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                   // "they don't have it" outright, so the trip clears it rather
                   // than leaving the user to.
                   unavailableAt: null,
-                  // Buying your brand here refutes "they haven't got it"
-                  // outright, exactly as the purchase refutes the item-level
-                  // negative above. Mirrors dbFinishGroceryShopping.
-                  brandUnavailableAt: null,
+                  // Coming home with something refutes every "they haven't got
+                  // this one" about this store at once, exactly as the purchase
+                  // refutes the item-level negative above. Mirrors
+                  // dbFinishGroceryShopping.
+                  unavailableProductIds: {},
                   ...pricePatch(l.itemId, l),
-                  ...brandPatch(l.itemId, l),
+                  ...productPatch(l.itemId, l),
                 }
               : l
           ),
@@ -2026,9 +2205,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
               purchaseCount: 1,
               lastPurchasedAt: purchasedAt,
               unavailableAt: null,
-              brandUnavailableAt: null,
+              unavailableProductIds: {},
               ...pricePatch(id, null),
-              ...brandPatch(id, null),
+              ...productPatch(id, null),
             })),
         ];
       }
@@ -2429,12 +2608,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // what this store last charged is untouched by the user saying they
         // can get it here.
         // Carried for the same reason: saying you can get it here is not a
-        // statement about which one they stock. The brand is set in its own
-        // right by setItemShopBrand.
-        brand: existing?.brand ?? null,
+        // statement about which one they stock. That's finishShopping's to
+        // record, off a purchase.
+        productId: existing?.productId ?? null,
         // Carried, not cleared: saying you can get it here is not a statement
-        // about which brand, so it neither makes nor withdraws that claim.
-        brandUnavailableAt: existing?.brandUnavailableAt ?? null,
+        // about which box, so it neither makes nor withdraws those claims.
+        unavailableProductIds: existing?.unavailableProductIds ?? {},
         lastPriceMinor: existing?.lastPriceMinor ?? null,
         lastPricedAt: existing?.lastPricedAt ?? null,
         lastPriceQuantity: existing?.lastPriceQuantity ?? null,
@@ -2724,11 +2903,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         purchaseCount: existing?.purchaseCount ?? 0,
         lastPurchasedAt: existing?.lastPurchasedAt ?? null,
         unavailableAt: markedAt,
-        brandUnavailableAt: existing?.brandUnavailableAt ?? null,
-        // Same carry again. "They don't stock it" supersedes the brand claim at
-        // read time (isUnavailable is checked first), so there's no need to
-        // erase it — and it comes back intact if the negative is undone.
-        brand: existing?.brand ?? null,
+        unavailableProductIds: existing?.unavailableProductIds ?? {},
+        // Same carry again. "They don't stock it" supersedes the per-product
+        // claims at read time (isUnavailable is checked first), so there's no
+        // need to erase them — and they come back intact if the negative is
+        // undone.
+        productId: existing?.productId ?? null,
         // Same carry as linkItemShopMany, and the same reasoning as the count
         // above: what it cost when they did stock it is history, and the claim
         // is about today's shelf. Every price read drops a negative link
@@ -2787,26 +2967,42 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }));
   },
 
-  setBrandUnavailable(itemId, shopId, unavailable) {
+  setProductUnavailable(itemId, shopId, unavailable) {
     const item = get().items.find(i => i.id === itemId);
     if (!item) return;
     if (!get().shops.some(s => s.id === shopId)) return;
+    // The claim is about a specific box, and the box in question is the one
+    // the row is asking for. With no preference there is nothing to be missing
+    // — "they haven't got the one I want" needs a one you want.
+    const productId = item.preferredProductId;
+    if (!productId) return;
+    if (!get().itemProducts.some(p => p.id === productId && p.itemId === itemId)) return;
     const existing = get().itemShops.find(l => l.itemId === itemId && l.shopId === shopId);
-    const next = unavailable ? new Date().toISOString() : null;
+    const claimed = existing?.unavailableProductIds[productId] !== undefined;
     if (!existing && !unavailable) return;
-    if (existing && (existing.brandUnavailableAt !== null) === unavailable) return;
+    if (claimed === unavailable) return;
 
-    // Taking the claim back off a row that was *only* the claim leaves a bare
+    const unavailableProductIds = { ...(existing?.unavailableProductIds ?? {}) };
+    if (unavailable) unavailableProductIds[productId] = new Date().toISOString();
+    else delete unavailableProductIds[productId];
+
+    // Taking the last claim back off a row that was *only* claims leaves a bare
     // purchaseCount-0 link, which asserts "I get this here" — a different and
     // stronger statement than the one being withdrawn. Same call
     // clearItemUnavailable makes about a row that was only the negative.
-    if (existing && !unavailable && existing.purchaseCount === 0 && !existing.unavailableAt) {
+    if (
+      existing
+      && !unavailable
+      && Object.keys(unavailableProductIds).length === 0
+      && existing.purchaseCount === 0
+      && !existing.unavailableAt
+    ) {
       get().unlinkItemShop(itemId, shopId);
       return;
     }
 
     const link: ItemShopLink = existing
-      ? { ...existing, brandUnavailableAt: next }
+      ? { ...existing, unavailableProductIds }
       : {
           itemId,
           shopId,
@@ -2820,11 +3016,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           lastPricedAt: null,
           lastPriceQuantity: null,
           priceHistory: [],
-          brand: null,
-          brandUnavailableAt: next,
+          productId: null,
+          unavailableProductIds,
         };
     dbSetItemShopLink(link);
-    // Promotes the row for the reason setBrand and linkItemShop both do: this
+    // Promotes the row for the reason addProduct and linkItemShop both do: this
     // is a standing fact about the item, and a provisional row is deleted when
     // it leaves the list.
     const promoted = item.inCatalog ? null : { ...item, inCatalog: true };

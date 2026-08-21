@@ -30,7 +30,7 @@ import {
   GROCERY_VARIANT_MAX_LENGTH,
   type GroceryItem,
 } from '../types';
-import { describeProduct } from '../utils/groceryProduct';
+import { describePreferredProduct } from '../utils/groceryProduct';
 import { generateId } from '../utils/id';
 
 interface Props {
@@ -96,6 +96,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const inputRef = useRef<TextInput>(null);
 
   const items = useGroceryStore(s => s.items);
+  const itemProducts = useGroceryStore(s => s.itemProducts);
   const addByName = useGroceryStore(s => s.addByName);
   const addManyFromText = useGroceryStore(s => s.addManyFromText);
   const setLastAction = useGroceryStore(s => s.setLastAction);
@@ -539,7 +540,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
               // one screen where you pick an item by name — was still showing
               // the bare name, so "Oatly oat milk" and plain oat milk looked
               // like the same row until it was already on the list.
-              const product = describeProduct(item);
+              const product = describePreferredProduct(item, itemProducts);
               return (
                 <TouchableOpacity
                   key={item.id}

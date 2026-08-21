@@ -59,6 +59,10 @@ import {
   dbGetAllItemSubLinks,
   dbSetItemSubLink,
   dbDeleteItemSubLink,
+  dbSetItemShopLink,
+  dbGetAllItemProducts,
+  dbSetItemProduct,
+  dbDeleteItemProduct,
   dbClearGroceryList,
   dbGetGroceryAisleOrder,
   dbGetGroceryAisleOverrides,
@@ -93,7 +97,7 @@ import {
 } from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
-import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, Leftover, MealPlanEntry, MealSlot } from '../types';
+import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, ItemProduct, ItemShopLink, Shop, Leftover, MealPlanEntry, MealSlot } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -238,7 +242,15 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  mockRawDb.exec('DELETE FROM tasks; DELETE FROM settings; DELETE FROM templates; DELETE FROM projects; DELETE FROM grocery_items;');
+  mockRawDb.exec(
+    'DELETE FROM tasks; DELETE FROM settings; DELETE FROM templates; DELETE FROM projects;' +
+    // The grocery tables clear together, because they point at each other: a
+    // link or a product left behind by the previous test names an item this
+    // one has just deleted, and every `dbGetAll…()[0]` read below would be
+    // holding somebody else's row.
+    'DELETE FROM grocery_items; DELETE FROM grocery_shops;' +
+    'DELETE FROM grocery_item_shops; DELETE FROM grocery_item_products;'
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -1744,9 +1756,8 @@ describe('backup and restore', () => {
 function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: string }): GroceryItem {
   return {
     nameKey: overrides.name.toLowerCase(),
-    brand: null,
-    brandStrict: false,
-    variant: null,
+    preferredProductId: null,
+    productStrict: false,
     aisle: 'Other',
     quantity: null,
     quantityFromRecipe: false,
@@ -1774,6 +1785,49 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
   };
 }
 
+function makeProduct(
+  overrides: Partial<ItemProduct> & { id: string; itemId: string }
+): ItemProduct {
+  const brand = overrides.brand ?? null;
+  const variant = overrides.variant ?? null;
+  return {
+    brand,
+    variant,
+    productKey: `${(brand ?? '').toLowerCase()}|${(variant ?? '').toLowerCase()}`,
+    rating: null,
+    note: '',
+    purchaseCount: 0,
+    lastPurchasedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function makeShop(overrides: { id: string; name: string }): Shop {
+  return {
+    nameKey: overrides.name.toLowerCase(),
+    sortOrder: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    excludeFromSuggestions: false,
+    ...overrides,
+  };
+}
+
+function makeShopLink(overrides: Partial<ItemShopLink> & { itemId: string; shopId: string }): ItemShopLink {
+  return {
+    purchaseCount: 0,
+    lastPurchasedAt: null,
+    unavailableAt: null,
+    lastPriceMinor: null,
+    lastPricedAt: null,
+    lastPriceQuantity: null,
+    priceHistory: [],
+    productId: null,
+    unavailableProductIds: {},
+    ...overrides,
+  };
+}
+
 describe('grocery items', () => {
   it('round-trips every field through rowToGroceryItem', () => {
     const item = makeGroceryItem({
@@ -1794,8 +1848,8 @@ describe('grocery items', () => {
       isStaple: true,
       expiresAt: '2026-08-17',
       useUpTask: true,
-      brand: 'Good Culture',
-      variant: 'low fat',
+      preferredProductId: 'p1',
+      productStrict: true,
     });
     dbInsertGroceryItem(item);
 
@@ -1844,97 +1898,131 @@ describe('grocery items', () => {
     expect(dbGetAllGroceryItems()[0].priceHistory).toEqual([]);
   });
 
-  // The brand is a clause beside the name, never part of it — so a branded row
-  // keeps the same name_key an unbranded one would have, and stays the row a
-  // recipe calling for "cottage cheese" matches. See GroceryItem.brand.
-  it('stores a brand without disturbing the name key', () => {
-    const item = makeGroceryItem({
-      id: 'g1',
-      name: 'Cottage cheese',
-      nameKey: 'cottage cheese',
-      brand: 'Good Culture',
-    });
+  // A product is a clause beside the name, never part of it — so an item that
+  // names one keeps the same name_key an unnamed one would have, and stays the
+  // row a recipe calling for "cottage cheese" matches. See ItemProduct.
+  it('stores a product without disturbing the item’s name key', () => {
+    const item = makeGroceryItem({ id: 'g1', name: 'Cottage cheese', nameKey: 'cottage cheese' });
     dbInsertGroceryItem(item);
+    dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: 'Good Culture', variant: 'low fat' }));
+    dbUpdateGroceryItem({ ...item, preferredProductId: 'p1' });
 
     const [read] = dbGetAllGroceryItems();
-    expect(read.brand).toBe('Good Culture');
+    expect(read.preferredProductId).toBe('p1');
     expect(read.nameKey).toBe('cottage cheese');
+    expect(dbGetAllItemProducts()).toEqual([
+      expect.objectContaining({ id: 'p1', itemId: 'g1', brand: 'Good Culture', variant: 'low fat' }),
+    ]);
   });
 
-  it('updates a brand in place, and clears it back to null', () => {
-    const item = makeGroceryItem({ id: 'g1', name: 'Cottage cheese', brand: 'Good Culture' });
-    dbInsertGroceryItem(item);
+  it('upserts a product by id, so editing one is not a second row', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
+    const product = makeProduct({ id: 'p1', itemId: 'g1', brand: "Arnold's", variant: 'wheat' });
+    dbSetItemProduct(product);
+    dbSetItemProduct({ ...product, variant: 'white', productKey: "arnolds|white", rating: 'avoid', note: 'Too soft' });
 
-    dbUpdateGroceryItem({ ...item, brand: "Nancy's" });
-    expect(dbGetAllGroceryItems()[0].brand).toBe("Nancy's");
-
-    dbUpdateGroceryItem({ ...item, brand: null });
-    expect(dbGetAllGroceryItems()[0].brand).toBeNull();
+    const products = dbGetAllItemProducts();
+    expect(products).toHaveLength(1);
+    expect(products[0]).toMatchObject({ variant: 'white', rating: 'avoid', note: 'Too soft' });
   });
 
-  // The variant is out of the name key for the same reason the brand is: one
-  // row per thing, whichever tub of it you want. See GroceryItem.variant.
-  it('stores and clears a variant without disturbing the name key', () => {
-    const item = makeGroceryItem({
-      id: 'g1',
-      name: 'Cottage cheese',
-      nameKey: 'cottage cheese',
-      brand: 'Good Culture',
-      variant: 'low fat',
-    });
-    dbInsertGroceryItem(item);
-
-    const [read] = dbGetAllGroceryItems();
-    expect(read.variant).toBe('low fat');
-    expect(read.nameKey).toBe('cottage cheese');
-
-    dbUpdateGroceryItem({ ...item, variant: '4%' });
-    expect(dbGetAllGroceryItems()[0].variant).toBe('4%');
-
-    dbUpdateGroceryItem({ ...item, variant: null });
-    expect(dbGetAllGroceryItems()[0].variant).toBeNull();
+  // The no-duplicates guarantee lives in SQLite, not in a store method a
+  // future call site could go around — same as grocery_items.name_key.
+  it('refuses two products of one item with the same key', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
+    dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: "Arnold's", variant: 'wheat' }));
+    expect(() =>
+      dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g1', brand: "Arnold's", variant: 'wheat' }))
+    ).toThrow();
   });
 
-  // Nothing is backfilled: a row written before the column existed has no
-  // opinion about which one, which is exactly what null means here.
-  it('reads a row written without variant as having none', () => {
+  // Scoped to the item, not the catalog: two items may both have a "store
+  // brand" product and those are two different boxes.
+  it('allows the same product key under two different items', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk' }));
+    dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: null, variant: 'store brand' }));
+    dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g2', brand: null, variant: 'store brand' }));
+
+    expect(dbGetAllItemProducts()).toHaveLength(2);
+  });
+
+  // Anything that isn't one of the two known ratings reads as no opinion, so a
+  // column written by a newer build can't render as a rating this one can't
+  // explain.
+  it('reads an unknown rating as no opinion', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
     mockRawDb
-      .prepare('INSERT INTO grocery_items (id, name, name_key, brand, created_at) VALUES (?,?,?,?,?)')
-      .run('g1', 'Cottage cheese', 'cottage cheese', 'Good Culture', '2026-01-01T00:00:00.000Z');
+      .prepare('INSERT INTO grocery_item_products (id, item_id, brand, product_key, rating, created_at) VALUES (?,?,?,?,?,?)')
+      .run('p1', 'g1', "Arnold's", 'arnolds|', 'adored', '2026-01-01T00:00:00.000Z');
 
-    const [read] = dbGetAllGroceryItems();
-    expect(read.variant).toBeNull();
+    expect(dbGetAllItemProducts()[0].rating).toBeNull();
   });
 
-  it('round-trips brandStrict, defaulting an untouched row to off', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cottage cheese', brandStrict: true }));
+  // Hand-written, because FKs are off — a box that isn't a box *of* anything
+  // is unreadable, not merely orphaned.
+  it('deletes an item’s products with the item', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
+    dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: "Arnold's", variant: 'wheat' }));
+    dbDeleteGroceryItem('g1');
+
+    expect(dbGetAllItemProducts()).toEqual([]);
+  });
+
+  // Both directions of the cascade: the item that preferred it, and the store
+  // links that named it. See dbDeleteItemProduct.
+  it('takes every pointer at a product with it when the product goes', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread', preferredProductId: 'p1' }));
+    dbInsertGroceryShop(makeShop({ id: 's1', name: 'Safeway' }));
+    dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: "Arnold's", variant: 'wheat' }));
+    dbSetItemShopLink(makeShopLink({
+      itemId: 'g1',
+      shopId: 's1',
+      productId: 'p1',
+      unavailableProductIds: { p1: '2026-03-04T00:00:00.000Z', p2: '2026-03-05T00:00:00.000Z' },
+    }));
+
+    dbDeleteItemProduct('p1');
+
+    expect(dbGetAllGroceryItems()[0].preferredProductId).toBeNull();
+    const [link] = dbGetAllItemShopLinks();
+    expect(link.productId).toBeNull();
+    // Only the deleted one: a claim about a different box is untouched.
+    expect(link.unavailableProductIds).toEqual({ p2: '2026-03-05T00:00:00.000Z' });
+  });
+
+  it('round-trips productStrict, defaulting an untouched row to off', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cottage cheese', productStrict: true }));
     dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk' }));
 
-    const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i.brandStrict]));
+    const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i.productStrict]));
     expect(byId.get('g1')).toBe(true);
     expect(byId.get('g2')).toBe(false);
   });
 
-  // A brand recorded before the rule existed is a preference, not a filter —
-  // so an upgraded install changes nothing about which stores are suggested.
-  it('reads a row written without brand_strict as not strict', () => {
-    mockRawDb
-      .prepare('INSERT INTO grocery_items (id, name, name_key, brand, created_at) VALUES (?,?,?,?,?)')
-      .run('g1', 'Cottage cheese', 'cottage cheese', 'Good Culture', '2026-01-01T00:00:00.000Z');
-
-    const [read] = dbGetAllGroceryItems();
-    expect(read.brand).toBe('Good Culture');
-    expect(read.brandStrict).toBe(false);
-  });
-
   // Every row that predates the column has no opinion about which one to buy,
   // and nothing backfills one out of the name.
-  it('reads a row written without brand as having none', () => {
+  it('reads a row written without a preferred product as having none', () => {
     mockRawDb
       .prepare('INSERT INTO grocery_items (id, name, name_key, created_at) VALUES (?,?,?,?)')
       .run('g1', 'Milk', 'milk', '2026-01-01T00:00:00.000Z');
 
-    expect(dbGetAllGroceryItems()[0].brand).toBeNull();
+    const [read] = dbGetAllGroceryItems();
+    expect(read.preferredProductId).toBeNull();
+    expect(read.productStrict).toBe(false);
+  });
+
+  // The map is JSON in SQLite, so it has to survive a malformed blob — from a
+  // sync merge, a hand-edited backup, or an install that upgraded across the
+  // migration. Unknown always counts, so "no claims" is the safe answer.
+  it('reads a malformed unavailable_product_ids blob as no claims', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+    dbInsertGroceryShop(makeShop({ id: 's1', name: 'Safeway' }));
+    mockRawDb
+      .prepare('INSERT INTO grocery_item_shops (item_id, shop_id, unavailable_product_ids) VALUES (?,?,?)')
+      .run('g1', 's1', 'not json');
+
+    expect(dbGetAllItemShopLinks()[0].unavailableProductIds).toEqual({});
   });
 
   // The tri-state, which a plain INTEGER NOT NULL DEFAULT 0 would have
@@ -2143,23 +2231,58 @@ describe('grocery items', () => {
       expect(byId.get('g2')!.onList).toBe(true);
     });
 
-    // The SQL half of the brand stamp — the store-side mirror of the patch in
-    // useGroceryStore.finishShopping. Only a strict row earns it.
-    it('records the brand on the link only when the item insists on one', () => {
+    // The SQL half of the product stamp — the store-side mirror of the patch
+    // in useGroceryStore.finishShopping. Only a strict row earns it.
+    it('records the product on the link only when the item insists on one', () => {
       dbInsertGroceryItem(makeGroceryItem({
         id: 'g1', name: 'Cottage cheese', nameKey: 'cottage cheese', checked: true,
-        brand: 'Good Culture', brandStrict: true,
+        preferredProductId: 'p1', productStrict: true,
       }));
       dbInsertGroceryItem(makeGroceryItem({
         id: 'g2', name: 'Yoghurt', nameKey: 'yoghurt', checked: true,
-        brand: 'Fage', brandStrict: false,
+        preferredProductId: 'p2', productStrict: false,
+      }));
+      dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: 'Good Culture' }));
+      dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g2', brand: 'Fage' }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', 'shop-1');
+
+      const byItem = new Map(dbGetAllItemShopLinks().map(l => [l.itemId, l.productId]));
+      expect(byItem.get('g1')).toBe('p1');
+      expect(byItem.get('g2')).toBeNull();
+    });
+
+    // The product's own counter, which is what makes "bought 3 times" sayable
+    // under one box on an item bought forty times. Not conditional on strict,
+    // unlike the link above: naming a product is already the statement that
+    // this is the one you buy.
+    it('bumps the preferred product’s purchase count, strict or not', () => {
+      dbInsertGroceryItem(makeGroceryItem({
+        id: 'g1', name: 'Bread', checked: true, preferredProductId: 'p1',
+      }));
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk', checked: true }));
+      dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: "Arnold's", variant: 'wheat' }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', 'shop-1');
+
+      const [product] = dbGetAllItemProducts();
+      expect(product.purchaseCount).toBe(1);
+      expect(product.lastPurchasedAt).toBe('2026-08-07T12:00:00.000Z');
+    });
+
+    // Coming home with something refutes every claim about this store's shelf
+    // at once — the same correction the item-level negative already gets.
+    it('clears every per-product claim at the store it was bought from', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread', checked: true }));
+      dbSetItemShopLink(makeShopLink({
+        itemId: 'g1',
+        shopId: 'shop-1',
+        unavailableProductIds: { p1: '2026-03-04T00:00:00.000Z' },
       }));
 
       dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', 'shop-1');
 
-      const byItem = new Map(dbGetAllItemShopLinks().map(l => [l.itemId, l.brand]));
-      expect(byItem.get('g1')).toBe('Good Culture');
-      expect(byItem.get('g2')).toBeNull();
+      expect(dbGetAllItemShopLinks()[0].unavailableProductIds).toEqual({});
     });
 
     it('promotes what was bought into the catalog', () => {

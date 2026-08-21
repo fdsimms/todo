@@ -49,6 +49,14 @@ import { editorSearchTerms, matchesEditorQuery, filterEditorRows, type EditorSea
 import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
 import { SubstituteSheet } from './SubstituteSheet';
+import { ProductSheet } from './ProductSheet';
+import {
+  RATING_LABELS,
+  describeProduct,
+  describeProductPurchases,
+  preferredProductOf,
+  productsForItem,
+} from '../utils/groceryProduct';
 import { MergeItemSheet } from './MergeItemSheet';
 import {
   cheapestShopFor,
@@ -65,8 +73,6 @@ import {
 import {
   defaultOnHandUntil,
   OUT_OF_IT_UNTIL,
-  distinctGroceryValues,
-  filterGrocerySuggestions,
 } from '../utils/grocerySuggest';
 import { describeExpiry, expiryDaysFromNow, expiryKeyFor } from '../utils/groceryShelfLife';
 import { wantsUseUpTask } from '../utils/groceryExpiry';
@@ -91,7 +97,7 @@ const PRICE_INPUT_MAX_LENGTH = 8;
 const ITEM_PRICE_KEY = 'item';
 
 /** The five collapsible fields in the "More" card, in the order they render. */
-type CollapsibleFieldKey = 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'usedIn';
+type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'usedIn';
 
 interface Props {
   visible: boolean;
@@ -153,10 +159,9 @@ export function GroceryItemSheet({
   const renameItem = useGroceryStore(s => s.renameItem);
   const setQuantity = useGroceryStore(s => s.setQuantity);
   const setNote = useGroceryStore(s => s.setNote);
-  const setBrand = useGroceryStore(s => s.setBrand);
-  const setVariant = useGroceryStore(s => s.setVariant);
-  const setBrandStrict = useGroceryStore(s => s.setBrandStrict);
-  const setBrandUnavailable = useGroceryStore(s => s.setBrandUnavailable);
+  const setProductStrict = useGroceryStore(s => s.setProductStrict);
+  const setProductUnavailable = useGroceryStore(s => s.setProductUnavailable);
+  const setPreferredProduct = useGroceryStore(s => s.setPreferredProduct);
   const setAisle = useGroceryStore(s => s.setAisle);
   const addAisle = useGroceryStore(s => s.addAisle);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
@@ -179,12 +184,11 @@ export function GroceryItemSheet({
   const addShop = useGroceryStore(s => s.addShop);
   const items = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
 
   const [name, setName] = useState('');
   const [quantity, setQuantityText] = useState('');
   // ==== local state (the draft fields, and which section is open) ====
-  const [brand, setBrandText] = useState('');
-  const [variant, setVariantText] = useState('');
   const [note, setNoteText] = useState('');
   // Which price the field is editing: null is the item's own ("any store"),
   // else the store's id. The stores are the item's linked ones — see
@@ -200,6 +204,9 @@ export function GroceryItemSheet({
   // Which substitute sheet is up, if any: 'add' opens the picker, an item id
   // opens that link for review. Null closes it.
   const [subSheet, setSubSheet] = useState<'add' | string | null>(null);
+  // Same shape as subSheet above: 'add' opens a blank product, an id opens
+  // that one for review. Null closes it.
+  const [productSheet, setProductSheet] = useState<'add' | string | null>(null);
   const [mergeSheetOpen, setMergeSheetOpen] = useState(false);
   // One picker open at a time, like every other editor in the app — see the
   // progressive-disclosure note in CLAUDE.md.
@@ -248,8 +255,6 @@ export function GroceryItemSheet({
     if (visible && item) {
       setName(item.name);
       setQuantityText(item.quantity ?? '');
-      setBrandText(item.brand ?? '');
-      setVariantText(item.variant ?? '');
       setNoteText(item.note);
       setPriceTarget(null);
       setPriceEdits({});
@@ -262,26 +267,20 @@ export function GroceryItemSheet({
     }
   }, [visible, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Distinct brands/variants already typed elsewhere in the catalog, so a
-  // repeat ("Trader Joe's", "low fat") is one tap instead of retyping it —
-  // same idea as RecipeEditor's Author/Source suggestions, computed from the
-  // items that are actually there rather than a fixed lexicon.
-  const existingBrands = useMemo(
-    () => distinctGroceryValues(items, item?.id, i => i.brand),
-    [items, item?.id]
-  );
   // ==== derived values and suggestions ====
-  const brandSuggestions = useMemo(
-    () => filterGrocerySuggestions(existingBrands, brand),
-    [existingBrands, brand]
+  // Every box named under this item, preferred one first — the list the
+  // Products field renders. Brand/variant suggestions are deliberately *not*
+  // computed here any more: they were drawn from the whole catalog, which is
+  // how "Siggi's" ended up offered under a loaf of bread. They now live in
+  // ProductSheet, scoped to this item's own products, which is the only scope
+  // a brand actually repeats in.
+  const products = useMemo(
+    () => (item ? productsForItem(item.id, itemProducts, item.preferredProductId) : []),
+    [item, itemProducts]
   );
-  const existingVariants = useMemo(
-    () => distinctGroceryValues(items, item?.id, i => i.variant),
-    [items, item?.id]
-  );
-  const variantSuggestions = useMemo(
-    () => filterGrocerySuggestions(existingVariants, variant),
-    [existingVariants, variant]
+  const preferred = useMemo(
+    () => (item ? preferredProductOf(item, itemProducts) : null),
+    [item, itemProducts]
   );
 
   const toggleField = (field: CollapsibleFieldKey) =>
@@ -327,12 +326,6 @@ export function GroceryItemSheet({
   };
   const commitQuantity = () => {
     if (quantity !== (item.quantity ?? '')) setQuantity(item.id, quantity);
-  };
-  const commitBrand = () => {
-    if (brand !== (item.brand ?? '')) setBrand(item.id, brand);
-  };
-  const commitVariant = () => {
-    if (variant !== (item.variant ?? '')) setVariant(item.id, variant);
   };
   const commitNote = () => {
     if (note !== item.note) setNote(item.id, note);
@@ -643,17 +636,21 @@ export function GroceryItemSheet({
     };
   });
 
-  const brandStrictOptions: PillGroupOption[] = [
+  // The preferred product's own words, for the labels below. Null only when
+  // there's no preference, in which case none of this renders.
+  const wantedProduct = describeProduct(preferred);
+
+  const productStrictOptions: PillGroupOption[] = [
     {
       key: 'strict',
-      label: 'Only this brand',
-      selected: item.brandStrict,
-      accessibilityLabel: item.brandStrict
-        ? `Only ${item.brand}, on. Stores carrying another brand don’t count as having this. Tap to turn off.`
-        : `Only ${item.brand} — count only stores recorded as carrying it`,
+      label: 'Only this one',
+      selected: item.productStrict,
+      accessibilityLabel: item.productStrict
+        ? `Only ${wantedProduct}, on. Stores carrying a different one don’t count as having this. Tap to turn off.`
+        : `Only ${wantedProduct} — count only stores recorded as carrying it`,
       onPress: () => {
         haptics.tap();
-        setBrandStrict(item.id, !item.brandStrict);
+        setProductStrict(item.id, !item.productStrict);
       },
     },
   ];
@@ -662,30 +659,39 @@ export function GroceryItemSheet({
    * "Which stores haven't got it" — the claim, one pill per store, multi-select.
    *
    * Every store is offered, not just the linked ones: finding out a shop hasn't
-   * got your brand is a thing that happens at a shop you've never recorded this
-   * item at. The ones already marked as not stocking the item at all are left
-   * out, since that claim outranks this one and saying both is contradictory.
+   * got the one you want is a thing that happens at a shop you've never
+   * recorded this item at. The ones already marked as not stocking the item at
+   * all are left out, since that claim outranks this one and saying both is
+   * contradictory.
    *
-   * Deliberately a claim rather than a "which brand do they carry" field. The
-   * app can only ever know the brand you last *got* somewhere, and a shelf
-   * holds several brands at once, so a recorded brand can never stand in for
-   * this — see groceryShops.lacksWantedBrand.
+   * Deliberately a claim rather than a "which one do they carry" field. The app
+   * can only ever know the product you last *got* somewhere, and a shelf holds
+   * several at once, so a recorded product can never stand in for this — see
+   * groceryShops.lacksWantedProduct.
+   *
+   * The claim is about the *preferred* product specifically, which is why these
+   * pills only appear while there is one and why switching the preference
+   * changes what they're marking. A claim made about Arnold's stays filed
+   * against Arnold's rather than silently transferring to whatever you switch
+   * to — see ItemShopLink.unavailableProductIds.
    */
-  const brandNegativeOptions: PillGroupOption[] = shops
+  const productNegativeOptions: PillGroupOption[] = shops
     .filter(s => !notStocked.has(s.id))
     .map(shop => {
-      const marked = linkFor(shop.id)?.brandUnavailableAt != null;
+      const marked = preferred
+        ? linkFor(shop.id)?.unavailableProductIds[preferred.id] !== undefined
+        : false;
       return {
         key: shop.id,
         label: shop.name,
         selected: marked,
         negative: marked,
         accessibilityLabel: marked
-          ? `${shop.name}, marked as not having ${item.brand}. Tap to clear.`
-          : `${shop.name}. Tap to say they haven’t got ${item.brand}.`,
+          ? `${shop.name}, marked as not having ${wantedProduct}. Tap to clear.`
+          : `${shop.name}. Tap to say they haven’t got ${wantedProduct}.`,
         onPress: () => {
           haptics.tap();
-          setBrandUnavailable(item.id, shop.id, !marked);
+          setProductUnavailable(item.id, shop.id, !marked);
         },
       };
     });
@@ -763,10 +769,133 @@ export function GroceryItemSheet({
   const forgetVisible = !searching
     || matchesEditorQuery({ key: 'forget', label: 'Forget this item', keywords: ['delete', 'remove', 'trash'] }, searchTerms);
 
-  // The six collapsible fields, as one filterable list — same convention as
+  // The seven collapsible fields, as one filterable list — same convention as
   // EditorGroup's rows: each carries its own label and keywords, so there's
   // no separate index to keep in step with the JSX below.
   const collapsibleRows: (EditorSearchable & { node: React.ReactNode })[] = [
+    {
+      key: 'products',
+      label: 'Products',
+      keywords: ['brand', 'variant', 'which one', 'kind', 'type', 'flavor', 'rating', 'rate', 'loved', 'never again', 'avoid', 'only this one', 'strict'],
+      node: (
+        <View onLayout={(e: LayoutChangeEvent) => {
+          fieldYRefs.current.products = e.nativeEvent.layout.y;
+          maybeScrollToInitialField();
+        }}>
+          {/* First of the collapsible fields, because it qualifies the name
+              directly above it: this is the half of "what am I buying" that
+              deliberately stays out of the name, so the name keeps matching
+              recipes and purchase history.
+
+              Rows rather than a PillGroup, the call Substitutes already makes
+              one field down and for the same reason: a pill can only express
+              membership, and a product also carries a rating, a note and a
+              purchase count. It replaced two free-text fields (Brand and
+              Variant) whose suggestion chips were drawn from the whole
+              catalog — see ProductSheet for why that scope was wrong. */}
+          <CollapsibleField
+            label="Products"
+            summary={wantedProduct ?? undefined}
+            emptySummary="Any"
+            hint={`The specific ones you buy. Pick the one you want, and rate them so you remember which ${item.name.toLowerCase()} was which.`}
+            expanded={openField === 'products'}
+            onToggle={() => toggleField('products')}
+          >
+            {products.map((product, i) => {
+              const isPreferred = product.id === item.preferredProductId;
+              const bought = describeProductPurchases(product);
+              // The rating first, then the note, then the count: one line of
+              // qualifications under the name, in the order they'd change a
+              // decision. Two lines of tertiary grey under every row reads as
+              // a paragraph — the same call subCaption makes below.
+              const meta = [
+                product.rating ? RATING_LABELS[product.rating] : null,
+                product.note || null,
+                bought,
+              ].filter(Boolean).join(' · ');
+              return (
+                <TouchableOpacity
+                  key={product.id}
+                  style={[styles.subRow, i > 0 && styles.subRowDivided]}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => {
+                    haptics.tap();
+                    setProductSheet(product.id);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${describeProduct(product)}${isPreferred ? ', the one you want' : ''}${meta ? `. ${meta}` : ''}`}
+                  accessibilityHint="Opens this product, where you can rate, edit or remove it"
+                >
+                  <View style={styles.subBody}>
+                    <View style={styles.productNameRow}>
+                      <Text style={styles.subName} numberOfLines={1}>{describeProduct(product)}</Text>
+                      {/* The preference is marked on the row rather than
+                          shown by reordering alone: the list is short, and
+                          "first" is not a thing anyone reads as "chosen". */}
+                      {isPreferred && (
+                        <Ionicons name="checkmark-circle" size={16} color={colors.accent} />
+                      )}
+                    </View>
+                    {!!meta && <Text style={styles.subMeta} numberOfLines={1}>{meta}</Text>}
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                </TouchableOpacity>
+              );
+            })}
+            {/* One row, not two stacked pills: they're a pair of controls
+                under the list, and full-width-looking pills on their own lines
+                read as the stack of links InlineAction exists to undo. Both
+                neutral, matching the Add substitute pill one field down —
+                the sheet having two ranks of add button is the drift. */}
+            <View style={styles.productActions}>
+              <InlineAction
+                label="Add product"
+                icon="pricetag-outline"
+                variant="neutral"
+                onPress={() => {
+                  haptics.tap();
+                  setProductSheet('add');
+                }}
+                accessibilityLabel={`Add a product for ${item.name}`}
+              />
+              {/* Only once there's more than one box to choose between, and
+                  only while one is chosen. With a single product the
+                  preference is already unambiguous, and clearing it would be a
+                  control whose whole effect is to make the row say less. */}
+              {products.length > 1 && !!preferred && (
+                <InlineAction
+                  label="No preference"
+                  icon="close-circle-outline"
+                  variant="neutral"
+                  onPress={() => {
+                    haptics.tap();
+                    setPreferredProduct(item.id, null);
+                  }}
+                  accessibilityLabel="Clear which one you want, so any of them will do"
+                />
+              )}
+            </View>
+            {/* Off by default and only offered once there's a product to be
+                strict about — see GroceryItem.productStrict. It's a pill
+                rather than a switch for the same reason "Always have it" is
+                one: it's a one-word state on the item, and the pantry field
+                below already spells that idiom in this sheet. */}
+            {!!preferred && (
+              <>
+                <View style={styles.brandStrictRow}>
+                  <PillGroup options={productStrictOptions} noun="option" surface="page" />
+                </View>
+                <Text style={styles.hint}>
+                  {item.productStrict
+                    ? 'Stores you’ve marked as not having it won’t count as having this. Mark them under Stores.'
+                    : 'Off, so every store that stocks this counts, whichever one it has.'}
+                </Text>
+              </>
+            )}
+          </CollapsibleField>
+        </View>
+      ),
+    },
     {
       key: 'aisle',
       label: 'Aisle',
@@ -811,22 +940,22 @@ export function GroceryItemSheet({
             onToggle={() => toggleField('stores')}
           >
             <PillGroup options={shopOptions} noun="store" onCreate={handleCreateShop} />
-            {/* Only while a brand rule is actually in force. Without one
+            {/* Only while a product rule is actually in force. Without one
                 these claims would be recording evidence nothing reads, and
                 the sheet is already dense — the pills above are what a person
                 comes to Stores for. */}
-            {item.brandStrict && !!item.brand && (
+            {item.productStrict && !!wantedProduct && (
               <View style={styles.brandAtBlock}>
                 <Text style={styles.label}>
-                  {`Haven’t got ${item.brand}`.toUpperCase()}
+                  {`Haven’t got ${wantedProduct}`.toUpperCase()}
                 </Text>
-                <PillGroup options={brandNegativeOptions} noun="store" />
+                <PillGroup options={productNegativeOptions} noun="store" />
                 {/* The rule that makes the whole feature safe, said where
                     someone is about to rely on it. */}
                 <Text style={styles.hint}>
                   Only what you’ve marked here is left out. A store you haven’t
-                  marked still counts — shops carry several brands, so getting a
-                  different one somewhere isn’t knowing they haven’t got yours.
+                  marked still counts — shops carry several versions, so getting
+                  a different one somewhere isn’t knowing they haven’t got yours.
                 </Text>
               </View>
             )}
@@ -1151,108 +1280,6 @@ export function GroceryItemSheet({
           </>
           )}
 
-          {brandVisible && (
-          <>
-          {/* Directly under the name, because it qualifies the name — this is
-              the half of "what am I buying" that deliberately stays out of it
-              so the name keeps matching recipes and purchase history. Left
-              empty it clears back to no preference. */}
-          <Text style={styles.label}>BRAND</Text>
-          <TextInput
-            style={styles.input}
-            value={brand}
-            onChangeText={setBrandText}
-            onBlur={commitBrand}
-            placeholder="e.g. Good Culture"
-            placeholderTextColor={colors.textTertiary}
-            autoCorrect={false}
-            maxLength={GROCERY_BRAND_MAX_LENGTH}
-            accessibilityLabel="Brand"
-          />
-          {brandSuggestions.length > 0 && (
-            <View style={styles.suggestionChips}>
-              {brandSuggestions.map(value => (
-                <TouchableOpacity
-                  key={value}
-                  style={styles.suggestionChip}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => setBrandText(value)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Use brand ${value}`}
-                >
-                  <Text style={styles.suggestionChipText} numberOfLines={1}>{value}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-          <Text style={styles.hint}>
-            Shown on the list so you know which one to get.
-          </Text>
-          {/* Off by default and only offered once there's a brand to be strict
-              about — see GroceryItem.brandStrict. It's a pill rather than a
-              switch for the same reason "Always have it" is one: it's a
-              one-word state on the item, and the pantry row two fields down
-              already spells that idiom in this sheet. */}
-          {!!item.brand && (
-            <>
-              <View style={styles.brandStrictRow}>
-                <PillGroup options={brandStrictOptions} noun="option" surface="page" />
-              </View>
-              <Text style={styles.hint}>
-                {item.brandStrict
-                  ? 'Stores you’ve marked as not having it won’t count as having this. Mark them under Stores.'
-                  : 'Off, so every store that stocks this counts, whichever brand it has.'}
-              </Text>
-            </>
-          )}
-          </>
-          )}
-
-          {variantVisible && (
-          <>
-          {/* After the whole brand block rather than between the field and its
-              pill: "Only this brand" qualifies the field above it and reads as
-              a stray question with another field wedged in between. With no
-              brand set — the common case — the pill doesn't render and this
-              does sit directly under BRAND.
-
-              A separate field rather than more room in BRAND, because the two
-              are different facts: see GroceryItem.variant. On the list they
-              compose into the one caption. */}
-          <Text style={styles.label}>VARIANT</Text>
-          <TextInput
-            style={styles.input}
-            value={variant}
-            onChangeText={setVariantText}
-            onBlur={commitVariant}
-            placeholder="e.g. low fat, 4%, crunchy"
-            placeholderTextColor={colors.textTertiary}
-            autoCorrect={false}
-            maxLength={GROCERY_VARIANT_MAX_LENGTH}
-            accessibilityLabel="Variant"
-          />
-          {variantSuggestions.length > 0 && (
-            <View style={styles.suggestionChips}>
-              {variantSuggestions.map(value => (
-                <TouchableOpacity
-                  key={value}
-                  style={styles.suggestionChip}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => setVariantText(value)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Use variant ${value}`}
-                >
-                  <Text style={styles.suggestionChipText} numberOfLines={1}>{value}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-          <Text style={styles.hint}>
-            Shown on the list, after the brand.
-          </Text>
-          </>
-          )}
-
           {quantityVisible && (
           <>
           <Text style={styles.label}>QUANTITY</Text>
@@ -1499,6 +1526,12 @@ export function GroceryItemSheet({
           controller its React parent belongs to, so a sibling would be asking
           the screen's controller to present a second sheet while this one is
           already up. */}
+      <ProductSheet
+        visible={productSheet !== null}
+        itemId={item.id}
+        editingProductId={productSheet === 'add' ? null : productSheet}
+        onClose={() => setProductSheet(null)}
+      />
       <SubstituteSheet
         visible={subSheet !== null}
         itemId={item.id}
@@ -1571,10 +1604,21 @@ function makeStyles(colors: Colors) {
     subRowDivided: { borderTopWidth: border.hairline, borderTopColor: colors.separator },
     subBody: { flex: 1 },
     subName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
+    // The tick sits beside the name rather than at the row's trailing edge,
+    // where the chevron already is — two glyphs at the same end read as one
+    // control with a decoration on it.
+    productNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     subMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
     // Clears the last row, and gives the field's own bottom padding something
     // to sit under rather than jamming the pill against the separator below.
     subAdd: { marginTop: spacing.sm, alignSelf: 'flex-start' },
+    productActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: spacing.xs,
+      marginTop: spacing.sm,
+    },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
     // No marginHorizontal on either — `body`'s own padding already insets them.
     fieldSearch: { marginBottom: spacing.md },
@@ -1600,29 +1644,6 @@ function makeStyles(colors: Colors) {
       height: 44,
     },
     inputError: { borderColor: colors.red },
-    // Brand/Variant's "pick a value already used elsewhere" chip row, same
-    // treatment as RecipeEditor's Author/Source suggestions. Margin on both
-    // sides: the input above has no marginBottom of its own, and neither does
-    // the hint text below.
-    suggestionChips: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.xs,
-      marginTop: spacing.xs,
-      marginBottom: spacing.xs,
-    },
-    suggestionChip: {
-      backgroundColor: colors.bgSunken,
-      borderRadius: radius.full,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.xs,
-      maxWidth: 220,
-    },
-    suggestionChipText: {
-      color: colors.textSecondary,
-      fontSize: font.sm,
-      fontWeight: fontWeight.medium,
-    },
     // The same box as `input`, with the currency symbol living inside it so the
     // field reads as money before anything is typed into it.
     priceField: {

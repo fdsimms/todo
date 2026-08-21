@@ -1,9 +1,9 @@
 # The grocery list, the shops, and the kitchen
 
-Everything about what lands in the trolley: how the list is filed, which shop
-has what, what the app believes you already have, and the four adjacent ideas
-(either/or, alternatives, substitutes, standing swaps) that are easy to
-conflate. `docs/arch/recipes.md` is the other half; a change that touches
+Everything about what lands in the trolley: how the list is filed, which one of
+a thing you're after, which shop has what, what the app believes you already
+have, and the five adjacent ideas (products, either/or, alternatives,
+substitutes, standing swaps) that are easy to conflate. `docs/arch/recipes.md` is the other half; a change that touches
 ingredient lines usually needs both.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
@@ -36,6 +36,81 @@ that pointed at the aisle rather than rewriting them to `Other`: rewriting asser
 never made, and it would outrank the lexicon for ever after.
 
 `Other` can't be renamed or deleted — it's the floor `aisleForName` returning null lands on.
+
+## Products (`ItemProduct`) — which bread, under Bread
+
+A `GroceryItem` is the Platonic ideal: Bread is what recipes call for, what the pantry tracks,
+what has one `nameKey`, one aisle, one purchase history, one expiry. An **`ItemProduct`** is one
+box on the shelf under it: Arnold's whole wheat, Dave's Killer 21 grain, the store brand seeded
+sourdough. `GroceryItem.preferredProductId` points at the one you want, or is null, which is the
+common "any bread is bread" case.
+
+This replaced a `brand`/`variant` pair of strings on the item, and the three things wrong with
+that pair are the argument for the whole shape:
+
+- **It could only hold the box you want right now.** Switching from Arnold's to Dave's overwrote
+  it, so there was nowhere to record having tried the first one, and no object for a rating to
+  hang on. That's what `ItemProduct.rating` needed to exist.
+- **It never really paired the two words.** "Arnold's" and "wheat" named one box only because
+  they happened to sit on the row at the same time. Nothing could be preferred, rated, or
+  recorded at a store.
+- **Its suggestion chips were catalog-wide.** They were drawn from every brand typed anywhere,
+  which is how "Siggi's" came to be offered under a loaf of bread. Brands don't generalise across
+  items; within one item they repeat constantly, because a maker you buy makes two or three of
+  the thing. `ProductSheet`'s chips are scoped to the item's own products, and that scoping is
+  the point rather than an optimisation.
+
+- **Its own table, not a JSON column on the item.** The call turns on the same question every
+  time: does anything outside the row hold this id? Here it does — `preferredProductId` and
+  `ItemShopLink.productId` both point at a product. (`Recipe.ingredients` is a blob precisely
+  because nothing outside that row holds an ingredient's id.) `grocery_item_products` is shaped
+  like `grocery_item_shops` and `grocery_item_subs`, with the same hand-written cascades, since
+  FKs are off.
+- **`productKey` is unique per item, not per catalog.** Two items may both have a "store brand"
+  product and those are two different boxes. It's `groceryNameKey` on each half, so an apostrophe
+  becomes a space exactly as it does in an item's or a shop's key — "Arnold's" and "Arnolds" are
+  two products, the same way "Trader Joe's" and "Trader Joes" are two shops. A product with
+  neither half is the item itself, and `addProduct` refuses it.
+- **A rating is three states, never a 1-to-5 scale.** The question at the shelf is "have I had
+  this and hated it". Four stars versus three is not a distinction anyone reproduces a month
+  later; "never again" is. Null — no opinion — is the overwhelmingly common state and is not
+  "fine". Nothing infers one, in either direction: buying something is not liking it.
+- **A rating sorts, it never filters.** An `avoid` product stays in the list. Remembering that
+  you hated it is the whole point, and hiding it takes the memory away exactly when you're
+  standing in front of the shelf about to buy it again.
+- **Only the first product named becomes the preference.** A first box on an item with no opinion
+  plainly is the answer to "which one?"; a second is a box you're recording. Promoting every new
+  one would mean the list you build to compare products re-decides for you as you build it.
+  `addByName`'s brand chip is the deliberate exception — typing a brand while adding to the list
+  *is* a statement about what you're going shopping for.
+- **`productStrict` is one flag, and the product picks the granularity.** A product carrying a
+  brand and no variant ("any Arnold's") is the brand-level rule; one carrying both is the
+  product-level rule its predecessor `brandStrict` couldn't express. Default false, and nothing
+  infers it: a preference set as a note to self is not a filter over stores.
+- **Per-store claims are keyed by product** (`ItemShopLink.unavailableProductIds`, a JSON map of
+  product id → stamp). Its predecessor was a bare `brandUnavailableAt` date that said nothing
+  about *which* brand it was about — so switching the item's brand left the claim standing, and
+  the shelf caption went on reading "no Dave's Killer at Safeway" off a look you took for
+  Arnold's. Keying it to the product fixes that with no rule that has to remember to clear
+  anything: switch your preference and the old entry stops matching, switch back and it's intact.
+  It also lets one store be missing two of an item's products at once, which a single stamp
+  could not say. `ItemShopLink.productId` (what you last got here) is still an **observation** and
+  must never filter anything, for exactly the reason its brand-string predecessor couldn't: a
+  shelf holds several at once.
+- **A purchase clears every claim about that store**, not just the one about the box that came
+  home. Coming home with something refutes the whole shelf-shaped claim at once, and it's the one
+  correction nobody should have to make by hand.
+
+**A product is not a substitute, and the line is: same box → product, different thing →
+substitute.** A hamburger bun standing in for bread is a different thing you buy, with its own
+aisle, its own pantry state and its own recipes calling for it, so it stays an `ItemSubLink`
+between two items. Within an item you pick among products; across items you fall back to a
+substitute. Recipes are untouched by any of this — `RecipeIngredient.nameKey` bridges to the
+*item*, because a recipe calls for bread, not for Arnold's wheat.
+
+**Prices are still per item and per store, not per product.** `lastPriceMinor`/`priceHistory`
+live on `GroceryItem` and `ItemShopLink`, so a run of observations mixes whatever boxes were
+bought. That's a known gap rather than a decision that products don't affect price.
 
 ## Grocery stores (`Shop`) — which shop has which items
 
@@ -325,12 +400,16 @@ has no dish decision to defer — but the loser then sat there looking outstandi
 
 ## Substitutes (`ItemSubLink`) — one item standing in for another
 
-**The vocabulary rule, so it can't drift: either/or on the list, alternatives on the
-recipe, substitutes on the item — and a substitute marked "always use this instead" is a
-standing swap.** Four adjacent terms for four genuinely different things; settled here
-rather than left to be re-argued per PR.
+**The vocabulary rule, so it can't drift: products *of* an item, either/or on the list,
+alternatives on the recipe, substitutes on the item — and a substitute marked "always use this
+instead" is a standing swap.** Five adjacent terms for five genuinely different things; settled
+here rather than left to be re-argued per PR.
 
-The one-line test for which you're looking at: **does the answer depend on the dish?**
+First, is it even the same thing you're buying? A different box of it is a **product** (above) —
+Arnold's white instead of Arnold's wheat is not a substitution, it's the other one under the same
+item. Everything below is about reaching for a *different item*.
+
+The one-line test for which of those you're looking at: **does the answer depend on the dish?**
 If yes it's a `choiceGroup` — both options intended, equals, decided per cooking in
 `MealPlanEntry.recipeChoices`, scoped to that recipe. If no it's a substitute — one
 intended and one tolerated, ranked rather than equal, consulted when the first isn't

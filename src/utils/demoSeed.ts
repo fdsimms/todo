@@ -1119,10 +1119,11 @@ function seedGroceries(recipes: DemoRecipes): void {
     clearList,
     setQuantity,
     setNote,
-    setBrand,
-    setVariant,
-    setBrandStrict,
-    setBrandUnavailable,
+    addProduct,
+    updateProduct,
+    setPreferredProduct,
+    setProductStrict,
+    setProductUnavailable,
     setAisle,
     setAisleOrder,
     setOnHandUntil,
@@ -1179,18 +1180,37 @@ function seedGroceries(recipes: DemoRecipes): void {
   setQuantity(itemNamed('Potatoes').id, '5 lb');
   setNote(itemNamed('Black beans').id, 'The low-sodium ones');
   setNote(itemNamed('Bread').id, 'Seeded, from the back shelf');
-  // The brand is a clause beside the name, so this row is still plain "cottage
+  // A product is a clause beside the name, so this row is still plain "cottage
   // cheese" to a recipe that calls for it and to its own purchase history —
   // the caption only says which one to pick up. Seeded on a row that also
-  // carries no note, so the list shows the brand caption on its own rather
+  // carries no note, so the list shows the product caption on its own rather
   // than stacked under one.
-  setBrand(itemNamed('Cottage cheese').id, 'Good Culture');
-  // The same row carries the variant, which is the pairing worth showing: a
-  // brand alone doesn't finish the job, since one dairy makes several tubs.
-  // Both clauses compose into the single caption "Good Culture low fat" —
-  // seeded together so the demo shows the composition rather than a variant
-  // sitting on its own, which is the rarer of the two states.
-  setVariant(itemNamed('Cottage cheese').id, 'low fat');
+  //
+  // Brand *and* variant, which is the pairing worth showing: a brand alone
+  // doesn't finish the job, since one dairy makes several tubs. The two
+  // compose into the single caption "Good Culture low fat". One product, so
+  // this is also the demo's example of the ordinary case — an item where you
+  // know which one you want and have never bothered to record an alternative.
+  addProduct(itemNamed('Cottage cheese').id, { brand: 'Good Culture', variant: 'low fat' });
+
+  // Bread is the demo's example of the other shape: an item you've tried
+  // several of and have opinions about. Three boxes, one preferred and one
+  // marked never again, which is the whole reason products are rows rather
+  // than a pair of strings — a single brand field could hold only the first of
+  // these, and trying the second would have erased it.
+  const bread = itemNamed('Bread').id;
+  const arnolds = addProduct(bread, { brand: "Arnold's", variant: 'whole wheat' });
+  const daves = addProduct(bread, { brand: "Dave's Killer", variant: '21 whole grains' });
+  // A rating is never inferred from a purchase, so the seed has to say it —
+  // and it's said on a box that isn't the preferred one, since "the one I
+  // avoid" and "the one I want" being the same row would read as a bug.
+  if (daves) updateProduct(daves.id, { rating: 'avoid', note: 'Too sweet' });
+  // The brandless case, in the one place it's ordinary: a store's own label
+  // has a variant worth naming and no maker worth naming.
+  addProduct(bread, { brand: null, variant: 'seeded sourdough' });
+  // Already the preference by virtue of being added first — set explicitly so
+  // the seed says what it means rather than depending on insertion order.
+  if (arnolds) setPreferredProduct(bread, arnolds.id);
 
   const traderJoes = newShop("Trader Joe's");
   const costco = newShop('Costco');
@@ -1300,9 +1320,9 @@ function seedGroceries(recipes: DemoRecipes): void {
   linkItemShop(itemNamed('Tortillas').id, costco.id);
 
   // The third claim a store can carry: it stocks the thing, just not the one
-  // you want. Cottage cheese already names a brand above; switching the rule on
-  // is what makes that brand filter store coverage rather than merely caption
-  // the row.
+  // you want. Cottage cheese already names a product above; switching the rule
+  // on is what makes that product filter store coverage rather than merely
+  // caption the row.
   //
   // Trader Joe's is the store the seeded trip below runs at, so this is also
   // the only way the shelf caption for it ("No Good Culture here") appears in
@@ -1312,8 +1332,8 @@ function seedGroceries(recipes: DemoRecipes): void {
   // Costco is deliberately left unmarked rather than confirmed: an unmarked
   // store counts, and the seed has to show that reading as "still counts" or
   // the rule looks like it needs a verdict on every shop before it works.
-  setBrandStrict(itemNamed('Cottage cheese').id, true);
-  setBrandUnavailable(itemNamed('Cottage cheese').id, traderJoes.id, true);
+  setProductStrict(itemNamed('Cottage cheese').id, true);
+  setProductUnavailable(itemNamed('Cottage cheese').id, traderJoes.id, true);
   // Costco is linked but deliberately *not* ruled out, which is the half that
   // shows the rule is narrow: only what you've marked drops out, so a store you
   // haven't checked still counts as somewhere you can get this.

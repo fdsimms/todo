@@ -212,6 +212,7 @@ exports.
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
 | grocery autocomplete, Buy again ranking | `src/utils/grocerySuggest.ts` |
+| which bread — brands, variants, and rating them | `src/utils/groceryProduct.ts` (`ItemProduct`) — see `docs/arch/groceries.md` |
 | which store an item comes from | `src/utils/groceryShops.ts` — see `docs/arch/groceries.md` |
 | the store you're shopping at right now | `src/utils/activeTrip.ts` — see `docs/arch/groceries.md` |
 | what something costs, and which store is cheaper | `src/utils/groceryPrice.ts` |
@@ -251,9 +252,9 @@ exports.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (4.7k), `components/TaskEditor.tsx` (4.2k),
-`screens/TodayScreen.tsx` (3.6k), `components/TaskItem.tsx` (3.3k), `db/database.ts` (3.1k),
-`store/useGroceryStore.ts` (2.9k), `components/QuickAddModal.tsx` (2.6k),
-`types/index.ts` (2.5k), `screens/MealPlanScreen.tsx` (1.9k),
+`screens/TodayScreen.tsx` (3.6k), `db/database.ts` (3.4k), `components/TaskItem.tsx` (3.3k),
+`store/useGroceryStore.ts` (3.1k), `types/index.ts` (2.6k),
+`components/QuickAddModal.tsx` (2.6k), `screens/MealPlanScreen.tsx` (1.9k),
 `screens/RecipeDetailScreen.tsx` (1.9k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more

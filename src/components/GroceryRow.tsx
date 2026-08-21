@@ -15,7 +15,7 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, type GroceryItem, type ItemProduct } from '../types';
 import { SwipeableRow } from './SwipeableRow';
 import { convertQuantity } from '../utils/unitConvert';
 import { describeProduct } from '../utils/groceryProduct';
@@ -28,6 +28,11 @@ const CHECKBOX_HIT_SLOP = { top: 12, bottom: 12, left: 12, right: 12 };
 
 interface Props {
   item: GroceryItem;
+  /**
+   * The one of this item's products the row is asking for, if any — see
+   * GroceryItem.preferredProductId. Undefined is the common "no opinion" case.
+   */
+  product?: ItemProduct;
   onToggle: (id: string) => void;
   onEdit: (id: string) => void;
   /** Long-press starts a drag when given (see GroceryScreen); tap still toggles. */
@@ -99,6 +104,7 @@ interface Props {
  */
 export const GroceryRow = React.memo(function GroceryRow({
   item,
+  product: preferredProduct,
   onToggle,
   onEdit,
   drag,
@@ -134,7 +140,11 @@ export const GroceryRow = React.memo(function GroceryRow({
   // rather than taking one each — a fifth treatment on a row that can already
   // be four captions tall is past what's readable while walking. See
   // describeProduct for the wording rules.
-  const product = describeProduct(item);
+  //
+  // Resolved by the screen and handed down rather than looked up here: this
+  // row is memoised, and reading the products array in it would re-render
+  // every row on the list whenever any item's products changed.
+  const product = describeProduct(preferredProduct);
 
   const label = [
     item.name,

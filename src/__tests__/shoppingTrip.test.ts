@@ -27,9 +27,8 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     id: `item-${groceryNameKey(name).replace(/\s/g, '-')}`,
     name,
     nameKey: groceryNameKey(name),
-    brand: null,
-    brandStrict: false,
-    variant: null,
+    preferredProductId: null,
+    productStrict: false,
     aisle: OTHER_AISLE,
     quantity: null,
     quantityFromRecipe: false,
@@ -61,7 +60,7 @@ function link(itemId: string, shopId: string, purchaseCount = 1): ItemShopLink {
   return {
     itemId, shopId, purchaseCount, lastPurchasedAt: null, unavailableAt: null,
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
-    brand: null, brandUnavailableAt: null,
+    productId: null, unavailableProductIds: {},
   };
 }
 
@@ -76,8 +75,8 @@ function notAt(itemId: string, shopId: string, purchaseCount = 0): ItemShopLink 
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
-    brand: null,
-    brandUnavailableAt: null,
+    productId: null,
+    unavailableProductIds: {},
   };
 }
 
@@ -378,40 +377,44 @@ describe('summarizeTrip', () => {
   });
 });
 
-describe('a brand rule', () => {
+describe('a product rule', () => {
+  const GOOD_CULTURE = 'p-good-culture';
   const STRICT = LIST.map(i =>
-    i.id === milk.id ? { ...i, brand: 'Good Culture', brandStrict: true } : i
+    i.id === milk.id ? { ...i, preferredProductId: GOOD_CULTURE, productStrict: true } : i
   );
   const milkId = milk.id;
-  const noneHere = (l: ItemShopLink) => ({ ...l, brandUnavailableAt: '2026-03-04T00:00:00.000Z' });
+  const noneHere = (l: ItemShopLink) => ({
+    ...l,
+    unavailableProductIds: { [GOOD_CULTURE]: '2026-03-04T00:00:00.000Z' },
+  });
 
-  it('does not credit a store the user has ruled out on brand', () => {
+  it('does not credit a store the user has ruled out on the product', () => {
     const links = [noneHere(link(milkId, tj.id, 3))];
     const plan = planTrip(STRICT, links, SHOPS);
     const entry = plan.coverage.find(c => c.shop.id === tj.id)!;
 
     expect(entry.itemIds).not.toContain(milkId);
-    expect(entry.withoutBrandItemIds).toEqual([milkId]);
+    expect(entry.withoutProductItemIds).toEqual([milkId]);
     // The store still counts as one the app knows something about: it has the
     // item, which is the opposite of the not-stocked case.
     expect(entry.recordedItems).toBe(1);
   });
 
-  // A store carries several brands, so one past purchase of another is not a
+  // A store carries several versions, so one past purchase of another is not a
   // reason to route around it.
-  it('still credits a store merely observed with a different brand', () => {
-    const links = [{ ...link(milkId, tj.id, 3), brand: 'Lucerne' }];
+  it('still credits a store merely observed with a different product', () => {
+    const links = [{ ...link(milkId, tj.id, 3), productId: 'p-lucerne' }];
     const entry = planTrip(STRICT, links, SHOPS).coverage.find(c => c.shop.id === tj.id)!;
 
     expect(entry.itemIds).toContain(milkId);
-    expect(entry.withoutBrandItemIds).toEqual([]);
+    expect(entry.withoutProductItemIds).toEqual([]);
   });
 
   it('reports it as its own bucket, not as missing', () => {
     const links = [noneHere(link(milkId, tj.id, 3))];
     const summary = summarizeTrip([tj.id], planTrip(STRICT, links, SHOPS));
 
-    expect(summary.withoutBrand).toEqual([milkId]);
+    expect(summary.withoutProduct).toEqual([milkId]);
     expect(summary.missing).not.toContain(milkId);
     expect(summary.covered).not.toContain(milkId);
   });
@@ -421,7 +424,7 @@ describe('a brand rule', () => {
     const summary = summarizeTrip([tj.id], planTrip(STRICT, links, SHOPS));
 
     expect(summary.missing).toEqual([milkId]);
-    expect(summary.withoutBrand).toEqual([]);
+    expect(summary.withoutProduct).toEqual([]);
   });
 
   it('sends you to a store you haven’t ruled out', () => {
@@ -438,7 +441,7 @@ describe('describeShopCoverage', () => {
       shop: tj,
       itemIds: Array.from({ length: known }, (_, i) => `k${i}`),
       unavailableItemIds: Array.from({ length: absent }, (_, i) => `n${i}`),
-      withoutBrandItemIds: [],
+      withoutProductItemIds: [],
       assertedCount: 0,
       observedPurchases: 0,
       recordedItems,
