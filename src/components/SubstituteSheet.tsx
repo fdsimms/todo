@@ -468,7 +468,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
                 there — see the fetch effect above. */}
             {!!apiKey && !!substitutesFeature?.enabled
               && (suggestLoading || suggested.length > 0 || !!suggestError) && (
-              <>
+              <View style={styles.suggestedSection}>
                 <Text style={styles.label}>SUGGESTED</Text>
                 {suggestLoading && (
                   <ActivityIndicator style={styles.suggestSpinner} color={colors.textTertiary} />
@@ -501,7 +501,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onCl
                     </TouchableOpacity>
                   );
                 })}
-              </>
+              </View>
             )}
 
             <View style={styles.searchWrap}>
@@ -616,6 +616,7 @@ function makeStyles(colors: Colors) {
     },
     rowName: { color: colors.text, fontSize: font.md },
     rowMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    suggestedSection: { paddingHorizontal: spacing.md },
     suggestSpinner: { marginBottom: spacing.sm },
     suggestError: { color: colors.textTertiary, fontSize: font.sm, marginBottom: spacing.sm },
     footnote: {
