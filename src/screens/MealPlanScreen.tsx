@@ -1,3 +1,12 @@
+// The meal-planning week: one component of ~1,090 lines, so grep a landmark
+// rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   DayDropHighlight, DayDropTargetRow   the drop targets, at module level
+//   makeStyles              styles, at the bottom
+//
+// Leftovers and the fridge are planned from here too; the rules live in
+// src/utils/leftovers.ts and src/utils/mealPlan.ts.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, FlatList, StyleSheet, Alert, TouchableOpacity, Share } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -217,6 +226,7 @@ const COPY_LOOKBACK_WEEKS = 4;
 const DRAG_LIFT_SCALE = 1.03;
 
 export function MealPlanScreen() {
+  // ==== store bindings and layout insets ====
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
@@ -231,6 +241,7 @@ export function MealPlanScreen() {
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
+  // ==== local state (the week anchor, sheets, bulk selection, the fridge) ====
   // Any date inside the week on screen. Paging moves the anchor, never the days.
   const [anchor, setAnchor] = useState(() => new Date());
   /**
@@ -636,6 +647,7 @@ export function MealPlanScreen() {
   // Runs after `days` has been rebuilt around the new anchor, which is what
   // makes the index findable — scrolling in the effect above would search the
   // week that was on screen when the link was tapped.
+  // ==== effects ====
   useEffect(() => {
     const pending = pendingFocusRef.current;
     if (!pending) return;
@@ -717,6 +729,7 @@ export function MealPlanScreen() {
   const reviewingEntry = entries.find(e => e.id === reviewingPrepTasksFor) ?? null;
   const reviewingRecipe = reviewingEntry?.recipeId ? recipesById.get(reviewingEntry.recipeId) ?? null : null;
 
+  // ==== acting on the plan: prep tasks, the list, moves and replacements ====
   const addChosenPrepTasks = (chosen: FlatPrepTask[]) => {
     if (!reviewingEntry) return;
     const mealDate = dayKeyToDate(reviewingEntry.date);
@@ -917,6 +930,7 @@ export function MealPlanScreen() {
     return describeChoices(recipeChoiceGroups(recipe, recipesById, { chosen: entry.recipeChoices }));
   }, [recipesById]);
 
+  // ==== day and row renderers ====
   const renderDay = useCallback(({ item: day }: { item: Date }) => {
     const key = dayKeyOf(day);
     const dayEntries = entriesForDay(entries, key);
@@ -1303,6 +1317,7 @@ export function MealPlanScreen() {
     setViewMode(mode);
   }, [selectionMode, exitSelection]);
 
+  // ==== render. Everything below is JSX ====
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader

@@ -14,5 +14,8 @@ web-build/
 # Generated from src/patchNotes/entries/ by scripts/build-patch-notes.js
 src/utils/patchNotesData.ts
 
+# tsc --incremental cache: makes a repeat typecheck ~4s instead of ~27s
+.tsbuildinfo
+
 # Scratch worktrees for isolated subagents
 .claude/worktrees/

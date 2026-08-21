@@ -155,15 +155,16 @@ Judge model and effort together (a `bug` is rarely `xhigh`; a big new sync-engin
 npm install          # dependencies; node_modules isn't checked in, so a fresh clone needs
                      # this before tsc or jest will run at all
 npx expo start       # start dev server (scan QR with Expo Go)
-npx tsc --noEmit     # typecheck — ~10s
-npm test             # all 70 suites, 2,614 tests — ~4s, just run the whole thing
+npx tsc --noEmit     # typecheck; ~4s warm, ~20s the first time in a fresh checkout
+npm test             # the whole suite, about half a minute — just run all of it
 npm run test:watch   # watch mode
 npx jest src/__tests__/dateUtils.test.ts  # single file, if you want the shorter output
 ```
 
-**The verification loop is `npx tsc --noEmit && npm test`** — together they're under fifteen
-seconds, so there's no reason to skip either or to narrow to a single test file. Both are green
-on `main`; if either is red, it's you. Don't run `npx expo export` locally to check your work —
+**The verification loop is `npx tsc --noEmit && npm test`** — under a minute together, and
+`tsc` is incremental (`.tsbuildinfo`, gitignored) so every run after the first is a few seconds.
+There's no reason to skip either or to narrow to a single test file. Both are green on `main`;
+if either is red, it's you. Don't run `npx expo export` locally to check your work —
 it's the slowest thing CI does and only catches bundle-time breakage (a bad import path, a
 missing asset, a native config change), so run it only when you changed one of those. CI runs
 `npm test` and `npx expo export --platform ios` on every PR.
@@ -173,7 +174,15 @@ untouched lines.
 
 ## Finding your way around
 
-Start from this table instead of searching. Most work lands in one of these files:
+Start from this table instead of searching. Most work lands in one of these files.
+
+A row that names a `docs/arch/` file means the reasoning behind that feature lives there, and
+**reading it is not optional before changing that area** — those notes are settled decisions
+with the arguments attached, and the "don't do X" ones exist because X was tried. They sit in
+their own files rather than here so a task about groceries doesn't cost every other task 20,000
+tokens of context. For anything the table doesn't cover, `docs/module-map.md` lists every module
+in `src/utils`, `src/store`, `src/hooks`, `src/db` and `src/services` with the symbols it
+exports.
 
 | Changing… | Start at |
 |---|---|
@@ -182,12 +191,12 @@ Start from this table instead of searching. Most work lands in one of these file
 | the task edit sheet | `src/components/TaskEditor.tsx` |
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
-| what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see Template questions below |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see Generated tasks below |
+| what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
-| a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see Timed tasks below |
+| a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
-| the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see The month grid below |
+| the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see `docs/arch/month-grid.md` |
 | a column, migration, or row↔object mapping | `src/db/database.ts` (`initDatabase`, `rowToTask`) |
 | any model's shape | `src/types/index.ts` — one file, every type |
 | colors, spacing, animation | `src/theme/index.ts`, `src/theme/ThemeContext.tsx` |
@@ -197,34 +206,82 @@ Start from this table instead of searching. Most work lands in one of these file
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
 | what demo mode shows | `src/utils/demoSeed.ts` — see Demo data below |
 | what the widget shows | `src/utils/widgetSync.ts` → `modules/todo-widget-bridge` |
-| importing from Apple Reminders (and so voice capture) | `src/utils/remindersImport.ts` (+ `remindersImportSync.ts`) |
-| the Face ID app lock | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` |
-| where the Anthropic API key is kept | `src/utils/secureApiKey.ts` |
+| importing from Apple Reminders (and so voice capture) | `src/utils/remindersImport.ts` (+ `remindersImportSync.ts`) — see `docs/arch/reminders-import.md` |
+| the Face ID app lock | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` — see `docs/arch/app-lock.md` |
+| where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
-| which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) |
+| which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
 | grocery autocomplete, Buy again ranking | `src/utils/grocerySuggest.ts` |
-| which store an item comes from | `src/utils/groceryShops.ts` — see Grocery stores below |
-| the store you're shopping at right now | `src/utils/activeTrip.ts` — see The active trip below |
+| which store an item comes from | `src/utils/groceryShops.ts` — see `docs/arch/groceries.md` |
+| the store you're shopping at right now | `src/utils/activeTrip.ts` — see `docs/arch/groceries.md` |
 | what something costs, and which store is cheaper | `src/utils/groceryPrice.ts` |
-| what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see The kitchen below |
-| what's in the kitchen and what's about to be wasted | `src/utils/kitchenInventory.ts` (+ the ladder in `src/utils/freshness.ts`) — see The kitchen below |
-| "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see Grocery either/or below |
-| "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see Substitutes below |
-| "always use oat milk for milk" | `src/utils/standingSwaps.ts` — see Standing swaps below |
-| one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
-| "serrano or jalapeño", decided at the shelf | `ChoiceResolution.undecided` in `src/utils/recipeComponents.ts` — see Deciding at the shelf below |
-| which heading an ingredient sits under | `src/utils/recipeSections.ts` — see Sections below |
-| halving or doubling a recipe | `src/utils/recipeScale.ts` — see Scaling below |
-| showing amounts in metric or US units | `src/utils/unitConvert.ts` — see Unit conversion below |
-| reading a `quantity` string at all — amounts, units, containers | `src/utils/quantity.ts` — see Quantities below |
-| reading a recipe out one step at a time while cooking | `src/utils/cookMode.ts` + `src/components/CookModeSheet.tsx` — see Cook mode below |
-| either of a recipe's two timers, from any screen | `src/hooks/useRecipeTimer.ts` — see Cook mode below |
+| what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
+| what's in the kitchen and what's about to be wasted | `src/utils/kitchenInventory.ts` (+ the ladder in `src/utils/freshness.ts`) — see `docs/arch/groceries.md` |
+| "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see `docs/arch/groceries.md` |
+| "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see `docs/arch/groceries.md` |
+| "always use oat milk for milk" | `src/utils/standingSwaps.ts` — see `docs/arch/groceries.md` |
+| one recipe used inside another | `src/utils/recipeComponents.ts` — see `docs/arch/recipes.md` |
+| "serrano or jalapeño", decided at the shelf | `ChoiceResolution.undecided` in `src/utils/recipeComponents.ts` — see `docs/arch/groceries.md` |
+| which heading an ingredient sits under | `src/utils/recipeSections.ts` — see `docs/arch/recipes.md` |
+| halving or doubling a recipe | `src/utils/recipeScale.ts` — see `docs/arch/recipes.md` |
+| showing amounts in metric or US units | `src/utils/unitConvert.ts` — see `docs/arch/recipes.md` |
+| reading a `quantity` string at all — amounts, units, containers | `src/utils/quantity.ts` — see `docs/arch/recipes.md` |
+| reading a recipe out one step at a time while cooking | `src/utils/cookMode.ts` + `src/components/CookModeSheet.tsx` — see `docs/arch/recipes.md` |
+| either of a recipe's two timers, from any screen | `src/hooks/useRecipeTimer.ts` — see `docs/arch/recipes.md` |
+| syncing between devices | `src/utils/syncEngine.ts` + `syncMerge.ts` + `cloudKitTransport.ts` + `src/store/useSyncStore.ts` |
+| exporting or restoring a backup | `src/utils/backup.ts` + `src/utils/backupFile.ts` |
+| writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`) |
+| reading free/busy out of the system calendar | `src/utils/calendarBusy.ts` + `src/store/useCalendarStore.ts` |
+| pulling tasks out of a project | `src/utils/projectPull.ts` |
+| what a task is waiting on, and what it blocks | `src/utils/blocking.ts` + `src/utils/blockerRegistry.ts` |
+| how loaded a day is, and lightening an overloaded one | `src/utils/dayLoad.ts` + `src/utils/deloadPlan.ts` |
+| a recurring habit and whether it's on track | `src/utils/rhythms.ts` (+ `rhythmsSettings.ts`) |
+| what to suggest when a task is snoozed | `src/utils/snoozeEngine.ts` |
+| a task that was missed, and the grace it gets | `src/utils/missed.ts` + `src/utils/expiredTaskGrace.ts` |
+| the iOS Live Activity | `src/utils/liveActivity.ts` (+ `tripLiveActivity.ts`) |
+| search ranking and the quick-search sheet | `src/utils/fuzzySearch.ts` + `src/utils/quickSearch.ts` |
+| the numbers on the Stats screen | `src/utils/stats.ts` (+ `cookingStats.ts`) |
+| planning a week of work | `src/utils/weekPlan.ts` |
+| anything not listed here | `docs/module-map.md` — every logic module and what it exports |
 
-**Read narrowly.** Seven files are over 1,000 lines — `useTaskStore.test.ts` (2.6k),
-`TaskEditor.tsx` (2.3k), `TodayScreen.tsx` (2.1k), `QuickAddModal.tsx` (1.6k),
-`useTaskStore.ts` (1.5k), `TaskItem.tsx` (1.5k), `TemplateItemEditor.tsx` (1.3k). Grep for the
-symbol and read the surrounding range; reading any of them end to end costs more context than
-the rest of the task will.
+<!-- BEGIN GENERATED: repo-stats -->
+<!-- Regenerated by scripts/check-doc-stats.js. Run it after adding or growing a file. -->
+
+**Read narrowly.** 34 files are over 1,000 lines, 20 of
+them source rather than tests. The ten biggest source files:
+
+`store/useTaskStore.ts` (4.7k), `components/TaskEditor.tsx` (4.2k),
+`screens/TodayScreen.tsx` (3.6k), `components/TaskItem.tsx` (3.3k), `db/database.ts` (3.1k),
+`store/useGroceryStore.ts` (2.9k), `components/QuickAddModal.tsx` (2.6k),
+`types/index.ts` (2.5k), `screens/MealPlanScreen.tsx` (1.9k),
+`screens/RecipeDetailScreen.tsx` (1.9k).
+
+Grep for the symbol and read the surrounding range; reading any of them end to end costs more
+context than the rest of the task will. `docs/module-map.md` says which file owns what.
+
+The suite is **155 test files**, and `npm test` runs all of them in about half a minute.
+`npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
+
+<!-- END GENERATED: repo-stats -->
+
+**The ten single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
+`TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,
+`GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx` and `GroceryScreen.tsx`
+are each one component holding most of the file, so there are almost no top-level symbols to
+grep for — `TaskEditor.tsx` has six in 4,200 lines and `RecipeDetailScreen.tsx` has two in 1,900.
+Each opens with a short header comment saying what's where, and its logic half is divided by
+`// ==== <name> ====` banners; `grep -n '// ===='` on one of them is its table of contents. The
+banners stop at the JSX, because a `//` comment can't go inside a `return (`: past the render
+banner, the landmarks are the props already there (`<EditorGroup label="…">` for a card in the
+task editor). Keep a banner accurate when you move code across it, and add one when a file grows
+a region that isn't any of the ones listed.
+
+The other files over 1,000 lines don't need this and haven't got it: `useTaskStore.ts`,
+`useGroceryStore.ts`, `useSettingsStore.ts` and `useMealPlanStore.ts` each declare a store
+interface that already lists every action in order, `database.ts` has 150 top-level functions,
+`types/index.ts` is one commented type per block, and `demoSeed.ts` is data. A grep already lands
+on a real boundary in all of them.
+
 
 **Tests mirror source 1:1** — `src/utils/foo.ts` → `src/__tests__/foo.test.ts`, same for
 stores; that's where a new test goes. Only pure logic is tested (`src/utils`, `src/store`,
@@ -285,11 +342,30 @@ right".
 **Stay in scope.** Fix what was asked, in the pattern the surrounding file already uses.
 Adjacent code that looks improvable isn't the task; mention it instead of rewriting it.
 
-**This file is the answer.** The conventions below are settled decisions with the reasoning
-attached — the "don't do X" notes exist because X was tried. Don't re-derive them from the
-code, and don't re-open them without a reason the note doesn't already cover.
+**This file and `docs/arch/` are the answer.** The conventions here are settled decisions with
+the reasoning attached — the "don't do X" notes exist because X was tried. Don't re-derive them
+from the code, and don't re-open them without a reason the note doesn't already cover. That
+applies word for word to the `docs/arch/` files: they were part of this file until they made it
+too expensive to load, and being in another file makes them optional to *load*, never optional
+to *follow*. If the routing table sends you to one, read it first.
 
 ## Architecture
+
+The cross-cutting model lives here: how data flows, what makes a task visible, how dates are
+decided, and the design system every screen is built from. Individual features are written up in
+`docs/arch/`, one file per area, and the routing table above says which one you need:
+
+| Doc | Covers |
+|---|---|
+| `docs/arch/groceries.md` | Aisles, stores, the active trip, the kitchen/pantry, either/or, substitutes, standing swaps |
+| `docs/arch/recipes.md` | Composed recipes, sections, quantities, scaling, unit conversion, cook mode |
+| `docs/arch/generated-tasks.md` | The five things that write a task unattended |
+| `docs/arch/month-grid.md` | The calendar month view and projected occurrences |
+| `docs/arch/template-questions.md` | What a template run asks before it creates anything |
+| `docs/arch/timed-tasks.md` | Countdowns, and splitting one across subtasks |
+| `docs/arch/reminders-import.md` | Apple Reminders import, and the data it deletes elsewhere |
+| `docs/arch/app-lock.md` | The Face ID gate and the API key in the keychain |
+| `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |
 
 ### Data flow
 
@@ -401,138 +477,6 @@ the block would inherit none.
   it's due today. So the copy passes `hidesWhenOnPace: false`, and a pinned task that isn't visible
   today has only the one row rather than two.
 
-### Generated tasks — the five things that write a task unattended
-
-A planned meal becomes "Cook X", a perishable grocery and an ageing leftover each become "Use up
-X", an opt-in weekly trigger becomes "Plan meals for…", and a project that has gone quiet becomes
-"Review X". The first four were each built by copying the last, which is fine twice and had reached
-four — four nullable back-pointer columns on `Task`, four hand-written "don't pile up" rules, three
-copies of one opt-out. They now share `src/utils/generatedTasks.ts` (pure: the kinds, the registry,
-the opt-out precedence, the lookups) and `src/store/generatedTaskSync.ts` (the create/update/delete).
-**A fifth generator should need neither a column nor a reconcile** — just its own rules module and a
-registry entry (#1524). `projectReview` is that fifth, and it cost exactly that: a rules module, a
-registry entry, a firing beside the nudge's, and no `extrasFor` case in Settings at all.
-
-- **`Task.generatedKind` + `Task.generatedSourceId` replaced `mealEntryId`/`groceryItemId`/
-  `leftoverId`.** Those three columns are still on the table, backfilled from and then left
-  unwritten, like `task_groups.completed_at` — the migrations array only appends. The backfill in
-  `initDatabase` is guarded on `generated_kind IS NULL`, so it touches only legacy rows and is a
-  no-op from the second launch (same shape as the `seen_at` one above it). It is the only thing
-  standing between an existing install and every generated task reading as user-typed, so
-  `database.test.ts` covers it directly.
-- **The meal-plan nudge is in the mechanism despite having no source row.** `sourced: false` in the
-  registry, and it keys on the kind rather than on `linkUrl` as it used to. The link still opens
-  the Meal Plan screen; it just isn't the marker any more, so a task the *user* wrote pointing
-  there no longer counts as the app's own. Legacy rows are backfilled off exactly that link, so the
-  set it matches is unchanged.
-- **It fires as a stack of seven — one task per day of the week it's asking about** — and that's
-  what its `generatedSourceId` now holds: a **day key**, where it used to be null. Still not
-  `sourced`; a day key names a square on the calendar, not a row, so `writeGeneratedOptOut` has an
-  explicit `case 'mealPlanNudge': return` where the `!sourceId` guard used to cover it. Three
-  consequences worth not re-deriving:
-  - **`liveGeneratedTask` can't answer "is one still live"** — it defaults to matching
-    `sourceId === null`, so it matches no nudge task at all now and would hand out a second stack
-    every week. `liveGeneratedTasksOfKind` is the kind-only read, and
-    `partitionMealPlanNudgeTasks` splits the result into the week being asked about (blocks a
-    re-fire) and days that have already passed (deleted by the next firing). One ignored Saturday
-    used to silence the nudge for good.
-  - **One stack row is reused and retitled weekly**, its id in `mealPlanNudgeGroupId` — state, not
-    a preference, like `mealPlanNudgeLastFiredWeekKey` beside it. A stack per firing would leave a
-    year of empty stacks nothing prunes. Resolve-or-shrug: deleted stack reads as null, next firing
-    makes another.
-  - **All seven share the firing day's `dueDate`**, deliberately not their own day — the point is
-    to plan next week *now*, and dated forward they'd be hidden by `isTaskVisible` until the week
-    they were meant to prepare for had started.
-- **The "n/3 planned" counter on those rows is derived, and its data is its own read.**
-  `countPlannedSlots` counts distinct slots (there's no `UNIQUE(date, slot)`, so counting rows
-  reports 4/3 for a day with two dinners) and ignores `snack` (a day isn't incomplete for want of
-  one, and counting it makes 3/3 unreachable). It can't come from `useMealPlanStore.entries` —
-  that's the single window MealPlanScreen owns, and the week a nudge asks about is never the week
-  on screen, so a bare filter would report 0/3 across a fully planned week. Hence
-  `plannedSlotCounts` + `refreshPlannedSlotCounts`, pulled by `useMealPlanNudgeProgress` rather
-  than pushed by the ~15 mutators that would each need a line. **An absent count renders no chip**
-  — "not looked yet" is a third answer and must not render as 0/3. Full day tints the checkbox with
-  the timer's own `circleReady`; nothing ticks a task off by itself (see `timer.ts`).
-- **Every read of `generatedSourceId` that means one particular kind goes through
-  `generatedSourceOf(task, kind)`.** One column where there were three means two generators can
-  hand out the same source id; without the kind check, ticking a leftover's task off could mark a
-  *meal* cooked.
-- **`blocksOnFinished` is cook tasks only, and that asymmetry is the feature.** A meal is one
-  event, so a completed cook task means the night happened and a second one would be an invention.
-  A grocery item and a leftover are rows that come round again — reading the wide set there would
-  mean a staple got exactly one use-up task, ever.
-- **The per-source opt-out stays on the source row** (`MealPlanEntry.cookTask`,
-  `GroceryItem.useUpTask`, `Leftover.useUpTask`), written by `deleteTask` and dispatched in one
-  `writeGeneratedOptOut` switch. **Don't hoist it into a generic suppression record** keyed by
-  `(kind, sourceId)`: that grows without bound, the same disease `remindersImportHandled` has and
-  survives only by pruning to what the Reminders list still holds on every drain. A generic record
-  has no equivalent pruning pass unless each generator supplies one, at which point it isn't
-  generic. On the source row it's bounded for free — whatever deletes the source deletes the "no".
-- **The settings keys stayed per-generator; only the UI merged.** One "Tasks the app adds" section
-  (`GeneratedTasksSection`) lists all four, replacing three sections here and one in Notifications.
-  Renaming `mealCookTasks`/`groceryUseUpTasks`/… to a generic pair would be a migration over
-  preferences people have already set, for nothing a person can see. The section's *list* comes
-  from the registry; its **controls are still hand-written JSX**, the same line `settingsIndex.ts`
-  draws — a config able to express a toggle, a category grid, a day-count stepper, a weekday pill
-  row and an inline time picker would be harder to read than the rows it replaced.
-- **A generator break inside that card is a band, not a hairline** (`groupBreak`). With two
-  generators on, the card runs to four rows apiece, and a hairline between one's "File them under"
-  and the next one's name reads exactly like the hairline above it — the list stops saying where a
-  generator ends.
-- **`projectReview` replaced the quiet-projects banner, and that swap is the argument for the
-  whole shape.** `ProjectNudgeBanner` was a strip above the Today list ("3 projects gone quiet",
-  Review, ✕) and it worked; what was wrong with it is that it sat outside the flow the app is
-  about. It couldn't be deferred, snoozed per project, given a reminder or found in Search, its
-  only refusal was one global "not today" covering every quiet project at once, and it held the
-  header slot above the pinned block whether or not now was the moment. A row can be put off till
-  Saturday. **Don't bring the banner back** — `projectNudgeDismissedAt` and the accent
-  `quietProjectCount` tint on the Today options row went with it; the "Pull from projects" row
-  stays as the way in when you go looking.
-  - **The task carries no `projectId`**, and that isn't tidiness. A dated member is exactly what
-    makes a project *not* quiet, so filing the row into the project it describes deletes it on the
-    next sweep and recreates it on the one after, for ever. It points at its project through
-    `generatedSourceId` like every other generator points at its source.
-  - **Its opt-out is a date, not a `false`** (`Project.reviewDeclinedAt`). The other four write a
-    permanent "no" onto their source, which is right for a staple bought every week and wrong
-    here: the only fields a project could carry that on are `nudgeOptIn`/`nudgeCadenceDays`, and
-    both mean "never chase me about this again" — far more than a swipe says. Read through
-    `isDismissedToday`, the same self-expiring stamp the banner's own dismissal used.
-  - **Being ticked off counts as an answer, for the day** (`projectsReviewedToday`). Completing a
-    task leaves nothing live, so without this the next foreground writes an identical row.
-    `blocksOnFinished` is the mechanism's own answer and is too strong — a project goes quiet again
-    every few months and must be able to ask again when it does.
-  - **`dropGeneratedTask` now genuinely writes no opt-out.** It always claimed to drop "without
-    deciding anything", but it routes through `deleteTask`, which stamps the source; that was
-    harmless only because its original callers run *after* the source row is gone. This is the
-    first generator whose source outlives its task, so the skip had to become explicit.
-  - **It ships on, unlike the nudge beside it**, because it replaced a surface that was already
-    there rather than adding one. The real gate is per-project and unchanged (`nudgeOptIn` +
-    `nudgeCadenceDays`, both still "never ask" by default), so nobody sees anything new.
-  - **Its "Quiet 21 days" chip is filled, and that's the row's marker.** These rows are the app's
-    own offers sitting among tasks the user wrote, and at `textTertiary` the chip read as one more
-    attribute — the same finding that made `autoScheduledLabel` ("Scheduled for you") the one accent
-    chip on a task row. **Deliberately not a "Review" badge before the title**: that restates the
-    title's own first word, and to avoid saying it twice the title would have to drop the verb,
-    leaving the row reading "Kitchen renovation" (a task to *do* the renovation) on the widget, in
-    Search and in the Logbook, none of which render a meta line. The fact the row already carries
-    does the job. **And it stays this generator's alone** — a shared "the app wrote this" chip
-    across all five was mocked and rejected: a planned week is seven cook tasks the user chose by
-    planning the meals, and captioning every one of them is the noise `tripMarkerFor`'s
-    silence-by-default rule exists to avoid.
-  - **It's the one generator whose reconcile can't ride a source mutation.** A project goes quiet
-    by time passing and stops being quiet when some *other* task gets a date, so the check runs on
-    the launch sequence and the Today foreground sweep, and `staleProjectReviewTasks` is what
-    clears a row whose reason has gone. It judges that against every stall, **not** against the
-    capped set `wantedProjectReviews` returns: the cap decides who gets a *new* task when several
-    projects are queued, and losing that contest is no reason to delete a row the user already
-    deferred to Saturday. The cost, stated plainly: a review task can be stale until the next
-    sweep, which the banner — being pure derivation — never could be.
-
-- **They still write straight to Today**, rather than proposing into a review surface the way
-  `deloadPlan`/`projectPull` do. That fork is real and was deliberately left alone here: it's a
-  product decision about all four at once, and this refactor is what makes it a change in one
-  place instead of four.
-
 ### Recurrence
 
 Completing a recurring task creates a new task row with a new `id` and the next computed `dueDate`. The original task is marked completed (not deleted). `getNextDueDate()` in `src/utils/dateUtils.ts` handles all recurrence types; it anchors to the previous `dueDate` for fixed schedules, or to today for `recurrenceFromCompletion`.
@@ -546,55 +490,6 @@ Every completion leaves its row behind, so a daily recurring task accumulates on
 - **Streaks are safe and that's structural**, not luck: `streakCount`/`streakDate` and their `previous*` snapshot live on the row still running the streak and are never summed back across the chain. The pointers that *do* cross rows (`previousOccurrenceId`, `blockedById`) are resolve-or-shrug at every reader — `canBlock(undefined)` is false, chain walks stop on a missed lookup — and already dangle this way after a manual Logbook delete, so a purge leaves them rather than rewriting rows it isn't deleting.
 - **It must not go through `bulkDeleteTasks`**, which arms shake-to-undo. A purge the user didn't just perform sitting under their first shake of the session is not an undo.
 
-### The month grid — the one place a projected occurrence is drawn
-
-`CalendarScreen` reads a month of `dueDate` / `deadline` / `deferUntil`; `calendarMonth.ts` owns
-every rule it renders. No schema change and no new column — it's a read over dates that already
-exist, which is why the whole feature is a util plus a screen.
-
-- **A dot may be projected; a row may not.** A recurring task's future occurrences aren't in the
-  database — completing one spawns the next — so drawing the schedule means rendering something
-  that doesn't exist. That's the thing the Series note below rejected for Later, and it's rejected
-  there for a reason that doesn't apply here: a ghost in a *task list* needs a non-completable,
-  non-selectable row type threaded through `TaskItem`/`TodayScreen`/`useTaskSelection`, whereas
-  nothing on a day cell was ever tappable. So the boundary is drawn at the row: `dayDetail` returns
-  real `Task`s for the day's list and `{taskId, title}` captions for the projections, under
-  "Expected". Deliberately not `Task` — hand a caption a Task and it ends up rendered as one.
-- **Four things are never projected**, each of them a schedule the app doesn't actually promise:
-  a **completed row** (recurrence leaves a tombstone per completion *and* spawns the successor, so
-  walking tombstones draws every future occurrence once per completion the task has ever had —
-  the same unbounded growth `groupRoster` exists to collapse); **`recurrenceFromCompletion`**
-  (anchored to a completion that hasn't happened, so `getNextDueDate` answers from *today* and a
-  walk would lay a fictional track from now to the edge of the grid); a **live chain** (completing
-  advances `chainIndex` and spawns the next step *undated* — the recurrence only advances at chain
-  end, so `getNextDueDate` isn't its next date at all); and an **archived row**. `canProject` is
-  the one place that list lives.
-- **The walk decrements `recurrenceCount` itself.** It's "occurrences remaining, including this
-  one" and `completeTask` takes one off per spawn — walking without it projects a repeat-3-times
-  task all the way to the edge of the grid, because `getNextDueDate` reads the count off the row
-  it's handed and that row never runs down. `recurrenceEndDate` needs no such care; it already
-  returns null.
-- **A relative deadline is projected with its occurrence** (`deadlineOffsetDays`,
-  `deadlineMonthDay`), reusing `getDeadlineFromOffset`/`getDeadlineFromMonthDay` rather than
-  restating the arithmetic — the sign is the whole meaning of that field. A *fixed* `deadline`
-  doesn't carry forward, so it has nothing to project.
-- **Placement, not visibility.** A task shows on its day whether or not it's actionable there —
-  vacation-paused, blocked, behind a time segment. The grid answers "what date is this on", the
-  same call `pinnedTasks()` makes; `isTaskVisible` is Today's question. `windowStart`/`windowEnd`
-  are correspondingly *not* a fourth signal: they're clock times within a day, with no cell to
-  land in.
-- **The reset time deliberately doesn't reach the bucketing.** `getTaskDayStart` only moves the
-  clock time inside the date it was handed and never rolls it to another day, so
-  `dayKeyOf(getTaskDayStart(d, r))` is `dayKeyOf(d)` for every `r`. Threading `dayResetTime`
-  through the buckets would read like it did something. Projection takes it because
-  `getNextDueDate` does.
-- **Three dot states, not two.** `solid` (real work outstanding), `done` (rows here, all ticked),
-  `projected` (hollow). Collapsing `done` into `projected` makes a finished Tuesday read as a
-  guess; collapsing it into `solid` makes a month you've cleared look untouched.
-- **Its own route, not a fifth Today lens** — see the Navigation note. And paging months carries
-  the selection with it: a detail pane naming a day outside the grid renders "Nothing on this day"
-  about a day that simply isn't in range.
-
 ### Series (`seriesId`) — one task on several dates
 
 A task the user gave more than one date ("walk the neighbour's dog on the 10th and the 15th") is **N real rows sharing a `seriesId`**, each an ordinary one-off with its own `dueDate` and `recurrenceType: 'none'`. It is deliberately not one row holding a list of dates: `dueDate`/`completedAt`/`streakDate` are singular in every visibility, completion and Logbook path, and Later renders real `Task` rows (`laterSections`), so materialising them is the only way all the dates actually appear there. Projected "ghost" rows were the alternative and would have needed a second, non-completable, non-selectable row type through `TaskItem`/`TodayScreen`/`useTaskSelection`.
@@ -607,890 +502,6 @@ A task the user gave more than one date ("walk the neighbour's dog on the 10th a
 - **Editing** is scoped like a recurrence: `updateTask(..., {scope: 'series'})` fans `CONTENT_FIELDS` out to the set's *later* incomplete dates, re-anchoring `reminderTime` onto each date's own day (it's an absolute instant, and a set shares an hour, not a moment).
 - **Counting**: `groupRoster()` collapses a series to one entry, same as it does recurrence tombstones — otherwise a stack holding a 2-date series reads as 2 members. `getRepeatedInstances()` skips series rows so a deliberate schedule isn't reported as an ad-hoc repeat. **Cascades must expand it again**: the roster names one row per member, so `deleteGroup({cascade:true})` collapsing to it deleted one date of a set and orphaned the rest.
 - **`projectProgress` has its own collapse and can't reuse the roster** (`src/store/useProjectStore.ts`). Same disease — a recurring member's tombstones grew the denominator forever — but the cure differs: the roster drops old completions, which is right for a stack (they aren't members) and wrong for a project, where a one-off finished last week is exactly a member and exactly done. So it groups rows by identity (`seriesId`, else the root of the `previousOccurrenceId` chain) and counts each once, done only when nothing in it is outstanding.
-
-### Grocery aisles — a name is the identity, so deleting one needs a tombstone
-
-An aisle is a *string*, held in three places at once: `aisleOrder` (a settings key), the `aisle`
-column on every row, and the values of `aisleOverrides` (the remembered filings). So `renameAisle`
-has to rewrite all three, and `deleteAisle` has to move the rows to `Other` — every row, not just
-this week's list, since the aisle lives on the catalog row.
-
-**`normalizeAisleOrder` re-appends `DEFAULT_AISLES` on every read**, which is the feature (a bigger
-default list ships with no migration) and is also why a delete can't just drop the name from the
-order — it would be back on the next launch. `hiddenAisles` (`grocery_aisle_hidden`) is the
-tombstone that stops it, and it is **derived from the order being saved** by `commitAisleOrder`,
-never edited directly: whatever the caller left out is a deletion, so the two can't drift, and
-re-adding a deleted built-in by name un-hides it for free. The `used` pass still overrides a
-tombstone — a section with no place in the order renders unplaced, which is worse than a
-resurrected name, and after a delete nothing carries it anyway.
-
-**`addByName` clamps through `placeAisle`.** Neither the lexicon nor a remembered filing knows what
-the user deleted, so without it, deleting Snacks and typing "chips" files the new row under Snacks
-and `used` brings the section straight back. For the same reason `deleteAisle` *forgets* the filings
-that pointed at the aisle rather than rewriting them to `Other`: rewriting asserts a filing the user
-never made, and it would outrank the lexicon for ever after.
-
-`Other` can't be renamed or deleted — it's the floor `aisleForName` returning null lands on.
-
-### Grocery stores (`Shop`) — which shop has which items
-
-The rest of the grocery feature isn't written up here yet; this section covers only stores, which
-is where the non-obvious decisions are.
-
-**"Store" is the user-facing word; the code says `Shop`** — `Shop`, `shopId`, `grocery_shops`,
-`FinishShoppingSheet`. Same split as Stack/`TaskGroup`, and for a blunter reason: `store` is
-already Zustand's word here, and `useGroceryShopStore` sitting next to `useGroceryStore` is a pair
-nobody would reliably pick between. Shops live *inside* `useGroceryStore`, like `aisleOrder`.
-
-**`grocery_item_shops` is an aggregate, not a log.** One row per (item, shop) carrying
-`purchase_count` / `last_purchased_at`, upserted by `finishShopping`. A row per item per *trip*
-was the alternative and grows without bound — the same disease the completed-task retention
-window exists to bound, and the reason `GroceryItem` is a forever-row with counters rather than a
-tombstone per shop. This table is bounded by (items × stores you actually shop at).
-
-- **`item.purchaseCount >= Σ link.purchaseCount`, and that gap is permanent.** Trips finished
-  before this shipped, and any trip finished without naming a store, bump the item and write no
-  link. So the item's count is the total and the per-store ones are partial: **never sum links to
-  get a total, and never render "6 of 7 trips"**. `describeShops()` owns the wording so no caller
-  re-derives it — "Bought 7 times · usually Costco" is true whether or not 6+1 happens to be 7.
-- **A store can be told it doesn't have something** (`ItemShopLink.unavailableAt`), and that's the
-  only negative in the feature. An *absent* link means "never seen here", which is ignorance; a
-  stamped one means the user looked and it wasn't there, which is an answer — so it's a third link
-  state, not the absence of one. **A date, not a flag**, and it sits happily on a row that also has
-  purchases: a shop that stocked it eleven times and stopped is exactly the case, and zeroing the
-  count to say so would destroy the record. Every "where can I get this" read drops a stamped link
-  (`shopsForItem`, and so `primaryShopFor`/`exclusiveShopFor`; `itemIdsForShop`, `itemCountsByShop`,
-  `planTrip`); only the item sheet's own picker reads it, because that's where it's shown and undone.
-  **A purchase clears it automatically** — buying it there refutes the claim, and that's the one
-  correction nobody should have to make by hand (`dbFinishGroceryShopping`, mirrored in the store's
-  in-memory patch). Taking it back by hand deletes a row that was *only* the claim rather than
-  clearing the stamp in place, since a bare `purchaseCount: 0` row is the opposite assertion.
-- **It's captured where the trip ends, not in a settings screen.** `FinishShoppingSheet` lists what
-  the trip left on the list and asks, once, which of it the store didn't have — the only moment
-  anyone knows. Nothing is ticked by default (the usual reason a thing is left is that you didn't
-  get to it, so silence has to mean that), the section only exists once a store is named, and
-  changing the store clears the ticks rather than refiling them.
-- **It's the one thing in `shoppingTrip.ts` allowed to assert an absence**, because it isn't the app
-  asserting it. A marked item is dropped from the store's coverage and lands in
-  `TripSummary.missing`, which the sheet states flatly where every other line is hedged. It stays
-  out of `recordedItems` too: knowing what a shop *lacks* is not knowing its range, so it must
-  never read as the app having learned something about the store.
-- **A store is only ever credited with what it's been seen with** — a purchase or a hand-assertion.
-  There used to be a third, softer bucket (`likelyItemIds`): a store with a couple of items on
-  record from an aisle got credited with the rest of your list from that aisle, rendered as its own
-  faded clause in every count, bar and sentence. It's gone, and the reasons are in
-  `shoppingTrip.ts`'s header — unfalsifiable, twice the copy, and a number nobody can act on. The
-  answer to a coverage that looks too low is the correction flow ("Actually, it has more"), which
-  turns a guess into a fact the user owns. Don't reintroduce the guess.
-- **A link with `purchaseCount: 0` is an assertion**, not an observation — the user tapped a store
-  in the item sheet to say "I can get this here". That's the whole distinction and it needs no
-  second flag: `primaryShopFor` refuses to call an assertion "usually" (the app would be inventing
-  a habit), while `exclusiveShopFor` counts it (availability is exactly what the tap claimed).
-  **`linkItemShop` promotes a provisional row** (`inCatalog`), for the same reason starring does:
-  saying where you get something is a statement about the item, not about this week's list. Without
-  it the next "Remove from list" deletes the row and silently takes the assertion with it.
-- **Naming a store is optional and `null` is a real answer**, not a skipped step. It's a
-  first-class pill in the finish sheet, it's the default until a trip has ever named one, and
-  picking it finishes the trip exactly as every trip did before stores existed. A required
-  question between a full trolley and a ticked-off list is how this feature would get turned off.
-- **Stores got a table where aisles got a settings key**, which is the opposite call to
-  `grocery_aisle_order` and follows the same rule categories did: an aisle is a name and a
-  position, so a string list holds it; a store is referenced by every link row it owns, so it
-  needs an id that survives a rename. Name strings in the links would break every record the
-  moment someone fixed a typo.
-- **Both cascades are hand-written** (`dbDeleteGroceryItem`, `dbDeleteGroceryShop`). expo-sqlite
-  has foreign keys off, so `ON DELETE CASCADE` would silently do nothing — same reason
-  `dbBulkDeleteTasks` walks `parent_id` itself. Readers are resolve-or-shrug anyway
-  (`shopsForItem` drops a link whose shop is gone), like every other cross-row pointer here.
-- **Manage stores in the setup sheet, browse them in Buy again.** The Stores tab of
-  `GroceryAislesSheet` is add/rename/reorder/delete only; the "what does Costco carry" read is the
-  filter chip row in `BuyAgainSheet`, because that's the catalog browser and it's open exactly
-  when you're deciding what to buy where. **There is still no store chip on the shopping list
-  rows** — the row is already dense, and a chip on every row is a column you can't act on. What
-  a row can now carry is one quiet caption, and only while a trip is running: see below.
-
-### The active trip — "I'm at this store"
-
-The store used to be captured only at the *end* of a shop, in the finish sheet, which meant the
-app never knew where you were while it could still be useful. `src/utils/activeTrip.ts` is the
-other half: a trip is a store id plus a start stamp, and while one is running the list says
-which rows you don't usually get here.
-
-- **Stored as `(tripShopId, tripStartedAt)`; everything else is derived.** There is no `isActive`
-  flag and no timer that ends a trip — the same call `timer.ts` makes about a countdown and
-  `isDismissedToday` makes about a dismissal. A flag has to be cleared by something, and that
-  something isn't running while the app is closed. The failure this rules out is specific:
-  a Saturday-evening trip still marking rows up on Sunday morning.
-- **`resolveActiveTrip` is the only sanctioned read** (`activeShop()` on the store). It drops both
-  a deleted shop and an aged-out trip, so no caller has to remember to. `TRIP_MAX_MS` is six
-  hours — generous enough that a slow shop is never cut off, short enough that an abandoned one
-  is gone by morning. Deliberately *not* the logical-day rollover `isDismissedToday` uses: an
-  11pm shop is a real thing and a day reset would end it twenty minutes in.
-- **Explicit only, and started from the planner.** `ShoppingTripSheet` grows a second verb —
-  its header confirm plans a trip (a task, possibly for tomorrow), "Start shopping at X" says
-  you're there now. Overloading the one button would set the mode at exactly the wrong moment.
-  Offered for a single selection only: you can only stand in one store, and a two-stop plan is
-  still a plan. Nothing anywhere infers a trip.
-- **Three terminators, and they're in three different places for a reason.** The Clear button and
-  `clearList` end it in the store; finishing ends it in `GroceryScreen.handleFinished` rather than
-  inside `finishShopping`, because that early-returns on an empty trolley and finishing a shop you
-  bought nothing at still ends the trip. Expiry is handled twice — `initialize` repairs at read
-  time (not written back, like the aisle order), and `checkTripExpiry` on screen focus clears the
-  fields so an expiry that happened while the app was open becomes *visible* rather than merely
-  true; a memo whose inputs haven't changed won't re-render itself away.
-- **Silence is the default and it's load-bearing** (`tripMarkerFor`). Only three things can be
-  said, and each is backed by something the user recorded: `unavailable` ("Not at Safeway", their
-  own negative claim), `only` ("Only at Costco", every store on record is one other — a hand
-  assertion counts), `usually` ("Usually Trader Joe's", observed purchases). A row this store has
-  any link for says nothing, and **so does a row nothing is known about** — the app not having
-  watched you buy tahini anywhere is ignorance, not evidence. Marking those would caption most of
-  the list on anyone's first trip, which is how the feature would come to read as noise. Same
-  discipline as `shoppingTrip.ts`.
-- **The banner is a sibling of the list, not its `ListHeaderComponent`** — unlike
-  `StartTripPrompt`. A mode indicator that scrolls away is one you can't find to turn off, and
-  it's the answer to "why does this row say that" at the moment you're looking at the row. The two
-  never render together: the card is for deciding where to go, the banner says you've gone.
-- **The row caption is its own third text treatment**, borrowing `note`'s colour and
-  `alternatives`' weight. A row can carry all three at once (a noted either/or item on record
-  elsewhere); at identical styling they run together into a block you can't read while walking.
-  It outranks the recipe caption and only that — provenance is the least useful thing at a shelf,
-  while a user's note ("the blue cap one") is exactly what you're there for.
-- **The `usually` case can't be seeded into demo mode.** It needs an item bought at two stores
-  while you stand in a third, and the demo has two stores anyone would shop at. The seeded trip
-  is at Trader Joe's and shows the other two.
-
-### The kitchen — the pantry and the fridge, read as one thing
-
-What the app treats as "have it" is one function, `probablyHaveReason` — an explicit
-`onHandUntil` assertion if there is one, otherwise a guess from this item's own purchase cadence.
-There is no inventory table and there must not be one: a maintained inventory is the feature that
-dies in week three, so it's computed first and corrected second ("Got it" / "Out of it" on
-`GroceryItemSheet`, and `finishShopping` stamping what a trip bought).
-
-**Four mechanisms answer two questions, and `src/utils/kitchenInventory.ts` is the read above
-them** (#1670). `onHandUntil` and `probablyHaveReason` answer "do I have it"; `expiresAt` and
-`Leftover.keepUntil` answer "is it dying". Each is individually well-argued and none of them is
-reopened — the notes on why an expiry is a date rather than a `perishable` flag, and why a
-`Leftover` isn't a `GroceryItem`, still stand. The problem was one level up: a person has one
-mental model here, and a bag of spinach going off Thursday and a container of chilli going off
-Thursday are the same fact to the cook.
-
-- **`KitchenEntry` is a view model, computed per render, never stored** — the `ContextRow`
-  pattern, carrying only what a row draws so no reader treats it as the source. No schema change;
-  it's pure derivation, which is why it's a util and not a store.
-- **Membership is `pantryEntries` plus every live `Leftover`.** Deliberately *not* "everything
-  carrying an `expiresAt`": that column outlives the food (nothing clears it when the bag is
-  finished), so reading it as membership keeps a bag of spinach in the kitchen for ever, months
-  past an "Out of it" the user already typed. `probablyHaveReason` stays the single owner of "do
-  I have this", and a use-by day is only read off a row it has already vouched for.
-- **One freshness ladder, in `src/utils/freshness.ts`.** `describeKeepUntil` and `describeExpiry`
-  were word-for-word the same four lines; both are `describeUseBy` now, and `freshnessFor` is the
-  one producer of `LeftoverFreshness` (which keeps its name — renaming it is a rename across the
-  whole leftovers feature for no behaviour). `needsAttention` draws its line through
-  `isUseUpSoon`, so the fridge and the catalog can't drift on where it is. That module imports
-  nothing but `dateUtils` on purpose: `leftovers`, `groceryShelfLife` and `kitchenInventory` all
-  read *down* into it, and one edge back up makes the three a cycle.
-- **It ranks, it doesn't only label.** A screen can show everything; a single row has one line and
-  has to pick what to name first. `compareKitchenEntries` sorts on the use-by day itself (which
-  *is* the ladder's order — over, due, soon, fresh), then a container ahead of a catalog row
-  because a cooked portion spoils harder, then by name. Anything with no day sorts last: an
-  undated rice isn't fresher than a dated spinach, it's not in the conversation.
-- **"Nothing to report" is a first-class answer.** `useUpEntries` returns `[]` and
-  `describeKitchen` returns `''`, so a one-line consumer renders nothing at all rather than an
-  empty row — the silence-by-default discipline `tripMarkerFor` runs on. The wording for such a
-  row isn't here: copy is easiest to get right with the row in front of you, so it belongs to
-  whatever builds one.
-- **The generators still own their own triggers.** `useUpEntries` is the shared "what's dying"
-  read for *surfaces*. A grocery's use-up task is a lead time back from the expiry (it's meant to
-  arrive days early) and a leftover's fires the moment `needsAttention` turns true; folding those
-  into one query would change what a grocery use-up task means.
-
-**`KitchenSheet` is a read plus one write, not a second model.** It renders that inventory, the
-fridge first and then the pantry cut into aisles. That's the distinction the aggregate view turns
-on: nobody should have to check items in and out, but a set the app has already derived per-item
-is worth being able to look at, and until this there was no way to answer "do I have flour" short
-of opening items one at a time. Don't grow quantities, per-row expiry editing or a check-in
-gesture onto it — that's the inventory again.
-
-- **A catalog row carries the ✕; a container doesn't.** "Out of it" is one bit and the ✕ writes
-  exactly it (`markOutOfMany`). Closing a container out is a two-way question ("Eaten" / "Thrown
-  out"), and guessing "eaten" would write a fridge-history row the user never chose — so its row
-  opens `LeftoverSheet`, which asks properly.
-- **`LeftoversCard` still renders the fridge alone.** Its rows drag onto a night of the week, and
-  a bag of spinach is not a dinner. What it shares with the kitchen is the ladder, not the list.
-
-- **The one write is `addToPantry`**, off the field at the top, and it writes the same assertion
-  the item sheet's "Got it" pill writes (`defaultOnHandUntil`) on the same catalog row. It exists
-  because that correction was *unreachable* for anything with no row yet — an item sheet opens
-  from the list or from Buy again, so "I have flour" was unsayable until flour had been bought
-  through the app once. One bit, the one the pills already own; the things it deliberately doesn't
-  record are how much and until when.
-- **It never touches `onList`.** Saying you have something is not a plan to buy it. It promotes
-  `inCatalog` for the reason `linkItemShop` does — otherwise the next "Remove from list" would
-  delete the row and take the assertion with it — and it strips a typed quantity ("2 lb flour")
-  so the row keys on a name a real purchase can match.
-- **The field both filters and adds**, like `PillGroup`'s: what the search can't find is exactly
-  what you're offered the chance to add, and "do I have flour" is the moment you learn you never
-  said. It's also the one insert path besides `addByName`, so both go through `newItemRow` and a
-  column added later can't reach only one of them.
-- **Taking it back still goes through `GroceryItemSheet`'s Pantry pills**, which is why a catalog row here
-  opens that sheet with them already unfolded (`initialField`). The sheet is dense, and a
-  collapsed "Pantry" field halfway down it was in practice no way to say you're out of something
-  at all — the caption promising it was simply wrong. Pre-opening it is the fix; a swipe action on
-  the row is the check-in gesture, and stays out.
-
-- **Rows on the list are deliberately in it.** An item can be both recently bought and back on the
-  list; dropping it would make an item marked "Got it" vanish from the pantry the moment it was
-  added to a list, which reads as the assertion having been forgotten. The row says "on the list"
-  instead.
-- **The row's caption is `probablyHaveReason`'s own words**, verbatim — the same line a week plan
-  and the item sheet already show. A second phrasing here is a second thing to keep true.
-- **A purchase is read, never asserted** (#1770). `finishShopping` used to stamp a computed
-  `onHandUntil` onto everything it bought, which meant `probablyHaveReason` took its assertion
-  branch for any row ever bought and the purchase branch below was unreachable — so the pantry
-  could only ever say "marked as on hand", crediting the user with a claim a till had made, and
-  the demo could only seed corrections. A trip now writes `null` and nothing else: coming home
-  with something refutes an "Out of it" sitting on it, the same correction it already makes to
-  `ItemShopLink.unavailableAt`. Both halves seed fine as a result.
-  - **The negative is a sentinel, not "in the past".** `OUT_OF_IT_UNTIL` suppresses the purchase
-    reading; a *lapsed* "Got it" hands the question back to it. Those were one case while nothing
-    but `markOutOfIt` could put a past value there, and stamping windows that expire is what
-    silently made them two — legacy rows still carry the shape, and read correctly without a
-    migration.
-  - **One window, two anchors.** `onHandWindowDays` is how long a purchase of this item is worth
-    believing in: its own cadence past `MIN_PURCHASES_FOR_CADENCE`, a flat two weeks before that.
-    `defaultOnHandUntil` measures it from the tap, `probablyHaveReason` from the till. Written
-    twice, the two disagreed — the reading wanted three purchases before trusting a cadence and
-    the assertion was happy with one, so a single purchase on a year-old row asserted on-hand for
-    a year.
-- **`GroceryItemSheet` and `LeftoverSheet` are rendered *inside* `KitchenSheet`'s `Modal`, not
-  beside it.** A `Modal` presents from the view controller its React parent belongs to, so a
-  sibling would ask the screen's controller to present a second sheet while the kitchen is already
-  up. Nesting is what lets it stack — and keeping the kitchen mounted underneath is the point,
-  since correcting one row should drop you back into the list you were reading.
-
-### Grocery either/or — two rows you pick between at the shelf
-
-Typing "apples or pears" into the add field offers to put **both on the list under
-one `GroceryItem.choiceGroup`**, and ticking either one at the shop takes the others
-off (`resolveChoice`). It used to add both plain, on the grounds that a shopping row
-has no dish decision to defer — but the loser then sat there looking outstanding, and
-`finishShopping` only clears what's checked, so it stayed on the list for ever.
-
-- **The group is an opaque id, where a recipe's is a label.** A recipe renders the
-  label as a heading over its options; a grocery list renders no heading at all — each
-  row just names its siblings — so a label would be a second thing to keep in step
-  with nothing to show for it, and two lines typed alike would silently merge.
-- **It resolves destructively, where a recipe's pick doesn't.** `MealPlanEntry.recipeChoices`
-  is somewhere to put "mash on Tuesday" without editing the dish; a shopping list has
-  nowhere to put "I chose apples". So the tick *is* the choice, and it's a real undo —
-  `resolveChoice` snapshots every row first and puts them back exactly, re-inserting the
-  provisional ones it deleted and taking the winner's tick off with them.
-- **Only rows still on the list are live options.** An off-list catalog row that once
-  shared a group is history, not something to take away; and since `alternativeCaptions`
-  drops a group that's down to one, a resolved pair stops captioning itself with no extra
-  bookkeeping. That shared helper (`recipeComponents.ts`) is the same one the recipe
-  screen's either/or ingredients use — same rule, and writing it twice is how they'd drift.
-- **`setCheckedMany` deliberately doesn't resolve.** A bulk tick is a sweep over rows the
-  user selected by hand; deleting rows they *didn't* select out from under it is not what
-  that gesture says.
-- **Unlinking lives in the item sheet, not on the row** ("Not an either/or", `clearChoice`,
-  which takes the label off every member — one remaining option is not a choice). It's a
-  correction, not a shopping decision: at the shelf you resolve a choice by ticking one.
-
-### Substitutes (`ItemSubLink`) — one item standing in for another
-
-**The vocabulary rule, so it can't drift: either/or on the list, alternatives on the
-recipe, substitutes on the item — and a substitute marked "always use this instead" is a
-standing swap.** Four adjacent terms for four genuinely different things; settled here
-rather than left to be re-argued per PR.
-
-The one-line test for which you're looking at: **does the answer depend on the dish?**
-If yes it's a `choiceGroup` — both options intended, equals, decided per cooking in
-`MealPlanEntry.recipeChoices`, scoped to that recipe. If no it's a substitute — one
-intended and one tolerated, ranked rather than equal, consulted when the first isn't
-available, and it applies to every recipe naming the item. Item-level is the whole
-reason this is a system rather than a field: "I use margarine for butter" is one fact
-that reaches all twelve recipes calling for butter, and `RecipeIngredient.nameKey`
-already bridges every ingredient line to the catalog, so it gets there with no new
-plumbing through the recipes JSON blob.
-
-- **`grocery_item_subs` is shaped like `grocery_item_shops`** — a fact about a pair of
-  rows, one row per pair, bounded by how many swaps you actually name. Both cascades in
-  `dbDeleteGroceryItem` are hand-written and cover **both directions**, since FKs are
-  off and the deleted row can be either half of a pair; the reads shrug a dangling link
-  off anyway (`substitutesFor`), like every other cross-row pointer here.
-- **Directional, and symmetry is two rows.** "Milk instead of buttermilk" is not
-  "buttermilk instead of milk". A `symmetric` flag would make every reader stop and work
-  out which way the row it's holding is facing — the same reason two ingredient rows beat
-  one line reading "serrano or jalapeño". `linkItemSub`'s `bothWays` writes the pair, so
-  the common symmetric case is one tap and the asymmetric one stays expressible;
-  `Substitute.isMutual` reports it rather than storing it.
-- **Nothing infers a link, and there is no built-in substitution lexicon.** Same
-  discipline as `brandStrict` and as the deleted `likelyItemIds` bucket
-  (`shoppingTrip.ts`): the user says so, or it isn't recorded. That verdict stands.
-- **A substitute is surfaced only where there's a reason to believe it would help** —
-  the user asked, the store was marked as not stocking the original, or the original is
-  marked "out of it" *and* the substitute is on hand. Never as a general caption, and in
-  particular **`probablyHaveReason` returning null is ignorance, not absence**: it's the
-  default state of nearly every item, so reading it as "you haven't got this" would
-  caption the whole app on nothing. Consequently the recipe ingredient row is silent by
-  default — no standing "or margarine" — and you go and ask instead. **The one exception is
-  a standing swap**, which the user ticked on this exact pair — see below.
-- **The first read is a caption, never a category.** `classifyPlanned` sets
-  `ClassifiedIngredient.reason` to `describeSubstitutesOnHand`'s "you have margarine" on a
-  **`needToBuy`** row whose linked substitute `probablyHaveReason` answers for — and leaves
-  the row exactly where it was. Moving it to `probablyHave` is the tempting version and the
-  broken one: those rows arrive **pre-unticked** in both add-to-list sheets, so folding a
-  substitute in is how you come home without butter because the app decided margarine
-  counted. `reason` now has two producers, told apart by the row's own category; the wording
-  lives in one helper because the shelf (#1567) and the recipe row (#1573) want the same
-  sentence.
-- **Authoring is the ask, not the field.** Links are hand-authored, and nobody
-  hand-authors data for a caption they've never seen, so `SubstituteSheet` (opened from
-  the field's "Add substitute") is the funnel and `GroceryItemSheet`'s field is where you
-  *review* what you already answered. Deliberately **not** `RecipeIngredientSheet`, which
-  owns `choiceGroup` — putting substitutes there is how the two merge into one confused
-  control.
-- **The expanded field is rows, not a `PillGroup`**, unlike Aisle/Stores/Pantry beside
-  it. A pill can only express membership, and a substitute also carries a note and a
-  direction — with pills you'd tap each lit one to find out whether it says anything at
-  all. A grid was mocked alongside and dropped. The collapsed summary names up to two and
-  then falls back to a count (`describeSubstitutes`), because `disclosureValue` renders
-  `numberOfLines={1}` and a third name truncates mid-word at 390pt.
-- **Scoping is the free-text `note`, not a per-recipe override.** Margarine for butter is
-  fine in a pan and wrong in laminated pastry; an override rebuilds `choiceGroup` badly,
-  and since nothing auto-applies a substitute, a wrong one is a caption you ignore rather
-  than a purchase you regret.
-- **One-to-many is permanently out.** "Buttermilk → milk + lemon juice" is two items both
-  required, which is a recipe rather than a swap — stated in the sheet's own footer, since
-  that's where someone wonders about it.
-- **A link may carry a user-typed ratio** (`ItemSubLink.ratioFrom`/`ratioTo`, "1 clove" →
-  "1/4 tsp") — a real amount conversion, not the built-in substitution table that stays
-  banned. **Both null or both set**; one alone isn't a ratio, and a ratio-less link (the
-  common case) shows no ratio anywhere rather than inventing a "1:1" stand-in.
-  `itemSubs.substituteQuantity()` applies it — and it composes `recipeScale.scaleQuantity`
-  as the arithmetic engine rather than reimplementing exact-rational math: a ratio is
-  nothing but a scale factor (how many multiples of `ratioFrom` the line names), so handing
-  that factor to `scaleQuantity(ratioTo, factor)` gets unit inflection and the container
-  refusals for free. The one seam is `scaleQuantity`'s own factor-of-1 shortcut, which
-  reports a no-op — right for its callers, wrong here, since a line naming exactly one
-  `ratioFrom` is a real conversion (`ratioTo` verbatim), not "nothing to do"; `substituteQuantity`
-  special-cases it. **Units must match through `unitKey`, or the line refuses untouched** —
-  a ratio written per clove must not silently apply to a whole bulb, and that refusal is the
-  one this feature would be untrustworthy without. **On `bothWays`, the reverse row's ratio
-  is the forward one swapped**, not copied: the reverse row describes the *other* item's own
-  unit on its own left, or a both-ways garlic↔garlic-powder link would claim a clove
-  converts to a further clove.
-- **A substitute-covered ingredient counts toward "what can I make", as its own clause,
-  never folded into the direct-match number** (`recipeUtils.LikelyInPantryCount.viaSubstitute`,
-  `PantryCoverage.viaSubstitute`, #1568). "6 likely in pantry · 1 with a substitute", never
-  silently "7 likely in pantry" — the same discipline `describeShops` uses for a trailing
-  clause it can't sum into the number in front of it, and what keeps a user-authored (hence
-  real) link from reading like a guess anyway once it's inside a coverage number nobody can
-  take apart. **`countLikelyInPantry` reuses `classifyPlanned`'s own `reason` field** (#1566)
-  rather than re-deriving "is a linked substitute on hand" — a `needToBuy` row with a
-  non-null `reason` already *is* that answer. `scoreRecipeAgainstCatalog`'s `coverage`
-  fraction is untouched by any of this: a substitute link can only ever exist between two
-  rows that are already catalog items (`linkItemSub` requires both), so an ingredient with
-  no catalog row at all — the case `coverage`'s existence check is blind to — can never carry
-  one either; there's nothing there to credit that isn't already counted. What a substitute
-  *can* still fix is `avgRecency`: a catalog row that's stale or never bought contributes a
-  neutral 0.5 wash on its own, and a linked substitute genuinely on hand lifts that (capped
-  below a fresh direct purchase, so **the fully-stocked recipe still wins**) rather than
-  leaving a coverable line reading as no better than an unstocked one.
-
-### Standing swaps (`ItemSubLink.standing`) — "always use oat milk for milk"
-
-Someone who never buys dairy milk wants every recipe calling for milk to read, and shop, as
-oat milk, without editing twelve recipes. Structurally that is a substitute with auto-apply
-on, so it is **one bit on the link and not its own system** — `src/utils/standingSwaps.ts` is
-the resolution, `SubstituteSheet`'s "Always use this instead" is the write, and there is no
-new table and no settings key.
-
-It is the deliberate exception to the rule above — a substitute informs, it never buys — and
-the exception is earned by the mandate: the user named both items and ticked "always", which
-is a stronger statement than anything `probablyHaveReason` acts on. Four things keep it
-narrow, and none is optional.
-
-- **Read time, on the way out of `flattenRecipeIngredients`** — the same shape
-  `ChoiceResolution` uses, and the reason the rule is resolved there rather than at each of
-  the eight shopping reads: that gate is already the one they all go through. **Nothing
-  persists a swapped name.** The recipe row is untouched, every authoring surface (the
-  ingredient sheet, the reorder list, `shareText`) reads the recipe's own words because it
-  never passes a swap map, and unticking the bit restores every recipe at once.
-- **Recipe view *and* shopping read**, which is the useful answer and the loud one: a cook
-  reading the dish needs to know which line they'll be cooking with, and the list has to say
-  oat milk or the feature does nothing.
-- **Always marked, never silently.** A swapped line renders the substitute's name with
-  `describeStandingSwap`'s "instead of milk" directly under it, in the accent tint a scaled
-  or converted quantity pill already takes — the `≈` convention, applied to a name instead of
-  a number. A ratio'd swap tints the pill too, for the same reason.
-- **The recipe stays findable by its own words.** `rankRecipes` passes no swaps (with
-  `allOptions`, as it already did), so searching "milk" still finds the dish: a swap changes
-  what you buy, not what the recipe says. `recipesUsingIngredient` is raw for the same
-  reason.
-
-Three rules the resolver enforces, all pinned by `standingSwaps.test.ts`:
-
-- **One hop, never a chain.** Milk→oat and oat→soy are two rules, each applied to its own
-  line; a milk line does not become soy. Chaining means the swap you get depends on a rule
-  written about something else.
-- **A pair marked standing both ways is dropped entirely.** `linkItemSub` clears the reverse
-  bit (and any other standing rule on the same item — one item has one answer), so that state
-  is only reachable through a restore; neither direction is a rule anyone meant.
-- **A ratio that can't be applied refuses the whole swap.** `substituteQuantity` already
-  refuses to convert "1 bulb" through a per-clove ratio; renaming the line anyway would leave
-  "1 bulb garlic powder", which is worse than not swapping. The line stays exactly as written.
-  A ratio-less link — the common case, and the dietary one — carries the quantity across
-  verbatim, which is not an assumed 1:1 but the user having declined to qualify the amount.
-
-- **The wrong-in-one-dish case is `RecipeIngredient.noSwap`, per line** ("this pastry needs
-  real butter"). On the recipe, because it's a fact about the dish rather than about one
-  cooking, and **deliberately not a `choiceGroup`**: there are no options to pick between, so
-  filing it there would mean a group of one — the dead-end state `RecipeIngredientSheet`'s
-  Alternatives field exists to make unreachable. Its control appears only when a standing rule
-  actually reaches the line (or the line has already opted out), because a toggle explaining a
-  rule you haven't written changes nothing.
-- **The bit lives on the link; Settings reviews the set.** That's both halves of the question,
-  not two homes: `StandingSwapsSheet` (Tasks & projects → Substitutes) is a read over the
-  links, and its one write turns a rule off *without* forgetting the substitute. A rule that
-  rewrites what lands in the trolley has to be answerable somewhere that isn't "open every
-  grocery item and check".
-
-### Composed recipes (`Recipe.components`) — one recipe used inside another
-
-"Steak with mashed potatoes" and "Salmon with mashed potatoes" are two recipes and one shared
-mash. A component is a **reference** (`RecipeComponent` = link id + `recipeId` + a captured name),
-held in a JSON column like `ingredients`; nothing is copied, so editing the mash reaches every
-meal that uses it. The graph walk — flatten, cycle check, reverse lookup — lives in
-`src/utils/recipeComponents.ts`, deliberately shaped like the nested-template helpers in
-`templateUtils.ts`, since it's the same problem and the app shouldn't grow two answers to it.
-
-- **It's its own list, not a `RecipeIngredient` with a `refRecipeId`.** `TemplateItem` does it the
-  other way round, and that works there because a template's items are already a pile of drafts.
-  An ingredient isn't: `nameKey` is the bridge to the grocery catalog, and every reader
-  (`mergeIngredients`' dedupe, `remapIngredientKeyIn`, `classifyPlanned`, the aisle lexicon) is
-  written assuming a line names something you can put in a trolley. A component names a dish.
-- **A recipe contributes its lines at most once per flatten** — the one deliberate divergence from
-  `expandTemplateItems`, whose visited set is per-branch. Two tasks are two things to do; two
-  copies of "1 lb potatoes" are not two purchases, and `mergeQuantities` would silently make it
-  "2 lb". A component graph is a set of parts, not a bill of materials with multiplicities.
-- **Every shopping read goes through `flattenRecipeIngredients`**, never `recipe.ingredients`:
-  `plannedIngredientsForRecipe`, `collectPlannedIngredients`, `countLikelyInPantry`,
-  `scoreRecipeAgainstCatalog`, `rankRecipes`' ingredient match, and both "is there anything to
-  shop for" gates. Read raw and a dish that's mostly its parts reads as having nothing to buy.
-  Prep steps flatten the same way (`flattenRecipePrepTasks`) — offsets are already relative to
-  the meal, so a component's step needs no re-anchoring.
-- **Each flattened line is attributed to the recipe it's written on**, not to the one the user
-  tapped: that's where they'd go to change it, and it's what makes a row wanted by two parts say
-  so in `ClassifiedIngredient.sources`. `RecipeToListSheet` falls back to the tapped recipe for a
-  row `classifyPlanned` merged across several.
-- **`describeRecipe` counts the recipe's own ingredients, plus a "· 1 component" clause.** The
-  count has to agree with the list rendered directly beneath it on the detail screen; the clause
-  is what stops "3 ingredients" reading as the whole shop.
-- **Deleting a component recipe leaves the links dangling**, resolve-or-shrug like every other
-  cross-row pointer here (`MealPlanEntry.recipeId`, `TemplateItem.refTemplateId`). Unfiling them
-  would edit recipes the user didn't ask to touch, and a restored backup couldn't put them back.
-  The delete confirm names the parents first, same as `TemplateEditor`'s does.
-- **Scaling is not part of the component graph** — it rides on top of it. A factor applies to every
-  flattened line at once, components included (see Scaling below), so a component still contributes
-  the quantities it's written with and the parent's factor multiplies them on the way out. Nothing
-  about `servings` is consulted, and nothing is written back onto the recipe.
-
-**Alternatives are a label on a flat list**, not a fourth entity — and they exist at *both* levels:
-components sharing a `choiceGroup` ("mash *or* roast potatoes", #1252) and ingredients sharing one
-("serrano *or* jalapeño", #1117). Exactly one option of a group is cooked and bought. A `Meal`
-container above recipes was rejected: a composed recipe already *is* one, and `MealPlanEntry`
-already allows two things on one dinner, so ad-hoc pairing needs nothing.
-
-- **The two stay two lists sharing one convention**, never one list. An ingredient names something
-  you can put in a trolley (`nameKey` is the catalog bridge); a component names a dish. They share
-  `activeIn()` — one generic resolver over anything with an id and a `choiceGroup` — because the
-  *rule* is genuinely the same and writing it twice is how the two would drift.
-- **Two ingredient rows, never one line reading "serrano or jalapeño".** That spelling mints a
-  catalog item literally called "serrano or jalapeño": a row that can never match a real purchase,
-  never ranks in Buy again, and gets hand-corrected on the list every single time. Separate rows
-  each carry a clean `nameKey`, and choosing between them at add time is what puts exactly one in
-  the trolley. This is the entire point of the ingredient half — don't "simplify" it back to a
-  parsed `or`.
-- **`splitAlternativeNames` (`groceryParse.ts`) notices such a line and *suggests* the split**, in
-  the ingredient sheet, applied by `splitIngredientAlternatives`. **The split is verbatim and must
-  stay a suggestion**: "chicken or vegetable stock" comes back as `['chicken', 'vegetable stock']`,
-  and distributing that trailing noun to fix it is unsafe in exactly the same shape — "butter or
-  olive oil" would become "butter oil". Nothing can tell those apart without knowing what the words
-  mean, so the parts are shown and the user finishes the job. Same call `splitPrep` makes about
-  leading prep words. It matches `or` as a whole word only (so "oregano" is safe), skips quantity
-  hedges ("or so", "or more", "or to taste"), and never splits on `/` — that's a fraction far more
-  often than a choice.
-- **The nudge lives on the ingredient row, the confirm stays in the sheet.** A recipe's ingredient
-  row shows a `Split into N…` pill when the parser sees a choice in it (`RecipeDetailScreen`), and
-  pressing it only *opens* `RecipeIngredientSheet` — hence the ellipsis. That's deliberate, not a
-  missing shortcut: what a person has to check is the parts, which a row can't show without
-  truncating them, so there's exactly one place the split is accepted. Suppressed on a row already
-  filed under a `choiceGroup`, which is the app asking for something the user has already done.
-
-- **The choice is resolved at read time and never written onto the recipe.** `activeComponents`
-  picks one option per group, `walk` descends only into that one, and every flatten takes an
-  optional `ComponentResolution`. **Passing none resolves to the defaults**, so an unresolved read
-  is a complete dish and every caller predating this kept working unchanged.
-- **The default is the group's first component in list order**, not a `defaultComponentId`: an id
-  is a second thing to keep in step with the list and to repair when that component is removed.
-  `makeComponentDefault` moves the link to the front of its group — the promotion *is* a reorder.
-- **The pick lives on `MealPlanEntry.recipeChoices`**, because which side you make is a fact about
-  a cooking, not about the dish — one recipe, mash on Tuesday and roast on Friday. **One list holds
-  both kinds of id** (component links and ingredient lines): every reader asks it the same question,
-  and an id says which kind it is by which list holds it. Flat rather than a `{group: id}` map
-  because a group can sit on a component several levels down, so a group name alone wouldn't say
-  whose group it is. Dangling ids resolve-or-shrug back to the default.
-- **`countChoiceAware` is what any "how many" reads**, so `describeRecipe`'s ingredient count and
-  `describeComponents` both say one per group rather than one per option.
-- **`allOptions` is search-only.** `rankRecipes`' ingredient match passes it so a recipe stays
-  findable by an ingredient on the road not taken; nothing that shops or spawns tasks may, and the
-  reason is concrete — two sides that share an ingredient each contribute a line, which
-  `classifyPlanned` would merge into one doubled quantity. `scoreRecipeAgainstCatalog` and
-  `countLikelyInPantry` resolve to the defaults instead, or the coverage denominator inflates with
-  lines that will never be bought.
-- **The cycle check deliberately ignores choices** (`reachableRecipeIds` walks every option): a loop
-  down an unchosen branch is still a loop, and becomes live the moment someone picks that option.
-- **An ad-hoc "Add ingredients to list" holds its picks in sheet state and writes nothing** —
-  there's no meal for them to be a fact about, and picking the pepper for tonight's shop shouldn't
-  edit the recipe. `RecipeToListSheet.initialChoices` seeds them from the entry when the shop is a
-  follow-up to cooking one. The week-level `AddWeekToListSheet` deliberately has no chips of its
-  own: it aggregates many recipes, and each entry already carries its own answers.
-
-### Deciding at the shelf — an ingredient choice that survives onto the list
-
-"Which pepper" is a question you can only really answer in front of the peppers, and until
-`ChoiceResolution.undecided` the add-to-list sheet made you answer it at the kitchen table. Both
-halves of the mechanism already existed — a recipe's alternatives (`RecipeIngredient.choiceGroup`)
-and the list's own either/or (`GroceryItem.choiceGroup`, resolved destructively by ticking one) —
-so this is the wire between them, not a third system.
-
-- **`undecided` names ingredient groups, never component ones.** An ingredient's options are rows,
-  and `resolveChoice` can take the losers back off the list with one tick. A component's options are
-  two dishes' worth of lines with nothing that could ever un-add the set you didn't cook, so
-  `activeComponents` ignores the field and `RecipeToListSheet` only offers the chip on
-  `kind === 'ingredient'` groups.
-- **A group is keyed by `choiceGroupKey(recipeId, label)`**, because a week can hold two recipes
-  that both call their group "Cheese" while posing entirely different questions. Labels alone would
-  merge them.
-- **The label is translated, not carried.** `addFromPlan` mints one opaque `generateId()` per key
-  *per call* — the lifetime of one trolley. Storing "Chili:Pepper" on the rows would put a recipe's
-  heading into a list that renders no headings (see `GroceryItem.choiceGroup`), and would silently
-  merge two shops of the same recipe weeks apart.
-- **A row wanted outright beats a row wanted as an option.** `classifyPlanned` takes the *first*
-  non-null group across a merged row's contributors, so a line something else needs unconditionally
-  can't arrive on the list as half a choice.
-- **Nothing about it is written back to the recipe**, the same rule the existing picks follow: an
-  ad-hoc shop isn't attached to a meal, so there's nothing for "I'll decide later" to be a fact
-  about. It lives in sheet state and dies with the sheet.
-
-### Sections (`recipeSections.ts`) — the heading an ingredient sits under
-
-`RecipeIngredient.section` is a label on a flat list, not a nested groups type. A *populated*
-heading is still only ever inferred — `RecipeDetailScreen` opens one wherever a row's section
-differs from the row before it, so **the order already decides the grouping** for any heading that
-has rows. Filing a row into one is nothing but moving it: no separate re-file step, no membership
-list to keep in sync with the order.
-
-**A heading with nothing under it yet is the one case that model can't represent on its own**,
-which is what `Recipe.emptySections: string[]` is for — headings declared ahead of any ingredient,
-independent of the row-label inference above. `addEmptySection`/`removeEmptySection`
-(`useRecipeStore`) write it; `useRecipeStore`'s `save()` is the one place that reconciles it against
-`ingredients`, pruning any name a real row has come to carry — so a declared heading is redundant
-the instant something's actually filed under it, and every mutator that can touch `section` gets
-that pruning for free rather than each having to remember to call it. `allSectionsOf` is
-`sectionsOf` (labels rows use) plus whatever's still declared-and-empty, in that order — pickers
-(`RecipeIngredientSheet`'s Section field, the sticky heading field, "New section"'s own duplicate
-check) read this, not `sectionsOf` alone, so a heading created ahead of its ingredients is
-choosable before anything's filed under it.
-
-- **Declaring a heading is its own control, "New section" up by the Ingredients label — not folded
-  into the add-ingredient flow.** The first pass put a `+` on the sticky heading field itself
-  (typing a name there already meant "what new ingredients get filed under"), which made one field
-  do two unrelated jobs depending on which tiny icon got tapped, and buried section-creation inside
-  a flow it has nothing to do with. "New section" reveals its own one-off field (closes itself if
-  left empty, same convention `PillGroup`'s "New …" fields use) and is the only way to mint a
-  heading; the sticky field went back to being a picker over headings that already exist, same as
-  `RecipeIngredientSheet`'s Section field — it used to be free text, on the theory that a picker
-  would be empty exactly when someone first needed it, but that gap is what "New section" now
-  fills, so a typo there can no longer mint a heading nothing else can find.
-- **An empty heading is a real drop target, not a static caption.** `RecipeDetailScreen` builds one
-  *merged* list for its ingredients `SortableList` — every ingredient row plus one marker per
-  heading, populated or empty, at the position it renders — so a heading is something a row can be
-  dropped next to whether or not it has members yet. Headings don't wire up `drag` themselves (only
-  ingredients move by being picked up); a dragged ingredient released next to one joins it.
-- **`sectionsFromMergedOrder` is the whole derivation, and it's a five-line walk.** Once a heading
-  is an explicit marker at a real position in the list, "which section does this row belong to"
-  stops being an inference problem — it's whatever marker precedes it, full stop. This replaced
-  `resolveSectionDrop`, a ~40-line heuristic that existed only because a *populated* heading used to
-  be nothing but two adjacent rows' labels meeting, which made "which neighbour wins" a genuine
-  question (reordering the frosting's cream above its sugar makes cream the first frosting row, so
-  the row above it is the cake's — pulling cream into the cake over that would have been wrong).
-  With an explicit marker in the list there's nothing left to disagree about, and the reorder
-  handler recomputes every row's section fresh on every commit rather than diffing before/after to
-  guess which one row moved.
-- **`SortableList` grew one additive prop for this: `onHoverChange(index | null)`.** A populated
-  heading already signals "you're about to join me" for free, from the rows around it visibly
-  opening a gap — an empty heading has no neighbours of its own to move, so it has no such
-  feedback unless something says so explicitly. The callback fires from the exact lines that already
-  update the internal hover state, mirroring `ReorderableList`'s same-named prop but with the
-  payload this list's caller actually needs. Nothing about the drag itself changes for a caller that
-  doesn't pass it.
-
-### Quantities (`quantity.ts`) — the one place a quantity string is read
-
-`quantity` is free text everywhere it's stored (`RecipeIngredient.quantity`, `GroceryItem.quantity`,
-`ItemShopLink.lastPriceQuantity`) and that hasn't changed — this is **a parse-on-read value type, not
-a migration**. What it replaced is six modules that each pulled a leading amount out of the same
-strings and each had its own idea of what "unreadable" meant (#1671). `parseQuantity` is now the only
-reader; the scaler, the converter, the price comparison, the substitute ratio, `mergeQuantities` and
-`parseGroceryInput`'s container gate are transformations over one type.
-
-- **`raw` is what renders whenever `amount` is null**, so "a pinch" behaves exactly as it always did
-  and no caller needs a refusal branch of its own.
-- **`amount === null` is every refusal, stated once**: no leading number, the `x2` notation, and a
-  percentage ("2%", which is part of a product name). That last one is the single behaviour this
-  extraction changed — `mergeQuantities` used to read `%` as a unit and sum "2%" + "2%" to "4 %",
-  where scaling, converting and comparing all already refused it.
-- **`countNotation` deliberately leaves `amount` null.** Scaling is the only reader with a use for
-  `x2`; every other one refused it before the type existed and gets that refusal for free.
-- **`container` carries both a size and a count**, because the leading number of "14 oz can" is the
-  tin's size and of "2 14 oz cans" is how many tins. `sizeText`/`sizeUnit`/`word` are verbatim: the
-  two modules allowed to do arithmetic on a quantity both leave a container's size exactly as
-  written, so it is carried rather than restated.
-- **`rest` is kept alongside `unit`**, and that isn't redundancy: `substituteQuantity` compares the
-  *whole* tail so a per-clove ratio can't take "3 cloves, minced", and `SubstituteSheet`'s hint names
-  back what the user typed.
-- **A shared parse is not a shared licence.** What each module may *do* with the result is still its
-  own rule, written where it lives — scaling never converts, conversion is display-only and marks
-  `≈`, `mergeQuantities` still won't collapse units that merely measure alike.
-
-### Scaling (`recipeScale.ts`) — halving and doubling a recipe
-
-**This is the one place in the app that does arithmetic on a `quantity`**, and the only reason it's
-allowed to is that it's narrow by construction and always reached through a factor the user picked.
-Everything in `mealPlanGroceries.ts`'s header note still holds for every other reader.
-
-Rules 1, 3 and 4 below are `quantity.ts`'s now (the leading amount, the refusals, the rationals).
-What's left in `recipeScale` is the multiplication and the shapes it renders back.
-
-The four rules that make it safe, all enforced in `scaleQuantity`:
-
-1. **Only the leading amount is ever touched.** Unit, size clause and container word carry through
-   verbatim, apart from pluralising off a closed table.
-2. **No unit conversion, ever.** "500 g" doubled is "1000 g", not "1 kg". Scaling multiplies a
-   number the user gave, so it has to hand back the same measurement they wrote — "1000 g" is
-   unidiomatic, never wrong. Converting is a *different request*, asked separately in Settings and
-   answered separately at render time — see Unit conversion below. Nothing in `recipeScale` may
-   convert.
-3. **A quantity whose amount doesn't parse passes through verbatim and flagged** (`scaled: false`).
-   "a pinch" doubled is "a pinch", and the UI says so (`describeUnscaled`) rather than inventing
-   "2 pinches". Coverage is ~95% of the quantity strings this app produces; the refusals are the
-   feature, not a gap to close by guessing.
-4. **Arithmetic is exact rational**, so "1/3 cup" tripled is exactly "1 cup" and halved is
-   "1/6 cup" — never "0.99" or "0.17".
-
-- **The sharp one: `14 oz can` doubled must become `2 14 oz cans`, not `28 oz can`.** That string is
-  one can of a given size, so its leading number is the *size*, not a count — scaling it changes
-  what you buy. Halving it refuses outright, having no expression in that notation. Both container
-  shapes are recognised by `parseQuantity` (`Quantity.container`) rather than by each reader, so the
-  parser and the scaler can't come to disagree about what a container line is.
-- **Plural is `> 1`, not `!= 1`** — "1/2 cup", "1 1/2 cups". A unit that isn't in `UNIT_PLURALS`
-  passes through uninflected ("2 bulb"), which is the same trade `groceryParse`'s unit whitelist
-  makes: slightly wrong grammar in the user's own word beats "2 pinchs".
-- **A factor is a fact about a cooking, not about the dish.** `MealPlanEntry.recipeScale` persists it
-  per planned meal (doubling Sunday's chili must not double the recipe, or every other meal that uses
-  it as a component); the recipe screen and the add-to-list sheets hold it in view/sheet state and
-  write nothing. **Never store it on `Recipe`.** `bulkReplaceItem` deliberately keeps the scale while
-  resetting `recipeChoices` — a choice group belongs to the recipe that defined it, but "feeding
-  eight on Sunday" survives a swap of what's being cooked.
-- **Factor chips are the floor, a servings stepper is layered on where it can be.** `Recipe.servings`
-  is nullable and plenty of recipes never had one, so the chips (`½× 1× 1½× 2× 3×`) are what's always
-  available. When a recipe does know its own count, `RecipeScaleChips` also renders a `CountStepper`
-  targeting servings directly — the open-ended-number case this app otherwise reaches for a stepper
-  over a chip row for (see `CountStepper`'s own doc comment). `recipeScale.factorForServings`/
-  `targetServingsFor` are the two-way conversion, capped at the same 99 `RecipeEditor` caps
-  `Recipe.servings` at. Both controls write the same `value` factor — picking a chip moves the
-  stepper, typing a target usually deselects every chip, since most targets aren't a preset.
-- **This reopened `parseQuantityAmount`'s refusal of fractions**, which used to be a documented
-  decision. It had to: a halved recipe *produces* "1 1/2 cups", so every merged shopping row would
-  have degraded to `mergeQuantities`' rule-5 list. `mergeQuantities` now also compares units by
-  identity (`unitKey`) and agrees the summed unit with the total, because scaling generates both
-  "1/2 cup" and "2 cups" itself and a raw string comparison would list two measurements of one thing
-  side by side. It still never collapses units that merely measure alike — "g" and "kg" stay two
-  units, since merging those is rule 2 again.
-
-### Unit conversion (`unitConvert.ts`) — showing amounts in the reader's units
-
-The `unitSystem` setting (`asWritten` / `metric` / `us`, default `asWritten`) shows a quantity in
-the units the cook thinks in: "1 lb" read as "≈450 g". It is the second module allowed to do
-arithmetic on a `quantity`, and it does the one thing scaling's rule 2 forbids — which is the
-point. Scaling multiplies a number the user gave and owes them the same measurement back;
-converting is the user asking, in Settings, to be shown a *different* measurement of the same
-amount, and answering that in the unit they already had answers nothing.
-
-- **Display only, and that's the whole safety argument.** Nothing is written back. Every call site
-  renders `convertQuantity(...).text` over a stored string it doesn't touch, which is why the
-  **editable fields deliberately don't convert** (`RecipeIngredientSheet`, `GroceryItemSheet`) and
-  neither do the previews of text about to be *saved* (`RecipeExtractSheet`, `RecipeCreateSheet`,
-  `GroceryAISheet`, `GroceryAddField`'s live token). A field you're about to write has to show what
-  will be written. The read-only pills are the four that convert: the ingredient row on
-  `RecipeDetailScreen`, both add-to-list sheets, and `GroceryRow`.
-- **Converted text is always marked `≈`**, because every conversion here rounds (below). One
-  character at every render site, rather than a styling change at each one — and it's what stops a
-  converted number reading as the recipe's own words. On `RecipeDetailScreen` a converted pill also
-  takes the same tint a scaled one does, since both mean "the app's number, not the recipe's".
-- **Scale first, convert second.** The multiplication is exact and the conversion rounds, so
-  rounding last is the only order that doesn't compound.
-- **A closed table, never a guess** — mass and volume only, keyed by `unitKey` so both inflections
-  land on one entry. A count ("3", "x2", "4 cloves"), an unparseable amount ("a pinch") and a unit
-  not in the table all pass through verbatim and flagged, exactly as scaling's rule 3 does. **A
-  container's size never converts** either ("14 oz can" stays), recognised as the same
-  `Quantity.container` the parser and the scaler read: "≈400 g can" is a product nobody sells. `oz`
-  is mass and only mass — the parser has no "fl oz", so there is no ambiguous ounce.
-- **Rounded to what a person would write**, which is the half that makes it useful and the half that
-  makes `≈` mandatory: 1 cup is 240 ml, not 236.59. Metric rounds to a step that widens with
-  magnitude; US snaps to a cooking fraction and **refuses to when none is close enough**, saying
-  "1.1 lbs" rather than claiming the "1 lb" it isn't. Thirds are a *volume* denominator only — a
-  measuring set has a 1/3 cup, and "3 1/3 lbs" is not a number anyone weighs to. The two tolerances
-  differ for the same reason (a cup is loose, a scale isn't), and that asymmetry is deliberate: at
-  the volume tolerance, 1.5 kg would render "3 1/2 lbs", nearly 90 g out.
-- **A merged quantity is converted part by part** (`' · '`, what `mergeQuantities` emits when it
-  won't add two measurements together), with one `≈` on the front. Converting only the leading
-  measurement would leave the rest of the string as a stray tail.
-
-### Cook mode (`cookMode.ts`) — the method one step at a time
-
-Every other kitchen surface here is built for *preparing* to cook. This is the twenty minutes of
-doing it: full screen, one step, the screen held awake, the cook timer in reach throughout. It is
-a **read plus one timer**, no schema change and nothing written — `cookSteps` derives the method,
-`CookModeSheet` draws it, and position and the ingredient panel's fold die with the modal.
-
-- **It reads the nodes, not a fourth flatten.** `cookSteps` walks `cookedDishes` — the same
-  component walk, the same once-per-recipe rule, the same choice resolution the ingredient and
-  prep-task flatteners take. Writing a `flattenRecipeSteps` beside them would be a fourth copy of
-  one walk to keep in step.
-- **The order is the walk's, root first, and the boundary is *said* rather than guessed.** Nothing
-  here knows that the mash wants boiling before the steak is seared, so an interleave would be
-  asserting a schedule nobody wrote. A step from a component carries `whole: false` and renders
-  under that component's name instead.
-- **`notes` is the fallback, per node.** Every recipe predating `Recipe.steps` has its method in
-  `notes`, so a cook mode reading only the structured list would be inert for most of the box.
-  `stepsFromNotes` splits on blank lines when the blob has any and on newlines when it hasn't (a
-  method typed as paragraphs wraps its own lines; one typed per line has no blanks to find), and
-  takes a leading "1." off because cook mode numbers the steps itself. **A blob with no line
-  breaks is one step** — sentence splitting is the tempting third rule and it's wrong, because
-  "add 1.5 cups" and "Mr." are what it does to a real method. One long step is unhelpful; half a
-  sentence is misleading. It is display only: nothing is written back, and a bad split is fixed by
-  writing real steps.
-- **The cook timer is the recipe's own**, through `useRecipeTimer` — the hook that now owns the
-  clock, the derivation against it and the four store calls for *both* of a recipe's timers.
-  `RecipeDetailScreen` reads through the same hook, so "start it here, log it there" is structural
-  rather than a promise; a second stopwatch that merely looked alike would have a cook running two
-  and logging one. It takes an undefined recipe so a screen can call it above its own "the row is
-  gone" guard — and `CookModeSheet` passes `visible ? recipe : undefined`, since a modal mounted
-  invisible must not hold a once-a-second interval open.
-- **Quantities are the panel's, never the step's.** The ingredient panel runs the same
-  scale-then-convert pipeline the recipe row does (exact multiplication first, rounding conversion
-  second), so a halved recipe reads correctly mid-step. The step text renders exactly as written:
-  nothing parses amounts back out of a sentence, and per-step amounts wait for the ingredient
-  references #1695 deferred.
-- **Nothing is ticked off by itself.** Finishing the last step closes the sheet and logs nothing —
-  logging a cook time is the timer's own ✓, the same call `timer.ts` makes about a countdown.
-- **`useKeepAwake` is called from inside the Modal's content** (`ScreenAwake`), not at the top of
-  the sheet: the sheet stays mounted with `visible` false, and a lock taken there would hold the
-  phone awake for the rest of the session. `expo-keep-awake` was already in the tree as one of
-  `expo`'s own dependencies and is autolinked with the rest of them, so declaring it needs no
-  config plugin and no fresh build.
-- **Cook is the third footer verb on the recipe screen**, beside Plan and Add to list — the one
-  that happens *now*, so it leads, and hidden outright when the recipe has no method rather than
-  offered greyed out. Its arrival is why the primary shortened to "Add to list": three buttons
-  don't fit a 390pt line at the old label.
-
-### Timed tasks, and apportioning one across its subtasks
-
-A timed task counts down against `timedMinutes`; how much is left and whether it's ready to
-complete are derived from three stored fields against the clock, never written (`src/utils/timer.ts`
-says why). Splitting that countdown up — "violin practice" as 5 min scales, 10 min known pieces,
-10 min new piece — is **`timedMinutes` on the subtasks**, laid end to end in subtask order
-(`src/utils/timerSegments.ts`).
-
-- **The same field, because it's the same kind of number.** A subtask's value is its stretch of the
-  parent's run. What a subtask never gets is a *timer* — `TaskItem` gates all of it on
-  `parentId === null`, which matters because a subtask does surface as a row of its own in Search,
-  and a second start button for one session is two timers on one task.
-- **The stretches are read off the clock and nothing is ticked.** No stored "current segment", no
-  auto-completing a subtask when its minutes run out. A subtask's tick box and the timer's position
-  answer different questions — one is what you decided you're done with, the other is where the
-  clock is — and letting either drive the other makes both wrong. Same call `isTimerReady` makes,
-  and it survives backgrounding for the same reason.
-- **The parent's `timedMinutes` is the sum, and it's stored.** The one deliberate exception to the
-  deriving above, and it's what keeps this feature to one module: the countdown, the scheduled
-  alarm, the Live Activity and the widget all keep reading the one field they always read, so
-  nothing downstream had to learn about segments. The cost is a total to keep in step, so there are
-  exactly two writers — `TaskEditor` (`retotalDuration`, on every stretch edit and on a delete) and
-  `deleteSubtask` in the store, which has to because a subtask can be deleted from the task row too.
-- **Losing the last stretch leaves the duration where it was.** Nulling it would quietly demote a
-  25-minute task to an untimed one; the split going away just makes it a flat countdown of the
-  length it already had. For the same reason nothing re-totals a parent that isn't timed, so a
-  stretch stranded by a kind switch can't promote a plain task.
-- **Completed subtasks keep their stretch.** The run's length can't depend on what's been ticked, or
-  the countdown would shorten under the user mid-session.
-- **The minutes are typed on the subtask rows, not in Duration.** The timer runs through them in
-  subtask order, and the rows are where that order is dragged. Duration shows the split read-only
-  and totals it — two controls setting one number is the confusion, not the fix. `StepMinutes` is
-  the shared field, the same one a chain step's estimate uses.
-
-### Template questions — what a run is asked, and what the answers decide
-
-A template collected two anchor dates, a run name and a value for every `{blank}` its items
-happened to mention. What it couldn't do is *ask*, so a packing list's counts had to be typed into
-every title and "it's a work trip" could only be said by ticking the laptop by hand every time
-(#553, #1749). `TaskTemplate.questions` is the declaration those needed;
-`src/utils/templateQuestions.ts` is everything they mean, pure and store-free like `templateUtils`
-beside it.
-
-- **A question is a *declared* blank, not a second mechanism beside them.** It fills the `{name}`
-  of its own name exactly as an inferred one does — what the declaration buys is a type, a prompt,
-  and a fixed set of answers to condition on. An undeclared `{blank}` still works and is still
-  asked for under its own heading; a declared one is asked once, up in Questions.
-- **A number's answer can come off the anchor dates**, which is the whole of "if I say a trip is 7
-  days". `fromDates` is `days` or `nights` rather than one "length" because the 3rd to the 10th is
-  both — 7 nights, 8 days — and which one you mean depends on whether you're counting hotel nights
-  or shirts. A typed answer always wins; an emptied field hands it back to the dates.
-- **Titles can do one sum on a blank** — `{nights}`, `{nights - 2}`, `{nights / 2}` — and
-  deliberately no more. One operator and a literal number, no parentheses and no blank on the
-  right: what a title needs is a multiple of the one number the run is about, and everything past
-  that is a formula editor nobody asked for. A fraction **rounds up** and a result never goes below
-  zero (these are counts of things to take with you). A token that doesn't fit the shape falls back
-  to being a name, exactly as before it existed — and `normalizePlaceholderName` now refuses to
-  mint a blank that *would* fit it, so `{nights-2}` can only ever mean one thing.
-- **A condition decides an item's default tick, not whether it's offered.** Everything the template
-  holds stays on screen and stays overridable — the request was "includes my laptop *by default*",
-  and a hard filter is how a wrong answer hides items you then can't get back without editing the
-  template.
-- **Conditions replace `optional` on the item that carries them**, rather than stacking with it.
-  Both fields answer "is this ticked to begin with", and an item that's off for one answer and on
-  for another is exactly what `optional` was being used to approximate — so the authored condition
-  is the more specific answer and wins. An optional *nested-template block* still suppresses what's
-  under it: its items answer to their own template's questions, not the parent's.
-- **A choice defaults to its first option**, deliberately rather than to unanswered — the same call
-  `RecipeComponent.choiceGroup` makes, so ordering the options *is* saying which is usual. An
-  unanswered third state would be one every condition then had to have an opinion about.
-- **Answering re-decides the conditioned items and only those** (`reselectForAnswers`). Ticking one
-  extra thing on by hand is safe whatever gets answered afterwards; a conditioned item is re-decided
-  because that's what answering the question it rides on *means*.
-- **A nested template contributes its own questions** to the run that reaches it, rather than being
-  answered on its author's behalf. Ids are globally unique so conditions resolve across the tree;
-  two questions claiming one blank name is a mistake with no good answer, and the outer one wins.
-- **Deleting a question takes it off the items conditioned on it.** Every reader shrugs a dangling
-  condition off anyway (`liveConditions`, the house rule for cross-row pointers), but an item still
-  carrying one would render an "Only when" with nothing under it.
-- **Only a choice can gate an item** — a number or free-text answer has no fixed set to tick, so
-  the item editor's Only when field lists choice questions alone, and hides itself entirely when
-  the template has none.
 
 ### Chains
 
@@ -1511,121 +522,6 @@ Two counts exist and they mean different things, so keep them labelled: the rost
 **A stack has no completion state of its own — stored, derived, or dismissed.** Today renders one exactly while it has a visible child (`visibleGroupItems` in `TodayScreen`: `children.length > 0`, and `children` comes from `visibleTasks`), so it leaves in the same commit its last row does and returns whenever a member is visible again. Two designs preceded that and both are gone: a `TaskGroup.completedAt` "user dismissed this for today" stamp (the stack sat on Today saying "all 6 done for today" until tapped — an extra tap per stack per day to acknowledge what the finished rows already said), and before that, clearing that stamp on every event that could give the stack live work, which took four call sites and still missed one. The `completed_at` column is still on `task_groups`, unread and never written. **Don't reintroduce a hidden-for-today flag** — riding on `visibleTasks` is what makes the header and its rows leave together, since a just-ticked row stays in `visibleTasks` for the completion hold (`completionHoldIds`) and the header rides that window out with it.
 
 Cascades (`completeGroup`, `deferGroup`, `pinGroup`, `deleteGroup`) are roster-scoped so they can't mutate completed history. `deleteGroup({cascade:true})` deletes the live members and merely unfiles the past occurrences — deleting a stack must not erase its Logbook and Stats history.
-
-### Apple Reminders import — voice capture, and the only thing that deletes data elsewhere
-
-"Hey Siri, remind me to buy milk" lands in the Reminders app; `src/utils/remindersImportSync.ts`
-pulls it into the Inbox and deletes the reminder. Going through Reminders rather than owning a
-Siri phrase is deliberate — a phrase has to be anchored on `\(.applicationName)`, and Siri
-cannot reliably hear "dundundun". A custom App Intent was built and reverted for exactly that
-(plus an iOS 16 floor it forced); don't reach for one again without solving the name.
-
-Three things about `expo-calendar` that nothing in this repo will tell you, each of which cost a
-read of the published tarball:
-
-- **`getRemindersAsync` must be called with a null status.** Passing `ReminderStatus.INCOMPLETE`
-  makes the JS wrapper throw unless you also give it a date window, and natively that window is
-  matched against the **due date** — which a dictated reminder hasn't got. A status query drops
-  exactly the reminders this feature exists for. So the fetch is unfiltered, completed reminders
-  come back with everything else, and every "may we touch this" rule lives in
-  `importableReminders()` instead. That's why the pure module is mostly filters.
-- **`getDefaultCalendarAsync()` is not the default *reminders* list.** It asks for **calendar**
-  permission (which this app never wants) and returns `defaultCalendarForNewEvents`. There is no
-  API for the reminders default, which is why picking a list is the first step of enabling
-  rather than a correction to a guess.
-- **Never pass an unvalidated list id.** A stale one reaches `predicateForReminders(in: [])` —
-  undocumented, and if an empty array ever behaved like `nil` it would mean every reminder on the
-  device. The drain re-checks the id against a live `getCalendarsAsync(EntityTypes.REMINDER)`
-  every time.
-
-And one about config plugins generally, learned here: **leaving a package out of `app.json`'s
-`plugins` does not stop its config plugin running.** Expo autolinks the plugin of any dependency
-shipping an `app.plugin.js`, so `expo-calendar`'s ran unasked and wrote two `NSCalendars*` usage
-strings this app has no business declaring, plus Android `READ_CALENDAR`/`WRITE_CALENDAR`. The
-way to *narrow* a plugin is to list it with options, and the Android half needs
-`android.blockedPermissions`, which the plugin adds unconditionally regardless of its options.
-
-**But `calendarPermission` must stay a real string, and this is the one that bricked the app.**
-`createPermissionsPlugin` treats `false` as a removal, so setting it deleted
-`NSCalendarsUsageDescription`/`NSCalendarsFullAccessUsageDescription` — which reads as exactly
-right, since nothing here ever touches a calendar. It isn't. `CalendarModule`'s `OnCreate`
-registers a `CalendarPermissionsRequester` and initialises a static `EKEventStore` **whether or
-not the app ever calls a calendar API**, and touching EventKit's calendar entity with no usage
-description raises an `NSException` inside module registration.
-
-What that costs is the whole app, not the feature. Expo registers modules in one pass in
-autolinking order, so the throw took out `expo-calendar` *and every module alphabetically after
-it* — font, constants, sqlite, notifications, all of them. Fifteen of twenty modules never
-registered. The app then died on the first `requireNativeModule` the bundle happened to reach,
-which was `ExpoFontLoader` (via `@expo/vector-icons`, which imports `expo-font` on line 1), and
-the black screen that produced is why `index.js` prints the registered-module list on failure —
-**that list is the diagnostic**: a short one means registration aborted, and the first missing
-package alphabetically is the culprit, not the module named in the error.
-
-The safety rules are load-bearing, not ceremony — this is the one feature that destroys data the
-user owns in another app. **Create the task, then delete the reminder**, never the reverse: a
-failed delete leaves a visible duplicate, a failed create after a delete loses the capture
-silently. The handled record (`remindersImportHandled`) names a reminder the moment its task
-exists, before the delete is attempted, because both a *failed* delete and a *slow* one hand the
-same reminder back to the next fetch. A list is only offered if `allowsModifications` — a read-only shared list imports
-fine and fails every delete, re-importing itself for ever. And nothing runs until the user has
-confirmed an alert naming the list and the exact count, keyed on the list id so switching lists
-asks again.
-
-**"Already handled" is keyed on the reminder's id and persisted, never inferred from the task.**
-With "Delete after importing" off — and after any failed delete — the reminder stays in the list
-and is re-read on every foreground, so something has to say "we've seen this one". That used to
-be a title match against the store, which is evidence *the user can destroy*: renaming or
-deleting the task freed the reminder to import again, and again, with nothing they could do
-about it. The record is now a settings row keyed by list (`remindersImportHandled`), holding
-every id imported **or deliberately skipped** — a skip has to count, because on the first launch
-after this shipped the name index is the only thing that recognises the pre-existing imports, and
-recording what it recognises is the entire backfill. It stays bounded by pruning to what the list
-still holds on every drain (`reconcileHandledReminders`), so with deletion on it empties itself.
-The name index survives as the *first* answer about a reminder the record has never seen, not as
-the record.
-
-### App lock, and the one secret this app holds
-
-Everything the app knows is unencrypted on the device, so two things guard it: a
-Face ID gate in front of the UI, and the keychain for the API key.
-
-**`locked` is derived, never stored** — `appLockEnabled && !unlocked`, computed in
-`useAppLockStore`/`AppLockGate` from a session flag that no launch persists. An
-`isLocked` boolean set from an effect has a committed frame where the setting and
-the flag disagree, and it goes wrong in both directions: a frame of the task list
-at cold start, and a frame of the lock screen the instant you enable the feature.
-For the same reason the Settings toggle calls `unlock()` *before*
-`setAppLockEnabled(true)`.
-
-- **The grace period is the feature.** A lock that re-prompts on every app switch
-  is the one people turn off, and a lock that's off protects nothing. Leaving
-  starts a clock (`shouldLockOnResume`); only an expired one re-locks.
-- **`prompting` is load-bearing.** iOS reports `inactive` while the unlock sheet
-  is up. Counting that as leaving restarts the clock mid-prompt — and at a grace
-  of 0, re-locks the moment you pass it, forever.
-- **The gate is a `Modal`, not an overlay `View`.** Half the point of the shield
-  over a backgrounded app is the app-switcher snapshot, and the user may have left
-  with the task editor (itself a `Modal`) open — a sibling of the navigator renders
-  *under* that.
-- **No biometrics and no passcode enrolled fails open, out loud.** There is no
-  second way in — no password, no account, no server — so the alternative is a
-  task list nobody can ever open. It alerts rather than opening quietly, and
-  leaves the setting on so it resumes when they re-enrol. The same reasoning is
-  why turning the lock *on* authenticates first.
-- **`resetToDefaults` doesn't touch it**, like vacation mode: "reset appearance and
-  formatting" is not a request to take the lock off the app.
-
-The **API key** is in the keychain (`expo-secure-store`), not the settings table.
-It migrates itself on the first launch after the update, and the ordering is the
-part to leave alone: the keychain copy is written *first*, and the plaintext row
-deleted only once that write returns. A failure between the two leaves both, which
-the next launch resolves; deleting first would destroy a credential the user
-pasted in months ago. **There is no plaintext fallback** — a keychain that won't
-take the key means it isn't persisted, not that it goes back in the database.
-`secureApiKey.ts` `require`s the native module lazily rather than importing it,
-because `useSettingsStore` reaches it and most of the suite reaches that store,
-in a `node` environment where loading `expo-modules-core` throws on sight.
 
 ### Navigation
 
@@ -1848,7 +744,7 @@ The Today widget (`targets/todo-widget/`) is injected at prebuild time by custom
 
 Two fixes that look unrelated to the widget but are load-bearing for *any* second native target existing at all — don't revert them as dead code:
 - `enableScreens(false)` near the top of `App.tsx` — works around a `react-native-screens` crash (`RNSTabBarController`) that only reproduces in production builds once the app has more than one native target to build/sign.
-- `ios.buildReactNativeFromSource: true` in the `expo-build-properties` plugin config (`app.json`), plus `patches/react-native+0.81.4.patch` (applied via `patch-package` on `postinstall`) — RN 0.81 downloads a prebuilt Core binary by default, which bypasses the patch entirely; the patch itself fixes an RN bug where an `NSException` thrown inside a native module call gets rethrown across a dispatch-queue boundary instead of converted to a JS error, crashing the app. Both were required together — the patch alone has zero effect without also forcing a from-source build.
+- `ios.buildReactNativeFromSource: true` in the `expo-build-properties` plugin config (`app.json`), plus `patches/react-native+0.81.5.patch` (applied via `patch-package` on `postinstall`) — RN 0.81 downloads a prebuilt Core binary by default, which bypasses the patch entirely; the patch itself fixes an RN bug where an `NSException` thrown inside a native module call gets rethrown across a dispatch-queue boundary instead of converted to a JS error, crashing the app. Both were required together — the patch alone has zero effect without also forcing a from-source build.
 
 `enableScreens(false)` has a side effect worth knowing before reaching for `freezeOnBlur` on a tab screen: it forces `@react-navigation`'s `ScreenFallback` → `ResourceSavingView` path instead of the native `react-native-screens` implementation, and `ResourceSavingView` never forwards `freezeOnBlur` — it only moves blurred children `FAR_FAR_AWAY`. So a blurred tab screen stays mounted and keeps re-rendering on every store change; `freezeOnBlur` is inert in this app, and there's no escape hatch for it while `enableScreens` stays off.
 

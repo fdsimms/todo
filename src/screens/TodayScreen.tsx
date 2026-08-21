@@ -1,3 +1,13 @@
+// Today, Later, Unscheduled and Inbox: four `viewMode` lenses over one screen,
+// not four routes (see the Navigation note in CLAUDE.md before adding a fifth).
+// One component of ~3,000 lines, so grep a landmark rather than reading it
+// start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//
+// The small components above TodayScreen (SectionHeader, LaterTodaySection,
+// ExpiredSection, …) are its section furniture and are declared at module level.
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
@@ -455,11 +465,13 @@ function ExpiredSection({
 }
 
 export function TodayScreen() {
+  // ==== store bindings, navigation, layout insets ====
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<any>();
   const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
   const tabBarHeight = useBottomTabBarHeight();
+  // ==== local state (view mode, selection, expansion, sheets) ====
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const pinnedTasks = useTaskStore(useShallow(s => s.pinnedTasks()));
@@ -593,6 +605,7 @@ export function TodayScreen() {
   // (Clear, or unpinning the last one) while this is still true, there's no
   // header left to switch it back off from, and the list stays empty for
   // good. Drop the hide the moment it has nothing left to hide besides.
+  // ==== effects ====
   useEffect(() => {
     if (pinnedTasks.length === 0) setOthersHidden(false);
   }, [pinnedTasks.length]);
@@ -761,6 +774,7 @@ export function TodayScreen() {
   // (a different category section on Today, a later page of Later, anywhere
   // in Unscheduled/Inbox) would otherwise just silently appear somewhere the
   // user has to go looking for it.
+  // ==== handlers: creating, opening and acting on a row ====
   const handleTaskCreated = (task: Task, placed = false) => {
     // A drag of the add button chose where this goes; a plain tap didn't, and
     // shaking the chip off in the sheet takes the choice back.
@@ -1098,6 +1112,7 @@ export function TodayScreen() {
     }
   };
 
+  // ==== the lists: store tasks narrowed to what this view mode shows ====
   const filtered = useMemo(() => {
     let result = visibleTasks;
     if (filterPriorities.length > 0) result = result.filter(t => filterPriorities.includes(t.priority));
@@ -1683,6 +1698,7 @@ export function TodayScreen() {
   // (it's the list's header) and registers its own 'pinned' zone directly —
   // see PINNED_DROP_ZONE where the block is rendered.
   const todayListData = draggableData;
+  // ==== drag-and-drop drop zones (see resolveDrop in src/utils/reorder.ts) ====
   const zoneByKey = useMemo(() => {
     const categoriesFor = categoriesByIndex(
       todayListData.map(item =>
@@ -1998,6 +2014,7 @@ export function TodayScreen() {
   // group child's drag is driven by the nested SortableList in the 'group'
   // render branch below (reorder within the group / drag out to remove),
   // entirely separate from the outer ReorderableList's own drag machinery.
+  // ==== row renderers ====
   const renderTaskRow = (
     task: Task,
     opts?: {
@@ -2717,6 +2734,7 @@ export function TodayScreen() {
       : []),
   ];
 
+  // ==== render. Everything below is JSX ====
   return (
     <SpotlightProvider progress={spotlightProgress}>
       <View style={[styles.container, { paddingTop: insets.top }]}>

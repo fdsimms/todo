@@ -1,3 +1,12 @@
+// One recipe: ingredients, sections, prep tasks, method, cook mode. A single
+// component of ~1,420 lines with two top-level symbols, so grep a landmark
+// rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//
+// Composition, sections, scaling and unit conversion are all written up in
+// docs/arch/recipes.md; read that before changing how a line is resolved.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -78,6 +87,7 @@ type MergedIngredientRow =
   | { kind: 'heading'; id: string; name: string; empty: boolean };
 
 export function RecipeDetailScreen() {
+  // ==== store bindings and layout insets ====
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RootStackParamList, 'RecipeDetail'>>();
@@ -130,6 +140,7 @@ export function RecipeDetailScreen() {
   );
   // What the grocery add is actually going to offer — the recipe's own lines
   // plus every component's, which is the number the footer button gates on.
+  // ==== the resolved recipe: components, counts, cost, the scaled lines ====
   const shoppableCount = useMemo(
     () => (recipe ? flattenRecipeIngredients(recipe, recipesById).length : 0),
     [recipe, recipesById]
@@ -174,6 +185,7 @@ export function RecipeDetailScreen() {
     [costEstimate, currencySymbol]
   );
 
+  // ==== local state (drafts, the sheets this screen opens) ====
   const [draft, setDraft] = useState('');
   // What new ingredients are filed under, until changed or cleared — the add
   // field's own equivalent of RecipeIngredientSheet's Section field. A picker
@@ -301,6 +313,7 @@ export function RecipeDetailScreen() {
     }
   };
 
+  // ==== actions: add to list, share, plan, edit an ingredient ====
   const addToList = () => {
     if (shoppableCount === 0) return;
     haptics.tap();
@@ -708,6 +721,7 @@ export function RecipeDetailScreen() {
   // (Recipe.emptySections: a real drop target, so it's a whole row rather than
   // a caption, with a hover-lit state and its own remove). Neither wires up
   // `drag`: a heading doesn't move by being picked up, only ingredients do.
+  // ==== row renderers ====
   const renderHeadingRow = (row: Extract<MergedIngredientRow, { kind: 'heading' }>) => {
     if (!row.empty) {
       return <Text style={styles.ingredientSectionHeader}>{row.name}</Text>;
@@ -922,6 +936,7 @@ export function RecipeDetailScreen() {
     </View>
   );
 
+  // ==== render. Everything below is JSX ====
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <DetailHeader

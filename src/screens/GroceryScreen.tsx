@@ -1,3 +1,11 @@
+// The shopping list itself, grouped by aisle. One component of ~840 lines, so
+// grep a landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   AddGroceryFabWithDropLabel, makeStyles   the FAB and styles
+//
+// Aisles, shops, the active trip and the kitchen are all in
+// docs/arch/groceries.md; this file is the screen over them.
 import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
@@ -154,6 +162,7 @@ export function GroceryScreen() {
   const checkTripExpiry = useGroceryStore(s => s.checkTripExpiry);
   const addTask = useTaskStore(s => s.addTask);
 
+  // ==== local state (the sheets this screen opens, selection, editing) ====
   const [cartOpen, setCartOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [buyAgainOpen, setBuyAgainOpen] = useState(false);
@@ -223,6 +232,7 @@ export function GroceryScreen() {
   // comment above for why grouping is a `kind` rather than two independent
   // toggles. `sections`' shape follows `kind`, so every reader below narrows
   // on it rather than assuming aisle's.
+  // ==== the list: items grouped into aisle sections ====
   const grouped = useMemo(() => {
     if (groupBy === 'recipe') {
       const r = buildGroceryRecipeSections(items, cartHoldIds);
@@ -252,6 +262,7 @@ export function GroceryScreen() {
   // can't notice on its own — its inputs haven't changed. Clearing the store
   // fields is what makes an expired trip disappear rather than merely stop
   // resolving. Focus rather than mount: this screen stays mounted behind a tab.
+  // ==== effects ====
   useFocusEffect(
     useCallback(() => {
       checkTripExpiry();
@@ -319,6 +330,7 @@ export function GroceryScreen() {
   // Empty for nothing left to buy, which is what the header action's disabled
   // state gates on — see buildGroceryListShareText.
   const shareText = useMemo(() => buildGroceryListShareText(items), [items]);
+  // ==== actions: share, estimate, bulk selection, adding ====
   const handleShare = useCallback(() => {
     if (!shareText) return;
     haptics.tap();
@@ -956,6 +968,7 @@ export function GroceryScreen() {
     [styles, colors, cartOpen, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, storeMarkers]
   );
 
+  // ==== render. Everything below is JSX ====
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader

@@ -24,6 +24,12 @@ jobs:
       # unenforced long enough for main to merge red on it.
       - run: npx tsc --noEmit
       - run: npm test
+      # The two docs that are generated from the tree rather than written by
+      # hand. Both are committed so an agent can read them without running a
+      # build; these checks are what stops them going stale the way the
+      # hand-counted "seven files are over 1,000 lines" paragraph did.
+      - run: node scripts/build-module-map.js --check
+      - run: node scripts/check-doc-stats.js --check
       - run: npx expo export --platform ios --output-dir /tmp/expo-export
         env:
           CI: 1

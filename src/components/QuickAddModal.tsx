@@ -1,3 +1,11 @@
+// Quick add: the sheet that turns one typed line into a task. One component of
+// ~1,800 lines, so grep a landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   makeStyles              styles, at the bottom
+//
+// The parsing itself lives in src/utils/parseTaskInput.ts and parseNaturalDate.ts;
+// this file only decides what to do with what they return.
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Alert,
@@ -201,6 +209,7 @@ export function QuickAddModal({
     : getLogicalToday(dayResetTime);
   // Holds the task created by this sheet while its editor is open — only used
   // when newTaskDefaults.openEditorAfterQuickAdd is on (see createTask below).
+  // ==== sheet-level state (keyboard, panels, post-create follow-ups) ====
   const [postCreateTask, setPostCreateTask] = useState<Task | null>(null);
   const colors = useColors();
   const { isDark, shadows } = useTheme();
@@ -279,6 +288,7 @@ export function QuickAddModal({
     });
   };
 
+  // ==== the draft: every field this sheet can set ====
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
@@ -344,6 +354,7 @@ export function QuickAddModal({
   const seedRef = useRef(seed);
   seedRef.current = seed;
 
+  // ==== effects: seeding and resetting the draft ====
   useEffect(() => {
     if (visible) {
       setTitle(initialTitle ?? '');
@@ -496,6 +507,7 @@ export function QuickAddModal({
   // the title ("go for a run on tuesday", "water plants every 3 days"). The
   // phrase is highlighted in the input and described in a tooltip; nothing is
   // applied until the user taps the tooltip.
+  // ==== parsing the typed line: date, category/tags, link, phone, email, duration ====
   const parsed = useMemo(
     () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime)) : null),
     [title, dayResetTime]
@@ -749,6 +761,7 @@ export function QuickAddModal({
     setActivePanel(null);
   };
 
+  // ==== creating the task ====
   const createTask = (finalTitle: string) => {
     haptics.success();
     animateLayout();
@@ -797,6 +810,7 @@ export function QuickAddModal({
     dismiss(() => onCreated?.(task, seedActive));
   };
 
+  // ==== the exits: add, or hand the draft to the full editor ====
   const handleAdd = () => {
     // A rule that strips takes its word out here rather than as you type —
     // rewriting the field under the cursor is the one way this feature would
@@ -1061,6 +1075,7 @@ export function QuickAddModal({
 
   const suggestedTags = allTags.filter(t => !tags.includes(t)).slice(0, 8);
 
+  // ==== render. Everything below is JSX ====
   return (
     <>
     <Modal

@@ -1,3 +1,12 @@
+// The grocery item sheet: name, quantity, aisle, shops, price, substitutes,
+// either/or. One component of ~910 lines, so grep a landmark rather than
+// reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   subCaption, makeStyles  helpers and styles, at the bottom
+//
+// The open-ended pill grids here go through PillGroup, which caps itself past
+// eight; see docs/arch/groceries.md for what aisles, shops and substitutes mean.
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns/format';
 import {
@@ -116,6 +125,7 @@ interface Props {
 export function GroceryItemSheet({
   visible, itemId, onClose, onOpenRecipe, recipeExists, initialField,
 }: Props) {
+  // ==== store bindings ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
@@ -172,6 +182,7 @@ export function GroceryItemSheet({
 
   const [name, setName] = useState('');
   const [quantity, setQuantityText] = useState('');
+  // ==== local state (the draft fields, and which section is open) ====
   const [brand, setBrandText] = useState('');
   const [variant, setVariantText] = useState('');
   const [note, setNoteText] = useState('');
@@ -259,6 +270,7 @@ export function GroceryItemSheet({
     () => distinctGroceryValues(items, item?.id, i => i.brand),
     [items, item?.id]
   );
+  // ==== derived values and suggestions ====
   const brandSuggestions = useMemo(
     () => filterGrocerySuggestions(existingBrands, brand),
     [existingBrands, brand]
@@ -488,6 +500,7 @@ export function GroceryItemSheet({
     haptics.tap();
     setOnHandUntil(item.id, null);
   };
+  // ==== actions: saving fields back to the item ====
   const toggleStaple = () => {
     haptics.tap();
     setStaple(item.id, !item.isStaple);
@@ -1026,6 +1039,7 @@ export function GroceryItemSheet({
       + visibleCollapsibleRows.length
     : 0;
 
+  // ==== render. Everything below is JSX ====
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
