@@ -1870,11 +1870,13 @@ describe('grocery items', () => {
 
     dbFinishGroceryShopping('2026-08-01T00:00:00.000Z', shop.id, {}, { g1: 1299 });
 
+    // productId null: this row names no preferred product, which is the honest
+    // record of not knowing which box came home. See PriceObservation.
     expect(dbGetAllGroceryItems()[0].priceHistory).toEqual([
-      { minor: 1299, quantity: '1 l', at: '2026-08-01T00:00:00.000Z' },
+      { minor: 1299, quantity: '1 l', at: '2026-08-01T00:00:00.000Z', productId: null },
     ]);
     expect(dbGetAllItemShopLinks()[0].priceHistory).toEqual([
-      { minor: 1299, quantity: '1 l', at: '2026-08-01T00:00:00.000Z' },
+      { minor: 1299, quantity: '1 l', at: '2026-08-01T00:00:00.000Z', productId: null },
     ]);
   });
 

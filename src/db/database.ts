@@ -2330,7 +2330,16 @@ export function dbFinishGroceryShopping(
       // that ran before this loop touches neither column.
       const history = appendPriceObservation(
         parsePriceHistory(row.price_history),
-        { minor: price, quantity: row.quantity ?? null, at: purchasedAt }
+        // Stamped with the box the row was asking for, so the run can later
+        // answer "what does the one I buy cost" rather than "what does bread
+        // cost". Null when the item has no preference, which is the honest
+        // record of not knowing which one came home — see PriceObservation.
+        {
+          minor: price,
+          quantity: row.quantity ?? null,
+          at: purchasedAt,
+          productId: row.preferred_product_id ?? null,
+        }
       );
       db.runSync(
         `UPDATE grocery_items
@@ -2388,7 +2397,15 @@ export function dbFinishGroceryShopping(
         );
         const history = appendPriceObservation(
           parsePriceHistory(existing?.price_history ?? null),
-          { minor: price, quantity: row.quantity ?? null, at: purchasedAt }
+          // Same stamp as the item-level run above, and it has to be the same
+          // value: the two runs record one purchase, so a caller comparing a
+          // store's baseline against the item's must be comparing like boxes.
+          {
+            minor: price,
+            quantity: row.quantity ?? null,
+            at: purchasedAt,
+            productId: row.preferred_product_id ?? null,
+          }
         );
         db.runSync(
           `UPDATE grocery_item_shops

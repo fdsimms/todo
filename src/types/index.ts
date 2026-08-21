@@ -1106,6 +1106,33 @@ export interface PriceObservation {
   quantity: string | null;
   /** ISO. */
   at: string;
+  /**
+   * Which box this price was for — the item's preferred product at the moment
+   * the trip was finished, or null when it had none.
+   *
+   * **This is what makes a run answer "what does the one I buy cost" rather
+   * than "what does bread cost".** Without it a run mixes Arnold's whole wheat
+   * with the store brand seeded sourdough, and the median describes neither —
+   * the same disease `lastPriceQuantity` exists to cure one level down, where
+   * "$4.99" means nothing without "for 12 oz".
+   *
+   * **Stamped on the observation rather than kept in a per-product table**,
+   * which is the cheaper half of the same answer: the runs are already capped
+   * blobs on the rows that own them, so scoping is a filter at read time
+   * (`priceRunForProduct`) instead of a third price level with its own table,
+   * its own cascade and its own write path in `dbFinishGroceryShopping`.
+   *
+   * **Null is the honest fallback, not a gap.** An observation recorded before
+   * this shipped, or on a trip for an item with no preference, genuinely
+   * doesn't know which box came home — the same thing `ItemShopLink.productId`
+   * refuses to guess. Such observations stay in the run and are what a filtered
+   * run falls back to when it has too little of its own to be a baseline.
+   *
+   * Resolve-or-shrug at every reader: an id naming a product that has since
+   * been deleted or merged away simply never matches a filter, which reads as
+   * "not this box" rather than as an error.
+   */
+  productId?: string | null;
 }
 
 export interface GroceryItem {

@@ -338,6 +338,63 @@ describe('tripMarkerFor', () => {
       expect(tripMarkerFor(loose, links, shops, safeway, [], [], products)).toBeNull();
     });
 
+    // The highest-value moment for everything the app knows about an item's
+    // products: standing in front of the shelf that hasn't got the one you
+    // came for.
+    it('offers the next box on record when there is one', () => {
+      const withStore = [...products, {
+        id: 'p-store', itemId: 'milk', brand: 'Store brand', variant: null,
+        productKey: 'store brand|', rating: null, note: '',
+        purchaseCount: 0, lastPurchasedAt: null, createdAt: '2026-02-01T00:00:00.000Z',
+      }];
+      const links = [link('milk', safeway.id, 3, NO_PRODUCT)];
+      expect(tripMarkerFor(strict, links, shops, safeway, [], [], withStore)).toEqual({
+        kind: 'withoutProduct',
+        shop: safeway,
+        wantedProduct: 'Good Culture',
+        alternativeProduct: 'Store brand',
+      });
+    });
+
+    // The one place a rating filters rather than sorts: this is the app
+    // recommending, and "try the one you told me you hated" is it not having
+    // read its own record.
+    it('never offers a box rated never again', () => {
+      const withAvoided = [...products, {
+        id: 'p-store', itemId: 'milk', brand: 'Store brand', variant: null,
+        productKey: 'store brand|', rating: 'avoid' as const, note: '',
+        purchaseCount: 0, lastPurchasedAt: null, createdAt: '2026-02-01T00:00:00.000Z',
+      }];
+      const links = [link('milk', safeway.id, 3, NO_PRODUCT)];
+      expect(tripMarkerFor(strict, links, shops, safeway, [], [], withAvoided)?.alternativeProduct)
+        .toBeUndefined();
+    });
+
+    // Offering a second box the user has stood here and failed to find is the
+    // same error as offering the first.
+    it('never offers a box this store is also on record as lacking', () => {
+      const withStore = [...products, {
+        id: 'p-store', itemId: 'milk', brand: 'Store brand', variant: null,
+        productKey: 'store brand|', rating: null, note: '',
+        purchaseCount: 0, lastPurchasedAt: null, createdAt: '2026-02-01T00:00:00.000Z',
+      }];
+      const bothMissing = {
+        unavailableProductIds: {
+          [GOOD_CULTURE]: '2026-08-01T00:00:00.000Z',
+          'p-store': '2026-08-02T00:00:00.000Z',
+        },
+      };
+      const links = [link('milk', safeway.id, 3, bothMissing)];
+      expect(tripMarkerFor(strict, links, shops, safeway, [], [], withStore)?.alternativeProduct)
+        .toBeUndefined();
+    });
+
+    it('says nothing extra when the item has only the one box', () => {
+      const links = [link('milk', safeway.id, 3, NO_PRODUCT)];
+      expect(tripMarkerFor(strict, links, shops, safeway, [], [], products)?.alternativeProduct)
+        .toBeUndefined();
+    });
+
     // A claim names the box it was made about, so switching what you want
     // leaves it behind rather than dragging it onto the new one.
     it('says nothing once the item prefers a different product', () => {
@@ -441,6 +498,19 @@ describe('describeTripMarker', () => {
     expect(
       describeTripMarker({ kind: 'withoutProduct', shop: safeway, wantedProduct: 'Good Culture low fat' })
     ).toBe('No Good Culture low fat here');
+  });
+
+  // Drops the wanted product to make room, the same trade the unavailable case
+  // makes: the row is one line, and naming both boxes cuts off the half that
+  // says what to do. Never the unavailable branch's "Not here" — the store has
+  // the item, just not your box.
+  it('trades the wanted product for the alternative', () => {
+    expect(describeTripMarker({
+      kind: 'withoutProduct',
+      shop: safeway,
+      wantedProduct: 'Good Culture low fat',
+      alternativeProduct: 'Nancy’s whole milk',
+    })).toBe('Yours isn’t here · try Nancy’s whole milk');
   });
 });
 

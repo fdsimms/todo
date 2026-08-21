@@ -1440,7 +1440,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   mergeItems(fromId, intoId) {
     if (fromId === intoId) return false;
-    const { items, itemShops, itemSubs, aisleOverrides } = get();
+    const { items, itemShops, itemSubs, itemProducts, aisleOverrides } = get();
     const fromItem = items.find(i => i.id === fromId);
     const intoItem = items.find(i => i.id === intoId);
     if (!fromItem || !intoItem) return false;
@@ -1476,6 +1476,73 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       if (remaining <= 1) choiceGroup = null;
     }
 
+    // Products: the loser's boxes are boxes of what is now one item, so they
+    // come across the way its purchase count and its price run already do.
+    //
+    // Without this they were simply destroyed — `dbDeleteGroceryItem` cascades
+    // `grocery_item_products`, so merging "cilantro" into "coriander" took
+    // cilantro's brands *and their ratings* with it, silently. A rating is the
+    // one thing on a product that can't be retyped from memory, which makes it
+    // exactly the thing a merge must not throw away.
+    //
+    // Deduped by `productKey`, since that's the identity within an item: both
+    // rows having a "store brand" means one box, not two. On a collision the
+    // survivor's row is kept and the loser's counters fold into it — the same
+    // "survivor wins, loser fills the gaps" rule this function already applies
+    // to the name, the aisle and the note.
+    const survivorProducts = itemProducts.filter(p => p.itemId === intoId);
+    const byKey = new Map(survivorProducts.map(p => [p.productKey, p]));
+    // Loser id → the survivor id that now stands for it, for the pointers
+    // below. A re-keyed row keeps its own id (so its price observations and
+    // link references stay valid); a deduped one hands its id over.
+    const productIdRemap = new Map<string, string>();
+    const mergedProducts: ItemProduct[] = [...survivorProducts];
+    for (const loser of itemProducts.filter(p => p.itemId === fromId)) {
+      const match = byKey.get(loser.productKey);
+      if (!match) {
+        // A box the survivor doesn't have moves over keeping its id, which is
+        // what lets `PriceObservation.productId` and `ItemShopLink.productId`
+        // go on naming it.
+        const moved = { ...loser, itemId: intoId };
+        mergedProducts.push(moved);
+        byKey.set(moved.productKey, moved);
+        continue;
+      }
+      productIdRemap.set(loser.id, match.id);
+      const folded: ItemProduct = {
+        ...match,
+        purchaseCount: match.purchaseCount + loser.purchaseCount,
+        lastPurchasedAt: laterOf(match.lastPurchasedAt, loser.lastPurchasedAt),
+        // The survivor's verdict stands; the loser's only fills a silence.
+        // Two ratings for one box is a disagreement nothing here can settle,
+        // and overwriting an opinion the user actually recorded is worse than
+        // keeping the one they last looked at.
+        rating: match.rating ?? loser.rating,
+        note: match.note || loser.note,
+      };
+      mergedProducts[mergedProducts.indexOf(match)] = folded;
+      byKey.set(folded.productKey, folded);
+    }
+    // Nothing downstream resolves a deduped id, so the pointers at one are
+    // rewritten rather than left to dangle. They would only *read* as absent
+    // (every reader shrugs), but "no Store brand at Safeway" quietly ceasing to
+    // apply because of a rename is the claim-goes-stale bug this model was
+    // built to avoid.
+    const remapProductId = (id: string | null) =>
+      (id ? productIdRemap.get(id) ?? id : null);
+    const remapClaims = (claims: Record<string, string>) => {
+      const out: Record<string, string> = {};
+      for (const [id, at] of Object.entries(claims)) out[productIdRemap.get(id) ?? id] = at;
+      return out;
+    };
+
+    // The survivor's preference stands, and adopts the loser's only when it had
+    // none — same rule as the rating above. Remapped, because the box it names
+    // may have just been deduped away.
+    const mergedPreferredProductId = remapProductId(
+      intoItem.preferredProductId ?? fromItem.preferredProductId
+    );
+
     const merged: GroceryItem = {
       ...intoItem,
       purchaseCount: intoItem.purchaseCount + fromItem.purchaseCount,
@@ -1489,6 +1556,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       quantity,
       quantityFromRecipe,
       choiceGroup,
+      preferredProductId: mergedPreferredProductId,
       ...pickPriceFields(intoItem, fromItem),
     };
 
@@ -1516,19 +1584,25 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           // a fresh purchase already does to a single link.
           unavailableAt:
             purchaseCount > 0 ? null : laterOf(survivorLink.unavailableAt, loserLink.unavailableAt),
-          productId: survivorLink.productId ?? loserLink.productId,
+          productId: remapProductId(survivorLink.productId ?? loserLink.productId),
           // Both sides' claims, because they're keyed by product and the two
           // rows' products are about to be one item's products. A key present
           // on both keeps the survivor's stamp — an arbitrary tie-break over
           // two dates for one claim, and the same call `pickPriceFields` makes.
           unavailableProductIds: {
-            ...loserLink.unavailableProductIds,
-            ...survivorLink.unavailableProductIds,
+            ...remapClaims(loserLink.unavailableProductIds),
+            ...remapClaims(survivorLink.unavailableProductIds),
           },
           ...pickPriceFields(survivorLink, loserLink),
         });
       } else {
-        mergedShopLinks.push({ ...(survivorLink ?? loserLink)!, itemId: intoId });
+        const only = (survivorLink ?? loserLink)!;
+        mergedShopLinks.push({
+          ...only,
+          itemId: intoId,
+          productId: remapProductId(only.productId),
+          unavailableProductIds: remapClaims(only.unavailableProductIds),
+        });
       }
     }
 
@@ -1566,6 +1640,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     dbTransaction(() => {
       dbUpdateGroceryItem(merged);
+      // Before the cascade below, which deletes every product still keyed to
+      // fromId — re-parenting first is what makes the survivor's copy the one
+      // that survives it.
+      for (const product of mergedProducts) dbSetItemProduct(product);
       for (const link of mergedShopLinks) dbSetItemShopLink(link);
       for (const link of finalRetargetedSubs) dbSetItemSubLink(link);
       // Cascades whatever's left still pointing at fromId — the rows worth
@@ -1587,6 +1665,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         ...s.itemShops.filter(l => l.itemId !== fromId && l.itemId !== intoId),
       ],
       itemSubs: [...survivingSubs, ...finalRetargetedSubs],
+      // Rebuilt rather than patched: both items' rows are replaced by the
+      // folded set, and leaving the loser's behind is how the store came to
+      // hold products for an item that no longer exists.
+      itemProducts: [
+        ...mergedProducts,
+        ...s.itemProducts.filter(p => p.itemId !== fromId && p.itemId !== intoId),
+      ],
       cartHoldIds: s.cartHoldIds.filter(x => x !== fromId),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));
@@ -2160,6 +2245,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
             // shifts under the next read.
             priceHistory: appendPriceObservation(existing?.priceHistory ?? [], {
               minor, quantity, at: purchasedAt,
+              // The same stamp the db writes — see PriceObservation.productId.
+              // Read off the row rather than passed in, so the patch can't
+              // disagree with the write about which box this price was for.
+              productId: s.items.find(i => i.id === id)?.preferredProductId ?? null,
             }),
           };
         };
@@ -2245,6 +2334,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                       // unpriced row falls through and keeps the run it had.
                       priceHistory: appendPriceObservation(i.priceHistory, {
                         minor: priceById[i.id], quantity: i.quantity, at: purchasedAt,
+                        productId: i.preferredProductId,
                       }),
                     }
                   : null),

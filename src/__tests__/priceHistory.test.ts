@@ -1,4 +1,6 @@
 import {
+  priceRunForProduct,
+  PRODUCT_RUN_MIN,
   PRICE_HISTORY_LIMIT,
   appendPriceObservation,
   mergePriceHistories,
@@ -8,8 +10,13 @@ import {
 } from '../utils/priceHistory';
 import type { PriceObservation } from '../types';
 
-function obs(minor: number, quantity: string | null = null, at = '2026-08-01T00:00:00.000Z'): PriceObservation {
-  return { minor, quantity, at };
+function obs(
+  minor: number,
+  quantity: string | null = null,
+  at = '2026-08-01T00:00:00.000Z',
+  productId: string | null = null,
+): PriceObservation {
+  return { minor, quantity, at, productId };
 }
 
 // ─── parsePriceHistory ───────────────────────────────────────────────────────
@@ -192,5 +199,56 @@ describe('mergePriceHistories', () => {
   it('handles an empty side', () => {
     expect(mergePriceHistories([], [obs(400)])).toEqual([obs(400)]);
     expect(mergePriceHistories([obs(400)], [])).toEqual([obs(400)]);
+  });
+});
+
+// ─── priceRunForProduct ──────────────────────────────────────────────────────
+
+describe('priceRunForProduct', () => {
+  const arnolds = (minor: number) => obs(minor, '1 loaf', '2026-08-01T00:00:00.000Z', 'p-arnolds');
+  const store = (minor: number) => obs(minor, '1 loaf', '2026-08-01T00:00:00.000Z', 'p-store');
+
+  it('scopes a run to the box being asked about', () => {
+    const run = [arnolds(499), store(299), arnolds(529), store(279)];
+    const { history, scoped } = priceRunForProduct(run, 'p-arnolds');
+    expect(scoped).toBe(true);
+    expect(history.map(o => o.minor)).toEqual([499, 529]);
+  });
+
+  // The whole point: a median over both boxes describes neither.
+  it('changes the baseline it hands back', () => {
+    const run = [arnolds(499), store(299), arnolds(529), store(279)];
+    expect(priceBaseline(priceRunForProduct(run, 'p-arnolds').history)?.minor).toBe(514);
+    expect(priceBaseline(priceRunForProduct(run, 'p-store').history)?.minor).toBe(289);
+  });
+
+  // One observation is the poor baseline this whole file exists to reject, so
+  // the unfiltered run — noisier about which box, but actually a run — wins.
+  it('falls back to the whole run below the floor', () => {
+    const run = [arnolds(499), store(299), store(279)];
+    expect(PRODUCT_RUN_MIN).toBe(2);
+    const { history, scoped } = priceRunForProduct(run, 'p-arnolds');
+    expect(scoped).toBe(false);
+    expect(history).toHaveLength(3);
+  });
+
+  // An install upgrading into this has no stamped observations at all, and a
+  // run that scoped itself to nothing would turn every baseline into silence.
+  it('falls back when nothing in the run is stamped', () => {
+    const run = [obs(499), obs(529), obs(549)];
+    expect(priceRunForProduct(run, 'p-arnolds')).toEqual({ history: run, scoped: false });
+  });
+
+  it('never filters when there is no box being asked about', () => {
+    const run = [arnolds(499), store(299)];
+    expect(priceRunForProduct(run, null)).toEqual({ history: run, scoped: false });
+    expect(priceRunForProduct(run, undefined)).toEqual({ history: run, scoped: false });
+  });
+
+  // Resolve-or-shrug: an id naming a product deleted or merged away reads as
+  // "not this box" rather than as an error.
+  it('shrugs at an id nothing in the run names', () => {
+    const run = [arnolds(499), arnolds(529)];
+    expect(priceRunForProduct(run, 'p-gone').scoped).toBe(false);
   });
 });
