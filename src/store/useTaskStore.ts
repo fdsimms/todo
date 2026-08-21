@@ -3010,6 +3010,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       applied.forEach(m => get().updateTask(m.id, m.updates, { skipPostponeCount: true }));
     });
 
+    // This is the direct, user-initiated action that resolves a project's
+    // "quiet" state, including from the review task's own row — don't make
+    // that wait for the next launch/foreground sweep to notice.
+    get().checkProjectReviewTasks();
+
     get().setLastAction({
       label: `${applied.length} task${applied.length === 1 ? '' : 's'} pulled in`,
       undo: () => snapshots.forEach(s =>
