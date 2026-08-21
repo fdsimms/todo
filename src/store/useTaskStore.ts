@@ -65,7 +65,7 @@ import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import {
   postponeOutcome,
@@ -1778,7 +1778,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               };
             })();
 
-      const updated = {
+      const next = {
         ...t,
         ...updates,
         seriesDefaults,
@@ -1793,6 +1793,32 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // "  glasses " is stored the way every reader formats it.
         ...('targetUnit' in updates ? { targetUnit: normalizeTargetUnit(updates.targetUnit) } : {}),
       };
+
+      // Re-filing a task must not, on its own, make it read as "new".
+      // isTaskNew answers "has a day gate let this through since you last
+      // looked at it", but two of the things that suppress the answer are the
+      // *category's* (excludeFromNewTasksBanner, and a schedule whose window
+      // is shut) — and while a task is suppressed nothing ever advances its
+      // seenAt, because both the banner's OK and TaskItem's mark-on-tap only
+      // fire for a row already showing as new. So its seenAt keeps whatever
+      // stale value it had, and the first move into a category that doesn't
+      // suppress hands the user a week-old task in the "you have N new todos"
+      // banner. Stamping seenAt on that transition is the honest answer: they
+      // are holding the task right now, so they have seen it.
+      //
+      // Only on the transition into new, so a task that was already new keeps
+      // its dot through a move (and through the narrow {category} patches the
+      // group undos replay), and only when the update doesn't name seenAt
+      // itself, which is what lets a full-snapshot undo put the old value back.
+      const recategorizedIntoNew =
+        'category' in updates &&
+        updates.category !== t.category &&
+        !('seenAt' in updates) &&
+        !isTaskNew(t) &&
+        isTaskNew(next);
+      const updated = recategorizedIntoNew
+        ? { ...next, seenAt: new Date().toISOString() }
+        : next;
       dbUpdateTask(updated);
       if (
         'reminderTime' in updates ||
@@ -4374,8 +4400,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   bulkSetCategory(ids, category) {
     if (ids.length === 0) return;
+    // Same rule as updateTask's recategorizedIntoNew, which this path doesn't
+    // go through: the move itself must not turn a task "new". See the comment
+    // there for why a suppressed category leaves a stale seenAt behind.
+    const staleNew = get().tasks
+      .filter(t => ids.includes(t.id) && t.category !== category)
+      .filter(t => !isTaskNew(t) && isTaskNew({ ...t, category }))
+      .map(t => t.id);
     dbBulkSetCategory(ids, category);
     set(s => ({ tasks: patchTasks(s.tasks, ids, { category }) }));
+    get().markTasksSeen(staleNew);
   },
 
   bulkAddTags(ids, tags) {
@@ -4562,10 +4596,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const affectedTaskIds = get().tasks.filter(t => t.category === name).map(t => t.id);
     const affectedGroupIds = useTaskGroupStore.getState().groups.filter(g => g.category === name).map(g => g.id);
 
+    // Same rule as updateTask's recategorizedIntoNew: losing a category the
+    // task never chose to leave must not turn it "new" either. A deleted
+    // category takes its excludeFromNewTasksBanner and its schedule with it,
+    // so without this every task it was suppressing arrives in the banner at
+    // once, on the strength of a seenAt that stayed stale the whole time it
+    // was filed there.
+    const staleNew = get().tasks
+      .filter(t => t.category === name)
+      .filter(t => !isTaskNew(t) && isTaskNew({ ...t, category: null }))
+      .map(t => t.id);
+
     useCategoryStore.getState().deleteCategory(name);
     set(s => ({
       tasks: s.tasks.map(t => t.category === name ? { ...t, category: null } : t),
     }));
+    get().markTasksSeen(staleNew);
     useTaskGroupStore.setState(s => ({
       groups: s.groups.map(g => g.category === name ? { ...g, category: null } : g),
     }));

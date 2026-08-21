@@ -1,5 +1,6 @@
 import { useTaskStore } from '../store/useTaskStore';
 import { isMissed, isRealCompletion } from '../utils/missed';
+import { isTaskNew } from '../utils/visibilityUtils';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { emptyExtraTaskDraft } from '../utils/extraTask';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -26,6 +27,7 @@ import {
   dbBulkSetPriority,
   dbBulkSetDefer,
   dbBulkSetPinned,
+  dbBulkSetCategory,
   dbBulkSetTimeSegments,
   dbBulkAddTags,
   dbMarkTaskSeen,
@@ -756,6 +758,84 @@ describe('updateTask', () => {
       });
       useTaskStore.getState().updateTask('t1', { title: 'New series title' });
       expect(useTaskStore.getState().tasks[0].seriesDefaults).toEqual({ notes: 'Original notes' });
+    });
+  });
+
+  describe('moving a task to another category', () => {
+    // "Routines" keeps its tasks out of the new todos banner, so nothing ever
+    // advances their seenAt — which is what leaves a stale one behind for the
+    // move out to trip over.
+    const routines = {
+      id: 'cat-routines', name: 'Routines', scheduleDays: null, scheduleStart: null, scheduleEnd: null,
+      hideOnVacation: false, excludeFromPinSuggestions: false, excludeFromNewTasksBanner: true,
+      defaultTimeSegments: [], sortOrder: 1, emoji: null,
+    };
+
+    const mockCategories = (byName: Record<string, typeof routines>) => {
+      const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+      useCategoryStore.getState.mockReturnValue({
+        categories: Object.values(byName),
+        initialized: true,
+        initialize: jest.fn(),
+        addCategory: jest.fn(),
+        deleteCategory: jest.fn(),
+        restoreCategory: jest.fn(),
+        renameCategory: jest.fn().mockReturnValue(true),
+        setCategorySchedule: jest.fn(),
+        removeCategorySchedule: jest.fn(),
+        getCategoryByName: jest.fn((name: string) => byName[name] ?? null),
+      });
+    };
+
+    // Due today, last looked at years ago: new everywhere except a category
+    // that suppresses it.
+    const staleTask = (overrides: Partial<Task> = {}) => makeTask({
+      id: 't1',
+      dueDate: new Date().toISOString(),
+      seenAt: '2020-01-01T00:00:00.000Z',
+      ...overrides,
+    });
+
+    it('marks it seen when leaving a category that suppressed the new flag', () => {
+      mockCategories({ Routines: routines });
+      useTaskStore.setState({ tasks: [staleTask({ category: 'Routines' })] });
+
+      useTaskStore.getState().updateTask('t1', { category: 'Home' });
+
+      const moved = useTaskStore.getState().tasks[0];
+      expect(moved.seenAt).not.toBe('2020-01-01T00:00:00.000Z');
+      expect(isTaskNew(moved)).toBe(false);
+    });
+
+    it('leaves a task that was already new alone, so the move does not clear its dot', () => {
+      mockCategories({});
+      useTaskStore.setState({ tasks: [staleTask({ category: 'Errands' })] });
+
+      useTaskStore.getState().updateTask('t1', { category: 'Home' });
+
+      const moved = useTaskStore.getState().tasks[0];
+      expect(moved.seenAt).toBe('2020-01-01T00:00:00.000Z');
+      expect(isTaskNew(moved)).toBe(true);
+    });
+
+    it('leaves seenAt alone when the category is written but unchanged', () => {
+      mockCategories({ Routines: routines });
+      useTaskStore.setState({ tasks: [staleTask({ category: 'Routines' })] });
+
+      useTaskStore.getState().updateTask('t1', { category: 'Routines', title: 'Renamed' });
+
+      expect(useTaskStore.getState().tasks[0].seenAt).toBe('2020-01-01T00:00:00.000Z');
+    });
+
+    it('lets a snapshot undo put the old seenAt back', () => {
+      mockCategories({ Routines: routines });
+      const before = staleTask({ category: 'Routines' });
+      useTaskStore.setState({ tasks: [before] });
+
+      useTaskStore.getState().updateTask('t1', { category: 'Home' });
+      useTaskStore.getState().updateTask('t1', { ...before });
+
+      expect(useTaskStore.getState().tasks[0].seenAt).toBe('2020-01-01T00:00:00.000Z');
     });
   });
 });
@@ -5064,6 +5144,70 @@ describe('bulkSetPriority', () => {
   });
 });
 
+describe('bulkSetCategory', () => {
+  const routines = {
+    id: 'cat-routines', name: 'Routines', scheduleDays: null, scheduleStart: null, scheduleEnd: null,
+    hideOnVacation: false, excludeFromPinSuggestions: false, excludeFromNewTasksBanner: true,
+    defaultTimeSegments: [], sortOrder: 1, emoji: null,
+  };
+
+  const mockRoutinesCategory = () => {
+    const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+    useCategoryStore.getState.mockReturnValue({
+      categories: [routines],
+      initialized: true,
+      initialize: jest.fn(),
+      addCategory: jest.fn(),
+      deleteCategory: jest.fn(),
+      restoreCategory: jest.fn(),
+      renameCategory: jest.fn().mockReturnValue(true),
+      setCategorySchedule: jest.fn(),
+      removeCategorySchedule: jest.fn(),
+      getCategoryByName: jest.fn((name: string) => (name === 'Routines' ? routines : null)),
+    });
+  };
+
+  it('files every specified task under the new category', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' }), makeTask({ id: 'b' })] });
+    useTaskStore.getState().bulkSetCategory(['a', 'b'], 'Home');
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.every(t => t.category === 'Home')).toBe(true);
+    expect(dbBulkSetCategory).toHaveBeenCalledWith(['a', 'b'], 'Home');
+  });
+
+  // Same rule as updateTask's: see the "moving a task to another category"
+  // block above for why the old category left a stale seenAt behind.
+  it('marks a task seen when the move out of a suppressing category would make it new', () => {
+    mockRoutinesCategory();
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'a', category: 'Routines',
+        dueDate: new Date().toISOString(), seenAt: '2020-01-01T00:00:00.000Z',
+      })],
+    });
+
+    useTaskStore.getState().bulkSetCategory(['a'], 'Home');
+
+    const moved = useTaskStore.getState().tasks[0];
+    expect(moved.seenAt).not.toBe('2020-01-01T00:00:00.000Z');
+    expect(isTaskNew(moved)).toBe(false);
+  });
+
+  it('leaves a task that was already new alone', () => {
+    mockRoutinesCategory();
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'a', category: 'Errands',
+        dueDate: new Date().toISOString(), seenAt: '2020-01-01T00:00:00.000Z',
+      })],
+    });
+
+    useTaskStore.getState().bulkSetCategory(['a'], 'Home');
+
+    expect(useTaskStore.getState().tasks[0].seenAt).toBe('2020-01-01T00:00:00.000Z');
+  });
+});
+
 describe('bulkTogglePin', () => {
   it('pins the whole selection when only some of it is pinned', () => {
     useTaskStore.setState({
@@ -6092,6 +6236,41 @@ describe('deleteCategory', () => {
   it('does not queue an undo when the category is unknown', () => {
     useTaskStore.getState().deleteCategory('Ghost');
     expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  // Same rule as the move paths: the category going away must not make its
+  // tasks read as new. See updateTask's recategorizedIntoNew.
+  it('marks tasks seen when losing the category would make them new', () => {
+    const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+    const routines = {
+      id: 'cat-routines', name: 'Routines', scheduleDays: null, scheduleStart: null, scheduleEnd: null,
+      hideOnVacation: false, excludeFromPinSuggestions: false, excludeFromNewTasksBanner: true,
+      defaultTimeSegments: [], sortOrder: 1, emoji: null,
+    };
+    useCategoryStore.getState.mockReturnValue({
+      categories: [routines],
+      initialized: true,
+      initialize: jest.fn(),
+      addCategory: jest.fn(),
+      deleteCategory: jest.fn(),
+      restoreCategory: jest.fn(),
+      renameCategory: jest.fn().mockReturnValue(true),
+      setCategorySchedule: jest.fn(),
+      removeCategorySchedule: jest.fn(),
+      getCategoryByName: jest.fn((name: string) => (name === 'Routines' ? routines : null)),
+    });
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'a', category: 'Routines',
+        dueDate: new Date().toISOString(), seenAt: '2020-01-01T00:00:00.000Z',
+      })],
+    });
+
+    useTaskStore.getState().deleteCategory('Routines');
+
+    const orphaned = useTaskStore.getState().tasks[0];
+    expect(orphaned.category).toBeNull();
+    expect(isTaskNew(orphaned)).toBe(false);
   });
 });
 
