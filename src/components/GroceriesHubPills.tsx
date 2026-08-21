@@ -11,33 +11,42 @@ import { attentionLeftovers, freshnessOf } from '../utils/leftovers';
 // RecipePickerSheet makes, and for the reason given there.
 import { freshnessColor } from './LeftoversCard';
 
-type HubTab = 'Groceries' | 'Recipes' | 'MealPlan';
+type HubTab = 'Groceries' | 'Recipes' | 'MealPlan' | 'Kitchen';
 
 const HUB_TABS: { name: HubTab; label: string }[] = [
   { name: 'Groceries', label: 'Groceries' },
   { name: 'Recipes', label: 'Recipes' },
   { name: 'MealPlan', label: 'Meal plan' },
+  { name: 'Kitchen', label: 'Pantry' },
 ];
-
-// Not a fourth hub screen — Kitchen is a sheet over Groceries (KitchenSheet),
-// reached the same way the "Use up X" task link and the persistent trip
-// bar's Finish button already reach sheets on other screens: navigate to the
-// screen that owns it with a stamped param it's watching for
-// (`GroceryScreen`'s `route.params?.openKitchen` effect). So it never gets
-// an active/selected state like the three real tabs above it — it's an
-// action pill, not a destination.
 
 interface Props {
   active: HubTab;
 }
 
 /**
- * The Groceries/Recipes/Meal plan switcher, shown under each of the three
- * screens' headers now that they share one "Groceries & Meals" menu entry.
- * These are sibling tabs in the same navigator (not a stack push), and the
- * app runs with `enableScreens(false)`, so a blurred tab stays mounted
+ * The Groceries/Recipes/Meal plan/Pantry switcher, shown under each of the
+ * four screens' headers now that they share one "Groceries & Meals" menu
+ * entry. These are sibling tabs in the same navigator (not a stack push), and
+ * the app runs with `enableScreens(false)`, so a blurred tab stays mounted
  * rather than unmounting — `navigate` between them is effectively instant,
  * unlike the stale-frame problem a route-param-driven sub-view once had.
+ *
+ * **"Pantry" is the display label; the route and every file/type/function
+ * behind it are still named `Kitchen`/`kitchen*`**, the same split as "Stack"
+ * over `TaskGroup`. The internal name predates this label and still says what
+ * the screen actually covers — pantry *and* fridge, read as one thing (see
+ * `kitchenInventory.ts`) — where "Pantry" alone doesn't quite fit a container
+ * of leftover chili. Renaming the code to match would be routing-table
+ * churn for a label some sibling menu might rename again; the display string
+ * is the only thing that needed to change.
+ *
+ * This tab used to be a sheet popped over Groceries rather than a destination
+ * here, reached by stamping a param on a `navigate('Groceries', ...)` call.
+ * That meant it never got this row's active/selected state, and every other
+ * "open the kitchen" call site (a use-up task's link, Today's kitchen context
+ * row) had to carry its own copy of the sheet. It's a screen now, like its
+ * three siblings, so all of that collapses onto one navigation target.
  */
 export function GroceriesHubPills({ active }: Props) {
   const colors = useColors();
@@ -106,18 +115,6 @@ export function GroceriesHubPills({ active }: Props) {
           </TouchableOpacity>
         );
       })}
-      <TouchableOpacity
-        style={styles.pill}
-        onPress={() => {
-          haptics.tap();
-          navigation.navigate('Groceries', { openKitchen: Date.now() });
-        }}
-        activeOpacity={interaction.activeOpacity}
-        accessibilityRole="button"
-        accessibilityLabel="Kitchen — what you have and what to use up"
-      >
-        <Text style={styles.pillText}>Kitchen</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }

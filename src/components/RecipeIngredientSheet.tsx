@@ -105,7 +105,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const [noSwap, setNoSwap] = useState(false);
   // Nested rather than a sibling: a Modal presents from its React parent's view
   // controller, so a sibling would ask this sheet's own presenter for a second
-  // presentation while this one is up. Same call KitchenSheet makes, and it's
+  // presentation while this one is up. Same call BuyAgainSheet makes, and it's
   // what keeps this sheet underneath while the item is edited.
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
 

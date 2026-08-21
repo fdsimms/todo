@@ -29,12 +29,12 @@ import { describeAge, isLiveLeftover } from './leftovers';
  * **The vocabulary, settled once so it can't drift.** The *kitchen* is
  * everything below: the *pantry* is the grocery half ("do I have it",
  * `probablyHaveReason`'s set), the *fridge* is the leftovers half, and a
- * *use-by* day is what either kind counts down to. `KitchenSheet` renders the
+ * *use-by* day is what either kind counts down to. `KitchenScreen` renders the
  * kitchen; `LeftoversCard` renders the fridge alone, because that card's rows
  * drag onto a night of the week and a bag of spinach is not a dinner.
  *
  * **Two things it deliberately doesn't grow**, both already ruled out by
- * `KitchenSheet`'s own note: quantities, per-row expiry editing and a check-in
+ * `KitchenScreen`'s own note: quantities, per-row expiry editing and a check-in
  * gesture (that's the maintained inventory that dies in week three), and any
  * reading of `probablyHaveReason` returning null as *absence*. Null there is
  * ignorance — it's the default state of nearly every item in a catalog — so
@@ -58,7 +58,7 @@ export function kitchenEntryId(kind: KitchenKind, sourceId: string): string {
 /**
  * Where the bare `dundundun://kitchen` link lands — the grocery and leftover
  * use-up generators' own link (groceryExpiry.ts, leftoverTasks.ts) when built
- * through `kitchenLinkUrl` below, so a "Use up X" task opens into KitchenSheet
+ * through `kitchenLinkUrl` below, so a "Use up X" task opens into KitchenScreen
  * rather than the bare grocery list a "Grocery run" task's
  * `dundundun://groceries` link opens.
  */
@@ -67,7 +67,7 @@ export const KITCHEN_LINK_URL = 'dundundun://kitchen';
 /**
  * The use-up generators' actual link: the bare kitchen link when `entryId` is
  * omitted, or `dundundun://kitchen?item=…` when it names one row — which
- * KitchenSheet opens straight to, rather than leaving the user to find "Use
+ * KitchenScreen opens straight to, rather than leaving the user to find "Use
  * up spinach"'s spinach among everything else in the pantry.
  */
 export function kitchenLinkUrl(entryId?: string | null): string {
@@ -260,8 +260,11 @@ export function useUpEntries(entries: readonly KitchenEntry[]): KitchenEntry[] {
 }
 
 /**
- * The kitchen in one line — "6 things in the kitchen · 2 to use up", or just
- * "6 things in the kitchen".
+ * The kitchen in one line — "6 things in the pantry · 2 to use up", or just
+ * "6 things in the pantry". "Pantry" because that's the screen's display
+ * name (see `GroceriesHubPills`' doc comment); the function itself keeps the
+ * `Kitchen` name this whole module uses for the merged pantry-plus-fridge
+ * concept.
  *
  * Shaped like `describeFridge`, which says the same thing about half of it.
  * Empty for an empty kitchen, so a caller renders no line rather than "0
@@ -269,7 +272,7 @@ export function useUpEntries(entries: readonly KitchenEntry[]): KitchenEntry[] {
  */
 export function describeKitchen(entries: readonly KitchenEntry[]): string {
   if (entries.length === 0) return '';
-  const base = `${entries.length} ${entries.length === 1 ? 'thing' : 'things'} in the kitchen`;
+  const base = `${entries.length} ${entries.length === 1 ? 'thing' : 'things'} in the pantry`;
   const urgent = useUpEntries(entries).length;
   return urgent > 0 ? `${base} · ${urgent} to use up` : base;
 }

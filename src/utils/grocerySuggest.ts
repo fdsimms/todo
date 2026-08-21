@@ -379,7 +379,7 @@ function onHandWindowDays(item: GroceryItem, now: Date): number {
 export function probablyHaveReason(item: GroceryItem, now: Date): string | null {
   // A staple outranks everything below: it's a standing fact ("I always have
   // salt"), not a guess, and it doesn't need purchase history or an
-  // onHandUntil assertion to be true. This is also why KitchenSheet — every
+  // onHandUntil assertion to be true. This is also why KitchenScreen — every
   // name this function answers for — reads a staple as on hand with no
   // purchases ever recorded.
   if (item.isStaple) return 'always have it';
@@ -403,7 +403,7 @@ export function probablyHaveReason(item: GroceryItem, now: Date): string | null 
  * Deliberately *not* called by `finishShopping` any more — a purchase is read,
  * not asserted (see `probablyHaveReason`). Its callers are the three places
  * someone says "I have this" by hand: GroceryItemSheet's "Got it" pill,
- * RecipeToListSheet's equivalent, and KitchenSheet's add field via
+ * RecipeToListSheet's equivalent, and KitchenScreen's add field via
  * `addToPantry`.
  */
 export function defaultOnHandUntil(item: GroceryItem, now: Date): string {

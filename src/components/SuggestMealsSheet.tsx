@@ -705,7 +705,7 @@ export function SuggestMealsSheet({
         {/* Nested inside this sheet's own Modal, not a sibling — a sibling
             Modal would ask the screen behind this one to present a second
             sheet while this one is already up (same reasoning as
-            GroceryItemSheet inside KitchenSheet, see CLAUDE.md). */}
+            GroceryItemSheet inside BuyAgainSheet, see CLAUDE.md). */}
         <Modal
           visible={!!previewRecipe}
           animationType="slide"

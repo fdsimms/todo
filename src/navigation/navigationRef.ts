@@ -85,16 +85,17 @@ export function openFinishShoppingFromTripBar(): void {
 
 // Where `dundundun://kitchen[?item=…]` lands — the grocery and leftover
 // "Use up X" tasks' own link (see kitchenInventory.kitchenLinkUrl). Lands on
-// Groceries and asks it to pop KitchenSheet open, same stamped-param handoff
-// openFinishShoppingFromTripBar uses — plus, when the link named one row,
-// which entry to open straight to rather than leaving the list open.
+// the Kitchen screen, the peer of resetToGroceries/resetToRecipes/
+// resetToMealPlan — plus, when the link named one row, which entry to open
+// straight to rather than leaving the list open, the same focus/stamp handoff
+// resetToMealPlan's focusDay uses.
 export function resetToKitchen(focusEntryId?: string | null): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate({
-    name: 'Groceries',
+    name: 'Kitchen',
     params: focusEntryId
-      ? { openKitchen: Date.now(), focusKitchenEntry: focusEntryId }
-      : { openKitchen: Date.now() },
+      ? { focusKitchenEntry: focusEntryId, focusStamp: Date.now() }
+      : undefined,
   });
 }
 

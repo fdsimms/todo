@@ -191,7 +191,7 @@ export function isKitchenUrl(url: string): boolean {
  * The specific pantry item or fridge container a kitchen link asks to open,
  * or null for the bare link.
  *
- * Opaque on purpose: it's whatever kitchenEntryId built, and KitchenSheet
+ * Opaque on purpose: it's whatever kitchenEntryId built, and KitchenScreen
  * matches it straight against a live KitchenEntry.id, so nothing here needs
  * to know its shape — or that it might no longer resolve to anything (the
  * item was used up and its row is gone by the time the link is tapped).

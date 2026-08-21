@@ -334,7 +334,7 @@ interface GroceryStore {
   markOutOfMany: (ids: readonly string[]) => number;
   /**
    * "I have this" for something the app hasn't worked out on its own — the add
-   * field on KitchenSheet. It writes exactly the assertion GroceryItemSheet's
+   * field on KitchenScreen. It writes exactly the assertion GroceryItemSheet's
    * "Got it" pill writes (defaultOnHandUntil, so it lapses on this item's own
    * cadence), which is the point: the pantry stays a set of catalog rows the
    * app computed and the user corrected, not a second table anyone has to keep

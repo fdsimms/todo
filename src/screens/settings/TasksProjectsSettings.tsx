@@ -327,7 +327,7 @@ export function TasksProjectsSettings() {
       <>
       <SettingsSection
         label="Meals on Today"
-        footer="A meal with no cook task behind it (a leftover, a takeaway, a dinner you typed) shows as a row in the list, filed under the same category as cook tasks — and so does anything in the kitchen about to go off, above them. Neither can be checked off; tapping opens the meal plan or the kitchen. Cook tasks themselves are under Tasks the app adds, below."
+        footer="A meal with no cook task behind it (a leftover, a takeaway, a dinner you typed) shows as a row in the list, filed under the same category as cook tasks — and so does anything in the pantry about to go off, above them. Neither can be checked off; tapping opens the meal plan or the pantry. Cook tasks themselves are under Tasks the app adds, below."
       >
         {/* A toggle rather than a track of two: one bounded choice with two
             answers is what a switch is for, and the two shapes this used to
@@ -352,7 +352,7 @@ export function TasksProjectsSettings() {
           icon="nutrition-outline"
           iconColor={kitchenOnToday ? colors.accent : undefined}
           label="Show what needs using up"
-          hint="A row on the day something in the kitchen is down to its last day, unless it already has a use-up task."
+          hint="A row on the day something in the pantry is down to its last day, unless it already has a use-up task."
           toggle={kitchenOnToday}
           onPress={() => setKitchenOnToday(!kitchenOnToday)}
           accessibilityLabel="Show what needs using up"

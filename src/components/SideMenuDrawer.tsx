@@ -29,17 +29,18 @@ interface MenuItem {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
   /** Other tab names this row should also read as "active" for — the
-   *  Groceries/Recipes/Meal plan trio now shares one row and a `GroceriesHubPills`
-   *  switcher inside each screen, so the row must stay highlighted across all three. */
+   *  Groceries/Recipes/Meal plan/Kitchen quartet now shares one row and a
+   *  `GroceriesHubPills` switcher inside each screen, so the row must stay
+   *  highlighted across all four. */
   alsoActiveFor?: string[];
 }
 
-// Groceries, Recipes and Meal plan share one row: three screens tightly
-// coupled around a single kitchen workflow, switched via the pill row each
-// of them renders under its header (`GroceriesHubPills`) rather than three
-// separate drawer taps. The row always opens Groceries; the pills handle
-// getting to the other two once you're in.
-const GROCERIES_HUB_TABS = ['Groceries', 'Recipes', 'MealPlan'];
+// Groceries, Recipes, Meal plan and Kitchen share one row: four screens
+// tightly coupled around a single kitchen workflow, switched via the pill row
+// each of them renders under its header (`GroceriesHubPills`) rather than
+// four separate drawer taps. The row always opens Groceries; the pills handle
+// getting to the other three once you're in.
+const GROCERIES_HUB_TABS = ['Groceries', 'Recipes', 'MealPlan', 'Kitchen'];
 
 interface MenuItemWithGate extends MenuItem {
   /** Dropped from the menu while `kitchenEnabled` is off. */

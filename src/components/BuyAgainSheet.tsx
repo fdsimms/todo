@@ -67,7 +67,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
   const [shopFilter, setShopFilter] = useState<string | null>(null);
   // Nested rather than a sibling — a Modal presents from its React parent's
   // view controller, so a sibling would ask this sheet's own presenter for a
-  // second presentation while this one is up. Same call KitchenSheet makes.
+  // second presentation while this one is up.
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // Nothing carries over between openings — a stale selection from last week

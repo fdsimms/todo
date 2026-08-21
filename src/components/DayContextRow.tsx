@@ -43,7 +43,7 @@ interface Props {
  * the kitchen is right now — "Spinach · Use by today", and when the day's plan
  * would eat it, "Use by today · For Chili". Ticking it would have to mean
  * one of "eaten"/"thrown out" or one of "got it"/"out of it", which are the
- * two-way questions `KitchenSheet` already refuses to guess at with one glyph,
+ * two-way questions `KitchenScreen` already refuses to guess at with one glyph,
  * so the row opens the kitchen and lets it ask. The *task* version of the same
  * food — "Use up X" — is the tickable one, and this row is dropped whenever it
  * exists (see `kitchenContextRows`).
@@ -160,7 +160,7 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
             accessibilityLabel={`${row.title}, ${row.caption}`}
             accessibilityHint={
               row.kind === 'event' ? "Opens the day's events"
-              : row.kind === 'kitchen' ? 'Opens the kitchen'
+              : row.kind === 'kitchen' ? 'Opens Pantry'
               : 'Opens Meal plan'
             }
           >

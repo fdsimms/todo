@@ -197,7 +197,7 @@ export function substituteQuantity(
  * source of the "have it" opinion — an explicit assertion, a staple, or the
  * cadence guess — and this deliberately adds no second rule of its own. In
  * particular it doesn't drop a substitute that's on the shopping list: an item
- * can be both recently bought and back on the list, and `KitchenSheet` already
+ * can be both recently bought and back on the list, and `KitchenScreen` already
  * treats that as on hand.
  */
 export function substitutesOnHand(

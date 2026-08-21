@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -9,6 +8,8 @@ import {
   StyleSheet,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import {
@@ -16,7 +17,6 @@ import {
   radius,
   font,
   fontWeight,
-  border,
   iconSize,
   interaction,
   type Colors,
@@ -30,25 +30,16 @@ import {
   type KitchenEntry,
 } from '../utils/kitchenInventory';
 import { groceryNameKey } from '../utils/groceryParse';
-import { SheetHeaderButton } from './SheetHeaderButton';
-import { EmptyState } from './EmptyState';
-import { InlineAction } from './InlineAction';
-import { PressableScale } from './PressableScale';
-import { GroceryItemSheet } from './GroceryItemSheet';
-import { LeftoverSheet } from './LeftoverSheet';
-import { freshnessColor } from './LeftoversCard';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { GroceriesHubPills } from '../components/GroceriesHubPills';
+import { EmptyState } from '../components/EmptyState';
+import { InlineAction } from '../components/InlineAction';
+import { PressableScale } from '../components/PressableScale';
+import { GroceryItemSheet } from '../components/GroceryItemSheet';
+import { LeftoverSheet } from '../components/LeftoverSheet';
+import { freshnessColor } from '../components/LeftoversCard';
+import { useNowTick } from '../hooks/useNowTick';
 import { haptics } from '../utils/haptics';
-
-interface Props {
-  visible: boolean;
-  onClose: () => void;
-  /**
-   * A specific pantry item or fridge container to open straight to —
-   * KitchenEntry.id, what the use-up tasks' own kitchenLinkUrl carries.
-   * Null opens the plain list, same as the header's own Kitchen icon.
-   */
-  focusEntryId?: string | null;
-}
 
 /**
  * Everything the app currently thinks is in your kitchen, in one place — the
@@ -61,6 +52,13 @@ interface Props {
  * fact to the cook (#1670), so the rows come from one derivation
  * (`utils/kitchenInventory.ts`) with one freshness ladder, and what's about to
  * be wasted sorts to the top of whatever heading it's under.
+ *
+ * The fourth of the Groceries/Recipes/Meal plan hub (`GroceriesHubPills`),
+ * rather than a sheet popped over Groceries — see that component's doc
+ * comment for why it moved. Displayed as "Pantry" (`GroceriesHubPills`'
+ * label, and this screen's own `ScreenHeader` title) while the route, this
+ * file and everything in `kitchenInventory.ts` keep the `Kitchen`/`kitchen*`
+ * name — see `GroceriesHubPills`' doc comment for why the two differ.
  *
  * **The corrections stay where the thing lives.** A catalog row's trailing ✕
  * is the one this screen exists for most — it writes exactly what
@@ -87,9 +85,11 @@ interface Props {
  * Quantities, per-row expiry editing and checking things back in are the
  * inventory, and stay out.
  */
-export function KitchenSheet({ visible, onClose, focusEntryId = null }: Props) {
+export function KitchenScreen() {
+  const insets = useSafeAreaInsets();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const route = useRoute<any>();
 
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
@@ -108,18 +108,12 @@ export function KitchenSheet({ visible, onClose, focusEntryId = null }: Props) {
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [openLeftoverId, setOpenLeftoverId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (visible) {
-      setQuery('');
-      setOpenItemId(null);
-      setOpenLeftoverId(null);
-    }
-  }, [visible]);
-
-  // Fixed for the life of one opening, like Buy again's: a `new Date()` per
-  // render would recompute every cadence guess on each keystroke, and the
-  // answer can't change while you're looking at it.
-  const now = useMemo(() => new Date(), [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+  // This screen never unmounts once visited (the drawer's tabs stay mounted
+  // under `enableScreens(false)`), so a use-by day computed once at mount
+  // would go stale the same way an unmemoized LeftoversCard row would — see
+  // useNowTick's own doc comment (#1732).
+  const nowMs = useNowTick();
+  const now = useMemo(() => new Date(nowMs), [nowMs]);
 
   const entries = useMemo(
     () => kitchenInventory(items, leftovers, now),
@@ -130,24 +124,28 @@ export function KitchenSheet({ visible, onClose, focusEntryId = null }: Props) {
     [entries, aisleOrder, query]
   );
 
-  // The use-up tasks' own link names one row — open straight to its own
-  // sheet, the same one a tap on the row opens, rather than leaving the
-  // plain list for the user to find it in. Runs once per opening (deps are
-  // deliberately just visible/focusEntryId, not entries: re-matching on
-  // every store change would reopen the sheet out from under a user who's
-  // already closed it). A focus id that no longer resolves — the item was
-  // used up before the link was tapped — falls back to the plain list.
+  // The grocery/leftover "Use up X" tasks' own link (resetToKitchen in
+  // navigationRef.ts) and Today's kitchen context row both name one entry to
+  // open straight to, rather than leaving the plain list for the user to find
+  // it in. Same stamped-param handoff MealPlanScreen's focusDay/focusStamp
+  // uses, so tapping the same link twice in a row still reopens the entry.
+  const focusEntryId: string | undefined = route.params?.focusKitchenEntry;
+  const focusStamp: number | undefined = route.params?.focusStamp;
+  const [handledFocusStamp, setHandledFocusStamp] = useState<number | undefined>(undefined);
   useEffect(() => {
-    if (!visible || !focusEntryId) return;
+    if (focusStamp === undefined || focusStamp === handledFocusStamp || !focusEntryId) return;
+    setHandledFocusStamp(focusStamp);
+    // A focus id that no longer resolves — the item was used up before the
+    // link was tapped — just falls back to the plain list.
     const focused = entries.find(e => e.id === focusEntryId);
     if (!focused) return;
     if (focused.kind === 'leftover') setOpenLeftoverId(focused.sourceId);
     else setOpenItemId(focused.sourceId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, focusEntryId]);
+  }, [focusEntryId, focusStamp, handledFocusStamp]);
 
   // Read live from the store by id so the sheet's caption follows an edit it
-  // just made — same discipline MealPlanScreen keeps for this sheet.
+  // just made.
   const openLeftover = useMemo(
     () => leftovers.find(l => l.id === openLeftoverId) ?? null,
     [leftovers, openLeftoverId]
@@ -234,88 +232,77 @@ export function KitchenSheet({ visible, onClose, focusEntryId = null }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.root}>
-        <View style={styles.header}>
-          {/* Nothing to cancel — this sheet changes nothing by itself — so the
-              left side is the spacer that keeps the title centred. */}
-          <View style={styles.headerSpacer} />
-          <Text style={styles.headerTitle}>Kitchen</Text>
-          <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
-        </View>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ScreenHeader
+        title="Pantry"
+        subtitle={entries.length > 0 ? describeKitchen(entries) : undefined}
+      />
+      <GroceriesHubPills active="Kitchen" />
 
-        <View style={styles.searchWrap}>
-          <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
-          <TextInput
-            style={styles.search}
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Find or add an item…"
-            placeholderTextColor={colors.textTertiary}
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType={canAdd ? 'done' : 'search'}
-            onSubmitEditing={canAdd ? handleAdd : undefined}
-            accessibilityLabel="Find something in the kitchen, or type a name to add it"
-          />
-        </View>
-
-        {canAdd && (
-          <View style={styles.addWrap}>
-            <InlineAction
-              label={`Add “${typed}”`}
-              icon="add"
-              onPress={handleAdd}
-              accessibilityLabel={`Add ${typed} to the pantry`}
-            />
-          </View>
-        )}
-
-        {/* The only in-app explanation of where this list comes from, so it
-            says the mechanism rather than describing the feature. */}
-        {entries.length > 0 && !typed && (
-          <Text style={styles.caption}>
-            {describeKitchen(entries)}. Worked out from what you buy, what you&apos;ve marked,
-            and what you&apos;ve put in the fridge. Tap ✕ to say you&apos;re out of something.
-          </Text>
-        )}
-
-        <SectionList
-          sections={sections}
-          keyExtractor={entry => entry.id}
-          renderItem={renderItem}
-          renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{section.section}</Text>
-            </View>
-          )}
-          stickySectionHeadersEnabled={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          // Full height when empty so the empty state's `flex: 1` has something
-          // to centre in, and without the list's padding shifting that centre.
-          contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.list}
-          ListEmptyComponent={
-            <EmptyState
-              icon="file-tray-stacked-outline"
-              title={typed ? 'Nothing matches' : 'Nothing in the kitchen yet'}
-              subtitle={
-                typed
-                  ? 'Nothing you probably have goes by that name. Add it above to say you do.'
-                  : 'Finish a shopping trip and what you bought turns up here, along with anything you put in the fridge. Type a name above to add something you already have.'
-              }
-            />
-          }
+      <View style={styles.searchWrap}>
+        <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
+        <TextInput
+          style={styles.search}
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Find or add an item…"
+          placeholderTextColor={colors.textTertiary}
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType={canAdd ? 'done' : 'search'}
+          onSubmitEditing={canAdd ? handleAdd : undefined}
+          accessibilityLabel="Find something in the pantry, or type a name to add it"
         />
       </View>
 
-      {/* Both rendered inside this Modal rather than beside it, which is what
-          lets them stack: a Modal presents from the view controller its React
-          parent belongs to, so a sibling would be asking the screen's
-          controller to present a second sheet while this one is already up.
-          Keeping the kitchen mounted underneath is the point — correcting one
-          row drops you back into the list rather than back to the shopping
-          list. */}
+      {canAdd && (
+        <View style={styles.addWrap}>
+          <InlineAction
+            label={`Add “${typed}”`}
+            icon="add"
+            onPress={handleAdd}
+            accessibilityLabel={`Add ${typed} to the pantry`}
+          />
+        </View>
+      )}
+
+      {/* The only in-app explanation of where this list comes from, so it
+          says the mechanism rather than describing the feature. */}
+      {entries.length > 0 && !typed && (
+        <Text style={styles.caption}>
+          Worked out from what you buy, what you&apos;ve marked, and what
+          you&apos;ve put in the fridge. Tap ✕ to say you&apos;re out of something.
+        </Text>
+      )}
+
+      <SectionList
+        sections={sections}
+        keyExtractor={entry => entry.id}
+        renderItem={renderItem}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{section.section}</Text>
+          </View>
+        )}
+        stickySectionHeadersEnabled={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        // Full height when empty so the empty state's `flex: 1` has something
+        // to centre in, and without the list's padding shifting that centre.
+        contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.list}
+        ListEmptyComponent={
+          <EmptyState
+            icon="file-tray-stacked-outline"
+            title={typed ? 'Nothing matches' : 'Nothing in the pantry yet'}
+            subtitle={
+              typed
+                ? 'Nothing you probably have goes by that name. Add it above to say you do.'
+                : 'Finish a shopping trip and what you bought turns up here, along with anything you put in the fridge. Type a name above to add something you already have.'
+            }
+          />
+        }
+      />
+
       <GroceryItemSheet
         visible={openItemId !== null}
         itemId={openItemId}
@@ -341,24 +328,13 @@ export function KitchenSheet({ visible, onClose, focusEntryId = null }: Props) {
         onDelete={() => openLeftover && deleteLeftover(openLeftover.id)}
         onClose={() => setOpenLeftoverId(null)}
       />
-    </Modal>
+    </View>
   );
 }
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.md,
-      borderBottomWidth: border.hairline,
-      borderBottomColor: colors.separator,
-    },
-    headerSpacer: { minWidth: 64 },
-    headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+    container: { flex: 1, backgroundColor: colors.bg },
     searchWrap: {
       flexDirection: 'row',
       alignItems: 'center',
