@@ -53,6 +53,7 @@ function makeShop(name: string): Shop {
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
     excludeFromSuggestions: false,
+    receiptStyle: 'itemized' as const,
   };
 }
 
@@ -583,5 +584,60 @@ describe('receiptCautionsFor, against a run of prices', () => {
     expect(receiptCautionsFor(match, [item], null, [])).toContainEqual(
       { kind: 'price', baselineMinor: 348, baselineQuantity: null }
     );
+  });
+});
+
+describe('a remembered alias', () => {
+  const line = (label: string, name: string): ReceiptLine =>
+    ({ label, name, quantity: '', priceMinor: 348 });
+
+  it('claims a row two names would never have matched', () => {
+    const milk = makeItem({ name: 'Milk' });
+    const lines = [line('GV MLK 2% GAL', 'GV MLK 2% GAL')];
+
+    expect(matchReceiptLines(lines, [milk])[0].itemId).toBeNull();
+
+    const [remembered] = matchReceiptLines(lines, [milk], () => milk.id);
+    expect(remembered.itemId).toBe(milk.id);
+    expect(remembered.confidence).toBe('remembered');
+  });
+
+  it('outranks an exact name match on another row', () => {
+    const milk = makeItem({ name: 'Milk' });
+    const cream = makeItem({ name: 'Cream' });
+    const [match] = matchReceiptLines([line('CREAM', 'cream')], [milk, cream], () => milk.id);
+    expect(match.itemId).toBe(milk.id);
+  });
+
+  it('is ignored when it names a row that is gone', () => {
+    const milk = makeItem({ name: 'Milk' });
+    const [match] = matchReceiptLines([line('MILK', 'milk')], [milk], () => 'deleted-id');
+    // Falls back to the name match rather than resolving to nothing, which is
+    // what makes a stale alias a non-event instead of a silent suppression.
+    expect(match.itemId).toBe(milk.id);
+    expect(match.confidence).toBe('exact');
+  });
+
+  it('resolves an off-list row as an add-as-bought suggestion', () => {
+    const bread = makeItem({ name: 'Bread', onList: false });
+    const [match] = matchReceiptLines([line('WW SNDWCH LF', 'loaf')], [bread], () => bread.id);
+    expect(match.itemId).toBeNull();
+    expect(match.offListMatchId).toBe(bread.id);
+  });
+
+  it('is pre-checked even when the price looks wrong', () => {
+    // A price caution demotes a guess. Someone confirmed this one, so a wild
+    // price is news about the price rather than evidence of a misread.
+    const milk = makeItem({ name: 'Milk', priceHistory: [
+      { minor: 20, quantity: null, at: '2026-01-01T00:00:00.000Z' },
+      { minor: 20, quantity: null, at: '2026-01-02T00:00:00.000Z' },
+    ] });
+    const lines = [line('GV MLK 2% GAL', 'GV MLK 2% GAL')];
+
+    const guessed = matchReceiptLines([line('MILK', 'milk')], [milk]);
+    expect(acceptedByDefault(guessed, [milk], null, [])).toEqual([]);
+
+    const remembered = matchReceiptLines(lines, [milk], () => milk.id);
+    expect(acceptedByDefault(remembered, [milk], null, [])).toEqual([milk.id]);
   });
 });

@@ -218,6 +218,9 @@ exports.
 | the store you're shopping at right now | `src/utils/activeTrip.ts` — see `docs/arch/groceries.md` |
 | what something costs, and which store is cheaper | `src/utils/groceryPrice.ts` |
 | what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
+| scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
+| what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
+| a store whose receipt prints prices but no names | `Shop.receiptStyle` + `src/utils/pricePairing.ts` + `ReceiptPricePairing.tsx` |
 | what's in the kitchen and what's about to be wasted | `src/utils/kitchenInventory.ts` (+ the ladder in `src/utils/freshness.ts`) — see `docs/arch/groceries.md` |
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see `docs/arch/groceries.md` |
 | "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see `docs/arch/groceries.md` |
@@ -253,15 +256,15 @@ exports.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (4.7k), `components/TaskEditor.tsx` (4.2k),
-`screens/TodayScreen.tsx` (3.6k), `db/database.ts` (3.4k), `components/TaskItem.tsx` (3.3k),
-`store/useGroceryStore.ts` (3.2k), `types/index.ts` (2.6k),
-`components/QuickAddModal.tsx` (2.6k), `screens/MealPlanScreen.tsx` (1.9k),
+`screens/TodayScreen.tsx` (3.6k), `db/database.ts` (3.6k), `components/TaskItem.tsx` (3.3k),
+`store/useGroceryStore.ts` (3.3k), `types/index.ts` (2.8k),
+`components/QuickAddModal.tsx` (2.5k), `screens/MealPlanScreen.tsx` (1.9k),
 `screens/RecipeDetailScreen.tsx` (1.9k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **155 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **162 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -382,9 +385,14 @@ SQLite (expo-sqlite, WAL mode)
 ```
 
 All database calls are synchronous (expo-sqlite `runSync`/`getAllSync`). There is no backend, and every
-piece of user data lives in a local SQLite file on device. The one network call in the app is
-`src/services/aiSuggestions.ts`, which posts task titles/notes straight to `api.anthropic.com` using a
-user-supplied API key; every feature it powers is inert until the user pastes one into Settings.
+piece of user data lives in a local SQLite file on device. Three things reach the network, and they are
+not equivalent: `src/services/aiSuggestions.ts` posts task titles/notes straight to `api.anthropic.com`
+using a user-supplied API key, and every feature it powers is inert until the user pastes one into
+Settings; `src/services/recipePage.ts` fetches a recipe page the user pasted a link to;
+`src/services/productLookup.ts` asks up to three product databases what a scanned barcode is. **That third one is the
+only one that needs no key**, so "no key, no traffic" stopped being the whole privacy answer when it
+shipped — it carries its own switch (`productLookupEnabled`) instead. Anything else added on those terms
+needs one too.
 
 Stores are initialized once at app startup (`initialize()` on each store). Mutations always write to SQLite first, then update Zustand state.
 

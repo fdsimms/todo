@@ -101,3 +101,34 @@ export async function saveAnthropicApiKey(key: string): Promise<boolean> {
   if (dbGetSetting(API_KEY_LEGACY_SETTING) !== null) dbDeleteSetting(API_KEY_LEGACY_SETTING);
   return true;
 }
+
+/**
+ * The other services' keys, in the keychain alongside the Anthropic one.
+ *
+ * Same reasoning — a live credential does not belong in the unencrypted SQLite
+ * file the task list lives in — with none of the migration machinery above,
+ * because these rows never existed in plaintext to be migrated *from*. A key
+ * that can't be reached simply isn't there, and its source drops out of the
+ * lookup chain, which is the same state as never having pasted one.
+ */
+export const FDC_KEY_SECURE_KEY = 'fdcApiKey';
+export const GO_UPC_KEY_SECURE_KEY = 'goUpcApiKey';
+
+export async function loadSecureKey(name: string): Promise<string> {
+  try {
+    return (await secureStore().getItemAsync(name)) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/** Writes or clears one key. Reports whether it stuck, like saveAnthropicApiKey. */
+export async function saveSecureKey(name: string, key: string): Promise<boolean> {
+  try {
+    if (key) await secureStore().setItemAsync(name, key);
+    else await secureStore().deleteItemAsync(name);
+    return true;
+  } catch {
+    return false;
+  }
+}

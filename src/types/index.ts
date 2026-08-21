@@ -1514,6 +1514,94 @@ export interface ItemProduct {
   createdAt: string;
 }
 
+/**
+ * "At this store, a line reading GV MLK 2% GAL means milk."
+ *
+ * The memory that makes matching improve instead of staying at 85%. A receipt
+ * line and a looked-up product name are both somebody else's words for
+ * something in your catalog, and until this the app re-guessed them from
+ * scratch every trip, getting the same ones wrong every time.
+ *
+ * **Written from a confirmation, not from a guess.** An alias is only recorded
+ * when a person applied a review sheet with the row resolved — see
+ * `rememberAliases`. The app's own reading is never fed back into itself, which
+ * would let one bad match harden into a permanent rule.
+ *
+ * **Keyed by `id`, not by the pair it is unique on**, for the reason
+ * `grocery_item_products` gives, plus one specific to this table: sync's
+ * `row_key` joins composite keys with `|`, safe only because every other key in
+ * the app is base36 from `generateId()`. This one would be a receipt's printed
+ * text, which can contain anything.
+ */
+export interface StoreAlias {
+  id: string;
+  /**
+   * The store whose printer produced this text, or `''` for a text that isn't
+   * store-specific (a product name off a barcode lookup).
+   *
+   * Empty string rather than null because the UNIQUE index over
+   * `(shop_id, raw_key)` is what stops two rows claiming one phrase, and SQLite
+   * treats NULLs as distinct in a unique index — so a nullable column here
+   * would enforce nothing at all for exactly the rows that need it.
+   */
+  shopId: string;
+  /** The printed text, normalized by `aliasKeyFor()`. */
+  rawKey: string;
+  /** The catalog row this text means. Resolve-or-shrug, like every pointer here. */
+  itemId: string;
+  /**
+   * How many times this has been confirmed. Not currently read by matching — a
+   * remembered alias already outranks every similarity tier, so there is
+   * nothing for a count to break a tie between. It's here because the write
+   * path has it for free and because "confirmed nine times" is what a future
+   * review screen would sort on.
+   */
+  hitCount: number;
+  createdAt: string;
+  lastUsedAt: string;
+}
+
+/**
+ * What a barcode turned out to be, remembered so it is only ever looked up once.
+ *
+ * A cache of a *shared* fact, and the only thing in this app that is. Every
+ * other grocery row records something about you — what you buy, where, what it
+ * cost, whether you liked it. This records what a GTIN denotes, which is the
+ * same answer for everyone and never changes, so it is keyed by the barcode
+ * rather than by an item and is safe to keep for ever.
+ *
+ * It deliberately does **not** point at a `GroceryItem`. The resolution from a
+ * scanned product to a row in your catalog is a judgement made in front of the
+ * user at review time (see `scanResolve.ts`), and freezing the first answer
+ * onto the cache row would mean a correction made once could never be revisited
+ * — and would put a personal decision inside a table whose whole point is that
+ * it holds none. Remembering the correction is `store_aliases`' job, which is
+ * its own change.
+ */
+export interface GtinLookup {
+  /** Canonical GTIN-14, from `normalizeGtin()`. */
+  gtin: string;
+  /**
+   * Whether any source knew this barcode.
+   *
+   * **A miss is cached too**, which is the point rather than an optimisation: a
+   * barcode nobody has heard of is the case that would otherwise hit the
+   * network on every single unpack for ever. Misses expire, hits don't — see
+   * `GTIN_MISS_TTL_DAYS`.
+   */
+  found: boolean;
+  /** The product as the source names it, full and unabbreviated. Empty on a miss. */
+  name: string;
+  /** Who makes it, when the source says. Null is ordinary, not a gap. */
+  brand: string | null;
+  /** The pack size as the source prints it ("1 gal", "500 g"). Null when unstated. */
+  quantity: string | null;
+  /** Which source answered, for telling a thin record from a good one later. Empty on a miss. */
+  source: string;
+  /** ISO. When this was asked, which is what expires a miss. */
+  fetchedAt: string;
+}
+
 // A place you shop. "Store" everywhere the user can read; `Shop` in code,
 // because `store` is already Zustand's word here (useGroceryStore,
 // useTaskStore) and `useGroceryStoreStore` is not a name anyone should type.
@@ -1533,6 +1621,45 @@ export interface Shop {
   // primaryShopFor/exclusiveShopFor and the grocery-run task button's store
   // picker. Same naming convention as Category.excludeFromPinSuggestions.
   excludeFromSuggestions: boolean;
+  /**
+   * What this store's receipts are good for. See ReceiptStyle.
+   *
+   * **Data, not a hardcoded special case.** The store this was built for is one
+   * local shop whose register prints every line as "GROCERIES" with a price and
+   * no name, but nothing about that is special enough to earn a branch in the
+   * code — plenty of small stores do it, and the user is the only one who knows
+   * which of theirs does.
+   */
+  receiptStyle: ReceiptStyle;
+}
+
+/**
+ * Whether a store's receipt can be read, and what to offer when it can't.
+ *
+ * Three values rather than a flag, because two different things go wrong and
+ * they want different answers:
+ *
+ * - `itemized` — an ordinary receipt with names on it. Scan it.
+ * - `opaque` — it prints prices but not names ("GROCERIES ... 4.18"). There is
+ *   nothing for the extractor to match on, so reading it is a waste of a
+ *   request. But the *prices* are real, and they are the one thing a barcode
+ *   can't know, so this offers pairing instead: what you scanned in one column,
+ *   what you were charged in the other.
+ * - `none` — no useful paper at all. Offers nothing, because a store that hands
+ *   you nothing has no prices to pair either.
+ *
+ * `opaque` and `none` both skip extraction, which is why the pair looks
+ * collapsible. They must not be: the difference is whether there is a column of
+ * prices to work with, and collapsing them would either offer an empty pairing
+ * screen at a store with no receipt or hide pairing at the store it was built
+ * for.
+ */
+export type ReceiptStyle = 'itemized' | 'opaque' | 'none';
+
+export const RECEIPT_STYLES: ReceiptStyle[] = ['itemized', 'opaque', 'none'];
+
+export function isReceiptStyle(value: unknown): value is ReceiptStyle {
+  return RECEIPT_STYLES.includes(value as ReceiptStyle);
 }
 
 // One (item, shop) pair — an aggregate, deliberately NOT a log of trips.

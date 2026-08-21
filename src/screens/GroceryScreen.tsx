@@ -44,6 +44,7 @@ import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
+import { BarcodeScanSheet } from '../components/BarcodeScanSheet';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { StartTripPrompt } from '../components/StartTripPrompt';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
@@ -170,6 +171,7 @@ export function GroceryScreen() {
   const [aislesOpen, setAislesOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   // What a scanned receipt read, held between the two sheets. Undefined rather
   // than null when there's no receipt in play: the finish sheet tells the two
   // apart, since a receipt naming no store is a real answer and not an absent
@@ -741,6 +743,43 @@ export function GroceryScreen() {
     [setCheckedMany, addExisting, addByName]
   );
 
+  /**
+   * A scan session, confirmed. Same two writes the receipt path makes, minus
+   * everything a barcode can't know.
+   *
+   * A receipt names a store, a date and a price per line; a barcode names none
+   * of the three, so this seeds nothing and lets the finish sheet default as it
+   * always does. Clearing `receiptSeed` is the load-bearing half of that: a
+   * receipt read earlier in the session would otherwise attach its store and
+   * its prices to a trip these scans are what's actually finishing.
+   *
+   * It still routes through the finish sheet rather than calling
+   * `finishShopping` — see the sheet's own doc comment. Unpacking is the end of
+   * a shop, and the finish sheet is where a shop ends *and* where the one
+   * question no scan can answer gets asked.
+   */
+  const handleScanApply = useCallback(
+    (itemIds: string[], toAdd: ReceiptAddDraft[]) => {
+      animateLayout();
+      const allIds = [...itemIds];
+      for (const draft of toAdd) {
+        if (draft.existingItemId) {
+          addExisting(draft.existingItemId);
+          allIds.push(draft.existingItemId);
+        } else {
+          allIds.push(
+            addByName(draft.label, { name: draft.name, quantity: draft.quantity || null }).id
+          );
+        }
+      }
+      if (allIds.length > 0) setCheckedMany(allIds, true);
+      setReceiptSeed(null);
+      setScanOpen(false);
+      setFinishOpen(true);
+    },
+    [setCheckedMany, addExisting, addByName]
+  );
+
   const handleClearTrip = useCallback(() => {
     animateLayout();
     endTrip();
@@ -862,6 +901,11 @@ export function GroceryScreen() {
       list.push({ key: 'recipe', label: 'From a recipe', icon: 'restaurant-outline' });
     }
     list.push({ key: 'buyAgain', label: 'Buy again', icon: 'basket-outline' });
+    // In the add menu rather than the header, and unconditional. The header is
+    // already five actions wide, and this is an add: it's the one entry point
+    // that has to work with an empty list, since unpacking a shop you never
+    // wrote down is exactly the case it's for.
+    list.push({ key: 'scan', label: 'Scan barcodes', icon: 'barcode-outline' });
     list.push({ key: 'item', label: 'Add an item', icon: 'add-circle-outline' });
     return list;
   }, [recipes.length, anthropicApiKey]);
@@ -875,6 +919,7 @@ export function GroceryScreen() {
       else setRecipeSourceOpen(true);
     }
     else if (key === 'buyAgain') setBuyAgainOpen(true);
+    else if (key === 'scan') setScanOpen(true);
     else setAddOpen(true);
   }, [recipes, anthropicApiKey]);
 
@@ -1191,6 +1236,12 @@ export function GroceryScreen() {
         }}
         onFinished={handleFinished}
       />
+      <BarcodeScanSheet
+        visible={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onApply={handleScanApply}
+      />
+
       <ReceiptImportSheet
         visible={receiptOpen}
         onClose={() => setReceiptOpen(false)}

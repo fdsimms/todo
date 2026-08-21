@@ -68,6 +68,8 @@ jest.mock('../db/database', () => ({
   dbSetItemSubLink: jest.fn(),
   dbDeleteItemSubLink: jest.fn(),
   dbGetAllItemProducts: jest.fn(() => []),
+  dbGetAllStoreAliases: jest.fn(() => []),
+  dbSetStoreAlias: jest.fn(),
   dbSetItemProduct: jest.fn(),
   dbDeleteItemProduct: jest.fn(),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
@@ -201,6 +203,7 @@ function makeShop(name: string, overrides: Partial<Shop> = {}): Shop {
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
     excludeFromSuggestions: false,
+    receiptStyle: 'itemized' as const,
     ...overrides,
   };
 }

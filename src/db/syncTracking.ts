@@ -73,6 +73,11 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // `ItemShopLink.productId` point at, so a merge that re-minted a product
   // under a new id would break both pointers on the receiving device.
   { name: 'grocery_item_products', key: ['id'] },
+  // Keyed by id rather than (shop_id, raw_key), which is the pair it is unique
+  // on: row_key joins a composite key with KEY_SEPARATOR, and that is only safe
+  // because every other key here is base36 from generateId(). This one is a
+  // receipt's printed text and can contain anything, '|' included.
+  { name: 'grocery_store_aliases', key: ['id'] },
   { name: 'recipes', key: ['id'] },
   { name: 'leftovers', key: ['id'] },
   { name: 'meal_plan_entries', key: ['id'] },
@@ -92,6 +97,13 @@ export const SYNC_EXCLUDED_TABLES = [
   // peer that needs to know a tombstone row was written, only that the row it
   // describes was deleted, and the tombstone already says that.
   'sync_deletions',
+  // The barcode cache. It holds no user data — only what a GTIN denotes, which
+  // is the same answer on every device and for everyone — so there is nothing
+  // for two devices to disagree about and nothing a merge would resolve. A
+  // second device re-asks as it scans, at one free request per barcode, which
+  // is cheaper than a merge strategy for a table whose whole content is a
+  // cache of someone else's database.
+  'gtin_lookups',
 ] as const;
 
 /**
