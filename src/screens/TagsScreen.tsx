@@ -44,7 +44,6 @@ export function TagsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
-  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const tasksByTag = useTaskStore(s => s.tasksByTag);
   const addTag = useTaskStore(s => s.addTag);
   const deleteTag = useTaskStore(s => s.deleteTag);
@@ -53,7 +52,6 @@ export function TagsScreen() {
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
-  const addCategory = useTaskStore(s => s.addCategory);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -303,12 +301,10 @@ export function TagsScreen() {
                 selectedCount={selectedIds.size}
                 totalCount={tagTasks.length}
                 existingTags={allTags}
-                existingCategories={allCategories}
                 onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
                 onDelete={handleBulkDelete}
                 onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
                 onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
-                onAddCategory={addCategory}
                 onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
                 onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
                 onSelectAll={() => selectAll(tagTasks.map(t => t.id))}

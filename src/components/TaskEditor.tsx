@@ -76,6 +76,7 @@ import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor } from '../utils/effort';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
+import { CategoryPickerList } from './CategoryPicker';
 import { deliverableMeta } from '../utils/deliverables';
 import { InlineAction } from './InlineAction';
 import { SearchField } from './SearchField';
@@ -191,11 +192,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const archiveTask = useTaskStore(s => s.archiveTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const allTagsStore = useTaskStore(useShallow(s => s.allTags()));
-  const allCategoriesStore = useTaskStore(useShallow(s => s.allCategories()));
   const allTags = allTagsStore;
-  const allCategories = allCategoriesStore;
   const categories = useCategoryStore(useShallow(s => s.categories));
-  const addCategory = useTaskStore(s => s.addCategory);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const allGroups = useTaskGroupStore(useShallow(s => s.groups));
@@ -379,8 +377,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [showTimeOfDay, setShowTimeOfDay] = useState(false);
   const [showTimeWindow, setShowTimeWindow] = useState(false);
 
-  const [newCategory, setNewCategory] = useState('');
-  const [addingCategory, setAddingCategory] = useState(false);
   const [newTag, setNewTag] = useState('');
   const [addingTag, setAddingTag] = useState(false);
   const [pickerMode, setPickerMode] = useState<PickerMode>('none');
@@ -567,7 +563,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setShowLinkPicker(false); setCustomLinkText('');
     setShowPhoneField(false); setPhoneText(task?.phoneNumber ?? initialDraft?.phoneNumber ?? '');
     setShowEmailField(false); setEmailText(task?.emailAddress ?? initialDraft?.emailAddress ?? '');
-    setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
+    setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setPendingSubtaskIndex(null); setDraftSubtasks([]);
     setNewChainItemTitle(''); setAddingChainItem(false);
     setOpenFields({}); setShowTimeOfDay(false); setShowTimeWindow(false);
@@ -3031,47 +3027,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             locked={selectedGroup !== null}
             lockedHint={selectedGroup ? `From the ${selectedGroup.title} stack.` : undefined}
           >
-            <View style={styles.pillRow}>
-              <TouchableOpacity
-                style={[styles.pill, !category && styles.pillActiveNeutral]}
-                onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
-              >
-                <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-              </TouchableOpacity>
-              {allCategories.map(cat => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[styles.pill, category === cat && styles.pillActiveNeutral]}
-                  onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
-                >
-                  <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
-                </TouchableOpacity>
-              ))}
-              {addingCategory ? (
-                <TextInput
-                  autoFocus
-                  style={styles.tagInput}
-                  value={newCategory}
-                  onChangeText={setNewCategory}
-                  onSubmitEditing={() => {
-                    const c = newCategory.trim();
-                    if (c) { addCategory(c); setCategory(c); closeField('category'); }
-                    setNewCategory(''); setAddingCategory(false);
-                  }}
-                  onBlur={() => {
-                    const c = newCategory.trim();
-                    if (c) { addCategory(c); setCategory(c); closeField('category'); }
-                    setNewCategory(''); setAddingCategory(false);
-                  }}
-                  placeholder="category name"
-                  placeholderTextColor={colors.textSecondary}
-                  returnKeyType="done"
-                  autoCapitalize="words"
-                />
-              ) : (
-                <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
-              )}
-            </View>
+            {/* The same picker quick add and the bulk bar open as a sheet,
+                inline here: this sheet scrolls, so the list needs no scroll of
+                its own and every category is one glance away rather than one
+                remembered name away. */}
+            <CategoryPickerList
+              value={category}
+              onSelect={cat => { setCategory(cat); closeField('category'); }}
+            />
           </CollapsibleField>
               </>
             ),

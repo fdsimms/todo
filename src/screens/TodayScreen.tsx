@@ -494,7 +494,6 @@ export function TodayScreen() {
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
-  const addCategory = useTaskStore(s => s.addCategory);
   const markTasksSeen = useTaskStore(s => s.markTasksSeen);
   const markTaskSeen = useTaskStore(s => s.markTaskSeen);
   const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
@@ -3446,12 +3445,10 @@ export function TodayScreen() {
             selectedCount={selectedIds.size}
             totalCount={visibleForMode.length}
             existingTags={useTaskStore.getState().allTags()}
-            existingCategories={allCategories}
             onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
             onDelete={handleBulkDelete}
             onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
             onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
-            onAddCategory={addCategory}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
             // Grouping works from the Inbox too: the tasks stay here (being in
