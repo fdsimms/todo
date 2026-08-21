@@ -1246,12 +1246,12 @@ export function GroceryItemSheet({
               >
                 <Ionicons name="restaurant-outline" size={iconSize.sm} color={colors.accent} />
                 <Text style={styles.recipeLinkText} numberOfLines={1}>
-                  From the recipe “{item.sourceRecipeTitle}”
+                  For the recipe “{item.sourceRecipeTitle}”
                 </Text>
                 <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
               </TouchableOpacity>
             ) : (
-              <Text style={styles.hint}>From the recipe “{item.sourceRecipeTitle}”</Text>
+              <Text style={styles.hint}>For the recipe “{item.sourceRecipeTitle}”</Text>
             )
           )}
           {/* The either/or this row is one option of, and the way out of it.
