@@ -65,9 +65,9 @@ interface ScanRow extends ScannedItem {
   /** Why the lookup produced nothing, when it failed rather than missed. */
   error: string | null;
   /**
-   * Going in the freezer rather than the fridge or pantry shelf. Only ever
-   * set true in `'pantry'` context — a shopping-list scan has nowhere to put
-   * it yet, see `Props.context`.
+   * Going in the freezer rather than the fridge or pantry shelf, in either
+   * context. In `'shopping'` context this is only a flag the row carries out
+   * of the sheet — see `Props.onApply`'s note on when it's actually written.
    */
   frozen: boolean;
 }
@@ -102,8 +102,11 @@ interface Props {
    *
    * `frozenItemIds` is the freezer toggle for rows in that first array —
    * `toAdd` carries its own per-draft `frozen` field instead, since each of
-   * those is a fresh object anyway. Always empty in `'shopping'` context,
-   * where the toggle never renders.
+   * those is a fresh object anyway. The toggle renders in both contexts, but
+   * what happens to it differs: `KitchenScreen` writes it immediately,
+   * `GroceryScreen` holds it until the trip actually finishes — a scan only
+   * checks an item onto the list, and `finishShopping` is where "bought" gets
+   * decided, see its own doc comment on `frozenIds`.
    */
   onApply: (
     itemIds: string[],
@@ -511,27 +514,25 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                       )}
                     </View>
 
-                    {context === 'pantry' && (
-                      <TouchableOpacity
-                        activeOpacity={interaction.activeOpacity}
-                        style={styles.rowControl}
-                        disabled={!row.name.trim()}
-                        onPress={() => patchRow(row.key, { frozen: !row.frozen })}
-                        accessibilityRole="switch"
-                        accessibilityState={{ checked: row.frozen }}
-                        accessibilityLabel={
-                          row.frozen
-                            ? 'Going in the freezer. Tap to change.'
-                            : 'Add to the freezer instead of the fridge or pantry'
-                        }
-                      >
-                        <Ionicons
-                          name={row.frozen ? 'snow' : 'snow-outline'}
-                          size={iconSize.sm}
-                          color={row.frozen ? colors.accent : colors.textTertiary}
-                        />
-                      </TouchableOpacity>
-                    )}
+                    <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
+                      style={styles.rowControl}
+                      disabled={!row.name.trim()}
+                      onPress={() => patchRow(row.key, { frozen: !row.frozen })}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: row.frozen }}
+                      accessibilityLabel={
+                        row.frozen
+                          ? 'Going in the freezer. Tap to change.'
+                          : 'Add to the freezer instead of the fridge or pantry'
+                      }
+                    >
+                      <Ionicons
+                        name={row.frozen ? 'snow' : 'snow-outline'}
+                        size={iconSize.sm}
+                        color={row.frozen ? colors.accent : colors.textTertiary}
+                      />
+                    </TouchableOpacity>
 
                     {row.pending ? (
                       <ActivityIndicator

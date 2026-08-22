@@ -3757,6 +3757,50 @@ describe('setFrozen', () => {
     expect(expiryDaysFromNow(bought.expiresAt!, new Date())).toBe(5);
   });
 
+  // The scan sheet's freezer toggle: a fresh claim about *this* purchase,
+  // made this same trip, so it wins over the clear above rather than
+  // fighting it.
+  it('is set instead of cleared for an id finishShopping is told to freeze', () => {
+    const peas = makeItem({ name: 'Peas', onList: true, checked: true });
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true });
+    seed([peas, milk]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([peas.id, milk.id]);
+
+    useGroceryStore
+      .getState()
+      .finishShopping(null, {}, '2026-08-22T10:00:00.000Z', new Set([peas.id]));
+
+    const byId = Object.fromEntries(useGroceryStore.getState().items.map(i => [i.id, i]));
+    expect(byId[peas.id].frozenAt).toBe('2026-08-22T10:00:00.000Z');
+    expect(byId[milk.id].frozenAt).toBeNull();
+  });
+
+  it('does nothing for a frozen id the trip did not actually purchase', () => {
+    const peas = makeItem({ name: 'Peas', onList: true, checked: false });
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true });
+    seed([peas, milk]);
+    // Only milk was actually bought — peas is flagged frozen anyway, as if a
+    // scan session had marked it before the trip decided it wasn't in stock.
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
+
+    useGroceryStore.getState().finishShopping(null, {}, undefined, new Set([peas.id]));
+
+    expect(useGroceryStore.getState().items.find(i => i.id === peas.id)).toEqual(peas);
+  });
+
+  it('undoes a freeze written this way along with the rest of the trip', () => {
+    const peas = makeItem({ name: 'Peas', onList: true, checked: true, frozenAt: null });
+    seed([peas]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([peas.id]);
+
+    useGroceryStore.getState().finishShopping(null, {}, undefined, new Set([peas.id]));
+    expect(useGroceryStore.getState().items[0].frozenAt).not.toBeNull();
+
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().items[0]).toEqual(peas);
+  });
+
   it('is a no-op when the item is already in that state', () => {
     const spinach = makeItem({ name: 'Spinach', frozenAt: '2026-05-01T09:00:00.000Z' });
     seed([spinach]);
