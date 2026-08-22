@@ -1139,6 +1139,7 @@ interface TaskStore {
   resetAllStreaks: () => void;
   bulkCompleteTasks: (ids: string[]) => void;
   bulkUncompleteTasks: (ids: string[]) => void;
+  bulkMarkMissed: (ids: string[]) => void;
   bulkDeleteTasks: (ids: string[]) => void;
   clearLogbook: () => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
@@ -4253,6 +4254,26 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
       undo: () => completedIds.forEach(id => get().uncompleteTask(id)),
+    });
+  },
+
+  // Bulk equivalent of markMissed. Same per-task guard applies (recurring
+  // and not already completed; a task not yet due rolls forward silently
+  // instead of stamping a miss), so a mixed selection just skips whatever
+  // doesn't qualify rather than needing its own filtering here.
+  bulkMarkMissed(ids) {
+    if (ids.length === 0) return;
+    const missedIds: string[] = [];
+    dbTransaction(() => {
+      ids.forEach(id => {
+        get().markMissed(id);
+        if (get().tasks.find(t => t.id === id)?.missedAt) missedIds.push(id);
+      });
+    });
+    if (missedIds.length === 0) return;
+    get().setLastAction({
+      label: `${missedIds.length} task${missedIds.length === 1 ? '' : 's'} marked missed`,
+      undo: () => missedIds.forEach(id => get().uncompleteTask(id)),
     });
   },
 

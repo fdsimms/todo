@@ -5060,6 +5060,75 @@ describe('bulkCompleteTasks', () => {
   });
 });
 
+describe('bulkMarkMissed', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0)); // June 10, 2025 10:00 AM
+  });
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  const recurring = (id: string, overrides: Partial<Task> = {}) => makeTask({
+    id,
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    dueDate: new Date(2025, 5, 10, 9, 0, 0).toISOString(),
+    ...overrides,
+  });
+
+  it('marks every recurring task in the selection missed', () => {
+    useTaskStore.setState({ tasks: [recurring('a'), recurring('b')] });
+    useTaskStore.getState().bulkMarkMissed(['a', 'b']);
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.find(t => t.id === 'a')?.missedAt).not.toBeNull();
+    expect(tasks.find(t => t.id === 'b')?.missedAt).not.toBeNull();
+  });
+
+  it('runs its writes inside a single db transaction', () => {
+    useTaskStore.setState({ tasks: [recurring('a'), recurring('b')] });
+    useTaskStore.getState().bulkMarkMissed(['a', 'b']);
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  // Same per-task guard as markMissed itself — a mixed selection just skips
+  // whatever doesn't qualify rather than needing its own filtering here.
+  it('skips non-recurring tasks in a mixed selection', () => {
+    useTaskStore.setState({
+      tasks: [recurring('a'), makeTask({ id: 'b', recurrenceType: 'none' })],
+    });
+    useTaskStore.getState().bulkMarkMissed(['a', 'b']);
+    expect(useTaskStore.getState().lastAction?.label).toBe('1 task marked missed');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'b')?.missedAt).toBeNull();
+  });
+
+  it('queues an undo that restores every marked task', () => {
+    useTaskStore.setState({ tasks: [recurring('a'), recurring('b')] });
+    useTaskStore.getState().bulkMarkMissed(['a', 'b']);
+
+    const lastAction = useTaskStore.getState().lastAction;
+    expect(lastAction?.label).toBe('2 tasks marked missed');
+    lastAction?.undo();
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.find(t => t.id === 'a')?.missedAt).toBeNull();
+    expect(tasks.find(t => t.id === 'b')?.missedAt).toBeNull();
+  });
+
+  it('does nothing for an empty id list', () => {
+    useTaskStore.setState({ tasks: [recurring('a')] });
+    useTaskStore.getState().bulkMarkMissed([]);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('leaves no undo when nothing in the selection qualified', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', recurrenceType: 'none' })] });
+    useTaskStore.getState().bulkMarkMissed(['a']);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
 describe('bulkUncompleteTasks', () => {
   it('uncompletes every specified task', () => {
     useTaskStore.setState({

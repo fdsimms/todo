@@ -489,6 +489,7 @@ export function TodayScreen() {
   const reorderWithCategoryUpdates = useTaskStore(s => s.reorderWithCategoryUpdates);
   const categories = useCategoryStore(useShallow(s => s.categories));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkTogglePin = useTaskStore(s => s.bulkTogglePin);
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
@@ -3451,6 +3452,7 @@ export function TodayScreen() {
             onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+            onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
             // Grouping works from the Inbox too: the tasks stay here (being in
             // a stack isn't one of the things isInboxTask() counts as filed),
             // but they collect under the new stack's header instead of staying
