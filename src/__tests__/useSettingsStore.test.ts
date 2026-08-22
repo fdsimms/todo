@@ -325,6 +325,7 @@ describe('resetToDefaults', () => {
     useSettingsStore.getState().setAutoRemoveExpiredTasks(7);
     useSettingsStore.getState().setAutoArchiveProjectsOnComplete(true);
     useSettingsStore.getState().setHideCategories(true);
+    useSettingsStore.getState().setHideHelpText(true);
     useSettingsStore.getState().setTimerLiveActivity(false);
     useSettingsStore.getState().setTripLiveActivity(false);
 
@@ -344,6 +345,7 @@ describe('resetToDefaults', () => {
     expect(state.autoRemoveExpiredTasks).toBe(7);
     expect(state.autoArchiveProjectsOnComplete).toBe(false);
     expect(state.hideCategories).toBe(false);
+    expect(state.hideHelpText).toBe(false);
     expect(state.timerLiveActivity).toBe(true);
     expect(state.tripLiveActivity).toBe(true);
   });
@@ -1062,6 +1064,29 @@ describe('shakeToUndoEnabled', () => {
     useSettingsStore.getState().setShakeToUndoEnabled(false);
     expect(dbSetSetting).toHaveBeenCalledWith('shakeToUndoEnabled', 'false');
     expect(useSettingsStore.getState().shakeToUndoEnabled).toBe(false);
+  });
+});
+
+describe('hideHelpText', () => {
+  // Off by default, so an install predating the setting keeps showing the
+  // hints it already had.
+  it('defaults to off, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().hideHelpText).toBe(false);
+  });
+
+  it('reads a stored "true"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'hideHelpText' ? 'true' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().hideHelpText).toBe(true);
+  });
+
+  it('round-trips through setHideHelpText', () => {
+    useSettingsStore.getState().setHideHelpText(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('hideHelpText', 'true');
+    expect(useSettingsStore.getState().hideHelpText).toBe(true);
   });
 });
 

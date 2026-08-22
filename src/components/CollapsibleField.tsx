@@ -6,6 +6,7 @@ import { spacing, font, interaction, type Colors } from '../theme';
 import { disclosureValue } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 interface Props {
   /** Uppercase section label, e.g. "Category". */
@@ -52,6 +53,7 @@ export function CollapsibleField({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const hideHelpText = useSettingsStore(s => s.hideHelpText);
 
   const handleToggle = () => {
     haptics.tap();
@@ -100,7 +102,7 @@ export function CollapsibleField({
       </TouchableOpacity>
       {expanded && (
         <>
-          {!!hint && <Text style={[styles.hint, styles.hintSpaced]}>{hint}</Text>}
+          {!!hint && !hideHelpText && <Text style={[styles.hint, styles.hintSpaced]}>{hint}</Text>}
           {children}
         </>
       )}

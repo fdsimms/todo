@@ -98,6 +98,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['vibrate', 'vibration', 'taptic', 'buzz'] },
   { id: 'confirmBeforeDeleting', groupId: 'appearance', label: 'Confirm before deleting', section: 'Feedback',
     keywords: ['delete', 'alert', 'confirmation', 'undo', 'forget', 'clear'] },
+  { id: 'hideHelpText', groupId: 'appearance', label: 'Help text', section: 'Feedback',
+    keywords: ['hint', 'description', 'explanation', 'subtitle', 'terse', 'declutter'] },
 
   // Day & time
   { id: 'dayReset', groupId: 'dayTime', label: 'Morning', section: 'When the day turns over',

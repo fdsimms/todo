@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text } from 'react-native';
 import { useColors } from '../../theme/ThemeContext';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import { makeSettingsStyles } from './settingsStyles';
 
 interface Props {
@@ -18,12 +19,13 @@ interface Props {
 export function SettingsSection({ label, footer, children }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
+  const hideHelpText = useSettingsStore(s => s.hideHelpText);
 
   return (
     <View style={styles.section}>
       <Text style={styles.sectionLabel}>{label}</Text>
       <View style={styles.card}>{children}</View>
-      {footer != null && <Text style={styles.sectionFooter}>{footer}</Text>}
+      {footer != null && !hideHelpText && <Text style={styles.sectionFooter}>{footer}</Text>}
     </View>
   );
 }
