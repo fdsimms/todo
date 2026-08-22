@@ -516,9 +516,84 @@ describe('extractRecipe', () => {
       servingsMax: null,
       prepMinutes: 45,
       ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
+      references: [],
       steps: [],
       prepTasks: [],
     });
+  });
+
+  it('reads the cross-references to other recipes off the page', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Carnitas tacos',
+        items: [{ name: 'pork shoulder', quantity: '3 lb', aisle: 'Meat & Seafood' }],
+        referencedRecipes: [
+          { name: '  Salsa verde  ', reference: '  page 45  ' },
+          { name: 'Mexican rice', reference: 'p. 112' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.references).toEqual([
+      { name: 'Salsa verde', reference: 'page 45' },
+      { name: 'Mexican rice', reference: 'p. 112' },
+    ]);
+  });
+
+  it('drops a reference the model gave no locator for', async () => {
+    // "Serve with rice" names a dish and points nowhere. Without this the
+    // closing line of every method becomes a recipe to go photograph.
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Carnitas tacos',
+        items: [],
+        referencedRecipes: [
+          { name: 'Rice', reference: '' },
+          { name: 'Salsa verde', reference: 'page 45' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.references).toEqual([{ name: 'Salsa verde', reference: 'page 45' }]);
+  });
+
+  it('drops an unnamed reference and collapses two spellings of one name', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Carnitas tacos',
+        items: [],
+        referencedRecipes: [
+          { name: '  ', reference: 'page 9' },
+          { name: 'Salsa verde', reference: 'page 45' },
+          { name: 'SALSA VERDE', reference: 'p. 45' },
+          { name: 'Herb oil', reference: 12 },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.references).toEqual([{ name: 'Salsa verde', reference: 'page 45' }]);
+  });
+
+  it('caps how many references one page can claim', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Carnitas tacos',
+        items: [],
+        referencedRecipes: Array.from({ length: 10 }, (_, i) => ({
+          name: `Side ${i}`,
+          reference: `page ${i + 10}`,
+        })),
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.references).toHaveLength(4);
+  });
+
+  it('comes back with no references when the model omits the field', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', { name: 'Chili', items: [] })
+    );
+    await expect(extractRecipe('some recipe', AISLES)).resolves.toMatchObject({ references: [] });
   });
 
   it('reads the model\'s component field into section', async () => {
@@ -603,7 +678,8 @@ describe('extractRecipe', () => {
   it('does not call the network for empty text', async () => {
     const spy = jest.spyOn(global, 'fetch');
     await expect(extractRecipe('   ', AISLES)).resolves.toEqual({
-      name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [], steps: [], prepTasks: [],
+      name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+      references: [], steps: [], prepTasks: [],
     });
     expect(spy).not.toHaveBeenCalled();
   });
@@ -737,6 +813,25 @@ describe('extractRecipe', () => {
     expect(result.prepTasks).toEqual([]);
   });
 
+  it('skips the cross-reference instructions when includeReferences is false', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+    await extractRecipe('some recipe', AISLES, { includeReferences: false });
+
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content).not.toContain('referencedRecipes');
+    expect(body.tools[0].input_schema.properties.referencedRecipes).toBeUndefined();
+  });
+
+  it('returns no references when includeReferences is false, even if the model sends them', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili', items: [], referencedRecipes: [{ name: 'Salsa verde', reference: 'page 45' }],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES, { includeReferences: false });
+    expect(result.references).toEqual([]);
+  });
+
   describe('from a photo', () => {
     const PHOTO = { base64: 'QUJD', mediaType: 'image/jpeg' as const };
 
@@ -772,6 +867,7 @@ describe('extractRecipe', () => {
         servingsMax: null,
         prepMinutes: 45,
         ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
+        references: [],
         steps: [],
         prepTasks: [],
       });
@@ -796,7 +892,8 @@ describe('extractRecipe', () => {
     it('does not call the network for an empty image', async () => {
       const spy = jest.spyOn(global, 'fetch');
       await expect(extractRecipe({ base64: '', mediaType: 'image/jpeg' }, AISLES)).resolves.toEqual({
-        name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [], steps: [], prepTasks: [],
+        name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+        references: [], steps: [], prepTasks: [],
       });
       expect(spy).not.toHaveBeenCalled();
     });

@@ -39,6 +39,9 @@ import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker, type RecipeInputMode } from './RecipeSourcePicker';
 import { ExtractedIngredientRow, type ExtractedIngredientRowHandle } from './ExtractedIngredientRow';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
+import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
+import { ImportedComponentRow } from './ImportedComponentRow';
+import { coveredIngredients, importableReferences } from '../utils/recipeImportComponents';
 import { haptics } from '../utils/haptics';
 
 const CHECKBOX_SIZE = 22;
@@ -121,6 +124,21 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   const input = useRecipeImportSource(initialMode);
   const { resolveSource, reset: resetInput } = input;
 
+  // "…and there's a salsa verde on page 45." Nothing is filtered out here for
+  // an existing parent, because there isn't one yet — see importableReferences.
+  const candidates = useMemo(
+    () => (extracted ? importableReferences(extracted.references, recipes, null) : []),
+    [extracted, recipes],
+  );
+  const components = useRecipeComponentImports(candidates, aisleOrder);
+  const { reset: resetComponents, acceptedKeys } = components;
+  // An ingredient line naming a recipe that's about to become a component is
+  // already shopped for through that component — see coveredIngredients.
+  const covered = useMemo(
+    () => coveredIngredients(ingredients, candidates, acceptedKeys),
+    [ingredients, candidates, acceptedKeys],
+  );
+
   const reset = useCallback(() => {
     setLoading(false);
     setError(null);
@@ -130,7 +148,8 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     setAccepted(new Set());
     setApplyDetails(true);
     resetInput();
-  }, [resetInput]);
+    resetComponents();
+  }, [resetInput, resetComponents]);
 
   useEffect(() => {
     if (!visible) reset();
@@ -219,10 +238,12 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       return next;
     });
     const chosen = resolvedIngredients
-      .filter((_, i) => accepted.has(i))
+      .filter((_, i) => accepted.has(i) && !covered.has(i))
       .map(item => normalizeIngredient(item))
       .filter((i): i is NonNullable<typeof i> => i !== null);
     if (chosen.length > 0) addStructuredIngredients(recipe.id, chosen);
+    // After the recipe exists, so the links have something to hang off.
+    components.commitTo(recipe.id);
     if (applyDetails) {
       if (extracted.servings !== null) {
         setServings(recipe.id, extracted.servings, extracted.servingsMax);
@@ -286,6 +307,38 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   // you ask. What it needs is the input back, not another attempt at it.
   const backLabel = input.usingLink ? 'Change the link' : 'Go back';
   const goBack = () => { setError(null); setExtracted(null); };
+
+  /**
+   * The referenced-recipes block, above the ingredients it changes the meaning
+   * of. Above rather than below because accepting one unticks a line further
+   * down: the cause has to be on screen before the effect, or the ingredient
+   * list appears to edit itself.
+   */
+  const renderReferences = () => {
+    if (candidates.length === 0) return null;
+    return (
+      <>
+        <Text style={styles.groupLabel}>OTHER RECIPES THIS ONE USES</Text>
+        <Text style={styles.groupHint}>
+          Link the ones you already have, or photograph the page for the ones you don't.
+        </Text>
+        {/* Its own bottom margin: the ingredient rows below have none of their
+            own, and a 2pt gap would read as one continuous list. */}
+        <View style={styles.groupBlock}>
+          {candidates.map(candidate => (
+            <ImportedComponentRow
+              key={candidate.key}
+              candidate={candidate}
+              state={components.stateFor(candidate.key)}
+              accepted={components.accepted.has(candidate.key)}
+              onToggle={() => components.toggle(candidate.key)}
+              onImport={source => components.importFrom(candidate.key, source)}
+            />
+          ))}
+        </View>
+      </>
+    );
+  };
 
   const renderBody = () => {
     if (loading) {
@@ -431,22 +484,26 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
           </TouchableOpacity>
         )}
 
+        {renderReferences()}
+
         {ingredients.map((row, i) => {
           // A new heading whenever this row's section differs from the one
           // right before it — same display-only grouping RecipeDetailScreen
           // does over the saved list, run here over the preview instead.
           const prevSection = i > 0 ? ingredients[i - 1].section : null;
           const sectionHeader = row.section && row.section !== prevSection ? row.section : null;
+          const coveredBy = covered.get(i);
           return (
             <ExtractedIngredientRow
               key={`${row.name}-${i}`}
               ref={el => { if (el) rowRefs.current.set(i, el); else rowRefs.current.delete(i); }}
               row={row}
-              checked={accepted.has(i)}
+              checked={accepted.has(i) && !coveredBy}
               onToggle={() => toggle(i)}
               onEditName={name => editIngredient(i, { name })}
               onEditQuantity={quantity => editIngredient(i, { quantity })}
               sectionHeader={sectionHeader}
+              note={coveredBy ? `made from the ${coveredBy} recipe` : null}
             />
           );
         })}
@@ -499,6 +556,22 @@ function makeStyles(colors: Colors) {
       paddingBottom: spacing.sm,
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
+    groupLabel: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
+    },
+    groupHint: {
+      color: colors.textTertiary,
+      fontSize: font.xs,
+      paddingHorizontal: spacing.md,
+      paddingTop: 2,
+      paddingBottom: spacing.xs,
+    },
+    groupBlock: { marginBottom: spacing.sm },
     pasteWrap: { padding: spacing.md, gap: spacing.md },
     photoError: { color: colors.red, fontSize: font.sm, textAlign: 'center' },
     nameCard: {
