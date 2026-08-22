@@ -5,8 +5,8 @@ export type { GeneratedKind };
 /**
  * The one mechanism behind every task this app writes without being asked.
  *
- * Six features generate tasks unattended — a planned meal becomes "Cook X", a
- * perishable grocery becomes "Use up X", a leftover about to go bad becomes
+ * Six features generate tasks unattended — each meal of the day becomes a task,
+ * a perishable grocery becomes "Use up X", a leftover about to go bad becomes
  * "Use up X", an opt-in weekly trigger becomes "Plan meals for…", a project
  * that has gone quiet becomes "Review X", and a pantry guess that has run out
  * becomes "Check if you still have X". The first four were each built by
