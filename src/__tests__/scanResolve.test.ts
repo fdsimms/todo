@@ -3,7 +3,9 @@ import {
   matchScans,
   scannedItemFor,
   shopperNameFor,
+  sourceLabelFor,
   unknownScannedItem,
+  variantFor,
   type ScannedItem,
 } from '../utils/scanResolve';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -49,7 +51,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
 }
 
 function scan(overrides: Partial<ScannedItem> & { name: string }): ScannedItem {
-  return { gtin: null, label: '', brand: null, quantity: '', ...overrides };
+  return { gtin: null, label: '', brand: null, quantity: '', aisle: null, ...overrides };
 }
 
 describe('shopperNameFor', () => {
@@ -92,6 +94,7 @@ describe('scannedItemFor', () => {
       name: 'Great Value 2% Reduced Fat Milk, 1 Gallon',
       brand: 'Great Value',
       quantity: '1 gal',
+      category: null,
       source: 'openfoodfacts',
     });
     expect(item.label).toBe('Great Value 2% Reduced Fat Milk, 1 Gallon');
@@ -122,6 +125,67 @@ describe('alreadyScanned', () => {
 
   it('never matches a typed row, which carries no code', () => {
     expect(alreadyScanned([scan({ name: 'Bananas' })], '00036000291452')).toBe(false);
+  });
+});
+
+describe('sourceLabelFor', () => {
+  it('leads with the maker when the name does not say who it is', () => {
+    expect(sourceLabelFor('Sun Sausage Plant-based Links Cajun', 'Beyond Meat'))
+      .toBe('Beyond Meat · Sun Sausage Plant-based Links Cajun');
+  });
+
+  it('does not repeat a brand the name already starts with', () => {
+    expect(sourceLabelFor('Great Value 2% Reduced Fat Milk', 'Great Value'))
+      .toBe('Great Value 2% Reduced Fat Milk');
+  });
+
+  it('ignores case when deciding the name already says it', () => {
+    expect(sourceLabelFor("DAVE'S KILLER BREAD 21 Grain", "Dave's Killer Bread"))
+      .toBe("DAVE'S KILLER BREAD 21 Grain");
+  });
+
+  it('is the label alone when the source named no brand', () => {
+    expect(sourceLabelFor('Semi-skimmed milk', null)).toBe('Semi-skimmed milk');
+    expect(sourceLabelFor('Semi-skimmed milk', '   ')).toBe('Semi-skimmed milk');
+  });
+
+  it('is the brand alone rather than a dangling separator when there is no label', () => {
+    expect(sourceLabelFor('', 'Beyond Meat')).toBe('Beyond Meat');
+  });
+});
+
+describe('variantFor', () => {
+  it('is what is left after the maker and the item are both taken out', () => {
+    expect(variantFor("Dave's Killer Bread 21 Whole Grains", "Dave's Killer", 'Bread'))
+      .toBe('21 Whole Grains');
+  });
+
+  it('reads the item name case-insensitively, wherever it sits', () => {
+    expect(variantFor('Great Value 2% Reduced Fat Milk', 'Great Value', 'milk'))
+      .toBe('2% Reduced Fat');
+  });
+
+  it('is null when the item name never appears, rather than claiming the whole name', () => {
+    expect(variantFor('Sun Sausage Plant-based Links Cajun', 'Beyond Meat', 'Sausages'))
+      .toBeNull();
+  });
+
+  it('is null when the product is exactly the item, with nothing left over', () => {
+    expect(variantFor('Oatly Milk', 'Oatly', 'Milk')).toBeNull();
+  });
+
+  it('does not match the item name inside a longer word', () => {
+    expect(variantFor('Buttermilk Pancake Mix', null, 'Milk')).toBeNull();
+  });
+
+  it('survives an item name carrying regex punctuation', () => {
+    expect(variantFor("Ben & Jerry's Chocolate Fudge Brownie", null, "Ben & Jerry's"))
+      .toBe('Chocolate Fudge Brownie');
+  });
+
+  it('is null for an empty item name or an empty product name', () => {
+    expect(variantFor('Whole Milk', null, '   ')).toBeNull();
+    expect(variantFor('   ', null, 'Milk')).toBeNull();
   });
 });
 

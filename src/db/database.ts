@@ -895,6 +895,10 @@ export function initDatabase(): void {
     // same reason idx_grocery_items_name_key is: a device that got the table
     // from an earlier build still picks the index up.
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_grocery_item_products_key ON grocery_item_products(item_id, product_key)',
+    // How the barcode source files the product, for aisleForProductCategory.
+    // Null on every row cached before this shipped and deliberately never
+    // backfilled — see GtinLookup.category.
+    'ALTER TABLE gtin_lookups ADD COLUMN category TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2907,6 +2911,7 @@ function rowToGtinLookup(row: Record<string, unknown>): GtinLookup {
     name: (row.name as string) ?? '',
     brand: (row.brand as string) ?? null,
     quantity: (row.quantity as string) ?? null,
+    category: (row.category as string) ?? null,
     source: (row.source as string) ?? '',
     fetchedAt: row.fetched_at as string,
   };
@@ -2937,13 +2942,14 @@ export function dbGetGtinLookup(gtin: string): GtinLookup | null {
  */
 export function dbSetGtinLookup(entry: GtinLookup): void {
   db.runSync(
-    `INSERT INTO gtin_lookups (gtin, found, name, brand, quantity, source, fetched_at)
-     VALUES (?,?,?,?,?,?,?)
+    `INSERT INTO gtin_lookups (gtin, found, name, brand, quantity, category, source, fetched_at)
+     VALUES (?,?,?,?,?,?,?,?)
      ON CONFLICT(gtin) DO UPDATE SET
        found = excluded.found,
        name = excluded.name,
        brand = excluded.brand,
        quantity = excluded.quantity,
+       category = excluded.category,
        source = excluded.source,
        fetched_at = excluded.fetched_at`,
     [
@@ -2952,6 +2958,7 @@ export function dbSetGtinLookup(entry: GtinLookup): void {
       entry.name,
       entry.brand,
       entry.quantity,
+      entry.category,
       entry.source,
       entry.fetchedAt,
     ]

@@ -3239,7 +3239,7 @@ describe('the barcode cache', () => {
   beforeEach(() => { dbClearGtinLookups(); });
 
   const entry = (gtin: string, found = true) => ({
-    gtin, found, name: found ? 'Milk' : '', brand: null, quantity: null,
+    gtin, found, name: found ? 'Milk' : '', brand: null, quantity: null, category: null,
     source: found ? 'openfoodfacts' : '', fetchedAt: '2026-08-21T12:00:00.000Z',
   });
 

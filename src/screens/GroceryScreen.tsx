@@ -44,7 +44,7 @@ import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
-import { BarcodeScanSheet } from '../components/BarcodeScanSheet';
+import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { StartTripPrompt } from '../components/StartTripPrompt';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
@@ -150,6 +150,7 @@ export function GroceryScreen() {
   const finishShopping = useGroceryStore(s => s.finishShopping);
   const addExisting = useGroceryStore(s => s.addExisting);
   const addByName = useGroceryStore(s => s.addByName);
+  const addProduct = useGroceryStore(s => s.addProduct);
   const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
   const linkItemSub = useGroceryStore(s => s.linkItemSub);
   const swapForSubstitute = useGroceryStore(s => s.swapForSubstitute);
@@ -772,9 +773,26 @@ export function GroceryScreen() {
    * The scan sheet's freezer toggle is captured into `scanFrozenIds` rather
    * than written here, for the same reason: nothing is bought yet. It rides
    * along to `finishShopping` in `handleFinished`, once it is.
+   *
+   * **What a barcode knows and a receipt doesn't is the box**: who makes it,
+   * and which one of the item it is. A row this session mints takes its brand
+   * through `addByName`'s own override — the same one GroceryAddField's Brand
+   * chip uses — so it files as that row's first `ItemProduct`. Deliberately not
+   * a follow-up `addProduct` call, which would also flip `inCatalog` and leave
+   * a scanned row that happened to carry a brand surviving a "remove from list"
+   * that deletes the brandless one beside it.
+   *
+   * A row that matched an item the catalog already had travels in `products`
+   * instead, and is written with `promote: false` — the scan is recording that
+   * a box came home, which is not the user choosing it (#1866).
    */
   const handleScanApply = useCallback(
-    (itemIds: string[], toAdd: ReceiptAddDraft[], frozenItemIds: ReadonlySet<string>) => {
+    (
+      itemIds: string[],
+      toAdd: ReceiptAddDraft[],
+      frozenItemIds: ReadonlySet<string>,
+      products: ScanProductDraft[]
+    ) => {
       animateLayout();
       const allIds = [...itemIds];
       const frozenIds = new Set(itemIds.filter(id => frozenItemIds.has(id)));
@@ -784,10 +802,21 @@ export function GroceryScreen() {
           addExisting(draft.existingItemId);
           id = draft.existingItemId;
         } else {
-          id = addByName(draft.label, { name: draft.name, quantity: draft.quantity || null }).id;
+          id = addByName(draft.label, {
+            name: draft.name,
+            quantity: draft.quantity || null,
+            brand: draft.brand,
+            aisle: draft.aisle,
+          }).id;
         }
         allIds.push(id);
         if (draft.frozen) frozenIds.add(id);
+      }
+      // After the loop, so a row this session minted is already there to hang a
+      // box off. `promote: false` is the whole of #1866: the scan is recording
+      // that a box came home, which is not the user choosing it.
+      for (const product of products) {
+        addProduct(product.itemId, { brand: product.brand, variant: product.variant }, { promote: false });
       }
       if (allIds.length > 0) setCheckedMany(allIds, true);
       // Merged rather than replaced: a second scan session before the trip
@@ -799,7 +828,7 @@ export function GroceryScreen() {
       setScanOpen(false);
       setFinishOpen(true);
     },
-    [setCheckedMany, addExisting, addByName]
+    [setCheckedMany, addExisting, addByName, addProduct]
   );
 
   const handleClearTrip = useCallback(() => {

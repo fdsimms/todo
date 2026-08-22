@@ -66,6 +66,11 @@ export interface ProductRecord {
   brand: string | null;
   /** Pack size as printed ("1 gal", "500 g"), null when the source doesn't say. */
   quantity: string | null;
+  /**
+   * How the source files it, in that source's own vocabulary. Read by
+   * `aisleForProductCategory`, which is what normalises the three.
+   */
+  category: string | null;
   source: string;
 }
 
@@ -116,8 +121,28 @@ function readOffProduct(gtin: string, payload: unknown): ProductRecord | null {
     name,
     brand: brands ? brands.split(',')[0].trim() || null : null,
     quantity: trimField(product.quantity, GROCERY_QUANTITY_MAX_LENGTH) || null,
+    category: lastCategoryTag(product.categories_tags),
     source: 'openfoodfacts',
   };
+}
+
+/**
+ * The most specific of OFF's category tags.
+ *
+ * `categories_tags` runs general to specific — `["en:plant-based-foods",
+ * "en:meat-analogues", "en:vegan-sausages"]` — so the last entry is the one
+ * worth keeping. The language prefix comes off because the aisle map matches on
+ * words, and the hyphens become spaces for the same reason.
+ */
+function lastCategoryTag(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  for (let i = value.length - 1; i >= 0; i--) {
+    const tag = typeof value[i] === 'string' ? (value[i] as string).trim() : '';
+    if (!tag) continue;
+    const words = tag.replace(/^[a-z]{2}:/, '').replace(/-/g, ' ').trim();
+    if (words) return words.slice(0, GROCERY_NAME_MAX_LENGTH);
+  }
+  return null;
 }
 
 /** One GET, with a timeout, distinguishing "no such product" from "couldn't ask". */
@@ -127,7 +152,8 @@ async function fetchFromOff(gtin: string): Promise<ProductRecord | null> {
   let response: Response;
   try {
     response = await fetch(
-      `${OFF_URL}/${encodeURIComponent(gtin)}.json?fields=product_name,generic_name,brands,quantity`,
+      `${OFF_URL}/${encodeURIComponent(gtin)}.json`
+      + `?fields=product_name,generic_name,brands,quantity,categories_tags`,
       { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: controller.signal }
     );
   } catch (e) {
@@ -211,6 +237,12 @@ function fdcSource(apiKey: string): SourceFetch {
       name,
       brand: brand || null,
       quantity: trimField(food.packageWeight, GROCERY_QUANTITY_MAX_LENGTH) || null,
+      // `brandedFoodCategory` is the Branded dataset's own shelf label ("Ice
+      // Cream & Frozen Yogurt"); `foodCategory` is the broader nutrition
+      // grouping and is the weaker answer, so it only fills in.
+      category: trimField(food.brandedFoodCategory, GROCERY_NAME_MAX_LENGTH)
+        || trimField(food.foodCategory, GROCERY_NAME_MAX_LENGTH)
+        || null,
       source: 'usda',
     };
   };
@@ -231,6 +263,7 @@ function goUpcSource(apiKey: string): SourceFetch {
       name,
       brand: trimField(product.brand, GROCERY_NAME_MAX_LENGTH) || null,
       quantity: null,
+      category: trimField(product.category, GROCERY_NAME_MAX_LENGTH) || null,
       source: 'go-upc',
     };
   };
@@ -265,6 +298,7 @@ export async function lookupGtin(gtin: string, now: Date = new Date()): Promise<
       name: cached.name,
       brand: cached.brand,
       quantity: cached.quantity,
+      category: cached.category,
       source: cached.source,
     };
   }
@@ -305,6 +339,7 @@ export async function lookupGtin(gtin: string, now: Date = new Date()): Promise<
       name: record?.name ?? '',
       brand: record?.brand ?? null,
       quantity: record?.quantity ?? null,
+      category: record?.category ?? null,
       source: record?.source ?? '',
       fetchedAt: now.toISOString(),
     });

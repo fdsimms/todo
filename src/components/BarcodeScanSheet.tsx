@@ -38,6 +38,8 @@ import {
   matchScans,
   pluScannedItem,
   scannedItemFor,
+  sourceLabelFor,
+  variantFor,
   unknownScannedItem,
   type ScannedItem,
 } from '../utils/scanResolve';
@@ -47,6 +49,19 @@ import { GROCERY_NAME_MAX_LENGTH } from '../types';
 
 /** Matches the shopping list's own checkbox, same as the receipt sheet's. */
 const CHECK_SIZE = 22;
+
+/**
+ * A box to file against a catalog row this scan matched, rather than minted.
+ *
+ * Kept apart from `ReceiptAddDraft.brand`, which covers the rows that *do* get
+ * minted, so between them every scanned row's product is accounted for exactly
+ * once: minted rows carry it on the draft, matched ones travel here.
+ */
+export interface ScanProductDraft {
+  itemId: string;
+  brand: string | null;
+  variant: string | null;
+}
 
 /**
  * One row in the session: a scan plus the two things the user can change about
@@ -107,11 +122,16 @@ interface Props {
    * `GroceryScreen` holds it until the trip actually finishes — a scan only
    * checks an item onto the list, and `finishShopping` is where "bought" gets
    * decided, see its own doc comment on `frozenIds`.
+   *
+   * `products` is the same split one more time, for the box a scan names: rows
+   * that resolved to an existing catalog item travel here, rows that mint one
+   * carry it on their own draft. See `ScanProductDraft`.
    */
   onApply: (
     itemIds: string[],
     toAdd: ReceiptAddDraft[],
-    frozenItemIds: ReadonlySet<string>
+    frozenItemIds: ReadonlySet<string>,
+    products: ScanProductDraft[]
   ) => void;
 }
 
@@ -284,6 +304,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           label: '',
           name: raw.slice(0, GROCERY_NAME_MAX_LENGTH),
           brand: null,
+        aisle: null,
           quantity: '',
           key: generateId(),
           included: true,
@@ -321,6 +342,23 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
     const itemIds: string[] = [];
     const toAdd: ReceiptAddDraft[] = [];
     const frozenItemIds = new Set<string>();
+    const products: ScanProductDraft[] = [];
+    /**
+     * The box, for a row that resolved to a catalog item that already exists.
+     *
+     * `variantFor` needs the item's own name to subtract, which is why this
+     * lives here and not in the draft: only the sheet knows what each row
+     * matched. A minted row gets no variant by the same logic — its item is
+     * *named* after the residue, so there is nothing left over.
+     */
+    const recordProduct = (itemId: string, row: ScanRow) => {
+      if (!row.label) return;
+      const item = items.find(i => i.id === itemId);
+      if (!item) return;
+      const variant = variantFor(row.label, row.brand, item.name);
+      if (!row.brand && !variant) return;
+      products.push({ itemId, brand: row.brand, variant });
+    };
     rows.forEach((row, index) => {
       if (!row.included || !row.name.trim()) return;
       const match = matches[index];
@@ -328,15 +366,22 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
       if (itemId) {
         itemIds.push(itemId);
         if (row.frozen) frozenItemIds.add(itemId);
+        recordProduct(itemId, row);
         return;
       }
+      const offListId = confidentOffListMatchId(match);
+      if (offListId) recordProduct(offListId, row);
       toAdd.push({
-        existingItemId: confidentOffListMatchId(match),
+        existingItemId: offListId,
         name: row.name.trim(),
         // The product's own full name is the raw text a new row is parsed from,
         // exactly as a receipt hands over its printed line. Falls back to the
         // shopper name for a typed row, which has no other words to offer.
         label: row.label || row.name.trim(),
+        // Only a looked-up row has one; a typed row's brand is null, and the
+        // screen skips the product write rather than storing an empty box.
+        brand: row.brand,
+        aisle: row.aisle,
         quantity: row.quantity,
         priceMinor: null,
         frozen: row.frozen,
@@ -360,8 +405,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         .filter(d => d.existingItemId !== null && !!d.label)
         .map(d => ({ shopId: null, rawText: d.label, itemId: d.existingItemId as string })),
     ]);
-    onApply(itemIds, toAdd, frozenItemIds);
-  }, [rows, matches, onApply, rememberAliases]);
+    onApply(itemIds, toAdd, frozenItemIds, products);
+  }, [rows, matches, items, onApply, rememberAliases]);
 
   /** What a row resolved to, or null when it has nothing to say yet. */
   const captionFor = (row: ScanRow, index: number): string | null => {
@@ -498,8 +543,12 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                         accessibilityLabel="Item name"
                       />
                       {/* The words the lookup used, kept verbatim: the only way
-                          to check the name above is against the box in hand. */}
-                      {!!row.label && <Text style={styles.rowLabel}>{row.label}</Text>}
+                          to check the name above is against the box in hand.
+                          The maker leads it when the name doesn't already say
+                          who it is — see `sourceLabelFor`. */}
+                      {!!row.label && (
+                        <Text style={styles.rowLabel}>{sourceLabelFor(row.label, row.brand)}</Text>
+                      )}
                       {!!caption && (
                         <Text style={row.error ? styles.rowError : styles.rowCaption}>{caption}</Text>
                       )}

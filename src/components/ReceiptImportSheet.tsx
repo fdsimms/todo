@@ -62,6 +62,22 @@ export interface ReceiptAddDraft {
   name: string;
   /** The line exactly as printed, passed through as the raw text a new row is added from. */
   label: string;
+  /**
+   * Who makes it, when the source said so — recorded as the minted row's first
+   * `ItemProduct`.
+   *
+   * Always null from a receipt, which prints a store's own shorthand for a
+   * product and never its maker. It is on the shared draft rather than a
+   * scan-only one because the two paths mint rows through the same handler, and
+   * a second draft type would only be this field's absence.
+   */
+  brand: string | null;
+  /**
+   * The aisle the barcode source's category names, for a row this mints — see
+   * `ScannedItem.aisle`. Null from a receipt, which files its lines by nothing
+   * but the order they were printed in.
+   */
+  aisle: string | null;
   quantity: string;
   priceMinor: number | null;
   /** The barcode scan sheet's per-row freezer toggle. Always undefined here — a receipt has no shelf to ask about. */
@@ -287,6 +303,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
         existingItemId: m.offListMatchId,
         name: m.line.name,
         label: m.line.label,
+        brand: null,
+        aisle: null,
         quantity: m.line.quantity,
         priceMinor: m.line.priceMinor,
       }));
