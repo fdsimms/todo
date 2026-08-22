@@ -12,7 +12,7 @@ import { useFabIntentSelector, type FabIntentChannel } from './FabDropZones';
 import {
   describeFridge,
   describeLeftover,
-  freshnessOf,
+  liveFreshnessOf,
   isPlannedPastKeepUntil,
   liveLeftovers,
 } from '../utils/leftovers';
@@ -277,8 +277,11 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
         onTouchCancel={() => { touchDownRef.current = false; cancelDrag(); }}
       >
         {shown.map((leftover, i) => {
-          const freshness = freshnessOf(leftover);
-          const tint = freshnessColor(freshness, colors);
+          // liveFreshnessOf, not freshnessOf: a frozen container's stored day
+          // is suspended, so tinting from it would glow red about food in no
+          // danger at all. Null is the "nothing counting down" grey.
+          const freshness = liveFreshnessOf(leftover);
+          const tint = freshness ? freshnessColor(freshness, colors) : colors.textTertiary;
           return (
             // A wrapper rather than a ref on the Touchable itself, so what gets
             // measured is a plain host view — the same reason FabDropZone wraps
@@ -403,7 +406,10 @@ export function LeftoverDragCard({
     intent => intent?.kind === 'day' && isPlannedPastKeepUntil(leftover, intent.dayKey),
   );
 
-  const tint = late ? colors.red : freshnessColor(freshnessOf(leftover), colors);
+  const liveFreshness = liveFreshnessOf(leftover);
+  const tint = late
+    ? colors.red
+    : liveFreshness ? freshnessColor(liveFreshness, colors) : colors.textTertiary;
 
   return (
     <View style={[styles.dragCard, shadows.fab]}>

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, Shop } from '../types';
+import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -14,6 +14,7 @@ import {
   dbUpdateGroceryShop,
   dbDeleteGroceryShop,
   dbSetShopExcludeFromSuggestions,
+  dbSetShopReceiptStyle,
   dbGetAllItemShopLinks,
   dbSetItemShopLink,
   dbDeleteItemShopLink,
@@ -21,6 +22,8 @@ import {
   dbSetItemSubLink,
   dbDeleteItemSubLink,
   dbGetAllItemProducts,
+  dbGetAllStoreAliases,
+  dbSetStoreAlias,
   dbSetItemProduct,
   dbDeleteItemProduct,
   dbGetLastShopId,
@@ -44,7 +47,7 @@ import { appendPriceObservation, mergePriceHistories } from '../utils/priceHisto
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import { describeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
-import { expiresAtForPurchase } from '../utils/groceryShelfLife';
+import { expiresAtForOpening, expiresAtForPurchase } from '../utils/groceryShelfLife';
 import { useUpTaskDraft, useUpTaskFields, useUpTaskNeedsUpdate, wantsUseUpTask } from '../utils/groceryExpiry';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import {
@@ -62,6 +65,7 @@ import { isTripLive, resolveActiveTrip } from '../utils/activeTrip';
 import { scheduleTripReminder, cancelTripReminder } from '../utils/notifications';
 import { substituteQuantity } from '../utils/itemSubs';
 import { productKeyFor, productsForItem } from '../utils/groceryProduct';
+import { aliasDraftsFrom, aliasItemIdFor, aliasKeyFor, type AliasDraft } from '../utils/storeAliases';
 
 /**
  * The grocery catalog, which is also the shopping list.
@@ -177,6 +181,15 @@ interface GroceryStore {
    * by `itemId`, resolve-or-shrug on a dangling pointer). See ItemProduct.
    */
   itemProducts: ItemProduct[];
+  /**
+   * What this app has been told a store's shorthand means. See StoreAlias.
+   *
+   * In the store rather than read per lookup like `gtin_lookups` is, because
+   * unlike that cache these are consulted on every render of a review sheet
+   * (once per line, against the whole set) and are small: bounded by the
+   * phrases a person has actually confirmed, not by everything ever scanned.
+   */
+  storeAliases: StoreAlias[];
   /** The store the last trip was finished at, if it still exists. */
   lastShopId: string | null;
   /**
@@ -398,8 +411,23 @@ interface GroceryStore {
    * rows too.
    *
    * Returns null for a name with nothing usable in it.
+   *
+   * `registerUndo: false` suppresses the per-call shake-to-undo entry, same as
+   * `addByName`'s option and for the same reason — `addManyToPantry` uses it
+   * and registers one combined action of its own after its loop.
    */
-  addToPantry: (raw: string) => GroceryItem | null;
+  addToPantry: (raw: string, opts?: { registerUndo?: boolean }) => GroceryItem | null;
+  /**
+   * `addToPantry`, for a whole scan session at once — the barcode sheet's
+   * "Add" button on the Pantry screen. Loops `addToPantry` with its undo
+   * suppressed and registers one combined entry, the same shape
+   * `addManyFromText` uses over `addByName`, and for the same reason: without
+   * it, only the last barcode of a five-item scan would be undoable.
+   *
+   * Returns the number of names that actually produced a row — a name that
+   * normalizes to nothing is skipped, same as a single `addToPantry` call.
+   */
+  addManyToPantry: (names: readonly string[]) => number;
   /**
    * The day this should be used up by, as a `YYYY-MM-DD` key, or null for
    * "doesn't go off on a schedule worth naming".
@@ -409,6 +437,54 @@ interface GroceryStore {
    * the only thing that decides any of the three.
    */
   setExpiresAt: (id: string, expiresAt: string | null) => void;
+  /**
+   * Puts this item in the freezer, or takes it back out.
+   *
+   * **Freezing suspends; thawing restarts.** Going in stamps the instant and
+   * touches nothing else — `expiresAt` keeps the day this purchase would have
+   * been answerable to, and simply stops being read (`liveExpiresAt`). Coming
+   * out re-stamps `expiresAt` from a *fresh* shelf life measured from now,
+   * through the same `expiresAtForPurchase` a finished trip uses, because
+   * that's what a thaw is: the food starts its clock over, and thawed chicken
+   * keeping two days from today is exactly right where the stale day it went in
+   * with is a fortnight past.
+   *
+   * An item the lexicon has never heard of, and that carries no
+   * `shelfLifeDays`, thaws to no date at all — the same silence it had before
+   * it was frozen, rather than a guess invented on the way out.
+   */
+  setFrozen: (id: string, frozen: boolean) => void;
+  /**
+   * Records that this has been opened, or takes that back.
+   *
+   * The third event that re-anchors a use-by day, and the one that needed its
+   * own lexicon: `expiresAtForOpening` re-dates the row from
+   * `OPEN_SHELF_LIFE_LEXICON` when the name is one opening actually starts a
+   * clock for, and leaves the day exactly as it was otherwise. Un-marking is a
+   * correction to a mis-tap, so it clears the stamp and leaves the date alone —
+   * there is no old day to put back, and inventing one would be a third guess.
+   */
+  setOpened: (id: string, opened: boolean) => void;
+  /**
+   * "I'm nearly out of this" — and, because that is the whole reason anyone
+   * says it, puts the row on this week's list.
+   *
+   * **The one place a pantry assertion touches `onList`**, and the exception
+   * that proves `addToPantry`'s rule. Saying you *have* something is not a plan
+   * to buy it, which is why that path leaves the list alone; saying you're
+   * nearly out is nothing but a plan to buy it, and making the user then find
+   * the same item again in the add field is asking them to say it twice.
+   *
+   * **It reaches into `onList` in one direction only.** Marking adds; clearing
+   * leaves the list exactly as it is. The column has several owners — a recipe
+   * added it, the user typed it, a trip is about to buy it — and nothing on the
+   * row records *which* of them put it there, so a clear that removed it would
+   * be guessing with someone else's data. The add is undoable the moment it
+   * happens (`setLastAction`), which is the honest answer for a mis-tap;
+   * "I'm not nearly out any more" a week later is not a request to cancel the
+   * shopping.
+   */
+  setRunningLow: (id: string, low: boolean) => void;
   /**
    * The remembered shelf life — a dumb setter, unlike setExpiresAt: this
    * never touches expiresAt or the use-up task on its own. See
@@ -539,7 +615,17 @@ interface GroceryStore {
    * primaryShopFor/exclusiveShopFor and the grocery-run task's store picker
    * while leaving manual linking and finishShopping untouched. */
   setShopExcludedFromSuggestions: (id: string, excluded: boolean) => void;
+  /** What this store's receipts are worth reading. See ReceiptStyle. */
+  setShopReceiptStyle: (id: string, style: ReceiptStyle) => void;
   /** Assert "this item is available here" without a purchase behind it. */
+  /**
+   * Records what a review sheet was applied with, so the same phrases resolve
+   * without asking next time. One write per phrase; see `aliasDraftsFrom` for
+   * why only a user's confirmation gets here.
+   */
+  rememberAliases: (drafts: readonly AliasDraft[]) => void;
+  /** "What does this line mean at this store" — null when nothing has said. */
+  aliasItemFor: (shopId: string | null, rawText: string) => string | null;
   linkItemShop: (itemId: string, shopId: string) => void;
   /**
    * The same assertion over a set — the shopping-trip sheet's "actually, it
@@ -821,6 +907,12 @@ function newItemRow(fields: {
     // it, and the shelf life doesn't start until it's in the fridge.
     // finishShopping is what stamps this — see expiresAtForPurchase.
     expiresAt: null,
+    // Nothing is created frozen: the freezer is somewhere the user puts a
+    // thing they already have, not a state a name arrives in. Same for opened —
+    // a name typed onto the list is a plan to buy, not a jar on the counter.
+    frozenAt: null,
+    openedAt: null,
+    runningLowAt: null,
     // No one has corrected the lexicon guess for this row yet.
     shelfLifeDays: null,
     useUpTask: null,
@@ -926,10 +1018,11 @@ function reconcileUseUpTask(item: GroceryItem): void {
   reconcileGeneratedTask({
     kind: 'groceryUseUp',
     sourceId: item.id,
-    // The date is re-checked outside wantsUseUpTask on purpose: an explicit
-    // `useUpTask: true` on an item with no date would otherwise reach
-    // useUpTaskFields, which dereferences `expiresAt!`.
-    wanted: item.expiresAt !== null && wantsUseUpTask(item, groceryUseUpTasks),
+    // No date guard here any more: wantsUseUpTask owns that precondition now,
+    // and owning it in one place is what keeps the frozen case honest — this
+    // used to re-check `expiresAt` because an explicit `useUpTask: true` could
+    // outrank the qualifier and reach useUpTaskFields' `expiresAt!`.
+    wanted: wantsUseUpTask(item, groceryUseUpTasks),
     drift: existing => (
       useUpTaskNeedsUpdate(existing, item, groceryUseUpLeadDays)
         ? useUpTaskFields(item, groceryUseUpLeadDays)
@@ -960,6 +1053,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   itemShops: [],
   itemSubs: [],
   itemProducts: [],
+  storeAliases: [],
   lastShopId: null,
   tripShopId: null,
   tripStartedAt: null,
@@ -1000,6 +1094,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const itemShops = dbGetAllItemShopLinks();
     const itemSubs = dbGetAllItemSubLinks();
     const itemProducts = dbGetAllItemProducts();
+    const storeAliases = dbGetAllStoreAliases();
     // Resolved against live shops rather than trusted: the setting outlives
     // the store it names, and a preselected shop that no longer exists would
     // record the next trip against nothing.
@@ -1031,6 +1126,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       itemProducts,
       itemShops,
       itemSubs,
+      storeAliases,
       lastShopId,
       tripShopId,
       tripStartedAt,
@@ -1440,7 +1536,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   mergeItems(fromId, intoId) {
     if (fromId === intoId) return false;
-    const { items, itemShops, itemSubs, aisleOverrides } = get();
+    const { items, itemShops, itemSubs, itemProducts, aisleOverrides } = get();
     const fromItem = items.find(i => i.id === fromId);
     const intoItem = items.find(i => i.id === intoId);
     if (!fromItem || !intoItem) return false;
@@ -1476,6 +1572,73 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       if (remaining <= 1) choiceGroup = null;
     }
 
+    // Products: the loser's boxes are boxes of what is now one item, so they
+    // come across the way its purchase count and its price run already do.
+    //
+    // Without this they were simply destroyed — `dbDeleteGroceryItem` cascades
+    // `grocery_item_products`, so merging "cilantro" into "coriander" took
+    // cilantro's brands *and their ratings* with it, silently. A rating is the
+    // one thing on a product that can't be retyped from memory, which makes it
+    // exactly the thing a merge must not throw away.
+    //
+    // Deduped by `productKey`, since that's the identity within an item: both
+    // rows having a "store brand" means one box, not two. On a collision the
+    // survivor's row is kept and the loser's counters fold into it — the same
+    // "survivor wins, loser fills the gaps" rule this function already applies
+    // to the name, the aisle and the note.
+    const survivorProducts = itemProducts.filter(p => p.itemId === intoId);
+    const byKey = new Map(survivorProducts.map(p => [p.productKey, p]));
+    // Loser id → the survivor id that now stands for it, for the pointers
+    // below. A re-keyed row keeps its own id (so its price observations and
+    // link references stay valid); a deduped one hands its id over.
+    const productIdRemap = new Map<string, string>();
+    const mergedProducts: ItemProduct[] = [...survivorProducts];
+    for (const loser of itemProducts.filter(p => p.itemId === fromId)) {
+      const match = byKey.get(loser.productKey);
+      if (!match) {
+        // A box the survivor doesn't have moves over keeping its id, which is
+        // what lets `PriceObservation.productId` and `ItemShopLink.productId`
+        // go on naming it.
+        const moved = { ...loser, itemId: intoId };
+        mergedProducts.push(moved);
+        byKey.set(moved.productKey, moved);
+        continue;
+      }
+      productIdRemap.set(loser.id, match.id);
+      const folded: ItemProduct = {
+        ...match,
+        purchaseCount: match.purchaseCount + loser.purchaseCount,
+        lastPurchasedAt: laterOf(match.lastPurchasedAt, loser.lastPurchasedAt),
+        // The survivor's verdict stands; the loser's only fills a silence.
+        // Two ratings for one box is a disagreement nothing here can settle,
+        // and overwriting an opinion the user actually recorded is worse than
+        // keeping the one they last looked at.
+        rating: match.rating ?? loser.rating,
+        note: match.note || loser.note,
+      };
+      mergedProducts[mergedProducts.indexOf(match)] = folded;
+      byKey.set(folded.productKey, folded);
+    }
+    // Nothing downstream resolves a deduped id, so the pointers at one are
+    // rewritten rather than left to dangle. They would only *read* as absent
+    // (every reader shrugs), but "no Store brand at Safeway" quietly ceasing to
+    // apply because of a rename is the claim-goes-stale bug this model was
+    // built to avoid.
+    const remapProductId = (id: string | null) =>
+      (id ? productIdRemap.get(id) ?? id : null);
+    const remapClaims = (claims: Record<string, string>) => {
+      const out: Record<string, string> = {};
+      for (const [id, at] of Object.entries(claims)) out[productIdRemap.get(id) ?? id] = at;
+      return out;
+    };
+
+    // The survivor's preference stands, and adopts the loser's only when it had
+    // none — same rule as the rating above. Remapped, because the box it names
+    // may have just been deduped away.
+    const mergedPreferredProductId = remapProductId(
+      intoItem.preferredProductId ?? fromItem.preferredProductId
+    );
+
     const merged: GroceryItem = {
       ...intoItem,
       purchaseCount: intoItem.purchaseCount + fromItem.purchaseCount,
@@ -1489,6 +1652,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       quantity,
       quantityFromRecipe,
       choiceGroup,
+      preferredProductId: mergedPreferredProductId,
       ...pickPriceFields(intoItem, fromItem),
     };
 
@@ -1516,19 +1680,25 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           // a fresh purchase already does to a single link.
           unavailableAt:
             purchaseCount > 0 ? null : laterOf(survivorLink.unavailableAt, loserLink.unavailableAt),
-          productId: survivorLink.productId ?? loserLink.productId,
+          productId: remapProductId(survivorLink.productId ?? loserLink.productId),
           // Both sides' claims, because they're keyed by product and the two
           // rows' products are about to be one item's products. A key present
           // on both keeps the survivor's stamp — an arbitrary tie-break over
           // two dates for one claim, and the same call `pickPriceFields` makes.
           unavailableProductIds: {
-            ...loserLink.unavailableProductIds,
-            ...survivorLink.unavailableProductIds,
+            ...remapClaims(loserLink.unavailableProductIds),
+            ...remapClaims(survivorLink.unavailableProductIds),
           },
           ...pickPriceFields(survivorLink, loserLink),
         });
       } else {
-        mergedShopLinks.push({ ...(survivorLink ?? loserLink)!, itemId: intoId });
+        const only = (survivorLink ?? loserLink)!;
+        mergedShopLinks.push({
+          ...only,
+          itemId: intoId,
+          productId: remapProductId(only.productId),
+          unavailableProductIds: remapClaims(only.unavailableProductIds),
+        });
       }
     }
 
@@ -1566,6 +1736,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     dbTransaction(() => {
       dbUpdateGroceryItem(merged);
+      // Before the cascade below, which deletes every product still keyed to
+      // fromId — re-parenting first is what makes the survivor's copy the one
+      // that survives it.
+      for (const product of mergedProducts) dbSetItemProduct(product);
       for (const link of mergedShopLinks) dbSetItemShopLink(link);
       for (const link of finalRetargetedSubs) dbSetItemSubLink(link);
       // Cascades whatever's left still pointing at fromId — the rows worth
@@ -1587,6 +1761,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         ...s.itemShops.filter(l => l.itemId !== fromId && l.itemId !== intoId),
       ],
       itemSubs: [...survivingSubs, ...finalRetargetedSubs],
+      // Rebuilt rather than patched: both items' rows are replaced by the
+      // folded set, and leaving the loser's behind is how the store came to
+      // hold products for an item that no longer exists.
+      itemProducts: [
+        ...mergedProducts,
+        ...s.itemProducts.filter(p => p.itemId !== fromId && p.itemId !== intoId),
+      ],
       cartHoldIds: s.cartHoldIds.filter(x => x !== fromId),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));
@@ -1755,7 +1936,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     return updates.length;
   },
 
-  addToPantry(raw) {
+  addToPantry(raw, opts) {
     // Parsed like a list line so "2 lb flour" files under flour rather than
     // minting a row whose name no purchase can ever match. The quantity it
     // strips off is deliberately dropped: how much you have is the inventory
@@ -1785,13 +1966,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       };
       dbUpdateGroceryItem(updated);
       set(s => ({ items: s.items.map(i => (i.id === existing.id ? updated : i)) }));
-      get().setLastAction({
-        label: `Added "${updated.name}" to the pantry`,
-        undo: () => {
-          dbUpdateGroceryItem(existing);
-          set(s => ({ items: s.items.map(i => (i.id === existing.id ? existing : i)) }));
-        },
-      });
+      if (opts?.registerUndo !== false) {
+        get().setLastAction({
+          label: `Added "${updated.name}" to the pantry`,
+          undo: () => {
+            dbUpdateGroceryItem(existing);
+            set(s => ({ items: s.items.map(i => (i.id === existing.id ? existing : i)) }));
+          },
+        });
+      }
       return updated;
     }
 
@@ -1814,11 +1997,45 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const item: GroceryItem = { ...row, onHandUntil: defaultOnHandUntil(row, now) };
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));
-    get().setLastAction({
-      label: `Added "${item.name}" to the pantry`,
-      undo: () => get().deleteItem(item.id),
-    });
+    if (opts?.registerUndo !== false) {
+      get().setLastAction({
+        label: `Added "${item.name}" to the pantry`,
+        undo: () => get().deleteItem(item.id),
+      });
+    }
     return item;
+  },
+
+  addManyToPantry(names) {
+    const addedIds: string[] = [];
+    const revertRows: GroceryItem[] = [];
+    let count = 0;
+    for (const raw of names) {
+      const key = groceryNameKey(parseGroceryInput(raw).name);
+      const before = key ? get().items.find(i => i.nameKey === key) : undefined;
+      const item = get().addToPantry(raw, { registerUndo: false });
+      if (!item) continue;
+      count++;
+      if (before) revertRows.push(before);
+      else addedIds.push(item.id);
+    }
+    // One combined undo for the whole scan session rather than addToPantry's
+    // per-call one, which the loop above suppresses — see addManyFromText.
+    if (count > 0) {
+      get().setLastAction({
+        label: `${count} ${count === 1 ? 'item' : 'items'} added to the pantry`,
+        undo: () => {
+          for (const b of revertRows) dbUpdateGroceryItem(b);
+          const revertById = new Map(revertRows.map(b => [b.id, b]));
+          set(s => ({
+            items: s.items
+              .filter(i => !addedIds.includes(i.id))
+              .map(i => revertById.get(i.id) ?? i),
+          }));
+        },
+      });
+    }
+    return count;
   },
 
   setItemPrice(id, minor, shopId = null) {
@@ -1894,6 +2111,77 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
     reconcileUseUpTask(updated);
+  },
+
+  setFrozen(id, frozen) {
+    const item = get().items.find(i => i.id === id);
+    if (!item || !!item.frozenAt === frozen) return;
+    const now = new Date();
+    const updated: GroceryItem = frozen
+      ? { ...item, frozenAt: now.toISOString() }
+      // The thaw is the only half that writes a date, and it writes today's:
+      // see setFrozen's note on the interface above.
+      : { ...item, frozenAt: null, expiresAt: expiresAtForPurchase(item, now) };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+    // Both directions reconcile, and they do opposite things: freezing drops a
+    // use-up task that's now about food under ice, thawing spawns the one the
+    // fresh date earns. Neither is a special case in reconcileUseUpTask — it
+    // reads liveExpiresAt and gets the right answer both ways.
+    reconcileUseUpTask(updated);
+  },
+
+  setOpened(id, opened) {
+    const item = get().items.find(i => i.id === id);
+    if (!item || !!item.openedAt === opened) return;
+    const now = new Date();
+    const reDated = opened ? expiresAtForOpening(item, now) : null;
+    const updated: GroceryItem = {
+      ...item,
+      openedAt: opened ? now.toISOString() : null,
+      // `?? item.expiresAt` is doing the work: a name the open lexicon has
+      // never heard of is still recorded as opened, it just keeps the day its
+      // purchase gave it. Opening a bag of spinach is a true fact about the bag
+      // and a lie about its shelf life.
+      expiresAt: reDated ?? item.expiresAt,
+    };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+    // The new day may be sooner or later than the old one, so this both spawns
+    // and re-dates: an opened jar that was written off weeks ago gets a real
+    // task back, which is the case the lexicon pairing exists for.
+    reconcileUseUpTask(updated);
+  },
+
+  setRunningLow(id, low) {
+    const item = get().items.find(i => i.id === id);
+    if (!item || !!item.runningLowAt === low) return;
+    const wasOnList = item.onList;
+    const updated: GroceryItem = {
+      ...item,
+      runningLowAt: low ? new Date().toISOString() : null,
+      // One direction only — see the note on the interface above.
+      onList: low ? true : item.onList,
+      // Promoted for linkItemShop's reason: "I'm nearly out" is a statement
+      // about the item, so a provisional row must not take it to the grave the
+      // next time it comes off the list.
+      inCatalog: true,
+      // A row put on the list by this needs a slot on it; one already there
+      // keeps the slot it had.
+      sortOrder: low && !wasOnList ? nextSortOrder(get().items) : item.sortOrder,
+      lastAddedAt: low && !wasOnList ? new Date().toISOString() : item.lastAddedAt,
+    };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+    if (low && !wasOnList) {
+      get().setLastAction({
+        label: `Added "${updated.name}" to the list`,
+        undo: () => {
+          dbUpdateGroceryItem(item);
+          set(s => ({ items: s.items.map(i => (i.id === id ? item : i)) }));
+        },
+      });
+    }
   },
 
   setShelfLifeDays(id, days) {
@@ -2160,6 +2448,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
             // shifts under the next read.
             priceHistory: appendPriceObservation(existing?.priceHistory ?? [], {
               minor, quantity, at: purchasedAt,
+              // The same stamp the db writes — see PriceObservation.productId.
+              // Read off the row rather than passed in, so the patch can't
+              // disagree with the write about which box this price was for.
+              productId: s.items.find(i => i.id === id)?.preferredProductId ?? null,
             }),
           };
         };
@@ -2228,6 +2520,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 // this column is that coming home with something refutes an
                 // "Out of it" sitting on it. Mirrors dbFinishGroceryShopping.
                 onHandUntil: null,
+                // Cleared for the same reason and in the same breath: the
+                // freezer claim was about the bag you had, and you have just
+                // come home with a new one. Leaving it would suspend the fresh
+                // `expiresAt` being stamped right below, so the new bag would
+                // inherit "in the freezer" and never count down.
+                frozenAt: null,
+                // Same again: the jar you opened is not the jar in the bag you
+                // just carried home, and a fresh one is sealed.
+                openedAt: null,
+                // And you are no longer nearly out of the thing you have just
+                // bought — the purchase is what refutes it, exactly as it
+                // refutes an "Out of it".
+                runningLowAt: null,
                 expiresAt: expiresAtById[i.id] ?? i.expiresAt,
                 // Mirrors the db's own CASE: the shop it was for has happened,
                 // so a recipe-owned quantity doesn't outlive it. A hand-set one
@@ -2245,6 +2550,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                       // unpriced row falls through and keeps the run it had.
                       priceHistory: appendPriceObservation(i.priceHistory, {
                         minor: priceById[i.id], quantity: i.quantity, at: purchasedAt,
+                        productId: i.preferredProductId,
                       }),
                     }
                   : null),
@@ -2501,6 +2807,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       sortOrder: get().shops.reduce((m, s) => Math.max(m, s.sortOrder), 0) + 1,
       createdAt: new Date().toISOString(),
       excludeFromSuggestions: false,
+      // Nothing infers this. An ordinary receipt is the default, and a store
+      // that prints a bad one is something only the user can tell us.
+      receiptStyle: 'itemized',
     };
     dbInsertGroceryShop(shop);
     set(s => ({ shops: [...s.shops, shop] }));
@@ -2573,6 +2882,59 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({
       shops: s.shops.map(x => (x.id === id ? { ...x, excludeFromSuggestions: excluded } : x)),
     }));
+  },
+
+  setShopReceiptStyle(id, style) {
+    dbSetShopReceiptStyle(id, style);
+    set(s => ({ shops: s.shops.map(sh => (sh.id === id ? { ...sh, receiptStyle: style } : sh)) }));
+  },
+
+  rememberAliases(drafts) {
+    const worth = aliasDraftsFrom(drafts);
+    if (worth.length === 0) return;
+    const now = new Date().toISOString();
+    const existing = get().storeAliases;
+    const written: StoreAlias[] = [];
+
+    dbTransaction(() => {
+      for (const draft of worth) {
+        const shopId = draft.shopId ?? '';
+        const rawKey = aliasKeyFor(draft.rawText);
+        const prior = existing.find(a => a.shopId === shopId && a.rawKey === rawKey);
+        // The row handed to the db is the one that should exist afterwards; the
+        // upsert bumps the count itself, since only SQLite knows whether the
+        // pair was already there. Same contract dbSetItemProduct has.
+        const row: StoreAlias = {
+          id: prior?.id ?? generateId(),
+          shopId,
+          rawKey,
+          itemId: draft.itemId,
+          hitCount: prior ? prior.hitCount + 1 : 1,
+          createdAt: prior?.createdAt ?? now,
+          lastUsedAt: now,
+        };
+        dbSetStoreAlias(row);
+        written.push(row);
+      }
+    });
+
+    set(s => ({
+      storeAliases: [
+        ...s.storeAliases.filter(
+          a => !written.some(w => w.shopId === a.shopId && w.rawKey === a.rawKey)
+        ),
+        ...written,
+      ],
+    }));
+  },
+
+  aliasItemFor(shopId, rawText) {
+    const itemId = aliasItemIdFor(get().storeAliases, shopId, rawText);
+    // Resolve-or-shrug, like every cross-row pointer here. A cascade clears
+    // aliases when an item is deleted, so this should not happen — but a reader
+    // that leaned on that would turn a stale row into a line that resolves to
+    // nothing *and* suppresses the name match that would have found the answer.
+    return itemId && get().items.some(i => i.id === itemId) ? itemId : null;
   },
 
   linkItemShop(itemId, shopId) {

@@ -1106,6 +1106,33 @@ export interface PriceObservation {
   quantity: string | null;
   /** ISO. */
   at: string;
+  /**
+   * Which box this price was for — the item's preferred product at the moment
+   * the trip was finished, or null when it had none.
+   *
+   * **This is what makes a run answer "what does the one I buy cost" rather
+   * than "what does bread cost".** Without it a run mixes Arnold's whole wheat
+   * with the store brand seeded sourdough, and the median describes neither —
+   * the same disease `lastPriceQuantity` exists to cure one level down, where
+   * "$4.99" means nothing without "for 12 oz".
+   *
+   * **Stamped on the observation rather than kept in a per-product table**,
+   * which is the cheaper half of the same answer: the runs are already capped
+   * blobs on the rows that own them, so scoping is a filter at read time
+   * (`priceRunForProduct`) instead of a third price level with its own table,
+   * its own cascade and its own write path in `dbFinishGroceryShopping`.
+   *
+   * **Null is the honest fallback, not a gap.** An observation recorded before
+   * this shipped, or on a trip for an item with no preference, genuinely
+   * doesn't know which box came home — the same thing `ItemShopLink.productId`
+   * refuses to guess. Such observations stay in the run and are what a filtered
+   * run falls back to when it has too little of its own to be a baseline.
+   *
+   * Resolve-or-shrug at every reader: an id naming a product that has since
+   * been deleted or merged away simply never matches a filter, which reads as
+   * "not this box" rather than as an error.
+   */
+  productId?: string | null;
 }
 
 export interface GroceryItem {
@@ -1271,6 +1298,79 @@ export interface GroceryItem {
    */
   expiresAt: string | null;
   /**
+   * ISO instant the user said they were nearly out, or null.
+   *
+   * **The state between "Got it" and "Out of it", and the one the pair was
+   * missing.** Those two are the ends of a scale whose interesting point is in
+   * the middle: noticing the jar is nearly empty is the moment you'd want it on
+   * the list, and it's a moment the app had no way to hear about. `onHandUntil`
+   * couldn't carry it — that column is a timestamp with two sentinel readings
+   * already, and a third would be a third thing for `onHandAssertion` to get
+   * wrong.
+   *
+   * **Running low still means you have it.** `probablyHaveReason` answers for a
+   * low row, so it stays in the pantry and a week plan still counts it: there
+   * is some left, which is exactly what distinguishes this from "Out of it".
+   * What changes is that the row goes on the list.
+   *
+   * **Unlike `onHandUntil` this never self-expires.** A "Got it" is a guess
+   * with a shelf life, so it lapses back into silence; being nearly out is a
+   * fact that stays true until something refutes it, and the thing that refutes
+   * it is buying more. So a purchase clears it, and so does saying either of
+   * the other two things.
+   */
+  runningLowAt: string | null;
+  /**
+   * ISO instant this was opened, or null for a jar still sealed and for the
+   * bulk of a catalog where opening means nothing.
+   *
+   * **The third event that re-anchors a use-by day**, alongside a purchase and
+   * a thaw. `expiresAt` is a fact about one purchase, and for a sealed thing
+   * the purchase is the wrong anchor: a jar of salsa bought five weeks ago and
+   * opened on Tuesday keeps a week from Tuesday, where the purchase-based guess
+   * wrote it off a month back. `OPEN_SHELF_LIFE_LEXICON` is the second, much
+   * shorter table that says which names that's true of.
+   *
+   * **Recorded even when it changes nothing.** A name the open lexicon has
+   * never heard of still stamps this and still says so on the row: opening a
+   * bag of spinach doesn't restart anything, but "opened 12 Aug" is a true and
+   * useful thing for the pantry row to say either way. Only the date is
+   * conditional.
+   *
+   * Cleared by a purchase, exactly like `frozenAt` and for the same reason: the
+   * jar you opened is not the jar you have just carried home.
+   */
+  openedAt: string | null;
+  /**
+   * ISO instant this went in the freezer, or null for anything that didn't.
+   *
+   * **The clock stops while this is set, and restarts when it's cleared.**
+   * `finishShopping` stamps `expiresAt` from the shelf-life lexicon on
+   * everything it buys, and that lexicon is at its most aggressive exactly
+   * where a freezer is most used — chicken 2 days, ground beef 2, salmon 2.
+   * Without this, a month of meat bought on Saturday spawns a fistful of "Use
+   * up" tasks due Monday about food under an inch of ice, which is the
+   * "spawns a task about food that's fine" failure `groceryShelfLife.ts` names
+   * as the one that gets a feature turned off.
+   *
+   * **An instant, not a flag**, matching `lastPricedAt` and
+   * `ItemShopLink.unavailableAt` rather than `isStaple`: what a frozen row has
+   * to say is *when it went in*, since a freezer is the one place food outlives
+   * every window the rest of the pantry reasons in. It also means the pantry
+   * can keep showing it — see `probablyHaveReason`, which reads a live
+   * `frozenAt` as on hand the way it reads a staple, because a purchase window
+   * of two weeks would otherwise drop a frozen thing out of the kitchen while
+   * it's still very much in the kitchen.
+   *
+   * **`expiresAt` is left alone while this is set, never cleared.** The stored
+   * day goes quiet rather than away (`freshness.liveUseBy` is the single
+   * reader), because what ends a freeze is a thaw and a thaw restarts the
+   * count from a fresh shelf life. Stamping the new day at freeze time would
+   * assert a thaw date the user hasn't picked; clearing it would leave nothing
+   * to put back.
+   */
+  frozenAt: string | null;
+  /**
    * A remembered shelf life, in days — "spinach keeps 5 days" — kept apart
    * from `expiresAt` on purpose: this is a fact about the *item*, and
    * `expiresAt` is a fact about one purchase of it.
@@ -1380,6 +1480,26 @@ export const USE_UP_TASK_CAP_MAX = 20;
 // freezer bag, short enough that the stepper can still reach the far end.
 export const GROCERY_EXPIRY_DAYS_MAX = 365;
 
+/**
+ * Why a frozen thing is in the kitchen — `probablyHaveReason`'s word for it,
+ * and the leading half of a frozen row's caption in `kitchenInventory`.
+ *
+ * Here rather than in `freshness.ts` beside `describeFrozenSince`, which is
+ * where it reads like it belongs, for a module-weight reason: `grocerySuggest`
+ * is one of the two producers and is deliberately free of `dateUtils` (which
+ * reaches `useSettingsStore` and so `expo-sqlite`), so importing `freshness`
+ * for one string would drag SQLite into every pure grocery test. `types` is
+ * already where the kitchen's other shared constants live and costs nothing.
+ */
+export const FROZEN_REASON = 'in the freezer';
+
+/**
+ * Why a nearly-empty thing is still in the kitchen — `probablyHaveReason`'s
+ * word for it, beside `FROZEN_REASON` and here for the same module-weight
+ * reason.
+ */
+export const RUNNING_LOW_REASON = 'running low';
+
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task
 // title, and a long one wrecks the row layout at the bigger grocery font size.
 export const GROCERY_NAME_MAX_LENGTH = 80;
@@ -1487,6 +1607,94 @@ export interface ItemProduct {
   createdAt: string;
 }
 
+/**
+ * "At this store, a line reading GV MLK 2% GAL means milk."
+ *
+ * The memory that makes matching improve instead of staying at 85%. A receipt
+ * line and a looked-up product name are both somebody else's words for
+ * something in your catalog, and until this the app re-guessed them from
+ * scratch every trip, getting the same ones wrong every time.
+ *
+ * **Written from a confirmation, not from a guess.** An alias is only recorded
+ * when a person applied a review sheet with the row resolved — see
+ * `rememberAliases`. The app's own reading is never fed back into itself, which
+ * would let one bad match harden into a permanent rule.
+ *
+ * **Keyed by `id`, not by the pair it is unique on**, for the reason
+ * `grocery_item_products` gives, plus one specific to this table: sync's
+ * `row_key` joins composite keys with `|`, safe only because every other key in
+ * the app is base36 from `generateId()`. This one would be a receipt's printed
+ * text, which can contain anything.
+ */
+export interface StoreAlias {
+  id: string;
+  /**
+   * The store whose printer produced this text, or `''` for a text that isn't
+   * store-specific (a product name off a barcode lookup).
+   *
+   * Empty string rather than null because the UNIQUE index over
+   * `(shop_id, raw_key)` is what stops two rows claiming one phrase, and SQLite
+   * treats NULLs as distinct in a unique index — so a nullable column here
+   * would enforce nothing at all for exactly the rows that need it.
+   */
+  shopId: string;
+  /** The printed text, normalized by `aliasKeyFor()`. */
+  rawKey: string;
+  /** The catalog row this text means. Resolve-or-shrug, like every pointer here. */
+  itemId: string;
+  /**
+   * How many times this has been confirmed. Not currently read by matching — a
+   * remembered alias already outranks every similarity tier, so there is
+   * nothing for a count to break a tie between. It's here because the write
+   * path has it for free and because "confirmed nine times" is what a future
+   * review screen would sort on.
+   */
+  hitCount: number;
+  createdAt: string;
+  lastUsedAt: string;
+}
+
+/**
+ * What a barcode turned out to be, remembered so it is only ever looked up once.
+ *
+ * A cache of a *shared* fact, and the only thing in this app that is. Every
+ * other grocery row records something about you — what you buy, where, what it
+ * cost, whether you liked it. This records what a GTIN denotes, which is the
+ * same answer for everyone and never changes, so it is keyed by the barcode
+ * rather than by an item and is safe to keep for ever.
+ *
+ * It deliberately does **not** point at a `GroceryItem`. The resolution from a
+ * scanned product to a row in your catalog is a judgement made in front of the
+ * user at review time (see `scanResolve.ts`), and freezing the first answer
+ * onto the cache row would mean a correction made once could never be revisited
+ * — and would put a personal decision inside a table whose whole point is that
+ * it holds none. Remembering the correction is `store_aliases`' job, which is
+ * its own change.
+ */
+export interface GtinLookup {
+  /** Canonical GTIN-14, from `normalizeGtin()`. */
+  gtin: string;
+  /**
+   * Whether any source knew this barcode.
+   *
+   * **A miss is cached too**, which is the point rather than an optimisation: a
+   * barcode nobody has heard of is the case that would otherwise hit the
+   * network on every single unpack for ever. Misses expire, hits don't — see
+   * `GTIN_MISS_TTL_DAYS`.
+   */
+  found: boolean;
+  /** The product as the source names it, full and unabbreviated. Empty on a miss. */
+  name: string;
+  /** Who makes it, when the source says. Null is ordinary, not a gap. */
+  brand: string | null;
+  /** The pack size as the source prints it ("1 gal", "500 g"). Null when unstated. */
+  quantity: string | null;
+  /** Which source answered, for telling a thin record from a good one later. Empty on a miss. */
+  source: string;
+  /** ISO. When this was asked, which is what expires a miss. */
+  fetchedAt: string;
+}
+
 // A place you shop. "Store" everywhere the user can read; `Shop` in code,
 // because `store` is already Zustand's word here (useGroceryStore,
 // useTaskStore) and `useGroceryStoreStore` is not a name anyone should type.
@@ -1506,6 +1714,45 @@ export interface Shop {
   // primaryShopFor/exclusiveShopFor and the grocery-run task button's store
   // picker. Same naming convention as Category.excludeFromPinSuggestions.
   excludeFromSuggestions: boolean;
+  /**
+   * What this store's receipts are good for. See ReceiptStyle.
+   *
+   * **Data, not a hardcoded special case.** The store this was built for is one
+   * local shop whose register prints every line as "GROCERIES" with a price and
+   * no name, but nothing about that is special enough to earn a branch in the
+   * code — plenty of small stores do it, and the user is the only one who knows
+   * which of theirs does.
+   */
+  receiptStyle: ReceiptStyle;
+}
+
+/**
+ * Whether a store's receipt can be read, and what to offer when it can't.
+ *
+ * Three values rather than a flag, because two different things go wrong and
+ * they want different answers:
+ *
+ * - `itemized` — an ordinary receipt with names on it. Scan it.
+ * - `opaque` — it prints prices but not names ("GROCERIES ... 4.18"). There is
+ *   nothing for the extractor to match on, so reading it is a waste of a
+ *   request. But the *prices* are real, and they are the one thing a barcode
+ *   can't know, so this offers pairing instead: what you scanned in one column,
+ *   what you were charged in the other.
+ * - `none` — no useful paper at all. Offers nothing, because a store that hands
+ *   you nothing has no prices to pair either.
+ *
+ * `opaque` and `none` both skip extraction, which is why the pair looks
+ * collapsible. They must not be: the difference is whether there is a column of
+ * prices to work with, and collapsing them would either offer an empty pairing
+ * screen at a store with no receipt or hide pairing at the store it was built
+ * for.
+ */
+export type ReceiptStyle = 'itemized' | 'opaque' | 'none';
+
+export const RECEIPT_STYLES: ReceiptStyle[] = ['itemized', 'opaque', 'none'];
+
+export function isReceiptStyle(value: unknown): value is ReceiptStyle {
+  return RECEIPT_STYLES.includes(value as ReceiptStyle);
 }
 
 // One (item, shop) pair — an aggregate, deliberately NOT a log of trips.
@@ -2420,6 +2667,25 @@ export interface Leftover {
   finishedAt: string | null;
   /** Which ending it got. Null exactly while `finishedAt` is null. */
   outcome: LeftoverOutcome | null;
+  /**
+   * ISO instant this container went in the freezer, or null while it's in the
+   * fridge. Exactly `GroceryItem.frozenAt`, and read through the same
+   * `freshness.liveUseBy`.
+   *
+   * Both halves of the kitchen get this or neither usefully does: a bag of
+   * spinach and a container of chilli going off Thursday are the same fact to
+   * the cook (#1670), and so are the two of them going in the freezer on
+   * Saturday. `isPlannedPastKeepUntil` already conceded as much in prose —
+   * planning a container past its day is fair because "it may be going in the
+   * freezer" — and this is that sentence with somewhere to be recorded.
+   *
+   * **It does not close the container out.** `finishedAt` is still the only
+   * thing that ends a leftover's life, and a frozen one is as live as any
+   * other: it stays plannable onto a night of the week, which is most of what
+   * anyone freezes a portion *for*. What stops is the countdown and the nudge
+   * (`needsAttention`).
+   */
+  frozenAt: string | null;
   createdAt: string;
   /**
    * The per-leftover answer to "does this get a use-up task" — true, false, or

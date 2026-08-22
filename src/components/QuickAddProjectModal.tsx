@@ -163,18 +163,31 @@ export function QuickAddProjectModal({
 
   const archivedProjects = useMemo(() => projects.filter(p => p.archived), [projects]);
 
+  // Add/Open full can fire before the new-category field's own blur or Enter
+  // has committed it — same race TaskEditor's resolveLinkUrl guards against.
+  // Read the live text box instead of trusting stale `category` state.
+  const resolveCategory = () => {
+    const c = newCategory.trim();
+    if (addingCategory && c) {
+      addCategory(c);
+      return c;
+    }
+    return category;
+  };
+
   const create = (finalTitle: string) => {
     haptics.success();
     animateLayout();
+    const resolvedCategory = resolveCategory();
     const project = createProject(
       finalTitle,
       targetStartDate ? targetStartDate.toISOString() : null,
       targetEndDate ? targetEndDate.toISOString() : null,
     );
-    if (category) updateProject(project.id, { category });
+    if (resolvedCategory) updateProject(project.id, { category: resolvedCategory });
     // createProject doesn't take a category, so hand the caller the row as it
     // now stands rather than the one it returned a line ago.
-    onCreated?.({ ...project, category }, seedActive);
+    onCreated?.({ ...project, category: resolvedCategory }, seedActive);
     dismiss();
   };
 
@@ -210,7 +223,7 @@ export function QuickAddProjectModal({
   const handleOpenFull = () => {
     onOpenFull({
       title: title.trim(),
-      category,
+      category: resolveCategory(),
       targetStartDate: targetStartDate ? targetStartDate.toISOString() : null,
       targetEndDate: targetEndDate ? targetEndDate.toISOString() : null,
     });

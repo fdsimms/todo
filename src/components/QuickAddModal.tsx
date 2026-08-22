@@ -34,7 +34,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { categoryLabel } from '../utils/categoryLabel';
-import { PillGroup } from './PillGroup';
+import { CategoryPickerSheet } from './CategoryPicker';
 import { useShallow } from 'zustand/react/shallow';
 import type { Priority, Effort, TimeOfDay, RecurrenceType, Task, ChainItem } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
@@ -126,7 +126,11 @@ interface Props {
   initialTitle?: string;
 }
 
-type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | 'link' | 'phone' | 'email' | null;
+// Category is absent on purpose: it opens its own sheet rather than a panel
+// inside this one, the way the date chip opens WhenPicker. The sheet has room
+// to list every category, which this sheet — capped to the space above the
+// keyboard — does not.
+type ActivePanel = 'priority' | 'effort' | 'tags' | 'repeat' | 'segment' | 'link' | 'phone' | 'email' | null;
 
 /** One attribute chip in the quick-add toolbar. See `chipDescriptors`. */
 interface ToolChipDescriptor {
@@ -185,7 +189,6 @@ export function QuickAddModal({
   const addTask = useTaskStore(s => s.addTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
-  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
   // Read only to name a project a title rule files into — quick add has no
   // project picker; see the projectId state below.
@@ -347,6 +350,7 @@ export function QuickAddModal({
   const tooltipAnim = useRef(new Animated.Value(0)).current;
   const hadParse = useRef(false);
   const [whenPickerVisible, setWhenPickerVisible] = useState(false);
+  const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
   // Whether the drop's placement still applies — the chip can shake it off.
   const [seedActive, setSeedActive] = useState(false);
   // Read only when the sheet opens: a seed that changes identity mid-edit must
@@ -409,6 +413,7 @@ export function QuickAddModal({
       tooltipAnim.setValue(0);
       hadParse.current = false;
       setWhenPickerVisible(false);
+      setCategoryPickerVisible(false);
       setPostCreateTask(null);
       scaleAnim.setValue(0.95);
       translateYAnim.setValue(16);
@@ -761,6 +766,28 @@ export function QuickAddModal({
     setActivePanel(null);
   };
 
+  // Add/Open full can fire before the link/phone/email/tag fields' own blur
+  // or Enter has committed their text — same race TaskEditor's
+  // resolveLinkUrl/resolvePhoneNumber/resolveEmailAddress guard against.
+  // Read the live text box instead of trusting state that may not have
+  // caught up yet.
+  const resolveLinkUrl = () => {
+    const t = customLinkText.trim();
+    return activePanel === 'link' && t ? t : linkUrl;
+  };
+  const resolvePhoneNumber = () => {
+    const t = phoneText.trim();
+    return activePanel === 'phone' && t ? t : phoneNumber;
+  };
+  const resolveEmailAddress = () => {
+    const t = emailText.trim();
+    return activePanel === 'email' && t ? t : emailAddress;
+  };
+  const resolveTags = () => {
+    const t = tagInput.trim().toLowerCase();
+    return t && !tags.includes(t) ? [...tags, t] : tags;
+  };
+
   // ==== creating the task ====
   const createTask = (finalTitle: string) => {
     haptics.success();
@@ -773,11 +800,11 @@ export function QuickAddModal({
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
       timeSegments,
-      tags,
+      tags: resolveTags(),
       category,
-      linkUrl,
-      phoneNumber,
-      emailAddress,
+      linkUrl: resolveLinkUrl(),
+      phoneNumber: resolvePhoneNumber(),
+      emailAddress: resolveEmailAddress(),
       projectId,
       // recurrenceType deliberately absent — it comes from `baked` above,
       // which is what turns a Target into a daily task.
@@ -852,11 +879,11 @@ export function QuickAddModal({
       ...baked,
       dueDate,
       timeSegments,
-      tags,
+      tags: resolveTags(),
       category,
-      linkUrl,
-      phoneNumber,
-      emailAddress,
+      linkUrl: resolveLinkUrl(),
+      phoneNumber: resolvePhoneNumber(),
+      emailAddress: resolveEmailAddress(),
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,
@@ -1021,8 +1048,9 @@ export function QuickAddModal({
       tint: priority > 0 ? PRIORITY_COLORS[priority] : undefined,
     },
     {
-      key: 'category', icon: 'folder-outline', panel: 'category',
+      key: 'category', icon: 'folder-outline',
       value: category !== null ? categoryLabel(category, categories) : null,
+      onPress: () => { haptics.tap(); setCategoryPickerVisible(true); },
     },
     {
       key: 'effort', icon: 'barbell', panel: 'effort',
@@ -1762,33 +1790,6 @@ export function QuickAddModal({
             </View>
           )}
 
-          {activePanel === 'category' && (
-            <View style={styles.panel}>
-              <PillGroup
-                noun="category"
-                surface="page"
-                options={[
-                  {
-                    key: '__none__',
-                    label: 'None',
-                    selected: category === null,
-                    pinned: true,
-                    onPress: () => setCategory(null),
-                  },
-                  ...allCategories.map(cat => ({
-                    key: cat,
-                    label: categoryLabel(cat, categories),
-                    selected: category === cat,
-                    onPress: () => {
-                      haptics.tap();
-                      setCategory(prev => prev === cat ? null : cat);
-                    },
-                  })),
-                ]}
-              />
-            </View>
-          )}
-
           {activePanel === 'link' && (
             <View style={styles.panel}>
               {/* A horizontal scroll rather than a wrapping row: KNOWN_LINK_APPS is
@@ -1990,6 +1991,14 @@ export function QuickAddModal({
           setWhenPickerVisible(false);
         }}
         onCancel={() => setWhenPickerVisible(false)}
+      />
+      {/* Inside this sheet's own Modal, same as the date picker above — see
+          TaskRelationPickerSheet, which the task editor opens the same way. */}
+      <CategoryPickerSheet
+        visible={categoryPickerVisible}
+        value={category}
+        onSelect={setCategory}
+        onClose={() => setCategoryPickerVisible(false)}
       />
       <NumberPadAccessory />
     </Modal>

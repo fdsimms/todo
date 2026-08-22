@@ -7,6 +7,8 @@ import {
   expiryDaysFromNow,
   expiryKeyFor,
   shelfLifeDaysFor,
+  openShelfLifeDaysFor,
+  expiresAtForOpening,
 } from '../utils/groceryShelfLife';
 import { groceryNameKey } from '../utils/groceryParse';
 import { GROCERY_EXPIRY_DAYS_MAX } from '../types';
@@ -37,6 +39,9 @@ function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
     choiceGroup: null,
     isStaple: false,
     expiresAt: null,
+    frozenAt: null,
+    openedAt: null,
+    runningLowAt: null,
     shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,
@@ -162,5 +167,47 @@ describe('describeExpiry', () => {
   it('says how far past, not that it is overdue — food past its day is questionable, not late', () => {
     expect(describeExpiry('2026-08-11', NOW)).toBe('1 day past');
     expect(describeExpiry('2026-08-09', NOW)).toBe('3 days past');
+  });
+});
+
+describe('the open shelf life', () => {
+  const NOW = new Date(2026, 7, 13, 15, 0, 0);
+
+  it('knows the names where opening is what starts the clock', () => {
+    expect(openShelfLifeDaysFor('Salsa')).toBe(7);
+    expect(openShelfLifeDaysFor('cream cheese')).toBe(14);
+  });
+
+  // Opening a bag of spinach doesn't restart anything, so the table is silent
+  // about produce, meat and bakery on purpose.
+  it('says nothing about a name opening tells you nothing about', () => {
+    expect(openShelfLifeDaysFor('Spinach')).toBeNull();
+    expect(openShelfLifeDaysFor('Chicken breast')).toBeNull();
+    expect(openShelfLifeDaysFor('Bicarbonate of soda')).toBeNull();
+  });
+
+  it('counts from the opening, not from the purchase', () => {
+    const salsa = item({ name: 'Salsa', expiresAt: '2026-05-01' });
+    expect(expiresAtForOpening(salsa, NOW)).toBe('2026-08-20');
+  });
+
+  // The reason this replaces the day rather than taking the earlier of the
+  // two: the `min` of a day that already passed and "today plus 7" is the day
+  // that already passed, so opening would be inert in exactly the case it
+  // exists for.
+  it('re-anchors a day that has already gone by rather than keeping it', () => {
+    const stale = item({ name: 'Salsa', expiresAt: '2026-05-01' });
+    expect(expiresAtForOpening(stale, NOW)! > '2026-08-13').toBe(true);
+  });
+
+  it('is null for a name the table has never heard of, so the day is left alone', () => {
+    expect(expiresAtForOpening(item({ name: 'Spinach' }), NOW)).toBeNull();
+  });
+
+  // shelfLifeDays means "this one keeps N days once bought", which is a claim
+  // about the shelf and not about the open jar.
+  it('ignores a hand-corrected shelf life, which is about the sealed jar', () => {
+    const salsa = item({ name: 'Salsa', shelfLifeDays: 90 });
+    expect(expiresAtForOpening(salsa, NOW)).toBe('2026-08-20');
   });
 });

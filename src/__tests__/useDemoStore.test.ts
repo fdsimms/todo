@@ -46,7 +46,8 @@ import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
-import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
+import { freshnessOf, isLiveLeftover, needsAttention } from '../utils/leftovers';
+import { liveExpiresAt, openShelfLifeDaysFor } from '../utils/groceryShelfLife';
 import {
   cookingWindow,
   hasCookingData,
@@ -54,7 +55,9 @@ import {
   mealCookCounts,
   mostCookedRecipes,
 } from '../utils/cookingStats';
-import { describeKitchen, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
+import { buildKitchenSections, describeKitchen, FREEZER_SECTION, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
+import { useUpRecipes } from '../utils/useUpRecipes';
+import { probablyHaveReason } from '../utils/grocerySuggest';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
 import { findProjectStalls } from '../utils/projectPull';
@@ -1094,6 +1097,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(markers.some(m => m.kind === 'unavailable')).toBe(true);
     expect(markers.some(m => m.kind === 'only')).toBe(true);
     expect(markers.some(m => m.kind === 'withoutProduct')).toBe(true);
+    // ...and that one carries the next box worth reaching for, which is the
+    // whole reason the seed gives cottage cheese a second product. Without it
+    // the caption is a refusal with no way forward, and the feature reads as
+    // one the app doesn't have.
+    expect(markers.some(m => m.kind === 'withoutProduct' && m.alternativeProduct)).toBe(true);
     // ...and most of the list still says nothing, which is the point.
     expect(markers.length).toBeLessThan(items.filter(i => i.onList).length);
   });
@@ -1569,6 +1577,77 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(events.some(e => e.scale !== 1)).toBe(true);
   });
 
+  it('seeds an opened jar whose countdown is dated from the opening', () => {
+    const { items } = useGroceryStore.getState();
+    const opened = items.filter(i => i.openedAt);
+    expect(opened.length).toBeGreaterThan(0);
+
+    // The point of the second lexicon: a jar addToPantry left dateless comes
+    // away from the opening with a real countdown.
+    const dated = opened.find(i => openShelfLifeDaysFor(i.name) !== null);
+    expect(dated).toBeDefined();
+    expect(dated!.expiresAt).not.toBeNull();
+  });
+
+  it('seeds something running low, which is what puts it on the list', () => {
+    const { items } = useGroceryStore.getState();
+    const low = items.filter(i => i.runningLowAt);
+    expect(low.length).toBeGreaterThan(0);
+    // The one pantry state that reaches into onList.
+    expect(low.every(i => i.onList)).toBe(true);
+    // Still had, which is the whole distinction from "Out of it".
+    expect(probablyHaveReason(low[0], new Date())).toBe('running low');
+  });
+
+  it('seeds a kitchen where something dying has a recipe that would use it', () => {
+    const { items } = useGroceryStore.getState();
+    const { leftovers } = useLeftoverStore.getState();
+    const { recipes } = useRecipeStore.getState();
+
+    const dying = useUpEntries(kitchenInventory(items, leftovers, new Date()));
+    expect(dying.length).toBeGreaterThan(0);
+
+    // Without this the Pantry screen's suggestion block never renders in the
+    // demo, and a feature with no row in the seed reads as one the app hasn't
+    // got.
+    const suggestions = useUpRecipes(dying, recipes);
+    expect(suggestions.length).toBeGreaterThan(0);
+    expect(suggestions[0].uses.length).toBeGreaterThan(0);
+  });
+
+  it('seeds a freezer with both halves of the kitchen in it', () => {
+    const { items } = useGroceryStore.getState();
+    const { leftovers } = useLeftoverStore.getState();
+
+    const frozenItems = items.filter(i => i.frozenAt);
+    const frozenContainers = leftovers.filter(l => l.frozenAt);
+    expect(frozenItems.length).toBeGreaterThan(0);
+    expect(frozenContainers.length).toBeGreaterThan(0);
+
+    // The case the feature was built for: something the shelf-life lexicon
+    // gave a short date to, whose date is kept on the row and simply not read.
+    const dated = frozenItems.find(i => i.expiresAt);
+    expect(dated).toBeDefined();
+    expect(liveExpiresAt(dated!)).toBeNull();
+
+    // ...and something that never had a date, which is what most of a freezer
+    // is. Without it the section reads as a place perishables hide.
+    expect(frozenItems.some(i => !i.expiresAt)).toBe(true);
+
+    // Both kinds land under the one heading in the Pantry screen.
+    const sections = buildKitchenSections(
+      kitchenInventory(items, leftovers, new Date()),
+      useGroceryStore.getState().aisleOrder,
+    );
+    const freezer = sections.find(s => s.section === FREEZER_SECTION);
+    expect(freezer).toBeDefined();
+    expect(new Set(freezer!.data.map(e => e.kind))).toEqual(new Set(['grocery', 'leftover']));
+
+    // And nothing in it is nagging: a frozen row is never something to use up.
+    expect(useUpEntries(kitchenInventory(items, leftovers, new Date()))
+      .some(e => e.section === FREEZER_SECTION)).toBe(false);
+  });
+
   it('seeds a use-up task for every live leftover in "soon", "due" or "over"', () => {
     const { leftovers } = useLeftoverStore.getState();
     const { tasks } = useTaskStore.getState();
@@ -1577,7 +1656,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // rows that could trigger it.
     expect(useSettingsStore.getState().leftoverUseUpTasks).toBe(true);
 
-    const urgent = leftovers.filter(l => isLiveLeftover(l) && freshnessOf(l) !== 'fresh');
+    // needsAttention, not `freshnessOf(l) !== 'fresh'`: those were the same
+    // question until the freezer, and the seeded frozen chilli is the case that
+    // separates them — it's weeks past its keep-until, so freshnessOf still
+    // says 'over', but nothing is counting down and no task is wanted.
+    const urgent = leftovers.filter(l => needsAttention(l));
     expect(urgent.length).toBeGreaterThan(0);
 
     const useUpTasks = tasks.filter(t => t.generatedKind === 'leftoverUseUp');
@@ -1591,6 +1674,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       // straight to this leftover's own row.
       expect(task.linkUrl).toBe(`dundundun://kitchen?item=leftover-${leftover!.id}`);
     });
+    // The frozen one gets no task however far past its stored day it is, which
+    // is the whole reason the seed carries it.
+    const frozen = leftovers.find(l => isLiveLeftover(l) && l.frozenAt);
+    expect(frozen).toBeDefined();
+    expect(freshnessOf(frozen!)).toBe('over');
+    expect(useUpTasks.some(t => t.generatedSourceId === frozen!.id)).toBe(false);
+
     // The fresh one — furthest from its keep-until day — gets no task.
     const fresh = leftovers.find(l => isLiveLeftover(l) && freshnessOf(l) === 'fresh');
     expect(fresh).toBeDefined();

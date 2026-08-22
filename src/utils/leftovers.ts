@@ -12,7 +12,7 @@ import {
   LEFTOVER_RETENTION_DAYS,
 } from '../types';
 import { cleanRecipeName } from './recipeUtils';
-import { daysUntilDay, describeUseBy, freshnessFor, isUseUpSoon } from './freshness';
+import { daysUntilDay, describeFrozenSince, describeUseBy, freshnessFor, isUseUpSoon, liveUseBy } from './freshness';
 import { cookedDishes, type ChoiceResolution } from './recipeComponents';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 
@@ -208,15 +208,62 @@ export function freshnessOf(leftover: Leftover, now: Date = new Date()): Leftove
 }
 
 /**
+ * This container's keep-until day if it's actually counting down, else null
+ * because it's in the freezer — `freshness.liveUseBy` bound to the fridge's own
+ * pair of fields, and the peer of `groceryExpiry.liveExpiresAt`.
+ *
+ * `keepUntil` itself stays non-null and untouched while frozen. What the
+ * freezer suspends is the countdown, not the fact that this container was given
+ * four days: thawing hands those four days back (see
+ * `useLeftoverStore.setFrozen`), and there'd be nothing to hand back if freezing
+ * had cleared the field.
+ */
+export function liveKeepUntil(leftover: Leftover): string | null {
+  return liveUseBy(leftover.keepUntil, leftover.frozenAt);
+}
+
+/**
+ * Where a container sits on the ladder *for display*, or null because it's
+ * frozen and sitting nowhere on it.
+ *
+ * The nullable companion to `freshnessOf`, and the one every row colour should
+ * use. `freshnessOf` deliberately still answers for a frozen container — a
+ * history row wants to know what state it was in, and making the colour lookup
+ * null-check everywhere is how one of them ends up not doing it — but a *live*
+ * row tinted from a suspended date is the false alarm this whole feature
+ * exists to stop: a chilli frozen three weeks ago would glow red on the fridge
+ * card, which is the app shouting about food that is fine.
+ *
+ * Null renders as `textTertiary`, the same "nothing is counting down" grey a
+ * dateless catalog row already gets in the kitchen list.
+ */
+export function liveFreshnessOf(
+  leftover: Leftover,
+  now: Date = new Date()
+): LeftoverFreshness | null {
+  const keepUntil = liveKeepUntil(leftover);
+  return keepUntil ? freshnessFor(keepUntil, now) : null;
+}
+
+/**
  * Whether this is what the nudge is for: still in the fridge, and down to its
  * last day or already past it.
  *
  * The threshold includes 'soon' deliberately — the point is to catch it *before*
  * it's wasted, and a nudge that only fires on the day itself has already given
  * up the evening someone could have planned around it.
+ *
+ * **The one choke point for the freezer on this side.** `attentionLeftovers`,
+ * `leftoverTasks.wantsUseUpTask`, `describeFridge`'s urgent count and the hub
+ * pill's dot all ask their question through here, so a frozen container goes
+ * quiet everywhere at once rather than in four places that have to agree.
+ * `freshnessOf` deliberately stays as it was — it answers "where does this
+ * container's day sit", which a history row still wants, and every colour
+ * lookup in the app is keyed on its non-null return.
  */
 export function needsAttention(leftover: Leftover, now: Date = new Date()): boolean {
-  return isLiveLeftover(leftover) && isUseUpSoon(freshnessOf(leftover, now));
+  if (!isLiveLeftover(leftover) || leftover.frozenAt) return false;
+  return isUseUpSoon(freshnessOf(leftover, now));
 }
 
 /** Still in the fridge, most urgent first. */
@@ -253,6 +300,12 @@ export function attentionLeftovers(
 export function sortLeftovers(leftovers: readonly Leftover[]): Leftover[] {
   return [...leftovers].sort(
     (a, b) =>
+      // Frozen last, whatever day is sitting on it — the same rule
+      // compareKitchenEntries applies to a catalog row with no date, and for
+      // the same reason: a container frozen in July carries a `keepUntil` from
+      // July, so sorting it by that day would put the one thing in no danger at
+      // all right at the top of a list ordered by danger.
+      (a.frozenAt ? 1 : 0) - (b.frozenAt ? 1 : 0) ||
       a.keepUntil.localeCompare(b.keepUntil) ||
       a.storedAt.localeCompare(b.storedAt) ||
       a.title.localeCompare(b.title)
@@ -278,8 +331,24 @@ export function describeKeepUntil(leftover: Leftover, now: Date = new Date()): s
   return describeUseBy(leftover.keepUntil, now);
 }
 
-/** The full caption under a leftover's title — "2 days in the fridge · Use by today". */
+/**
+ * The full caption under a leftover's title — "2 days in the fridge · Use by
+ * today", or "Frozen 12 Jul" for a frozen one.
+ *
+ * A frozen container drops the age half rather than reading "9 days in the
+ * fridge · Frozen 12 Jul", which names two places for one container and counts
+ * the days in the wrong one: `describeAge` measures from `storedAt`, and a
+ * portion frozen on day two spent one of those nine days in the fridge. The
+ * freeze date is the fact worth the line.
+ *
+ * It also drops the "in the freezer" half a kitchen row carries
+ * (`FROZEN_REASON`), because this caption's readers are the fridge card and the
+ * meal-plan picker, where the surrounding context has already said which
+ * container this is. The kitchen list, which mixes frozen rows in among aisles,
+ * needs both halves and pairs them itself.
+ */
 export function describeLeftover(leftover: Leftover, now: Date = new Date()): string {
+  if (leftover.frozenAt) return describeFrozenSince(leftover.frozenAt, now);
   return `${describeAge(leftover, now)} · ${describeKeepUntil(leftover, now)}`;
 }
 
@@ -410,7 +479,12 @@ export function mealTitleForLeftover(leftover: Leftover): string {
  * exists to remove the steps between them.
  */
 export function isPlannedPastKeepUntil(leftover: Leftover, dayKey: string): boolean {
-  return dayKey > leftover.keepUntil;
+  // A frozen container is never "past" anything: its day is suspended, and the
+  // freezer is the very thing this function's note used to hand-wave at as the
+  // reason not to refuse the drop. Now that the app can be told, a frozen
+  // portion planned for Saturday is simply planned for Saturday.
+  const keepUntil = liveKeepUntil(leftover);
+  return keepUntil !== null && dayKey > keepUntil;
 }
 
 /**

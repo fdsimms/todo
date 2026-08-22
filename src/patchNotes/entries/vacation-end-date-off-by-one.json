@@ -1,0 +1,4 @@
+{
+  "message": "Fixed vacation mode's end date staying on through the whole day you picked instead of turning off that day, as the label said it would",
+  "date": "2026-08-21"
+}

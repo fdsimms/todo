@@ -18,6 +18,7 @@ function makeShop(name: string, sortOrder = 0, overrides: Partial<Shop> = {}): S
     sortOrder,
     createdAt: '2026-01-01T00:00:00.000Z',
     excludeFromSuggestions: false,
+    receiptStyle: 'itemized' as const,
     ...overrides,
   };
 }
@@ -47,6 +48,9 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     choiceGroup: null,
     isStaple: false,
     expiresAt: null,
+    frozenAt: null,
+    openedAt: null,
+    runningLowAt: null,
     shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,

@@ -2,6 +2,7 @@ import {
   buildKitchenSections,
   compareKitchenEntries,
   describeKitchen,
+  FREEZER_SECTION,
   FRIDGE_SECTION,
   kitchenEntryId,
   kitchenInventory,
@@ -9,6 +10,7 @@ import {
   useUpEntries,
 } from '../utils/kitchenInventory';
 import { groceryNameKey } from '../utils/groceryParse';
+import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import type { GroceryItem, Leftover } from '../types';
 
 // The chain here reaches dateUtils (day keys) which reaches the settings store
@@ -55,6 +57,9 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     choiceGroup: null,
     isStaple: false,
     expiresAt: null,
+    frozenAt: null,
+    openedAt: null,
+    runningLowAt: null,
     shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,
@@ -74,6 +79,7 @@ function makeLeftover(overrides: Partial<Leftover> & { title: string }): Leftove
     keepUntil: '2026-08-16',
     finishedAt: null,
     outcome: null,
+    frozenAt: null,
     createdAt: daysAgo(2),
     useUpTask: null,
     ...overrides,
@@ -361,5 +367,156 @@ describe('kitchenLinkUrl', () => {
     expect(kitchenLinkUrl(kitchenEntryId('grocery', 'abc123'))).toBe(
       'dundundun://kitchen?item=grocery-abc123'
     );
+  });
+});
+
+// ─── the freezer ────────────────────────────────────────────────────────────
+
+describe('the freezer', () => {
+  const FROZEN_ON = '2026-07-12T09:00:00.000Z';
+
+  it('files a frozen catalog row under the freezer rather than its aisle', () => {
+    const peas = makeItem({ name: 'Peas', aisle: 'Frozen', frozenAt: FROZEN_ON });
+    const [entry] = kitchenInventory([peas], [], NOW);
+    expect(entry.section).toBe(FREEZER_SECTION);
+  });
+
+  it('files a frozen container under the freezer rather than the fridge', () => {
+    const chilli = makeLeftover({ title: 'Chilli', frozenAt: FROZEN_ON });
+    const [entry] = kitchenInventory([], [chilli], NOW);
+    expect(entry.section).toBe(FREEZER_SECTION);
+  });
+
+  // The suspension, seen from the row: the stored day is still on the record
+  // and none of it reaches the view model.
+  it('suspends the countdown without the row having lost its day', () => {
+    const spinach = makeItem({ name: 'Spinach', expiresAt: '2026-08-14', frozenAt: FROZEN_ON });
+    const [entry] = kitchenInventory([spinach], [], NOW);
+    expect(entry.useBy).toBeNull();
+    expect(entry.freshness).toBeNull();
+    expect(entry.daysLeft).toBeNull();
+    expect(spinach.expiresAt).toBe('2026-08-14');
+  });
+
+  it('says where it is and when it went in, in the two caption halves', () => {
+    const spinach = makeItem({ name: 'Spinach', expiresAt: '2026-08-14', frozenAt: FROZEN_ON });
+    const [entry] = kitchenInventory([spinach], [], NOW);
+    expect(entry.reason).toBe('in the freezer');
+    expect(entry.useByCaption).toBe('Frozen 12 Jul');
+    expect(entry.caption).toBe('in the freezer · Frozen 12 Jul');
+  });
+
+  // The reason the freezer had to reach probablyHaveReason: the purchase window
+  // is two weeks and a freezer is measured in months, so without it the food
+  // would quietly leave the kitchen while sitting in the kitchen.
+  it('keeps a frozen row in the pantry long past its purchase window', () => {
+    const chicken = makeItem({
+      name: 'Chicken',
+      onHandUntil: null,
+      purchaseCount: 1,
+      lastPurchasedAt: daysAgo(60),
+      frozenAt: FROZEN_ON,
+    });
+    expect(kitchenInventory([chicken], [], NOW)).toHaveLength(1);
+    expect(kitchenInventory([{ ...chicken, frozenAt: null }], [], NOW)).toHaveLength(0);
+  });
+
+  // The ✕ on a Pantry row writes exactly this bit, so if the freezer outranked
+  // it the button would look dead on a frozen row.
+  it('lets an explicit "Out of it" outrank the freezer, so the ✕ still works', () => {
+    const chicken = makeItem({
+      name: 'Chicken',
+      frozenAt: FROZEN_ON,
+      onHandUntil: OUT_OF_IT_UNTIL,
+    });
+    expect(kitchenInventory([chicken], [], NOW)).toHaveLength(0);
+  });
+
+  it('never counts a frozen row as something to use up', () => {
+    const spinach = makeItem({ name: 'Spinach', expiresAt: '2026-08-10', frozenAt: FROZEN_ON });
+    expect(useUpEntries(kitchenInventory([spinach], [], NOW))).toHaveLength(0);
+    expect(useUpEntries(kitchenInventory([{ ...spinach, frozenAt: null }], [], NOW))).toHaveLength(1);
+  });
+
+  it('leads with the fridge, then the freezer, then the aisles', () => {
+    const sections = buildKitchenSections(
+      kitchenInventory(
+        [
+          makeItem({ name: 'Peas', aisle: 'Frozen', frozenAt: FROZEN_ON }),
+          makeItem({ name: 'Flour', aisle: 'Baking' }),
+        ],
+        [makeLeftover({ title: 'Chilli' })],
+        NOW
+      ),
+      ['Baking', 'Frozen'],
+    );
+    expect(sections.map(s => s.section)).toEqual([FRIDGE_SECTION, FREEZER_SECTION, 'Baking']);
+  });
+
+  it('puts both kinds of frozen thing under the one heading', () => {
+    const sections = buildKitchenSections(
+      kitchenInventory(
+        [makeItem({ name: 'Peas', frozenAt: FROZEN_ON })],
+        [makeLeftover({ title: 'Chilli', frozenAt: FROZEN_ON })],
+        NOW
+      ),
+      [],
+    );
+    expect(sections).toHaveLength(1);
+    expect(sections[0].section).toBe(FREEZER_SECTION);
+    expect(sections[0].data.map(e => e.title).sort()).toEqual(['Chilli', 'Peas']);
+  });
+});
+
+// ─── opened, and running low ────────────────────────────────────────────────
+
+describe('the two other pantry states', () => {
+  it('adds the opening to the reason half, where the evidence lives', () => {
+    const salsa = makeItem({
+      name: 'Salsa',
+      expiresAt: '2026-08-14',
+      openedAt: '2026-08-12T09:00:00.000Z',
+    });
+    const [entry] = kitchenInventory([salsa], [], NOW);
+
+    expect(entry.reason).toContain('opened 12 Aug');
+    // The clock half is untouched: opening is evidence about the jar, not a
+    // state of the countdown.
+    expect(entry.useByCaption).toBe('Use by tomorrow');
+  });
+
+  // A frozen row has already replaced the reason with the freezer, and naming
+  // two places for one jar reads as a contradiction.
+  it('drops the opening clause on a frozen row', () => {
+    const salsa = makeItem({
+      name: 'Salsa',
+      openedAt: '2026-08-12T09:00:00.000Z',
+      frozenAt: '2026-08-12T09:00:00.000Z',
+    });
+    const [entry] = kitchenInventory([salsa], [], NOW);
+
+    expect(entry.reason).toBe('in the freezer');
+  });
+
+  // The distinction from "Out of it": there's some left, so it's still in the
+  // kitchen and a week plan still counts it.
+  it('keeps a running-low row in the pantry, saying so', () => {
+    const flour = makeItem({
+      name: 'Flour',
+      onHandUntil: null,
+      runningLowAt: '2026-08-12T09:00:00.000Z',
+    });
+    const [entry] = kitchenInventory([flour], [], NOW);
+
+    expect(entry.reason).toBe('running low');
+  });
+
+  it('still lets "Out of it" outrank running low', () => {
+    const flour = makeItem({
+      name: 'Flour',
+      runningLowAt: '2026-08-12T09:00:00.000Z',
+      onHandUntil: OUT_OF_IT_UNTIL,
+    });
+    expect(kitchenInventory([flour], [], NOW)).toHaveLength(0);
   });
 });

@@ -58,6 +58,11 @@ export function parsePriceHistory(raw: string | null | undefined): PriceObservat
         && o.minor > 0
         && typeof o.at === 'string'
         && (o.quantity === null || typeof o.quantity === 'string'))
+      // Normalised on the way in rather than left as three shapes for every
+      // reader to handle: absent (written before products existed), null, and
+      // a real id all mean the same thing to a filter, and only the last one
+      // matches anything.
+      .map(o => ({ ...o, productId: typeof o.productId === 'string' ? o.productId : null }))
       .slice(0, PRICE_HISTORY_LIMIT);
   } catch {
     return [];
@@ -75,6 +80,45 @@ export function appendPriceObservation(
   observation: PriceObservation,
 ): PriceObservation[] {
   return [observation, ...history].slice(0, PRICE_HISTORY_LIMIT);
+}
+
+/**
+ * How many observations of one product a run needs before it answers for that
+ * product on its own.
+ *
+ * Two, because one is the thing this whole file exists to reject: "a single
+ * last price is a poor baseline" is the argument for keeping a run at all, and
+ * a run filtered down to one observation is that same poor baseline wearing a
+ * median's clothes. Below the floor the unfiltered run is the better answer —
+ * noisier about *which* box, but actually a run.
+ */
+export const PRODUCT_RUN_MIN = 2;
+
+/**
+ * The slice of a run that speaks for one product, or the whole run when it
+ * can't.
+ *
+ * The filter is the point (see `PriceObservation.productId`): a median over
+ * Arnold's whole wheat and the store brand together describes neither. The
+ * fallback is what keeps it honest — an install upgrading into this has no
+ * stamped observations at all, and a run that scoped itself down to nothing
+ * would turn every existing baseline into silence overnight.
+ *
+ * `scoped` reports which answer came back, because the two are different claims
+ * and a caller that wants to say "for Arnold's" must not say it over a number
+ * that mixed in the store brand.
+ *
+ * A null `productId` (the item has no preference) is never a filter: there is
+ * no box being asked about, so the run answers as itself.
+ */
+export function priceRunForProduct(
+  history: readonly PriceObservation[],
+  productId: string | null | undefined,
+): { history: readonly PriceObservation[]; scoped: boolean } {
+  if (!productId) return { history, scoped: false };
+  const mine = history.filter(o => o.productId === productId);
+  if (mine.length < PRODUCT_RUN_MIN) return { history, scoped: false };
+  return { history: mine, scoped: true };
 }
 
 /**

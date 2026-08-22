@@ -1,10 +1,12 @@
 import {
   daysUntilDay,
+  describeFrozenSince,
   describeUseBy,
   FRESHNESS_ORDER,
   freshnessFor,
   freshnessRank,
   isUseUpSoon,
+  liveUseBy,
 } from '../utils/freshness';
 
 // freshness reaches dateUtils for dayKeyToDate, which reaches the settings
@@ -73,5 +75,33 @@ describe('describeUseBy', () => {
   it('says a past day is past rather than overdue — food isn\'t late, it\'s questionable', () => {
     expect(describeUseBy('2026-08-12', NOW)).toBe('1 day past');
     expect(describeUseBy('2026-08-10', NOW)).toBe('3 days past');
+  });
+});
+
+describe('liveUseBy', () => {
+  it('hands back the day when nothing is frozen', () => {
+    expect(liveUseBy('2026-08-14', null)).toBe('2026-08-14');
+  });
+
+  it('suspends the day while frozen, rather than the row having lost it', () => {
+    expect(liveUseBy('2026-08-14', '2026-08-01T10:00:00.000Z')).toBeNull();
+  });
+
+  it('is null either way for a row that never had a day', () => {
+    expect(liveUseBy(null, null)).toBeNull();
+    expect(liveUseBy(null, '2026-08-01T10:00:00.000Z')).toBeNull();
+  });
+});
+
+describe('describeFrozenSince', () => {
+  it('names the day it went in, not how long it has been there', () => {
+    expect(describeFrozenSince('2026-07-12T09:00:00.000Z', NOW)).toBe('Frozen 12 Jul');
+  });
+
+  it('drops the date rather than the whole clause when the stamp is unusable', () => {
+    // A restored backup with a junk stamp, and a device whose clock has been
+    // moved back — both still say the true half.
+    expect(describeFrozenSince('not-a-date', NOW)).toBe('Frozen');
+    expect(describeFrozenSince('2026-09-01T09:00:00.000Z', NOW)).toBe('Frozen');
   });
 });

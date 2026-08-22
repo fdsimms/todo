@@ -1,7 +1,7 @@
 import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
-import { describeUseBy } from './freshness';
+import { describeUseBy, liveUseBy } from './freshness';
 import { groceryNameKey } from './groceryParse';
 import { GROCERY_EXPIRY_DAYS_MAX } from '../types';
 import type { GroceryItem } from '../types';
@@ -65,6 +65,51 @@ export const SHELF_LIFE_LEXICON: Record<string, number> = {
 };
 
 /**
+ * How long a thing keeps **once it's been opened**, which for a sealed jar is a
+ * completely different number from how long it keeps on the shelf.
+ *
+ * A second table rather than a second column on the one above, and a much
+ * shorter one, because opening only matters for a particular kind of food: a
+ * jar, a carton, a vacuum pack. Opening a bag of spinach doesn't restart
+ * anything — it was already exposed to the same air the fridge is full of — so
+ * produce, meat and bakery are deliberately absent and `markOpened` leaves
+ * their day alone.
+ *
+ * **Same whitelist restraint as `SHELF_LIFE_LEXICON`**: a name earns a row here
+ * only if the jar sitting forgotten at the back of the fridge door is a real way
+ * to waste money. Widening it is how the feature turns into the spam the
+ * original issue was worried about.
+ *
+ * These are days from the moment it's opened, and they don't have to bear any
+ * relation to the purchase figure next door. Salsa is the clearest case: 7 days
+ * either way here, but the *reason* differs, and what makes the pairing useful
+ * is that opening re-anchors the count — a jar opened three weeks after it was
+ * bought gets its 7 days from that Tuesday, not from a purchase the guess above
+ * had already written off.
+ */
+export const OPEN_SHELF_LIFE_LEXICON: Record<string, number> = {
+  // ─── Jars, tubs and cartons — the fridge door ───
+  salsa: 7, hummus: 5, guacamole: 2, 'cream cheese': 14, 'cottage cheese': 7,
+  'sour cream': 14, 'creme fraiche': 10, yogurt: 7, yoghurt: 7,
+  'greek yogurt': 7, ricotta: 5, buttermilk: 10, cream: 5, 'heavy cream': 7,
+  'half and half': 7, milk: 7, 'oat milk': 7, 'almond milk': 7, 'soy milk': 7,
+
+  // ─── Vacuum packs and deli ───
+  bacon: 7, 'cold cuts': 4, ham: 4, 'sliced turkey': 4, tofu: 4,
+};
+
+/**
+ * How long this keeps once opened, or null for a name where opening isn't the
+ * thing that starts the clock. Matched on `groceryNameKey`, same identity rule
+ * `shelfLifeDaysFor` uses and for the same reason.
+ */
+export function openShelfLifeDaysFor(name: string): number | null {
+  const key = groceryNameKey(name);
+  if (!key) return null;
+  return OPEN_SHELF_LIFE_LEXICON[key] ?? null;
+}
+
+/**
  * How long this name keeps, or null for something the lexicon doesn't claim to
  * know about — which is most of a catalog, and is meant to be.
  *
@@ -118,6 +163,50 @@ export function defaultExpiresAt(name: string, now: Date): string | null {
 export function expiresAtForPurchase(item: GroceryItem, now: Date): string | null {
   if (item.shelfLifeDays !== null) return expiryKeyFor(now, item.shelfLifeDays);
   return defaultExpiresAt(item.name, now);
+}
+
+/**
+ * The use-by day an item should carry from the moment it's opened, or null when
+ * opening this one says nothing.
+ *
+ * **It replaces the day rather than taking the earlier of the two**, which is
+ * the whole point and is worth being explicit about, because "only ever bring a
+ * deadline forward" is the safer-sounding rule and is wrong here. A jar bought
+ * five weeks ago carries a purchase-based day that has long since passed; the
+ * `min` of that and "today plus 7" is the day that already passed, so opening
+ * would be inert in exactly the case the feature exists for. Opening is *new
+ * information* about a jar the old guess had written off, and the count starts
+ * from it.
+ *
+ * A `shelfLifeDays` the user has corrected by hand is not consulted: that field
+ * means "this one keeps N days once bought", which is a claim about the shelf,
+ * not about the open jar.
+ */
+export function expiresAtForOpening(item: GroceryItem, now: Date): string | null {
+  const days = openShelfLifeDaysFor(item.name);
+  return days === null ? null : expiryKeyFor(now, days);
+}
+
+/**
+ * This item's use-by day if anything is actually counting down, else null —
+ * `freshness.liveUseBy` bound to the catalog's own pair of fields.
+ *
+ * Its own name because four callers need the same two arguments in the same
+ * order (`groceryExpiry.wantsUseUpTask`, `reconcileUseUpTask`'s guard in the
+ * store, `kitchenInventory` and `GroceryItemSheet`), and threading
+ * `item.expiresAt, item.frozenAt` by hand at each is how one of them ends up
+ * reading the raw column. Same discipline `estimatedMinutesFor` imposes for a
+ * chain step's estimate.
+ *
+ * **Here rather than in `groceryExpiry.ts`, where it reads like it belongs,
+ * because that file imports `kitchenInventory` for the link helpers** — and
+ * `kitchenInventory` is one of the callers, so putting it there makes the two a
+ * cycle. This module is where the catalog's shelf life already lives and
+ * nothing imports back into it, which is the same reason `freshness.ts` gives
+ * for keeping its own imports pointing one way.
+ */
+export function liveExpiresAt(item: GroceryItem): string | null {
+  return liveUseBy(item.expiresAt, item.frozenAt);
 }
 
 /**

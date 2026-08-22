@@ -1,0 +1,4 @@
+{
+  "message": "Fixed Scan groceries adding a burst of duplicate rows for a single barcode held up too long, and no longer offers a wrong catalog item as a match on a single coincidental shared word",
+  "date": "2026-08-21"
+}

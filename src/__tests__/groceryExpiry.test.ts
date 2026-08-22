@@ -39,6 +39,9 @@ function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
     choiceGroup: null,
     isStaple: false,
     expiresAt: '2026-08-17',
+    frozenAt: null,
+    openedAt: null,
+    runningLowAt: null,
     shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,
@@ -148,5 +151,36 @@ describe('useUpTaskNeedsUpdate', () => {
 
   it('notices a task whose link no longer points at the kitchen', () => {
     expect(useUpTaskNeedsUpdate({ ...inStep, linkUrl: null }, spinach, 1)).toBe(true);
+  });
+});
+
+describe('wantsUseUpTask and the freezer', () => {
+  // The case the freezer exists for: the shelf-life lexicon is at its shortest
+  // exactly where a freezer is most used (chicken 2 days, ground beef 2), so a
+  // month of meat bought on Saturday is otherwise a fistful of "Use up" tasks
+  // due Monday about food under an inch of ice.
+  it('wants no task for a frozen item, however live its stored date is', () => {
+    const chicken = item({ name: 'Chicken', expiresAt: '2026-08-15' });
+    expect(wantsUseUpTask(chicken, true)).toBe(true);
+    expect(wantsUseUpTask({ ...chicken, frozenAt: '2026-08-13T18:00:00.000Z' }, true)).toBe(false);
+  });
+
+  // The date is suspended, not cleared — so the row is one write away from
+  // counting again, and the freeze needed no destructive edit to get there.
+  it('wants the task back the moment it thaws, off the same stored date', () => {
+    const frozen = item({ expiresAt: '2026-08-15', frozenAt: '2026-08-13T18:00:00.000Z' });
+    expect(wantsUseUpTask({ ...frozen, frozenAt: null }, true)).toBe(true);
+  });
+
+  // An explicit per-item opt-in must not reach past the freezer either: it
+  // would otherwise land in useUpTaskFields, which is about a date nothing is
+  // counting.
+  it('is not overridden by an explicit useUpTask opt-in while frozen', () => {
+    const frozen = item({
+      expiresAt: '2026-08-15',
+      frozenAt: '2026-08-13T18:00:00.000Z',
+      useUpTask: true,
+    });
+    expect(wantsUseUpTask(frozen, false)).toBe(false);
   });
 });

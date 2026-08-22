@@ -1,6 +1,6 @@
 import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, Shop } from '../types';
 import { exclusiveShopFor, isUnavailable, lacksWantedProduct, primaryShopFor } from './groceryShops';
-import { describePreferredProduct } from './groceryProduct';
+import { describePreferredProduct, describeProduct, productsForItem } from './groceryProduct';
 import { substitutesFor } from './itemSubs';
 
 /**
@@ -152,6 +152,17 @@ export interface TripMarker {
   /** `withoutProduct` only: the product the item insists on, in its own words. */
   wantedProduct?: string;
   /**
+   * `withoutProduct` only: the next box worth reaching for here, in its own
+   * words, when this item has one on record.
+   *
+   * The highest-value moment for everything the app knows about an item's
+   * products is standing in front of the shelf that hasn't got the one you
+   * came for — the same argument that puts a substitute on an `unavailable`
+   * marker. Absent whenever there's nothing to offer, which is the ordinary
+   * case for an item with a single box.
+   */
+  alternativeProduct?: string;
+  /**
    * `unavailable` only: the oldest substitute on record for this item, if any
    * (see itemSubs.substitutesFor). This is the highest-value moment for a
    * substitute link — you're standing in front of the empty shelf — so the
@@ -183,7 +194,15 @@ export function tripMarkerFor(
       // A claim can only be in force while it names a product that resolves,
       // so this is non-null in practice — but the caption reads the words, and
       // a marker that can't say which box it means is worse than silence.
-      if (wantedProduct) return { kind: 'withoutProduct', shop: trip, wantedProduct };
+      if (wantedProduct) {
+        const alternative = alternativeProductAt(item, here, products);
+        return {
+          kind: 'withoutProduct',
+          shop: trip,
+          wantedProduct,
+          ...(alternative ? { alternativeProduct: alternative } : null),
+        };
+      }
     }
     // Otherwise this store covers the row, so say nothing.
     return null;
@@ -201,6 +220,46 @@ export function tripMarkerFor(
   if (usually && usually.id !== trip.id) return { kind: 'usually', shop: usually };
 
   return null;
+}
+
+/**
+ * The next box worth reaching for at a store that hasn't got the one you came
+ * for, in its own words — or null when there's nothing honest to offer.
+ *
+ * Three exclusions, and each is the difference between a useful line and a
+ * misleading one:
+ *
+ * - **The preferred one**, which is the box the caption has just said isn't
+ *   here.
+ * - **Anything rated `avoid`.** Everywhere else a rating sorts and never
+ *   filters, because hiding a box you disliked takes the memory away exactly
+ *   when you're about to buy it again. This is the one place it filters, and
+ *   the reason is that the app is *recommending* rather than listing: "try
+ *   the one you told me you hated" is the app not having read its own record.
+ * - **Anything this store is also on record as not having.** The claims are
+ *   per product (`ItemShopLink.unavailableProductIds`), so the row already
+ *   knows; offering a second box the user has stood here and failed to find
+ *   is the same error as offering the first.
+ *
+ * Order comes from `productsForItem`, which already ranks loved above unrated,
+ * so the best thing on record wins without a second ranking rule here.
+ *
+ * **Never a box the app merely assumes exists.** Every candidate is a product
+ * the user typed themselves, which is what keeps this on the right side of the
+ * line `shoppingTrip.ts` drew when it deleted `likelyItemIds`: the app may
+ * rearrange what the user recorded, never invent stock it has no evidence of.
+ */
+function alternativeProductAt(
+  item: GroceryItem,
+  link: ItemShopLink,
+  products: readonly ItemProduct[],
+): string | null {
+  const candidate = productsForItem(item.id, products, item.preferredProductId).find(
+    p => p.id !== item.preferredProductId
+      && p.rating !== 'avoid'
+      && link.unavailableProductIds[p.id] === undefined
+  );
+  return candidate ? describeProduct(candidate) : null;
 }
 
 /**
@@ -232,8 +291,26 @@ export function describeTripMarker(marker: TripMarker): string {
     // doesn't name what this shop *does* carry — the app only knows what you
     // last got here, which on a shelf holding several versions is a fact about
     // one purchase and not about today.
+    // The alternative rides inside the marker that's already there rather than
+    // adding a line, exactly as a substitute does on the unavailable case
+    // above: a fourth caption is how the row becomes unreadable while walking.
+    // "try" and not "get" — it's the best thing on record, not an instruction.
+    //
+    // And it drops the wanted product's name to make room, the same trade the
+    // unavailable case makes one branch up. The row is one line
+    // (`numberOfLines={1}`), and naming both boxes overflows on anything but
+    // the shortest pair — with the *alternative* being what gets cut, which is
+    // the half that tells you what to do. You already know what you came for;
+    // what you need is what to reach for instead.
+    //
+    // Deliberately not the "Not here" that branch uses: the store *has* this
+    // item, it just hasn't got your box, and collapsing those two claims into
+    // one phrase would tell the user a shop had nothing when it had the thing
+    // and not their version of it.
     case 'withoutProduct':
-      return `No ${marker.wantedProduct} here`;
+      return marker.alternativeProduct
+        ? `Yours isn’t here · try ${marker.alternativeProduct}`
+        : `No ${marker.wantedProduct} here`;
     case 'only':
       return `Only at ${marker.shop.name}`;
     case 'usually':

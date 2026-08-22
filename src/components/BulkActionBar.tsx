@@ -18,20 +18,17 @@ import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { PRIORITY_LABELS, PRIORITY_COLORS, type Priority, type TimeOfDay } from '../types';
 import { tagColor } from '../utils/tagColor';
-import { useCategoryStore } from '../store/useCategoryStore';
-import { categoryLabel } from '../utils/categoryLabel';
-import { useShallow } from 'zustand/react/shallow';
+import { CategoryPickerSheet } from './CategoryPicker';
 
 interface Props {
   selectedCount: number;
   totalCount: number;
   existingTags: string[];
-  existingCategories: string[];
   onComplete: () => void;
   onDelete: () => void;
   onSetWhen: (date: Date | null, timeSegments: TimeOfDay[]) => void;
+  /** Where to move the selection. `null` clears the category. Creating a new one happens in the picker. */
   onSetCategory: (category: string | null) => void;
-  onAddCategory: (name: string) => void;
   onAddTags: (tags: string[]) => void;
   onSetPriority: (priority: Priority) => void;
   // Grouping is Today/Later-only for now — other screens that bulk-select
@@ -50,21 +47,19 @@ interface Props {
   onHeightChange?: (height: number) => void;
 }
 
-type Panel = 'actions' | 'more' | 'priority' | 'tags' | 'category' | 'group';
-
-/** Four rows of chips (34pt each, spacing.sm between) before the grid starts scrolling. */
-const CATEGORY_LIST_MAX_HEIGHT = 172;
+// Category is absent on purpose: it opens `CategoryPickerSheet` rather than a
+// panel in the bar, which had the same problem the quick-add pill grid did —
+// four rows of chips over a floating bar is no room to find anything in.
+type Panel = 'actions' | 'more' | 'priority' | 'tags' | 'group';
 
 export function BulkActionBar({
   selectedCount,
   totalCount,
   existingTags,
-  existingCategories,
   onComplete,
   onDelete,
   onSetWhen,
   onSetCategory,
-  onAddCategory,
   onAddTags,
   onSetPriority,
   onGroup,
@@ -78,14 +73,13 @@ export function BulkActionBar({
 }: Props) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const categories = useCategoryStore(useShallow(s => s.categories));
   const entranceStyle = useBulkBarEntrance();
   const [panel, setPanel] = useState<Panel>('actions');
   const [whenVisible, setWhenVisible] = useState(false);
+  const [categoryVisible, setCategoryVisible] = useState(false);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [newTagText, setNewTagText] = useState('');
   const [groupTitle, setGroupTitle] = useState('');
-  const [newCategoryText, setNewCategoryText] = useState('');
 
   const allSelected = selectedCount === totalCount;
 
@@ -125,56 +119,11 @@ export function BulkActionBar({
     setGroupTitle('');
   };
 
-  const handleSetCategory = (category: string | null) => {
-    haptics.tap();
-    onSetCategory(category);
-    setNewCategoryText('');
-    setPanel('actions');
-  };
-
-  const handleAddNewCategory = () => {
-    const trimmed = newCategoryText.trim();
-    if (!trimmed) return;
-    onAddCategory(trimmed);
-    onSetCategory(trimmed);
-    setNewCategoryText('');
-    setPanel('actions');
-  };
-
-  // The category field doubles as a filter and as the create-new input: with ten
-  // categories the grid is the fast path, and typing narrows it to a couple of
-  // chips rather than making the list something to hunt through.
-  const categoryQuery = newCategoryText.trim().toLowerCase();
-
-  const filteredCategories = useMemo(() => {
-    if (!categoryQuery) return existingCategories;
-    return existingCategories.filter(
-      c =>
-        c.toLowerCase().includes(categoryQuery) ||
-        categoryLabel(c, categories).toLowerCase().includes(categoryQuery),
-    );
-  }, [existingCategories, categories, categoryQuery]);
-
-  const exactCategory = useMemo(
-    () => (categoryQuery ? existingCategories.find(c => c.toLowerCase() === categoryQuery) ?? null : null),
-    [existingCategories, categoryQuery],
-  );
-
-  // Return picks the obvious match when there is one, so typing a few letters and
-  // hitting done never silently creates a duplicate of a category that exists.
-  const handleCategorySubmit = () => {
-    if (!categoryQuery) return;
-    if (exactCategory) return handleSetCategory(exactCategory);
-    if (filteredCategories.length === 1) return handleSetCategory(filteredCategories[0]);
-    handleAddNewCategory();
-  };
-
   const goBack = () => {
     setPanel('actions');
     setSelectedTags(new Set());
     setNewTagText('');
     setGroupTitle('');
-    setNewCategoryText('');
   };
 
   return (
@@ -216,7 +165,7 @@ export function BulkActionBar({
               </PressableScale>
               <PressableScale
                 style={styles.actionBtn}
-                onPress={() => { haptics.tap(); setPanel('category'); }}
+                onPress={() => { haptics.tap(); setCategoryVisible(true); }}
               >
                 <Ionicons name="folder" size={24} color={colors.purple} />
                 <Text style={[styles.actionLabel, { color: colors.purple }]}>Move</Text>
@@ -374,67 +323,6 @@ export function BulkActionBar({
           </View>
         )}
 
-        {panel === 'category' && (
-          <View style={styles.subPanel}>
-            <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
-                <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
-              <Text style={styles.subTitle}>Move to Category</Text>
-              <View style={{ width: 28 }} />
-            </View>
-            <View style={styles.tagInputRow}>
-              <TextInput
-                style={styles.tagInput}
-                placeholder="Find or add a category…"
-                placeholderTextColor={colors.textTertiary}
-                value={newCategoryText}
-                onChangeText={setNewCategoryText}
-                returnKeyType="done"
-                onSubmitEditing={handleCategorySubmit}
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
-            </View>
-            <ScrollView
-              style={styles.categoryList}
-              contentContainerStyle={styles.categoryListContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {!categoryQuery && (
-                <TouchableOpacity
-                  style={styles.categoryChip}
-                  onPress={() => handleSetCategory(null)}
-                >
-                  <Text style={styles.categoryChipText}>None</Text>
-                </TouchableOpacity>
-              )}
-              {filteredCategories.map(cat => (
-                <TouchableOpacity
-                  key={cat}
-                  style={styles.categoryChip}
-                  onPress={() => handleSetCategory(cat)}
-                >
-                  <Ionicons name="folder-outline" size={13} color={colors.textSecondary} />
-                  <Text style={styles.categoryChipText}>{categoryLabel(cat, categories)}</Text>
-                </TouchableOpacity>
-              ))}
-              {categoryQuery !== '' && !exactCategory && (
-                <TouchableOpacity
-                  style={[styles.categoryChip, styles.categoryCreateChip]}
-                  onPress={handleAddNewCategory}
-                >
-                  <Ionicons name="add" size={13} color={colors.accent} />
-                  <Text style={[styles.categoryChipText, styles.categoryCreateChipText]} numberOfLines={1}>
-                    Create “{newCategoryText.trim()}”
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </ScrollView>
-          </View>
-        )}
-
         {panel === 'group' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
@@ -473,6 +361,14 @@ export function BulkActionBar({
         onConfirm={handleConfirmWhen}
         onClear={() => handleConfirmWhen(null, [])}
         onCancel={() => setWhenVisible(false)}
+      />
+      {/* No `value`: the selection can span categories, so there's nothing to
+          tick — every row here is a destination. */}
+      <CategoryPickerSheet
+        visible={categoryVisible}
+        title="Move to Category"
+        onSelect={onSetCategory}
+        onClose={() => setCategoryVisible(false)}
       />
     </>
   );
@@ -627,44 +523,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.sm,
     fontWeight: '500',
-  },
-  // Four rows of chips, then it scrolls — enough that a normal set of categories
-  // is on screen at once, without the bar growing tall enough to swallow the list
-  // it's floating over.
-  categoryList: {
-    maxHeight: CATEGORY_LIST_MAX_HEIGHT,
-    flexGrow: 0,
-  },
-  categoryListContent: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    paddingVertical: 2,
-  },
-  categoryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    borderWidth: 1.5,
-    borderColor: colors.bgQuaternary,
-    backgroundColor: colors.bgTertiary,
-  },
-  categoryChipText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: '500',
-  },
-  categoryCreateChip: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accent + '33',
-    maxWidth: '100%',
-  },
-  categoryCreateChipText: {
-    color: colors.accent,
-    flexShrink: 1,
   },
   tagInputRow: {
     paddingBottom: spacing.xs,

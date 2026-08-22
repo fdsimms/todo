@@ -207,8 +207,22 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
     [eligibleMatches],
   );
 
+  // Tapping Done can beat the new-tag/new-task fields' own blur or Enter —
+  // same race TaskEditor's resolveX functions guard against.
+  const resolvePendingTags = () => {
+    const t = newTag.trim().toLowerCase();
+    return t && !tags.includes(t) ? [...tags, t] : tags;
+  };
+  const commitPendingChild = () => {
+    if (!addingChild) return;
+    commitChild(newChildTitle);
+    setNewChildTitle('');
+  };
+
   const saveAndClose = () => {
     if (!group) { onClose(); return; }
+    commitPendingChild();
+    const resolvedTags = resolvePendingTags();
     // A blank title only skips the *title* write — an untitled brand-new
     // stack is garbage-collected by the caller anyway (see TodayScreen), and
     // silently dropping notes/tags/category along with it meant
@@ -218,7 +232,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
     updateGroup(group.id, {
       ...(trimmed ? { title: trimmed } : {}),
       notes,
-      tags,
+      tags: resolvedTags,
       category,
     });
     // The stack owns its members' category, so changing it here re-files

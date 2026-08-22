@@ -31,6 +31,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, FetchEventsResult, fetchEvents, listWritableCalendars, AllDayEventFields, +9 more
 - `src/utils/categoryLabel.ts` — categoryLabel
 - `src/utils/categoryOrder.ts` — moveCategory, alphabeticalCategories, sortCategoriesByTaskCount
+- `src/utils/categoryPicker.ts` — CategoryOption, CategoryFilterResult, optionLabel, filterCategories, CategorySubmit, resolveCategorySubmit
 - `src/utils/categorySchedule.ts` — DAY_LABELS, FULL_DAY_NAMES, formatScheduleTime, formatScheduleDays, formatCategorySchedule
 - `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, parseChainItems, ChainPreview, chainPreview, isChainFinish
 - `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, formatHHMM, clockTimeToken, dateToHHMM
@@ -58,7 +59,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/extraTask.ts` — MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N, ExtraTaskRule, extraTaskRule, advanceExtraTaskTally, completionsUntilExtraTask, extraTaskSummary, describeExtraTaskRule, emptyExtraTaskDraft, parseExtraTaskDraft, +2 more
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, resolveFabDrop, targetKey, +15 more
-- `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy
+- `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeFrozenSince, describeOpenedOn
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, GroupSearchResult, searchGroups
 - `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, wantsGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind, hasAnyGeneratedTask, generatedTaskCountOf, generatedSourceOf, +3 more
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, hiddenDefaultAisles, +1 more
@@ -67,17 +68,19 @@ render, so listing them adds lines without adding answers.
 - `src/utils/groceryPrice.ts` — parsePriceInput, formatPrice, priceToInput, formatPriceInput, describePriceAge, describePriceContext, describeShopPrices, ShopPrice, shopPricesFor, Comparable, +12 more
 - `src/utils/groceryProduct.ts` — productKeyFor, describeProduct, describeCatalogItem, productsForItem, preferredProductOf, describePreferredProduct, RATING_LABELS, describeProductPurchases, parseUnavailableProductIds, lacksPreferredProduct
 - `src/utils/groceryReorder.ts` — GroceryDropRow, GroceryPlacement, resolveGroceryDrop, KeyedGroceryDropRow, placeNewGroceryItems, groceryDragRange
-- `src/utils/groceryShelfLife.ts` — SHELF_LIFE_LEXICON, shelfLifeDaysFor, clampExpiryDays, expiryKeyFor, defaultExpiresAt, expiresAtForPurchase, expiryDaysFromNow, describeExpiry
+- `src/utils/groceryShelfLife.ts` — SHELF_LIFE_LEXICON, shelfLifeDaysFor, OPEN_SHELF_LIFE_LEXICON, openShelfLifeDaysFor, clampExpiryDays, expiryKeyFor, defaultExpiresAt, expiresAtForPurchase, expiresAtForOpening, liveExpiresAt, +2 more
 - `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, ShopWithCount, shopsForItem, unavailableShopsFor, withoutProductShopsFor, primaryShopFor, exclusiveShopFor, +3 more
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, buyAgainItems, sectionsInAisleOrder, buildGrocerySections, buildGroceryRecipeSections, +7 more
+- `src/utils/gtin.ts` — gtinCheckDigit, normalizeGtin, isGtin, formatGtin, GTIN_MISS_TTL_DAYS, isCacheEntryFresh
 - `src/utils/haptics.ts` — haptics
 - `src/utils/id.ts` — generateId
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
 - `src/utils/kitchenHistory.ts` — KitchenEventKind, KitchenEvent, KitchenHistoryDay, kitchenEvents, kitchenHistoryDays, filterKitchenEvents
-- `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, KitchenEntry, KitchenSection, compareKitchenEntries, kitchenInventory, useUpEntries, +2 more
+- `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
+- `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, KitchenEntry, KitchenSection, compareKitchenEntries, kitchenInventory, +3 more
 - `src/utils/layoutAnimation.ts` — animateLayout
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskNeedsUpdate
-- `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, keepUntilKeyFor, keepDaysBetween, isLiveLeftover, +19 more
+- `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, keepUntilKeyFor, keepDaysBetween, isLiveLeftover, liveKeepUntil, liveFreshnessOf, +19 more
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +3 more
@@ -100,8 +103,10 @@ render, so listing them adds lines without adding answers.
 - `src/utils/phone.ts` — phoneDigits, telUrl, isDialable, smsUrl, formatPhoneInput, looksLikePhoneNumber
 - `src/utils/pillOverflow.ts` — OverflowPill, PillOverflowResult, PillOverflowOptions, DEFAULT_PILL_LIMIT, resolvePillOverflow, PillSubmit, resolvePillSubmit
 - `src/utils/pinSuggest.ts` — MAX_SUGGESTED_PINS, PinContext, buildCoOccurrenceIndex, currentTimeSegment, buildPinContext, overdueDays, scoreTask, nextPinSuggestion, suggestPins, pinReason, +1 more
+- `src/utils/plu.ts` — normalizePlu, splitOrganicPlu, pluNameFor
 - `src/utils/postpone.ts` — PostponeOutcome, DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD, parsePostponeThreshold, postponeOutcome, nextPostponeCount, nextDriftingSince, DriftEntry, driftingTaskList, +2 more
-- `src/utils/priceHistory.ts` — PRICE_HISTORY_LIMIT, parsePriceHistory, appendPriceObservation, priceBaseline, PriceStanding, priceStanding, mergePriceHistories
+- `src/utils/priceHistory.ts` — PRICE_HISTORY_LIMIT, parsePriceHistory, appendPriceObservation, PRODUCT_RUN_MIN, priceRunForProduct, priceBaseline, PriceStanding, priceStanding, mergePriceHistories
+- `src/utils/pricePairing.ts` — PairItem, Pairing, autoPairing, pairWith, unpair, unpairedPriceIndexes, pricesByItemId
 - `src/utils/prioritySegments.ts` — PRIORITY_SEGMENTS
 - `src/utils/projectGrouping.ts` — ProjectListItem, groupProjectsByCategory, ProjectDropResolution, resolveProjectDrop
 - `src/utils/projectOrder.ts` — liveProjectSteps, stepNumbersByTask, slotUpdates
@@ -112,7 +117,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/quickSearch.ts` — QUICK_SEARCH_LIMIT, QuickSearchOutcome, quickSearch
 - `src/utils/quotaUnit.ts` — MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit, formatQuotaProgress, formatQuotaTarget
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring
-- `src/utils/receiptMatch.ts` — ReceiptMatchConfidence, ReceiptMatch, receiptMatchConfidence, matchReceiptLines, matchReceiptShop, ReceiptCaution, receiptCautionsFor, acceptedByDefault, isPlausibleReceiptDate
+- `src/utils/receiptMatch.ts` — ReceiptMatchConfidence, ReceiptMatch, receiptMatchConfidence, AliasResolver, matchReceiptLines, matchReceiptShop, ReceiptCaution, receiptCautionsFor, acceptedByDefault, isPlausibleReceiptDate
 - `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, parseRecipeChoices, makeComponent, ChoiceResolution, choiceGroupKey, activeComponents, activeIngredients, recipeMap, ResolvedComponent, +19 more
 - `src/utils/recipeCost.ts` — CostEstimate, estimateRecipeCost, estimateWeekCost, describeRecipeCost, describeWeekCost
 - `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, pickRecipePhoto, MAX_IMAGE_EDGE, RecipeImageAttachment, RecipeImageResult, pickRecipeImage, +5 more
@@ -130,9 +135,10 @@ render, so listing them adds lines without adding answers.
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
+- `src/utils/scanResolve.ts` — ScannedItem, shopperNameFor, scannedItemFor, pluScannedItem, unknownScannedItem, alreadyScanned, matchScans
 - `src/utils/scrollClamp.ts` — maxRestingOffset, strandedScrollOffset, NO_INSET, NO_INSET_ALT, pulseNoInset
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
-- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey
+- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadSecureKey, saveSecureKey
 - `src/utils/segmentColumns.ts` — segmentRows
 - `src/utils/settingsIndex.ts` — SettingsGroupId, SettingsTint, SettingsGroup, SETTINGS_GROUPS, SettingsEntry, SETTINGS_ENTRIES, visibleSettingsGroups, visibleSettingsEntries, settingsGroup
 - `src/utils/settingsSearch.ts` — SettingsSearchResult, searchSettings
@@ -146,6 +152,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/startup.ts` — runStartupStep, runStartupSequence
 - `src/utils/stats.ts` — OnTimeSummary, onTimeSummary
 - `src/utils/stepper.ts` — StepRange, clampCount, stepCount, canStep, holdRepeatDelay
+- `src/utils/storeAliases.ts` — aliasKeyFor, aliasItemIdFor, AliasDraft, aliasDraftsFrom
 - `src/utils/substituteSuggestions.ts` — MAX_SUGGESTED_SUBSTITUTES, SuggestedSubstitute, RawSuggestedSubstitute, dedupeSuggestedSubstitutes
 - `src/utils/syncEngine.ts` — SyncTransport, PullResult, SyncLocal, SyncStatus, SyncRunResult, hasChanges, runSync
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
@@ -210,10 +217,11 @@ render, so listing them adds lines without adding answers.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +113 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +121 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SYNC_DELETIONS_TABLE, NOW_EXPR, TOMBSTONE_RETENTION_DAYS, rowKeyExpr, +5 more
 
 ## `src/services`
 
 - `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, SubtaskSuggestion, suggestSubtasks, MAX_RECIPE_CHARS, suggestGroceryAisles, RecipeGroceryItem, RecipeImageMediaType, RecipeImage, +10 more
+- `src/services/productLookup.ts` — ProductRecord, ProductLookupError, describeLookupError, lookupGtin
 - `src/services/recipePage.ts` — RecipePageErrorCode, RecipePageError, recipePageError, isRecipePageError, describeImportError, isRetryableImportError, FetchedRecipePage, fetchRecipePage

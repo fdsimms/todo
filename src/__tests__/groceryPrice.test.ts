@@ -9,10 +9,12 @@ import {
   formatPrice,
   formatPriceInput,
   lastPriceFor,
+  lastPricedAmountFor,
   parsePriceInput,
   priceStandingFor,
   priceToInput,
   shopPricesFor,
+  typicalPriceFor,
   unitPricesFor,
 } from '../utils/groceryPrice';
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
@@ -42,6 +44,9 @@ function makeItem(overrides: Partial<GroceryItem> = {}): GroceryItem {
     choiceGroup: null,
     isStaple: false,
     expiresAt: null,
+    frozenAt: null,
+    openedAt: null,
+    runningLowAt: null,
     shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,
@@ -59,6 +64,7 @@ function makeShop(name: string, sortOrder: number): Shop {
     sortOrder,
     createdAt: '2026-01-01T00:00:00.000Z',
     excludeFromSuggestions: false,
+    receiptStyle: 'itemized' as const,
   };
 }
 
@@ -76,8 +82,13 @@ function link(overrides: Partial<ItemShopLink> & Pick<ItemShopLink, 'itemId' | '
   };
 }
 
-function obs(minor: number, quantity: string | null = null, at = '2026-08-01T00:00:00.000Z') {
-  return { minor, quantity, at };
+function obs(
+  minor: number,
+  quantity: string | null = null,
+  at = '2026-08-01T00:00:00.000Z',
+  productId: string | null = null,
+) {
+  return { minor, quantity, at, productId };
 }
 
 const costco = makeShop('Costco', 1);
@@ -596,5 +607,70 @@ describe('lastPriceFor', () => {
 
   it('is null when nothing has ever been priced', () => {
     expect(lastPriceFor(makeItem(), costco.id, [])).toBeNull();
+  });
+});
+
+// ─── prices scoped to the preferred product ─────────────────────────────────
+
+describe('a preferred product scopes the run', () => {
+  const arnolds = (minor: number) => obs(minor, '1 loaf', '2026-08-01T00:00:00.000Z', 'p-arnolds');
+  const store = (minor: number) => obs(minor, '1 loaf', '2026-08-01T00:00:00.000Z', 'p-store');
+  const mixed = [arnolds(499), store(299), arnolds(529), store(279)];
+
+  it('answers "what does the one I buy cost", not "what does bread cost"', () => {
+    const bread = makeItem({ id: 'bread', preferredProductId: 'p-arnolds', priceHistory: mixed });
+    expect(typicalPriceFor(bread, null, [])?.minor).toBe(514);
+
+    // The same run, asked about the other box.
+    const cheap = makeItem({ id: 'bread', preferredProductId: 'p-store', priceHistory: mixed });
+    expect(typicalPriceFor(cheap, null, [])?.minor).toBe(289);
+  });
+
+  it('scopes the store-level run the same way', () => {
+    const bread = makeItem({ id: 'bread', preferredProductId: 'p-arnolds' });
+    const links = [link({ itemId: 'bread', shopId: costco.id, priceHistory: mixed })];
+    expect(typicalPriceFor(bread, costco.id, links)?.minor).toBe(514);
+  });
+
+  it('falls back to the whole run rather than answering with less', () => {
+    // One Arnold's observation is below the floor, so the unfiltered median
+    // stands — this can never return less than it did before products.
+    const thin = [arnolds(499), store(299), store(279)];
+    const bread = makeItem({ id: 'bread', preferredProductId: 'p-arnolds', priceHistory: thin });
+    expect(typicalPriceFor(bread, null, [])?.minor).toBe(299);
+  });
+
+  it('changes nothing for an item with no preference', () => {
+    const bread = makeItem({ id: 'bread', priceHistory: mixed });
+    expect(typicalPriceFor(bread, null, [])?.minor).toBe(399);
+  });
+
+  // "More than usual" measured against a run that mixed in a cheaper box is a
+  // verdict about the wrong thing.
+  it('judges a price against its own box', () => {
+    const dear = makeItem({
+      id: 'bread',
+      preferredProductId: 'p-arnolds',
+      lastPriceMinor: 519,
+      lastPriceQuantity: '1 loaf',
+      priceHistory: mixed,
+    });
+    // 519 against Arnold's own 499/529 is ordinary; against the mixed run
+    // (median 399) it would have read as "more than usual".
+    expect(priceStandingFor(dear, null, [])).toBe('usual');
+  });
+
+  // The scalar is a single fact about the row, and setItemPrice writes it
+  // without touching the run — deriving it from the filtered run would discard
+  // a correction made by hand.
+  it('leaves the last recorded price alone', () => {
+    const bread = makeItem({
+      id: 'bread',
+      preferredProductId: 'p-arnolds',
+      lastPriceMinor: 349,
+      lastPriceQuantity: '1 loaf',
+      priceHistory: mixed,
+    });
+    expect(lastPricedAmountFor(bread, null, [])).toEqual({ minor: 349, quantity: '1 loaf' });
   });
 });

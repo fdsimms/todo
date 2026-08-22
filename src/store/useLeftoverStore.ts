@@ -79,6 +79,28 @@ interface LeftoverStore {
   setStoredAt: (id: string, storedAt: string) => void;
   /** Re-resolves `keepUntil` from the row's own `storedAt`. */
   setKeepDays: (id: string, days: number) => void;
+  /**
+   * Puts this container in the freezer, or takes it back out.
+   *
+   * The fridge half of `useGroceryStore.setFrozen`, with the same two rules:
+   * freezing stamps the instant and leaves `keepUntil` alone (it stops being
+   * read, via `liveKeepUntil`), and thawing hands back the *same window the
+   * container was given*, measured from now.
+   *
+   * The same window rather than the remaining days, which was the other
+   * candidate: a portion frozen on day three of four would come back with one
+   * day, on the theory that the clock merely paused. It didn't pause, it
+   * stopped — freezing is what arrests the spoiling this window is about — so
+   * restarting it whole is both the truer model and the safer one to be wrong
+   * about in the user's favour. `keepDaysBetween` is where that window is read
+   * back from, so a container whose keep-for was edited keeps the edited one.
+   *
+   * **It never closes the container out.** `finishedAt` stays null through
+   * both directions: a frozen portion is still in the kitchen and still
+   * plannable onto a night of the week, which is most of what anyone freezes
+   * one for.
+   */
+  setFrozen: (id: string, frozen: boolean) => void;
 
   /**
    * Closes the row out — the explicit action that is deliberately *not* implied
@@ -197,6 +219,11 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
       keepUntil: keepUntilKeyFor(storedAt, draft.keepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT),
       finishedAt: null,
       outcome: null,
+      // Logged into the fridge, never straight into the freezer: what goes in
+      // the freezer is a container that already exists, and logLeftover is the
+      // moment the container is created. LeftoverSheet's Freeze is one tap
+      // away, and it stamps the instant the user actually taps it.
+      frozenAt: null,
       createdAt: new Date().toISOString(),
       useUpTask: null,
     };
@@ -237,6 +264,30 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     if (!leftover) return;
     const updated = { ...leftover, keepUntil: keepUntilKeyFor(leftover.storedAt, days) };
     save(set, updated);
+    reconcileLeftoverTask(updated);
+  },
+
+  setFrozen(id, frozen) {
+    const leftover = get().leftovers.find(l => l.id === id);
+    if (!leftover || !!leftover.frozenAt === frozen) return;
+    const now = new Date().toISOString();
+    const updated: Leftover = frozen
+      ? { ...leftover, frozenAt: now }
+      : {
+          ...leftover,
+          frozenAt: null,
+          // Out of the freezer is a fresh start in the fridge, so both dates
+          // move: `storedAt` to now (it's the anchor `describeAge` and
+          // `keepUntilKeyFor` both count from, and leaving it at the original
+          // put-away would have a portion frozen in July read as "40 days in
+          // the fridge" the moment it thaws), and `keepUntil` to the same
+          // window measured from that new anchor.
+          storedAt: now,
+          keepUntil: keepUntilKeyFor(now, keepDaysBetween(leftover.storedAt, leftover.keepUntil)),
+        };
+    save(set, updated);
+    // Freezing drops a use-up task that needsAttention no longer wants;
+    // thawing spawns one if the restarted window lands inside the threshold.
     reconcileLeftoverTask(updated);
   },
 

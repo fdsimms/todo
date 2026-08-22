@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
-import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES } from '../types';
+import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, ReceiptStyle, Shop, StoreAlias, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
@@ -294,6 +294,38 @@ export function initDatabase(): void {
       created_at TEXT NOT NULL
     );
 
+    -- What a barcode turned out to be. A cache of a shared, unchanging fact
+    -- (what a GTIN denotes), keyed by the code rather than by an item, and the
+    -- one grocery table that records nothing about the user. Misses are stored
+    -- too — a barcode nobody has heard of is exactly the one that would
+    -- otherwise hit the network on every unpack — and they expire, where hits
+    -- don't. See GtinLookup in types, and gtin.ts for why the key is GTIN-14.
+    -- "At this store, GV MLK 2% GAL means milk." Written only from a
+    -- confirmation in a review sheet, never from the app's own guess. Keyed by
+    -- id rather than the (shop_id, raw_key) pair it is unique on, because
+    -- sync's row_key joins composite keys with '|' and this one is receipt
+    -- text. shop_id is '' (never NULL) for a text that isn't store-specific:
+    -- SQLite treats NULLs as distinct in a UNIQUE index. See StoreAlias.
+    CREATE TABLE IF NOT EXISTS grocery_store_aliases (
+      id TEXT PRIMARY KEY NOT NULL,
+      shop_id TEXT NOT NULL DEFAULT '',
+      raw_key TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      hit_count INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      last_used_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS gtin_lookups (
+      gtin TEXT PRIMARY KEY NOT NULL,
+      found INTEGER NOT NULL DEFAULT 0,
+      name TEXT NOT NULL DEFAULT '',
+      brand TEXT,
+      quantity TEXT,
+      source TEXT NOT NULL DEFAULT '',
+      fetched_at TEXT NOT NULL
+    );
+
     -- A dish, and what it takes to shop for it. The ingredients column is a
     -- JSON array rather than its own table for the reason templates.items is
     -- one: nothing outside this row holds an ingredient's id. See Recipe in
@@ -443,6 +475,10 @@ export function initDatabase(): void {
     // both-ways tick and dbDeleteGroceryItem's second cascade both need.
     // item → substitutes needs no index: it's the leading column of the key.
     'CREATE INDEX IF NOT EXISTS idx_grocery_item_subs_sub ON grocery_item_subs(sub_item_id)',
+    // The pair a lookup keys on, and the guarantee that one phrase at one store
+    // can only ever mean one thing.
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_grocery_store_aliases_key ON grocery_store_aliases(shop_id, raw_key)',
+    'CREATE INDEX IF NOT EXISTS idx_grocery_store_aliases_item ON grocery_store_aliases(item_id)',
     // "1 clove" → "1/4 tsp" (#1573). Both null or both set — see
     // ItemSubLink.ratioFrom — so no default and no backfill: an existing link
     // simply has no ratio, which is the row it already was.
@@ -515,6 +551,10 @@ export function initDatabase(): void {
     // meant to drop out of suggestions. Same naming convention as
     // categories' exclude_from_pin_suggestions.
     'ALTER TABLE grocery_shops ADD COLUMN exclude_from_suggestions INTEGER NOT NULL DEFAULT 0',
+    // See ReceiptStyle. Text rather than an integer flag because it is three
+    // states and will read back as itself in a sqlite browser; 'itemized' for
+    // every existing row, which is what they have all been treated as.
+    "ALTER TABLE grocery_shops ADD COLUMN receipt_style TEXT NOT NULL DEFAULT 'itemized'",
     // Null for every existing recipe — splits the old single sourceName
     // attribution into author/source (#1266). Not backfilled from
     // source_name: an old value can't be reliably assigned to one or the
@@ -654,6 +694,18 @@ export function initDatabase(): void {
     // feature that didn't exist, so every item keeps deferring to the lexicon
     // guess exactly as before. See GroceryItem.shelfLifeDays.
     'ALTER TABLE grocery_items ADD COLUMN shelf_life_days INTEGER',
+    // NULL on every existing row — nothing was in the freezer before there was
+    // a freezer, so every item keeps counting down exactly as it did. See
+    // GroceryItem.frozenAt.
+    'ALTER TABLE grocery_items ADD COLUMN frozen_at TEXT',
+    // NULL on every existing row — nothing has been opened before there was an
+    // opened, so every item keeps counting from its purchase exactly as it did.
+    // See GroceryItem.openedAt.
+    'ALTER TABLE grocery_items ADD COLUMN opened_at TEXT',
+    // NULL on every existing row: nobody has said they're nearly out of
+    // anything, and null is what "no answer" already means for this column's
+    // two neighbours. See GroceryItem.runningLowAt.
+    'ALTER TABLE grocery_items ADD COLUMN running_low_at TEXT',
     // Superseded by generated_kind/generated_source_id, same as meal_entry_id.
     'ALTER TABLE tasks ADD COLUMN grocery_item_id TEXT',
     // NULL on every existing row — nobody has a rule for a feature that didn't
@@ -705,6 +757,10 @@ export function initDatabase(): void {
     // DEFAULT 0 would record every leftover already in the fridge as an
     // explicit refusal. See Leftover.useUpTask.
     'ALTER TABLE leftovers ADD COLUMN use_up_task INTEGER',
+    // The fridge half of the same column, added in the same change for the
+    // reason freshness.ts exists: one of the two having a freezer and the
+    // other not is how the kitchen's halves drift. See Leftover.frozenAt.
+    'ALTER TABLE leftovers ADD COLUMN frozen_at TEXT',
     // NULL on every meal already planned, which is what makes the rollout
     // silent: picking a calendar mirrors the meals planned from then on
     // rather than back-filling a shared calendar with a fortnight of dinners
@@ -1085,6 +1141,7 @@ export const BACKUP_TABLES = [
   'grocery_item_shops',
   'grocery_item_subs',
   'grocery_item_products',
+  'grocery_store_aliases',
   'recipes',
   // Before meal_plan_entries: an entry can point at a leftover.
   'leftovers',
@@ -1107,6 +1164,13 @@ export const BACKUP_EXCLUDED_TABLES = [
   // triggers; carrying the old ones forward would restore stale deletion
   // history rather than the task list the user actually asked for back.
   'sync_deletions',
+  // The barcode cache. Every row is reconstructible from the barcode alone,
+  // and reconstructing one costs a single free request the next time that item
+  // is scanned — so putting it in a backup would inflate the file with data
+  // that is not the user's and that a restore does not need to recover. What a
+  // GTIN means is also not something a restore could get *wrong*, which is the
+  // risk BACKUP_TABLES exists to manage.
+  'gtin_lookups',
 ] as const;
 
 /** The live column names of a table, straight from the schema. */
@@ -2141,6 +2205,9 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     choiceGroup: (row.choice_group as string) ?? null,
     isStaple: Boolean(row.is_staple),
     expiresAt: (row.expires_at as string) ?? null,
+    frozenAt: (row.frozen_at as string) ?? null,
+    openedAt: (row.opened_at as string) ?? null,
+    runningLowAt: (row.running_low_at as string) ?? null,
     shelfLifeDays: (row.shelf_life_days as number) ?? null,
     lastPriceMinor: (row.last_price_minor as number) ?? null,
     lastPricedAt: (row.last_priced_at as string) ?? null,
@@ -2166,9 +2233,9 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, quantity_from_recipe, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
-       source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, shelf_life_days, use_up_task,
+       source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -2177,7 +2244,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
-      item.expiresAt ?? null, item.shelfLifeDays ?? null,
+      item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0,
@@ -2191,7 +2258,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        name=?, name_key=?, aisle=?, quantity=?, quantity_from_recipe=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
-       expires_at=?, shelf_life_days=?, use_up_task=?,
+       expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?
      WHERE id=?`,
@@ -2203,7 +2270,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
-      item.expiresAt ?? null, item.shelfLifeDays ?? null,
+      item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0,
@@ -2229,6 +2296,12 @@ export function dbDeleteGroceryItem(id: string): void {
   // ride along inside grocery_item_shops.unavailable_product_ids, which the
   // first statement above already deleted for this item.
   db.runSync('DELETE FROM grocery_item_products WHERE item_id = ?', [id]);
+  // An alias whose meaning is gone means nothing. Unlike the pointers that are
+  // left to dangle elsewhere here, this one can't be shrugged off at read time
+  // and left in place: the phrase would keep claiming a line, resolve to
+  // nothing, and so silently suppress the name match that would have found the
+  // right row — a remembered alias outranks every similarity tier.
+  db.runSync('DELETE FROM grocery_store_aliases WHERE item_id = ?', [id]);
   db.runSync('DELETE FROM grocery_items WHERE id = ?', [id]);
 }
 
@@ -2282,13 +2355,19 @@ export function dbFinishGroceryShopping(
             purchase_count = purchase_count + 1,
             last_purchased_at = ?,
             on_hand_until = NULL,
+            frozen_at = NULL,
+            opened_at = NULL,
+            running_low_at = NULL,
             quantity = CASE WHEN quantity_from_recipe = 1 THEN NULL ELSE quantity END,
             quantity_from_recipe = 0
       WHERE checked = 1 AND on_list = 1`,
     [purchasedAt]
   );
   // on_hand_until is *cleared* by a purchase rather than written, and it rides
-  // the bulk UPDATE above because null is the same value for every row. A
+  // the bulk UPDATE above because null is the same value for every row.
+  // frozen_at rides along for the same reason and a related one: the freezer
+  // claim was about the bag you had, and a fresh expires_at is stamped per-row
+  // below — leaving the claim would suspend the new day the moment it landed. A
   // purchase is evidence probablyHaveReason reads directly (#1770); the only
   // thing it has to say about the column is that buying something refutes an
   // "Out of it" left on it — the same correction a purchase already makes to a
@@ -2330,7 +2409,16 @@ export function dbFinishGroceryShopping(
       // that ran before this loop touches neither column.
       const history = appendPriceObservation(
         parsePriceHistory(row.price_history),
-        { minor: price, quantity: row.quantity ?? null, at: purchasedAt }
+        // Stamped with the box the row was asking for, so the run can later
+        // answer "what does the one I buy cost" rather than "what does bread
+        // cost". Null when the item has no preference, which is the honest
+        // record of not knowing which one came home — see PriceObservation.
+        {
+          minor: price,
+          quantity: row.quantity ?? null,
+          at: purchasedAt,
+          productId: row.preferred_product_id ?? null,
+        }
       );
       db.runSync(
         `UPDATE grocery_items
@@ -2388,7 +2476,15 @@ export function dbFinishGroceryShopping(
         );
         const history = appendPriceObservation(
           parsePriceHistory(existing?.price_history ?? null),
-          { minor: price, quantity: row.quantity ?? null, at: purchasedAt }
+          // Same stamp as the item-level run above, and it has to be the same
+          // value: the two runs record one purchase, so a caller comparing a
+          // store's baseline against the item's must be comparing like boxes.
+          {
+            minor: price,
+            quantity: row.quantity ?? null,
+            at: purchasedAt,
+            productId: row.preferred_product_id ?? null,
+          }
         );
         db.runSync(
           `UPDATE grocery_item_shops
@@ -2516,6 +2612,11 @@ function rowToShop(row: Record<string, unknown>): Shop {
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
     excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
+    // Anything unrecognised reads as 'itemized', which is also what a row that
+    // predates the column gets: an ordinary receipt is the overwhelming default
+    // and the only value that costs nothing to be wrong about (you scan, and it
+    // works or it doesn't).
+    receiptStyle: isReceiptStyle(row.receipt_style) ? row.receipt_style : 'itemized',
   };
 }
 
@@ -2544,6 +2645,10 @@ export function dbSetShopExcludeFromSuggestions(id: string, exclude: boolean): v
   db.runSync('UPDATE grocery_shops SET exclude_from_suggestions = ? WHERE id = ?', [exclude ? 1 : 0, id]);
 }
 
+export function dbSetShopReceiptStyle(id: string, style: ReceiptStyle): void {
+  db.runSync('UPDATE grocery_shops SET receipt_style = ? WHERE id = ?', [style, id]);
+}
+
 /**
  * Deleting a store takes its purchase records with it — a link to a store that
  * doesn't exist is unreadable, not merely orphaned. Same hand-written cascade
@@ -2551,6 +2656,11 @@ export function dbSetShopExcludeFromSuggestions(id: string, exclude: boolean): v
  */
 export function dbDeleteGroceryShop(id: string): void {
   db.runSync('DELETE FROM grocery_item_shops WHERE shop_id = ?', [id]);
+  // The store's remembered phrases go with it. They are claims about how *this
+  // printer* abbreviates, so they mean nothing once the store is gone, and
+  // leaving them would have a store re-added under a new id inherit nothing
+  // while the orphans went on matching against a shop nobody can name.
+  db.runSync('DELETE FROM grocery_store_aliases WHERE shop_id = ?', [id]);
   db.runSync('DELETE FROM grocery_shops WHERE id = ?', [id]);
 }
 
@@ -2708,6 +2818,144 @@ export function dbDeleteItemProduct(id: string): void {
     );
   }
   db.runSync('DELETE FROM grocery_item_products WHERE id = ?', [id]);
+}
+
+// ─── Store aliases ──────────────────────────────────────────────────────────
+
+function rowToStoreAlias(row: Record<string, unknown>): StoreAlias {
+  return {
+    id: row.id as string,
+    shopId: (row.shop_id as string) ?? '',
+    rawKey: row.raw_key as string,
+    itemId: row.item_id as string,
+    hitCount: (row.hit_count as number) ?? 0,
+    createdAt: row.created_at as string,
+    lastUsedAt: row.last_used_at as string,
+  };
+}
+
+export function dbGetAllStoreAliases(): StoreAlias[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM grocery_store_aliases')
+    .map(rowToStoreAlias);
+}
+
+/**
+ * Records a confirmation, creating the alias or bumping the one already there.
+ *
+ * Upserts on the unique pair rather than on the id, because the caller knows
+ * the phrase and the store but not whether this app has seen them together
+ * before — and minting a second id for the same pair is exactly what the index
+ * exists to refuse. A repeat confirmation bumps the count and the stamp; a
+ * confirmation naming a *different* item overwrites the pointer, since the
+ * latest thing a person said a phrase means is what it means.
+ */
+export function dbSetStoreAlias(alias: StoreAlias): void {
+  db.runSync(
+    `INSERT INTO grocery_store_aliases
+       (id, shop_id, raw_key, item_id, hit_count, created_at, last_used_at)
+     VALUES (?,?,?,?,?,?,?)
+     ON CONFLICT(shop_id, raw_key) DO UPDATE SET
+       item_id = excluded.item_id,
+       hit_count = grocery_store_aliases.hit_count + 1,
+       last_used_at = excluded.last_used_at`,
+    [
+      alias.id,
+      alias.shopId,
+      alias.rawKey,
+      alias.itemId,
+      alias.hitCount,
+      alias.createdAt,
+      alias.lastUsedAt,
+    ]
+  );
+}
+
+/** How many barcodes this device has answers for, for the Settings row. */
+export function dbCountGtinLookups(): number {
+  return db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM gtin_lookups')?.n ?? 0;
+}
+
+/**
+ * Forgets every cached barcode.
+ *
+ * The escape hatch for the one thing this cache can get permanently wrong. A
+ * *miss* expires on its own after GTIN_MISS_TTL_DAYS, but a **hit is kept for
+ * ever** on the reasoning that what a GTIN denotes never changes — which is
+ * true of the barcode and not of this app's reading of it. A source that
+ * returns an ugly or wrong name, or a parser that mis-reads a field, writes
+ * that answer once and there is otherwise no way to ask again.
+ *
+ * Cheap to use and close to harmless: every row is reconstructible, and the
+ * cost of clearing is one request per barcode the next time it is scanned.
+ * That asymmetry is why this is a plain button rather than something guarded.
+ */
+export function dbClearGtinLookups(): void {
+  db.runSync('DELETE FROM gtin_lookups');
+}
+
+export function dbDeleteStoreAlias(id: string): void {
+  db.runSync('DELETE FROM grocery_store_aliases WHERE id = ?', [id]);
+}
+
+// ─── Barcode lookups ────────────────────────────────────────────────────────
+
+function rowToGtinLookup(row: Record<string, unknown>): GtinLookup {
+  return {
+    gtin: row.gtin as string,
+    found: row.found === 1,
+    name: (row.name as string) ?? '',
+    brand: (row.brand as string) ?? null,
+    quantity: (row.quantity as string) ?? null,
+    source: (row.source as string) ?? '',
+    fetchedAt: row.fetched_at as string,
+  };
+}
+
+/**
+ * One cached barcode, or null if it has never been asked.
+ *
+ * Read one at a time rather than loaded into a store like every other grocery
+ * table, and that's the deliberate difference: this is a cache nothing renders,
+ * queried on the way to the network at the moment a code is scanned. Holding it
+ * in memory would mean carrying every barcode ever seen for the lifetime of the
+ * app to save a keyed lookup on a table with a primary key.
+ */
+export function dbGetGtinLookup(gtin: string): GtinLookup | null {
+  const row = db.getFirstSync<Record<string, unknown>>(
+    'SELECT * FROM gtin_lookups WHERE gtin = ?',
+    [gtin]
+  );
+  return row ? rowToGtinLookup(row) : null;
+}
+
+/**
+ * Upsert by GTIN — same contract as `dbSetItemProduct`: the caller passes the
+ * row it wants to exist, not a patch. Re-asking a stale miss overwrites it in
+ * place, so the table is bounded by distinct barcodes seen rather than by how
+ * often they were asked about.
+ */
+export function dbSetGtinLookup(entry: GtinLookup): void {
+  db.runSync(
+    `INSERT INTO gtin_lookups (gtin, found, name, brand, quantity, source, fetched_at)
+     VALUES (?,?,?,?,?,?,?)
+     ON CONFLICT(gtin) DO UPDATE SET
+       found = excluded.found,
+       name = excluded.name,
+       brand = excluded.brand,
+       quantity = excluded.quantity,
+       source = excluded.source,
+       fetched_at = excluded.fetched_at`,
+    [
+      entry.gtin,
+      entry.found ? 1 : 0,
+      entry.name,
+      entry.brand,
+      entry.quantity,
+      entry.source,
+      entry.fetchedAt,
+    ]
+  );
 }
 
 // ─── Substitutes ────────────────────────────────────────────────────────────
@@ -3065,6 +3313,7 @@ function rowToLeftover(row: Record<string, unknown>): Leftover {
       ? (outcome === 'tossed' ? 'tossed' : 'eaten')
       : null,
     createdAt: row.created_at as string,
+    frozenAt: (row.frozen_at as string) ?? null,
     useUpTask: row.use_up_task === null || row.use_up_task === undefined
       ? null
       : Boolean(row.use_up_task),
@@ -3088,12 +3337,12 @@ export function dbGetAllLeftovers(): Leftover[] {
 
 export function dbInsertLeftover(leftover: Leftover): void {
   db.runSync(
-    `INSERT INTO leftovers (id, title, recipe_id, source_entry_id, stored_at, keep_until, finished_at, outcome, created_at, use_up_task)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO leftovers (id, title, recipe_id, source_entry_id, stored_at, keep_until, finished_at, outcome, created_at, frozen_at, use_up_task)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
     [
       leftover.id, leftover.title, leftover.recipeId ?? null, leftover.sourceEntryId ?? null,
       leftover.storedAt, leftover.keepUntil, leftover.finishedAt ?? null,
-      leftover.outcome ?? null, leftover.createdAt,
+      leftover.outcome ?? null, leftover.createdAt, leftover.frozenAt ?? null,
       leftover.useUpTask === null || leftover.useUpTask === undefined ? null : (leftover.useUpTask ? 1 : 0),
     ]
   );
@@ -3101,11 +3350,11 @@ export function dbInsertLeftover(leftover: Leftover): void {
 
 export function dbUpdateLeftover(leftover: Leftover): void {
   db.runSync(
-    `UPDATE leftovers SET title=?, recipe_id=?, source_entry_id=?, stored_at=?, keep_until=?, finished_at=?, outcome=?, use_up_task=? WHERE id=?`,
+    `UPDATE leftovers SET title=?, recipe_id=?, source_entry_id=?, stored_at=?, keep_until=?, finished_at=?, outcome=?, frozen_at=?, use_up_task=? WHERE id=?`,
     [
       leftover.title, leftover.recipeId ?? null, leftover.sourceEntryId ?? null,
       leftover.storedAt, leftover.keepUntil, leftover.finishedAt ?? null,
-      leftover.outcome ?? null,
+      leftover.outcome ?? null, leftover.frozenAt ?? null,
       leftover.useUpTask === null || leftover.useUpTask === undefined ? null : (leftover.useUpTask ? 1 : 0),
       leftover.id,
     ]

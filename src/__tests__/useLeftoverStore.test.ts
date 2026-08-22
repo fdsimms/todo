@@ -7,6 +7,7 @@ import {
   dbPurgeOldLeftovers,
 } from '../db/database';
 import type { Leftover, Task } from '../types';
+import { daysInFridge, keepDaysBetween } from '../utils/leftovers';
 
 jest.mock('../db/database', () => ({
   dbGetAllLeftovers: jest.fn().mockReturnValue([]),
@@ -67,6 +68,7 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
     keepUntil: '2026-08-13',
     finishedAt: null,
     outcome: null,
+    frozenAt: null,
     createdAt: '2026-08-10T09:00:00.000Z',
     useUpTask: null,
     ...overrides,
@@ -281,6 +283,61 @@ describe('setKeepDays', () => {
     useLeftoverStore.getState().setKeepDays('later', 1);
 
     expect(useLeftoverStore.getState().leftovers.map(l => l.id)).toEqual(['later', 'soon']);
+  });
+});
+
+describe('setFrozen', () => {
+  it('stamps the instant and leaves the stored keep-until alone', () => {
+    seed([makeLeftover({ id: 'lo-a', keepUntil: '2026-08-13' })]);
+
+    useLeftoverStore.getState().setFrozen('lo-a', true);
+
+    const updated = useLeftoverStore.getState().leftovers[0];
+    expect(updated.frozenAt).not.toBeNull();
+    // Suspended, not cleared: the window is what the thaw hands back.
+    expect(updated.keepUntil).toBe('2026-08-13');
+  });
+
+  it('does not close the container out — a frozen portion is still in the kitchen', () => {
+    seed([makeLeftover({ id: 'lo-a' })]);
+
+    useLeftoverStore.getState().setFrozen('lo-a', true);
+
+    expect(useLeftoverStore.getState().leftovers[0].finishedAt).toBeNull();
+    expect(useLeftoverStore.getState().leftovers[0].outcome).toBeNull();
+  });
+
+  // The whole window rather than the days that were left: freezing arrests the
+  // spoiling the window is about, so it restarts rather than resumes.
+  it('hands back the same keep-for window, measured from the thaw', () => {
+    seed([makeLeftover({
+      id: 'lo-a',
+      storedAt: new Date(2026, 4, 1, 9, 0).toISOString(),
+      keepUntil: '2026-05-05',
+      frozenAt: new Date(2026, 4, 2, 9, 0).toISOString(),
+    })]);
+
+    useLeftoverStore.getState().setFrozen('lo-a', false);
+
+    const updated = useLeftoverStore.getState().leftovers[0];
+    expect(updated.frozenAt).toBeNull();
+    // Four days from now, not four days from a May that has long gone.
+    expect(keepDaysBetween(updated.storedAt, updated.keepUntil)).toBe(4);
+    expect(daysInFridge(updated)).toBe(0);
+  });
+
+  it('is a no-op when the container is already in that state', () => {
+    seed([makeLeftover({ id: 'lo-a', frozenAt: new Date(2026, 4, 2, 9, 0).toISOString() })]);
+
+    useLeftoverStore.getState().setFrozen('lo-a', true);
+
+    expect(dbUpdateLeftover).not.toHaveBeenCalled();
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    seed([]);
+    useLeftoverStore.getState().setFrozen('gone', true);
+    expect(dbUpdateLeftover).not.toHaveBeenCalled();
   });
 });
 
