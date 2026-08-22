@@ -6,6 +6,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { formatOffsetLabel, formatMinutesOffset } from '../utils/templateUtils';
+import { PREP_OFFSET_MIN, PREP_OFFSET_MAX } from '../utils/recipeUtils';
 import { CountStepper } from './CountStepper';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
@@ -21,8 +22,6 @@ const REMINDER_STEP_MINUTES = 15;
 // A day either side of the meal covers everything a kitchen prep step needs —
 // "thaw the turkey" a week out is a Task with its own due date, not a recipe
 // prep task.
-const OFFSET_MIN = -7;
-const OFFSET_MAX = 1;
 // 24 hours in 15-minute steps.
 const REMINDER_STEPS_MAX = 96;
 
@@ -100,8 +99,8 @@ export function PrepTaskSheet({ visible, recipeId, prepTask, onClose }: Props) {
         <CountStepper
           value={offsetDays}
           onChange={n => setOffsetDays(n ?? 0)}
-          min={OFFSET_MIN}
-          max={OFFSET_MAX}
+          min={PREP_OFFSET_MIN}
+          max={PREP_OFFSET_MAX}
           format={n => formatOffsetLabel(n)}
           label="Days before the meal"
         />

@@ -1,4 +1,4 @@
 {
-  "message": "Recipe import now shows you the method and any prep tasks before you add them: tap a row to unfold the steps it would write, and uncheck either one to leave it out",
+  "message": "Recipe import is now editable before you commit to it: unfold the method or the prep tasks to read what would be added, retype any line, uncheck the ones you don't want, and correct the servings, time and source right on the sheet",
   "date": "2026-08-22"
 }

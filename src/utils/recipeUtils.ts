@@ -325,6 +325,39 @@ export function formatServingsRange(servings: number | null, max: number | null)
   return String(servings);
 }
 
+/**
+ * How far ahead of the meal a prep task can be asked to start. Shared by
+ * `PrepTaskSheet`'s stepper and the import review sheets' own, so the two
+ * can't drift into offering different ranges for the same field. The top is
+ * `1` rather than `0` because a task the day *after* is a real thing to want
+ * (chilling something overnight once it's made).
+ */
+export const PREP_OFFSET_MIN = -7;
+export const PREP_OFFSET_MAX = 1;
+
+/**
+ * `formatServingsRange`'s inverse, for the one place a person types a serving
+ * count back in rather than picking it: the import review sheets, where the
+ * row shows whatever the extractor read off the page and lets you correct it.
+ *
+ * Deliberately forgiving about the separator, because it's re-reading its own
+ * output *and* whatever a person typed over it: "4-6", "4 - 6", "4 to 6" and
+ * "4–6" (en dash, which is what a page that prints a range usually uses) all
+ * mean the same range. Anything with no usable number in it returns null,
+ * which the caller reads as "leave the servings alone" rather than as zero.
+ *
+ * The max follows `setServings`' own rule rather than a second one: a top that
+ * doesn't beat its bottom isn't a range, so it's dropped instead of stored.
+ */
+export function parseServingsRange(text: string): { servings: number; servingsMax: number | null } | null {
+  const numbers = text.match(/\d+/g);
+  if (!numbers) return null;
+  const servings = parseInt(numbers[0], 10);
+  if (!servings) return null;
+  const max = numbers.length > 1 ? parseInt(numbers[1], 10) : null;
+  return { servings, servingsMax: max && max > servings ? max : null };
+}
+
 /** Same as `formatServingsRange`, reading straight off a `Recipe`. */
 export function formatServings(recipe: Recipe): string | null {
   return formatServingsRange(recipe.servings, recipe.servingsMax);

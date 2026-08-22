@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   View,
@@ -22,21 +22,24 @@ import {
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
-  extractRecipe, type ExtractedRecipe, type RecipeGroceryItem,
+  extractRecipe, type ExtractedRecipe, type RecipeGroceryItem, type ExtractedPrepTask,
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import {
-  normalizeIngredient, formatServingsRange, recipeHasMethod, recipeHasPrepTasks, recipeHasAttribution,
+  normalizeIngredient, formatServingsRange, parseServingsRange,
+  recipeHasMethod, recipeHasPrepTasks, recipeHasAttribution,
 } from '../utils/recipeUtils';
 import { aisleForName } from '../utils/groceryAisles';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
-import { ExtractedIngredientRow, type ExtractedIngredientRowHandle } from './ExtractedIngredientRow';
+import { ExtractedIngredientRow } from './ExtractedIngredientRow';
 import { ImportApplyRow } from './ImportApplyRow';
 import {
   methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines,
 } from '../utils/recipeImportPreview';
+import { InlineEditableText } from './InlineEditableText';
+import { usePendingEdits } from '../hooks/usePendingEdits';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
 import { ImportedComponentRow } from './ImportedComponentRow';
@@ -78,10 +81,6 @@ interface Props {
 export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  // One ref per visible row, so handleApply can flush whichever one is
-  // mid-edit — see ExtractedIngredientRowHandle.resolvePendingEdit.
-  const rowRefs = useRef(new Map<number, ExtractedIngredientRowHandle | null>());
-
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
@@ -114,6 +113,20 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const [applyMethod, setApplyMethod] = useState(false);
   const [applyPrepTasks, setApplyPrepTasks] = useState(false);
   const [applySource, setApplySource] = useState(false);
+  // Working copies of everything the review list can now correct, on the same
+  // terms `ingredients` above has been on since #1608: `extracted` is what the
+  // model said and is never written back to, these are what will actually be
+  // applied. Steps and prep tasks additionally carry their own accepted sets,
+  // so a single bad line can be dropped without losing the rest.
+  const [steps, setSteps] = useState<string[]>([]);
+  const [acceptedSteps, setAcceptedSteps] = useState<Set<number>>(new Set());
+  const [prepTasks, setPrepTasks] = useState<ExtractedPrepTask[]>([]);
+  const [acceptedPrepTasks, setAcceptedPrepTasks] = useState<Set<number>>(new Set());
+  const [servingsText, setServingsText] = useState('');
+  const [minutesText, setMinutesText] = useState('');
+  const [siteName, setSiteName] = useState('');
+  const [sourceAuthor, setSourceAuthor] = useState('');
+  const edits = usePendingEdits();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   const input = useRecipeImportSource();
   const { resolveSource, reset: resetInput } = input;
@@ -143,6 +156,14 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setApplyMethod(false);
     setApplyPrepTasks(false);
     setApplySource(false);
+    setSteps([]);
+    setAcceptedSteps(new Set());
+    setPrepTasks([]);
+    setAcceptedPrepTasks(new Set());
+    setServingsText('');
+    setMinutesText('');
+    setSiteName('');
+    setSourceAuthor('');
     resetInput();
     resetComponents();
   }, [resetInput, resetComponents]);
@@ -173,6 +194,14 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setApplyMethod(methodStepsFound.length > 0 && !recipeHasMethod(recipe));
       setApplyPrepTasks(result.prepTasks.length > 0 && !recipeHasPrepTasks(recipe));
       setApplySource(!!page && !recipeHasAttribution(recipe));
+      setSteps(methodStepsFound);
+      setAcceptedSteps(new Set(methodStepsFound.map((_, i) => i)));
+      setPrepTasks(result.prepTasks);
+      setAcceptedPrepTasks(new Set(result.prepTasks.map((_, i) => i)));
+      setServingsText(formatServingsRange(result.servings, result.servingsMax) ?? '');
+      setMinutesText(result.prepMinutes !== null ? String(result.prepMinutes) : '');
+      setSiteName(page?.siteName ?? '');
+      setSourceAuthor(page?.author ?? '');
     } catch (e) {
       setError(describeImportError(e));
       setCanRetry(isRetryableImportError(e));
@@ -206,20 +235,44 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     }));
   };
 
+  const toggleIn = (
+    setter: React.Dispatch<React.SetStateAction<Set<number>>>,
+  ) => (index: number) => setter(prev => {
+    const next = new Set(prev);
+    if (next.has(index)) next.delete(index);
+    else next.add(index);
+    return next;
+  });
+  const toggleStep = toggleIn(setAcceptedSteps);
+  const togglePrepTask = toggleIn(setAcceptedPrepTasks);
+
+  const editStep = (index: number, text: string) => {
+    haptics.success();
+    setSteps(prev => prev.map((step, i) => (i === index ? text : step)));
+  };
+
+  const editPrepTask = (index: number, patch: Partial<ExtractedPrepTask>) => {
+    haptics.success();
+    setPrepTasks(prev => prev.map((task, i) => (i === index ? { ...task, ...patch } : task)));
+  };
+
   const handleApply = () => {
     if (!recipe || !extracted) { onClose(); return; }
-    // Tapping Apply can beat a row's own blur — merge in whatever's still
-    // mid-edit instead of trusting `ingredients` state a pending edit
-    // hasn't reached yet (same race TaskEditor's resolveX functions guard
-    // against). Read directly rather than going through onEditName/
-    // onEditQuantity, which write via setState and wouldn't land in time
-    // for this same synchronous read.
+    // Tapping Add can beat a field's own blur, so every value below is read
+    // through the pending-edit registry rather than straight off state a draft
+    // hasn't landed in yet (same race TaskEditor's resolveX functions guard
+    // against, and why the registry's resolvers return values instead of
+    // committing — see usePendingEdits).
+    const pending = edits.resolveAll();
+    const pendingText = (key: string, fallback: string) => pending.get(key) ?? fallback;
+
     const resolvedIngredients = ingredients.map((row, i) => {
-      const pending = rowRefs.current.get(i)?.resolvePendingEdit();
-      if (!pending) return row;
-      const next = { ...row, [pending.field]: pending.value };
-      if (pending.field === 'name') {
-        next.aisle = rememberedAisleFor(pending.value) ?? aisleForName(pending.value) ?? 'Other';
+      const name = pending.get(`ingredient:${i}:name`);
+      const quantity = pending.get(`ingredient:${i}:quantity`);
+      if (name === undefined && quantity === undefined) return row;
+      const next = { ...row, ...(name !== undefined && { name }), ...(quantity !== undefined && { quantity }) };
+      if (name !== undefined) {
+        next.aisle = rememberedAisleFor(name) ?? aisleForName(name) ?? 'Other';
       }
       return next;
     });
@@ -230,9 +283,10 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     if (chosen.length > 0) addStructuredIngredients(recipe.id, chosen);
     components.commitTo(recipe.id);
     if (applyDetails) {
-      if (extracted.servings !== null) {
-        setServings(recipe.id, extracted.servings, extracted.servingsMax);
-      }
+      // Whatever's in the box now, not what the model first said — the row is
+      // editable, so `extracted` is only ever the starting value here.
+      const servings = parseServingsRange(pendingText('details:servings', servingsText));
+      if (servings) setServings(recipe.id, servings.servings, servings.servingsMax);
       // Was read off the recipe and shown on the row, then dropped on the way
       // out — the row promised a time the recipe never got.
       //
@@ -241,16 +295,24 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       // time, while the model's prepMinutes/estimatedMinutes pair splits prep
       // from cook. A total in the cook half leaves `totalMinutes()` correct;
       // in the prep half it would claim the whole recipe is mise en place.
-      if (extracted.prepMinutes !== null) setEstimatedMinutes(recipe.id, extracted.prepMinutes);
+      const minutes = parseInt(pendingText('details:minutes', minutesText), 10);
+      if (minutes > 0) setEstimatedMinutes(recipe.id, minutes);
     }
     // Appended, never replacing what's there. A recipe with its own method or
     // prep tasks arrives here unticked, so reaching this line at all means the
     // user asked for these on top of it — and appending is the only version
     // of that they can undo by hand.
-    if (applyMethod) methodSteps.forEach(step => addStep(recipe.id, step));
+    if (applyMethod) {
+      steps.forEach((step, i) => {
+        if (!acceptedSteps.has(i)) return;
+        addStep(recipe.id, pendingText(`step:${i}:text`, step));
+      });
+    }
     if (applyPrepTasks) {
-      extractedPrepTasks.forEach(task => {
-        const added = addPrepTask(recipe.id, task.title);
+      prepTasks.forEach((task, i) => {
+        if (!acceptedPrepTasks.has(i)) return;
+        const title = pendingText(`prep:${i}:text`, task.title);
+        const added = addPrepTask(recipe.id, title);
         if (added && task.offsetDays !== added.offsetDays) {
           updatePrepTask(recipe.id, added.id, { offsetDays: task.offsetDays });
         }
@@ -260,24 +322,29 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     if (page && applySource) {
       setSourceUrl(recipe.id, page.url);
       setSourceType(recipe.id, 'website');
-      if (page.siteName) setSource(recipe.id, page.siteName);
-      if (page.author) setAuthor(recipe.id, page.author);
+      // The URL is the link that was pasted and isn't editable; the two the
+      // page merely claims about itself are.
+      const site = pendingText('source:site', siteName).trim();
+      const by = pendingText('source:author', sourceAuthor).trim();
+      if (site) setSource(recipe.id, site);
+      if (by) setAuthor(recipe.id, by);
     }
     haptics.success();
     onClose();
   };
 
-  const hasDetails = !!extracted && (extracted.servings !== null || extracted.prepMinutes !== null);
+  // What the run found decides whether the row exists; what's in the boxes
+  // right now decides whether it applies anything. Emptying both must not
+  // unmount the row mid-edit — there'd be no way to type a value back in.
+  const foundDetails = !!extracted && (extracted.servings !== null || extracted.prepMinutes !== null);
+  const hasDetails = !!servingsText || !!minutesText;
   // The page's own steps (verbatim structured data) when it has them,
   // otherwise whatever the model read off the source itself.
-  const methodSteps = (input.page?.steps.length ?? 0) > 0 ? input.page!.steps : (extracted?.steps ?? []);
-  // Always the model's read — no page ever publishes these as structured data.
-  const extractedPrepTasks = extracted?.prepTasks ?? [];
   const canApply = !loading && !!extracted && (
     accepted.size > 0
     || (applyDetails && hasDetails)
-    || (applyMethod && methodSteps.length > 0)
-    || (applyPrepTasks && extractedPrepTasks.length > 0)
+    || (applyMethod && acceptedSteps.size > 0)
+    || (applyPrepTasks && acceptedPrepTasks.size > 0)
     || (applySource && !!input.page)
     // A run that found nothing but a "see page 45" is still worth an Add: the
     // link is the whole result.
@@ -286,11 +353,11 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
 
   // One checkbox applying two facts has to name both when it has both, and it
   // reads out exactly what the row shows rather than a second phrasing of it.
+  // Reads the boxes, not `extracted`, so it stays true once they're edited.
   const detailsLabel = !extracted ? ''
-    : extracted.servings !== null
-      ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}${
-          extracted.prepMinutes !== null ? `, about ${extracted.prepMinutes} min` : ''}`
-      : `About ${extracted.prepMinutes} min`;
+    : servingsText
+      ? `Serves ${servingsText}${minutesText ? `, about ${minutesText} min` : ''}`
+      : `About ${minutesText} min`;
 
 
   // A deterministic failure — a mistyped address, a site that refuses us, a page
@@ -299,13 +366,22 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const backLabel = input.usingLink ? 'Change the link' : 'Go back';
   const goBack = () => { setError(null); setExtracted(null); };
 
-  const methodMeta = methodRowMeta(methodSteps.length, recipeHasMethod(recipe));
-  const prepTasksMeta = prepTasksRowMeta(extractedPrepTasks.length, recipeHasPrepTasks(recipe));
+  // Unlike the method and the prep tasks, these two overwrite rather than
+  // append — there's only one servings field — so the row says so when the
+  // recipe already has one.
+  const detailsReplace = recipe?.servings != null || recipe?.estimatedMinutes != null;
 
+  const methodMeta = methodRowMeta(acceptedSteps.size, steps.length, recipeHasMethod(recipe));
+  const prepTasksMeta = prepTasksRowMeta(
+    acceptedPrepTasks.size, prepTasks.length, recipeHasPrepTasks(recipe),
+  );
+
+  // The URL is what identifies the page, so it stays on the row even though
+  // the two editable fields sit above it.
   const sourceMeta = [
-    [input.page?.siteName, input.page?.author].filter(Boolean).join(' · ') || input.page?.url,
+    input.page?.url,
     recipeHasAttribution(recipe) ? 'replaces what’s there' : null,
-  ].filter(Boolean).join(' — ');
+  ].filter(Boolean).join(' · ');
 
   /**
    * The referenced-recipes block, above the ingredients it changes the meaning
@@ -400,8 +476,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     }
 
     if (
-      ingredients.length === 0 && !hasDetails
-      && methodSteps.length === 0 && extractedPrepTasks.length === 0
+      ingredients.length === 0 && !foundDetails
+      && steps.length === 0 && prepTasks.length === 0
       && candidates.length === 0
     ) {
       return (
@@ -424,45 +500,81 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     return (
       <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
         <Text style={styles.intro}>
-          Uncheck anything you don't want added, or tap a name or amount to change it.
+          Uncheck anything you don't want added. Tap any line to change it before it's added.
         </Text>
 
-        {hasDetails && (
+        {foundDetails && (
           <ImportApplyRow
             checked={applyDetails}
             onToggle={() => setApplyDetails(v => !v)}
-            title={extracted.servings !== null
-              ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
-              : `About ${extracted.prepMinutes} min`}
-            meta={extracted.servings !== null && extracted.prepMinutes !== null
-              ? `About ${extracted.prepMinutes} min`
-              : null}
+            title="Serves"
+            meta={detailsReplace ? 'replaces what’s there' : null}
             accessibilityLabel={detailsLabel}
-          />
+          >
+            <View style={styles.detailFields}>
+              <InlineEditableText
+                edits={edits}
+                editKey="details:servings"
+                value={servingsText}
+                onCommit={setServingsText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. 4"
+                accessibilityLabel="servings"
+                maxLength={12}
+                numberOfLines={1}
+              />
+              <Text style={styles.detailSep}>·</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="details:minutes"
+                value={minutesText}
+                onCommit={setMinutesText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. 45"
+                accessibilityLabel="total minutes"
+                maxLength={4}
+                numberOfLines={1}
+              />
+              <Text style={styles.detailSep}>min</Text>
+            </View>
+          </ImportApplyRow>
         )}
 
-        {methodSteps.length > 0 && (
+        {steps.length > 0 && (
           <ImportApplyRow
             checked={applyMethod}
             onToggle={() => setApplyMethod(v => !v)}
             title="Method"
             meta={methodMeta}
             accessibilityLabel={`Method, ${methodMeta}`}
-            preview={methodPreviewLines(methodSteps)}
+            preview={methodPreviewLines(steps)}
+            acceptedLines={acceptedSteps}
+            onToggleLine={toggleStep}
+            onEditLine={editStep}
             ordered
             previewNoun="step"
+            edits={edits}
+            editKeyPrefix="step"
           />
         )}
 
-        {extractedPrepTasks.length > 0 && (
+        {prepTasks.length > 0 && (
           <ImportApplyRow
             checked={applyPrepTasks}
             onToggle={() => setApplyPrepTasks(v => !v)}
             title="Prep tasks"
             meta={prepTasksMeta}
             accessibilityLabel={`Prep tasks, ${prepTasksMeta}`}
-            preview={prepTaskPreviewLines(extractedPrepTasks)}
+            preview={prepTaskPreviewLines(prepTasks)}
+            acceptedLines={acceptedPrepTasks}
+            onToggleLine={togglePrepTask}
+            onEditLine={(i, title) => editPrepTask(i, { title })}
+            onEditLead={(i, offsetDays) => editPrepTask(i, { offsetDays })}
             previewNoun="task"
+            edits={edits}
+            editKeyPrefix="prep"
           />
         )}
 
@@ -473,7 +585,35 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
             title="Where it’s from"
             meta={sourceMeta}
             accessibilityLabel={`Where it’s from, ${sourceMeta}`}
-          />
+          >
+            <View style={styles.detailFields}>
+              <InlineEditableText
+                edits={edits}
+                editKey="source:site"
+                value={siteName}
+                onCommit={setSiteName}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. Serious Eats"
+                accessibilityLabel="site name"
+                maxLength={80}
+                numberOfLines={1}
+              />
+              <Text style={styles.detailSep}>·</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="source:author"
+                value={sourceAuthor}
+                onCommit={setSourceAuthor}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. Kenji"
+                accessibilityLabel="author"
+                maxLength={80}
+                numberOfLines={1}
+              />
+            </View>
+          </ImportApplyRow>
         )}
 
         {renderReferences()}
@@ -488,8 +628,9 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           return (
             <ExtractedIngredientRow
               key={`${row.name}-${i}`}
-              ref={el => { if (el) rowRefs.current.set(i, el); else rowRefs.current.delete(i); }}
               row={row}
+              edits={edits}
+              index={i}
               checked={accepted.has(i) && !coveredBy}
               onToggle={() => toggle(i)}
               onEditName={name => editIngredient(i, { name })}
@@ -548,6 +689,9 @@ function makeStyles(colors: Colors) {
       paddingBottom: spacing.sm,
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
+    detailFields: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    detailValue: { fontSize: font.sm, color: colors.textSecondary },
+    detailSep: { fontSize: font.sm, color: colors.textTertiary },
     groupLabel: {
       color: colors.textSecondary,
       fontSize: font.xs,

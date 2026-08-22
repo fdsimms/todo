@@ -132,7 +132,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/recipeTags.ts` — cleanRecipeTag, normalizeRecipeTags, parseRecipeTags, allRecipeTags, recipeTagCounts, filterRecipesByTags, excludeRecipesByTags, formatTagList, toggleRecipeTag
 - `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, hasCookTimer, isCookTimerRunning, cookTimerElapsed, cookTimerRemaining, cookTimerProgress, isCookTimerReady, hasPrepTimer, isPrepTimerRunning, +5 more
 - `src/utils/recipeUrl.ts` — normalizeRecipeUrl, decodeEntities, htmlToText, metaContent, PageRecipe, parseIsoDuration, parseRecipeJsonLd, focusRecipeText, recipeToPlainText, ParsedRecipePage, +1 more
-- `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientsFromText, mergeIngredients, remapIngredientKeyIn, parsePrepTasks, normalizePrepTask, parseSteps, normalizeStep, +41 more
+- `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientsFromText, mergeIngredients, remapIngredientKeyIn, parsePrepTasks, normalizePrepTask, parseSteps, normalizeStep, +44 more
 - `src/utils/recurrenceLabels.ts` — recurrenceUnitLabel, ORDINAL_OPTIONS, RecurrenceRule, describeTaskRecurrence, recurrenceRuleOf, describeRecurrence
 - `src/utils/reminderNudge.ts` — ReminderNudge, nudgeReminderPastMeeting
 - `src/utils/remindersImport.ts` — draftFromReminder, recurrenceFromRule, reminderTimeFromAlarms, scheduleToDraft, pendingImportFor, describePendingImport, isImportableList, reminderListOptions, findReminderList, importableReminders, +11 more
@@ -217,6 +217,7 @@ render, so listing them adds lines without adding answers.
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, useKeyboardInsetScroll
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
 - `src/hooks/useNowTick.ts` — useNowTick
+- `src/hooks/usePendingEdits.ts` — PendingEdits, usePendingEdits, useRegisterPendingEdit
 - `src/hooks/usePlanMeal.ts` — usePlanMeal
 - `src/hooks/useRecipeComponentImports.ts` — ComponentImportState, useRecipeComponentImports
 - `src/hooks/useRecipeImportSource.ts` — ResolvedRecipeSource, alertPhotoAccessDenied, useRecipeImportSource
