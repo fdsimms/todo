@@ -72,6 +72,12 @@ export interface ReceiptAddDraft {
    * a second draft type would only be this field's absence.
    */
   brand: string | null;
+  /**
+   * The aisle the barcode source's category names, for a row this mints — see
+   * `ScannedItem.aisle`. Null from a receipt, which files its lines by nothing
+   * but the order they were printed in.
+   */
+  aisle: string | null;
   quantity: string;
   priceMinor: number | null;
 }
@@ -296,6 +302,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
         name: m.line.name,
         label: m.line.label,
         brand: null,
+        aisle: null,
         quantity: m.line.quantity,
         priceMinor: m.line.priceMinor,
       }));

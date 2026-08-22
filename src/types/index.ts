@@ -1689,6 +1689,19 @@ export interface GtinLookup {
   brand: string | null;
   /** The pack size as the source prints it ("1 gal", "500 g"). Null when unstated. */
   quantity: string | null;
+  /**
+   * How the source files it — OFF's most specific `categories_tags` entry,
+   * FDC's `brandedFoodCategory`, Go-UPC's `category`. Read by
+   * `aisleForProductCategory` as a last resort for a row's aisle.
+   *
+   * **Null on every barcode cached before this column existed**, and nothing
+   * refetches to fill it in. A hit never expires (see `found`), so a backfill
+   * would mean re-asking the network for every code the user has ever scanned,
+   * on the first launch after an upgrade, to improve a guess that already has a
+   * working fallback. Those rows just keep landing on `aisleForName`, which is
+   * exactly what they did before.
+   */
+  category: string | null;
   /** Which source answered, for telling a thin record from a good one later. Empty on a miss. */
   source: string;
   /** ISO. When this was asked, which is what expires a miss. */

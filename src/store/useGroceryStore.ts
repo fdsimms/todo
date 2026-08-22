@@ -273,6 +273,17 @@ interface GroceryStore {
        */
       brand?: string | null;
       variant?: string | null;
+      /**
+       * Where a barcode source files this product, as an aisle — see
+       * `aisleForProductCategory`.
+       *
+       * **Consulted last, after the remembered aisle and the name lexicon**, so
+       * it can only place a row that would otherwise land in `Other` and can
+       * never move one the other two already got right. A foreign taxonomy is a
+       * weaker signal than either the user's own filing or a word the app's own
+       * lexicon knows.
+       */
+      aisle?: string | null;
     },
     source?: { recipeId: string; recipeTitle: string },
     /** `registerUndo: false` suppresses the per-call shake-to-undo entry — batch
@@ -327,7 +338,19 @@ interface GroceryStore {
    */
   addProduct: (
     itemId: string,
-    fields: { brand: string | null; variant: string | null; note?: string; rating?: ProductRating | null }
+    fields: { brand: string | null; variant: string | null; note?: string; rating?: ProductRating | null },
+    /**
+     * `promote: false` files the box without letting it answer "which one?" —
+     * the product is recorded and `preferredProductId` is left exactly as it
+     * was, even when the item hasn't got one.
+     *
+     * For the caller that is recording what it *observed* rather than what the
+     * user *chose*: a barcode scan knows a box came home, which is not the same
+     * statement as naming one in the product sheet. Unpacking twenty bags would
+     * otherwise decide twenty items' preferences nobody asked about (#1866).
+     * Defaults to promoting, which is every hand-driven caller.
+     */
+    opts?: { promote?: boolean }
   ) => ItemProduct | null;
   /**
    * Edit one box in place — its spelling, its note, its rating.
@@ -1166,6 +1189,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const choiceGroup = override?.choiceGroup?.trim() || null;
     const brand = override?.brand?.trim() || null;
     const variant = override?.variant?.trim() || null;
+    const sourceAisle = override?.aisle?.trim() || null;
     // A name with no letters or digits ("???") normalises to an empty key.
     // Falling back to the raw text keeps the key unique, which matters: two
     // such rows would collide on the UNIQUE index and the *second* insert
@@ -1237,7 +1261,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       //
       // placeAisle has the last word because neither source knows which aisles
       // still exist: naming a deleted one here would bring its section back.
-      aisle: placeAisle(get().aisleOverrides[key] ?? aisleForName(name), get().aisleOrder),
+      //
+      // A barcode source's own category is the third and weakest of the three,
+      // so it only ever answers where both of the others were silent — see the
+      // `aisle` override's note.
+      aisle: placeAisle(
+        get().aisleOverrides[key] ?? aisleForName(name) ?? sourceAisle,
+        get().aisleOrder
+      ),
       quantity,
       note,
       onList: true,
@@ -1786,7 +1817,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
-  addProduct(itemId, fields) {
+  addProduct(itemId, fields, opts) {
     const item = get().items.find(i => i.id === itemId);
     if (!item) return null;
     const brand = fields.brand?.trim() || null;
@@ -1804,8 +1835,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // is precisely the retyping this exists to stop.
     //
     // See the action's own note for why only the first product becomes the
-    // preference.
-    const preferredProductId = item.preferredProductId ?? product.id;
+    // preference, and the `promote` option for who declines even that.
+    const preferredProductId = opts?.promote === false
+      ? item.preferredProductId
+      : item.preferredProductId ?? product.id;
     const updated: GroceryItem = { ...item, preferredProductId, inCatalog: true };
     dbUpdateGroceryItem(updated);
     set(s => ({

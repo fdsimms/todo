@@ -1,5 +1,6 @@
 import type { GroceryItem } from '../types';
-import { GROCERY_NAME_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, GROCERY_VARIANT_MAX_LENGTH } from '../types';
+import { aisleForProductCategory } from './productCategory';
 import { matchReceiptLines, type AliasResolver, type ReceiptMatch } from './receiptMatch';
 import type { ReceiptLine } from '../services/aiSuggestions';
 import type { ProductRecord } from '../services/productLookup';
@@ -47,6 +48,15 @@ export interface ScannedItem {
   brand: string | null;
   /** Pack size as the source printed it. Empty when unstated. */
   quantity: string;
+  /**
+   * The aisle the source's own category names, or null when it named none the
+   * app recognises.
+   *
+   * A suggestion of last resort, not a decision: the store applies it only
+   * where the user's remembered aisle and the name lexicon both come up empty.
+   * See `aisleForProductCategory`.
+   */
+  aisle: string | null;
 }
 
 /** Words a brand-stripped name shouldn't be left starting or ending with. */
@@ -119,6 +129,39 @@ export function sourceLabelFor(label: string, brand: string | null): string {
   return `${maker}${BRAND_SEPARATOR}${words}`;
 }
 
+/**
+ * Which one of the item it is, from what the product name has left over.
+ *
+ * "Dave's Killer Bread 21 Whole Grains" scanned onto a catalog row called
+ * *Bread*, with the maker already named separately, leaves "21 Whole Grains" —
+ * and that is exactly `ItemProduct.variant`. Nothing here understands the
+ * words: it subtracts two strings the app was *told* (the brand by the source,
+ * the item by the matcher) and keeps the remainder.
+ *
+ * **The item's name must actually appear, or this returns null.** Where it
+ * doesn't, the remainder is the whole product name, and calling that a variant
+ * files "Sun Sausage Plant-based Links Cajun" as a *kind of* sausage rather
+ * than as the thing itself. That's the guess `shopperNameFor` refuses to make
+ * one level up, and refusing it here costs only a variant nobody typed.
+ */
+export function variantFor(
+  fullName: string,
+  brand: string | null,
+  itemName: string
+): string | null {
+  const withoutBrand = shopperNameFor(fullName, brand);
+  const item = itemName.trim();
+  if (!withoutBrand || !item) return null;
+  const pattern = new RegExp(`\\b${item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+  if (!pattern.test(withoutBrand)) return null;
+  const residue = withoutBrand
+    .replace(pattern, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(EDGE_JUNK, '')
+    .trim();
+  return residue ? residue.slice(0, GROCERY_VARIANT_MAX_LENGTH) : null;
+}
+
 /** A looked-up product as a row waiting to be reviewed. */
 export function scannedItemFor(record: ProductRecord): ScannedItem {
   return {
@@ -127,6 +170,7 @@ export function scannedItemFor(record: ProductRecord): ScannedItem {
     name: shopperNameFor(record.name, record.brand),
     brand: record.brand,
     quantity: record.quantity ?? '',
+    aisle: aisleForProductCategory(record.category),
   };
 }
 
@@ -146,6 +190,7 @@ export function pluScannedItem(code: string, suggestedName: string | null): Scan
     name: suggestedName ?? '',
     brand: null,
     quantity: '',
+    aisle: null,
   };
 }
 
@@ -158,7 +203,7 @@ export function pluScannedItem(code: string, suggestedName: string | null): Scan
  * the unknown-SKU path one flow rather than two.
  */
 export function unknownScannedItem(gtin: string): ScannedItem {
-  return { gtin, label: '', name: '', brand: null, quantity: '' };
+  return { gtin, label: '', name: '', brand: null, quantity: '', aisle: null };
 }
 
 /**

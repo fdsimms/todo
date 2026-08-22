@@ -350,6 +350,36 @@ describe('addByName', () => {
     expect(again.preferredProductId).toBe(product!.id);
   });
 
+  // What a barcode scan needs: it observed that a box came home, which is not
+  // the user saying that box is the one they want. See #1866.
+  it('records a box without deciding the preference when promote is off', () => {
+    const item = useGroceryStore.getState().addByName('bread');
+    const product = useGroceryStore
+      .getState()
+      .addProduct(item.id, { brand: "Dave's Killer", variant: '21 grains' }, { promote: false });
+
+    expect(product).not.toBeNull();
+    expect(useGroceryStore.getState().itemProducts).toHaveLength(1);
+    expect(useGroceryStore.getState().itemById(item.id)!.preferredProductId).toBeNull();
+  });
+
+  it('leaves an existing preference alone when promote is off', () => {
+    const item = useGroceryStore.getState().addByName('bread');
+    const chosen = useGroceryStore.getState().addProduct(item.id, { brand: "Arnold's", variant: null })!;
+    useGroceryStore
+      .getState()
+      .addProduct(item.id, { brand: "Dave's Killer", variant: null }, { promote: false });
+
+    expect(useGroceryStore.getState().itemProducts).toHaveLength(2);
+    expect(useGroceryStore.getState().itemById(item.id)!.preferredProductId).toBe(chosen.id);
+  });
+
+  it('still promotes by default, which is every hand-driven caller', () => {
+    const item = useGroceryStore.getState().addByName('bread');
+    const product = useGroceryStore.getState().addProduct(item.id, { brand: "Arnold's", variant: null })!;
+    expect(useGroceryStore.getState().itemById(item.id)!.preferredProductId).toBe(product.id);
+  });
+
   it('gives a genuinely new row no product', () => {
     // Nothing parses one out of typed text — "Good Culture cottage cheese"
     // typed into the add field is a name, not a name plus a brand.
@@ -441,6 +471,30 @@ describe('addByName', () => {
 
   it('files an unrecognised item under Other rather than leaving it aisle-less', () => {
     expect(useGroceryStore.getState().addByName('nduja').aisle).toBe(OTHER_AISLE);
+  });
+
+  // A barcode source's category is the third and weakest signal, so these three
+  // fix its place in the chain: it fills a gap, and it never wins an argument.
+  it('takes a scanned aisle for a name the lexicon has never heard of', () => {
+    const item = useGroceryStore.getState().addByName('Cheez-It Original', {
+      name: 'Cheez-It Original', quantity: null, aisle: 'Snacks',
+    });
+    expect(item.aisle).toBe('Snacks');
+  });
+
+  it('lets the name lexicon beat a scanned aisle', () => {
+    const item = useGroceryStore.getState().addByName('Whole milk', {
+      name: 'Whole milk', quantity: null, aisle: 'Frozen',
+    });
+    expect(item.aisle).toBe('Dairy & Eggs');
+  });
+
+  it('lets the user own remembered aisle beat a scanned one', () => {
+    seed([], { aisleOverrides: { nduja: 'Deli' } });
+    const item = useGroceryStore.getState().addByName('Nduja', {
+      name: 'Nduja', quantity: null, aisle: 'Snacks',
+    });
+    expect(item.aisle).toBe('Deli');
   });
 
   it('splits the quantity off the name so the key stays clean', () => {

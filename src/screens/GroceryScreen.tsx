@@ -44,7 +44,7 @@ import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
-import { BarcodeScanSheet } from '../components/BarcodeScanSheet';
+import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { StartTripPrompt } from '../components/StartTripPrompt';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
@@ -150,6 +150,7 @@ export function GroceryScreen() {
   const finishShopping = useGroceryStore(s => s.finishShopping);
   const addExisting = useGroceryStore(s => s.addExisting);
   const addByName = useGroceryStore(s => s.addByName);
+  const addProduct = useGroceryStore(s => s.addProduct);
   const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
   const linkItemSub = useGroceryStore(s => s.linkItemSub);
   const swapForSubstitute = useGroceryStore(s => s.swapForSubstitute);
@@ -774,7 +775,7 @@ export function GroceryScreen() {
    * is #1866.
    */
   const handleScanApply = useCallback(
-    (itemIds: string[], toAdd: ReceiptAddDraft[]) => {
+    (itemIds: string[], toAdd: ReceiptAddDraft[], products: ScanProductDraft[]) => {
       animateLayout();
       const allIds = [...itemIds];
       for (const draft of toAdd) {
@@ -787,16 +788,23 @@ export function GroceryScreen() {
               name: draft.name,
               quantity: draft.quantity || null,
               brand: draft.brand,
+              aisle: draft.aisle,
             }).id
           );
         }
+      }
+      // After the loop, so a row this session minted is already there to hang a
+      // box off. `promote: false` is the whole of #1866: the scan is recording
+      // that a box came home, which is not the user choosing it.
+      for (const product of products) {
+        addProduct(product.itemId, { brand: product.brand, variant: product.variant }, { promote: false });
       }
       if (allIds.length > 0) setCheckedMany(allIds, true);
       setReceiptSeed(null);
       setScanOpen(false);
       setFinishOpen(true);
     },
-    [setCheckedMany, addExisting, addByName]
+    [setCheckedMany, addExisting, addByName, addProduct]
   );
 
   const handleClearTrip = useCallback(() => {
