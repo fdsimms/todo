@@ -59,7 +59,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/extraTask.ts` — MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N, ExtraTaskRule, extraTaskRule, advanceExtraTaskTally, completionsUntilExtraTask, extraTaskSummary, describeExtraTaskRule, emptyExtraTaskDraft, parseExtraTaskDraft, +2 more
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, resolveFabDrop, targetKey, +15 more
-- `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy
+- `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeFrozenSince, describeOpenedOn
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, GroupSearchResult, searchGroups
 - `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, wantsGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind, hasAnyGeneratedTask, generatedTaskCountOf, generatedSourceOf, +3 more
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, hiddenDefaultAisles, +1 more
@@ -68,7 +68,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/groceryPrice.ts` — parsePriceInput, formatPrice, priceToInput, formatPriceInput, describePriceAge, describePriceContext, describeShopPrices, ShopPrice, shopPricesFor, Comparable, +12 more
 - `src/utils/groceryProduct.ts` — productKeyFor, describeProduct, describeCatalogItem, productsForItem, preferredProductOf, describePreferredProduct, RATING_LABELS, describeProductPurchases, parseUnavailableProductIds, lacksPreferredProduct
 - `src/utils/groceryReorder.ts` — GroceryDropRow, GroceryPlacement, resolveGroceryDrop, KeyedGroceryDropRow, placeNewGroceryItems, groceryDragRange
-- `src/utils/groceryShelfLife.ts` — SHELF_LIFE_LEXICON, shelfLifeDaysFor, clampExpiryDays, expiryKeyFor, defaultExpiresAt, expiresAtForPurchase, expiryDaysFromNow, describeExpiry
+- `src/utils/groceryShelfLife.ts` — SHELF_LIFE_LEXICON, shelfLifeDaysFor, OPEN_SHELF_LIFE_LEXICON, openShelfLifeDaysFor, clampExpiryDays, expiryKeyFor, defaultExpiresAt, expiresAtForPurchase, expiresAtForOpening, liveExpiresAt, +2 more
 - `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, ShopWithCount, shopsForItem, unavailableShopsFor, withoutProductShopsFor, primaryShopFor, exclusiveShopFor, +3 more
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, buyAgainItems, sectionsInAisleOrder, buildGrocerySections, buildGroceryRecipeSections, +7 more
 - `src/utils/gtin.ts` — gtinCheckDigit, normalizeGtin, isGtin, formatGtin, GTIN_MISS_TTL_DAYS, isCacheEntryFresh
@@ -76,10 +76,11 @@ render, so listing them adds lines without adding answers.
 - `src/utils/id.ts` — generateId
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
 - `src/utils/kitchenHistory.ts` — KitchenEventKind, KitchenEvent, KitchenHistoryDay, kitchenEvents, kitchenHistoryDays, filterKitchenEvents
-- `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, KitchenEntry, KitchenSection, compareKitchenEntries, kitchenInventory, useUpEntries, +2 more
+- `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
+- `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, KitchenEntry, KitchenSection, compareKitchenEntries, kitchenInventory, +3 more
 - `src/utils/layoutAnimation.ts` — animateLayout
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskNeedsUpdate
-- `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, keepUntilKeyFor, keepDaysBetween, isLiveLeftover, +19 more
+- `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, keepUntilKeyFor, keepDaysBetween, isLiveLeftover, liveKeepUntil, liveFreshnessOf, +19 more
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +3 more

@@ -27,7 +27,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { rankRecipes, describeRecipe, cleanRecipeName } from '../utils/recipeUtils';
 import { excludeRecipesByTags } from '../utils/recipeTags';
 import { slotLabel } from '../utils/mealPlan';
-import { describeLeftover, freshnessOf, liveLeftovers, mealTitleForLeftover } from '../utils/leftovers';
+import { describeLeftover, liveFreshnessOf, liveLeftovers, mealTitleForLeftover } from '../utils/leftovers';
 // The colour ladder lives with the card that established it rather than in
 // utils/leftovers, which is deliberately store- and theme-free so jest's node
 // env can reach it without loading a renderer.
@@ -370,7 +370,10 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
                 {showFreeText && <View style={styles.inlineSep} />}
                 <Text style={styles.listSection}>In the fridge</Text>
                 {fridge.map((leftover, idx) => {
-                  const tint = freshnessColor(freshnessOf(leftover), colors);
+                  // liveFreshnessOf, same as the fridge card's rows: a frozen
+                  // container has no live day to be urgent about.
+                  const live = liveFreshnessOf(leftover);
+                  const tint = live ? freshnessColor(live, colors) : colors.textTertiary;
                   return (
                     <React.Fragment key={leftover.id}>
                       {idx > 0 && <View style={styles.inlineSep} />}

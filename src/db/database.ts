@@ -694,6 +694,18 @@ export function initDatabase(): void {
     // feature that didn't exist, so every item keeps deferring to the lexicon
     // guess exactly as before. See GroceryItem.shelfLifeDays.
     'ALTER TABLE grocery_items ADD COLUMN shelf_life_days INTEGER',
+    // NULL on every existing row — nothing was in the freezer before there was
+    // a freezer, so every item keeps counting down exactly as it did. See
+    // GroceryItem.frozenAt.
+    'ALTER TABLE grocery_items ADD COLUMN frozen_at TEXT',
+    // NULL on every existing row — nothing has been opened before there was an
+    // opened, so every item keeps counting from its purchase exactly as it did.
+    // See GroceryItem.openedAt.
+    'ALTER TABLE grocery_items ADD COLUMN opened_at TEXT',
+    // NULL on every existing row: nobody has said they're nearly out of
+    // anything, and null is what "no answer" already means for this column's
+    // two neighbours. See GroceryItem.runningLowAt.
+    'ALTER TABLE grocery_items ADD COLUMN running_low_at TEXT',
     // Superseded by generated_kind/generated_source_id, same as meal_entry_id.
     'ALTER TABLE tasks ADD COLUMN grocery_item_id TEXT',
     // NULL on every existing row — nobody has a rule for a feature that didn't
@@ -745,6 +757,10 @@ export function initDatabase(): void {
     // DEFAULT 0 would record every leftover already in the fridge as an
     // explicit refusal. See Leftover.useUpTask.
     'ALTER TABLE leftovers ADD COLUMN use_up_task INTEGER',
+    // The fridge half of the same column, added in the same change for the
+    // reason freshness.ts exists: one of the two having a freezer and the
+    // other not is how the kitchen's halves drift. See Leftover.frozenAt.
+    'ALTER TABLE leftovers ADD COLUMN frozen_at TEXT',
     // NULL on every meal already planned, which is what makes the rollout
     // silent: picking a calendar mirrors the meals planned from then on
     // rather than back-filling a shared calendar with a fortnight of dinners
@@ -2189,6 +2205,9 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     choiceGroup: (row.choice_group as string) ?? null,
     isStaple: Boolean(row.is_staple),
     expiresAt: (row.expires_at as string) ?? null,
+    frozenAt: (row.frozen_at as string) ?? null,
+    openedAt: (row.opened_at as string) ?? null,
+    runningLowAt: (row.running_low_at as string) ?? null,
     shelfLifeDays: (row.shelf_life_days as number) ?? null,
     lastPriceMinor: (row.last_price_minor as number) ?? null,
     lastPricedAt: (row.last_priced_at as string) ?? null,
@@ -2214,9 +2233,9 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, quantity_from_recipe, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
-       source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, shelf_life_days, use_up_task,
+       source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -2225,7 +2244,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
-      item.expiresAt ?? null, item.shelfLifeDays ?? null,
+      item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0,
@@ -2239,7 +2258,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        name=?, name_key=?, aisle=?, quantity=?, quantity_from_recipe=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
-       expires_at=?, shelf_life_days=?, use_up_task=?,
+       expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?
      WHERE id=?`,
@@ -2251,7 +2270,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.onHandUntil ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
-      item.expiresAt ?? null, item.shelfLifeDays ?? null,
+      item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0,
@@ -2336,13 +2355,19 @@ export function dbFinishGroceryShopping(
             purchase_count = purchase_count + 1,
             last_purchased_at = ?,
             on_hand_until = NULL,
+            frozen_at = NULL,
+            opened_at = NULL,
+            running_low_at = NULL,
             quantity = CASE WHEN quantity_from_recipe = 1 THEN NULL ELSE quantity END,
             quantity_from_recipe = 0
       WHERE checked = 1 AND on_list = 1`,
     [purchasedAt]
   );
   // on_hand_until is *cleared* by a purchase rather than written, and it rides
-  // the bulk UPDATE above because null is the same value for every row. A
+  // the bulk UPDATE above because null is the same value for every row.
+  // frozen_at rides along for the same reason and a related one: the freezer
+  // claim was about the bag you had, and a fresh expires_at is stamped per-row
+  // below — leaving the claim would suspend the new day the moment it landed. A
   // purchase is evidence probablyHaveReason reads directly (#1770); the only
   // thing it has to say about the column is that buying something refutes an
   // "Out of it" left on it — the same correction a purchase already makes to a
@@ -3288,6 +3313,7 @@ function rowToLeftover(row: Record<string, unknown>): Leftover {
       ? (outcome === 'tossed' ? 'tossed' : 'eaten')
       : null,
     createdAt: row.created_at as string,
+    frozenAt: (row.frozen_at as string) ?? null,
     useUpTask: row.use_up_task === null || row.use_up_task === undefined
       ? null
       : Boolean(row.use_up_task),
@@ -3311,12 +3337,12 @@ export function dbGetAllLeftovers(): Leftover[] {
 
 export function dbInsertLeftover(leftover: Leftover): void {
   db.runSync(
-    `INSERT INTO leftovers (id, title, recipe_id, source_entry_id, stored_at, keep_until, finished_at, outcome, created_at, use_up_task)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO leftovers (id, title, recipe_id, source_entry_id, stored_at, keep_until, finished_at, outcome, created_at, frozen_at, use_up_task)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
     [
       leftover.id, leftover.title, leftover.recipeId ?? null, leftover.sourceEntryId ?? null,
       leftover.storedAt, leftover.keepUntil, leftover.finishedAt ?? null,
-      leftover.outcome ?? null, leftover.createdAt,
+      leftover.outcome ?? null, leftover.createdAt, leftover.frozenAt ?? null,
       leftover.useUpTask === null || leftover.useUpTask === undefined ? null : (leftover.useUpTask ? 1 : 0),
     ]
   );
@@ -3324,11 +3350,11 @@ export function dbInsertLeftover(leftover: Leftover): void {
 
 export function dbUpdateLeftover(leftover: Leftover): void {
   db.runSync(
-    `UPDATE leftovers SET title=?, recipe_id=?, source_entry_id=?, stored_at=?, keep_until=?, finished_at=?, outcome=?, use_up_task=? WHERE id=?`,
+    `UPDATE leftovers SET title=?, recipe_id=?, source_entry_id=?, stored_at=?, keep_until=?, finished_at=?, outcome=?, frozen_at=?, use_up_task=? WHERE id=?`,
     [
       leftover.title, leftover.recipeId ?? null, leftover.sourceEntryId ?? null,
       leftover.storedAt, leftover.keepUntil, leftover.finishedAt ?? null,
-      leftover.outcome ?? null,
+      leftover.outcome ?? null, leftover.frozenAt ?? null,
       leftover.useUpTask === null || leftover.useUpTask === undefined ? null : (leftover.useUpTask ? 1 : 0),
       leftover.id,
     ]

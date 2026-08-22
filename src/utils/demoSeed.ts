@@ -1129,6 +1129,9 @@ function seedGroceries(recipes: DemoRecipes): void {
     setOnHandUntil,
     addToPantry,
     setStaple,
+    setFrozen,
+    setOpened,
+    setRunningLow,
     setExpiresAt,
     setShelfLifeDays,
     setUseUpTask,
@@ -1467,6 +1470,33 @@ function seedGroceries(recipes: DemoRecipes): void {
   setExpiresAt(itemNamed('Red bell pepper').id, dayKeyOf(addDays(new Date(), 1)));
   setExpiresAt(itemNamed('Cilantro').id, dayKeyOf(new Date()));
 
+  // An opened jar, which is the second lexicon's whole reason for existing.
+  // addToPantry deliberately doesn't date anything ("Got it" doesn't say
+  // *when*), so this row has no countdown at all until it's opened — and then
+  // it has a real one, dated from the opening rather than from a purchase.
+  addToPantry('Salsa');
+  setOpened(itemNamed('Salsa').id, true);
+
+  // Running low, which is the one pantry state that touches the shopping list:
+  // the row is on this week's list because of this line, not because anyone
+  // typed it there. Coffee, because it's the thing people actually notice
+  // running out of.
+  setRunningLow(itemNamed('Coffee').id, true);
+
+  // The freezer, on both halves of the kitchen. Chicken is the case the feature
+  // was built for: the shelf-life lexicon gives it two days, so the trip above
+  // stamped a use-by date on it, and without a freezer the demo would open with
+  // "Use up Chicken breast" nagging about meat that's under an inch of ice. Its
+  // stored date is deliberately left in place and simply not read, which is what
+  // the Pantry row's "in the freezer · Frozen …" caption is showing.
+  setFrozen(itemNamed('Chicken breast').id, true);
+  // And a bag of peas, which is what most of a freezer actually is: something
+  // with no use-by date at all, in the freezer because that's where it lives.
+  // Without a row like it the section would read as a place perishables go to
+  // hide rather than a place in the kitchen.
+  addToPantry('Frozen peas');
+  setFrozen(itemNamed('Frozen peas').id, true);
+
   // A walk order the user has clearly edited: a custom section they file two
   // things into by hand, a built-in they never shop deleted (which leaves the
   // tombstone that stops normalizeAisleOrder re-appending it), and Frozen
@@ -1609,7 +1639,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   const { loadRange, planMeal, setCooked, setRecipeScale, setRecipeChoices, stampAddedToList } =
     useMealPlanStore.getState();
   const { markCooked } = useRecipeStore.getState();
-  const { logLeftover, finishLeftover } = useLeftoverStore.getState();
+  const { logLeftover, finishLeftover, setFrozen: setLeftoverFrozen } = useLeftoverStore.getState();
   const weekStartsOn = useSettingsStore.getState().weekStartsOn;
   // The two categories the kitchen's generated tasks file under, named and
   // pointed at explicitly rather than left to ensureGeneratedTaskCategories:
@@ -1719,6 +1749,18 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     storedAt: subDays(today, 6).toISOString(),
     keepDays: 3,
   });
+
+  // A portion put in the freezer rather than eaten in time — the fridge half of
+  // the same feature, and the reason it exists on both halves: a container of
+  // chilli and a bag of spinach going in the freezer are one fact to the cook.
+  // Its keep-until is weeks past, which is exactly the point: nothing counts
+  // down, nothing is red, and it sits under "In the freezer" beside the peas.
+  const frozenChilli = logLeftover({
+    title: 'Beef chilli',
+    storedAt: subDays(today, 24).toISOString(),
+    keepDays: 4,
+  });
+  if (frozenChilli) setLeftoverFrozen(frozenChilli.id, true);
 
   // Closed out, so the fridge history has both endings in it. "We ate it" and
   // "it went off" are the two things the feature exists to tell apart.

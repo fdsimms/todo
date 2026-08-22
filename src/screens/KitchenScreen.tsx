@@ -8,7 +8,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
@@ -24,12 +24,15 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useRecipeStore } from '../store/useRecipeStore';
 import {
   buildKitchenSections,
   describeKitchen,
   kitchenInventory,
+  useUpEntries,
   type KitchenEntry,
 } from '../utils/kitchenInventory';
+import { describeUseUpRecipe, useUpRecipes } from '../utils/useUpRecipes';
 import { groceryNameKey } from '../utils/groceryParse';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
@@ -97,6 +100,7 @@ export function KitchenScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const route = useRoute<any>();
+  const navigation = useNavigation<any>();
 
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
@@ -104,11 +108,14 @@ export function KitchenScreen() {
   const addManyToPantry = useGroceryStore(s => s.addManyToPantry);
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
 
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
+
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
   const renameLeftover = useLeftoverStore(s => s.renameLeftover);
   const setLeftoverStoredAt = useLeftoverStore(s => s.setStoredAt);
   const setLeftoverKeepDays = useLeftoverStore(s => s.setKeepDays);
   const finishLeftover = useLeftoverStore(s => s.finishLeftover);
+  const setLeftoverFrozen = useLeftoverStore(s => s.setFrozen);
   const reopenLeftover = useLeftoverStore(s => s.reopenLeftover);
   const deleteLeftover = useLeftoverStore(s => s.deleteLeftover);
 
@@ -131,6 +138,57 @@ export function KitchenScreen() {
   const sections = useMemo(
     () => buildKitchenSections(entries, aisleOrder, query),
     [entries, aisleOrder, query]
+  );
+
+  // What to cook with what's dying. Off `useUpEntries` rather than the whole
+  // kitchen, so this answers "what saves the spinach" and not "what could I
+  // make for dinner" — the recipe list is already the second question.
+  //
+  // Hidden while the field has text: the field filters the list below to what
+  // you're looking for, and a suggestion block that ignored the query would be
+  // the one part of the screen not answering it.
+  const suggestions = useMemo(
+    () => (query ? [] : useUpRecipes(useUpEntries(entries), recipes)),
+    [entries, recipes, query]
+  );
+  const shownSuggestions = useMemo(
+    // Two, which is what fits above the fold without pushing the pantry itself
+    // off screen. The block is an offer, not the content of the screen.
+    () => suggestions.slice(0, 2),
+    [suggestions]
+  );
+
+  // Inside the list's header rather than fixed above it, so it scrolls away
+  // with the content it's about. The screen already spends its fixed height on
+  // the hub pills and the find-or-add field; two more permanent rows would push
+  // the pantry itself off the first screen, which is the thing the user came
+  // for.
+  const suggestionHeader = shownSuggestions.length === 0 ? null : (
+    <View style={styles.suggestWrap}>
+      <Text style={styles.sectionTitle}>Cook this before it goes</Text>
+      {shownSuggestions.map(suggestion => (
+        <TouchableOpacity
+          key={suggestion.recipe.id}
+          style={styles.suggestRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => {
+            haptics.tap();
+            navigation.navigate('RecipeDetail', { recipeId: suggestion.recipe.id });
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`${suggestion.recipe.name}. ${describeUseUpRecipe(suggestion)}`}
+          accessibilityHint="Opens the recipe"
+        >
+          <Ionicons name="restaurant-outline" size={iconSize.md} color={colors.accent} />
+          <View style={styles.suggestBody}>
+            <Text style={styles.suggestName} numberOfLines={1}>{suggestion.recipe.name}</Text>
+            <Text style={styles.suggestMeta} numberOfLines={1}>
+              {describeUseUpRecipe(suggestion)}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      ))}
+    </View>
   );
 
   // The grocery/leftover "Use up X" tasks' own link (resetToKitchen in
@@ -317,6 +375,7 @@ export function KitchenScreen() {
             <Text style={styles.sectionTitle}>{section.section}</Text>
           </View>
         )}
+        ListHeaderComponent={suggestionHeader}
         stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -369,6 +428,7 @@ export function KitchenScreen() {
         onSetStoredAt={storedAt => openLeftover && setLeftoverStoredAt(openLeftover.id, storedAt)}
         onSetKeepDays={days => openLeftover && setLeftoverKeepDays(openLeftover.id, days)}
         onFinish={outcome => openLeftover && finishLeftover(openLeftover.id, outcome)}
+        onSetFrozen={frozen => openLeftover && setLeftoverFrozen(openLeftover.id, frozen)}
         onReopen={() => openLeftover && reopenLeftover(openLeftover.id)}
         onDelete={() => openLeftover && deleteLeftover(openLeftover.id)}
         onClose={() => setOpenLeftoverId(null)}
@@ -414,6 +474,26 @@ function makeStyles(colors: Colors) {
     },
     list: { paddingTop: spacing.sm, paddingBottom: spacing.xl },
     emptyContainer: { flexGrow: 1 },
+    suggestWrap: {
+      paddingHorizontal: spacing.md,
+      // Both sides, not just the one that happened to matter: the caption
+      // below has no top margin of its own.
+      marginTop: spacing.md,
+      marginBottom: spacing.md,
+      gap: spacing.xs,
+    },
+    suggestRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      paddingVertical: 12,
+      paddingHorizontal: spacing.md,
+    },
+    suggestBody: { flex: 1, minWidth: 0 },
+    suggestName: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
+    suggestMeta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
     sectionHeader: {
       paddingHorizontal: spacing.md,
       paddingTop: spacing.md,

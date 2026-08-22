@@ -25,6 +25,7 @@ function leftover(overrides: Partial<Leftover> = {}): Leftover {
     keepUntil: '2026-08-14',
     finishedAt: null,
     outcome: null,
+    frozenAt: null,
     createdAt: '2026-08-10T18:00:00.000Z',
     useUpTask: null,
     ...overrides,

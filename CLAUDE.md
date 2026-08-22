@@ -222,6 +222,9 @@ exports.
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
 | a store whose receipt prints prices but no names | `Shop.receiptStyle` + `src/utils/pricePairing.ts` + `ReceiptPricePairing.tsx` |
 | what's in the kitchen and what's about to be wasted | `src/utils/kitchenInventory.ts` (+ the ladder in `src/utils/freshness.ts`) — see `docs/arch/groceries.md` |
+| food in the freezer, and the clock that stops while it's there | `frozenAt` + `liveUseBy` in `src/utils/freshness.ts` — see `docs/arch/groceries.md` |
+| an opened jar, and being nearly out of something | `openedAt`/`runningLowAt` in `src/utils/grocerySuggest.ts` + `groceryShelfLife.ts` — see `docs/arch/groceries.md` |
+| what to cook with what's about to go off | `src/utils/useUpRecipes.ts` — see `docs/arch/groceries.md` |
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see `docs/arch/groceries.md` |
 | "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see `docs/arch/groceries.md` |
 | "always use oat milk for milk" | `src/utils/standingSwaps.ts` — see `docs/arch/groceries.md` |

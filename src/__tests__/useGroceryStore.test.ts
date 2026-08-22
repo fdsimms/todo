@@ -186,6 +186,9 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     choiceGroup: null,
     isStaple: false,
     expiresAt: null,
+    frozenAt: null,
+    openedAt: null,
+    runningLowAt: null,
     shelfLifeDays: null,
     useUpTask: null,
     lastPriceMinor: null,
@@ -3626,6 +3629,232 @@ describe('setShelfLifeDays', () => {
   it('shrugs at an id it does not hold', () => {
     seed([]);
     useGroceryStore.getState().setShelfLifeDays('gone', 5);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('setFrozen', () => {
+  it('stamps the instant and leaves the stored use-by day alone', () => {
+    const spinach = makeItem({ name: 'Spinach', expiresAt: '2026-08-20' });
+    seed([spinach]);
+
+    useGroceryStore.getState().setFrozen(spinach.id, true);
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.frozenAt).not.toBeNull();
+    // Suspended, not cleared — there'd be nothing to restart from otherwise,
+    // and no way to tell a frozen row from one that never had a date.
+    expect(updated.expiresAt).toBe('2026-08-20');
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: spinach.id, expiresAt: '2026-08-20' })
+    );
+  });
+
+  it('drops the use-up task on the way in', () => {
+    mockUseUpTasks = true;
+    // Seeded dateless and given the day through the setter, which is what
+    // reconciles — setExpiresAt early-returns on a value the row already has.
+    const spinach = makeItem({ name: 'Spinach', expiresAt: null });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-20');
+    expect(useUpTaskFor(spinach.id)).toBeDefined();
+
+    useGroceryStore.getState().setFrozen(spinach.id, true);
+
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+  });
+
+  // The whole point of the thaw: chicken that keeps two days keeps two days
+  // from coming out, not two days from a purchase three months ago.
+  it('restarts the clock from a fresh shelf life on the way out', () => {
+    const chicken = makeItem({
+      name: 'Chicken',
+      expiresAt: '2026-05-01',
+      shelfLifeDays: 2,
+      frozenAt: '2026-05-01T09:00:00.000Z',
+    });
+    seed([chicken]);
+
+    useGroceryStore.getState().setFrozen(chicken.id, false);
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.frozenAt).toBeNull();
+    expect(expiryDaysFromNow(updated.expiresAt!, new Date())).toBe(2);
+  });
+
+  it('prefers the lexicon when the row carries no remembered shelf life', () => {
+    // "spinach" is in SHELF_LIFE_LEXICON at 5 days.
+    const spinach = makeItem({ name: 'Spinach', frozenAt: '2026-05-01T09:00:00.000Z' });
+    seed([spinach]);
+
+    useGroceryStore.getState().setFrozen(spinach.id, false);
+
+    const thawed = useGroceryStore.getState().items[0];
+    expect(expiryDaysFromNow(thawed.expiresAt!, new Date())).toBe(5);
+  });
+
+  it('thaws to no date at all for a name nothing knows a shelf life for', () => {
+    const gadget = makeItem({ name: 'Bicarbonate of soda', frozenAt: '2026-05-01T09:00:00.000Z' });
+    seed([gadget]);
+
+    useGroceryStore.getState().setFrozen(gadget.id, false);
+
+    // Silence, rather than a number invented on the way out.
+    expect(useGroceryStore.getState().items[0].expiresAt).toBeNull();
+  });
+
+  // Otherwise the fresh bag inherits the old bag's freezer claim and its
+  // brand-new use-by date is suspended the moment it's stamped.
+  it('is cleared by a purchase, along with the rest of the old bag\'s state', () => {
+    const spinach = makeItem({
+      name: 'Spinach',
+      onList: true,
+      checked: true,
+      frozenAt: '2026-05-01T09:00:00.000Z',
+    });
+    seed([spinach]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([spinach.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    const bought = useGroceryStore.getState().items[0];
+    expect(bought.frozenAt).toBeNull();
+    expect(expiryDaysFromNow(bought.expiresAt!, new Date())).toBe(5);
+  });
+
+  it('is a no-op when the item is already in that state', () => {
+    const spinach = makeItem({ name: 'Spinach', frozenAt: '2026-05-01T09:00:00.000Z' });
+    seed([spinach]);
+
+    useGroceryStore.getState().setFrozen(spinach.id, true);
+
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    seed([]);
+    useGroceryStore.getState().setFrozen('gone', true);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('setOpened', () => {
+  // The case the second lexicon exists for: a jar bought five weeks ago carries
+  // a purchase-based day that has long since passed, and opening it is new
+  // information the old guess never had.
+  it('re-dates from the open lexicon, counting from the moment it was opened', () => {
+    // "salsa" is in OPEN_SHELF_LIFE_LEXICON at 7 days.
+    const salsa = makeItem({ name: 'Salsa', expiresAt: '2026-05-01' });
+    seed([salsa]);
+
+    useGroceryStore.getState().setOpened(salsa.id, true);
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.openedAt).not.toBeNull();
+    expect(expiryDaysFromNow(updated.expiresAt!, new Date())).toBe(7);
+  });
+
+  // Opening a bag of spinach doesn't restart anything — it was already exposed
+  // to the same air the fridge is full of.
+  it('records the opening but leaves the day alone for a name opening says nothing about', () => {
+    const spinach = makeItem({ name: 'Spinach', expiresAt: '2026-08-20' });
+    seed([spinach]);
+
+    useGroceryStore.getState().setOpened(spinach.id, true);
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.openedAt).not.toBeNull();
+    expect(updated.expiresAt).toBe('2026-08-20');
+  });
+
+  it('un-marking clears the stamp and leaves the date, there being no old day to restore', () => {
+    const salsa = makeItem({ name: 'Salsa', expiresAt: '2026-08-20', openedAt: '2026-08-01T09:00:00.000Z' });
+    seed([salsa]);
+
+    useGroceryStore.getState().setOpened(salsa.id, false);
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.openedAt).toBeNull();
+    expect(updated.expiresAt).toBe('2026-08-20');
+  });
+
+  it('is cleared by a purchase, because a fresh jar is sealed', () => {
+    const salsa = makeItem({
+      name: 'Salsa', onList: true, checked: true, openedAt: '2026-05-01T09:00:00.000Z',
+    });
+    seed([salsa]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([salsa.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    expect(useGroceryStore.getState().items[0].openedAt).toBeNull();
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    seed([]);
+    useGroceryStore.getState().setOpened('gone', true);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('setRunningLow', () => {
+  // The whole reason anyone says it: noticing the jar is nearly empty is the
+  // moment you want it on the list, and making them find the item again in the
+  // add field is asking them to say it twice.
+  it('puts the row on this week\'s list', () => {
+    const flour = makeItem({ name: 'Flour', onList: false });
+    seed([flour]);
+
+    useGroceryStore.getState().setRunningLow(flour.id, true);
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.runningLowAt).not.toBeNull();
+    expect(updated.onList).toBe(true);
+    expect(updated.inCatalog).toBe(true);
+  });
+
+  // One direction only: nothing on the row records *which* owner put it on the
+  // list, so a clear that removed it would be guessing with someone else's
+  // data. The add is undoable the moment it happens.
+  it('leaves the list alone when cleared', () => {
+    const flour = makeItem({ name: 'Flour', onList: false });
+    seed([flour]);
+    useGroceryStore.getState().setRunningLow(flour.id, true);
+
+    useGroceryStore.getState().setRunningLow(flour.id, false);
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.runningLowAt).toBeNull();
+    expect(updated.onList).toBe(true);
+  });
+
+  it('offers an undo that puts the row back exactly as it was', () => {
+    const flour = makeItem({ name: 'Flour', onList: false });
+    seed([flour]);
+
+    useGroceryStore.getState().setRunningLow(flour.id, true);
+    useGroceryStore.getState().lastAction!.undo!();
+
+    const undone = useGroceryStore.getState().items[0];
+    expect(undone.runningLowAt).toBeNull();
+    expect(undone.onList).toBe(false);
+  });
+
+  it('is cleared by a purchase, which is what refutes it', () => {
+    const flour = makeItem({
+      name: 'Flour', onList: true, checked: true, runningLowAt: '2026-08-01T09:00:00.000Z',
+    });
+    seed([flour]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([flour.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    expect(useGroceryStore.getState().items[0].runningLowAt).toBeNull();
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    seed([]);
+    useGroceryStore.getState().setRunningLow('gone', true);
     expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
   });
 });
