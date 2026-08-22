@@ -73,7 +73,7 @@ import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
-import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import {
   postponeOutcome,
@@ -2135,7 +2135,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   markMissed(id) {
     const task = get().tasks.find(t => t.id === id);
-    if (!task || task.completed || task.recurrenceType === 'none') return;
+    if (!task || task.completed) return;
+    // A meal-plan task is recurring in every way a user would recognize —
+    // writeMealSlotTasks writes a fresh row per day of its rolling window
+    // regardless of what happened to this one — but it never carries a
+    // recurrenceType, since its schedule comes from that generator rather
+    // than the recurrence engine. isMissableMealPlanTask is its equivalent
+    // of "eligible, and its day has come" (it has no schedule to roll
+    // forward on, so unlike a recurring task it just isn't missable yet).
+    if (task.recurrenceType === 'none' && !isMissableMealPlanTask(task)) return;
     // A recurring row can be showing in Later ahead of its own day, and you
     // cannot have missed something that hasn't come round yet — completeTask
     // refuses it outright (isRecurrenceNotYetDue), which would make every
@@ -4534,10 +4542,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  // Bulk equivalent of markMissed. Same per-task guard applies (recurring
-  // and not already completed; a task not yet due rolls forward silently
-  // instead of stamping a miss), so a mixed selection just skips whatever
-  // doesn't qualify rather than needing its own filtering here.
+  // Bulk equivalent of markMissed. Same per-task guard applies (recurring or
+  // a meal-plan task, and not already completed; a task not yet due rolls
+  // forward or is skipped instead of stamping a miss), so a mixed selection
+  // just skips whatever doesn't qualify rather than needing its own
+  // filtering here.
   bulkMarkMissed(ids) {
     if (ids.length === 0) return;
     const missedIds: string[] = [];

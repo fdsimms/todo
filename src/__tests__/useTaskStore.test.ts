@@ -4036,6 +4036,55 @@ describe('markMissed', () => {
     expect(done.missedAt).toBeNull();
     expect(isRealCompletion(done)).toBe(true);
   });
+
+  // A meal-plan task never carries a recurrenceType — its day-to-day
+  // repetition comes from writeMealSlotTasks writing a fresh row per day
+  // rather than from the recurrence engine — but it's recurring in every way
+  // a user would recognize, so it gets the same treatment.
+  const mealPlanTask = (overrides: Partial<Task> = {}) => makeTask({
+    id: 't1',
+    recurrenceType: 'none',
+    generatedKind: 'mealSlot',
+    generatedSourceId: '2025-06-10#dinner',
+    dueDate: new Date(2025, 5, 10, 9, 0, 0).toISOString(),
+    ...overrides,
+  });
+
+  it('stamps a miss on a meal-plan task whose day has come, same as a recurring one', () => {
+    useTaskStore.setState({ tasks: [mealPlanTask()] });
+    useTaskStore.getState().markMissed('t1');
+    const missed = useTaskStore.getState().tasks.find(t => t.id === 't1')!;
+    expect(missed.completed).toBe(true);
+    expect(missed.missedAt).not.toBeNull();
+    expect(isRealCompletion(missed)).toBe(false);
+    expect(isMissed(missed)).toBe(true);
+  });
+
+  it('spawns nothing for a missed meal-plan task — tomorrow\'s row already exists on its own', () => {
+    useTaskStore.setState({ tasks: [mealPlanTask()] });
+    useTaskStore.getState().markMissed('t1');
+    expect(useTaskStore.getState().tasks).toHaveLength(1);
+  });
+
+  it('does nothing on a meal-plan task not yet due — nothing to have missed yet, and no schedule to roll forward', () => {
+    const future = new Date(2025, 5, 20, 9, 0, 0).toISOString();
+    useTaskStore.setState({ tasks: [mealPlanTask({ dueDate: future })] });
+    useTaskStore.getState().markMissed('t1');
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].completed).toBe(false);
+    expect(tasks[0].missedAt).toBeNull();
+  });
+
+  it('still does nothing on a plain generated task that is neither recurring nor a meal-plan task', () => {
+    useTaskStore.setState({ tasks: [makeTask({
+      id: 't1', recurrenceType: 'none', generatedKind: 'groceryUseUp', generatedSourceId: 'g-1',
+    })] });
+    useTaskStore.getState().markMissed('t1');
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks[0].completed).toBe(false);
+    expect(tasks[0].missedAt).toBeNull();
+  });
 });
 
 // ─── togglePin ─────────────────────────────────────────────────────────────

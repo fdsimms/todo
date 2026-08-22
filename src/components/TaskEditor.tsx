@@ -89,7 +89,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { ExtraTaskSheet } from './ExtraTaskSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { describeBlocks } from '../utils/blocking';
-import { displayTitleFor } from '../utils/visibilityUtils';
+import { displayTitleFor, isMissableMealPlanTask } from '../utils/visibilityUtils';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
@@ -1272,6 +1272,35 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             text: 'Delete and Stop Series',
+            style: 'destructive',
+            onPress: () => {
+              haptics.success();
+              deleteTask(task.id);
+              onClose();
+            },
+          },
+        ],
+      );
+      return;
+    }
+    // A meal-plan task has the same choice a recurring one does, just no
+    // series to stop — tomorrow's row already exists on its own, so there's
+    // nothing "and stop" would mean here.
+    if (isMissableMealPlanTask(task)) {
+      Alert.alert(
+        'Delete meal task',
+        'This came from your meal plan. Mark it missed to keep a record, or delete it outright?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Mark Missed',
+            onPress: () => {
+              markMissed(task.id);
+              onClose();
+            },
+          },
+          {
+            text: 'Delete',
             style: 'destructive',
             onPress: () => {
               haptics.success();

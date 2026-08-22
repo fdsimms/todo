@@ -42,7 +42,7 @@ import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, da
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { asksOnCompletion } from '../utils/deliverables';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish } from '../utils/chain';
@@ -2351,7 +2351,15 @@ export const TaskItem = React.memo(function TaskItem({
                     </PressableScale>
                     )
                   )}
-                  {task.recurrenceType !== 'none' && (
+                  {/* A meal-plan task is generated fresh each day by
+                      writeMealSlotTasks rather than through recurrenceType,
+                      but it's recurring in every way a user would recognize
+                      — so it gets the same missed button once its own day
+                      has come. Unlike a real recurring task it has no
+                      schedule to show ahead of time in Later (tomorrow's row
+                      already exists independently), so there's no "not yet
+                      due" state to show the button for. */}
+                  {(task.recurrenceType !== 'none' || isMissableMealPlanTask(task)) && (
                     <PressableScale
                       style={styles.iconActionBtn}
                       onPress={async () => {
@@ -2371,7 +2379,9 @@ export const TaskItem = React.memo(function TaskItem({
                       accessibilityLabel={
                         recurrenceNotYetDue
                           ? `Skip this occurrence of ${task.title}`
-                          : `Mark ${task.title} missed and move to the next occurrence`
+                          : task.recurrenceType === 'none'
+                            ? `Mark ${task.title} missed`
+                            : `Mark ${task.title} missed and move to the next occurrence`
                       }
                     >
                       <Ionicons name="close-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
