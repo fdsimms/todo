@@ -1,7 +1,6 @@
 import ActivityKit
 import WidgetKit
 import SwiftUI
-import AppIntents
 
 // Shown on the Lock Screen and in the Dynamic Island while a task's timer or
 // a recipe's cook/prep timer is running (Task.timerStartedAt /
@@ -10,13 +9,19 @@ import AppIntents
 // tells this what to render. This view has no idea a timer was paused; it
 // only knows the activity for that key stopped existing.
 
-// The Done button. For a task (kind == "task") this reuses CompleteTaskIntent
-// verbatim — the same intent the Today widget's checkbox and the old
-// link-tap activity used — so tapping it queues the id into the App Group
-// completion queue and opens the app, which drains it via the real
-// completeTask(). A recipe has no "complete" the same way, so for kind ==
-// "cook"/"prep" this reuses StopCookingTimerIntent instead, which logs the
-// elapsed time the same way tapping Stop in the app does.
+// The Done button. This used to be an AppIntent (CompleteTaskIntent /
+// StopCookingTimerIntent, the same ones the Today widget's checkbox still
+// uses) with openAppWhenRun set, on the assumption that tapping it would
+// both run the intent and bring the app forward the way the widget's
+// checkbox does — it doesn't. Apple's own guidance (confirmed on the
+// developer forums) is that a Live Activity button's intent runs in the
+// background only; there is no way for it to open the containing app, so the
+// button silently did nothing. A plain deep link is what already reliably
+// opens the app from a Live Activity — every non-interactive tap on this
+// activity, and the whole of TripLiveActivity.swift, already goes through
+// one — so the Done button is one too: `dundundun://completeTask?id=<id>`
+// for a task, `dundundun://stopTimer?key=<key>` for a recipe's cook/prep
+// timer, both handled in src/utils/deepLinks.ts.
 //
 // Interactive controls only work in the Lock Screen presentation and the
 // *expanded* Dynamic Island regions — compactLeading/compactTrailing/minimal
@@ -26,15 +31,22 @@ private struct TimerDoneButton: View {
     let attributes: TimerActivityAttributes
     let palette: WidgetPalette
 
-    var body: some View {
-        Group {
-            if attributes.kind == "task" {
-                Button(intent: CompleteTaskIntent(taskId: attributes.itemId)) { label }
-            } else {
-                Button(intent: StopCookingTimerIntent(runKey: attributes.key)) { label }
-            }
+    private var doneURL: URL {
+        var components = URLComponents()
+        components.scheme = "dundundun"
+        if attributes.kind == "task" {
+            components.host = "completeTask"
+            components.queryItems = [URLQueryItem(name: "id", value: attributes.itemId)]
+        } else {
+            components.host = "stopTimer"
+            components.queryItems = [URLQueryItem(name: "key", value: attributes.key)]
         }
-        .buttonStyle(.plain)
+        // Only fails if scheme/host is empty, which they never are above.
+        return components.url!
+    }
+
+    var body: some View {
+        Link(destination: doneURL) { label }
     }
 
     private var label: some View {

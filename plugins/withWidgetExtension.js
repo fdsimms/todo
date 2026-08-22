@@ -31,7 +31,6 @@ const SWIFT_FILES = [
   'CompleteTaskIntent.swift',
   'TimerLiveActivity.swift',
   'TripLiveActivity.swift',
-  'StopCookingTimerIntent.swift',
 ];
 // Files that must compile into BOTH this extension and the app. The
 // canonical copy lives with the bridge module, where TodoWidgetBridge.podspec's
