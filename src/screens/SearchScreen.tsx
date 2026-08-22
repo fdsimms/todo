@@ -28,9 +28,9 @@ import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { tagColor } from '../utils/tagColor';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, border, iconSize, interaction, checkboxRadius, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { quotaFraction } from '../components/TaskItem';
+import { TaskCheckbox, TASK_CHECKBOX_SIZE } from '../components/TaskCheckbox';
 import { SearchField } from '../components/SearchField';
 import { EmptyState } from '../components/EmptyState';
 import { HighlightedText } from '../components/HighlightedText';
@@ -44,11 +44,10 @@ import { format } from 'date-fns/format';
 // what's on screen while still keeping the recompute off every keystroke.
 const SEARCH_DEBOUNCE_MS = 180;
 
-const CHECKBOX_SIZE = 20;
-
-function SearchResultItem({ result, onPress, styles, colors }: {
+function SearchResultItem({ result, onPress, onTicked, styles, colors }: {
   result: SearchResult;
   onPress: () => void;
+  onTicked: (taskId: string) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
@@ -80,28 +79,30 @@ function SearchResultItem({ result, onPress, styles, colors }: {
   ].filter(Boolean).join(', ');
 
   return (
-    <TouchableOpacity
-      style={styles.resultRow}
-      onPress={onPress}
-      activeOpacity={interaction.activeOpacity}
-      accessibilityRole="button"
-      accessibilityLabel={a11yLabel}
-      accessibilityHint="Double tap to open task"
-    >
+    // The card itself is a plain View with two touchables inside it, rather
+    // than one touchable wrapping the box — same shape the Logbook row uses,
+    // and for the same reason: a TouchableOpacity is `accessible` by default,
+    // so a checkbox nested inside one is collapsed into the row's single
+    // element and never announced. They also do different things (tick vs.
+    // open), which is exactly what two elements are for.
+    <View style={styles.resultRow}>
       <View style={styles.statusIcon}>
-        <View style={[styles.checkbox, isCompleted && !partial && styles.checkboxDone, partial && styles.checkboxQuota]}>
-          {partial ? (
-            <View
-              style={[styles.quotaFill, { height: `${Math.round(quotaFraction(task) * 100)}%` }]}
-              pointerEvents="none"
-            />
-          ) : (
-            isCompleted && <Ionicons name="checkmark" size={12} color={colors.onAccent} />
-          )}
-        </View>
+        <TaskCheckbox task={task} taskLabel={displayTitle} onTicked={onTicked} />
       </View>
 
-      <View style={styles.resultContent}>
+      <TouchableOpacity
+        style={styles.resultContent}
+        onPress={onPress}
+        activeOpacity={interaction.activeOpacity}
+        // The content column only hugs its own text, so this puts the row's
+        // vertical padding and its trailing inset back into the tap target.
+        // Nothing on the left: that side is the checkbox's, which claims out to
+        // the card edge.
+        hitSlop={{ top: 12, bottom: 12, right: spacing.md }}
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        accessibilityHint="Double tap to open task"
+      >
         <HighlightedText
           text={displayTitle}
           ranges={titleMatches}
@@ -163,8 +164,8 @@ function SearchResultItem({ result, onPress, styles, colors }: {
             <Text style={styles.notesPreview} numberOfLines={1}>{task.notes}</Text>
           )}
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -315,9 +316,22 @@ export function SearchScreen() {
 
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
 
+  // Tasks ticked from these results, kept in the Active section so the tick
+  // reads as one — the same hold Today's list keeps over a just-completed row
+  // (completionHoldIds). Without it a task ticked near the top of a long list
+  // jumps to a Completed section that may be several screens down, which looks
+  // like the row vanished rather than like it got done. Dropped when the query
+  // moves on: those are new results, and nothing is being held in them.
+  const [heldIds, setHeldIds] = useState<ReadonlySet<string>>(new Set());
+  const hold = useCallback(
+    (taskId: string) => setHeldIds(prev => new Set(prev).add(taskId)),
+    []
+  );
+  useEffect(() => setHeldIds(new Set()), [debouncedQuery]);
+
   const results: SearchResult[] = useMemo(
-    () => fuzzySearch(tasks, debouncedQuery, projectNamesById),
-    [tasks, debouncedQuery, projectNamesById]
+    () => fuzzySearch(tasks, debouncedQuery, projectNamesById, heldIds),
+    [tasks, debouncedQuery, projectNamesById, heldIds]
   );
 
   const groupResults: GroupSearchResult[] = useMemo(
@@ -325,8 +339,9 @@ export function SearchScreen() {
     [groups, debouncedQuery, rosterByGroupId]
   );
 
-  const activeResults = results.filter(r => !r.task.completed);
-  const completedResults = results.filter(r => r.task.completed);
+  const isActive = (r: SearchResult) => !r.task.completed || heldIds.has(r.task.id);
+  const activeResults = results.filter(isActive);
+  const completedResults = results.filter(r => !isActive(r));
 
   type ListItem =
     | { type: 'sectionHeader'; label: string }
@@ -352,7 +367,8 @@ export function SearchScreen() {
       completedResults.forEach(r => items.push({ type: 'result', result: r }));
     }
     return items;
-  }, [results, groupResults]);
+    // heldIds too: it's what decides which section a completed row sits in.
+  }, [results, groupResults, heldIds]);
 
   const openTask = (task: Task) => {
     setEditingTask(task);
@@ -393,6 +409,7 @@ export function SearchScreen() {
       <SearchResultItem
         result={item.result}
         onPress={() => openTask(item.result.task)}
+        onTicked={hold}
         styles={styles}
         colors={colors}
       />
@@ -513,37 +530,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginLeft: spacing.md,
     paddingTop: 1,
   },
-  checkbox: {
-    width: CHECKBOX_SIZE,
-    height: CHECKBOX_SIZE,
-    borderRadius: checkboxRadius(CHECKBOX_SIZE),
-    borderCurve: 'continuous',
-    borderWidth: border.md,
-    borderColor: colors.bgQuaternary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxDone: {
-    backgroundColor: colors.green,
-    borderColor: colors.green,
-  },
-  // A partial daily target — same accent-bordered, proportionally-filled
-  // circle Logbook's row uses, painted at rest rather than animated.
-  checkboxQuota: {
-    borderColor: colors.accent,
-    overflow: 'hidden',
-  },
-  quotaFill: {
-    position: 'absolute',
-    left: -border.md,
-    right: -border.md,
-    bottom: 0,
-    backgroundColor: colors.accent,
-  },
   // Same slot the checkbox sits in, for a stack result's icon badge.
   stackIcon: {
-    width: CHECKBOX_SIZE,
-    height: CHECKBOX_SIZE,
+    width: TASK_CHECKBOX_SIZE,
+    height: TASK_CHECKBOX_SIZE,
     borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',

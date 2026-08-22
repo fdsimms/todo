@@ -62,8 +62,7 @@ import {
 } from '../utils/kitchenHistory';
 import { formatScale } from '../utils/recipeScale';
 import { MEAL_PLAN_RETENTION_DAYS, LEFTOVER_RETENTION_DAYS } from '../types';
-import { isQuotaPartial, isMissed, displayTitleFor } from '../utils/visibilityUtils';
-import { quotaFraction } from '../components/TaskItem';
+import { isQuotaPartial, isMissed, displayTitleFor, quotaFraction } from '../utils/visibilityUtils';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';

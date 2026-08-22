@@ -20,7 +20,18 @@ export interface SearchResult {
 export function fuzzySearch(
   tasks: Task[],
   query: string,
-  projectNamesById: Map<string, string> = new Map()
+  projectNamesById: Map<string, string> = new Map(),
+  /**
+   * Tasks to rank as though they were still active, however this sort would
+   * otherwise treat them: the ones ticked off *from these very results*, which
+   * both search surfaces hold in place until the query moves on. The hold has
+   * to be applied here rather than by either caller, because this sort is
+   * upstream of both of them — a task re-ranked to the bottom here has already
+   * left the Active section (and, in the quick-search card, fallen past the
+   * five-row cap) before a caller gets to see it. Same idea as Today's
+   * completionHoldIds: a row you just ticked shouldn't move.
+   */
+  heldIds: ReadonlySet<string> = new Set()
 ): SearchResult[] {
   const q = query.trim();
   if (!q) return [];
@@ -85,9 +96,10 @@ export function fuzzySearch(
     }
   }
 
+  const ranksActive = (r: SearchResult) => !r.task.completed || heldIds.has(r.task.id);
   return results.sort((a, b) => {
     // Completed tasks rank below active ones at equal scores
-    if (a.task.completed !== b.task.completed) return a.task.completed ? 1 : -1;
+    if (ranksActive(a) !== ranksActive(b)) return ranksActive(a) ? -1 : 1;
     return b.score - a.score;
   });
 }

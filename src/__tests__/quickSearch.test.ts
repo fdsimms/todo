@@ -186,6 +186,55 @@ describe('quickSearch', () => {
     });
   });
 
+  describe('holding a task ticked from the card', () => {
+    it('leaves a held task exactly where it sat before it was ticked', () => {
+      // The whole point of the hold: ticking a row must not move it. A held
+      // task rejoins the active half at its own score, and its score didn't
+      // change, so the order is the order it already had.
+      const tasks = [
+        makeTask({ id: 'a1', title: 'Rent a van' }),
+        makeTask({ id: 'a2', title: 'Chase the rent cheque' }),
+        makeTask({ id: 'a3', title: 'Rent paid' }),
+      ];
+      const before = quickSearch(tasks, 'rent').results.map(r => r.task.id);
+
+      const ticked = tasks.map(t => (t.id === 'a1' ? { ...t, completed: true } : t));
+      expect(quickSearch(ticked, 'rent', new Map(), QUICK_SEARCH_LIMIT, new Set(['a1'])).results.map(r => r.task.id))
+        .toEqual(before);
+      // And without the hold it does move, which is what needed fixing.
+      expect(quickSearch(ticked, 'rent').results.map(r => r.task.id)).not.toEqual(before);
+    });
+
+    it('keeps a held task on the card when the cap would otherwise drop it', () => {
+      const tasks = Array.from({ length: QUICK_SEARCH_LIMIT + 2 }, (_, i) =>
+        makeTask({ id: `t${i}`, title: `Rent job ${i}` })
+      );
+      // The second row is ticked off. Without the hold it sorts behind the
+      // other six and falls off the end of a five-row card entirely.
+      const ticked = tasks.map(t => (t.id === 't1' ? { ...t, completed: true } : t));
+
+      expect(quickSearch(ticked, 'rent').results.map(r => r.task.id)).not.toContain('t1');
+      expect(
+        quickSearch(ticked, 'rent', new Map(), QUICK_SEARCH_LIMIT, new Set(['t1'])).results.map(r => r.task.id)
+      ).toContain('t1');
+    });
+
+    it('holds nothing by default', () => {
+      const tasks = [
+        makeTask({ id: 'c', title: 'Rent paid', completed: true }),
+        makeTask({ id: 'a', title: 'Rent a van' }),
+      ];
+      expect(quickSearch(tasks, 'rent').results.map(r => r.task.id)).toEqual(['a', 'c']);
+    });
+
+    it('ignores a held id that no longer matches the query', () => {
+      const tasks = [makeTask({ id: 'a', title: 'Rent a van' })];
+      const out = quickSearch(tasks, 'rent', new Map(), QUICK_SEARCH_LIMIT, new Set(['gone']));
+      expect(out.results.map(r => r.task.id)).toEqual(['a']);
+      expect(out.total).toBe(1);
+    });
+  });
+
   describe('shared behaviour with the Search screen', () => {
     it('excludes subtasks, like fuzzySearch does', () => {
       const tasks = [makeTask({ id: 'sub', title: 'Renew passport', parentId: 'parent' })];

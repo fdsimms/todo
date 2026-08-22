@@ -366,6 +366,35 @@ describe('fuzzySearch', () => {
       expect(results[0].task.id).toBe('1');
       expect(results[1].task.id).toBe('2');
     });
+
+    describe('held tasks', () => {
+      it('ranks a held task as active, so ticking it off does not move it', () => {
+        const tasks = [
+          makeTask({ id: '1', title: 'Buy milk' }),
+          makeTask({ id: '2', title: 'Buy milk and bread' }),
+        ];
+        const before = fuzzySearch(tasks, 'milk').map(r => r.task.id);
+
+        const ticked = tasks.map(t =>
+          t.id === '1' ? { ...t, completed: true, completedAt: '2025-01-01T00:00:00.000Z' } : t
+        );
+        expect(fuzzySearch(ticked, 'milk', new Map(), new Set(['1'])).map(r => r.task.id))
+          .toEqual(before);
+        expect(fuzzySearch(ticked, 'milk').map(r => r.task.id)).not.toEqual(before);
+      });
+
+      it('holds an uncompleted task without disturbing anything', () => {
+        const tasks = [makeTask({ id: '1', title: 'Buy milk' })];
+        expect(fuzzySearch(tasks, 'milk', new Map(), new Set(['1'])).map(r => r.task.id))
+          .toEqual(['1']);
+      });
+
+      it('holds nothing by default', () => {
+        const active    = makeTask({ id: '1', title: 'Buy milk' });
+        const completed = makeTask({ id: '2', title: 'Buy milk', completed: true, completedAt: '2025-01-01T00:00:00.000Z' });
+        expect(fuzzySearch([completed, active], 'milk').map(r => r.task.id)).toEqual(['1', '2']);
+      });
+    });
   });
 });
 
