@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { Linking } from 'react-native';
 import { useTaskStore } from '../store/useTaskStore';
+import { useRecipeStore } from '../store/useRecipeStore';
+import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { haptics } from './haptics';
 import {
   resetToToday,
@@ -210,6 +212,45 @@ export function isKitchenUrl(url: string): boolean {
   return typeof url === 'string' && KITCHEN_RE.test(url.trim());
 }
 
+// `dundundun://completeTask?id=…` — the Done button on a task's timer Live
+// Activity (see the Lock Screen/Dynamic Island button in
+// targets/todo-widget/TimerLiveActivity.swift). A Live Activity button's
+// intent can only run in the background — there's no AppIntent mechanism
+// that opens the containing app from one — so this reuses the same deep-link
+// scheme every other Live Activity/widget tap already opens the app with,
+// carrying the task id as a query param instead of an App Group queue file.
+const COMPLETE_TASK_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?completeTask\\/?(?:\\?(.*))?$`, 'i');
+
+export function isCompleteTaskUrl(url: string): boolean {
+  return typeof url === 'string' && COMPLETE_TASK_RE.test(url.trim());
+}
+
+export function completeTaskUrlId(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = COMPLETE_TASK_RE.exec(url.trim());
+  if (!match) return null;
+  const id = (parseQuery(match[1] ?? '').id ?? '').trim();
+  return id || null;
+}
+
+// `dundundun://stopTimer?key=cook:<id>|prep:<id>` — the peer of completeTask
+// above for a recipe's cook/prep Live Activity Done button. "Stop" here
+// means the same thing tapping Stop in the app does: log the elapsed time
+// (see stopCookTimer/stopPrepTimer in useRecipeStore.ts).
+const STOP_TIMER_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?stopTimer\\/?(?:\\?(.*))?$`, 'i');
+
+export function isStopTimerUrl(url: string): boolean {
+  return typeof url === 'string' && STOP_TIMER_RE.test(url.trim());
+}
+
+export function stopTimerUrlKey(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = STOP_TIMER_RE.exec(url.trim());
+  if (!match) return null;
+  const key = (parseQuery(match[1] ?? '').key ?? '').trim();
+  return key || null;
+}
+
 /**
  * The specific pantry item or fridge container a kitchen link asks to open,
  * or null for the bare link.
@@ -259,6 +300,24 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isProjectsUrl(url)) {
     resetToProjectPull(projectsUrlPullId(url));
+    return true;
+  }
+  if (isCompleteTaskUrl(url)) {
+    const id = completeTaskUrlId(url);
+    // Same hand-off the Today widget's checkbox uses (see
+    // processPendingWidgetCompletions in widgetSync.ts) — enqueueing rather
+    // than calling completeTask() directly lets TodayScreen play the same
+    // tap-to-complete animation before the task actually disappears.
+    if (id) {
+      useWidgetCompletionStore.getState().enqueue([id]);
+      resetToToday();
+    }
+    return true;
+  }
+  if (isStopTimerUrl(url)) {
+    const key = stopTimerUrlKey(url);
+    if (key?.startsWith('cook:')) useRecipeStore.getState().stopCookTimer(key.slice('cook:'.length));
+    else if (key?.startsWith('prep:')) useRecipeStore.getState().stopPrepTimer(key.slice('prep:'.length));
     return true;
   }
   if (isOpenAppUrl(url)) {

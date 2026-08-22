@@ -10,6 +10,9 @@ const mockResetToMealPlan = jest.fn();
 const mockResetToKitchen = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockOpenQuickAdd = jest.fn();
+const mockEnqueueWidgetCompletion = jest.fn();
+const mockStopCookTimer = jest.fn();
+const mockStopPrepTimer = jest.fn();
 
 jest.mock('react-native', () => ({
   Linking: {
@@ -19,6 +22,12 @@ jest.mock('react-native', () => ({
 }));
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => ({ addTask: mockAddTask }) },
+}));
+jest.mock('../store/useWidgetCompletionStore', () => ({
+  useWidgetCompletionStore: { getState: () => ({ enqueue: mockEnqueueWidgetCompletion }) },
+}));
+jest.mock('../store/useRecipeStore', () => ({
+  useRecipeStore: { getState: () => ({ stopCookTimer: mockStopCookTimer, stopPrepTimer: mockStopPrepTimer }) },
 }));
 jest.mock('../utils/haptics', () => ({
   // Read mockSuccess lazily: jest hoists jest.mock above the const inits, so
@@ -48,6 +57,10 @@ import {
   isQuickAddUrl,
   openInAppUrl,
   mealPlanUrlPickSlot,
+  isCompleteTaskUrl,
+  completeTaskUrlId,
+  isStopTimerUrl,
+  stopTimerUrlKey,
 } from '../utils/deepLinks';
 
 describe('parseAddTaskUrl', () => {
@@ -279,6 +292,59 @@ describe('projectsUrlPullId', () => {
   });
 });
 
+describe('isCompleteTaskUrl', () => {
+  it('accepts every spelling of the complete-task link', () => {
+    expect(isCompleteTaskUrl('dundundun://completeTask?id=task-1')).toBe(true);
+    expect(isCompleteTaskUrl('dundundun:///completeTask?id=task-1')).toBe(true);
+    expect(isCompleteTaskUrl('dundundun://completeTask/?id=task-1')).toBe(true);
+    expect(isCompleteTaskUrl('DUNDUNDUN://COMPLETETASK?id=task-1')).toBe(true);
+  });
+
+  it('rejects anything else, including its neighbours', () => {
+    expect(isCompleteTaskUrl('dundundun://')).toBe(false);
+    expect(isCompleteTaskUrl('dundundun://stopTimer?key=cook:r1')).toBe(false);
+    expect(isCompleteTaskUrl('')).toBe(false);
+  });
+});
+
+describe('completeTaskUrlId', () => {
+  it('reads the task id off the link', () => {
+    expect(completeTaskUrlId('dundundun://completeTask?id=task-1')).toBe('task-1');
+  });
+
+  it('is null with no id, or for a different link', () => {
+    expect(completeTaskUrlId('dundundun://completeTask')).toBeNull();
+    expect(completeTaskUrlId('dundundun://completeTask?id=')).toBeNull();
+    expect(completeTaskUrlId('dundundun://stopTimer?id=task-1')).toBeNull();
+  });
+});
+
+describe('isStopTimerUrl', () => {
+  it('accepts every spelling of the stop-timer link', () => {
+    expect(isStopTimerUrl('dundundun://stopTimer?key=cook:r1')).toBe(true);
+    expect(isStopTimerUrl('dundundun:///stopTimer?key=prep:r1')).toBe(true);
+    expect(isStopTimerUrl('DUNDUNDUN://STOPTIMER?key=cook:r1')).toBe(true);
+  });
+
+  it('rejects anything else, including its neighbours', () => {
+    expect(isStopTimerUrl('dundundun://')).toBe(false);
+    expect(isStopTimerUrl('dundundun://completeTask?key=cook:r1')).toBe(false);
+    expect(isStopTimerUrl('')).toBe(false);
+  });
+});
+
+describe('stopTimerUrlKey', () => {
+  it('reads the run key off the link', () => {
+    expect(stopTimerUrlKey('dundundun://stopTimer?key=cook:r1')).toBe('cook:r1');
+    expect(stopTimerUrlKey('dundundun://stopTimer?key=prep:r1')).toBe('prep:r1');
+  });
+
+  it('is null with no key, or for a different link', () => {
+    expect(stopTimerUrlKey('dundundun://stopTimer')).toBeNull();
+    expect(stopTimerUrlKey('dundundun://completeTask?key=cook:r1')).toBeNull();
+  });
+});
+
 describe('isQuickAddUrl', () => {
   it('accepts an add link with nothing to capture', () => {
     expect(isQuickAddUrl('dundundun://add')).toBe(true);
@@ -318,6 +384,35 @@ describe('openInAppUrl', () => {
     mockResetToProjectPull.mockClear();
     mockOpenQuickAdd.mockClear();
     mockAddTask.mockClear();
+    mockEnqueueWidgetCompletion.mockClear();
+    mockStopCookTimer.mockClear();
+    mockStopPrepTimer.mockClear();
+  });
+
+  // A task's timer Live Activity Done button — see TimerLiveActivity.swift.
+  it('queues the task for completion and jumps to Today', () => {
+    expect(openInAppUrl('dundundun://completeTask?id=task-1')).toBe(true);
+    expect(mockEnqueueWidgetCompletion).toHaveBeenCalledWith(['task-1']);
+    expect(mockResetToToday).toHaveBeenCalledTimes(1);
+  });
+
+  it('claims a complete-task link with no id but does nothing with it', () => {
+    expect(openInAppUrl('dundundun://completeTask')).toBe(true);
+    expect(mockEnqueueWidgetCompletion).not.toHaveBeenCalled();
+    expect(mockResetToToday).not.toHaveBeenCalled();
+  });
+
+  // A recipe's cook/prep timer Live Activity Done button.
+  it('stops a cook timer for a cook: key', () => {
+    expect(openInAppUrl('dundundun://stopTimer?key=cook:r1')).toBe(true);
+    expect(mockStopCookTimer).toHaveBeenCalledWith('r1');
+    expect(mockStopPrepTimer).not.toHaveBeenCalled();
+  });
+
+  it('stops a prep timer for a prep: key', () => {
+    expect(openInAppUrl('dundundun://stopTimer?key=prep:r1')).toBe(true);
+    expect(mockStopPrepTimer).toHaveBeenCalledWith('r1');
+    expect(mockStopCookTimer).not.toHaveBeenCalled();
   });
 
   it('navigates to the week plan and claims the URL', () => {

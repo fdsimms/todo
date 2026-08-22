@@ -7,9 +7,6 @@ private let snapshotFileName = "widget_data.json"
 // Must match the same literal in TodoWidgetData.swift — a separate Xcode
 // target/compilation unit, so the string can't be shared directly.
 private let pendingCompletionsFileName = "widget_pending_completions.json"
-// Ditto, for a cooking Live Activity's Done button (StopCookingTimerIntent in
-// the widget extension) — see drainPendingTimerStops below.
-private let pendingTimerStopsFileName = "widget_pending_timer_stops.json"
 
 // Mirrors the TimerRun shape written by src/utils/liveActivity.ts —
 // JSONDecoder maps camelCase keys onto these properties automatically.
@@ -172,34 +169,6 @@ public class TodoWidgetBridgeModule: Module {
       return succeeded
     }
     .runOnQueue(.main)
-
-    // Reads and clears the queue of run keys a cooking Live Activity's Done
-    // button (StopCookingTimerIntent, in the widget extension process) has
-    // queued. The extension can't reach the recipe store, so it only queues a
-    // key ('cook:<id>' / 'prep:<id>'); this is where that queue actually gets
-    // applied via the real stopCookTimer()/stopPrepTimer() — see
-    // processPendingTimerStops() in liveActivity.ts, which drains this on
-    // every foreground.
-    AsyncFunction("drainPendingTimerStops") { () -> [String] in
-      var keys: [String] = []
-      TodoWidgetExceptionCatcher.runCatchingExceptions {
-        guard let containerURL = FileManager.default.containerURL(
-          forSecurityApplicationGroupIdentifier: appGroupID
-        ) else {
-          return
-        }
-
-        let fileURL = containerURL
-          .appendingPathComponent("Library/Application Support", isDirectory: true)
-          .appendingPathComponent(pendingTimerStopsFileName)
-
-        guard let data = try? Data(contentsOf: fileURL) else { return }
-        guard let decoded = try? JSONDecoder().decode([String].self, from: data) else { return }
-        keys = decoded
-        try? FileManager.default.removeItem(at: fileURL)
-      }
-      return keys
-    }
 
     // ─── Live Activity (shopping trip) ────────────────────────────────────
     // Same iOS 17.0 gate as syncTimerLiveActivities, same reason: the widget

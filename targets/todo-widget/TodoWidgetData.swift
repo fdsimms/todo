@@ -7,9 +7,6 @@ let snapshotFileName = "widget_data.json"
 // Must match the same literal in TodoWidgetBridgeModule.swift — a separate
 // Xcode target/compilation unit, so the string can't be shared directly.
 let pendingCompletionsFileName = "widget_pending_completions.json"
-// Ditto, for StopCookingTimerIntent.swift (same target) — must match the same
-// literal in TodoWidgetBridgeModule.swift.
-let pendingTimerStopsFileName = "widget_pending_timer_stops.json"
 
 struct WidgetTask: Codable, Identifiable {
     let id: String
@@ -93,33 +90,6 @@ func addPendingCompletion(taskId: String) {
     var ids = loadPendingCompletionIds()
     ids.insert(taskId)
     guard let data = try? JSONEncoder().encode(Array(ids)) else { return }
-    try? FileManager.default.createDirectory(
-        at: fileURL.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-    )
-    try? data.write(to: fileURL, options: .atomic)
-}
-
-private func pendingTimerStopsFileURL() -> URL? {
-    guard let containerURL = FileManager.default.containerURL(
-        forSecurityApplicationGroupIdentifier: appGroupID
-    ) else {
-        return nil
-    }
-    return containerURL
-        .appendingPathComponent("Library/Application Support", isDirectory: true)
-        .appendingPathComponent(pendingTimerStopsFileName)
-}
-
-// Queued by a cooking Live Activity's Done button (StopCookingTimerIntent) —
-// see drainPendingTimerStops in TodoWidgetBridgeModule.swift and
-// processPendingTimerStops in src/utils/liveActivity.ts, which applies these
-// via the real stopCookTimer()/stopPrepTimer() once the app is foregrounded.
-func addPendingTimerStop(key: String) {
-    guard let fileURL = pendingTimerStopsFileURL() else { return }
-    var keys = (try? Data(contentsOf: fileURL)).flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []
-    if !keys.contains(key) { keys.append(key) }
-    guard let data = try? JSONEncoder().encode(keys) else { return }
     try? FileManager.default.createDirectory(
         at: fileURL.deletingLastPathComponent(),
         withIntermediateDirectories: true

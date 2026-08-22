@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { AppState, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import type { Task, Recipe } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -149,32 +149,6 @@ function scheduleSync(runs: TimerRun[]): void {
   debounceTimer = setTimeout(() => syncNativeTimerActivities(pendingRuns), DEBOUNCE_MS);
 }
 
-// The cooking Live Activity's Done button has no task to complete, so it logs
-// the elapsed time instead — the same outcome as tapping Stop in the app (see
-// stopCookTimer/stopPrepTimer). Queued the same way the widget's checkbox
-// queues a completion (see modules/todo-widget-bridge and
-// processPendingWidgetCompletions in widgetSync.ts): the widget extension
-// process can't reach the recipe store, so StopCookingTimerIntent just writes
-// a key ('cook:<id>' / 'prep:<id>') and opens the app to apply it for real. A
-// task's Done button reuses CompleteTaskIntent and the existing completion
-// queue instead — see useWidgetCompletionStore — since completing the task is
-// exactly the reuse the timer trigger was meant to keep.
-async function processPendingTimerStops(): Promise<void> {
-  if (Platform.OS !== 'ios') return;
-  try {
-    const { drainPendingTimerStops } = require('todo-widget-bridge') as {
-      drainPendingTimerStops: () => Promise<string[]>;
-    };
-    const keys = await drainPendingTimerStops();
-    for (const key of keys) {
-      if (key.startsWith('cook:')) useRecipeStore.getState().stopCookTimer(key.slice('cook:'.length));
-      else if (key.startsWith('prep:')) useRecipeStore.getState().stopPrepTimer(key.slice('prep:'.length));
-    }
-  } catch {
-    // No dev client build with the native module present (e.g. Expo Go) — no-op.
-  }
-}
-
 // Keeps the Live Activity for every running task/recipe timer in sync.
 // Subscribes to the task and recipe stores' array references rather than
 // threading a call through every action that can start, pause, stop, discard,
@@ -205,25 +179,12 @@ export function useTimerLiveActivitySync(): void {
       if (state.timerLiveActivity !== prevState.timerLiveActivity) sync();
     });
 
-    // Applies a cooking Live Activity's Done tap queued while the app was
-    // backgrounded or closed, then reconciles either way — same two-step as
-    // processPendingWidgetCompletions/writeSnapshotNow in widgetSync.ts.
-    processPendingTimerStops().finally(sync);
-
-    // Tapping a cooking Live Activity's Done button opens the app
-    // (StopCookingTimerIntent.openAppWhenRun) to apply its queued stop, but if
-    // the app was already running in the background this effect doesn't
-    // remount — only a fresh 'active' AppState transition tells us to drain
-    // again. drainPendingTimerStops() is safe to call with nothing queued.
-    const subscription = AppState.addEventListener('change', state => {
-      if (state === 'active') processPendingTimerStops().finally(sync);
-    });
+    sync();
 
     return () => {
       unsubTasks();
       unsubRecipes();
       unsubSettings();
-      subscription.remove();
     };
   }, []);
 }
