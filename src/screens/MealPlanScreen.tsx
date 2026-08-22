@@ -77,7 +77,8 @@ import {
   pantryCoverageForRecipe,
   type PantryCoverage,
 } from '../utils/recipeUtils';
-import { recentlyCookedTitles } from '../utils/mealIdeas';
+import { expiringItemHints, recentlyCookedTitles } from '../utils/mealIdeas';
+import { kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { excludeRecipesByTags } from '../utils/recipeTags';
 import {
   applyChoice,
@@ -1196,6 +1197,15 @@ export function MealPlanScreen() {
   // cheap and only read when the sheet is open.
   const plannedMealTitles = useMemo(() => entries.map(e => e.title).filter(Boolean), [entries]);
   const recentMealTitles = useMemo(() => recentlyCookedTitles(recipes, new Date()), [recipes]);
+  // Same "close to going bad" set the Kitchen screen's own use-up shelf reads
+  // (useUpEntries), handed to the AI generator as inspiration — never a
+  // requirement, see suggestMealIdeas' own doc. Doesn't touch the offline
+  // ranking above, which already answers "what can I make from the catalog"
+  // on its own terms.
+  const expiringMealHints = useMemo(
+    () => expiringItemHints(useUpEntries(kitchenInventory(groceryItems, leftovers, new Date()))),
+    [groceryItems, leftovers]
+  );
 
   const planSuggestion = (recipe: Recipe, dateKey: string) => {
     animateLayout();
@@ -1762,6 +1772,7 @@ export function MealPlanScreen() {
         aiIdeasEnabled={!!anthropicApiKey}
         plannedTitles={plannedMealTitles}
         recentTitles={recentMealTitles}
+        expiringItemHints={expiringMealHints}
         slotsToFill={suggesting?.days.length ?? 0}
         onPlan={planSuggestion}
         onClose={() => setSuggesting(null)}

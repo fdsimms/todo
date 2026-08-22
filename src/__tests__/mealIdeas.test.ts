@@ -6,6 +6,7 @@ import {
   dedupeMealIdeas,
   mergeMealSuggestions,
   recentlyCookedTitles,
+  expiringItemHints,
   mealIdeaRecipeDraft,
   type MealIdea,
 } from '../utils/mealIdeas';
@@ -234,6 +235,26 @@ describe('recentlyCookedTitles', () => {
     const many = Array.from({ length: 30 }, (_, i) =>
       recipe(`Dish ${i}`, { lastCookedAt: '2026-01-25T12:00:00.000Z' }));
     expect(recentlyCookedTitles(many, now, 21, 5)).toHaveLength(5);
+  });
+});
+
+describe('expiringItemHints', () => {
+  it('joins the title and use-by caption', () => {
+    expect(expiringItemHints([{ title: 'Spinach', useByCaption: 'Use by today' }]))
+      .toEqual(['Spinach — Use by today']);
+  });
+
+  it('falls back to the bare title when there is no use-by caption', () => {
+    expect(expiringItemHints([{ title: 'Leftover chilli', useByCaption: '' }]))
+      .toEqual(['Leftover chilli']);
+  });
+
+  it('keeps the order it was given, and returns nothing for an empty kitchen', () => {
+    expect(expiringItemHints([
+      { title: 'Chilli', useByCaption: 'Use by today' },
+      { title: 'Mushrooms', useByCaption: '2 days left' },
+    ])).toEqual(['Chilli — Use by today', 'Mushrooms — 2 days left']);
+    expect(expiringItemHints([])).toEqual([]);
   });
 });
 

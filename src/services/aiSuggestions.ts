@@ -758,6 +758,8 @@ export async function suggestRecipeGroceries(
 const MAX_MEAL_HINT_CHARS = 200;
 /** Planned/recent dinners named in the prompt. A fortnight of context, not a year of it. */
 const MAX_MEAL_CONTEXT_TITLES = 20;
+/** About-to-expire kitchen items offered as inspiration. A handful, not the whole pantry. */
+const MAX_EXPIRING_ITEMS = 8;
 
 /**
  * Invents meal ideas for the empty nights of a week.
@@ -772,6 +774,14 @@ const MAX_MEAL_CONTEXT_TITLES = 20;
  * Bounds and the case-insensitive dedupe are `suggestTemplateItems`' — asked
  * for in the schema and enforced on the way back by `dedupeMealIdeas`, which
  * also drops anything colliding with a title the caller already knows about.
+ *
+ * `expiringItems` (`mealIdeas.expiringItemHints`, off `useUpEntries`) is
+ * inspiration, not a constraint the model is asked to satisfy — the prompt
+ * says so explicitly. Left as a hard requirement, this would do exactly what
+ * the offline "Use it up" shelf refuses to (see `useUpRecipes.ts`'s own
+ * comment on a wrong suggestion costing more than a missing one): a forced
+ * dish is worse than no suggestion at all, so the wording only ever asks for
+ * a genuinely good one that happens to use something dying, never a stretch.
  */
 export async function suggestMealIdeas(
   plannedTitles: string[],
@@ -779,11 +789,13 @@ export async function suggestMealIdeas(
   slotsToFill: number,
   hints?: string,
   excludedTags: readonly string[] = [],
+  expiringItems: readonly string[] = [],
 ): Promise<MealIdea[]> {
   const { apiKey, model } = requireFeature('mealIdeas');
 
   const planned = plannedTitles.map(t => t.trim()).filter(Boolean).slice(0, MAX_MEAL_CONTEXT_TITLES);
   const recent = recentTitles.map(t => t.trim()).filter(Boolean).slice(0, MAX_MEAL_CONTEXT_TITLES);
+  const expiring = expiringItems.map(t => t.trim()).filter(Boolean).slice(0, MAX_EXPIRING_ITEMS);
   const nudge = (hints ?? '').trim().slice(0, MAX_MEAL_HINT_CHARS);
   const wanted = clampIdeaCount(slotsToFill);
 
@@ -793,6 +805,9 @@ export async function suggestMealIdeas(
   const recentPart = recent.length > 0
     ? `Cooked in the last few weeks — avoid these too, but they are a fair guide to the kind of cooking that gets done here:\n${recent.map(t => `- ${t}`).join('\n')}`
     : 'There is no recent cooking history to go on, so keep the ideas broad and unfussy.';
+  const expiringPart = expiring.length > 0
+    ? `A few things in the kitchen are close to going bad, for inspiration:\n${expiring.map(t => `- ${t}`).join('\n')}\nIf a genuinely good dish uses one or two of these — even a creative or unexpected use — that's a welcome bonus. But never force one in where it doesn't belong just to use it up, and a dish that ignores this list entirely is completely fine.`
+    : '';
   // The same free-form words the recipe box's own tags use (see
   // excludeRecipesByTags) — never an ingredient database, just the cook's own
   // vocabulary handed to the model as instructions rather than asked to be
@@ -840,6 +855,7 @@ export async function suggestMealIdeas(
         'Each one must be a specific, cookable dish a home cook could shop for and make on a weeknight — not a cuisine, not a category, not a theme. Favour everyday cooking over restaurant cooking, and vary the ideas across the set rather than offering the same dish three ways.',
         plannedPart,
         recentPart,
+        expiringPart,
         dietPart,
         nudge ? `What they asked for: ${nudge}` : '',
       ].filter(Boolean).join('\n\n'),

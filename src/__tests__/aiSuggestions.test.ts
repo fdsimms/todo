@@ -1010,6 +1010,52 @@ describe('suggestMealIdeas', () => {
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     expect(body.tool_choice).toEqual({ type: 'tool', name: 'suggest_meals' });
   });
+
+  it('names what is about to go bad as inspiration, not a requirement', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(ideasResponse([])),
+    } as Response);
+
+    await suggestMealIdeas([], [], 3, undefined, [], ['Spinach — Use by today', 'Mushrooms — 2 days left']);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content as string;
+    expect(content).toContain('Spinach — Use by today');
+    expect(content).toContain('Mushrooms — 2 days left');
+    expect(content).toContain('never force one in');
+    expect(content).toContain('completely fine');
+  });
+
+  it('adds no expiring-items text when none are given', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(ideasResponse([])),
+    } as Response);
+
+    await suggestMealIdeas([], [], 3);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content as string).not.toContain('close to going bad');
+  });
+
+  it('caps the expiring items named in the prompt', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(ideasResponse([])),
+    } as Response);
+    const many = Array.from({ length: 20 }, (_, i) => `Item ${i}`);
+
+    await suggestMealIdeas([], [], 3, undefined, [], many);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content as string;
+    expect(content).toContain('Item 0');
+    expect(content).not.toContain('Item 19');
+  });
 });
 
 // ============================================================================

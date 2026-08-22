@@ -67,6 +67,14 @@ interface Props {
   plannedTitles?: readonly string[];
   /** What's been cooked lately (see recentlyCookedTitles) — same "don't suggest that again" job. */
   recentTitles?: readonly string[];
+  /**
+   * "Spinach — Use by today" for what's about to go bad in the kitchen, most
+   * urgent first (`mealIdeas.expiringItemHints` off `useUpEntries`), passed
+   * to the AI generator as inspiration — never a requirement, see
+   * `suggestMealIdeas`'s own doc. Has no effect on the offline ranking above,
+   * which already answers "what can I make from the catalog" on its own terms.
+   */
+  expiringItemHints?: readonly string[];
   /** Empty dinners to fill; clamped into the MIN/MAX idea band by clampIdeaCount. */
   slotsToFill?: number;
   onPlan: (recipe: Recipe, dateKey: string) => void;
@@ -129,7 +137,7 @@ interface Props {
  */
 export function SuggestMealsSheet({
   visible, recipes, cookAgainRecipes = [], pantryByRecipeId, openDays,
-  aiIdeasEnabled = false, plannedTitles, recentTitles, slotsToFill,
+  aiIdeasEnabled = false, plannedTitles, recentTitles, expiringItemHints = [], slotsToFill,
   onPlan, onClose,
 }: Props) {
   const colors = useColors();
@@ -269,6 +277,7 @@ export function SuggestMealsSheet({
         slotsToFill ?? openDays.length,
         hints,
         excludedRecipeTags,
+        [...expiringItemHints],
       );
       // The service dedupes against the context it was given; the recipe box
       // is the other half of "new". A dish the user already owns isn't an
@@ -282,7 +291,7 @@ export function SuggestMealsSheet({
     } finally {
       setGenerating(false);
     }
-  }, [plannedTitles, recentTitles, allRecipes, slotsToFill, openDays.length, hints, excludedRecipeTags]);
+  }, [plannedTitles, recentTitles, expiringItemHints, allRecipes, slotsToFill, openDays.length, hints, excludedRecipeTags]);
 
   const dismissIdea = (idea: MealIdea) => {
     haptics.tap();
