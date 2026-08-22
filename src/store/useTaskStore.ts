@@ -72,7 +72,7 @@ import { applyMeasuredTime } from '../utils/effort';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
-import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
+import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import {
@@ -2373,6 +2373,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         const nextChainIndex = chainAdvances
           ? (atChainEnd ? 0 : task.chainIndex + 1)
           : task.chainIndex;
+        // A meal-slot chain step's own time gate (see mealSlotStepTimeSegments)
+        // doesn't carry via ...effective like everything else here — it depends
+        // on *where in the chain* the spawned row lands, not on what the step
+        // being completed happened to be gated by. Only the step that finishes
+        // the chain (Eat, Eat X) hides behind the meal's time-of-day segment;
+        // every earlier one (Choose, Prepare, Cook X) is visible all day.
+        // `!atChainEnd` because a real meal-slot task never carries a
+        // recurrence rule (see NO_RECURRENCE) — the wrap branch below is only
+        // ever reached by a user-made chain that happens to repeat, and this
+        // must not reach into that for a `generatedKind` it isn't using the
+        // way this generator does.
+        const mealSlotSource = chainAdvances && !atChainEnd && effective.generatedKind === 'mealSlot'
+          ? parseMealSlotSource(effective.generatedSourceId)
+          : null;
+        const nextTimeSegments = mealSlotSource
+          ? mealSlotStepTimeSegments(mealSlotSource.slot, nextChainIndex, task.chainItems.length)
+          : effective.timeSegments;
         // A fixed deadline is a one-off target date and doesn't carry to the next
         // occurrence. A relative deadline (deadlineOffsetDays or deadlineMonthDay
         // set — mutually exclusive) recomputes against the new dueDate instead,
@@ -2401,6 +2418,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           dueDate: effectiveDue ? effectiveDue.toISOString() : null,
           deadline: nextDeadline,
           deferUntil: null,
+          timeSegments: nextTimeSegments,
           pinned: false, // pin resets on new occurrence
           progressCount: 0, // a quota starts the new day empty
           // The question carries via ...effective, the answer doesn't: this

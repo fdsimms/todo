@@ -3478,9 +3478,10 @@ describe('checkMealSlotTasks', () => {
     expect(today.title).toBe('Lunch');
     expect(today.chainItems.map(c => c.title))
       .toEqual(['Choose lunch', 'Prepare lunch', 'Eat lunch']);
-    // Hidden until the meal is roughly due — the whole reason three of these
-    // don't crowd the morning.
-    expect(today.timeSegments).toEqual(['afternoon']);
+    // Not hidden — Choose is step 0 of 3, nowhere near the meal itself, so
+    // it's visible from the start of the day. Only the step that finishes
+    // the chain (Eat lunch) hides until the meal is roughly due.
+    expect(today.timeSegments).toEqual([]);
     expect(today.category).toBe('Meal Plan');
     // Each row lands on its own day, so the week reads as a week.
     expect(slotRows()[3].dueDate!.startsWith('2026-08-25')).toBe(true);
@@ -3600,11 +3601,38 @@ describe('checkMealSlotTasks', () => {
     )!;
     expect(spawned.generatedKind).toBe('mealSlot');
     expect(spawned.chainIndex).toBe(1);
+    // "Prepare lunch" is step 1 of 3 — still not the meal itself, so still
+    // not hidden behind the afternoon segment.
+    expect(spawned.timeSegments).toEqual([]);
 
     // One ticked step plus the one it spawned, never a third.
     jest.setSystemTime(new Date(2026, 7, 23, 9, 0, 0));
     useTaskStore.getState().checkMealSlotTasks();
     expect(slotRows().filter(t => t.generatedSourceId === '2026-08-22#lunch')).toHaveLength(2);
+  });
+
+  it('picks up the time gate on the step that finally finishes the chain', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().checkMealSlotTasks();
+    const choose = slotRows().find(t => t.generatedSourceId === '2026-08-22#lunch')!;
+    expect(choose.timeSegments).toEqual([]);
+
+    useTaskStore.getState().completeTask(choose.id);
+    const prepare = useTaskStore.getState().tasks.find(
+      t => !t.completed && t.generatedSourceId === '2026-08-22#lunch'
+    )!;
+    expect(prepare.chainIndex).toBe(1);
+    expect(prepare.timeSegments).toEqual([]);
+
+    useTaskStore.getState().completeTask(prepare.id);
+    const eat = useTaskStore.getState().tasks.find(
+      t => !t.completed && t.generatedSourceId === '2026-08-22#lunch'
+    )!;
+    expect(eat.chainIndex).toBe(2);
+    // "Eat lunch" finishes the chain — it's the meal itself, so it hides
+    // behind the afternoon segment same as any recurring task's own due time.
+    expect(eat.timeSegments).toEqual(['afternoon']);
   });
 
   it('lets go of the source at the wrap of a repeating chain', () => {

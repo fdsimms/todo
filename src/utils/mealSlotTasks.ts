@@ -63,15 +63,25 @@ import type { ChainItem } from '../types';
  * cooked.
  */
 /**
- * Which time-of-day segment a slot's task hides behind.
+ * Which time-of-day segment the slot's *last* chain step — the one that
+ * actually eats the meal — hides behind. See `mealSlotStepTimeSegments`,
+ * which is what every caller actually wants: an earlier step (Choose,
+ * Prepare, Cook X) is never gated by this, only the step that finishes the
+ * chain is.
  *
  * **This is the mechanism that makes the feature quiet**, not a decoration. A
  * task segmented `evening` is invisible on Today until evening (see
- * isTaskVisible), so the dinner question doesn't sit on the list competing with
+ * isTaskVisible), so "Eat dinner" doesn't sit on the list competing with
  * work at nine in the morning — which is precisely the complaint the old meals
  * block drew (#1402). The visibility model already knew how to do this; nothing
  * new hides anything. It is also what makes "decide in the moment" work rather
  * than being a slogan: the row surfaces roughly when the meal does.
+ *
+ * It used to gate every step of the chain, "Choose dinner" included — which
+ * meant the one step you'd actually want to do ahead of time (decide, or get
+ * a head start on prep) was hidden until it was already dinner time to ask
+ * about it. Only the last step needs to wait for the meal; deciding what's
+ * for dinner is not itself a thing that happens at mealtime.
  *
  * Snack maps to no segment on purpose. The other three name a real part of the
  * day, and a snack doesn't — it's whenever — so segmenting it would be
@@ -88,6 +98,24 @@ export const MEAL_SLOT_SEGMENTS: Record<MealSlot, TimeOfDay[]> = {
   dinner: ['evening'],
   snack: [],
 };
+
+/**
+ * The time segment (if any) a specific step of a meal-slot chain should hide
+ * behind. Only the step that finishes the chain — Eat, Eat X, or the
+ * single-step Eat X for a slot with no chain at all — hides behind
+ * `MEAL_SLOT_SEGMENTS`. Every earlier step (Choose, Prepare, Cook X) is
+ * visible from the start of the day: deciding or prepping a meal isn't a
+ * thing that happens at mealtime, so hiding it there only cost the morning
+ * you'd have wanted to decide in.
+ *
+ * Used both at creation (`mealSlotTaskFields`, always index 0 of the chain
+ * just computed) and when `completeTask` spawns a chain's next step
+ * (`useTaskStore.ts`, wherever `chainIndex` lands next) — the same question,
+ * asked at two different points the chain passes through.
+ */
+export function mealSlotStepTimeSegments(slot: MealSlot, chainIndex: number, chainLength: number): TimeOfDay[] {
+  return chainIndex >= chainLength - 1 ? (MEAL_SLOT_SEGMENTS[slot] ?? []) : [];
+}
 
 const SOURCE_SEP = '#';
 
@@ -244,12 +272,10 @@ export function mealSlotTaskFields(
     // The same noon-normalized anchor a meal's prep tasks use, so the day a
     // slot task lands on can't drift from the day its meal is on.
     dueDate: resolveOffsetDate(dayKeyToDate(dayKey), 0)!,
-    // The mechanism that keeps this quiet, unchanged from the cook tasks: a
-    // task segmented `evening` is invisible on Today until evening, so the
-    // dinner question doesn't sit on the list at nine in the morning. It is
-    // also why "decide in the moment" works at all — the row surfaces roughly
-    // when the meal does.
-    timeSegments: MEAL_SLOT_SEGMENTS[slot] ?? [],
+    // See mealSlotStepTimeSegments: only the step that finishes the chain
+    // hides behind the meal's time-of-day segment. At creation the task is
+    // always on step 0 of the chain just computed above.
+    timeSegments: mealSlotStepTimeSegments(slot, 0, chain.length),
     linkUrl: mealSlotLinkUrl(dayKey, slot, isAnswered(entry)),
     chainEnabled: chain.length > 1,
     chainItems: chain,
@@ -276,7 +302,10 @@ function sameChain(a: readonly ChainItem[], b: readonly ChainItem[]): boolean {
  * **The chain is withheld once the chain has started.** `chainIndex > 0` means
  * a step has been ticked and a fresh row spawned for the next one, and the
  * index is only meaningful against the list it was computed from — see the
- * module header.
+ * module header. `timeSegments` is withheld the same way and for the same
+ * reason: which step is time-gated depends on this row's own fixed position
+ * in *its* chain (`mealSlotStepTimeSegments`, applied once at spawn — see
+ * `completeTask`), not on a chain a plan change just recomputed from scratch.
  */
 export function mealSlotDrift(
   task: Pick<Task, 'title' | 'dueDate' | 'timeSegments' | 'linkUrl' | 'chainEnabled' | 'chainItems' | 'chainIndex'>,
@@ -296,8 +325,9 @@ export function mealSlotDrift(
   // slots reconciling, the one it left and the one it landed in.)
   if (task.linkUrl !== next.linkUrl) updates.linkUrl = next.linkUrl;
   if (
-    task.timeSegments.length !== next.timeSegments.length ||
-    next.timeSegments.some((seg, i) => task.timeSegments[i] !== seg)
+    !started &&
+    (task.timeSegments.length !== next.timeSegments.length ||
+      next.timeSegments.some((seg, i) => task.timeSegments[i] !== seg))
   ) {
     updates.timeSegments = next.timeSegments;
   }

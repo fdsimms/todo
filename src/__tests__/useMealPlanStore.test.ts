@@ -1479,8 +1479,10 @@ describe('meal tasks', () => {
     expect(task.chainEnabled).toBe(true);
     expect(task.chainItems.map(c => c.title))
       .toEqual(['Choose lunch', 'Prepare lunch', 'Eat lunch']);
-    // Lunch hides until afternoon — the whole reason this doesn't crowd Today.
-    expect(task.timeSegments).toEqual(['afternoon']);
+    // Choose lunch isn't hidden — it's step 0 of 3, nowhere near the meal
+    // itself. Only Eat lunch, the step that finishes the chain, hides until
+    // afternoon.
+    expect(task.timeSegments).toEqual([]);
     // And its link opens the picker already on the right slot.
     expect(task.linkUrl).toBe('dundundun://mealplan?date=2026-08-05&pick=lunch');
   });

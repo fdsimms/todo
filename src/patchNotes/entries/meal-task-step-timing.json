@@ -1,0 +1,4 @@
+{
+  "message": "Meal tasks like Choose dinner and Cook X no longer wait for the meal's time of day to show up. Only the step that eats the meal still hides until then, so you can decide or prep whenever suits you.",
+  "date": "2026-08-22"
+}
