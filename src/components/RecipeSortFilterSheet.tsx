@@ -31,6 +31,7 @@ const SORT_OPTIONS: { value: RecipeSortOption; label: string; icon: string }[] =
   { value: 'cooked-oldest', label: 'Not cooked in a while', icon: 'hourglass' },
   { value: 'ingredients-asc', label: 'Fewest ingredients', icon: 'remove-circle-outline' },
   { value: 'ingredients-desc', label: 'Most ingredients', icon: 'add-circle-outline' },
+  { value: 'voted', label: 'Loved first', icon: 'thumbs-up' },
 ];
 
 /**

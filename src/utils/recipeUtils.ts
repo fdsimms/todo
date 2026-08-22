@@ -1,4 +1,4 @@
-import type { GroceryItem, ItemSubLink, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSortOption, RecipeStep } from '../types';
+import type { GroceryItem, ItemSubLink, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSortOption, RecipeStep, RecipeVote } from '../types';
 import {
   RECIPE_CHOICE_GROUP_MAX_LENGTH,
   RECIPE_MEAL_TYPES,
@@ -809,6 +809,13 @@ export function sortRecipesForDisplay(recipes: readonly Recipe[]): Recipe[] {
   );
 }
 
+// Up first, then no opinion, then down — the same order productsForItem
+// ranks ProductRating in (groceryProduct.ts), minus that list's "preferred"
+// rung, which a recipe has no equivalent of.
+function voteRank(vote: RecipeVote | null): number {
+  return vote === 'up' ? 0 : vote === 'down' ? 2 : 1;
+}
+
 /**
  * The box's sort options beyond the default favorites-first order — driven by
  * RecipeSortFilterSheet, mirroring SortFilterSheet's `sort` for tasks. Kept as
@@ -825,6 +832,8 @@ export function sortRecipesBy(recipes: readonly Recipe[], sort: RecipeSortOption
   switch (sort) {
     case 'name':
       return [...recipes].sort((a, b) => a.name.localeCompare(b.name));
+    case 'voted':
+      return [...recipes].sort((a, b) => voteRank(a.vote) - voteRank(b.vote));
     case 'cooked-recent':
       return [...recipes].sort((a, b) => {
         if (!a.lastCookedAt && !b.lastCookedAt) return 0;

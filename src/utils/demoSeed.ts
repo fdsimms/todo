@@ -790,6 +790,7 @@ function seedRecipes(): DemoRecipes {
     addPrepTask,
     updatePrepTask,
     setMealType,
+    setVote,
     setTags,
     setNotes,
     setServings,
@@ -1030,6 +1031,9 @@ function seedRecipes(): DemoRecipes {
   const defrost = addPrepTask(salmon.id, 'Move the salmon to the fridge to defrost');
   if (defrost) updatePrepTask(salmon.id, defrost.id, { offsetDays: -1, reminderOffsetMinutes: 120 });
   [0, 1].forEach(() => markCooked(salmon.id));
+  // Cooked it twice and decided against a third — the down side of the vote,
+  // set the same way the "How was it?" prompt sets it after Mark cooked.
+  setVote(salmon.id, 'down');
   // The shared component — the same mash inside two different dinners, which
   // is the whole point of a reference rather than a copy.
   addComponent(salmon.id, mash.id);
@@ -1065,6 +1069,7 @@ function seedRecipes(): DemoRecipes {
   if (rest) updatePrepTask(steak.id, rest.id, { offsetDays: 0, reminderOffsetMinutes: 45 });
   markCooked(steak.id);
   toggleFavorite(steak.id);
+  setVote(steak.id, 'up');
 
   return {
     mash: mash.id,

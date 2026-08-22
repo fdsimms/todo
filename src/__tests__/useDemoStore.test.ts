@@ -1192,6 +1192,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.leftoverKeepDays === null)).toBe(true);
     expect(recipes.some(r => r.prepTasks.some(p => p.reminderOffsetMinutes !== null))).toBe(true);
     expect(recipes.some(r => r.cookCount > 1 && r.lastCookedAt)).toBe(true);
+    // Both sides of the vote — a loved, favorited dish and a cooked-twice one
+    // decided against, so the box's "Loved first" sort has something to show.
+    expect(recipes.some(r => r.vote === 'up')).toBe(true);
+    expect(recipes.some(r => r.vote === 'down')).toBe(true);
     expect(recipes.some(r => r.timerStartedAt)).toBe(true);
     // All three attribution shapes — a URL, a byline, and a cookbook page.
     expect(recipes.some(r => r.sourceUrl)).toBe(true);
