@@ -47,6 +47,7 @@ import { appendPriceObservation, mergePriceHistories } from '../utils/priceHisto
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import { describeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
+import { onHandCountFor, PANTRY_COUNT_MAX, PANTRY_COUNT_MIN } from '../utils/pantryCount';
 import { expiresAtForOpening, expiresAtForPurchase } from '../utils/groceryShelfLife';
 import { useUpTaskDraft, useUpTaskFields, useUpTaskNeedsUpdate, wantsUseUpTask } from '../utils/groceryExpiry';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
@@ -136,6 +137,21 @@ function laterOf(a: string | null, b: string | null): string | null {
   if (!a) return b;
   if (!b) return a;
   return a > b ? a : b;
+}
+
+/**
+ * Two pantry counts folded by `mergeItems`, treating null as "never counted"
+ * rather than as zero — so null and null stay null instead of asserting that
+ * there are none of something nobody ever counted.
+ *
+ * Added rather than picked, unlike every other field here: the merge's whole
+ * claim is that these two rows are one thing, and a jar counted under each is
+ * two jars of it. See GroceryItem.onHandCount.
+ */
+function sumCounts(a: number | null, b: number | null): number | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return a + b;
 }
 
 /** The three price fields, moved as a group from whichever side was priced more recently — never averaged. */
@@ -405,6 +421,34 @@ interface GroceryStore {
    * null to clear back to grocerySuggest.probablyHaveReason's own guess).
    */
   setOnHandUntil: (id: string, until: string | null) => void;
+  /**
+   * How many of this are in the kitchen with no brand recorded — the Pantry
+   * field's stepper. Null clears the count back to "never counted".
+   *
+   * Not a dumb setter, unlike `setOnHandUntil` above, because a count is a
+   * *stronger* statement than the pill beside it and has to leave the row
+   * saying so: stepping to 1 or more refreshes the "Got it" assertion, which is
+   * what puts the row in the pantry and what clears an "Out of it" that would
+   * otherwise sit there contradicting the number. That coupling is why
+   * `probablyHaveReason` needs no branch of its own for counts and every caller
+   * of it stays correct without being handed the products — **don't drop the
+   * assertion write as redundant.**
+   *
+   * Clearing to null is "I've stopped counting", not "I'm out": the assertion
+   * is left exactly as it stands, and saying you have none is still the "Out of
+   * it" pill's job.
+   */
+  setOnHandCount: (id: string, count: number | null) => void;
+  /**
+   * The same count for one particular box — the stepper beside a product in the
+   * Pantry field, and the half of this feature that answers "one of them is a
+   * different brand than the other".
+   *
+   * Keyed by product rather than by (item, brand) because that's the id every
+   * other per-product fact is already keyed by. Same assertion refresh on the
+   * owning item as `setOnHandCount`, for the same reason.
+   */
+  setProductOnHandCount: (productId: string, count: number | null) => void;
   /**
    * "Out of it" for several rows at once — what a cook reports it used up
    * (CookedUseUpSheet), where the item sheet's pill says it one row at a time.
@@ -885,9 +929,81 @@ function ensureProductFor(
       note: '',
       purchaseCount: 0,
       lastPurchasedAt: null,
+      // Not inferred either, and for a sharper version of the same reason:
+      // naming a box is saying which one you mean, not saying one is in the
+      // kitchen. `addByName`'s brand chip names a product for something still
+      // *on the list* — counting it as on hand would be the app asserting a jar
+      // that hasn't been bought yet. See ItemProduct.onHandCount.
+      onHandCount: null,
       createdAt,
     },
   };
+}
+
+/**
+ * A stored pantry count, pulled into the range the stepper can actually reach.
+ *
+ * Zero and below collapse to null rather than being kept: "none" is what the
+ * "Out of it" pill writes, and a count able to say it too would be a second bit
+ * meaning the same thing — see GroceryItem.onHandCount.
+ */
+function normalizePantryCount(count: number | null): number | null {
+  if (count === null || !Number.isFinite(count)) return null;
+  const whole = Math.floor(count);
+  if (whole < PANTRY_COUNT_MIN) return null;
+  return Math.min(whole, PANTRY_COUNT_MAX);
+}
+
+/**
+ * What a fresh count means for the row carrying it.
+ *
+ * A number is a statement that you *have* the thing, so it refreshes the "Got
+ * it" assertion — which is what puts the row in the pantry, what clears an "Out
+ * of it" the number contradicts, and what keeps every reader of
+ * `probablyHaveReason` right without being handed the products. It earns the
+ * row its catalog place too, the same way naming a store or being nearly out
+ * does: a count would otherwise be dropped by the next "Remove from list".
+ *
+ * Stepping the last one away is deliberately not the mirror image. It says you
+ * have stopped counting, not that you are out, so the assertion is left exactly
+ * as it stands and saying you have none stays the pill's job.
+ */
+function onHandFieldsForCount(
+  item: GroceryItem,
+  total: number | null,
+  now: Date
+): Pick<GroceryItem, 'onHandUntil' | 'inCatalog'> {
+  if (total === null) return { onHandUntil: item.onHandUntil, inCatalog: item.inCatalog };
+  return { onHandUntil: defaultOnHandUntil(item, now), inCatalog: true };
+}
+
+/**
+ * The counted boxes under these items, and the same rows with the count taken
+ * off — for the paths that write "Out of it".
+ *
+ * Every path that asserts the negative takes the numbers with it, because the
+ * two are one question answered twice: leaving them would put a lit "Out of it"
+ * pill above a stepper still reading 2, and would leave `onHandCountFor`
+ * summing jars the user has just said they don't have. The `before` half is
+ * what undo needs, since restoring the item rows alone would bring the
+ * assertion back without the boxes.
+ */
+function clearedProductCounts(
+  itemIds: ReadonlySet<string>,
+  products: readonly ItemProduct[]
+): { before: ItemProduct[]; after: ItemProduct[] } {
+  const before = products.filter(p => itemIds.has(p.itemId) && p.onHandCount !== null);
+  return { before, after: before.map(p => ({ ...p, onHandCount: null })) };
+}
+
+/** Applies a set of product rows onto the in-memory list, keyed by id. */
+function withProducts(
+  products: readonly ItemProduct[],
+  updates: readonly ItemProduct[]
+): ItemProduct[] {
+  if (updates.length === 0) return products as ItemProduct[];
+  const byId = new Map(updates.map(u => [u.id, u]));
+  return products.map(p => byId.get(p.id) ?? p);
 }
 
 /**
@@ -945,6 +1061,12 @@ function newItemRow(fields: {
     lastPurchasedAt: null,
     createdAt: fields.createdAt,
     onHandUntil: fields.onHandUntil ?? null,
+    // Never counted, even on the `addToPantry` path that arrives here carrying a
+    // live "Got it". Saying you have flour is not saying how many bags, and the
+    // quantity that path strips off the typed line ("2 lb flour") is a weight
+    // rather than a number of things anyway. The count is only ever a number
+    // somebody stepped to. See GroceryItem.onHandCount.
+    onHandCount: null,
     // Only a genuinely new row gets attributed — see the field's doc comment on
     // GroceryItem. A row reused via addByName's `existing` branch never reaches
     // here, so a recipe re-adding a known item can't relabel it.
@@ -1672,6 +1794,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // keeping the one they last looked at.
         rating: match.rating ?? loser.rating,
         note: match.note || loser.note,
+        // Added, not preferred: these are two rows the user has just said are
+        // one thing, so a jar counted under each is two jars of it. The rating
+        // above can't be summed because two verdicts on one box contradict each
+        // other; two counts of one box simply agree that there are more. Null
+        // is "never counted" and adds nothing, which is why both being null
+        // stays null rather than becoming 0.
+        onHandCount: sumCounts(match.onHandCount, loser.onHandCount),
       };
       mergedProducts[mergedProducts.indexOf(match)] = folded;
       byKey.set(folded.productKey, folded);
@@ -1702,6 +1831,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       lastAddedAt: laterOf(intoItem.lastAddedAt, fromItem.lastAddedAt),
       lastPurchasedAt: laterOf(intoItem.lastPurchasedAt, fromItem.lastPurchasedAt),
       onHandUntil: laterOf(intoItem.onHandUntil, fromItem.onHandUntil),
+      // Summed, for the reason the products' own counts are — see sumCounts.
+      // Deliberately not `laterOf`'s "an assertion beats no assertion" rule:
+      // that one picks between two claims about the same fact, and these are
+      // two counts of two different piles of the same thing.
+      onHandCount: sumCounts(intoItem.onHandCount, fromItem.onHandCount),
       isStaple: intoItem.isStaple || fromItem.isStaple,
       inCatalog: intoItem.inCatalog || fromItem.inCatalog,
       onList,
@@ -1962,9 +2096,68 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setOnHandUntil(id, until) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
-    const updated = { ...item, onHandUntil: until };
+    // The one thing this setter decides for itself: "Out of it" takes the
+    // counts with it, on the item and on its boxes alike, so the sheet can't
+    // show that pill lit above a stepper still reading 2. A "Got it" or a clear
+    // leaves them alone — neither contradicts a number, and an assertion the
+    // user re-makes by hand should come back saying what it said before.
+    const out = until === OUT_OF_IT_UNTIL;
+    const updated = { ...item, onHandUntil: until, onHandCount: out ? null : item.onHandCount };
+    dbUpdateGroceryItem(updated);
+    const cleared = out
+      ? clearedProductCounts(new Set([id]), get().itemProducts)
+      : { before: [], after: [] };
+    for (const p of cleared.after) dbSetItemProduct(p);
+    set(s => ({
+      items: s.items.map(i => (i.id === id ? updated : i)),
+      itemProducts: withProducts(s.itemProducts, cleared.after),
+    }));
+  },
+
+  setOnHandCount(id, count) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    const next = normalizePantryCount(count);
+    if (next === item.onHandCount) return;
+    const counted = { ...item, onHandCount: next };
+    // Read the total off the row as it will be, not as it was: the assertion
+    // below is about how many there are once this write lands, and the boxes
+    // carry their own share of that number.
+    const total = onHandCountFor(counted, get().itemProducts);
+    const updated: GroceryItem = {
+      ...counted,
+      ...onHandFieldsForCount(item, total, new Date()),
+    };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setProductOnHandCount(productId, count) {
+    const product = get().itemProducts.find(p => p.id === productId);
+    if (!product) return;
+    const next = normalizePantryCount(count);
+    if (next === product.onHandCount) return;
+    const updatedProduct: ItemProduct = { ...product, onHandCount: next };
+    dbSetItemProduct(updatedProduct);
+    const products = withProducts(get().itemProducts, [updatedProduct]);
+
+    // The owning item still carries the assertion — a count on a box is a
+    // statement about the item it's a box of, so the row it puts in the pantry
+    // is that one. Resolve-or-shrug on a product whose item has gone, like
+    // every other cross-row pointer here.
+    const item = get().items.find(i => i.id === product.itemId);
+    const updatedItem = item
+      ? { ...item, ...onHandFieldsForCount(item, onHandCountFor(item, products), new Date()) }
+      : null;
+    if (item && updatedItem && (
+      updatedItem.onHandUntil !== item.onHandUntil || updatedItem.inCatalog !== item.inCatalog
+    )) {
+      dbUpdateGroceryItem(updatedItem);
+    }
+    set(s => ({
+      items: updatedItem ? s.items.map(i => (i.id === updatedItem.id ? updatedItem : i)) : s.items,
+      itemProducts: withProducts(s.itemProducts, [updatedProduct]),
+    }));
   },
 
   markOutOfMany(ids) {
@@ -1978,18 +2171,33 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     );
     if (before.length === 0) return 0;
 
-    const updates = before.map((i): GroceryItem => ({ ...i, onHandUntil: OUT_OF_IT_UNTIL }));
+    // The counted boxes go out with the assertion, and are snapshotted with it:
+    // restoring the item rows alone would put "2 on hand" back on a row whose
+    // boxes had been quietly emptied. See clearedProductCounts.
+    const cleared = clearedProductCounts(new Set(before.map(i => i.id)), get().itemProducts);
+
+    const updates = before.map((i): GroceryItem => ({
+      ...i, onHandUntil: OUT_OF_IT_UNTIL, onHandCount: null,
+    }));
     for (const u of updates) dbUpdateGroceryItem(u);
+    for (const p of cleared.after) dbSetItemProduct(p);
     const byId = new Map(updates.map(u => [u.id, u]));
-    set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+    set(s => ({
+      items: s.items.map(i => byId.get(i.id) ?? i),
+      itemProducts: withProducts(s.itemProducts, cleared.after),
+    }));
 
     get().setLastAction({
       label: `Marked ${updates.length} ${updates.length === 1 ? 'thing' : 'things'} out`,
       destructive: true,
       undo: () => {
         for (const b of before) dbUpdateGroceryItem(b);
+        for (const p of cleared.before) dbSetItemProduct(p);
         const originalById = new Map(before.map(b => [b.id, b]));
-        set(s => ({ items: s.items.map(i => originalById.get(i.id) ?? i) }));
+        set(s => ({
+          items: s.items.map(i => originalById.get(i.id) ?? i),
+          itemProducts: withProducts(s.itemProducts, cleared.before),
+        }));
       },
     });
     return updates.length;
@@ -2473,6 +2681,37 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (ids.length === 0) return 0;
     const done = new Set(ids);
     const before = beforeItems.filter(i => done.has(i.id));
+    // Everything dbFinishGroceryShopping has just done to this trip's boxes,
+    // mirrored into memory: it cleared their on-hand counts and bumped the
+    // preferred one's purchase counters. Snapshotted from memory, which still
+    // holds the old values at this point, so the patch below and the undo both
+    // have something to work from.
+    //
+    // The two halves are computed together because they land on the same rows —
+    // patching one after the other would have the second overwrite the first
+    // with a row it had read before the first ran.
+    //
+    // **The bump half is a fix, not new bookkeeping.** Nothing mirrored it
+    // before: the db bumped the counter and the store's copy stayed behind
+    // until the next launch reloaded the table, so a box read "bought 3 times"
+    // straight after the trip that made it 4 — and taking the trip back left
+    // the extra purchase standing, since the undo restored the item rows and
+    // the links but never the products.
+    const bumpedProductIds = new Set(
+      before.map(i => i.preferredProductId).filter((id): id is string => !!id)
+    );
+    const productsBefore = get().itemProducts.filter(
+      p => (done.has(p.itemId) && p.onHandCount !== null) || bumpedProductIds.has(p.id)
+    );
+    const productsAfter = productsBefore.map((p): ItemProduct => ({
+      ...p,
+      // Every row in this set belongs to an item the trip bought — a bumped
+      // product is the preferred box of one — so the count goes unconditionally.
+      onHandCount: null,
+      ...(bumpedProductIds.has(p.id)
+        ? { purchaseCount: p.purchaseCount + 1, lastPurchasedAt: purchasedAt }
+        : null),
+    }));
     // Only this shop's links are ever touched below, bumped or newly minted —
     // an untouched shop's links need no snapshot to put back.
     const beforeLinks = new Map(
@@ -2589,6 +2828,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 // this column is that coming home with something refutes an
                 // "Out of it" sitting on it. Mirrors dbFinishGroceryShopping.
                 onHandUntil: null,
+                // And the count of what was in the cupboard before this trip,
+                // for a reason of its own on top of that one: how many came
+                // home is not something a finished shop knows, since the row's
+                // quantity is free text nothing does arithmetic on. Null hands
+                // the question back to the purchase reading that answered it
+                // before anyone counted. The boxes are cleared below, and the
+                // db mirrors both.
+                onHandCount: null,
                 // Cleared for the same reason and in the same breath: the old
                 // freezer claim was about the bag you had, and you have just
                 // come home with a new one. Leaving it would suspend the fresh
@@ -2630,6 +2877,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
             : i
         ),
         itemShops,
+        itemProducts: withProducts(s.itemProducts, productsAfter),
         cartHoldIds: [],
       };
     });
@@ -2655,6 +2903,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       destructive: true,
       undo: () => {
         for (const row of before) dbUpdateGroceryItem(row);
+        for (const p of productsBefore) dbSetItemProduct(p);
         const byId = new Map(before.map(i => [i.id, i]));
         if (shop) {
           // A link this trip bumped goes back to its old counts; one this
@@ -2675,6 +2924,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 ...beforeLinks.values(),
               ]
             : s.itemShops,
+          itemProducts: withProducts(s.itemProducts, productsBefore),
           lastShopId: shop ? beforeLastShopId : s.lastShopId,
         }));
         // Re-derive each use-up task against the item as it now stands — the

@@ -8173,7 +8173,7 @@ describe('deleting a use-up task', () => {
     id: 'g-1', name: 'Spinach', nameKey: 'spinach', preferredProductId: null, productStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, inCatalog: true, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
-    onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+    onHandUntil: null, onHandCount: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: '2026-08-17', frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null,
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
   };
@@ -8220,7 +8220,7 @@ describe('completing a use-up task', () => {
     id: 'g-1', name: 'Spinach', nameKey: 'spinach', preferredProductId: null, productStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, inCatalog: true, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
-    onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+    onHandUntil: null, onHandCount: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: '2026-08-17', frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null,
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
   };

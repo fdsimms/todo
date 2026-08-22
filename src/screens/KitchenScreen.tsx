@@ -43,6 +43,7 @@ import {
 } from '../utils/kitchenReorder';
 import { describeUseUpRecipe, useUpRecipes } from '../utils/useUpRecipes';
 import { groceryNameKey } from '../utils/groceryParse';
+import { describeOnHandCount } from '../utils/pantryCount';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ReorderableList } from '../components/ReorderableList';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
@@ -116,8 +117,18 @@ import { resetToGroceries } from '../navigation/navigationRef';
  *
  * That keeps the model the one #1040 settled on — computed from what you buy,
  * corrected when it's wrong, never an inventory anybody has to keep up.
- * Quantities, per-row expiry editing and checking things back in are the
- * inventory, and stay out.
+ * Per-row expiry editing and checking things back in are the inventory, and
+ * stay out.
+ *
+ * A row *draws* a count now — the `×2` chip beside the name, off
+ * `KitchenEntry.onHandCount` — but nothing here writes one: the steppers live
+ * in `GroceryItemSheet`'s Pantry field with the rest of the pantry state, and
+ * a stepper or a swipe on the row itself would be exactly the check-in gesture
+ * above. The count is beside the name rather than in the meta line because
+ * "have I got a spare" is answered by scanning the column of names, and that
+ * line already carries the reason, the list clause and the use-by. See
+ * `docs/arch/groceries.md` for why a number was allowed in at all where a row
+ * per jar still isn't.
  */
 export function KitchenScreen() {
   const insets = useSafeAreaInsets();
@@ -128,6 +139,7 @@ export function KitchenScreen() {
   const navigation = useNavigation<any>();
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const addToPantry = useGroceryStore(s => s.addToPantry);
   const addManyToPantry = useGroceryStore(s => s.addManyToPantry);
@@ -171,8 +183,8 @@ export function KitchenScreen() {
   const now = useMemo(() => new Date(nowMs), [nowMs]);
 
   const entries = useMemo(
-    () => kitchenInventory(items, leftovers, now),
-    [items, leftovers, now]
+    () => kitchenInventory(items, leftovers, now, itemProducts),
+    [items, leftovers, now, itemProducts]
   );
   const sections = useMemo(
     () => buildKitchenSections(entries, aisleOrder, query),
@@ -411,7 +423,13 @@ export function KitchenScreen() {
         onLongPress={drag}
         delayLongPress={interaction.delayLongPress}
         accessibilityRole="button"
-        accessibilityLabel={`${entry.title}, ${entry.caption}`}
+        // The count is spelled out rather than read as "times 2" — the chip's
+        // "×" is shorthand the row has space for and a screen reader doesn't.
+        accessibilityLabel={
+          entry.onHandCount === null
+            ? `${entry.title}, ${entry.caption}`
+            : `${entry.title}, ${describeOnHandCount(entry.onHandCount)}, ${entry.caption}`
+        }
         accessibilityHint={
           entry.kind === 'leftover'
             ? 'Opens the container, where you can close it out. Long press to move it between the fridge and the freezer'
@@ -419,7 +437,18 @@ export function KitchenScreen() {
         }
       >
         <View style={styles.body}>
-          <Text style={styles.name} numberOfLines={1}>{entry.title}</Text>
+          {/* The count sits beside the name rather than in the meta line below,
+              because "have I got a spare" is answered by scanning the column of
+              names — and the meta line already carries the reason, the list
+              clause and the use-by, any of which can be the one that wins. */}
+          <View style={styles.titleRow}>
+            <Text style={styles.name} numberOfLines={1}>{entry.title}</Text>
+            {entry.onHandCount !== null && (
+              <View style={styles.countChip}>
+                <Text style={styles.countText}>{`×${entry.onHandCount}`}</Text>
+              </View>
+            )}
+          </View>
           <Text style={styles.meta} numberOfLines={1}>
             {entry.reason}
             {entry.onList && ' · on the list'}
@@ -714,7 +743,25 @@ function makeStyles(colors: Colors) {
     },
     dropHintText: { fontSize: font.sm, color: colors.textTertiary },
     body: { flex: 1 },
-    name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
+    titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    // flexShrink so a long name truncates rather than pushing the count off the
+    // row — the number is the shorter and, on this screen, the more scannable
+    // half, so it's the one that keeps its width.
+    name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text, flexShrink: 1 },
+    // A chip rather than bare text, so "×2" reads as a quantity beside the name
+    // instead of as part of it.
+    countChip: {
+      paddingHorizontal: spacing.xs,
+      paddingVertical: 1,
+      borderRadius: radius.sm,
+      backgroundColor: colors.bgTertiary,
+    },
+    countText: {
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      color: colors.textSecondary,
+      fontVariant: ['tabular-nums'],
+    },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
     outButton: { padding: 2 },
   });

@@ -218,6 +218,7 @@ exports.
 | the store you're shopping at right now | `src/utils/activeTrip.ts` — see `docs/arch/groceries.md` |
 | what something costs, and which store is cheaper | `src/utils/groceryPrice.ts` |
 | what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
+| how many of something you have, and of which brand | `src/utils/pantryCount.ts` — see `docs/arch/groceries.md` |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
 | a store whose receipt prints prices but no names | `Shop.receiptStyle` + `src/utils/pricePairing.ts` + `ReceiptPricePairing.tsx` |

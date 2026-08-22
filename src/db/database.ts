@@ -899,6 +899,17 @@ export function initDatabase(): void {
     // Null on every row cached before this shipped and deliberately never
     // backfilled — see GtinLookup.category.
     'ALTER TABLE gtin_lookups ADD COLUMN category TEXT',
+    // The two buckets pantryCount.onHandCountFor adds up: units with no brand
+    // recorded, and units of one particular box. NULL on every existing row and
+    // neither is backfilled — "never counted" is the honest reading, and there
+    // is nothing to count *from*. A purchase in particular must not seed a 1:
+    // the list quantity is free text ("a couple", "family size") that nothing
+    // does arithmetic on, so a till knows a trip happened and not how many jars
+    // came home. That's the same line #1770 drew for on_hand_until, where
+    // stamping an assertion a purchase hadn't earned made the evidence branch
+    // unreachable. See GroceryItem.onHandCount and ItemProduct.onHandCount.
+    'ALTER TABLE grocery_items ADD COLUMN on_hand_count INTEGER',
+    'ALTER TABLE grocery_item_products ADD COLUMN on_hand_count INTEGER',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2204,6 +2215,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     lastPurchasedAt: (row.last_purchased_at as string) ?? null,
     createdAt: row.created_at as string,
     onHandUntil: (row.on_hand_until as string) ?? null,
+    onHandCount: (row.on_hand_count as number) ?? null,
     sourceRecipeId: (row.source_recipe_id as string) ?? null,
     sourceRecipeTitle: (row.source_recipe_title as string) ?? null,
     choiceGroup: (row.choice_group as string) ?? null,
@@ -2236,16 +2248,16 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
   db.runSync(
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, quantity_from_recipe, note, on_list, checked, in_catalog, sort_order,
-       purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
+       purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until, on_hand_count,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
       item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
-      item.onHandUntil ?? null,
+      item.onHandUntil ?? null, item.onHandCount ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
       item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
@@ -2261,7 +2273,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
     `UPDATE grocery_items SET
        name=?, name_key=?, aisle=?, quantity=?, quantity_from_recipe=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
-       on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
+       on_hand_until=?, on_hand_count=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
        expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?
@@ -2271,7 +2283,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
       item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
-      item.onHandUntil ?? null,
+      item.onHandUntil ?? null, item.onHandCount ?? null,
       item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
       item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
@@ -2359,6 +2371,7 @@ export function dbFinishGroceryShopping(
             purchase_count = purchase_count + 1,
             last_purchased_at = ?,
             on_hand_until = NULL,
+            on_hand_count = NULL,
             frozen_at = NULL,
             opened_at = NULL,
             running_low_at = NULL,
@@ -2366,6 +2379,16 @@ export function dbFinishGroceryShopping(
             quantity_from_recipe = 0
       WHERE checked = 1 AND on_list = 1`,
     [purchasedAt]
+  );
+  // The per-product half of the same clear. It can't ride the statement above,
+  // which is scoped by the list flags that statement has just cleared, so it's
+  // keyed by the ids read before it ran. `rows` is non-empty by the early
+  // return, which is also what keeps this off an empty `IN ()`.
+  const purchasedIds = rows.map(r => r.id);
+  db.runSync(
+    `UPDATE grocery_item_products SET on_hand_count = NULL
+      WHERE item_id IN (${purchasedIds.map(() => '?').join(',')})`,
+    purchasedIds
   );
   // on_hand_until is *cleared* by a purchase rather than written, and it rides
   // the bulk UPDATE above because null is the same value for every row.
@@ -2377,6 +2400,15 @@ export function dbFinishGroceryShopping(
   // "Out of it" left on it — the same correction a purchase already makes to a
   // shop link's unavailableAt, and the same reason: nobody should have to take
   // that claim back by hand once they've come home with the thing.
+  //
+  // Both on_hand_count columns clear for a third reason on top of that one: the
+  // count you gave was about the jars you had *before* this trip, and how many
+  // came home is something a finished shop genuinely does not know — the
+  // quantity on the row is free text ("a couple", "family size") that nothing
+  // does arithmetic on. Null hands the question back to the purchase reading,
+  // which is exactly what answered it before anyone counted; carrying the old
+  // number forward would leave a stale one standing, and adding one to it would
+  // be arithmetic on a guess.
   for (const row of rows) {
     // The preferred product's own counter, which is what makes "bought 3
     // times" sayable under one box on an item bought forty times. Only the
@@ -2746,6 +2778,9 @@ function rowToItemProduct(row: Record<string, unknown>): ItemProduct {
     note: (row.note as string) ?? '',
     purchaseCount: (row.purchase_count as number) ?? 0,
     lastPurchasedAt: (row.last_purchased_at as string) ?? null,
+    // Null, not 0, when the column is absent or unset — "never counted" rather
+    // than "none of this box in the kitchen". See ItemProduct.onHandCount.
+    onHandCount: (row.on_hand_count as number) ?? null,
     createdAt: row.created_at as string,
   };
 }
@@ -2769,8 +2804,8 @@ export function dbGetAllItemProducts(): ItemProduct[] {
 export function dbSetItemProduct(product: ItemProduct): void {
   db.runSync(
     `INSERT INTO grocery_item_products
-       (id, item_id, brand, variant, product_key, rating, note, purchase_count, last_purchased_at, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?)
+       (id, item_id, brand, variant, product_key, rating, note, purchase_count, last_purchased_at, on_hand_count, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(id)
      DO UPDATE SET brand = excluded.brand,
                    variant = excluded.variant,
@@ -2778,7 +2813,8 @@ export function dbSetItemProduct(product: ItemProduct): void {
                    rating = excluded.rating,
                    note = excluded.note,
                    purchase_count = excluded.purchase_count,
-                   last_purchased_at = excluded.last_purchased_at`,
+                   last_purchased_at = excluded.last_purchased_at,
+                   on_hand_count = excluded.on_hand_count`,
     [
       product.id,
       product.itemId,
@@ -2789,6 +2825,7 @@ export function dbSetItemProduct(product: ItemProduct): void {
       product.note,
       product.purchaseCount,
       product.lastPurchasedAt ?? null,
+      product.onHandCount ?? null,
       product.createdAt,
     ]
   );

@@ -1242,6 +1242,27 @@ export interface GroceryItem {
   // coming home with something refutes an "Out of it" left on it, the same
   // correction a purchase already makes to ItemShopLink.unavailableAt.
   onHandUntil: string | null;
+  // How many of this are in the kitchen with *no particular product named* —
+  // the plain jars, the ones no brand was recorded for. Null is "never
+  // counted", which is what every row predating this reads as and what nearly
+  // all of them stay in; 1 or more is a number the user typed.
+  //
+  // **This is not the total, and nothing may read it as one.** A unit counted
+  // here is one with no ItemProduct behind it and a unit counted on a product
+  // is one with a brand recorded, so every jar sits in exactly one of the two
+  // buckets: `pantryCount.onHandCountFor()` adds them up and is the only
+  // sanctioned read. Two jars of one brand is a product count of 2; two jars,
+  // one branded and one not, is 1 here and 1 there. That split is what makes
+  // "one is a different brand than the other" sayable without a row per jar,
+  // and it's why there is no stored total — a derived one cannot drift from
+  // its parts, where the ItemShopLink counters' permanent gap shows what
+  // happens when a total and its attributions are kept separately.
+  //
+  // Zero is reachable only from old or synced data, never from the stepper
+  // (min 1, and − at the floor clears to null). "I have none" is what the "Out
+  // of it" pill already says, and a second way to say it is a second thing to
+  // keep in step — so `onHandCountFor` reads a 0 as "nothing counted" too.
+  onHandCount: number | null;
   // The recipe this item was first added from, if any. Set only when
   // addFromPlan creates a genuinely new catalog row — never on a row that
   // already existed, so re-adding a known item (typed, imported, or from a
@@ -1604,6 +1625,20 @@ export interface ItemProduct {
   // subset of it. Nothing sums them to produce a total.
   purchaseCount: number;
   lastPurchasedAt: string | null;
+  // How many of this exact box are in the kitchen right now — the "two jars of
+  // mayo, one of them a different brand" half of the pantry count. Null is
+  // "never counted", not zero.
+  //
+  // Deliberately unlike the `purchaseCount` directly above it, which it must
+  // not be read as a live version of: that one is history and only ever rises,
+  // this one falls as things get used up. Same split ItemShopLink keeps between
+  // its own `purchaseCount` (what has happened) and `unavailableAt` (what is
+  // true now).
+  //
+  // Added to the item's unattributed bucket by `pantryCount.onHandCountFor()`,
+  // the only place that arithmetic happens — see GroceryItem.onHandCount for
+  // why the total is derived rather than stored.
+  onHandCount: number | null;
   createdAt: string;
 }
 

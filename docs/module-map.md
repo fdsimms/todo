@@ -96,6 +96,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/nudgeCadence.ts` — CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, CADENCE_UNIT_MAX, CadenceParts, toCadenceParts, fromCadenceParts, withCadenceUnit, describeCadence, cadenceUnitLabel
 - `src/utils/ordinal.ts` — ordinal
 - `src/utils/paintSelect.ts` — PaintRowRect, PAINT_GUTTER_WIDTH, ROW_HIT_SLOP, isInPaintGutter, rowIdAtY, rowIdsBetween
+- `src/utils/pantryCount.ts` — PANTRY_COUNT_MIN, PANTRY_COUNT_MAX, productsWithCount, onHandCountFor, describeOnHandCount, describeOnHandBreakdown
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, DatePart, monthDay, parseDatePart, parseNaturalDate
 - `src/utils/parseTaskInput.ts` — ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, parsePhoneInput, +9 more
 - `src/utils/patchNotes.ts` — PatchNote

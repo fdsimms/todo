@@ -255,6 +255,7 @@ function kitchen(
     useByCaption: freshness === null ? '' : 'Use by today',
     caption: 'Bought 2×',
     onList: false,
+    onHandCount: null,
     matchKey: groceryNameKey(title),
     ...overrides,
   };

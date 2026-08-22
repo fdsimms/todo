@@ -58,6 +58,7 @@ import {
 import { buildKitchenSections, describeKitchen, FREEZER_SECTION, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { useUpRecipes } from '../utils/useUpRecipes';
 import { probablyHaveReason } from '../utils/grocerySuggest';
+import { onHandCountFor, productsWithCount } from '../utils/pantryCount';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
 import { findProjectStalls } from '../utils/projectPull';
@@ -1597,6 +1598,33 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(low.every(i => i.onList)).toBe(true);
     // Still had, which is the whole distinction from "Out of it".
     expect(probablyHaveReason(low[0], new Date())).toBe('running low');
+  });
+
+  // The count, in both shapes it comes in. Without these the Pantry screen has
+  // no row reading "×2" anywhere in the demo, and a capability with no row in
+  // the seed reads as one the app hasn't got.
+  it('seeds two of one thing, split across two brands', () => {
+    const { items, itemProducts } = useGroceryStore.getState();
+    const split = items.find(i => onHandCountFor(i, itemProducts) === 2 && !i.onHandCount);
+    expect(split).toBeDefined();
+
+    // The whole point of the split: the two jars are not the same box, which is
+    // what neither a single bit nor a single number could ever have said.
+    const boxes = productsWithCount(split!, itemProducts);
+    expect(boxes).toHaveLength(2);
+    expect(new Set(boxes.map(b => b.brand)).size).toBe(2);
+
+    // And the count leaves the row asserted on hand, so it's actually in the
+    // pantry to be seen.
+    expect(probablyHaveReason(split!, new Date())).toBe('marked as on hand');
+  });
+
+  it('seeds a plain count with no opinion about brands', () => {
+    const { items, itemProducts } = useGroceryStore.getState();
+    const plain = items.find(i => (i.onHandCount ?? 0) > 1);
+    expect(plain).toBeDefined();
+    expect(productsWithCount(plain!, itemProducts)).toHaveLength(0);
+    expect(onHandCountFor(plain!, itemProducts)).toBe(plain!.onHandCount);
   });
 
   it('seeds a kitchen where something dying has a recipe that would use it', () => {

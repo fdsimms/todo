@@ -153,6 +153,7 @@ function makeProduct(itemId: string, brand: string | null, variant: string | nul
     brand,
     variant,
     productKey: `${(brand ?? '').toLowerCase()}|${(variant ?? '').toLowerCase()}`,
+    onHandCount: null,
     rating: null,
     note: '',
     purchaseCount: 0,
@@ -181,6 +182,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     lastPurchasedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null,
+    onHandCount: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
     choiceGroup: null,
@@ -757,6 +759,59 @@ describe('finishShopping', () => {
 
     // The unchecked one stays on the list for next time.
     expect(after.find(i => i.id === eggs.id)!.onList).toBe(true);
+  });
+
+  // How many came home is something a finished shop genuinely doesn't know —
+  // the row's quantity is free text nothing does arithmetic on — so the count
+  // goes back to "never counted" rather than being carried forward or added to.
+  it('clears both count buckets, so the purchase reading answers again', () => {
+    const mayo = makeItem({ name: 'Vegan mayonnaise', onList: true, checked: true, onHandCount: 1 });
+    const hellmanns = makeProduct(mayo.id, "Hellmann's", null);
+    hellmanns.onHandCount = 2;
+    seed([mayo], { itemProducts: [hellmanns] });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([mayo.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    expect(useGroceryStore.getState().items[0].onHandCount).toBeNull();
+    expect(useGroceryStore.getState().itemProducts[0].onHandCount).toBeNull();
+  });
+
+  // The store's copy used to stay behind the db here: dbFinishGroceryShopping
+  // bumps the preferred box's counter and nothing mirrored it, so a box read
+  // "bought once" straight after the trip that made it twice.
+  it('mirrors the preferred box\'s purchase bump, and undo takes it back', () => {
+    const bread = makeItem({ name: 'Bread', onList: true, checked: true });
+    const arnolds = makeProduct(bread.id, "Arnold's", 'wheat');
+    arnolds.purchaseCount = 1;
+    bread.preferredProductId = arnolds.id;
+    seed([bread], { itemProducts: [arnolds] });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([bread.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    const bought = useGroceryStore.getState().itemProducts[0];
+    expect(bought.purchaseCount).toBe(2);
+    expect(bought.lastPurchasedAt).not.toBeNull();
+
+    useGroceryStore.getState().lastAction!.undo();
+
+    const restored = useGroceryStore.getState().itemProducts[0];
+    expect(restored.purchaseCount).toBe(1);
+    expect(restored.lastPurchasedAt).toBeNull();
+  });
+
+  // Only the preferred one. A trip that bought an item with no preference says
+  // nothing about which box came home.
+  it('leaves an unpreferred box\'s counter alone', () => {
+    const bread = makeItem({ name: 'Bread', onList: true, checked: true });
+    const arnolds = makeProduct(bread.id, "Arnold's", 'wheat');
+    seed([bread], { itemProducts: [arnolds] });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([bread.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    expect(useGroceryStore.getState().itemProducts[0].purchaseCount).toBe(0);
   });
 
   it('promotes a provisional row that was actually bought', () => {
@@ -2629,6 +2684,29 @@ describe('mergeItems', () => {
     expect(products.find(p => p.id === own.id)).toBeDefined();
   });
 
+  // Added rather than picked, unlike every other field the merge folds: the
+  // merge's whole claim is that these two rows are one thing, so a jar counted
+  // under each is two jars of it.
+  it('adds the two rows\' counts rather than picking one', () => {
+    const cilantro = makeItem({ name: 'Cilantro', onHandCount: 1 });
+    const coriander = makeItem({ name: 'Coriander', onHandCount: 2 });
+    seed([cilantro, coriander]);
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+
+    expect(useGroceryStore.getState().items[0].onHandCount).toBe(3);
+  });
+
+  it('leaves a count of null alone when neither row was ever counted', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander]);
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+
+    expect(useGroceryStore.getState().items[0].onHandCount).toBeNull();
+  });
+
   // productKey is the identity within an item, so both rows having a "store
   // brand" is one box, not two.
   it('folds two boxes with the same key into one, keeping the survivor', () => {
@@ -3449,6 +3527,117 @@ describe('markOutOfMany', () => {
     seed([]);
     expect(useGroceryStore.getState().markOutOfMany(['gone'])).toBe(0);
     expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
+  // "I'm out" and "2 on hand" are one question answered twice, so the negative
+  // takes the numbers with it — on the row and on its boxes alike — and the
+  // undo owes both back.
+  it('clears the counts with the assertion, and undo restores them', () => {
+    const mayo = makeItem({ name: 'Vegan mayonnaise', onHandCount: 1 });
+    const hellmanns = makeProduct(mayo.id, "Hellmann's", null);
+    hellmanns.onHandCount = 2;
+    seed([mayo], { itemProducts: [hellmanns] });
+
+    useGroceryStore.getState().markOutOfMany([mayo.id]);
+
+    expect(useGroceryStore.getState().items[0].onHandCount).toBeNull();
+    expect(useGroceryStore.getState().itemProducts[0].onHandCount).toBeNull();
+    expect(dbSetItemProduct).toHaveBeenCalledWith(
+      expect.objectContaining({ id: hellmanns.id, onHandCount: null })
+    );
+
+    useGroceryStore.getState().lastAction!.undo();
+
+    expect(useGroceryStore.getState().items[0].onHandCount).toBe(1);
+    expect(useGroceryStore.getState().itemProducts[0].onHandCount).toBe(2);
+  });
+});
+
+describe('setOnHandCount', () => {
+  // A count is a stronger statement than the pill beside it, so it has to leave
+  // the row saying so — that assertion is what puts it in the pantry, and what
+  // keeps every reader of probablyHaveReason right without being handed the
+  // products.
+  it('writes the count and asserts the row on hand', () => {
+    const mayo = makeItem({ name: 'Vegan mayonnaise' });
+    seed([mayo]);
+
+    useGroceryStore.getState().setOnHandCount(mayo.id, 2);
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.onHandCount).toBe(2);
+    expect(updated.inCatalog).toBe(true);
+    expect(probablyHaveReason(updated, new Date())).toBe('marked as on hand');
+  });
+
+  it('overrides an "Out of it" it contradicts', () => {
+    const mayo = makeItem({ name: 'Vegan mayonnaise', onHandUntil: OUT_OF_IT_UNTIL });
+    seed([mayo]);
+
+    useGroceryStore.getState().setOnHandCount(mayo.id, 1);
+
+    expect(probablyHaveReason(useGroceryStore.getState().items[0], new Date())).toBe(
+      'marked as on hand'
+    );
+  });
+
+  // Deliberately not the mirror image of the above: stepping the last one away
+  // says you have stopped counting, not that you are out. Saying you have none
+  // stays the "Out of it" pill's job.
+  it('leaves the assertion standing when the count is cleared', () => {
+    const mayo = makeItem({ name: 'Vegan mayonnaise' });
+    seed([mayo]);
+    useGroceryStore.getState().setOnHandCount(mayo.id, 2);
+    const asserted = useGroceryStore.getState().items[0].onHandUntil;
+
+    useGroceryStore.getState().setOnHandCount(mayo.id, null);
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.onHandCount).toBeNull();
+    expect(updated.onHandUntil).toBe(asserted);
+  });
+
+  // Zero is what the "Out of it" pill writes, so the count never stores it —
+  // see GroceryItem.onHandCount.
+  it('reads a zero as having stopped counting', () => {
+    const mayo = makeItem({ name: 'Vegan mayonnaise', onHandCount: 3 });
+    seed([mayo]);
+
+    useGroceryStore.getState().setOnHandCount(mayo.id, 0);
+
+    expect(useGroceryStore.getState().items[0].onHandCount).toBeNull();
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    seed([]);
+    useGroceryStore.getState().setOnHandCount('gone', 2);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('setProductOnHandCount', () => {
+  // The case the feature exists for: two jars, one of them a different brand.
+  it('counts one box and asserts the item it is a box of', () => {
+    const mayo = makeItem({ name: 'Vegan mayonnaise' });
+    const hellmanns = makeProduct(mayo.id, "Hellmann's", null);
+    const store = makeProduct(mayo.id, 'store brand', null);
+    seed([mayo], { itemProducts: [hellmanns, store] });
+
+    useGroceryStore.getState().setProductOnHandCount(hellmanns.id, 1);
+    useGroceryStore.getState().setProductOnHandCount(store.id, 1);
+
+    const products = useGroceryStore.getState().itemProducts;
+    expect(products.map(p => p.onHandCount)).toEqual([1, 1]);
+    // The count lives on the boxes, and the item is what the pantry lists.
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.onHandCount).toBeNull();
+    expect(probablyHaveReason(updated, new Date())).toBe('marked as on hand');
+  });
+
+  it('shrugs at a product id it does not hold', () => {
+    seed([]);
+    useGroceryStore.getState().setProductOnHandCount('gone', 2);
+    expect(dbSetItemProduct).not.toHaveBeenCalled();
   });
 });
 

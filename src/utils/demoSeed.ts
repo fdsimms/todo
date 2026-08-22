@@ -1127,6 +1127,8 @@ function seedGroceries(recipes: DemoRecipes): void {
     setAisle,
     setAisleOrder,
     setOnHandUntil,
+    setOnHandCount,
+    setProductOnHandCount,
     addToPantry,
     setStaple,
     setFrozen,
@@ -1476,6 +1478,26 @@ function seedGroceries(recipes: DemoRecipes): void {
   // it has a real one, dated from the opening rather than from a purchase.
   addToPantry('Salsa');
   setOpened(itemNamed('Salsa').id, true);
+
+  // How many, and of what — the pantry's count, in both of its shapes.
+  //
+  // Mayonnaise is the split one, and the case the feature was built for: two
+  // jars in the fridge that are not the same box. A single "Got it" bit could
+  // never say that, and neither could one number — so the counts live on the
+  // boxes and the item's own bucket stays empty, with the total derived from
+  // the two. Nothing else in the seed produces a row that reads "×2".
+  const mayo = addToPantry('Vegan mayonnaise');
+  if (mayo) {
+    const hellmanns = addProduct(mayo.id, { brand: "Hellmann's", variant: null });
+    const kensington = addProduct(mayo.id, { brand: "Sir Kensington's", variant: null });
+    if (hellmanns) setProductOnHandCount(hellmanns.id, 1);
+    if (kensington) setProductOnHandCount(kensington.id, 1);
+  }
+  // And the plain shape, which is what most counted rows actually look like: a
+  // number, and no opinion about which box. Tins, because "have I got another"
+  // is the question a cupboard row is really asked.
+  const chickpeas = addToPantry('Canned chickpeas');
+  if (chickpeas) setOnHandCount(chickpeas.id, 3);
 
   // Running low, which is the one pantry state that touches the shopping list:
   // the row is on this week's list because of this line, not because anyone

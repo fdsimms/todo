@@ -38,6 +38,7 @@ function entry(kind: KitchenKind, title: string, section: string): KitchenEntry 
     useByCaption: '',
     caption: 'bought 2×',
     onList: false,
+    onHandCount: null,
     matchKey: title.toLowerCase(),
   };
 }

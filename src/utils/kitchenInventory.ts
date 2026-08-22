@@ -1,6 +1,7 @@
-import type { GroceryItem, Leftover, LeftoverFreshness } from '../types';
+import type { GroceryItem, ItemProduct, Leftover, LeftoverFreshness } from '../types';
 import { FROZEN_REASON } from '../types';
 import { OTHER_AISLE } from './groceryAisles';
+import { onHandCountFor } from './pantryCount';
 import { groceryNameKey } from './groceryParse';
 import { matchWeight, pantryEntries, sectionsInAisleOrder } from './grocerySuggest';
 import { daysUntilDay, describeFrozenSince, describeOpenedOn, describeUseBy, freshnessFor, isUseUpSoon } from './freshness';
@@ -38,12 +39,17 @@ import { describeAge, isLiveLeftover, liveKeepUntil } from './leftovers';
  * drag onto a night of the week and a bag of spinach is not a dinner.
  *
  * **Two things it deliberately doesn't grow**, both already ruled out by
- * `KitchenScreen`'s own note: quantities, per-row expiry editing and a check-in
- * gesture (that's the maintained inventory that dies in week three), and any
+ * `KitchenScreen`'s own note: per-row expiry editing and a check-in gesture
+ * (that's the maintained inventory that dies in week three), and any
  * reading of `probablyHaveReason` returning null as *absence*. Null there is
  * ignorance — it's the default state of nearly every item in a catalog — so
  * what it means is that the row simply isn't in this list, never that the
  * kitchen is out of it.
+ *
+ * `KitchenEntry.onHandCount` is the one quantity that got in, and it carries
+ * the same null rule: never counted, which is not none. It's a number about
+ * the item and never a row per jar — `pantryCount.ts` has the argument, and
+ * why the rest of the per-unit bookkeeping stays refused.
  */
 
 export type KitchenKind = 'grocery' | 'leftover';
@@ -165,6 +171,22 @@ export interface KitchenEntry {
    * reads as the assertion having been forgotten.
    */
   onList: boolean;
+  /**
+   * How many of it there are — the item's own bucket plus its counted boxes, or
+   * null when nothing has been counted. Null is the ordinary state and means
+   * "never said", not "none", the same ignorance `reason` being null would be.
+   *
+   * Always null for a container: a portion of chilli is one portion, and
+   * `pantryCount` only ever answers for catalog rows.
+   *
+   * **Its own field rather than folded into `reason`**, because it is not one.
+   * The reason says why the app believes this is in the kitchen; the count is
+   * how many the user says are there. Folding them would also drop the number
+   * on exactly the rows with a louder reason to give — a frozen or nearly-out
+   * row still wants to say there are two — since only one branch of
+   * `probablyHaveReason` can win.
+   */
+  onHandCount: number | null;
   /** What a search matches against — the catalog's own name key, or the title's. */
   matchKey: string;
 }
@@ -221,7 +243,16 @@ export function compareKitchenEntries(a: KitchenEntry, b: KitchenEntry): number 
 export function kitchenInventory(
   items: readonly GroceryItem[],
   leftovers: readonly Leftover[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  /**
+   * The catalog's boxes, for the half of `KitchenEntry.onHandCount` that lives
+   * on them. Defaults to none, which reads as "nothing counted" — right for the
+   * callers that ask this for what's *dying* rather than for how much there is
+   * (Today's kitchen row, the meal planner's expiring hints), and wrong only if
+   * one of them ever starts drawing the count. Pantry, which does draw it,
+   * passes the set.
+   */
+  products: readonly ItemProduct[] = []
 ): KitchenEntry[] {
   const entries: KitchenEntry[] = [];
 
@@ -253,6 +284,7 @@ export function kitchenInventory(
       useByCaption,
       caption: `${reason} · ${useByCaption}`,
       onList: false,
+      onHandCount: null,
       matchKey: groceryNameKey(leftover.title),
     });
   }
@@ -288,6 +320,7 @@ export function kitchenInventory(
       useByCaption,
       caption: useByCaption ? `${reasonWithOpened} · ${useByCaption}` : reasonWithOpened,
       onList: item.onList,
+      onHandCount: onHandCountFor(item, products),
       matchKey: item.nameKey,
     });
   }

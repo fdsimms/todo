@@ -280,6 +280,12 @@ There is no inventory table and there must not be one: a maintained inventory is
 dies in week three, so it's computed first and corrected second ("Got it" / "Out of it" on
 `GroceryItemSheet`, and `finishShopping` stamping what a trip bought).
 
+**"How many" is now sayable, and that is a deliberate narrowing of the rule above rather than a
+hole in it** — see the count's own section below. What stays banned is the thing that actually
+dies in week three: a row per physical jar, each with its own state to keep up. A number on a row
+you were already correcting by hand is a different cost, it is optional everywhere, and a purchase
+clears it rather than asking you to reconcile it.
+
 **Four mechanisms answer two questions, and `src/utils/kitchenInventory.ts` is the read above
 them** (#1670). `onHandUntil` and `probablyHaveReason` answer "do I have it"; `expiresAt` and
 `Leftover.keepUntil` answer "is it dying". Each is individually well-argued and none of them is
@@ -322,8 +328,10 @@ Thursday are the same fact to the cook.
 fridge first and then the pantry cut into aisles. That's the distinction the aggregate view turns
 on: nobody should have to check items in and out, but a set the app has already derived per-item
 is worth being able to look at, and until this there was no way to answer "do I have flour" short
-of opening items one at a time. Don't grow quantities, per-row expiry editing or a check-in
-gesture onto it — that's the inventory again.
+of opening items one at a time. Don't grow per-row expiry editing or a check-in gesture onto it —
+that's the inventory again. The row draws a count now (the `×2` chip beside the name) but does not
+*edit* one: the steppers are in the item sheet with the rest of the pantry state, and a swipe or a
+stepper on the row itself would be the check-in gesture this rules out.
 
 - **It's the fourth screen in the Groceries/Recipes/Meal plan hub, not a sheet popped over
   Groceries.** It used to be — reached by stamping a param on a `navigate('Groceries', ...)` call
@@ -538,6 +546,68 @@ on that scale is in the middle, and it's the one the app had no way to hear abou
 
 All three are cleared by a purchase, alongside the `onHandUntil` that already was: the bag you
 froze, the jar you opened and the tub you were nearly out of are all the old one.
+
+### How many — the count, and the boxes it's split across
+
+"Two jars of vegan mayonnaise in the fridge, and one of them is a different brand" was unsayable:
+every pantry state was one bit or one date about the *item*, so a spare jar and a last jar read
+identically, and the brand you had was a preference rather than a thing you held.
+`src/utils/pantryCount.ts` is the read, and it is the one place the arithmetic happens.
+
+**This reverses the blanket "no quantities" rule at the top of this section, on purpose and only
+that far.** The argument that rule was really making is that a maintained inventory dies in week
+three, and the thing that kills it is per-unit bookkeeping: a row per jar, each carrying its own
+opened/frozen/use-by to keep up. That stays refused. A number on a row the user was already
+correcting by hand costs one tap, is null on every row until somebody types one, and is wiped by
+the next purchase instead of accumulating.
+
+- **Two buckets, and the total is derived.** `GroceryItem.onHandCount` holds the units with no
+  brand recorded; each `ItemProduct.onHandCount` holds the units of that one box. Every jar is in
+  exactly one of them, so `onHandCountFor()` adds them up and there is no stored total to disagree
+  with its parts. The alternative — a total on the item with per-product attributions under it —
+  is the shape `ItemShopLink`'s counters already have, and their note records the permanent gap it
+  produces ("never sum links to get a total"). That gap is tolerable for history and would not be
+  for a live count, where the whole question is how many there are.
+- **Read it through `onHandCountFor`, never off a field.** The raw numbers are one bucket each,
+  so a caller reading either as the answer is wrong exactly when the feature is being used — the
+  same discipline `estimatedMinutesFor` imposes for a chain step's estimate.
+- **Null is ignorance, zero is unreachable.** Null means nobody has counted, which is what every
+  existing row reads as and what nearly all of them stay in; it must never be read as "none". The
+  stepper's floor is 1 with `allowNull`, so − at the floor clears back to null and 0 is never
+  written — "I have none" is what the "Out of it" pill already says, and a second way to say it is
+  a second thing to keep in step. A 0 arriving from old or synced data reads as "nothing counted".
+- **A count asserts on hand, and that coupling is load-bearing.** `setOnHandCount` /
+  `setProductOnHandCount` refresh the `onHandUntil` "Got it" alongside the number. That is what
+  puts the row in the pantry, what clears an "Out of it" the number contradicts, and — the
+  non-obvious part — what lets `probablyHaveReason` keep its signature and stay correct for the
+  four callers that never see the products. **Don't drop the assertion write as redundant**, or a
+  products-only count becomes invisible to `itemSubs`, `mealPlanGroceries` and `SubstituteSheet`
+  while the kitchen still shows it.
+- **Clearing the count is not "I'm out".** Stepping the last one away says you have stopped
+  counting, so the assertion is left exactly as it stands. The reverse direction *is* coupled:
+  every path that writes `OUT_OF_IT_UNTIL` (`setOnHandUntil`, `markOutOfMany`) takes both buckets
+  with it, because a lit "Out of it" pill above a stepper reading 2 is one question answered twice.
+  Undo restores the boxes as well as the rows, which is why those paths snapshot products too.
+- **A purchase clears it rather than adding to it.** Alongside the `onHandUntil`/`frozenAt`/
+  `openedAt`/`runningLowAt` a trip already cleared. How many came home is something a finished shop
+  genuinely does not know — the row's `quantity` is free text ("a couple", "family size") that
+  nothing does arithmetic on — so null hands the question back to the purchase reading that
+  answered it before anyone counted. Carrying the old number forward leaves a stale one standing;
+  adding one to it is arithmetic on a guess. Same call `#1770` made for `onHandUntil`.
+- **A merge adds the counts** (`sumCounts`), where every other field it folds picks a winner. The
+  merge's claim is that the two rows are one thing, so a jar counted under each is two jars of it —
+  unlike a rating, where two verdicts on one box contradict each other.
+- **It is a number, not a jar.** Nothing here has per-unit identity, so a sealed backup is not
+  tracked as fresher than the open one: `openedAt`/`frozenAt`/`expiresAt` stay one clock on the
+  item. That was the explicit trade — the count answers "do I have a spare, and of what" and stops
+  there. Growing per-jar dates is the per-unit inventory this section exists to keep refusing.
+- **`KitchenEntry.onHandCount` is its own field, not folded into `reason`.** The reason says why
+  the app believes this is in the kitchen; the count says how many the user says there are. Folding
+  them would also lose the number on exactly the rows with a louder reason to give, since only one
+  branch of `probablyHaveReason` can win — a frozen or nearly-out row still wants to say there are
+  two. `kitchenInventory` takes the products as an optional last argument for the same reason
+  Today's kitchen row and the meal planner's expiring hints don't pass it: they ask what's *dying*,
+  not how much there is.
 
 ### Cooking what's about to go off (`useUpRecipes.ts`)
 

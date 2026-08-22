@@ -33,6 +33,7 @@ function entry(
     useByCaption: 'Use by tomorrow',
     caption: 'bought 3× · Use by tomorrow',
     onList: false,
+    onHandCount: null,
     matchKey: key,
     ...overrides,
   };

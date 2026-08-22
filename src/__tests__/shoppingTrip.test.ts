@@ -43,6 +43,7 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     lastPurchasedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null,
+    onHandCount: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
     choiceGroup: null,

@@ -57,6 +57,12 @@ import {
   preferredProductOf,
   productsForItem,
 } from '../utils/groceryProduct';
+import {
+  describeOnHandCount,
+  onHandCountFor,
+  PANTRY_COUNT_MAX,
+  PANTRY_COUNT_MIN,
+} from '../utils/pantryCount';
 import { MergeItemSheet } from './MergeItemSheet';
 import {
   cheapestShopFor,
@@ -169,6 +175,8 @@ export function GroceryItemSheet({
   const setFrozen = useGroceryStore(s => s.setFrozen);
   const setOpened = useGroceryStore(s => s.setOpened);
   const setRunningLow = useGroceryStore(s => s.setRunningLow);
+  const setOnHandCount = useGroceryStore(s => s.setOnHandCount);
+  const setProductOnHandCount = useGroceryStore(s => s.setProductOnHandCount);
   const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
   const setShelfLifeDays = useGroceryStore(s => s.setShelfLifeDays);
   const setUseUpTask = useGroceryStore(s => s.setUseUpTask);
@@ -279,6 +287,12 @@ export function GroceryItemSheet({
   // a brand actually repeats in.
   const products = useMemo(
     () => (item ? productsForItem(item.id, itemProducts, item.preferredProductId) : []),
+    [item, itemProducts]
+  );
+  // Both buckets, through the one read — never off `item.onHandCount`, which is
+  // only the jars with no brand recorded. See pantryCount.
+  const onHandCount = useMemo(
+    () => (item ? onHandCountFor(item, itemProducts) : null),
     [item, itemProducts]
   );
   const preferred = useMemo(
@@ -1043,7 +1057,7 @@ export function GroceryItemSheet({
     {
       key: 'pantry',
       label: 'Pantry',
-      keywords: ['staple', 'always have it', 'have it', 'on hand', 'got it', 'out of it', 'freezer', 'frozen', 'freeze', 'thaw', 'defrost', 'opened', 'open', 'running low', 'low', 'nearly out', 'almost out'],
+      keywords: ['staple', 'always have it', 'have it', 'on hand', 'got it', 'out of it', 'freezer', 'frozen', 'freeze', 'thaw', 'defrost', 'opened', 'open', 'running low', 'low', 'nearly out', 'almost out', 'how many', 'count', 'spare', 'backup', 'another', 'second'],
       node: (
         <View onLayout={(e: LayoutChangeEvent) => {
           fieldYRefs.current.pantry = e.nativeEvent.layout.y;
@@ -1065,9 +1079,14 @@ export function GroceryItemSheet({
                     ? 'In the freezer'
                     : item.isStaple
                       ? 'Always have it'
-                      : onHandFuture
-                        ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
-                        : undefined
+                      : onHandCount !== null
+                        // A count outranks the plain "Got it" it implies —
+                        // setting one writes that assertion — because it is the
+                        // same claim carrying the more specific answer.
+                        ? describeOnHandCount(onHandCount)
+                        : onHandFuture
+                          ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
+                          : undefined
             }
             emptySummary="Automatic"
             hint={
@@ -1085,6 +1104,51 @@ export function GroceryItemSheet({
             onToggle={() => toggleField('pantry')}
           >
             <PillGroup options={pantryOptions} noun="state" />
+            {/* How many, under the states that qualify it rather than beside
+                them: the pills answer "do I have it" and these answer "how
+                many", and a stepper in a row of pills would read as one more
+                thing to turn on. Stepping any of them up asserts on hand, so
+                the two halves can't contradict each other — see
+                setOnHandCount.
+
+                One row per box, plus the item's own for the jars with no brand
+                recorded. That last row is labelled "How many" outright while
+                there are no products, because there is nothing for it to be
+                the remainder of. */}
+            <View style={styles.countRows}>
+              <View style={styles.countRow}>
+                <Text style={styles.countLabel} numberOfLines={1}>
+                  {products.length > 0 ? 'No brand recorded' : 'How many'}
+                </Text>
+                <CountStepper
+                  value={item.onHandCount}
+                  onChange={n => setOnHandCount(item.id, n)}
+                  min={PANTRY_COUNT_MIN}
+                  max={PANTRY_COUNT_MAX}
+                  allowNull
+                  emptyLabel="—"
+                  label="how many on hand"
+                  describeValue={n => (n === null ? 'not counted' : describeOnHandCount(n))}
+                />
+              </View>
+              {products.map(product => (
+                <View key={product.id} style={styles.countRow}>
+                  <Text style={styles.countLabel} numberOfLines={1}>
+                    {describeProduct(product)}
+                  </Text>
+                  <CountStepper
+                    value={product.onHandCount}
+                    onChange={n => setProductOnHandCount(product.id, n)}
+                    min={PANTRY_COUNT_MIN}
+                    max={PANTRY_COUNT_MAX}
+                    allowNull
+                    emptyLabel="—"
+                    label={`how many ${describeProduct(product) ?? 'of this one'}`}
+                    describeValue={n => (n === null ? 'not counted' : describeOnHandCount(n))}
+                  />
+                </View>
+              ))}
+            </View>
           </CollapsibleField>
         </View>
       ),
@@ -1710,6 +1774,13 @@ function makeStyles(colors: Colors) {
       gap: spacing.md,
       paddingVertical: spacing.sm + 2,
     },
+    // Margin on both sides: the pills above have none below them, and the
+    // field's own padding is what sits under the last row.
+    countRows: { marginTop: spacing.md, gap: spacing.xs },
+    countRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    // flex so a long product name truncates instead of pushing the stepper off
+    // the row — the control has to stay reachable.
+    countLabel: { flex: 1, color: colors.text, fontSize: font.sm },
     // Between rows only, so the first one sits flush under the field's hint
     // the way the pill grids in the fields above do.
     subRowDivided: { borderTopWidth: border.hairline, borderTopColor: colors.separator },

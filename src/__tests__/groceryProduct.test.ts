@@ -15,6 +15,7 @@ function product(overrides: Partial<ItemProduct> & { id: string }): ItemProduct 
     brand: null,
     variant: null,
     productKey: overrides.id,
+    onHandCount: null,
     rating: null,
     note: '',
     purchaseCount: 0,

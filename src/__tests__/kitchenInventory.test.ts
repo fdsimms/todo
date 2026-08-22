@@ -52,6 +52,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     lastPurchasedAt: null,
     createdAt: daysAgo(365),
     onHandUntil: daysAgo(-5),
+    onHandCount: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
     choiceGroup: null,
@@ -413,6 +414,7 @@ describe('the freezer', () => {
     const chicken = makeItem({
       name: 'Chicken',
       onHandUntil: null,
+      onHandCount: null,
       purchaseCount: 1,
       lastPurchasedAt: daysAgo(60),
       frozenAt: FROZEN_ON,
@@ -504,6 +506,7 @@ describe('the two other pantry states', () => {
     const flour = makeItem({
       name: 'Flour',
       onHandUntil: null,
+      onHandCount: null,
       runningLowAt: '2026-08-12T09:00:00.000Z',
     });
     const [entry] = kitchenInventory([flour], [], NOW);
