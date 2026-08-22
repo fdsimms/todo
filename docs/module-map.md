@@ -36,6 +36,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, parseChainItems, ChainPreview, chainPreview, isChainFinish
 - `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, formatHHMM, clockTimeToken, dateToHHMM
 - `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, cloudKitTransport
+- `src/utils/completionTap.ts` — CompletionTap, completionTapFor
 - `src/utils/confirmDelete.ts` — confirmDelete
 - `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookSteps, clampStepIndex, describeStepPosition
 - `src/utils/cookingStats.ts` — CookingWindow, MealCookCounts, CookedRecipe, EMPTY_MEAL_COOK_COUNTS, cookingWindow, mealCookCounts, leftoversFinishedIn, leftoverHistoryIn, mostCookedRecipes, hasCookingData

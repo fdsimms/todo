@@ -480,6 +480,14 @@ export function isQuotaPartial(task: Task): boolean {
   return task.completed && isQuotaTask(task) && task.progressCount < task.targetCount!;
 }
 
+// The daily-target meter's level as a 0–1 fraction of the target. Every surface
+// that draws a meter fills to this — the live one on a task row, and the ones
+// painted at rest in the Logbook, in Search and in the quick-search palette —
+// so a partial target reads the same wherever it's met.
+export function quotaFraction(task: Task): number {
+  return task.targetCount ? Math.min(1, task.progressCount / task.targetCount) : 0;
+}
+
 // Re-exported so this file stays the one place to look for "what does this
 // row's state mean" — the definitions live in the leaf module missed.ts
 // because the pure, node-tested utils can't import this one. See missed.ts.
