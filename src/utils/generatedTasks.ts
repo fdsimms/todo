@@ -5,10 +5,11 @@ export type { GeneratedKind };
 /**
  * The one mechanism behind every task this app writes without being asked.
  *
- * Five features generate tasks unattended — a planned meal becomes "Cook X", a
+ * Six features generate tasks unattended — a planned meal becomes "Cook X", a
  * perishable grocery becomes "Use up X", a leftover about to go bad becomes
- * "Use up X", an opt-in weekly trigger becomes "Plan meals for…", and a project
- * that has gone quiet becomes "Review X". The first four were each built by
+ * "Use up X", an opt-in weekly trigger becomes "Plan meals for…", a project
+ * that has gone quiet becomes "Review X", and a pantry guess that has run out
+ * becomes "Check if you still have X". The first four were each built by
  * copying the last, which is fine twice and had reached four: four nullable
  * back-pointer columns on `Task`, four hand-written "don't pile up" rules, and
  * three near-identical copies of the same three-input opt-out, two of which
@@ -17,7 +18,11 @@ export type { GeneratedKind };
  * The fifth is what that refactor was for. `projectReview` needed no
  * column and no reconcile of its own: a registry entry, a rules module
  * (`projectReviewTasks.ts`) and a firing beside the meal-plan nudge's, which is
- * the shape the note below promised.
+ * the shape the note below promised. `pantryCheck` is the sixth and cost the
+ * same: `pantryCheckTasks.ts`, an entry here, and a firing beside
+ * `projectReview`'s — the one column it *did* add is on its source row
+ * (`GroceryItem.pantryCheckDeclinedAt`), which is where the opt-out belongs and
+ * not part of the mechanism at all.
  *
  * What's shared is the *plumbing*, and only the plumbing:
  *
@@ -52,6 +57,13 @@ export type { GeneratedKind };
 export const GENERATED_KINDS: readonly GeneratedKind[] = [
   'mealCook',
   'groceryUseUp',
+  // Beside the other generator that reads the grocery catalog, rather than
+  // appended after the project one — the two are a pair from the list's side
+  // (they file under one category for the same reason), and slotting it here
+  // leaves every existing row's order relative to the others untouched, which
+  // appending after `projectReview` would not: it would leave the four kitchen
+  // generators split around a project one.
+  'pantryCheck',
   'leftoverUseUp',
   'mealPlanNudge',
   'projectReview',
@@ -107,10 +119,13 @@ export interface GeneratedKindSpec {
    * category is what a person does once they've seen that; shipping the answer
    * saves them the trip.
    *
-   * Two generators share "Meal Plan" on purpose: the weekly nudge to plan the
-   * week and the cook tasks that come out of having planned it are the same
-   * job to the person reading the list, and two sections for it would be a
-   * distinction only the code makes.
+   * Two pairs share a category on purpose. "Meal Plan": the weekly nudge to
+   * plan the week and the cook tasks that come out of having planned it are the
+   * same job to the person reading the list, and two sections for it would be a
+   * distinction only the code makes. "Groceries": using up a bag of spinach and
+   * checking whether there's still flour are both questions about the kitchen,
+   * and filing them apart would split one trip to the cupboard across two
+   * sections of Today.
    */
   defaultCategory: string;
 }
@@ -132,6 +147,16 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     onHint: 'Buying something with a use-by date adds a task to use it up',
     offHint: 'Buying something with a use-by date adds no task',
     icon: 'alarm-outline',
+    sourced: true,
+    categorized: true,
+    defaultCategory: 'Groceries',
+  },
+  pantryCheck: {
+    kind: 'pantryCheck',
+    label: 'Pantry checks',
+    onHint: 'Adds a task when the app stops being sure you still have something',
+    offHint: 'No task when the app stops being sure you still have something',
+    icon: 'help-circle-outline',
     sourced: true,
     categorized: true,
     defaultCategory: 'Groceries',

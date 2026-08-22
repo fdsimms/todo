@@ -539,6 +539,32 @@ on that scale is in the middle, and it's the one the app had no way to hear abou
 All three are cleared by a purchase, alongside the `onHandUntil` that already was: the bag you
 froze, the jar you opened and the tub you were nearly out of are all the old one.
 
+### Nothing leaves the pantry, so the one exit worth noticing is offered as a task
+
+Because membership is `probablyHaveReason` recomputed on every read, nothing is ever *removed* from
+the pantry — an item leaves by that function starting to return null. Four things cause that and
+three of them are the user speaking: "Out of it", a thaw emptying the freezer, a lapsed "Got it".
+The fourth is the purchase reading's own window running out, which writes nothing, changes no row,
+and is the one state change in the whole kitchen a person cannot see happen.
+
+`src/utils/pantryCheckTasks.ts` offers to ask about exactly that, as the sixth generated task
+("Check if you still have X" — see `docs/arch/generated-tasks.md` for the mechanism and the rules).
+Three things about it belong here rather than there:
+
+- **`pantryGuessLapsedDays` lives in `grocerySuggest.ts`, beside the reading it shadows.** The
+  window arithmetic has one owner; a second copy in the generator would be free to disagree with
+  the very function it is meant to be watching, which is the bug `onHandWindowDays` was written to
+  end.
+- **It is gated harder than the reading is.** `probablyHaveReason` is happy to guess from a flat
+  fortnight below `MIN_PURCHASES_FOR_CADENCE`; asking the user about a guess is a different bar, so
+  the check refuses anything with fewer than three purchases behind it.
+- **Answering it is the existing pair of pills, not the task.** The row links to
+  `GroceryItemSheet` opened on the Pantry field (`kitchenLinkUrl`, which `KitchenScreen` resolves to
+  the sheet by id when the item isn't in the list — and a checked item never is, by definition).
+  "Got it" or "Out of it" makes the item stop wanting a check, so the task clears itself on the next
+  sweep. Ticking it off means "I've dealt with this" and writes nothing to the row — inferring "yes
+  I still have it" from a tick is the guess a container's ✕ already refuses to make.
+
 ### Cooking what's about to go off (`useUpRecipes.ts`)
 
 The kitchen knows what's dying and a recipe knows what it's made of, and nothing joined the two. A

@@ -356,6 +356,34 @@ function onHandWindowDays(item: GroceryItem, now: Date): number {
 }
 
 /**
+ * How many days ago this item's *purchase reading* ran out — null when there
+ * never was one to run out, or it hasn't yet.
+ *
+ * The event `pantryCheckTasks.ts` fires on. `probablyHaveReason` below stops
+ * vouching for a purchase the moment `onHandWindowDays` is up, and it stops
+ * *silently*: nothing is written, no row changes, the item simply drops out of
+ * the pantry on the next read. That silence is right for the pantry (a guess
+ * expiring is not news) and is exactly what a person can't see, which is why
+ * the check offers to ask.
+ *
+ * It lives here rather than in the generator so the window arithmetic has one
+ * owner. A second copy in the rules module would be free to disagree with the
+ * reading it's meant to be shadowing — which is the bug `onHandWindowDays`
+ * itself was written to end.
+ *
+ * **`MIN_PURCHASES_FOR_CADENCE` gates it, not just the window length.** Below
+ * three purchases the window is a flat fortnight standing in for a cadence
+ * nobody knows, and asking "still got this?" off the back of a number the app
+ * has already admitted it made up is how a generator earns its way into being
+ * switched off. Something bought three times has a rhythm worth asking about.
+ */
+export function pantryGuessLapsedDays(item: GroceryItem, now: Date): number | null {
+  if (item.purchaseCount < MIN_PURCHASES_FOR_CADENCE || !item.lastPurchasedAt) return null;
+  const lapsed = daysBetween(now, item.lastPurchasedAt) - onHandWindowDays(item, now);
+  return lapsed >= 0 ? lapsed : null;
+}
+
+/**
  * "bought 6× · last on 12 Jul" — why an item off the list is treated as
  * probably still in the kitchen, or null when there's no such reason.
  *

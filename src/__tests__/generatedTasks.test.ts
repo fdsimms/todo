@@ -279,6 +279,9 @@ describe('the registry', () => {
     // Sourced by the project it speaks for — the id its linkUrl scopes the
     // pull sheet to, and the row its opt-out is stamped on.
     expect(GENERATED_KIND_SPECS.projectReview.sourced).toBe(true);
+    // Sourced by the grocery item whose pantry guess ran out — the row its
+    // linkUrl opens and its decline stamp is written on.
+    expect(GENERATED_KIND_SPECS.pantryCheck.sourced).toBe(true);
   });
 
   it('gives every kind a category to file under, the nudge included', () => {
@@ -286,7 +289,7 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['mealCook', 'groceryUseUp', 'leftoverUseUp', 'mealPlanNudge', 'projectReview']);
+      .toEqual(['mealCook', 'groceryUseUp', 'pantryCheck', 'leftoverUseUp', 'mealPlanNudge', 'projectReview']);
   });
 
   it('shares one default category between planning the week and cooking it', () => {
@@ -295,6 +298,11 @@ describe('the registry', () => {
     expect(GENERATED_KIND_SPECS.mealCook.defaultCategory).toBe('Meal Plan');
     expect(GENERATED_KIND_SPECS.mealPlanNudge.defaultCategory).toBe('Meal Plan');
     expect(GENERATED_KIND_SPECS.leftoverUseUp.defaultCategory).toBe('Leftovers');
+    // And one section for the two questions about the kitchen cupboard: using
+    // up a bag of spinach and checking whether there's still flour are one trip
+    // to the same place.
+    expect(GENERATED_KIND_SPECS.groceryUseUp.defaultCategory).toBe('Groceries');
+    expect(GENERATED_KIND_SPECS.pantryCheck.defaultCategory).toBe('Groceries');
     // Every kind has one — an unfiled generator is one whose tasks pile up in
     // the loose block above every section.
     expect(GENERATED_KIND_LIST.every(s => !!s.defaultCategory)).toBe(true);

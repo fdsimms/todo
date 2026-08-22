@@ -218,6 +218,7 @@ exports.
 | the store you're shopping at right now | `src/utils/activeTrip.ts` — see `docs/arch/groceries.md` |
 | what something costs, and which store is cheaper | `src/utils/groceryPrice.ts` |
 | what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
+| the app asking whether you still have something | `src/utils/pantryCheckTasks.ts` — see `docs/arch/groceries.md` |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
 | a store whose receipt prints prices but no names | `Shop.receiptStyle` + `src/utils/pricePairing.ts` + `ReceiptPricePairing.tsx` |
@@ -258,16 +259,16 @@ exports.
 **Read narrowly.** 34 files are over 1,000 lines, 20 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (4.7k), `components/TaskEditor.tsx` (4.2k), `db/database.ts` (3.6k),
-`screens/TodayScreen.tsx` (3.6k), `store/useGroceryStore.ts` (3.5k),
+`store/useTaskStore.ts` (4.8k), `components/TaskEditor.tsx` (4.2k), `db/database.ts` (3.6k),
+`screens/TodayScreen.tsx` (3.6k), `store/useGroceryStore.ts` (3.6k),
 `components/TaskItem.tsx` (3.3k), `types/index.ts` (2.9k),
 `components/QuickAddModal.tsx` (2.6k), `screens/MealPlanScreen.tsx` (2.0k),
-`screens/RecipeDetailScreen.tsx` (1.9k).
+`store/useSettingsStore.ts` (1.9k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **164 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **167 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

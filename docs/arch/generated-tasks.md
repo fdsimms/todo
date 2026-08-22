@@ -1,9 +1,9 @@
-# Generated tasks: the five things that write a task unattended
+# Generated tasks: the six things that write a task unattended
 
-The shared mechanism behind cook tasks, use-up tasks, the meal-plan nudge and
-project reviews. Read this before adding a sixth generator: the whole point of
-the refactor it describes is that a new one costs a rules module and a registry
-entry, not a column.
+The shared mechanism behind cook tasks, use-up tasks, the meal-plan nudge,
+project reviews and pantry checks. Read this before adding a seventh generator:
+the whole point of the refactor it describes is that a new one costs a rules
+module and a registry entry, not a column.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
 task. The rules here are settled decisions with the reasoning attached: don't
@@ -12,17 +12,21 @@ doesn't already cover.
 
 ---
 
-## Generated tasks — the five things that write a task unattended
+## Generated tasks — the six things that write a task unattended
 
 A planned meal becomes "Cook X", a perishable grocery and an ageing leftover each become "Use up
-X", an opt-in weekly trigger becomes "Plan meals for…", and a project that has gone quiet becomes
-"Review X". The first four were each built by copying the last, which is fine twice and had reached
+X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
+"Review X", and a grocery whose pantry guess has run out becomes "Check if you still have X". The
+first four were each built by copying the last, which is fine twice and had reached
 four — four nullable back-pointer columns on `Task`, four hand-written "don't pile up" rules, three
 copies of one opt-out. They now share `src/utils/generatedTasks.ts` (pure: the kinds, the registry,
 the opt-out precedence, the lookups) and `src/store/generatedTaskSync.ts` (the create/update/delete).
 **A fifth generator should need neither a column nor a reconcile** — just its own rules module and a
 registry entry (#1524). `projectReview` is that fifth, and it cost exactly that: a rules module, a
 registry entry, a firing beside the nudge's, and no `extrasFor` case in Settings at all.
+`pantryCheck` is the sixth and cost the same; the one column it added
+(`GroceryItem.pantryCheckDeclinedAt`) is on its *source* row, which is where every generator's
+opt-out already lives.
 
 - **`Task.generatedKind` + `Task.generatedSourceId` replaced `mealEntryId`/`groceryItemId`/
   `leftoverId`.** Those three columns are still on the table, backfilled from and then left
@@ -138,6 +142,40 @@ registry entry, a firing beside the nudge's, and no `extrasFor` case in Settings
     projects are queued, and losing that contest is no reason to delete a row the user already
     deferred to Saturday. The cost, stated plainly: a review task can be stale until the next
     sweep, which the banner — being pure derivation — never could be.
+
+- **`pantryCheck` is the sixth, and it fires on a *guess expiring* rather than on a source
+  changing.** Nothing is ever taken out of the pantry, because there is no inventory to take it out
+  of (see `docs/arch/groceries.md`): membership is `probablyHaveReason` recomputed on every read, and
+  an item leaves it by that function starting to return null. Three of the four ways that happens are
+  the user speaking; the fourth is the purchase reading's window running out, which changes no row
+  and writes nothing. This offers to ask about exactly that, once.
+  - **Structurally it is `projectReview`, one shelf over.** Same trigger shape (time passing, so it
+    runs from the launch sequence and the Today foreground sweep), same clear-then-create ordering,
+    same cap, same stale pass, and the same decision to decline with a *stamp* rather than a
+    permanent `false` — the source earns the question again later, which is what `useUpTask: false`
+    could not express.
+  - **Its unit of "already answered" is the purchase, not the day.** A project stays quiet
+    indefinitely, so `reviewDeclinedAt` lapses at the day boundary and the offer returns tomorrow;
+    a cupboard question returning tomorrow is nagging. `pantryCheckDeclinedAt` is spent against the
+    item's own `lastPurchasedAt`, so nothing has to clear it on a purchase the way `frozenAt`,
+    `openedAt` and `runningLowAt` are cleared — a stamp older than the new purchase is already
+    spent. Completions and archivings are read the same way, derived from the rows
+    (`pantryCheckAnswers`) exactly as `projectsReviewedToday` is.
+  - **Ticking it off is not an answer to the question, only to the task.** The row links to the
+    item's own sheet, where "Got it" and "Out of it" live, and either makes the item stop wanting a
+    check — so the task clears itself on the next sweep without the completion having to mean
+    anything. Reading a tick as "yes I still have it" would write a claim the user never made, the
+    same refusal `KitchenScreen` makes about closing a container out.
+  - **Two gates keep it from being noise**, both in `pantryCheckTasks.ts`:
+    `MIN_PURCHASES_FOR_CADENCE` (below three purchases the window is a flat fortnight standing in
+    for a cadence nobody knows, and asking off the back of a number the app made up is how a
+    generator gets switched off), and `PANTRY_CHECK_GRACE_DAYS` — without which the qualifying set
+    on the day it ships is most of the catalog, back to the first trip ever recorded, and the cap
+    would meter that out three at a time for ever. The grace bounds *raising* a question only:
+    `stalePantryCheckTasks` judges a live row on the lapse alone, so a task deferred to Saturday
+    isn't deleted for being a fortnight old.
+  - **It ships off**, unlike `projectReview` beside it, which replaced a surface that was already
+    on screen. This adds one.
 
 - **They still write straight to Today**, rather than proposing into a review surface the way
   `deloadPlan`/`projectPull` do. That fork is real and was deliberately left alone here: it's a

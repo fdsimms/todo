@@ -29,6 +29,7 @@ import {
   buildKitchenSections,
   describeKitchen,
   kitchenInventory,
+  parseKitchenEntryId,
   useUpEntries,
   FREEZER_SECTION,
   type KitchenEntry,
@@ -270,12 +271,26 @@ export function KitchenScreen() {
   useEffect(() => {
     if (focusStamp === undefined || focusStamp === handledFocusStamp || !focusEntryId) return;
     setHandledFocusStamp(focusStamp);
-    // A focus id that no longer resolves — the item was used up before the
-    // link was tapped — just falls back to the plain list.
     const focused = entries.find(e => e.id === focusEntryId);
-    if (!focused) return;
-    if (focused.kind === 'leftover') setOpenLeftoverId(focused.sourceId);
-    else setOpenItemId(focused.sourceId);
+    if (focused) {
+      if (focused.kind === 'leftover') setOpenLeftoverId(focused.sourceId);
+      else setOpenItemId(focused.sourceId);
+      return;
+    }
+    // Not in the list, which is the normal case for one link rather than an
+    // edge case for the rest: a pantry check (utils/pantryCheckTasks.ts) is
+    // *about* an item the pantry has stopped vouching for, so it can never
+    // match an entry here. The id still names a real catalog row and the sheet
+    // is what we'd have opened anyway, so open it by id — which is also what
+    // the Pantry pills in it are for.
+    //
+    // Anything left over resolves to nothing at all — the item was deleted, or
+    // a container finished, before the link was tapped — and falls back to the
+    // plain list, which is what this did for every miss before.
+    const parsed = parseKitchenEntryId(focusEntryId);
+    if (parsed?.kind === 'grocery' && items.some(i => i.id === parsed.sourceId)) {
+      setOpenItemId(parsed.sourceId);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusEntryId, focusStamp, handledFocusStamp]);
 

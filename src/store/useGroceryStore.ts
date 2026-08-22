@@ -542,6 +542,7 @@ interface GroceryStore {
    * feature off, delete the task the user just asked to have back.
    */
   setUseUpTask: (id: string, value: boolean | null, options?: { reconcile?: boolean }) => void;
+  setPantryCheckDeclinedAt: (id: string, value: string | null) => void;
 
   /**
    * Staple on/off — "always have it", GroceryItemSheet's third pantry pill.
@@ -965,6 +966,9 @@ function newItemRow(fields: {
     // No one has corrected the lexicon guess for this row yet.
     shelfLifeDays: null,
     useUpTask: null,
+    // Nobody has been asked about a row that didn't exist a moment ago, and a
+    // brand-new row can't have a lapsed purchase reading to be asked about.
+    pantryCheckDeclinedAt: null,
     // Same reasoning as expiresAt: a name typed onto the list is a plan to buy
     // something, and nothing has been paid for it yet. finishShopping and the
     // item sheet are the two things that ever set a price.
@@ -2268,6 +2272,23 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
     if (options?.reconcile !== false) reconcileUseUpTask(updated);
+  },
+
+  /**
+   * Records that a pantry check for this row was turned down — the opt-out
+   * `deleteTask` writes when the user swipes one away, and the null it writes
+   * back on an undo. See `GroceryItem.pantryCheckDeclinedAt`.
+   *
+   * No reconcile: this generator's rows are decided over the whole catalog at
+   * once by `checkPantryCheckTasks`, and the task this is about has just been
+   * deleted by the caller anyway.
+   */
+  setPantryCheckDeclinedAt(id, value) {
+    const item = get().items.find(i => i.id === id);
+    if (!item || item.pantryCheckDeclinedAt === value) return;
+    const updated = { ...item, pantryCheckDeclinedAt: value };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
   /**

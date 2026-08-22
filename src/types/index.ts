@@ -283,7 +283,7 @@ export interface Project {
 export const DEFAULT_NUDGE_CADENCE_DAYS = 0;
 
 /**
- * Which of the app's five unattended generators wrote a task — see
+ * Which of the app's six unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
  *
@@ -296,7 +296,8 @@ export type GeneratedKind =
   | 'groceryUseUp'
   | 'leftoverUseUp'
   | 'mealPlanNudge'
-  | 'projectReview';
+  | 'projectReview'
+  | 'pantryCheck';
 
 export interface Task {
   id: string;
@@ -1438,6 +1439,26 @@ export interface GroceryItem {
    * safe to default off.
    */
   useUpTask: boolean | null;
+  /**
+   * When the user last swiped away a "Check if you still have X" task for this
+   * row — the pantry check's opt-out (see `src/utils/pantryCheckTasks.ts`).
+   *
+   * **A stamp rather than `useUpTask`'s tri-state boolean**, for the reason
+   * `Project.reviewDeclinedAt` is one: a permanent `false` says "never ask me
+   * about this item again", which is far more than a swipe means. A pantry
+   * check is about one purchase running out of credibility, and the same row
+   * earns a new question every time it's bought and lapses again.
+   *
+   * **It expires against `lastPurchasedAt` rather than against the day.** A
+   * project stays quiet indefinitely, so its decline lapses at the day
+   * boundary and the offer comes back tomorrow; a pantry question that came
+   * back tomorrow would be nagging about a cupboard. The purchase is the unit
+   * here — declined after the last purchase means "don't ask again until I buy
+   * it" — which is also why nothing clears this on a purchase the way
+   * `frozenAt`/`openedAt`/`runningLowAt` are cleared: a stamp that predates the
+   * new purchase is already spent, so there is no second place to keep in step.
+   */
+  pantryCheckDeclinedAt: string | null;
   /**
    * The last few prices this item was bought at, newest first, capped at
    * `PRICE_HISTORY_LIMIT`.
