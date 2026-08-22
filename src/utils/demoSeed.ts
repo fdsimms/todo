@@ -11,10 +11,12 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { useFocusStore } from '../store/useFocusStore';
 import type { DeliverableKind, GroceryItem, MealSlot, Recipe, Shop, TemplateItem } from '../types';
 import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
 import { generatedBy } from './generatedTasks';
+import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
@@ -96,7 +98,7 @@ export function seedDemoData(): void {
   ]);
 
   // --- Today ---------------------------------------------------------------
-  addTask({
+  const roadmap = addTask({
     title: 'Send the Q3 roadmap to Priya',
     notes: 'Draft is in the shared folder, just needs the headcount slide.',
     category: 'Work',
@@ -574,6 +576,24 @@ export function seedDemoData(): void {
   ['Book flights', 'Reserve the ryokan', 'Sort a JR pass'].forEach(title => {
     addSubtask(trip.id, title);
   });
+
+  // --- A focus session, mid-stretch ----------------------------------------
+  // Started through the real store action, so the plan is whatever
+  // buildFocusPlan makes of these two tasks under the shipped settings rather
+  // than a hand-written run that could drift from it. These two are chosen for
+  // what the plan does to them: the roadmap fits in one stretch, the gutters
+  // are estimated past the work cap and so get split in half with a break in
+  // the middle. Both of those are invisible until something is actually
+  // queued, which is exactly the kind of capability this seed exists for.
+  //
+  // It runs rather than sits paused: a session on a demo phone should look
+  // like one in progress, and the clock is stamped at seed time, so entering
+  // demo mode always starts it from the top rather than showing something that
+  // ran out days ago.
+  useFocusStore.getState().startSession(
+    [roadmap, gutters],
+    focusPlanOptionsFrom(useSettingsStore.getState()),
+  );
 
   // --- History, so Logbook and Stats aren't empty --------------------------
   const HISTORY: Array<[string, string, number]> = [

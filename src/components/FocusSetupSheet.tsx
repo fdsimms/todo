@@ -1,0 +1,419 @@
+import React, { useRef, useEffect, useMemo, useState } from 'react';
+import {
+  Modal,
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  Animated,
+  PanResponder,
+  StyleSheet,
+} from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { SafeBlurView } from './SafeBlurView';
+import { useColors, useTheme } from '../theme/ThemeContext';
+import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, iconSize, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { formatDuration } from '../utils/effort';
+import { formatTimeOfDay } from '../utils/dateUtils';
+import { buildFocusPlan, focusPlanTotals } from '../utils/focusPlan';
+import { focusPlanOptionsFrom } from '../utils/focusSettings';
+import {
+  buildFocusContext,
+  focusReason,
+  nextFocusSuggestion,
+  suggestFocusTasks,
+  MAX_SUGGESTED_FOCUS,
+} from '../utils/focusSuggest';
+import { useShallow } from 'zustand/react/shallow';
+import { useSettingsStore } from '../store/useSettingsStore';
+import type { Task } from '../types';
+
+interface Props {
+  visible: boolean;
+  /** The pool to suggest from — Today's visible list. */
+  tasks: readonly Task[];
+  /** Every task, so blockers that aren't in the pool still resolve. */
+  allTasks: readonly Task[];
+  onClose: () => void;
+  /** The queue, in run order. Empty selections can't get here. */
+  onStart: (tasks: Task[]) => void;
+}
+
+/**
+ * The step before a focus session: the tasks the scorer thinks are worth an
+ * hour of attention, what the session would look like, and a start button.
+ *
+ * Built on the same bones as `SuggestedPinsSheet` — a snapshot taken at open,
+ * rows that can be unticked or swapped for the next best candidate, and the
+ * kept rows passed back as company so a replacement is scored against the
+ * queue being assembled rather than the one being rejected. The two sheets
+ * answer the same kind of question and it would be strange for them to behave
+ * differently; `focusSuggest.ts` holds what's different about the *scoring*.
+ *
+ * What this one adds is the plan preview. A focus session is a commitment to a
+ * shape of the next hour, and the tasks alone don't show that shape: the same
+ * three rows are 55 minutes or 80 depending on the break rules and on whether
+ * anything got split. So the summary under the list is built by running the
+ * real `buildFocusPlan` over the current selection, not by adding up estimates
+ * (which would quietly omit every break). It re-runs as rows are ticked, which
+ * is the point: unticking the 90-minute task should visibly buy back the hour.
+ */
+export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: Props) {
+  const colors = useColors();
+  const { isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // useShallow, not a bare selector: focusPlanOptionsFrom builds a fresh
+  // object every call, and an unmemoized snapshot is what useSyncExternalStore
+  // refuses to work with. Compared field by field, it changes only when a
+  // focus setting actually does.
+  const planOptions = useSettingsStore(useShallow(s => focusPlanOptionsFrom(s)));
+
+  // Snapshotted at open, like the pins sheet and the deload sheet: this is a
+  // proposal being decided on, not a live derivation that should reshuffle
+  // under the user while they read it.
+  const [pool, setPool] = useState<Task[]>([]);
+  const [ctx, setCtx] = useState<ReturnType<typeof buildFocusContext> | null>(null);
+  const [slotIds, setSlotIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  /** Swapped-away ids, never offered again while the sheet is open. */
+  const [rejectedIds, setRejectedIds] = useState<string[]>([]);
+
+  const translateY = useRef(new Animated.Value(700)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!visible) return;
+    const snapshot = tasks.map(t => t);
+    const nextCtx = buildFocusContext(allTasks);
+    const picked = suggestFocusTasks(snapshot, nextCtx);
+    setPool(snapshot);
+    setCtx(nextCtx);
+    setSlotIds(picked);
+    setSelectedIds(new Set(picked));
+    setRejectedIds([]);
+    translateY.setValue(700);
+    backdropOpacity.setValue(0);
+    Animated.parallel([
+      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
+    ]).start();
+    // Keyed on `visible` alone — the shortlist is taken once, at open.
+  }, [visible]);
+
+  const dismiss = () => {
+    Animated.parallel([
+      Animated.spring(translateY, { toValue: 800, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
+    ]).start(() => {
+      translateY.setValue(700);
+      onClose();
+    });
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, { dy }) => dy > 4,
+      onPanResponderMove: (_, { dy }) => {
+        if (dy > 0) translateY.setValue(dy);
+      },
+      onPanResponderRelease: (_, { dy, vy }) => {
+        if (dy > 80 || vy > 1.2) dismiss();
+        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+      },
+    })
+  ).current;
+
+  const byId = useMemo(() => new Map(pool.map(t => [t.id, t])), [pool]);
+  const slots = useMemo(
+    () => slotIds.map(id => byId.get(id)).filter((t): t is Task => t !== undefined),
+    [slotIds, byId]
+  );
+
+  /**
+   * The company a candidate is scored against: the rows the user is keeping. A
+   * row they've unticked isn't part of the queue they're building, so it
+   * doesn't get to pull its neighbours in.
+   */
+  const companyFor = (excludeId: string | null): Task[] =>
+    slots.filter(t => t.id !== excludeId && selectedIds.has(t.id));
+
+  const canSwap = ctx !== null && nextFocusSuggestion(pool, [], [...slotIds, ...rejectedIds], ctx) !== null;
+
+  const swap = (task: Task) => {
+    if (!ctx) return;
+    const replacement = nextFocusSuggestion(pool, companyFor(task.id), [...slotIds, ...rejectedIds], ctx);
+    if (!replacement) {
+      haptics.warning();
+      return;
+    }
+    haptics.tap();
+    const wasSelected = selectedIds.has(task.id);
+    setSlotIds(prev => prev.map(id => (id === task.id ? replacement : id)));
+    setRejectedIds(prev => [...prev, task.id]);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.delete(task.id);
+      // A swap is a request for this slot, so the replacement arrives ticked
+      // unless the user had deliberately switched the slot off.
+      if (wasSelected) next.add(replacement);
+      return next;
+    });
+  };
+
+  const toggle = (task: Task) => {
+    haptics.tap();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(task.id)) next.delete(task.id);
+      else next.add(task.id);
+      return next;
+    });
+  };
+
+  /** The queue in run order: the slot order, minus whatever was unticked. */
+  const selected = useMemo(
+    () => slots.filter(t => selectedIds.has(t.id)),
+    [slots, selectedIds]
+  );
+
+  // The real plan, so the summary counts the breaks and any split stretches
+  // rather than just adding up estimates.
+  const totals = useMemo(
+    () => focusPlanTotals(buildFocusPlan(selected, planOptions)),
+    [selected, planOptions]
+  );
+
+  const endsAt = totals.totalMinutes > 0
+    ? formatTimeOfDay(new Date(Date.now() + totals.totalMinutes * 60_000))
+    : null;
+
+  const handleStart = () => {
+    if (selected.length === 0) return;
+    haptics.success();
+    onStart(selected);
+    dismiss();
+  };
+
+  const renderRow = (task: Task) => {
+    const checked = selectedIds.has(task.id);
+    const reason = ctx ? focusReason(task, companyFor(task.id), ctx) : null;
+
+    return (
+      <View key={task.id} style={styles.row}>
+        <TouchableOpacity
+          style={styles.rowMain}
+          onPress={() => toggle(task)}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked }}
+          accessibilityLabel={`${task.title}${reason ? `, ${reason}` : ''}`}
+        >
+          <Ionicons
+            name={checked ? 'checkmark-circle' : 'ellipse-outline'}
+            size={22}
+            color={checked ? colors.accent : colors.textTertiary}
+          />
+          <View style={styles.rowContent}>
+            <Text style={[styles.rowTitle, !checked && styles.rowTitleUnchecked]} numberOfLines={1}>
+              {task.title}
+            </Text>
+            {reason !== null && <Text style={styles.rowSub} numberOfLines={1}>{reason}</Text>}
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.swapBtn}
+          onPress={() => swap(task)}
+          disabled={!canSwap}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`Swap out ${task.title}`}
+          accessibilityHint="Replaces this suggestion with the next best task"
+        >
+          <Ionicons name="refresh" size={iconSize.sm} color={canSwap ? colors.textSecondary : colors.bgQuaternary} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  return (
+    <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
+        <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
+      </Animated.View>
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+
+      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+        <View style={styles.handleArea} {...panResponder.panHandlers}>
+          <View style={styles.handle} />
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.header}>
+            <Text style={styles.sheetTitle}>Focus session</Text>
+            <View style={styles.countRow}>
+              <Ionicons name="hourglass-outline" size={13} color={colors.textTertiary} />
+              <Text style={styles.countText}>
+                <Text style={styles.countValue}>{selected.length}</Text>
+                {` of ${MAX_SUGGESTED_FOCUS}`}
+              </Text>
+            </View>
+          </View>
+
+          {slots.length === 0 ? (
+            <Text style={styles.emptyHint}>
+              Nothing to suggest. Everything on today is done, or waiting on another task.
+            </Text>
+          ) : (
+            <Text style={styles.hint}>
+              These run one at a time, in this order. Tap to include or skip, or swap a row for the
+              next best task.
+            </Text>
+          )}
+
+          <ScrollView style={styles.list} bounces={false}>
+            {slots.map((task, i) => (
+              <React.Fragment key={task.id}>
+                {i > 0 && <View style={styles.sep} />}
+                {renderRow(task)}
+              </React.Fragment>
+            ))}
+          </ScrollView>
+
+          {selected.length > 0 && (
+            <View style={styles.summary}>
+              <Text style={styles.summaryLine}>
+                <Text style={styles.summaryValue}>{formatDuration(totals.workMinutes)}</Text>
+                {/* The break figure is the total across the run, not the
+                    length of one, so it has to be phrased as a second amount
+                    rather than as "N breaks of X" — which reads as each. */}
+                {` of work${totals.restCount > 0
+                  ? ` and ${formatDuration(totals.restMinutes)} of breaks, ${totals.restCount} of them`
+                  : ', no breaks'}`}
+              </Text>
+              {endsAt !== null && (
+                <Text style={styles.summarySub}>Ends around {endsAt} if it all runs to time</Text>
+              )}
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={[styles.confirmBtn, selected.length === 0 && styles.confirmBtnDisabled]}
+            onPress={handleStart}
+            disabled={selected.length === 0}
+            activeOpacity={interaction.activeOpacity}
+          >
+            <Text style={[styles.confirmBtnText, selected.length === 0 && styles.confirmBtnTextDisabled]}>
+              {selected.length === 0
+                ? 'Nothing selected'
+                : `Start ${selected.length} task${selected.length === 1 ? '' : 's'} · ${formatDuration(totals.totalMinutes)}`}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
+          <Text style={styles.cancelLabel}>Cancel</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </Modal>
+  );
+}
+
+const makeStyles = (colors: Colors) => StyleSheet.create({
+  backdropDim: { backgroundColor: colors.backdrop },
+  sheetOuter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: spacing.md,
+    paddingBottom: 34,
+  },
+  handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.sm },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.bgQuaternary },
+  card: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    marginBottom: spacing.sm,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+  },
+  sheetTitle: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
+  countRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  countText: { color: colors.textTertiary, fontSize: font.sm },
+  countValue: { color: colors.accent, fontWeight: fontWeight.semibold },
+  hint: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    lineHeight: lineHeight.xs,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  emptyHint: {
+    color: colors.textTertiary,
+    fontSize: font.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    textAlign: 'center',
+  },
+  list: { maxHeight: 300 },
+  row: { flexDirection: 'row', alignItems: 'center' },
+  rowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingLeft: spacing.md,
+    paddingVertical: 12,
+  },
+  rowContent: { flex: 1, gap: 1 },
+  rowTitle: { color: colors.text, fontSize: font.md, lineHeight: lineHeight.md },
+  rowTitleUnchecked: { color: colors.textSecondary },
+  rowSub: { color: colors.textTertiary, fontSize: font.xs },
+  swapBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
+  sep: { height: border.hairline, backgroundColor: colors.separator, marginLeft: spacing.md },
+  summary: {
+    borderTopWidth: border.hairline,
+    borderTopColor: colors.separator,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+    gap: 2,
+  },
+  summaryLine: { color: colors.textSecondary, fontSize: font.sm },
+  summaryValue: { color: colors.text, fontWeight: fontWeight.semibold },
+  summarySub: { color: colors.textTertiary, fontSize: font.xs },
+  confirmBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    margin: spacing.md,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  confirmBtnDisabled: { backgroundColor: colors.bgTertiary },
+  confirmBtnText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+  confirmBtnTextDisabled: { color: colors.textTertiary },
+  cancelCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.lg,
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  cancelLabel: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+});

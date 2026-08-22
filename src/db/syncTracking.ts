@@ -104,6 +104,13 @@ export const SYNC_EXCLUDED_TABLES = [
   // is cheaper than a merge strategy for a table whose whole content is a
   // cache of someone else's database.
   'gtin_lookups',
+  // The focus session in flight. It is a description of what is happening on
+  // one device right now — a countdown mid-step, a cursor into a plan the
+  // person is looking at — and there is no second device to merge that with.
+  // Two phones running one session between them is not a state this feature
+  // has, and syncing the row would create it: whichever device wrote last
+  // would move the other one's cursor mid-stretch.
+  'focus_sessions',
 ] as const;
 
 /**

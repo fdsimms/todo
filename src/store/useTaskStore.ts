@@ -31,6 +31,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore, ensureCalendarEventCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory } from './useCategoryStore';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
+import { useFocusStore } from './useFocusStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
@@ -1382,6 +1383,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useLeftoverStore.getState().initialize();
     const tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
+    // After the tasks, and given them: a stored focus session points at task
+    // ids, and the first thing it does is drop the stretches belonging to
+    // tasks that were completed or deleted while the app was shut. Rides this
+    // fan-out rather than App.tsx for the swap-the-database reason above.
+    useFocusStore.getState().initialize(tasks);
 
     set({ tasks, tagRegistry, initialized: true });
     const { tripShopId, tripStartedAt, shops } = useGroceryStore.getState();

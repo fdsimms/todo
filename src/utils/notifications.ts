@@ -2,7 +2,14 @@ import * as Notifications from 'expo-notifications';
 import type { PermissionResponse } from 'expo-modules-core';
 import { Platform } from 'react-native';
 import type { Task } from '../types';
+import type { FocusSession } from '../types';
 import { isTimedTask, isTimerRunning, timerRemaining } from './timer';
+import {
+  currentFocusStep,
+  focusStepRemaining,
+  isFocusRunning,
+  isFocusSessionFinished,
+} from './focusPlan';
 import { displayTitleFor, isHiddenForVacation } from './visibilityUtils';
 import { agendaCounts, agendaBody, nextAgendaTime } from './dailyAgenda';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -443,6 +450,69 @@ export async function scheduleTimerAlarm(task: Task): Promise<void> {
 
 export async function cancelTimerAlarm(taskId: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(timerAlarmId(taskId)).catch(() => {});
+}
+
+// ─── Focus session steps ─────────────────────────────────────────────────────
+
+// One id, because there is only ever one session and only ever one step of it
+// running: scheduling always replaces whatever was pending rather than
+// stacking a second chime behind it. Namespaced away from reminders and timer
+// alarms for the reason the timer's own note gives.
+const FOCUS_STEP_ALARM_ID = 'focus-step';
+
+/**
+ * Chime when the current focus step runs out, so nobody has to sit watching a
+ * countdown.
+ *
+ * Scheduled against what's *left* of the step rather than its full length, so
+ * it lands correctly whether the step just started, was resumed part-way, or
+ * had time added to it. `session` is nullable and a null cancels: every write
+ * in `useFocusStore` funnels through here, including the one that ends the
+ * session, so there's no separate path that has to remember to clean up.
+ *
+ * The chime never advances anything. It says the step is up; the session waits
+ * where it is until the user moves it on (see the note in utils/focusPlan.ts).
+ */
+export async function scheduleFocusStepAlarm(session: FocusSession | null): Promise<void> {
+  if (isDemoModeActive()) return;
+  await cancelFocusStepAlarm();
+  if (session === null || isFocusSessionFinished(session)) return;
+  // A paused session has no end time to fire at. Resuming reschedules.
+  if (!isFocusRunning(session)) return;
+
+  const step = currentFocusStep(session);
+  if (!step) return;
+  const remaining = focusStepRemaining(session);
+  if (remaining <= 0) return; // already up — the session shows it as ready on sight
+
+  const triggerDate = new Date(Date.now() + remaining * 1000);
+
+  // Suppressed rather than deferred inside quiet hours, exactly as
+  // scheduleTimerAlarm is: "your break is over" delivered at 7am, hours after
+  // the fact, is noise rather than information.
+  const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+  if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return;
+
+  const isRest = step.kind === 'rest';
+  await Notifications.scheduleNotificationAsync({
+    identifier: FOCUS_STEP_ALARM_ID,
+    content: {
+      title: isRest ? 'Break’s over' : 'Time’s up',
+      body: isRest
+        ? 'Back to it when you’re ready.'
+        : 'That stretch is done. Take your break when you’re ready.',
+      data: { focusSessionId: session.id },
+      sound: true,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: triggerDate,
+    },
+  });
+}
+
+export async function cancelFocusStepAlarm(): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(FOCUS_STEP_ALARM_ID).catch(() => {});
 }
 
 export async function rescheduleAllTimerAlarms(tasks: Task[]): Promise<void> {

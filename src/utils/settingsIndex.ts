@@ -182,6 +182,24 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['postpone', 'procrastinate', 'snooze', 'defer', 'avoid'] },
   { id: 'postponeCheckThreshold', groupId: 'tasksProjects', label: 'Reschedule threshold', section: 'Rescheduling',
     keywords: ['postpone', 'how many'] },
+  // Every focus row carries "pomodoro": it's the name most people have for the
+  // thing, and it appears nowhere in the UI copy (which says what each setting
+  // does in literal terms instead), so without it the whole section is
+  // unfindable by the only word someone is likely to type.
+  { id: 'focusWorkCapMinutes', groupId: 'tasksProjects', label: 'Work stretch length', section: 'Focus sessions',
+    keywords: ['pomodoro', 'focus', 'timer', 'deep work', 'block', 'session', 'cap'] },
+  { id: 'focusDefaultWorkMinutes', groupId: 'tasksProjects', label: 'Length without an estimate', section: 'Focus sessions',
+    keywords: ['pomodoro', 'focus', 'unestimated', 'default', 'fallback'] },
+  { id: 'focusRestAfterMinutes', groupId: 'tasksProjects', label: 'Break after this much work', section: 'Focus sessions',
+    keywords: ['pomodoro', 'focus', 'rest', 'interval', 'how often'] },
+  { id: 'focusRestAfterTasks', groupId: 'tasksProjects', label: 'Break after this many tasks', section: 'Focus sessions',
+    keywords: ['pomodoro', 'focus', 'rest', 'how many'] },
+  { id: 'focusRestMinutes', groupId: 'tasksProjects', label: 'Break length', section: 'Focus sessions',
+    keywords: ['pomodoro', 'focus', 'rest', 'short break'] },
+  { id: 'focusLongRestEvery', groupId: 'tasksProjects', label: 'Long break every', section: 'Focus sessions',
+    keywords: ['pomodoro', 'focus', 'rest', 'how often'] },
+  { id: 'focusLongRestMinutes', groupId: 'tasksProjects', label: 'Long break length', section: 'Focus sessions',
+    keywords: ['pomodoro', 'focus', 'rest'] },
   // Keyworded for what someone types when a task landed somewhere they didn't
   // put it — "why did this go to Work" is a search for the rule, not for the
   // word "rule". The other New tasks rows are unindexed; this one earns an

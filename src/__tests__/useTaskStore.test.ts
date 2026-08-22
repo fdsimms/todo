@@ -57,6 +57,9 @@ jest.mock('../db/database', () => ({
   dbUpdateCategory: jest.fn(),
   dbDeleteCategory: jest.fn(),
   dbGetAllTaskGroups: jest.fn().mockReturnValue([]),
+  dbGetFocusSession: jest.fn().mockReturnValue(null),
+  dbSaveFocusSession: jest.fn(),
+  dbClearFocusSession: jest.fn(),
   dbInsertTaskGroup: jest.fn(),
   dbUpdateTaskGroup: jest.fn(),
   dbDeleteTaskGroup: jest.fn(),
@@ -175,6 +178,10 @@ jest.mock('../utils/notifications', () => ({
   scheduleTimerAlarm: jest.fn().mockResolvedValue(undefined),
   cancelTimerAlarm: jest.fn().mockResolvedValue(undefined),
   rescheduleAllTimerAlarms: jest.fn().mockResolvedValue(undefined),
+  // Reached through useTaskStore.initialize, which hands the task list to
+  // useFocusStore so a stored session can be reconciled against it.
+  scheduleFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
+  cancelFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
   // Not exercised by this suite's grocery-store tests (they only touch
   // useUpTask fields), but useGroceryStore.ts imports these unconditionally —
   // an incomplete mock would leave them undefined the moment a test does call
