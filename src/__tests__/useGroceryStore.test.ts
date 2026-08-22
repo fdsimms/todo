@@ -3690,6 +3690,99 @@ describe('addManyToPantry', () => {
     expect(useGroceryStore.getState().itemProducts).toHaveLength(2);
     expect(useGroceryStore.getState().itemById(bread.id)!.preferredProductId).toBe(chosen.id);
   });
+
+  // What a receipt read on the Pantry screen hands over, keyed by the same raw
+  // name the box and the freezer flag already are. See KitchenScreen's
+  // handleReceiptApply.
+  it('records a price per name, on a row it minted as readily as one it stamped', () => {
+    const flour = makeItem({ name: 'Flour', inCatalog: true });
+    seed([flour]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Flour', 'Eggs'],
+      undefined,
+      undefined,
+      { byName: new Map([['Flour', 449], ['Eggs', 699]]), shopId: null }
+    );
+
+    const byName = Object.fromEntries(useGroceryStore.getState().items.map(i => [i.name, i]));
+    expect(byName.Flour.lastPriceMinor).toBe(449);
+    expect(byName.Eggs.lastPriceMinor).toBe(699);
+  });
+
+  it('leaves a name the receipt put no price against alone', () => {
+    const flour = makeItem({ name: 'Flour', inCatalog: true, lastPriceMinor: 399 });
+    seed([flour]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Flour'],
+      undefined,
+      undefined,
+      { byName: new Map(), shopId: null }
+    );
+
+    expect(useGroceryStore.getState().items[0].lastPriceMinor).toBe(399);
+  });
+
+  it('puts the price on the named store’s link too, when there is one', () => {
+    const costco = makeShop('Costco');
+    const flour = makeItem({ name: 'Flour', inCatalog: true });
+    seed([flour], {
+      shops: [costco],
+      itemShops: [
+        { itemId: flour.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [], productId: null, unavailableProductIds: {} },
+      ],
+    });
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Flour'],
+      undefined,
+      undefined,
+      { byName: new Map([['Flour', 449]]), shopId: costco.id }
+    );
+
+    expect(useGroceryStore.getState().itemShops[0].lastPriceMinor).toBe(449);
+    // Recording a price is not a purchase — this isn't a trip, so nothing
+    // about how often it's been bought here changes.
+    expect(useGroceryStore.getState().itemShops[0].purchaseCount).toBe(2);
+  });
+
+  it('mints no store link for a price at a store the item has never had one at', () => {
+    const costco = makeShop('Costco');
+    const flour = makeItem({ name: 'Flour', inCatalog: true });
+    seed([flour], { shops: [costco] });
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Flour'],
+      undefined,
+      undefined,
+      { byName: new Map([['Flour', 449]]), shopId: costco.id }
+    );
+
+    // A price is not a claim that the store stocks it — same rule setItemPrice
+    // follows everywhere else. The item's own price still lands.
+    expect(useGroceryStore.getState().itemShops).toHaveLength(0);
+    expect(useGroceryStore.getState().items[0].lastPriceMinor).toBe(449);
+  });
+
+  it('undoing a session that priced an already-stamped row restores its old price', () => {
+    const flour = makeItem({
+      name: 'Flour', onHandUntil: null, inCatalog: false, onList: true, lastPriceMinor: 399,
+    });
+    seed([flour]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Flour'],
+      undefined,
+      undefined,
+      { byName: new Map([['Flour', 449]]), shopId: null }
+    );
+    expect(useGroceryStore.getState().items[0].lastPriceMinor).toBe(449);
+
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().items).toEqual([flour]);
+  });
 });
 
 describe('setStaple', () => {

@@ -36,6 +36,21 @@ import type { ReceiptLine } from '../services/aiSuggestions';
  * default; it's what "Add as bought" in the sheet offers to reuse instead of
  * minting a second catalog row for something already there under a name close
  * enough to match.
+ *
+ * **What's already in the trolley is evidence, and it's the only evidence here
+ * that didn't come off the paper.** Ticking a row is the user saying they
+ * bought it, hours before any photo was taken, so a receipt landing on that row
+ * is agreeing rather than claiming: it breaks a tie between two equally-good
+ * readings (`beats`), and it's what lets a weak match arrive pre-checked
+ * (`acceptedByDefault`), since the tick was the assertion and the line only
+ * puts a price on it. Nothing about it can *create* a match — a name that
+ * reads as nothing still reads as nothing however full the trolley is.
+ *
+ * **Two scopes, because the pantry has no list.** `'list'` is the shopping
+ * read described above. `'catalog'` reads every row at once and skips the
+ * second pass entirely, for `KitchenScreen`, where "on this week's list" isn't
+ * a distinction that means anything — you are telling the app what came home,
+ * not ticking a plan off.
  */
 
 /**
@@ -90,6 +105,18 @@ export interface ReceiptMatch {
   offListMatchId: string | null;
   /** How well `offListMatchId` matched, on the same tiers as `confidence`. Null exactly when it is. */
   offListConfidence: ReceiptMatchConfidence | null;
+  /**
+   * Whether the row this line was read as is already ticked into the trolley.
+   *
+   * The one field here that isn't a fact about the paper. It's what the user
+   * said they were buying before the receipt was ever photographed, which is
+   * why `acceptedByDefault` will tick a weak match that lands on one: the row
+   * was already an assertion, and the line is only putting a price on it. The
+   * sheet says so out loud on the row, so a pre-checked weak match reads as
+   * "this agrees with what you ticked" rather than as the app having quietly
+   * got confident on its own. False whenever `itemId` is null.
+   */
+  inTrolley: boolean;
 }
 
 /**
@@ -186,13 +213,33 @@ function resolveAgainst(
 
   lines.forEach((line, index) => {
     const lineKey = groceryNameKey(line.name);
-    type Candidate = { itemId: string; confidence: ReceiptMatchConfidence; key: string };
+    type Candidate = {
+      itemId: string;
+      confidence: ReceiptMatchConfidence;
+      key: string;
+      checked: boolean;
+    };
 
-    /** Higher tier first, then the name closest in length, then alphabetically. */
+    /**
+     * Higher tier first, then a row already in the trolley, then the name
+     * closest in length, then alphabetically.
+     *
+     * The trolley sits above the last two and below the first, and both halves
+     * of that matter. Above, because nearest-length and alphabetical are
+     * admitted coin-flips between two equally good readings of the same
+     * shorthand, and "the one you already said you were buying" is real
+     * evidence where a coin-flip is all there was: a receipt line reading
+     * equally as *Milk* and *Oat milk* is the ticked one. Below, because a
+     * better reading of the paper is still a better reading — a remembered or
+     * exact match onto a row nobody ticked beats a weak one onto a row
+     * somebody did, and letting the trolley outrank the tier would turn a
+     * full trolley into a machine for mis-filing prices.
+     */
     const beats = (a: Candidate, b: Candidate): boolean => {
       if (TIER_RANK[a.confidence] !== TIER_RANK[b.confidence]) {
         return TIER_RANK[a.confidence] > TIER_RANK[b.confidence];
       }
+      if (a.checked !== b.checked) return a.checked;
       const near = Math.abs(a.key.length - lineKey.length) - Math.abs(b.key.length - lineKey.length);
       return near !== 0 ? near < 0 : a.key.localeCompare(b.key) < 0;
     };
@@ -207,12 +254,19 @@ function resolveAgainst(
       : null;
 
     let winner: Candidate | null = rememberedItem
-      ? { itemId: rememberedItem.id, confidence: 'remembered', key: rememberedItem.nameKey }
+      ? {
+          itemId: rememberedItem.id,
+          confidence: 'remembered',
+          key: rememberedItem.nameKey,
+          checked: rememberedItem.checked,
+        }
       : null;
     for (const item of winner ? [] : candidates) {
       const confidence = receiptMatchConfidence(item.nameKey, lineKey);
       if (!confidence) continue;
-      const candidate: Candidate = { itemId: item.id, confidence, key: item.nameKey };
+      const candidate: Candidate = {
+        itemId: item.id, confidence, key: item.nameKey, checked: item.checked,
+      };
       if (!winner || beats(candidate, winner)) winner = candidate;
     }
     best.push(winner ? { itemId: winner.itemId, confidence: winner.confidence } : null);
@@ -238,6 +292,18 @@ function resolveAgainst(
 }
 
 /**
+ * Which rows a receipt is being read against.
+ *
+ * Not a preference — the two callers are asking different questions. The
+ * shopping list wants to know what to tick off *this week's plan*, so a catalog
+ * row that isn't on it is at most a suggestion. The pantry has no plan to tick
+ * off at all: every row it knows about is equally a thing you might have just
+ * carried in, so there is nothing for the two passes to be a distinction
+ * between.
+ */
+export type ReceiptScope = 'list' | 'catalog';
+
+/**
  * Reads a receipt's lines against the rows currently on the list, then reads
  * whatever's left against the rest of the catalog.
  *
@@ -256,39 +322,56 @@ function resolveAgainst(
  * a catalog match instead. Nothing here selects it; it's what "Add as bought"
  * offers to reuse rather than mint a second row for something already in the
  * catalog under a name close enough to match.
+ *
+ * **In `'catalog'` scope there is only the one pass, over everything.** See
+ * `ReceiptScope`: the pantry isn't ticking a plan off, so the split the two
+ * passes exist to draw isn't a split it has.
  */
 export function matchReceiptLines(
   lines: readonly ReceiptLine[],
   items: readonly GroceryItem[],
   aliasFor?: AliasResolver,
+  scope: ReceiptScope = 'list',
 ): ReceiptMatch[] {
-  const onList = resolveAgainst(lines, items.filter(i => i.onList), aliasFor);
+  const primary = resolveAgainst(
+    lines,
+    scope === 'catalog' ? items : items.filter(i => i.onList),
+    aliasFor,
+  );
 
-  const openLines: ReceiptLine[] = [];
-  const openIndices: number[] = [];
-  onList.forEach((m, index) => {
-    if (m.itemId === null) {
-      openLines.push(lines[index]);
-      openIndices.push(index);
-    }
-  });
-  // The alias runs on this pass too: a phrase whose remembered meaning is a row
-  // that simply isn't on this week's list should still be offered as "add as
-  // bought" rather than minting a second row for a name the user has already
-  // filed once.
-  const offList = resolveAgainst(openLines, items.filter(i => !i.onList), aliasFor);
   const offListMatchId = new Array<string | null>(lines.length).fill(null);
   const offListConfidence = new Array<ReceiptMatchConfidence | null>(lines.length).fill(null);
-  offList.forEach((m, i) => {
-    offListMatchId[openIndices[i]] = m.itemId;
-    offListConfidence[openIndices[i]] = m.confidence;
-  });
+  // Only the list scope has an "off the list" to have a second opinion about.
+  // In catalog scope the first pass already saw every row, so a second one
+  // could only re-offer a row that pass deliberately left unclaimed.
+  if (scope === 'list') {
+    const openLines: ReceiptLine[] = [];
+    const openIndices: number[] = [];
+    primary.forEach((m, index) => {
+      if (m.itemId === null) {
+        openLines.push(lines[index]);
+        openIndices.push(index);
+      }
+    });
+    // The alias runs on this pass too: a phrase whose remembered meaning is a
+    // row that simply isn't on this week's list should still be offered as
+    // "add as bought" rather than minting a second row for a name the user has
+    // already filed once.
+    const offList = resolveAgainst(openLines, items.filter(i => !i.onList), aliasFor);
+    offList.forEach((m, i) => {
+      offListMatchId[openIndices[i]] = m.itemId;
+      offListConfidence[openIndices[i]] = m.confidence;
+    });
+  }
+
+  const checked = new Set(items.filter(i => i.checked).map(i => i.id));
 
   return lines.map((line, index) => ({
     line,
-    ...onList[index],
+    ...primary[index],
     offListMatchId: offListMatchId[index],
     offListConfidence: offListConfidence[index],
+    inTrolley: primary[index].itemId !== null && checked.has(primary[index].itemId as string),
   }));
 }
 
@@ -487,6 +570,17 @@ function quantitiesDisagree(a: string, b: string): boolean {
  * big pack is an ordinary thing that happened and the row is still the right
  * row, whereas a price four times off is the app's best evidence that the line
  * was read onto the wrong one.
+ *
+ * **A weak match onto a row already in the trolley is ticked anyway**, which is
+ * the one place the trolley overrules the reading rather than merely breaking
+ * its ties. The rule a weak match is normally held to is that an unchecked row
+ * is a question and a checked one is an assertion — but the assertion has
+ * already been made here, by the user, when they ticked the row into the
+ * trolley in the shop. All the receipt adds is what it cost, and refusing to
+ * carry the price across because two names only half agree leaves the user
+ * re-typing a number off paper they are holding, for a row nobody is in any
+ * doubt about. The price caution below still applies to it, so a weak match
+ * whose price is wildly off the row's own is still demoted.
  */
 export function acceptedByDefault(
   matches: readonly ReceiptMatch[],
@@ -495,7 +589,7 @@ export function acceptedByDefault(
   links: readonly ItemShopLink[],
 ): string[] {
   return matches
-    .filter(m => m.itemId !== null && m.confidence !== 'weak')
+    .filter(m => m.itemId !== null && (m.confidence !== 'weak' || m.inTrolley))
     // A price caution demotes a *guess*, not a rule. The check exists because a
     // 4x move is better evidence of a misread than of a real price, and that
     // reasoning only holds while the match is the app's own reading of two

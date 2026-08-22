@@ -314,7 +314,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   headerRight: { textAlign: 'right' },
   label: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,

@@ -75,6 +75,7 @@ import { resolveGroceryDrop, groceryDragRange, placeNewGroceryItems } from '../u
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { generateId } from '../utils/id';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
@@ -185,7 +186,18 @@ export function GroceryScreen() {
   // apart, since a receipt naming no store is a real answer and not an absent
   // one.
   const [receiptSeed, setReceiptSeed] = useState<
-    { shopId: string | null; priceText: Record<string, string>; purchasedAt: string } | null
+    {
+      shopId: string | null;
+      priceText: Record<string, string>;
+      purchasedAt: string;
+      /**
+       * Distinguishes one reading from the next, for the finish sheet's sake —
+       * see its `seedStamp` prop. A receipt read while that sheet is open has
+       * no opening to arrive on, and two receipts can name the same store and
+       * the same prices.
+       */
+      stamp: string;
+    } | null
   >(null);
   const [tripOpen, setTripOpen] = useState(false);
   // Which verb ShoppingTripSheet's header button should be, since the sheet
@@ -737,8 +749,13 @@ export function GroceryScreen() {
           Object.entries(allPriceById).map(([id, minor]) => [id, priceToInput(minor)])
         ),
         purchasedAt,
+        stamp: generateId(),
       });
       setReceiptOpen(false);
+      // Already true when the scan was started from the finish sheet, which is
+      // the point of that entry: it stays mounted underneath, so the ticks and
+      // substitutes given before reaching for the camera are still there when
+      // the receipt's own answers land on top of them.
       setFinishOpen(true);
     },
     [setCheckedMany, addExisting, addByName]
@@ -1291,6 +1308,10 @@ export function GroceryScreen() {
         seedShopId={receiptSeed?.shopId}
         seedPriceText={receiptSeed?.priceText}
         seedPurchasedAt={receiptSeed?.purchasedAt}
+        seedStamp={receiptSeed?.stamp}
+        // Gated on a key for the reason the list's own button is: without one
+        // the action opens a sheet that can only apologise.
+        onScanReceipt={anthropicApiKey ? () => setReceiptOpen(true) : undefined}
         onClose={() => {
           setFinishOpen(false);
           setReceiptSeed(null);
@@ -1304,8 +1325,12 @@ export function GroceryScreen() {
         onApply={handleScanApply}
       />
 
+      {/* Rendered over the finish sheet rather than instead of it when that's
+          where it was opened from — the two are siblings, and the finish
+          sheet's own `visible` is left alone. */}
       <ReceiptImportSheet
         visible={receiptOpen}
+        context="shopping"
         onClose={() => setReceiptOpen(false)}
         onApply={handleReceiptApply}
       />

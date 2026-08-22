@@ -474,6 +474,18 @@ interface GroceryStore {
    * batch mints has no id until the loop below creates it, so the sheet that
    * read the barcode can't record the link itself. Linked once at the end,
    * after every box exists to be pointed at.
+   *
+   * `prices` is a receipt's own numbers, keyed by the same raw string for the
+   * same reason again — a row this batch mints has no id to key by. Written
+   * through `setItemPrice`, which is the deliberate part: this is not a trip.
+   * A receipt read in the pantry says what something cost and nothing else, so
+   * it records the price exactly as typing it into the item sheet would and
+   * bumps no purchase count, mints no store link and makes no claim about what
+   * that store stocks. `shopId` is which store's price it is, null for none;
+   * an item with no link to that store still records its own price, same as an
+   * unplaced trip does. Not part of the undo snapshot on this batch's *links*
+   * — the item rows revert wholesale with everything else, matching how
+   * `addProduct` is already treated here.
    */
   addManyToPantry: (
     names: readonly string[],
@@ -481,7 +493,8 @@ interface GroceryStore {
     products?: ReadonlyMap<
       string,
       { brand: string | null; variant: string | null; gtin?: string | null }
-    >
+    >,
+    prices?: { byName: ReadonlyMap<string, number>; shopId: string | null }
   ) => number;
   /**
    * The day this should be used up by, as a `YYYY-MM-DD` key, or null for
@@ -2129,7 +2142,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     return item;
   },
 
-  addManyToPantry(names, frozenNames, products) {
+  addManyToPantry(names, frozenNames, products, prices) {
     const addedIds: string[] = [];
     const revertRows: GroceryItem[] = [];
     const gtinLinks: ScannedGtinLink[] = [];
@@ -2152,6 +2165,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       if (product && (product.brand || product.variant)) {
         get().addProduct(item.id, { brand: product.brand, variant: product.variant });
       }
+      // Same reasoning as the box above, and the same key: this is the only
+      // point at which a name minted by this batch has an id to put a price on.
+      const priceMinor = prices?.byName.get(raw);
+      if (priceMinor !== undefined) get().setItemPrice(item.id, priceMinor, prices?.shopId ?? null);
       // Collected rather than written here: the link resolves a box by its key,
       // so every addProduct in this batch has to have landed first.
       if (product?.gtin) {

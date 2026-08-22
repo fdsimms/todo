@@ -432,7 +432,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowDest: { color: colors.textSecondary, fontWeight: fontWeight.medium },
   rowMinutes: { color: colors.textTertiary, fontSize: font.xs },
   sectionLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,
