@@ -783,8 +783,12 @@ export function GroceryScreen() {
    * that deletes the brandless one beside it.
    *
    * A row that matched an item the catalog already had travels in `products`
-   * instead, and is written with `promote: false` — the scan is recording that
-   * a box came home, which is not the user choosing it (#1866).
+   * instead, written through `addProduct`'s default promotion rule: the scan
+   * can supply the very first answer to "which one?" for an item that has
+   * never had a box named, but — the whole point of #1866 — it never
+   * overrides a preference the user already chose. Unpacking twenty bags
+   * doesn't get to silently re-decide the one you picked on purpose; it only
+   * ever fills in the ones nobody's answered yet.
    */
   const handleScanApply = useCallback(
     (
@@ -813,10 +817,11 @@ export function GroceryScreen() {
         if (draft.frozen) frozenIds.add(id);
       }
       // After the loop, so a row this session minted is already there to hang a
-      // box off. `promote: false` is the whole of #1866: the scan is recording
-      // that a box came home, which is not the user choosing it.
+      // box off. Default opts: addProduct only promotes when the item has no
+      // preference yet, so this fills in the ones nobody's answered without
+      // touching one the user already chose (#1866).
       for (const product of products) {
-        addProduct(product.itemId, { brand: product.brand, variant: product.variant }, { promote: false });
+        addProduct(product.itemId, { brand: product.brand, variant: product.variant });
       }
       if (allIds.length > 0) setCheckedMany(allIds, true);
       // Merged rather than replaced: a second scan session before the trip

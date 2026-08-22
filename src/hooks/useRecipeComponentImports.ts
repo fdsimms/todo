@@ -112,7 +112,13 @@ export function useRecipeComponentImports(
 
     setState(key, { status: 'reading' });
     try {
-      const extracted = await extractRecipe(photo, [...availableAisles]);
+      // The method comes across, same as it does for a recipe imported on its
+      // own — page 45 is a whole recipe, not an ingredient list. References do
+      // not: a component that points at a *third* page has nowhere to offer
+      // that, and a row that grows its own rows is a flow with no bottom.
+      const extracted = await extractRecipe(photo, [...availableAisles], {
+        includeReferences: false,
+      });
       setState(key, { status: 'read', extracted });
       haptics.success();
       setAccepted(prev => (prev.has(key) ? prev : new Set(prev).add(key)));
@@ -157,6 +163,9 @@ export function useRecipeComponentImports(
    *   are dropped in that case rather than merged, on the same no-overwrite
    *   rule `RecipeExtractSheet` follows: a recipe the user already wrote is not
    *   somewhere to pour a fresh extraction into unasked.
+   * - **A created component gets everything a standalone import would**: its
+   *   ingredients, servings, time, method and prep tasks. The only thing it
+   *   doesn't get is references of its own — see `importFrom`.
    * - **The page number is the source's own statement, so it is kept.** A
    *   recipe read off "page 45" gets `sourceType: 'cookbook'` and
    *   `sourcePage: '45'`, the same provenance-not-a-guess argument a link
@@ -200,6 +209,16 @@ export function useRecipeComponentImports(
           store.setSourceType(target.id, 'cookbook');
           store.setSourcePage(target.id, candidate.page);
         }
+        // Same two writes `RecipeCreateSheet` makes for a recipe imported on
+        // its own — a component read off a photo is a recipe like any other,
+        // and one that arrived with no method would be the odd one out.
+        extracted.steps.forEach(step => store.addStep(target.id, step));
+        extracted.prepTasks.forEach(task => {
+          const added = store.addPrepTask(target.id, task.title);
+          if (added && task.offsetDays !== added.offsetDays) {
+            store.updatePrepTask(target.id, added.id, { offsetDays: task.offsetDays });
+          }
+        });
       }
       store.addComponent(parentRecipeId, target.id);
     }

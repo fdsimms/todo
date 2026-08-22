@@ -918,7 +918,7 @@ export function RecipeDetailScreen() {
       </TouchableOpacity>
       <TouchableOpacity
         onLongPress={drag}
-        delayLongPress={interaction.delayLongPress}
+        delayLongPress={150}
         hitSlop={10}
         accessibilityRole="button"
         accessibilityLabel={`Reorder step ${displayIndex + 1}`}
@@ -1759,6 +1759,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
+    // Same rule down the same edge as ingredientChoice below: the header
+    // names the group the border is drawn for, so the rule belongs to it too,
+    // not just to the rows underneath.
+    borderLeftWidth: 2,
+    borderLeftColor: colors.accent,
   },
   choiceHeaderText: {
     flex: 1,

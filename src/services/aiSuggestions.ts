@@ -302,6 +302,10 @@ const MAX_RECIPE_ITEMS = 40;
 const MAX_RECIPE_REFERENCES = 4;
 /** The locator, verbatim — "page 45", "p. 212", "opposite". Not a sentence. */
 const RECIPE_REFERENCE_MAX_LENGTH = 40;
+const MAX_RECIPE_STEPS = 30;
+const MAX_RECIPE_PREP_TASKS = 8;
+/** Matches PrepTaskSheet's own OFFSET_MIN — a week out is a Task with its own due date, not a recipe prep task. */
+const MAX_PREP_DAYS_AHEAD = 7;
 
 /**
  * Case-insensitively resolves a model-supplied aisle to the canonical spelling
@@ -538,6 +542,42 @@ function groceryItemsSchema(availableAisles: string[], description: string) {
   };
 }
 
+export interface ExtractedPrepTask {
+  /** Under TITLE_MAX_LENGTH. */
+  title: string;
+  /** Days before the meal this needs to start. Always negative. */
+  offsetDays: number;
+}
+
+/** Same validation the shopping list gets, extended to a step's plain text. */
+function parseExtractedSteps(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const steps: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') continue;
+    const text = item.trim();
+    if (!text) continue;
+    steps.push(text);
+  }
+  return steps.slice(0, MAX_RECIPE_STEPS);
+}
+
+function parseExtractedPrepTasks(raw: unknown): ExtractedPrepTask[] {
+  const items = raw as Array<{ title?: unknown; daysAhead?: unknown }> | undefined;
+  if (!items) return [];
+  const result: ExtractedPrepTask[] = [];
+  for (const item of items) {
+    if (typeof item?.title !== 'string') continue;
+    const title = item.title.trim().slice(0, TITLE_MAX_LENGTH);
+    if (!title) continue;
+    const daysAhead = typeof item.daysAhead === 'number' && item.daysAhead > 0
+      ? Math.round(item.daysAhead)
+      : 1;
+    result.push({ title, offsetDays: -Math.max(1, Math.min(MAX_PREP_DAYS_AHEAD, daysAhead)) });
+  }
+  return result.slice(0, MAX_RECIPE_PREP_TASKS);
+}
+
 /**
  * The four the Messages API accepts. `recipePhoto.ts` always re-encodes to JPEG,
  * so in practice only the first one is ever produced — the union exists so a
@@ -575,6 +615,10 @@ export interface ExtractedRecipe {
    * sources; see `ExtractedRecipeReference`.
    */
   references: ExtractedRecipeReference[];
+  /** The method, in order. Empty when `includeMethod` was false or none was found. */
+  steps: string[];
+  /** Only genuine advance-prep — see extractRecipe's prompt. Empty likewise. */
+  prepTasks: ExtractedPrepTask[];
 }
 
 /**
@@ -584,10 +628,36 @@ export interface ExtractedRecipe {
  */
 function sharedRecipeInstructions(availableAisles: string[]): string[] {
   return [
-    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, just with the prep instruction dropped — "4 cloves" or "3 cloves", not "1 bulb". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method for the shopping list, and skip water.',
+    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, just with the prep instruction dropped — "4 cloves" or "3 cloves", not "1 bulb". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method when deciding what goes on the shopping list, and skip water.',
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
     'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
+  ];
+}
+
+/**
+ * The paragraph asking which other recipes this one points at. Gated the same
+ * way `methodInstructions` is, and for the same reason: `suggestRecipeGroceries`
+ * has nowhere to put a component link, so it shouldn't pay for the ask.
+ *
+ * Separate from `sharedRecipeInstructions` rather than a fourth bullet in it
+ * *because* of that gate — everything in there goes out on every call.
+ */
+function referenceInstructions(): string[] {
+  return [
     'A recipe often calls for another recipe printed elsewhere and points you to it: "1 cup salsa verde (page 45)", "serve with the herb oil on p. 12", "uses the pizza dough from page 210". List each of those in "referencedRecipes", with the dish\'s own name and the source\'s own words for where to find it. Two rules: only list one when the source actually points somewhere else for it — "serve with rice" names no recipe and belongs nowhere near this list — and never list a part of this recipe\'s own ingredient list. "For the frosting" is the "component" field above; these are separate recipes with their own pages.',
+  ];
+}
+
+/**
+ * The paragraphs asking for the method and any advance-prep tasks — shared by
+ * both sources, only included when the caller actually wants them
+ * (`suggestRecipeGroceries` doesn't, so it skips these to keep the response
+ * shorter).
+ */
+function methodInstructions(): string[] {
+  return [
+    'Also pull out the method as an ordered list of separate steps, matching however the recipe itself divides them (numbered steps, one instruction per line or paragraph). Keep the wording close to the source rather than summarizing it, and never invent a step that isn\'t actually there.',
+    'Separately, list any "prep tasks": things that genuinely have to be started well ahead of cooking because they need lead time to work — soaking dried beans or lentils overnight, marinating or brining meat overnight, thawing something frozen, letting a dough rest or proof overnight, activating a starter or sourdough the day before. Do NOT list routine same-day steps just because they happen early in the method — chopping vegetables, mixing dry ingredients, bringing something to room temperature for half an hour, preheating the oven. If nothing in the recipe genuinely needs advance lead time, return an empty list. For each one, say roughly how many days ahead it needs to start: 1 for "overnight" or "the night before", more only when the recipe is explicit about needing longer.',
   ];
 }
 
@@ -609,31 +679,51 @@ function sharedRecipeInstructions(availableAisles: string[]): string[] {
  * image), and the instructions gain a paragraph about page furniture and one
  * about refusing to guess at an illegible shot. The text path still sends a
  * bare string, so its request body is byte-for-byte what it always was.
+ *
+ * **`includeReferences` gates the cross-references to other recipes** on the
+ * same terms as `includeMethod` below: `suggestRecipeGroceries` has nowhere to
+ * put a component link, so it doesn't ask for one.
+ *
+ * **`includeMethod` also decides whether the method/prep-tasks paragraphs and
+ * schema fields are sent at all**, not just whether the result is read — a
+ * caller with no use for them (`suggestRecipeGroceries`) shouldn't pay for a
+ * longer response it's about to throw away. A link import runs this same text
+ * path over the fetched page (see `useRecipeImportSource`), so a page with no
+ * `schema.org` instructions still gets a model-read method as a fallback —
+ * the review sheets prefer the page's own verbatim steps when both exist.
  */
 export async function extractRecipe(
   source: RecipeSource,
   availableAisles: string[],
+  options: { includeMethod?: boolean; includeReferences?: boolean } = {},
 ): Promise<ExtractedRecipe> {
+  const { includeMethod = true, includeReferences = true } = options;
   const { apiKey, model } = requireFeature('recipeExtraction');
 
   const empty: ExtractedRecipe = {
-    name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [], references: [],
+    name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+    references: [], steps: [], prepTasks: [],
   };
   const image = typeof source === 'string' ? null : source;
   const text = typeof source === 'string' ? source.trim().slice(0, MAX_RECIPE_CHARS) : '';
   // Same "nothing in, no network call" guard for both sources.
   if (image ? !image.base64 : !text) return empty;
 
+  const foundLine = `its shopping list${includeMethod ? ', and its method' : ''}`;
   const prompt = image
     ? [
-        'This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves, its total prep/cook time, and its shopping list.',
+        `This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves, its total prep/cook time, and ${foundLine}.`,
         'Ignore anything on the page that is not part of this recipe: page numbers, running heads, chapter titles, headnotes and stories, photo captions, and text bleeding in from a facing page. If the page shows more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.',
         ...sharedRecipeInstructions(availableAisles),
-        'If the photo is too blurry, too dark, cut off, or otherwise unreadable, return an empty name and an empty item list rather than guessing. Never invent an ingredient you cannot actually read.',
+        ...(includeReferences ? referenceInstructions() : []),
+        ...(includeMethod ? methodInstructions() : []),
+        'If the photo is too blurry, too dark, cut off, or otherwise unreadable, return an empty name and an empty item list rather than guessing. Never invent an ingredient, step, or prep task you cannot actually read.',
       ].join('\n\n')
     : [
-        'Extract this recipe: its name, how many it serves, its total prep/cook time, and its shopping list.',
+        `Extract this recipe: its name, how many it serves, its total prep/cook time, and ${foundLine}.`,
         ...sharedRecipeInstructions(availableAisles),
+        ...(includeReferences ? referenceInstructions() : []),
+        ...(includeMethod ? methodInstructions() : []),
         `Recipe:\n${text}`,
       ].join('\n\n');
 
@@ -648,10 +738,12 @@ export async function extractRecipe(
     : prompt;
 
   const data = await callAnthropic({
-    max_tokens: 2000,
+    // A method with a full page of steps plus any prep tasks needs more room
+    // than the shopping-list-only response this used to always be.
+    max_tokens: includeMethod ? 3000 : 2000,
     tools: [{
       name: 'extract_recipe',
-      description: 'Extract a recipe\'s name, servings, prep time, and shopping list',
+      description: `Extract a recipe's name, servings, prep time, and shopping list${includeMethod ? ', method, and prep tasks' : ''}`,
       input_schema: {
         type: 'object',
         properties: {
@@ -675,24 +767,51 @@ export async function extractRecipe(
             availableAisles,
             'The things a shopper needs to buy for this recipe.',
           ),
-          referencedRecipes: {
-            type: 'array',
-            description: 'Other recipes this one tells you to make, printed elsewhere in the same book or site. Empty array when the source points at nothing.',
-            items: {
-              type: 'object',
-              properties: {
-                name: {
-                  type: 'string',
-                  description: `The referenced recipe's own title, as the source prints it — "Salsa verde", not "the salsa". Under ${RECIPE_NAME_MAX_LENGTH} characters.`,
+          ...(includeReferences ? {
+            referencedRecipes: {
+              type: 'array',
+              description: 'Other recipes this one tells you to make, printed elsewhere in the same book or site. Empty array when the source points at nothing.',
+              items: {
+                type: 'object',
+                properties: {
+                  name: {
+                    type: 'string',
+                    description: `The referenced recipe's own title, as the source prints it — "Salsa verde", not "the salsa". Under ${RECIPE_NAME_MAX_LENGTH} characters.`,
+                  },
+                  reference: {
+                    type: 'string',
+                    description: 'Where the source says to find it, in its own words: "page 45", "p. 212", "pages 112-115". Leave the whole entry out if the source names a dish but never says where its recipe is.',
+                  },
                 },
-                reference: {
-                  type: 'string',
-                  description: 'Where the source says to find it, in its own words: "page 45", "p. 212", "pages 112-115". Leave the whole entry out if the source names a dish but never says where its recipe is.',
-                },
+                required: ['name', 'reference'],
               },
-              required: ['name', 'reference'],
             },
-          },
+          } : {}),
+          ...(includeMethod ? {
+            steps: {
+              type: 'array',
+              description: `The method, as an ordered list of steps in the recipe's own words. Under ${MAX_RECIPE_STEPS} steps. Empty array if no method is given.`,
+              items: { type: 'string' },
+            },
+            prepTasks: {
+              type: 'array',
+              description: 'Only genuine advance-prep that needs to start well ahead of cooking — never routine same-day prep. Empty array when nothing needs advance lead time.',
+              items: {
+                type: 'object',
+                properties: {
+                  title: {
+                    type: 'string',
+                    description: `What to do, e.g. "Soak the beans overnight". Under ${TITLE_MAX_LENGTH} characters.`,
+                  },
+                  daysAhead: {
+                    type: 'integer',
+                    description: 'How many days before cooking this needs to start. 1 for "overnight" or "the night before".',
+                  },
+                },
+                required: ['title', 'daysAhead'],
+              },
+            },
+          } : {}),
         },
         required: ['name', 'items'],
       },
@@ -703,8 +822,8 @@ export async function extractRecipe(
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
-    name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown;
-    items?: unknown; referencedRecipes?: unknown;
+    name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown; items?: unknown;
+    referencedRecipes?: unknown; steps?: unknown; prepTasks?: unknown;
   } | undefined;
   if (!input) throw new Error('No suggestions returned');
 
@@ -725,20 +844,25 @@ export async function extractRecipe(
   return {
     name, servings, servingsMax, prepMinutes,
     ingredients: parseExtractedItems(input.items, availableAisles),
-    references: parseExtractedReferences(input.referencedRecipes),
+    references: includeReferences ? parseExtractedReferences(input.referencedRecipes) : [],
+    steps: includeMethod ? parseExtractedSteps(input.steps) : [],
+    prepTasks: includeMethod ? parseExtractedPrepTasks(input.prepTasks) : [],
   };
 }
 
 /**
  * Pulls just the shopping items out of a pasted or photographed recipe —
  * GroceryAISheet's "From a recipe" mode, which has no use for the
- * name/servings/prep time.
+ * name/servings/prep time, or the method.
  */
 export async function suggestRecipeGroceries(
   source: RecipeSource,
   availableAisles: string[],
 ): Promise<RecipeGroceryItem[]> {
-  const extracted = await extractRecipe(source, availableAisles);
+  const extracted = await extractRecipe(source, availableAisles, {
+    includeMethod: false,
+    includeReferences: false,
+  });
   return extracted.ingredients;
 }
 

@@ -1209,6 +1209,11 @@ export function recipeHasMethod(recipe: Recipe | null | undefined): boolean {
   return !!recipe && (recipe.steps.length > 0 || !!recipe.notes.trim());
 }
 
+/** Whether a recipe already carries any prep tasks of its own. */
+export function recipeHasPrepTasks(recipe: Recipe | null | undefined): boolean {
+  return !!recipe && recipe.prepTasks.length > 0;
+}
+
 /**
  * Whether a recipe carries any attribution at all.
  *

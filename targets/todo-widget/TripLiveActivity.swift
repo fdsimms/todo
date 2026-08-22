@@ -7,9 +7,9 @@ import SwiftUI
 // src/utils/tripLiveActivity.ts, which is the only thing that starts or ends
 // this). No interactive controls, unlike TimerLiveActivity's Done button:
 // ending a trip means Finish (mark what a store didn't have) or Clear, and
-// both only make sense inside the app, so tapping the activity just opens it
-// — the same tap-to-open every other non-interactive region here already
-// uses.
+// both only make sense inside the app, so tapping the activity opens it
+// straight to the grocery list — `dundundun://groceries`, the same link a
+// "Grocery run" task's own linkUrl carries (src/utils/deepLinks.ts).
 
 @available(iOS 17.0, *)
 private struct TripClockView: View {
@@ -66,6 +66,7 @@ struct TripLiveActivity: Widget {
             TripLockScreenView(context: context)
                 .activityBackgroundTint(WidgetPalette.dark.bgSecondary)
                 .activitySystemActionForegroundColor(WidgetPalette.dark.text)
+                .widgetURL(URL(string: "dundundun://groceries"))
         } dynamicIsland: { context in
             // The island is always drawn on black regardless of system
             // appearance, same reasoning as TimerLiveActivity.
@@ -112,9 +113,10 @@ struct TripLiveActivity: Widget {
                 Image(systemName: "storefront")
                     .foregroundColor(palette.accent)
             }
-            // Tapping anywhere non-interactive opens the app — same scheme
-            // TimerLiveActivity and the Today widget use.
-            .widgetURL(URL(string: "dundundun://"))
+            // Tapping anywhere non-interactive opens the grocery list, same
+            // link the Lock Screen presentation above uses — unlike
+            // TimerLiveActivity and the Today widget, which just open the app.
+            .widgetURL(URL(string: "dundundun://groceries"))
             .keylineTint(palette.accent)
         }
     }

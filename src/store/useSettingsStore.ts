@@ -285,6 +285,14 @@ interface SettingsStore {
    * sees exactly the form it had.
    */
   simpleTaskForm: boolean;
+  /**
+   * Hides the explanatory line under Settings rows/sections and the one-liner
+   * inside an expanded editor field (CollapsibleField/EditorRow's `hint`) —
+   * everywhere a control already says its own name and the text underneath is
+   * only elaborating. Off by default: an install that upgrades into this sees
+   * exactly the hints it already had.
+   */
+  hideHelpText: boolean;
   // Live Activity (Lock Screen / Dynamic Island) for a running task timer or
   // recipe cook/prep timer — see src/utils/liveActivity.ts. iOS 17+ only, a
   // no-op everywhere else. Defaults on, like hapticsEnabled/shakeToUndoEnabled
@@ -655,6 +663,7 @@ interface SettingsStore {
   setDefaultReminderLeadMinutes: (minutes: number | null) => void;
   setHideCategories: (on: boolean) => void;
   setSimpleTaskForm: (on: boolean) => void;
+  setHideHelpText: (on: boolean) => void;
   setTimerLiveActivity: (on: boolean) => void;
   setTripLiveActivity: (on: boolean) => void;
   setKitchenEnabled: (on: boolean) => void;
@@ -721,6 +730,7 @@ const DEFAULT_SETTINGS = {
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
   hideCategories: false,
   simpleTaskForm: false,
+  hideHelpText: false,
   timerLiveActivity: true,
   tripLiveActivity: true,
   collapsedCategories: [] as string[],
@@ -1005,6 +1015,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   defaultReminderLeadMinutes: null,
   hideCategories: false,
   simpleTaskForm: false,
+  hideHelpText: false,
   timerLiveActivity: true,
   tripLiveActivity: true,
   collapsedCategories: [],
@@ -1118,6 +1129,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const hideCategories = dbGetSetting('hideCategories') === 'true';
     const collapsedCategories = parseCategoryNames(dbGetSetting('collapsedCategories'));
     const simpleTaskForm = dbGetSetting('simpleTaskForm') === 'true';
+    const hideHelpText = dbGetSetting('hideHelpText') === 'true';
     // `!== 'false'`, not `=== 'true'` — defaults on, same reasoning as
     // hapticsEnabled/shakeToUndoEnabled above.
     const timerLiveActivity = dbGetSetting('timerLiveActivity') !== 'false';
@@ -1274,7 +1286,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, hideHelpText, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1557,6 +1569,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setSimpleTaskForm(on: boolean) {
     dbSetSetting('simpleTaskForm', on ? 'true' : 'false');
     set({ simpleTaskForm: on });
+  },
+
+  setHideHelpText(on: boolean) {
+    dbSetSetting('hideHelpText', on ? 'true' : 'false');
+    set({ hideHelpText: on });
   },
 
   setTimerLiveActivity(on: boolean) {

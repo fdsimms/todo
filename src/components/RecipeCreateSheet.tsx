@@ -71,13 +71,16 @@ interface Props {
  * field on screen is what makes the already-have-this case cheap: the duplicate
  * check runs as you type and offers to open the recipe you meant.
  *
- * **A link import fills in more of the recipe than the other two sources can**,
- * and that asymmetry is the page's doing rather than a policy: a page that
- * publishes `schema.org/Recipe` hands over its method and its attribution as
- * structured data, so the method is written straight to `Recipe.steps` and the
- * site to `source`/`sourceUrl` rather than being re-derived by a model that is
- * under instruction to ignore the method. A paste and a photo carry neither, so
- * neither is invented for them.
+ * **A link import still gets more for free than a paste or a photo can**, and
+ * that's the page's doing rather than a policy: a page that publishes
+ * `schema.org/Recipe` hands over its method and its attribution as structured
+ * data, written straight to `Recipe.steps` and `source`/`sourceUrl` rather than
+ * re-derived by the model. But all three sources now come back with a method
+ * and any prep tasks — `extractRecipe` reads them off a paste or a photo the
+ * same way it reads the ingredients, and off a link's own page text as a
+ * fallback for whichever a site doesn't publish as structured data. The page's
+ * own steps are preferred when both exist; only attribution stays link-only,
+ * since nothing else names where a recipe came from.
  */
 export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onCreated }: Props) {
   const colors = useColors();
@@ -97,6 +100,8 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   const setAuthor = useRecipeStore(s => s.setAuthor);
   const setSourceType = useRecipeStore(s => s.setSourceType);
   const addStep = useRecipeStore(s => s.addStep);
+  const addPrepTask = useRecipeStore(s => s.addPrepTask);
+  const updatePrepTask = useRecipeStore(s => s.updatePrepTask);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
 
   const [loading, setLoading] = useState(false);
@@ -261,8 +266,16 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       setSourceType(recipe.id, 'website');
       if (page.siteName) setSource(recipe.id, page.siteName);
       if (page.author) setAuthor(recipe.id, page.author);
-      page.steps.forEach(step => addStep(recipe.id, step));
     }
+    // The page's own steps when it has them (verbatim structured data),
+    // otherwise whatever the model read off the source itself.
+    methodSteps.forEach(step => addStep(recipe.id, step));
+    extracted.prepTasks.forEach(task => {
+      const added = addPrepTask(recipe.id, task.title);
+      if (added && task.offsetDays !== added.offsetDays) {
+        updatePrepTask(recipe.id, added.id, { offsetDays: task.offsetDays });
+      }
+    });
     haptics.success();
     // Close first, then navigate: a navigate fired from under a live pageSheet
     // renders the destination behind the sheet.
@@ -280,10 +293,13 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
           extracted.prepMinutes !== null ? `, about ${extracted.prepMinutes} min` : ''}`
       : `About ${extracted.prepMinutes} min`;
 
-  // The method isn't in the review list — it's taken verbatim off the page, so
-  // there's nothing to tick or correct — but arriving with steps nobody
-  // mentioned is a surprise, so the count is said out loud.
-  const stepCount = input.page?.steps.length ?? 0;
+  // The method isn't in the review list — there's nothing to tick or correct —
+  // but arriving with steps nobody mentioned is a surprise, so the count is
+  // said out loud. The page's own steps (verbatim structured data) win over
+  // the model's read of the same source when both exist.
+  const methodSteps = (input.page?.steps.length ?? 0) > 0 ? input.page!.steps : (extracted?.steps ?? []);
+  const stepCount = methodSteps.length;
+  const prepTaskCount = extracted?.prepTasks.length ?? 0;
 
 
   // A deterministic failure — a mistyped address, a site that refuses us, a page
@@ -440,6 +456,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
         <Text style={styles.intro}>
           Untick anything you don't want added, or tap a name or amount to change it.
           {stepCount > 0 && ` The method comes across too — ${stepCount} step${stepCount === 1 ? '' : 's'}.`}
+          {prepTaskCount > 0 && ` So do any prep tasks it needs ahead of time — ${prepTaskCount} found.`}
         </Text>
 
         {(extracted.servings !== null || extracted.prepMinutes !== null) && (

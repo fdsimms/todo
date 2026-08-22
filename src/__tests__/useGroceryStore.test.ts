@@ -3651,6 +3651,39 @@ describe('addManyToPantry', () => {
     expect(items).toHaveLength(1);
     expect(items[0]).toEqual(peas);
   });
+
+  // What a barcode scan hands the pantry: the box, matched back by the same
+  // raw name frozenNames already keys on. See BarcodeScanSheet/ScanProductDraft.
+  it('records a scanned box and shows it, matched by name', () => {
+    seed([]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Bread'],
+      undefined,
+      new Map([['Bread', { brand: "Dave's Killer", variant: '21 grains' }]])
+    );
+
+    const bread = useGroceryStore.getState().items.find(i => i.name === 'Bread')!;
+    expect(useGroceryStore.getState().itemProducts).toHaveLength(1);
+    const [product] = useGroceryStore.getState().itemProducts;
+    expect(product).toMatchObject({ brand: "Dave's Killer", variant: '21 grains' });
+    expect(bread.preferredProductId).toBe(product.id);
+  });
+
+  it('never overrides a box the item already has a preference for', () => {
+    const bread = makeItem({ name: 'Bread', inCatalog: true });
+    seed([bread]);
+    const chosen = useGroceryStore.getState().addProduct(bread.id, { brand: "Arnold's", variant: null })!;
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Bread'],
+      undefined,
+      new Map([['Bread', { brand: "Dave's Killer", variant: null }]])
+    );
+
+    expect(useGroceryStore.getState().itemProducts).toHaveLength(2);
+    expect(useGroceryStore.getState().itemById(bread.id)!.preferredProductId).toBe(chosen.id);
+  });
 });
 
 describe('setStaple', () => {

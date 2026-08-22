@@ -31,7 +31,7 @@ import {
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import {
-  normalizeIngredient, formatServingsRange, recipeHasMethod, recipeHasAttribution,
+  normalizeIngredient, formatServingsRange, recipeHasMethod, recipeHasPrepTasks, recipeHasAttribution,
 } from '../utils/recipeUtils';
 import { aisleForName } from '../utils/groceryAisles';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -64,16 +64,18 @@ interface Props {
  * opens from RecipeDetailScreen), so overwriting what the user already typed
  * with whatever the model guessed would be a surprise, not a convenience.
  *
- * **The method and the attribution are the deliberate exception, and the
- * reason is where they come from.** The rule above is about a *model's guess*
- * landing on top of the user's own writing. A link import's steps and site
- * aren't a guess — they're the page's own structured data, taken verbatim
- * (see `parseRecipeJsonLd`), which is the same provenance as the ingredients
- * this sheet has always applied. So they're offered as their own tick-to-apply
- * rows, and the no-overwrite rule survives in where the ticks *start*: off
- * whenever the recipe already has a method or an attribution of its own, and
- * the method appends rather than replaces even then. A paste and a photo carry
- * neither, so for them this sheet does exactly what it always did.
+ * **The method, prep tasks, and attribution are the deliberate exception to
+ * "never touches the recipe's name or notes" above**, and they're offered as
+ * their own tick-to-apply rows for it: off by default whenever the recipe
+ * already has one of its own, appending rather than replacing even then. A
+ * link import's steps and site are the page's own structured data, taken
+ * verbatim (see `parseRecipeJsonLd`) — the same provenance as the ingredients
+ * this sheet has always applied, and why they were the original exception. The
+ * method (from a paste or a photo) and prep tasks (from any source) are a
+ * *model's* guess instead, same as the ingredient list already is — reviewed
+ * the same way, by the row's tick and its count, rather than left un-offered.
+ * A link's own steps are still preferred over the model's read of the same
+ * page when both exist.
  */
 export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const colors = useColors();
@@ -92,6 +94,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const setAuthor = useRecipeStore(s => s.setAuthor);
   const setSourceType = useRecipeStore(s => s.setSourceType);
   const addStep = useRecipeStore(s => s.addStep);
+  const addPrepTask = useRecipeStore(s => s.addPrepTask);
+  const updatePrepTask = useRecipeStore(s => s.updatePrepTask);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
 
   const [loading, setLoading] = useState(false);
@@ -110,6 +114,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // it doesn't overwrite what the user already put here, and a tick is how
   // they say otherwise.
   const [applyMethod, setApplyMethod] = useState(false);
+  const [applyPrepTasks, setApplyPrepTasks] = useState(false);
   const [applySource, setApplySource] = useState(false);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   const input = useRecipeImportSource();
@@ -138,6 +143,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setAccepted(new Set());
     setApplyDetails(true);
     setApplyMethod(false);
+    setApplyPrepTasks(false);
     setApplySource(false);
     resetInput();
     resetComponents();
@@ -159,11 +165,15 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setIngredients(result.ingredients);
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
       setApplyDetails(result.servings !== null || result.prepMinutes !== null);
-      // A page's method and attribution are structured data taken verbatim,
-      // not a model's guess — so they're offered. Offered *ticked* only when
-      // there's nothing of the user's to land on top of.
+      // A method is offered whichever source it came from — the page's own
+      // steps when it publishes them, otherwise the model's read of the same
+      // source. Attribution stays link-only, since nothing else names where a
+      // recipe came from. All three are offered *ticked* only when there's
+      // nothing of the user's own to land on top of.
       const page = resolved.page;
-      setApplyMethod(!!page && page.steps.length > 0 && !recipeHasMethod(recipe));
+      const methodStepsFound = (page?.steps.length ?? 0) > 0 ? page!.steps : result.steps;
+      setApplyMethod(methodStepsFound.length > 0 && !recipeHasMethod(recipe));
+      setApplyPrepTasks(result.prepTasks.length > 0 && !recipeHasPrepTasks(recipe));
       setApplySource(!!page && !recipeHasAttribution(recipe));
     } catch (e) {
       setError(describeImportError(e));
@@ -235,32 +245,41 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       // in the prep half it would claim the whole recipe is mise en place.
       if (extracted.prepMinutes !== null) setEstimatedMinutes(recipe.id, extracted.prepMinutes);
     }
+    // Appended, never replacing what's there. A recipe with its own method or
+    // prep tasks arrives here unticked, so reaching this line at all means the
+    // user asked for these on top of it — and appending is the only version
+    // of that they can undo by hand.
+    if (applyMethod) methodSteps.forEach(step => addStep(recipe.id, step));
+    if (applyPrepTasks) {
+      extractedPrepTasks.forEach(task => {
+        const added = addPrepTask(recipe.id, task.title);
+        if (added && task.offsetDays !== added.offsetDays) {
+          updatePrepTask(recipe.id, added.id, { offsetDays: task.offsetDays });
+        }
+      });
+    }
     const page = input.page;
-    if (page) {
-      // Appended, never replacing what's there. A recipe with its own method
-      // arrives here unticked, so reaching this line at all means the user
-      // asked for these on top of it — and appending is the only version of
-      // that they can undo by hand.
-      if (applyMethod) page.steps.forEach(step => addStep(recipe.id, step));
-      if (applySource) {
-        setSourceUrl(recipe.id, page.url);
-        setSourceType(recipe.id, 'website');
-        if (page.siteName) setSource(recipe.id, page.siteName);
-        if (page.author) setAuthor(recipe.id, page.author);
-      }
+    if (page && applySource) {
+      setSourceUrl(recipe.id, page.url);
+      setSourceType(recipe.id, 'website');
+      if (page.siteName) setSource(recipe.id, page.siteName);
+      if (page.author) setAuthor(recipe.id, page.author);
     }
     haptics.success();
     onClose();
   };
 
   const hasDetails = !!extracted && (extracted.servings !== null || extracted.prepMinutes !== null);
-  // Only ever the page's own structured data — a paste and a photo carry
-  // neither, so neither row exists for them.
-  const pageSteps = input.page?.steps ?? [];
+  // The page's own steps (verbatim structured data) when it has them,
+  // otherwise whatever the model read off the source itself.
+  const methodSteps = (input.page?.steps.length ?? 0) > 0 ? input.page!.steps : (extracted?.steps ?? []);
+  // Always the model's read — no page ever publishes these as structured data.
+  const extractedPrepTasks = extracted?.prepTasks ?? [];
   const canApply = !loading && !!extracted && (
     accepted.size > 0
     || (applyDetails && hasDetails)
-    || (applyMethod && pageSteps.length > 0)
+    || (applyMethod && methodSteps.length > 0)
+    || (applyPrepTasks && extractedPrepTasks.length > 0)
     || (applySource && !!input.page)
     // A run that found nothing but a "see page 45" is still worth an Add: the
     // link is the whole result.
@@ -285,8 +304,11 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // Says what will happen rather than only what was found: the method row is
   // the one place a recipe can end up with two methods, so the row that does
   // it is where that has to be readable.
-  const methodMeta = `${pageSteps.length} step${pageSteps.length === 1 ? '' : 's'}${
+  const methodMeta = `${methodSteps.length} step${methodSteps.length === 1 ? '' : 's'}${
     recipeHasMethod(recipe) ? ', added after the method it already has' : ''}`;
+
+  const prepTasksMeta = `${extractedPrepTasks.length} task${extractedPrepTasks.length === 1 ? '' : 's'}${
+    recipeHasPrepTasks(recipe) ? ', added after what it already has' : ''}`;
 
   const sourceMeta = [
     [input.page?.siteName, input.page?.author].filter(Boolean).join(' · ') || input.page?.url,
@@ -411,7 +433,11 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       );
     }
 
-    if (ingredients.length === 0 && !hasDetails && pageSteps.length === 0 && candidates.length === 0) {
+    if (
+      ingredients.length === 0 && !hasDetails
+      && methodSteps.length === 0 && extractedPrepTasks.length === 0
+      && candidates.length === 0
+    ) {
       return (
         <View style={styles.centered}>
           <EmptyState
@@ -447,12 +473,20 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           label: detailsLabel,
         })}
 
-        {pageSteps.length > 0 && renderToggle({
+        {methodSteps.length > 0 && renderToggle({
           checked: applyMethod,
           onToggle: () => setApplyMethod(v => !v),
           title: 'Method',
           meta: methodMeta,
           label: `Method, ${methodMeta}`,
+        })}
+
+        {extractedPrepTasks.length > 0 && renderToggle({
+          checked: applyPrepTasks,
+          onToggle: () => setApplyPrepTasks(v => !v),
+          title: 'Prep tasks',
+          meta: prepTasksMeta,
+          label: `Prep tasks, ${prepTasksMeta}`,
         })}
 
         {!!input.page && renderToggle({

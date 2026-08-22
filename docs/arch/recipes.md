@@ -148,6 +148,11 @@ import sheets offer them above the ingredient list.
   imported into, a component it already has, a link that would be a cycle — using the same
   `wouldCreateRecipeCycle` the store checks with. An offer that ends in a silent no-op is an
   offer not worth making.
+- **A created component gets everything a standalone import would**: ingredients, servings,
+  time, method and prep tasks. The one thing it doesn't get is references of its own
+  (`includeReferences: false`) — a component pointing at a *third* page has nowhere to offer
+  that, and a row that grows its own rows is a flow with no bottom. `suggestRecipeGroceries`
+  turns them off for the same reason `includeMethod` is off there: nowhere to put the answer.
 - **The component import is photo-only.** The main import offers paste and link too, because
   a recipe started from scratch could come from anywhere. A reference has already said where
   it is: page 45 of the book in front of you.

@@ -41,6 +41,8 @@ export function AppearanceSettings() {
   const setShakeToUndoEnabled = useSettingsStore(s => s.setShakeToUndoEnabled);
   const confirmBeforeDeleting = useSettingsStore(s => s.confirmBeforeDeleting);
   const setConfirmBeforeDeleting = useSettingsStore(s => s.setConfirmBeforeDeleting);
+  const hideHelpText = useSettingsStore(s => s.hideHelpText);
+  const setHideHelpText = useSettingsStore(s => s.setHideHelpText);
 
   const fontPreviewsLoaded = useFontPreviewsLoaded();
   const colors = useColors();
@@ -185,6 +187,17 @@ export function AppearanceSettings() {
             : 'Deletes immediately, without asking first'}
           toggle={confirmBeforeDeleting}
           onPress={() => setConfirmBeforeDeleting(!confirmBeforeDeleting)}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="information-circle-outline"
+          iconColor={hideHelpText ? colors.accent : undefined}
+          label="Hide help text"
+          hint={hideHelpText
+            ? 'Settings and editor fields show only their labels'
+            : 'Settings and editor fields show a line explaining what they do'}
+          toggle={hideHelpText}
+          onPress={() => setHideHelpText(!hideHelpText)}
         />
       </SettingsSection>
     </>

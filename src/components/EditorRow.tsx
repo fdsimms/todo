@@ -5,6 +5,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, interaction, type Colors } from '../theme';
 import { disclosureValue } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 interface Props {
   icon: string;
@@ -32,6 +33,7 @@ interface Props {
 export function EditorRow({ icon, label, value, hint, caption, expanded, onPress, onClear }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const hideHelpText = useSettingsStore(s => s.hideHelpText);
 
   const chevron = expanded === undefined
     ? 'chevron-forward'
@@ -49,7 +51,7 @@ export function EditorRow({ icon, label, value, hint, caption, expanded, onPress
       <Ionicons name={icon as never} size={18} color={value ? colors.accent : colors.textSecondary} />
       <View style={styles.content}>
         <Text style={styles.label}>{label}</Text>
-        {!!hint && !value && <Text style={styles.hint}>{hint}</Text>}
+        {!!hint && !value && !hideHelpText && <Text style={styles.hint}>{hint}</Text>}
         {!!caption && !!value && <Text style={styles.hint}>{caption}</Text>}
       </View>
       {value ? (
