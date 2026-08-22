@@ -426,8 +426,14 @@ interface GroceryStore {
    *
    * Returns the number of names that actually produced a row — a name that
    * normalizes to nothing is skipped, same as a single `addToPantry` call.
+   *
+   * `frozenNames` is the scan sheet's per-row freezer toggle, matched back by
+   * the same raw string a name landed under — safe because a name that
+   * collides with another in this same batch already collapses onto one row
+   * (`addToPantry` upserts by `nameKey`), so "frozen" collapsing with it too
+   * is the existing model, not a new gap.
    */
-  addManyToPantry: (names: readonly string[]) => number;
+  addManyToPantry: (names: readonly string[], frozenNames?: ReadonlySet<string>) => number;
   /**
    * The day this should be used up by, as a `YYYY-MM-DD` key, or null for
    * "doesn't go off on a schedule worth naming".
@@ -548,11 +554,21 @@ interface GroceryStore {
    * so the purchase, its price and any shelf-life day it starts are dated
    * when the shop actually happened rather than when it got round to being
    * scanned (#1806).
+   *
+   * `frozenIds` overrides this trip's own `frozenAt: null` clear (see the
+   * write below) for just those rows — the barcode scan sheet's per-row
+   * freezer toggle, applied here rather than at scan time because scanning
+   * only checks an item onto the list; freezing a row this trip hasn't
+   * bought yet would be a claim about food that isn't home. An id the trip
+   * didn't actually purchase (marked unavailable, or substituted away) is
+   * silently not among the rows this write touches, so flagging it here does
+   * nothing rather than freezing the wrong row.
    */
   finishShopping: (
     shopId?: string | null,
     priceById?: Readonly<Record<string, number>>,
     purchasedAt?: string,
+    frozenIds?: ReadonlySet<string>
   ) => number;
   /**
    * Records what one item cost, by hand. Writes the item's own price and — with
@@ -2006,7 +2022,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     return item;
   },
 
-  addManyToPantry(names) {
+  addManyToPantry(names, frozenNames) {
     const addedIds: string[] = [];
     const revertRows: GroceryItem[] = [];
     let count = 0;
@@ -2018,6 +2034,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       count++;
       if (before) revertRows.push(before);
       else addedIds.push(item.id);
+      // Captured before this row's own write, so undo's restore of `before`
+      // (or delete of a fresh row) already reverts the freeze along with it —
+      // no separate bookkeeping needed for this half of the batch.
+      if (frozenNames?.has(raw)) get().setFrozen(item.id, true);
     }
     // One combined undo for the whole scan session rather than addToPantry's
     // per-call one, which the loop above suppresses — see addManyFromText.
@@ -2361,7 +2381,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     for (const id of ids) dropUseUpTask(id);
   },
 
-  finishShopping(shopId = null, priceById = {}, purchasedAt = new Date().toISOString()) {
+  finishShopping(shopId = null, priceById = {}, purchasedAt = new Date().toISOString(), frozenIds) {
     const now = new Date(purchasedAt);
     // A shop deleted between opening the finish sheet and confirming it would
     // otherwise write links nothing can resolve.
@@ -2520,12 +2540,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 // this column is that coming home with something refutes an
                 // "Out of it" sitting on it. Mirrors dbFinishGroceryShopping.
                 onHandUntil: null,
-                // Cleared for the same reason and in the same breath: the
+                // Cleared for the same reason and in the same breath: the old
                 // freezer claim was about the bag you had, and you have just
                 // come home with a new one. Leaving it would suspend the fresh
                 // `expiresAt` being stamped right below, so the new bag would
-                // inherit "in the freezer" and never count down.
-                frozenAt: null,
+                // inherit "in the freezer" and never count down. `frozenIds`
+                // is a *fresh* claim about this exact bag — the scan sheet's
+                // own toggle, made this trip — so it wins over the clear
+                // rather than fighting it.
+                frozenAt: frozenIds?.has(i.id) ? purchasedAt : null,
                 // Same again: the jar you opened is not the jar in the bag you
                 // just carried home, and a fresh one is sealed.
                 openedAt: null,

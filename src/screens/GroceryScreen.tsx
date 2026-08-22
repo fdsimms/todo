@@ -172,6 +172,12 @@ export function GroceryScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  // The scan sheet's per-row freezer toggle, held here rather than written
+  // immediately: a scan only checks an item onto the list, and the item isn't
+  // bought yet — see finishShopping's own doc comment on frozenIds. Applied
+  // (and cleared) when the trip actually finishes; cleared without applying
+  // if the trip is abandoned instead.
+  const [scanFrozenIds, setScanFrozenIds] = useState<ReadonlySet<string>>(new Set());
   // What a scanned receipt read, held between the two sheets. Undefined rather
   // than null when there's no receipt in play: the finish sheet tells the two
   // apart, since a receipt naming no store is a real answer and not an absent
@@ -677,15 +683,20 @@ export function GroceryScreen() {
       }
       // The prices ride with the trip rather than being a fourth write: they're
       // about what it bought, so they have to land on the same rows in the same
-      // pass that takes them off the list.
-      if (finishShopping(shopId, priceById, purchasedAt) > 0) haptics.success();
+      // pass that takes them off the list. scanFrozenIds rides along the same
+      // way, for the same reason — see finishShopping's own doc comment.
+      if (finishShopping(shopId, priceById, purchasedAt, scanFrozenIds) > 0) haptics.success();
+      // Consumed either way: an id finishShopping didn't end up touching
+      // (marked unavailable, substituted away) was never going to be applied
+      // on some later trip either.
+      setScanFrozenIds(new Set());
       // Unconditional, and deliberately not inside finishShopping: that
       // early-returns on an empty trolley, and finishing a shop you bought
       // nothing at still ends the trip you were on.
       endTrip();
       setCartOpen(false);
     },
-    [finishShopping, markItemsUnavailable, linkItemSub, endTrip, itemSubs]
+    [finishShopping, markItemsUnavailable, linkItemSub, endTrip, itemSubs, scanFrozenIds]
   );
 
   /**
@@ -757,22 +768,33 @@ export function GroceryScreen() {
    * `finishShopping` — see the sheet's own doc comment. Unpacking is the end of
    * a shop, and the finish sheet is where a shop ends *and* where the one
    * question no scan can answer gets asked.
+   *
+   * The scan sheet's freezer toggle is captured into `scanFrozenIds` rather
+   * than written here, for the same reason: nothing is bought yet. It rides
+   * along to `finishShopping` in `handleFinished`, once it is.
    */
   const handleScanApply = useCallback(
-    (itemIds: string[], toAdd: ReceiptAddDraft[]) => {
+    (itemIds: string[], toAdd: ReceiptAddDraft[], frozenItemIds: ReadonlySet<string>) => {
       animateLayout();
       const allIds = [...itemIds];
+      const frozenIds = new Set(itemIds.filter(id => frozenItemIds.has(id)));
       for (const draft of toAdd) {
+        let id: string;
         if (draft.existingItemId) {
           addExisting(draft.existingItemId);
-          allIds.push(draft.existingItemId);
+          id = draft.existingItemId;
         } else {
-          allIds.push(
-            addByName(draft.label, { name: draft.name, quantity: draft.quantity || null }).id
-          );
+          id = addByName(draft.label, { name: draft.name, quantity: draft.quantity || null }).id;
         }
+        allIds.push(id);
+        if (draft.frozen) frozenIds.add(id);
       }
       if (allIds.length > 0) setCheckedMany(allIds, true);
+      // Merged rather than replaced: a second scan session before the trip
+      // finishes shouldn't forget what the first one flagged.
+      if (frozenIds.size > 0) {
+        setScanFrozenIds(prev => new Set([...prev, ...frozenIds]));
+      }
       setReceiptSeed(null);
       setScanOpen(false);
       setFinishOpen(true);
@@ -783,6 +805,8 @@ export function GroceryScreen() {
   const handleClearTrip = useCallback(() => {
     animateLayout();
     endTrip();
+    // The trip these were flagged for is the one being abandoned.
+    setScanFrozenIds(new Set());
   }, [endTrip]);
 
   // Starting a trip and planning one are different verbs on the same sheet:

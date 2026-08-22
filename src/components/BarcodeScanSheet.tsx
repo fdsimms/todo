@@ -64,6 +64,12 @@ interface ScanRow extends ScannedItem {
   pending: boolean;
   /** Why the lookup produced nothing, when it failed rather than missed. */
   error: string | null;
+  /**
+   * Going in the freezer rather than the fridge or pantry shelf, in either
+   * context. In `'shopping'` context this is only a flag the row carries out
+   * of the sheet — see `Props.onApply`'s note on when it's actually written.
+   */
+  frozen: boolean;
 }
 
 interface Props {
@@ -93,8 +99,20 @@ interface Props {
    * `KitchenScreen`'s `handleScanApply`, which resolves `itemIds` back to
    * names and routes everything through `addManyToPantry` instead of
    * checking anything off a list.
+   *
+   * `frozenItemIds` is the freezer toggle for rows in that first array —
+   * `toAdd` carries its own per-draft `frozen` field instead, since each of
+   * those is a fresh object anyway. The toggle renders in both contexts, but
+   * what happens to it differs: `KitchenScreen` writes it immediately,
+   * `GroceryScreen` holds it until the trip actually finishes — a scan only
+   * checks an item onto the list, and `finishShopping` is where "bought" gets
+   * decided, see its own doc comment on `frozenIds`.
    */
-  onApply: (itemIds: string[], toAdd: ReceiptAddDraft[]) => void;
+  onApply: (
+    itemIds: string[],
+    toAdd: ReceiptAddDraft[],
+    frozenItemIds: ReadonlySet<string>
+  ) => void;
 }
 
 /**
@@ -184,7 +202,14 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
       const key = generateId();
       setRows(current => [
         ...current,
-        { ...unknownScannedItem(gtin), key, included: false, pending: true, error: null },
+        {
+          ...unknownScannedItem(gtin),
+          key,
+          included: false,
+          pending: true,
+          error: null,
+          frozen: false,
+        },
       ]);
       try {
         const record = await lookupGtin(gtin);
@@ -248,6 +273,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           included: false,
           pending: false,
           error: null,
+          frozen: false,
         },
       ]);
     } else {
@@ -263,6 +289,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           included: true,
           pending: false,
           error: null,
+          frozen: false,
         },
       ]);
     }
@@ -293,12 +320,14 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   const handleApply = useCallback(() => {
     const itemIds: string[] = [];
     const toAdd: ReceiptAddDraft[] = [];
+    const frozenItemIds = new Set<string>();
     rows.forEach((row, index) => {
       if (!row.included || !row.name.trim()) return;
       const match = matches[index];
       const itemId = confidentItemId(match);
       if (itemId) {
         itemIds.push(itemId);
+        if (row.frozen) frozenItemIds.add(itemId);
         return;
       }
       toAdd.push({
@@ -310,6 +339,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         label: row.label || row.name.trim(),
         quantity: row.quantity,
         priceMinor: null,
+        frozen: row.frozen,
       });
     });
     // Only rows whose label came off a lookup are worth remembering. A typed
@@ -330,7 +360,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         .filter(d => d.existingItemId !== null && !!d.label)
         .map(d => ({ shopId: null, rawText: d.label, itemId: d.existingItemId as string })),
     ]);
-    onApply(itemIds, toAdd);
+    onApply(itemIds, toAdd, frozenItemIds);
   }, [rows, matches, onApply, rememberAliases]);
 
   /** What a row resolved to, or null when it has nothing to say yet. */
@@ -483,6 +513,26 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                         <Text style={styles.rowGtin}>{formatGtin(row.gtin)}</Text>
                       )}
                     </View>
+
+                    <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
+                      style={styles.rowControl}
+                      disabled={!row.name.trim()}
+                      onPress={() => patchRow(row.key, { frozen: !row.frozen })}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: row.frozen }}
+                      accessibilityLabel={
+                        row.frozen
+                          ? 'Going in the freezer. Tap to change.'
+                          : 'Add to the freezer instead of the fridge or pantry'
+                      }
+                    >
+                      <Ionicons
+                        name={row.frozen ? 'snow' : 'snow-outline'}
+                        size={iconSize.sm}
+                        color={row.frozen ? colors.accent : colors.textTertiary}
+                      />
+                    </TouchableOpacity>
 
                     {row.pending ? (
                       <ActivityIndicator
