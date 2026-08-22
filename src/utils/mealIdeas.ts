@@ -2,6 +2,7 @@ import type { Recipe, RecipeIngredient } from '../types';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import { generateId } from './id';
 import { cleanRecipeName, normalizeIngredient } from './recipeUtils';
+import type { KitchenEntry } from './kitchenInventory';
 
 /**
  * AI-invented meal ideas (#1063) — the *generation* half of the meal
@@ -160,6 +161,25 @@ export function recentlyCookedTitles(
     .sort((a, b) => (b.lastCookedAt ?? '').localeCompare(a.lastCookedAt ?? ''))
     .slice(0, limit)
     .map(r => r.name);
+}
+
+/**
+ * "Spinach — Use by today" for kitchen entries about to go bad, in whatever
+ * order they're given (callers pass `useUpEntries(...)`, already most urgent
+ * first). Handed to `suggestMealIdeas` as inspiration, never a requirement —
+ * the prompt built around this list is what keeps it from forcing a dish
+ * around an ingredient just to use it up.
+ *
+ * Reads only `title`/`useByCaption` — `Pick` rather than the full
+ * `KitchenEntry`, since `reason` ("bought 6× · last on 12 Jul") is why the
+ * pantry thinks the row exists at all, not something a meal idea needs to
+ * know, and the narrower type is what lets a test build a fixture with two
+ * fields instead of the whole shape.
+ */
+export function expiringItemHints(
+  entries: readonly Pick<KitchenEntry, 'title' | 'useByCaption'>[],
+): string[] {
+  return entries.map(e => (e.useByCaption ? `${e.title} — ${e.useByCaption}` : e.title));
 }
 
 export interface MealIdeaRecipeDraft {
