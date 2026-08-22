@@ -73,7 +73,7 @@ import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
-import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import {
   postponeOutcome,
@@ -738,6 +738,44 @@ let quotaHoldTimer: ReturnType<typeof setTimeout> | null = null;
 // completion hold above expires — keeps a pinned row from vanishing out of
 // the Pinned section instantly on tap, same grace period as everywhere else.
 let pendingUnpinIds: string[] = [];
+
+// pinnedTasks() ignores visibility on purpose (see CLAUDE.md), which is right
+// for a task that just isn't due today — but a daily target that reaches its
+// own pace is a different case: it would otherwise sit pinned at the top of
+// Today, at quota, until the next unit falls due hours later. So a pinned
+// quota task unpins itself the moment logging catches it up to pace, same as
+// it unpins on full completion above. It gets the same grace window rather
+// than clearing on the tap that crossed the line — logQuotaUnit runs whether
+// the tap landed on the pinned row or the original, and either one still owns
+// a live burst (four glasses at once): unpinning instantly would drop the
+// pinned row out from under the next tap exactly as an unheld quota row used
+// to (see QUOTA_HOLD_BACKSTOP_MS above).
+const QUOTA_PACE_UNPIN_HOLD_MS = 4000;
+let quotaPaceUnpinTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingPaceUnpinIds: string[] = [];
+
+function schedulePaceUnpin(id: string) {
+  if (!pendingPaceUnpinIds.includes(id)) pendingPaceUnpinIds.push(id);
+  if (quotaPaceUnpinTimer) clearTimeout(quotaPaceUnpinTimer);
+  quotaPaceUnpinTimer = setTimeout(() => {
+    quotaPaceUnpinTimer = null;
+    const ids = pendingPaceUnpinIds;
+    pendingPaceUnpinIds = [];
+    // Re-checked against current state, not trusted from when it was
+    // scheduled — an undo, a manual unpin, or the unit that finished the
+    // target outright (which unpins through its own hold, above) can all
+    // have happened in the meantime.
+    const stillPinnedIds = useTaskStore.getState().tasks
+      .filter(t => ids.includes(t.id) && t.pinned && !t.completed && isQuotaTask(t) && isQuotaOnPace(t))
+      .map(t => t.id);
+    if (stillPinnedIds.length === 0) return;
+    dbBulkSetPinned(stillPinnedIds, false);
+    useTaskStore.setState(s => ({
+      tasks: s.tasks.map(t => (stillPinnedIds.includes(t.id) ? { ...t, pinned: false } : t)),
+    }));
+  }, QUOTA_PACE_UNPIN_HOLD_MS);
+  (quotaPaceUnpinTimer as unknown as { unref?: () => void }).unref?.();
+}
 
 // Caches the masked (completed: false) copy of each held task, keyed by the
 // underlying task's own reference. Selectors like visibleTasks() call this on
@@ -2912,6 +2950,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: 'Logged',
       undo: () => get().unlogQuotaUnit(id),
     });
+    // See schedulePaceUnpin above — a pinned target that this unit just
+    // caught up to pace unpins itself after a grace window, rather than
+    // sitting pinned at the top of Today until the next unit falls due.
+    if (updated.pinned && isQuotaOnPace(updated)) {
+      schedulePaceUnpin(id);
+    }
   },
 
   unlogQuotaUnit(id) {
