@@ -31,7 +31,6 @@ import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
-import { PersistentTripBar } from '../components/PersistentTripBar';
 import { UndoBar } from '../components/UndoBar';
 import { UseUpResolveSheet } from '../components/UseUpResolveSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -370,13 +369,9 @@ export default function AppNavigator() {
           and modal — demo mode isn't a place you navigate to, it's a state
           the whole app is in. */}
       <DemoBanner />
-      {/* Same placement, same reason: a trip isn't a place you navigate to
-          either, and ActiveTripBanner (GroceryScreen.tsx) already covers the
-          in-screen case — this is what's still there once you've tabbed away. */}
-      <PersistentTripBar />
       {/* Same placement again: a destructive action's undo window is a state
           the app is in for a few seconds, not a screen — see UndoBar's own
-          doc comment for why it belongs beside these two. */}
+          doc comment for why it belongs beside DemoBanner. */}
       <UndoBar />
     </>
   );

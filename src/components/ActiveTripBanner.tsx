@@ -13,20 +13,31 @@ interface Props {
 }
 
 /**
- * Shown on the grocery list while a trip is running — "I'm at this store".
+ * Shown on all four kitchen screens (Groceries, Recipes, Meal plan, Pantry)
+ * while a trip is running — "I'm at this store" — sitting directly below
+ * `GroceriesHubPills` on each. There used to also be a `PersistentTripBar`
+ * floating above the tab bar on every screen app-wide, kitchen or not; it's
+ * gone, so a trip now shows nowhere outside these four, and this is the only
+ * banner it gets on any of them.
  *
  * The same job `CategoryFocusBanner` does on Today: a mode with no other
  * visible affordance needs one thing on screen saying it's on, and one way out.
- * That matters more here than there, because this mode is the reason rows have
- * started carrying captions about other stores, and a caption whose cause isn't
- * on screen reads as the app having opinions.
+ * That matters more here than there, because this mode is the reason grocery
+ * rows have started carrying captions about other stores, and a caption whose
+ * cause isn't on screen reads as the app having opinions.
  *
- * It is a sibling of the list rather than its `ListHeaderComponent`, unlike
- * `StartTripPrompt`: a mode indicator that scrolls away is one you can't
- * find when you want to turn it off, and it's the answer to "why does this row
- * say that" at the moment you're looking at the row. The two never appear
- * together — the starting card is for deciding where to go, and this says
- * you've gone — so the fixed height it costs is only ever paid during a shop.
+ * On Groceries, `onChange` reopens the trip sheet in place. Elsewhere it's
+ * `resetToGroceries` (navigationRef.ts) — those three screens have no trip
+ * sheet of their own, so changing the store means going to the one screen
+ * that can.
+ *
+ * On Groceries it is a sibling of the list rather than its
+ * `ListHeaderComponent`, unlike `StartTripPrompt`: a mode indicator that
+ * scrolls away is one you can't find when you want to turn it off, and it's
+ * the answer to "why does this row say that" at the moment you're looking at
+ * the row. The two never appear together — the starting card is for deciding
+ * where to go, and this says you've gone — so the fixed height it costs is
+ * only ever paid during a shop.
  */
 export function ActiveTripBanner({ shopName, onChange, onClear }: Props) {
   const colors = useColors();

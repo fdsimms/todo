@@ -119,8 +119,6 @@ import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
-import { TRIP_BAR_HEIGHT } from '../components/PersistentTripBar';
-import { FAB_SIZE } from '../components/Fab';
 import { useProjectStore } from '../store/useProjectStore';
 import { DayContextRow } from '../components/DayContextRow';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -573,24 +571,10 @@ export function TodayScreen() {
   const unscheduledScroll = useKeyboardInsetScroll<FlatList>();
   const inboxScroll = useKeyboardInsetScroll<FlatList>();
   // Extra bottom padding so the last rows aren't hidden behind the floating
-  // BulkActionBar, or — while a grocery trip is running and the FAB is up —
-  // behind PersistentTripBar (#1660), which docks above the FAB on every tab.
-  // The trip-active amount mirrors UndoBar's own "stacked above the trip bar"
-  // offset (tabBarHeight + FAB_SIZE + spacing.lg to clear the FAB band,
-  // TRIP_BAR_HEIGHT + spacing.sm on top of that to clear the bar itself) —
-  // the two never combine because the FAB is unmounted during selection
-  // (see the `!selectionMode &&` guard around AddTaskFabWithDropLabel below),
-  // so there's no FAB band to add to the BulkActionBar's own. `tripShopId
-  // !== null` rather than the full `resolveActiveTrip` staleness walk that
-  // bar itself does — same cheap-check trade UndoBar makes for the identical
-  // reason: being wrong just leaves a little extra padding once a trip has
-  // silently expired, never an overlap.
-  const tripActive = useGroceryStore(s => s.tripShopId !== null);
+  // BulkActionBar.
   const extraListBottomPadding = selectionMode
     ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm
-    : tripActive
-      ? tabBarHeight + FAB_SIZE + spacing.lg + TRIP_BAR_HEIGHT + spacing.sm
-      : undefined;
+    : undefined;
   // "Hide everything but the pins", toggled by the eye in the pinned header.
   // Off by default and session-only: the pinned block is additive now —
   // pinning shows you a copy at the top, it doesn't take the rest of the day

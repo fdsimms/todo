@@ -1,0 +1,4 @@
+{
+  "message": "The active shopping trip banner no longer floats above the tab bar on every screen. It now shows below the nav pills on all four kitchen screens (Groceries, Recipes, Meal plan, Pantry) while a trip is running, and nowhere else",
+  "date": "2026-08-22"
+}

@@ -13,8 +13,7 @@ import { haptics } from '../utils/haptics';
 // Hard-coded because this banner renders outside the tab navigator (it's a
 // sibling of the NavigationContainer, so it can sit over every screen), and
 // useBottomTabBarHeight() throws when called from there. Exported for
-// PersistentTripBar, the other app-wide floating element with the same
-// constraint.
+// UndoBar, the other app-wide floating element with the same constraint.
 export const TAB_BAR_HEIGHT = 49;
 
 // Always-visible marker that the list on screen isn't the user's own, and

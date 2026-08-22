@@ -22,6 +22,7 @@ import { isBefore } from 'date-fns/isBefore';
 import type { Leftover, MealPlanEntry, MealSlot, Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
+import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { InlineAction } from '../components/InlineAction';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { WeekPlanOverview } from '../components/WeekPlanOverview';
@@ -68,6 +69,8 @@ import { spacing, font, fontWeight, radius, border, animation, interaction, icon
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
+import { resolveActiveTrip } from '../utils/activeTrip';
+import { resetToGroceries } from '../navigation/navigationRef';
 import { buildWeekDays } from '../utils/calendarGrid';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import {
@@ -325,6 +328,18 @@ export function MealPlanScreen() {
     () => standingSwapMap(itemSubs, groceryItems),
     [itemSubs, groceryItems]
   );
+  const shops = useGroceryStore(useShallow(s => s.shops));
+  const tripShopId = useGroceryStore(s => s.tripShopId);
+  const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
+  const endTrip = useGroceryStore(s => s.endTrip);
+  const activeTripShop = useMemo(
+    () => resolveActiveTrip(tripShopId, tripStartedAt, shops, new Date()),
+    [tripShopId, tripStartedAt, shops]
+  );
+  const handleClearTrip = useCallback(() => {
+    animateLayout();
+    endTrip();
+  }, [endTrip]);
 
   // The day being planned; null when the picker is closed.
   const [planningDay, setPlanningDay] = useState<string | null>(null);
@@ -1328,6 +1343,13 @@ export function MealPlanScreen() {
         actions={headerActions}
       />
       <GroceriesHubPills active="MealPlan" />
+      {!selectionMode && !!activeTripShop && (
+        <ActiveTripBanner
+          shopName={activeTripShop.name}
+          onChange={resetToGroceries}
+          onClear={handleClearTrip}
+        />
+      )}
 
       {/*
         A track, not a second row of pills. The hub's own pills sit directly

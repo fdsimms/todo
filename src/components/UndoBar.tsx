@@ -7,7 +7,6 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { InlineAction } from './InlineAction';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { FAB_SIZE } from './Fab';
-import { TRIP_BAR_HEIGHT } from './PersistentTripBar';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -36,19 +35,10 @@ const VISIBLE_MS = 6000;
  * offers whichever of the three stores' `lastAction` is freshest, so a
  * grocery clear and a task delete can't both want the slot at once.
  *
- * **Mounted once at the navigator root**, a sibling of `DemoBanner` and
- * `PersistentTripBar` — same reasoning as both: this isn't a place you
- * navigate to, it's a state the whole app can be in for a few seconds after
- * any screen's destructive action.
- *
- * **Positioning tracks `PersistentTripBar`, deliberately loosely.** That bar
- * already owns the band directly above the FAB whenever a trip is running,
- * so this one stacks one slot higher in that case and drops into the same
- * band otherwise. The trip check here is `tripShopId !== null` rather than
- * the full `resolveActiveTrip` staleness/liveness walk that bar does — the
- * only cost of being wrong is a slightly taller gap above the FAB in the
- * rare case a trip has silently expired, never an overlap, so the cheaper
- * check is worth not re-deriving trip liveness a third time.
+ * **Mounted once at the navigator root**, a sibling of `DemoBanner` —
+ * same reasoning: this isn't a place you navigate to, it's a state the
+ * whole app can be in for a few seconds after any screen's destructive
+ * action.
  */
 export function UndoBar() {
   const { colors, shadows } = useTheme();
@@ -61,7 +51,6 @@ export function UndoBar() {
   const undoGrocery = useGroceryStore(s => s.undoLastAction);
   const mealPlanAction = useMealPlanStore(s => s.lastAction);
   const undoMealPlan = useMealPlanStore(s => s.undoLastAction);
-  const tripActive = useGroceryStore(s => s.tripShopId !== null);
 
   const candidates = [
     { action: taskAction, undo: undoTask },
@@ -103,9 +92,7 @@ export function UndoBar() {
     shown.undo();
   };
 
-  const bottom = tripActive
-    ? insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg + TRIP_BAR_HEIGHT + spacing.sm
-    : insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg;
+  const bottom = insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg;
 
   return (
     <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">

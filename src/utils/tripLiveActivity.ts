@@ -34,8 +34,8 @@ export interface TripRun {
  * Pure. The active trip's Live Activity payload, or null when there's
  * nothing to show — resolved the same way activeShop()/resolveActiveTrip is
  * (a stamp compared against the clock, no separate "is it dead" flag), so a
- * trip that's aged out ends its activity exactly as it disappears from
- * PersistentTripBar.
+ * trip that's aged out ends its activity exactly as it disappears from the
+ * kitchen screens' own trip banner.
  */
 export function buildTripRun(
   tripShopId: string | null,
@@ -95,7 +95,7 @@ export function useTripLiveActivitySync(): void {
     // to be re-checked on its own — nothing about tripShopId/tripStartedAt
     // changes on a timer, so a resync only happens at a natural trigger
     // point. Same "no timer running to notice" reasoning checkTripExpiry
-    // (useGroceryStore.ts) and PersistentTripBar's own AppState listener give.
+    // (useGroceryStore.ts) gives for resyncing only at natural trigger points.
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') sync();
     });

@@ -19,8 +19,8 @@ import { LeftoverSheet } from './LeftoverSheet';
  * Finished it/Threw it out for a leftover — so completing the reminder and
  * correcting the kitchen happen in one motion.
  *
- * **Mounted once, in AppNavigator beside DemoBanner/PersistentTripBar/UndoBar,
- * not on any one screen** — but, unlike those three, inside NavigationContainer
+ * **Mounted once, in AppNavigator beside DemoBanner/UndoBar,
+ * not on any one screen** — but, unlike those two, inside NavigationContainer
  * (just outside the RootStack). Completion can land here from Today, Search,
  * Waiting, the widget, or a bulk-complete, and the flag has to open the sheet
  * wherever the tap happened to come from. GroceryItemSheet's
