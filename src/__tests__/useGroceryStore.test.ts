@@ -3562,6 +3562,41 @@ describe('addManyToPantry', () => {
     expect(items).toHaveLength(1);
     expect(items[0]).toEqual(milk);
   });
+
+  it('freezes only the names passed in frozenNames, matched exactly', () => {
+    seed([]);
+
+    useGroceryStore.getState().addManyToPantry(['Peas', 'Flour'], new Set(['Peas']));
+
+    const byName = Object.fromEntries(
+      useGroceryStore.getState().items.map(i => [i.name, i])
+    );
+    expect(byName.Peas.frozenAt).not.toBeNull();
+    expect(byName.Flour.frozenAt).toBeNull();
+  });
+
+  it('undoing a session that froze a fresh row deletes it, freeze included', () => {
+    seed([]);
+
+    useGroceryStore.getState().addManyToPantry(['Peas'], new Set(['Peas']));
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().items).toHaveLength(0);
+  });
+
+  it('undoing a session that froze an already-stamped row restores it unfrozen', () => {
+    const peas = makeItem({ name: 'Peas', onHandUntil: null, inCatalog: false, onList: true });
+    seed([peas]);
+
+    useGroceryStore.getState().addManyToPantry(['Peas'], new Set(['Peas']));
+    expect(useGroceryStore.getState().items[0].frozenAt).not.toBeNull();
+
+    useGroceryStore.getState().undoLastAction();
+
+    const items = useGroceryStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual(peas);
+  });
 });
 
 describe('setStaple', () => {

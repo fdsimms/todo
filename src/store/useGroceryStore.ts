@@ -426,8 +426,14 @@ interface GroceryStore {
    *
    * Returns the number of names that actually produced a row — a name that
    * normalizes to nothing is skipped, same as a single `addToPantry` call.
+   *
+   * `frozenNames` is the scan sheet's per-row freezer toggle, matched back by
+   * the same raw string a name landed under — safe because a name that
+   * collides with another in this same batch already collapses onto one row
+   * (`addToPantry` upserts by `nameKey`), so "frozen" collapsing with it too
+   * is the existing model, not a new gap.
    */
-  addManyToPantry: (names: readonly string[]) => number;
+  addManyToPantry: (names: readonly string[], frozenNames?: ReadonlySet<string>) => number;
   /**
    * The day this should be used up by, as a `YYYY-MM-DD` key, or null for
    * "doesn't go off on a schedule worth naming".
@@ -2006,7 +2012,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     return item;
   },
 
-  addManyToPantry(names) {
+  addManyToPantry(names, frozenNames) {
     const addedIds: string[] = [];
     const revertRows: GroceryItem[] = [];
     let count = 0;
@@ -2018,6 +2024,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       count++;
       if (before) revertRows.push(before);
       else addedIds.push(item.id);
+      // Captured before this row's own write, so undo's restore of `before`
+      // (or delete of a fresh row) already reverts the freeze along with it —
+      // no separate bookkeeping needed for this half of the batch.
+      if (frozenNames?.has(raw)) get().setFrozen(item.id, true);
     }
     // One combined undo for the whole scan session rather than addToPantry's
     // per-call one, which the loop above suppresses — see addManyFromText.
