@@ -507,7 +507,7 @@ describe('acceptedByDefault', () => {
     expect(acceptedByDefault(matches, items, null, [])).toEqual([items[0].id]);
   });
 
-  it('never checks a weak match', () => {
+  it('never checks a weak match onto a row nobody ticked', () => {
     const items = [makeItem({ name: 'Chicken thighs' })];
     const matches = matchReceiptLines([line({ name: 'chicken breast' })], items);
 
@@ -654,5 +654,106 @@ describe('a remembered alias', () => {
 
     const remembered = matchReceiptLines(lines, [milk], () => milk.id);
     expect(acceptedByDefault(remembered, [milk], null, [])).toEqual([milk.id]);
+  });
+});
+
+// ─── what's already in the trolley ───────────────────────────────────────────
+
+describe('a row already in the trolley', () => {
+  it('wins a tie between two equally good readings of one line', () => {
+    // Both key as a "likely" read of "milk" and both are the same distance
+    // from it, so nothing about the names can separate them. The tick can.
+    const items = [
+      makeItem({ name: 'Oat milk' }),
+      makeItem({ name: 'Goat milk', checked: true }),
+    ];
+    const matches = matchReceiptLines([line({ label: 'MILK', name: 'milk' })], items);
+
+    expect(matches[0].itemId).toBe(items[1].id);
+    expect(matches[0].inTrolley).toBe(true);
+  });
+
+  it('does not outrank a better reading of the paper', () => {
+    const items = [
+      makeItem({ name: 'Milk' }),
+      makeItem({ name: 'Milk chocolate', checked: true }),
+    ];
+    const matches = matchReceiptLines([line({ label: 'MILK', name: 'milk' })], items);
+
+    // Exact beats likely, ticked or not — a full trolley must not become a
+    // machine for filing prices onto the wrong rows.
+    expect(matches[0].itemId).toBe(items[0].id);
+    expect(matches[0].confidence).toBe('exact');
+    expect(matches[0].inTrolley).toBe(false);
+  });
+
+  it('is pre-checked on a weak match, because ticking it was the assertion', () => {
+    const items = [makeItem({ name: 'Chicken thighs', checked: true })];
+    const matches = matchReceiptLines([line({ name: 'chicken breast' })], items);
+
+    expect(matches[0].confidence).toBe('weak');
+    expect(matches[0].inTrolley).toBe(true);
+    expect(acceptedByDefault(matches, items, null, [])).toEqual([items[0].id]);
+  });
+
+  it('is still demoted by a price that says it is the wrong row', () => {
+    const items = [makeItem({ name: 'Chicken thighs', checked: true, lastPriceMinor: 620 })];
+    const matches = matchReceiptLines(
+      [line({ name: 'chicken breast', priceMinor: 4800 })],
+      items
+    );
+
+    expect(acceptedByDefault(matches, items, null, [])).toEqual([]);
+  });
+
+  it('cannot conjure a match out of a name that reads as nothing', () => {
+    const items = [makeItem({ name: 'Milk', checked: true })];
+    const matches = matchReceiptLines([line({ name: 'AA batteries' })], items);
+
+    expect(matches[0].itemId).toBeNull();
+    expect(matches[0].inTrolley).toBe(false);
+  });
+});
+
+// ─── reading a receipt in the pantry, where nothing is "on the list" ─────────
+
+describe('matchReceiptLines in catalog scope', () => {
+  it('claims a catalog row that is not on this week’s list', () => {
+    const items = [makeItem({ name: 'Flour', onList: false })];
+    const matches = matchReceiptLines([line({ name: 'flour' })], items, undefined, 'catalog');
+
+    expect(matches[0].itemId).toBe(items[0].id);
+    expect(matches[0].confidence).toBe('exact');
+    expect(acceptedByDefault(matches, items, null, [])).toEqual([items[0].id]);
+  });
+
+  it('offers no second-opinion catalog match, having already seen every row', () => {
+    const items = [makeItem({ name: 'Flour', onList: false })];
+    const matches = matchReceiptLines([line({ name: 'flour' })], items, undefined, 'catalog');
+
+    expect(matches[0].offListMatchId).toBeNull();
+    expect(matches[0].offListConfidence).toBeNull();
+  });
+
+  it('leaves a line nothing in the catalog reads as unclaimed', () => {
+    const items = [makeItem({ name: 'Flour', onList: false })];
+    const matches = matchReceiptLines([line({ name: 'AA batteries' })], items, undefined, 'catalog');
+
+    expect(matches[0].itemId).toBeNull();
+    expect(matches[0].offListMatchId).toBeNull();
+  });
+
+  it('still lets only one line claim a row', () => {
+    const items = [makeItem({ name: 'Flour', onList: false })];
+    const matches = matchReceiptLines(
+      [line({ label: 'FLOUR 5LB', name: 'flour' }), line({ label: 'FLOUR 5LB', name: 'flour' })],
+      items,
+      undefined,
+      'catalog'
+    );
+
+    expect(matches[0].itemId).toBe(items[0].id);
+    expect(matches[1].itemId).toBeNull();
+    expect(matches[1].duplicateOf).toBe(items[0].id);
   });
 });

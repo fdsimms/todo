@@ -19,9 +19,22 @@ export function resetToToday(): void {
 // apart. Deliberately a link rather than putting grocery rows on Today: the
 // four Today sub-views are disjoint lenses over tasks, and a grocery item
 // isn't one.
-export function resetToGroceries(): void {
+//
+// `openFinish` is the second half, carried by `dundundun://groceries?finish=1`
+// (the shopping trip Live Activity's Finish button) and by the trip banner on
+// the three kitchen screens that have no finish sheet of their own: land on the
+// list *and* open `FinishShoppingSheet`, so ending a shop from the Lock Screen
+// is one tap rather than a hunt through the header. Stamped like
+// resetToMealPlan's focusDay, and for the same reason — the screen compares
+// against the last value it handled, so asking twice in a row has to look
+// different each time. Omitted entirely for the bare link, which leaves the
+// screen alone.
+export function resetToGroceries(openFinish = false): void {
   if (!navigationRef.isReady()) return;
-  navigationRef.navigate('Groceries');
+  navigationRef.navigate({
+    name: 'Groceries',
+    params: openFinish ? { openFinish: Date.now() } : undefined,
+  });
 }
 
 // Where `dundundun://recipes` lands, the peer of resetToGroceries.

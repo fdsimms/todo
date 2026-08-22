@@ -159,15 +159,53 @@ npx tsc --noEmit     # typecheck; ~4s warm, ~20s the first time in a fresh check
 npm test             # the whole suite, about half a minute — just run all of it
 npm run test:watch   # watch mode
 npx jest src/__tests__/dateUtils.test.ts  # single file, if you want the shorter output
+node scripts/build-module-map.js   # regenerate docs/module-map.md, then commit it
+node scripts/check-doc-stats.js    # regenerate the repo-stats block in CLAUDE.md, then commit it
 ```
 
-**The verification loop is `npx tsc --noEmit && npm test`** — under a minute together, and
-`tsc` is incremental (`.tsbuildinfo`, gitignored) so every run after the first is a few seconds.
-There's no reason to skip either or to narrow to a single test file. Both are green on `main`;
-if either is red, it's you. Don't run `npx expo export` locally to check your work —
-it's the slowest thing CI does and only catches bundle-time breakage (a bad import path, a
-missing asset, a native config change), so run it only when you changed one of those. CI runs
-`npm test` and `npx expo export --platform ios` on every PR.
+**The verification loop is:**
+
+```bash
+npx tsc --noEmit && npm test && node scripts/build-module-map.js && node scripts/check-doc-stats.js && git status --short
+```
+
+Under a minute together, and `tsc` is incremental (`.tsbuildinfo`, gitignored) so every run after
+the first is a few seconds. There's no reason to skip any of it or to narrow to a single test
+file. All of it is green on `main`; if anything is red, it's you. Don't run `npx expo export`
+locally to check your work — it's the slowest thing CI does and only catches bundle-time breakage
+(a bad import path, a missing asset, a native config change), so run it only when you changed one
+of those. **CI runs `npx tsc --noEmit`, `npm test`, both doc checks in `--check` mode, and
+`npx expo export --platform ios` on every PR, and on every push to `main`** — that whole list,
+not just the tests.
+
+**The two generated docs are the single most common reason a PR goes red, and the failure is
+entirely avoidable.** `docs/module-map.md` and the `repo-stats` block in this file are generated
+from the tree and committed, and CI re-runs their generators with `--check` and fails if the
+committed copy differs. They are not optional bookkeeping and not a separate chore: **regenerating
+them and committing the result is part of finishing the change, in the same commit.** Concretely:
+
+- **Adding, removing, or renaming any top-level `export` in `src/utils`, `src/store`, `src/hooks`,
+  `src/db` or `src/services` changes `docs/module-map.md`.** That's most PRs in this repo. A new
+  helper in an existing file counts; so does deleting a dead one. Components and screens don't
+  (the map deliberately skips them).
+- **Adding a file to `src/`, or pushing one across 1,000 lines, changes the `repo-stats` block.**
+  A new test file moves the suite count, which is why a pure test-only PR can still fail this.
+- **Run the generators (no `--check`) rather than trying to predict whether you're affected.**
+  Both are idempotent and take milliseconds: if nothing changed they rewrite the same bytes and
+  `git status` stays clean, so running them costs nothing and guessing costs a red PR.
+- **Then check `git status` before you commit.** These files are *generated into your working
+  tree*, so the loop passing locally is not the signal — an uncommitted regenerated file looks
+  exactly like a passing run right up until CI compares against what you actually pushed. That is
+  the whole failure mode: the tests were green every single time.
+- **Never hand-edit either one, and never edit inside the `repo-stats` markers in this file.**
+  Fix the source and regenerate.
+
+One missed regeneration doesn't stay one red PR, which is why the rule above is worth this much
+space. The checks used to run on pull requests only, so a merge that skipped them left `main`
+itself stale, and every branch cut from `main` afterwards failed a check it hadn't caused — until
+someone regenerated. `main` is checked on push now (see `.github/workflows/test.yml`), so
+staleness surfaces on the merge that caused it. If the doc check fails on a PR that plainly
+touched no exports, pull `main` and regenerate before hunting through your own diff.
 
 There is no ESLint or Prettier config. Match the style of the file you're in; don't reformat
 untouched lines.
@@ -222,6 +260,8 @@ exports.
 | what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
 | the app asking whether you still have something | `src/utils/pantryCheckTasks.ts` — see `docs/arch/groceries.md` |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
+| remembering which item a barcode is | `ItemProduct.gtin` + `gtinAliasText` in `src/utils/storeAliases.ts` — see `docs/arch/groceries.md` |
+| reading a receipt onto the list, or into the pantry | `src/utils/receiptMatch.ts` + `src/components/ReceiptImportSheet.tsx` (`context`) |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
 | a store whose receipt prints prices but no names | `Shop.receiptStyle` + `src/utils/pricePairing.ts` + `ReceiptPricePairing.tsx` |
 | what's in the kitchen and what's about to be wasted | `src/utils/kitchenInventory.ts` (+ the ladder in `src/utils/freshness.ts`) — see `docs/arch/groceries.md` |
@@ -246,6 +286,7 @@ exports.
 | pulling tasks out of a project | `src/utils/projectPull.ts` |
 | what a task is waiting on, and what it blocks | `src/utils/blocking.ts` + `src/utils/blockerRegistry.ts` |
 | how loaded a day is, and lightening an overloaded one | `src/utils/dayLoad.ts` + `src/utils/deloadPlan.ts` |
+| what lands before a date, and whether it fits | `src/utils/lookAhead.ts` (+ `src/utils/taskMoves.ts`, shared with `deloadPlan`) |
 | a recurring habit and whether it's on track | `src/utils/rhythms.ts` (+ `rhythmsSettings.ts`) |
 | what to suggest when a task is snoozed | `src/utils/snoozeEngine.ts` |
 | a task that was missed, and the grace it gets | `src/utils/missed.ts` + `src/utils/expiredTaskGrace.ts` |
@@ -258,11 +299,11 @@ exports.
 <!-- BEGIN GENERATED: repo-stats -->
 <!-- Regenerated by scripts/check-doc-stats.js. Run it after adding or growing a file. -->
 
-**Read narrowly.** 34 files are over 1,000 lines, 20 of
+**Read narrowly.** 35 files are over 1,000 lines, 21 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (5.0k), `components/TaskEditor.tsx` (4.2k), `db/database.ts` (3.6k),
-`screens/TodayScreen.tsx` (3.6k), `store/useGroceryStore.ts` (3.6k),
+`store/useTaskStore.ts` (5.1k), `components/TaskEditor.tsx` (4.2k),
+`store/useGroceryStore.ts` (3.7k), `db/database.ts` (3.7k), `screens/TodayScreen.tsx` (3.7k),
 `components/TaskItem.tsx` (3.3k), `types/index.ts` (2.9k),
 `components/QuickAddModal.tsx` (2.6k), `store/useSettingsStore.ts` (2.0k),
 `screens/MealPlanScreen.tsx` (2.0k).
@@ -270,7 +311,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **168 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **169 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

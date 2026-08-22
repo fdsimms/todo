@@ -426,7 +426,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           </View>
         </CollapsibleField>
         <CollapsibleField
-          label="Vote"
+          label="Rating"
           summary={vote ? RECIPE_VOTE_LABELS[vote] : undefined}
           hint="Whether you'd cook this again. Offered automatically the first time you mark it cooked. Also used to sort the recipe box."
           expanded={voteOpen}
@@ -440,7 +440,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             ]}
             value={vote}
             onChange={next => { setVoteDraft(next); setVoteOpen(false); }}
-            label="Vote"
+            label="Rating"
             surface="page"
           />
         </CollapsibleField>

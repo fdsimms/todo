@@ -226,4 +226,44 @@ describe('matchScans', () => {
     expect(matches[0].itemId).toBeNull();
     expect(matches[1].itemId).toBe(milk.id);
   });
+
+  // The case linking a barcode exists for: the words have drifted so far apart
+  // that no threshold could bring them back, and the code underneath hasn't
+  // moved at all.
+  it('hands the resolver the whole scan, so a barcode can answer where the words cannot', () => {
+    const sausage = makeItem({ name: 'vegan sausage' });
+    const scanned = scan({
+      name: 'Plant Based Sausages Cajun',
+      gtin: '00850003201115',
+    });
+    const [unresolved] = matchScans([scanned], [sausage]);
+    // Without the link this is a single shared word and nothing more, which is
+    // exactly the tier the scan sheet refuses to act on.
+    expect(unresolved.confidence).toBe('weak');
+
+    const [resolved] = matchScans([scanned], [sausage], s =>
+      s.gtin === '00850003201115' ? sausage.id : null
+    );
+    expect(resolved.itemId).toBe(sausage.id);
+    expect(resolved.confidence).toBe('remembered');
+  });
+
+  it('resolves each scan against its own barcode rather than the first one', () => {
+    const milk = makeItem({ name: 'Milk' });
+    const bread = makeItem({ name: 'Bread' });
+    const byGtin: Record<string, string> = { '1': milk.id, '2': bread.id };
+    const matches = matchScans(
+      [scan({ name: 'x', gtin: '1' }), scan({ name: 'y', gtin: '2' })],
+      [milk, bread],
+      s => (s.gtin ? byGtin[s.gtin] ?? null : null)
+    );
+    expect(matches.map(m => m.itemId)).toEqual([milk.id, bread.id]);
+  });
+
+  it('falls through to the words for a scan with no barcode', () => {
+    const milk = makeItem({ name: 'Milk' });
+    const [match] = matchScans([scan({ name: 'Milk' })], [milk], s => (s.gtin ? milk.id : null));
+    expect(match.itemId).toBe(milk.id);
+    expect(match.confidence).toBe('exact');
+  });
 });

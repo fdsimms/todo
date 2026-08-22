@@ -25,6 +25,7 @@ import {
   dbGetAllStoreAliases,
   dbSetStoreAlias,
   dbSetItemProduct,
+  dbSetProductGtin,
   dbDeleteItemProduct,
   dbGetLastShopId,
   dbSetLastShopId,
@@ -64,8 +65,15 @@ import {
 import { isTripLive, resolveActiveTrip } from '../utils/activeTrip';
 import { scheduleTripReminder, cancelTripReminder } from '../utils/notifications';
 import { substituteQuantity } from '../utils/itemSubs';
-import { productKeyFor, productsForItem } from '../utils/groceryProduct';
-import { aliasDraftsFrom, aliasItemIdFor, aliasKeyFor, type AliasDraft } from '../utils/storeAliases';
+import { productForGtin, productKeyFor, productsForItem } from '../utils/groceryProduct';
+import type { ScannedGtinLink } from '../utils/scanResolve';
+import {
+  aliasDraftsFrom,
+  aliasItemIdFor,
+  aliasKeyFor,
+  gtinAliasText,
+  type AliasDraft,
+} from '../utils/storeAliases';
 
 /**
  * The grocery catalog, which is also the shopping list.
@@ -461,11 +469,32 @@ interface GroceryStore {
    * its default promotion rule, so the very first box a pantry item has ever
    * seen becomes what it shows, and a box it already has an opinion about
    * stays exactly what it was.
+   *
+   * Its `gtin` rides along for the same reason the whole map does: a row this
+   * batch mints has no id until the loop below creates it, so the sheet that
+   * read the barcode can't record the link itself. Linked once at the end,
+   * after every box exists to be pointed at.
+   *
+   * `prices` is a receipt's own numbers, keyed by the same raw string for the
+   * same reason again — a row this batch mints has no id to key by. Written
+   * through `setItemPrice`, which is the deliberate part: this is not a trip.
+   * A receipt read in the pantry says what something cost and nothing else, so
+   * it records the price exactly as typing it into the item sheet would and
+   * bumps no purchase count, mints no store link and makes no claim about what
+   * that store stocks. `shopId` is which store's price it is, null for none;
+   * an item with no link to that store still records its own price, same as an
+   * unplaced trip does. Not part of the undo snapshot on this batch's *links*
+   * — the item rows revert wholesale with everything else, matching how
+   * `addProduct` is already treated here.
    */
   addManyToPantry: (
     names: readonly string[],
     frozenNames?: ReadonlySet<string>,
-    products?: ReadonlyMap<string, { brand: string | null; variant: string | null }>
+    products?: ReadonlyMap<
+      string,
+      { brand: string | null; variant: string | null; gtin?: string | null }
+    >,
+    prices?: { byName: ReadonlyMap<string, number>; shopId: string | null }
   ) => number;
   /**
    * The day this should be used up by, as a `YYYY-MM-DD` key, or null for
@@ -676,6 +705,31 @@ interface GroceryStore {
   rememberAliases: (drafts: readonly AliasDraft[]) => void;
   /** "What does this line mean at this store" — null when nothing has said. */
   aliasItemFor: (shopId: string | null, rawText: string) => string | null;
+  /**
+   * Records what a scan session was applied with, so the same barcode lands on
+   * the same row next time however its name has drifted since.
+   *
+   * **Two links per scan, because they say different things.** The box
+   * (`ItemProduct.gtin`) is what a barcode actually denotes, and it is what
+   * lets a rescan restore the brand and variant rather than re-deriving them
+   * from a product name the item may no longer resemble. The item (a GTIN-keyed
+   * `StoreAlias`) is the fallback for the rows that have no box at all — an
+   * unfound barcode the user named by hand, a record the source gave no brand
+   * for — which is the case worth remembering most, since nothing else about
+   * it is ever going to improve.
+   *
+   * A link naming a `brand`/`variant` the item has no product for writes only
+   * the alias; nothing is minted here, because `addProduct` is the one path
+   * that decides what a box is and whether it becomes the preference.
+   */
+  linkScannedGtins: (links: readonly ScannedGtinLink[]) => void;
+  /**
+   * The catalog row a barcode was last confirmed against, box first and item
+   * second — see `linkScannedGtins`. Null when this code has never been named.
+   */
+  gtinItemFor: (gtin: string | null) => string | null;
+  /** The box a barcode names, for restoring its brand and variant on a rescan. */
+  gtinProductFor: (gtin: string | null) => ItemProduct | null;
   linkItemShop: (itemId: string, shopId: string) => void;
   /**
    * The same assertion over a set — the shopping-trip sheet's "actually, it
@@ -886,6 +940,10 @@ function ensureProductFor(
       note: '',
       purchaseCount: 0,
       lastPurchasedAt: null,
+      // Never set here, even on the scan path that has a barcode in hand.
+      // Claiming one has to release it from whichever box held it before, so
+      // it goes through `linkScannedGtins` rather than riding an insert.
+      gtin: null,
       createdAt,
     },
   };
@@ -1676,6 +1734,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // keeping the one they last looked at.
         rating: match.rating ?? loser.rating,
         note: match.note || loser.note,
+        // Same "survivor wins, loser fills a silence" rule, and the one field
+        // here that can't just be written with the row: `dbSetItemProduct`
+        // doesn't carry `gtin`, so an adopted one is claimed explicitly below.
+        // A barcode confirmed against a box that is now this box is exactly
+        // the pointer a merge must not drop — re-scanning it would otherwise
+        // stop finding anything and mint a third row.
+        gtin: match.gtin ?? loser.gtin,
       };
       mergedProducts[mergedProducts.indexOf(match)] = folded;
       byKey.set(folded.productKey, folded);
@@ -1801,6 +1866,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // fromId — re-parenting first is what makes the survivor's copy the one
       // that survives it.
       for (const product of mergedProducts) dbSetItemProduct(product);
+      // After the rows exist, and separately from them: `dbSetItemProduct`
+      // leaves the column alone (see its note), so a folded row that adopted
+      // the loser's barcode needs the claim made by hand. Release-then-claim
+      // means the loser still holding it — the cascade below hasn't run yet —
+      // is not a conflict.
+      for (const product of mergedProducts) {
+        if (product.gtin) dbSetProductGtin(product.id, product.gtin);
+      }
       for (const link of mergedShopLinks) dbSetItemShopLink(link);
       for (const link of finalRetargetedSubs) dbSetItemSubLink(link);
       // Cascades whatever's left still pointing at fromId — the rows worth
@@ -2069,9 +2142,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     return item;
   },
 
-  addManyToPantry(names, frozenNames, products) {
+  addManyToPantry(names, frozenNames, products, prices) {
     const addedIds: string[] = [];
     const revertRows: GroceryItem[] = [];
+    const gtinLinks: ScannedGtinLink[] = [];
     let count = 0;
     for (const raw of names) {
       const key = groceryNameKey(parseGroceryInput(raw).name);
@@ -2091,7 +2165,22 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       if (product && (product.brand || product.variant)) {
         get().addProduct(item.id, { brand: product.brand, variant: product.variant });
       }
+      // Same reasoning as the box above, and the same key: this is the only
+      // point at which a name minted by this batch has an id to put a price on.
+      const priceMinor = prices?.byName.get(raw);
+      if (priceMinor !== undefined) get().setItemPrice(item.id, priceMinor, prices?.shopId ?? null);
+      // Collected rather than written here: the link resolves a box by its key,
+      // so every addProduct in this batch has to have landed first.
+      if (product?.gtin) {
+        gtinLinks.push({
+          gtin: product.gtin,
+          itemId: item.id,
+          brand: product.brand,
+          variant: product.variant,
+        });
+      }
     }
+    get().linkScannedGtins(gtinLinks);
     // One combined undo for the whole scan session rather than addToPantry's
     // per-call one, which the loop above suppresses — see addManyFromText.
     if (count > 0) {
@@ -3028,6 +3117,65 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // that leaned on that would turn a stale row into a line that resolves to
     // nothing *and* suppresses the name match that would have found the answer.
     return itemId && get().items.some(i => i.id === itemId) ? itemId : null;
+  },
+
+  linkScannedGtins(links) {
+    if (links.length === 0) return;
+    const { items, itemProducts } = get();
+    const claimed: Array<{ productId: string; gtin: string }> = [];
+    const aliasDrafts: AliasDraft[] = [];
+
+    for (const link of links) {
+      if (!link.gtin || !items.some(i => i.id === link.itemId)) continue;
+      // Found by the words the scan resolved to rather than by id, because the
+      // caller knows which box it read and `addProduct` knows which one exists
+      // — the same find-by-key `ensureProductFor` does one step earlier.
+      const productKey = productKeyFor(link.brand, link.variant);
+      const product = productKey
+        ? itemProducts.find(p => p.itemId === link.itemId && p.productKey === productKey)
+        : undefined;
+      if (product) claimed.push({ productId: product.id, gtin: link.gtin });
+      // Written whether or not a box was found. The two are different facts and
+      // the item-level one is the durable half: deleting a box should send the
+      // barcode back to naming its row, not to naming nothing.
+      aliasDrafts.push({ shopId: null, rawText: gtinAliasText(link.gtin), itemId: link.itemId });
+    }
+
+    if (claimed.length > 0) {
+      dbTransaction(() => {
+        for (const { productId, gtin } of claimed) dbSetProductGtin(productId, gtin);
+      });
+      set(s => ({
+        itemProducts: s.itemProducts.map(p => {
+          const claim = claimed.find(c => c.productId === p.id);
+          if (claim) return { ...p, gtin: claim.gtin };
+          // Mirrors the release half of the write: a box that held one of these
+          // barcodes has just lost it, and leaving the old value in memory
+          // would have two rows claiming one code until the next reload.
+          return p.gtin && claimed.some(c => c.gtin === p.gtin) ? { ...p, gtin: null } : p;
+        }),
+      }));
+    }
+    // Through the ordinary alias path, so the hit count, the stamps and the
+    // one-write-per-phrase rule are the same ones a receipt gets.
+    get().rememberAliases(aliasDrafts);
+  },
+
+  gtinItemFor(gtin) {
+    if (!gtin) return null;
+    // Box first: it is the more specific claim, and the only one that can also
+    // say which brand and variant. The alias is what answers for a row that
+    // never had a box worth naming.
+    const product = productForGtin(get().itemProducts, gtin);
+    if (product && get().items.some(i => i.id === product.itemId)) return product.itemId;
+    return get().aliasItemFor(null, gtinAliasText(gtin));
+  },
+
+  gtinProductFor(gtin) {
+    const product = productForGtin(get().itemProducts, gtin);
+    // Resolve-or-shrug, same as preferredProductOf: a box whose item has gone
+    // reads as no answer rather than as a pointer into nothing.
+    return product && get().items.some(i => i.id === product.itemId) ? product : null;
   },
 
   linkItemShop(itemId, shopId) {

@@ -106,12 +106,37 @@ export function isOpenAppUrl(url: string): boolean {
   return typeof url === 'string' && OPEN_APP_RE.test(url.trim());
 }
 
-// `dundundun://groceries` — what a recurring "Grocery run" task carries in its
-// linkUrl, so the reminder to go opens the list to shop from.
-const GROCERIES_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?groceries\\/?$`, 'i');
+// `dundundun://groceries[?finish=1]` — what a recurring "Grocery run" task
+// carries in its linkUrl, so the reminder to go opens the list to shop from.
+const GROCERIES_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?groceries\\/?(?:\\?(.*))?$`, 'i');
 
 export function isGroceriesUrl(url: string): boolean {
   return typeof url === 'string' && GROCERIES_RE.test(url.trim());
+}
+
+/**
+ * Does a groceries link ask for the finish sheet on arrival?
+ *
+ * `dundundun://groceries?finish=1` — the Finish button on the shopping trip's
+ * Live Activity (targets/todo-widget/TripLiveActivity.swift). A Live Activity
+ * button's intent can only run in the background, so ending a trip from the
+ * Lock Screen has to be a plain deep link that opens the app, the same
+ * mechanism the timer activity's Done button uses; unlike that one this
+ * doesn't *do* anything on arrival, it opens the sheet that asks what the
+ * store had. Which is the whole reason the trip activity had no button until
+ * now: finishing is a question, not a verb, so it only makes sense inside the
+ * app.
+ *
+ * Any other value — `finish=0`, a bare `?finish`, a different param — is a no,
+ * because the only thing that ever writes this link writes `1`. The bare
+ * `dundundun://groceries` a "Grocery run" task carries lands on the list
+ * exactly as it always has.
+ */
+export function groceriesUrlFinish(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  const match = GROCERIES_RE.exec(url.trim());
+  if (!match) return false;
+  return (parseQuery(match[1] ?? '').finish ?? '').trim() === '1';
 }
 
 // `dundundun://recipes` — the peer of the groceries link, so a "plan meals"
@@ -283,7 +308,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     return true;
   }
   if (isGroceriesUrl(url)) {
-    resetToGroceries();
+    resetToGroceries(groceriesUrlFinish(url));
     return true;
   }
   if (isRecipesUrl(url)) {

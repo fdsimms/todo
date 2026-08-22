@@ -41,6 +41,7 @@ import {
   sourceLabelFor,
   variantFor,
   unknownScannedItem,
+  type ScannedGtinLink,
   type ScannedItem,
 } from '../utils/scanResolve';
 import { generateId } from '../utils/id';
@@ -61,6 +62,8 @@ export interface ScanProductDraft {
   itemId: string;
   brand: string | null;
   variant: string | null;
+  /** The code this box was read from, or null for a row typed by hand. */
+  gtin: string | null;
 }
 
 /**
@@ -126,12 +129,22 @@ interface Props {
    * `products` is the same split one more time, for the box a scan names: rows
    * that resolved to an existing catalog item travel here, rows that mint one
    * carry it on their own draft. See `ScanProductDraft`.
+   *
+   * `gtinLinks` is the barcode of every row whose catalog id this sheet
+   * already knows, matched on the list or off it. It is separate from
+   * `products` because a row can be worth linking without being a box: an
+   * unfound barcode the user just named has no brand and no variant, and it is
+   * the code most worth remembering, since nothing else about it will ever
+   * improve on its own. Rows this sheet *mints* aren't here at all, for the
+   * reason `products` splits the same way — they have no id until the caller
+   * creates them, so the caller links those from `ReceiptAddDraft.gtin`.
    */
   onApply: (
     itemIds: string[],
     toAdd: ReceiptAddDraft[],
     frozenItemIds: ReadonlySet<string>,
-    products: ScanProductDraft[]
+    products: ScanProductDraft[],
+    gtinLinks: ScannedGtinLink[]
   ) => void;
 }
 
@@ -175,6 +188,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
   const items = useGroceryStore(useShallow(s => s.items));
   const rememberAliases = useGroceryStore(s => s.rememberAliases);
   const aliasItemFor = useGroceryStore(s => s.aliasItemFor);
+  const gtinItemFor = useGroceryStore(s => s.gtinItemFor);
+  const gtinProductFor = useGroceryStore(s => s.gtinProductFor);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -318,11 +333,23 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
     haptics.tap();
   }, [manual, addScan]);
 
-  // No store: at unpack time nobody has said where the bag came from, and a
-  // product name off a barcode database reads the same whichever shop it was.
+  // The barcode first, the source's words second. A code is the one thing on a
+  // scan that can't drift: rename the row to "vegan sausage" and the product
+  // name has nothing left to match on, while the digits underneath are the
+  // same digits. Falls through to the label alias for a row with no code —
+  // produce stickers, and anything typed by hand.
+  //
+  // No store either way: at unpack time nobody has said where the bag came
+  // from, and a product name off a barcode database reads the same whichever
+  // shop it was.
   const matches = useMemo(
-    () => matchScans(rows, items, line => aliasItemFor(null, line.label)),
-    [rows, items, aliasItemFor]
+    () =>
+      matchScans(
+        rows,
+        items,
+        scan => gtinItemFor(scan.gtin) ?? aliasItemFor(null, scan.label)
+      ),
+    [rows, items, aliasItemFor, gtinItemFor]
   );
   const includedCount = rows.filter(r => r.included && r.name.trim()).length;
 
@@ -343,6 +370,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
     const toAdd: ReceiptAddDraft[] = [];
     const frozenItemIds = new Set<string>();
     const products: ScanProductDraft[] = [];
+    const gtinLinks: ScannedGtinLink[] = [];
     /**
      * The box, for a row that resolved to a catalog item that already exists.
      *
@@ -352,12 +380,42 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
      * *named* after the residue, so there is nothing left over.
      */
     const recordProduct = (itemId: string, row: ScanRow) => {
+      // A box this barcode already names is the answer, and re-deriving one
+      // would produce a worse one: `variantFor` subtracts the item's own name
+      // from the product name, so a row renamed away from the source's wording
+      // ("vegan sausage" for "Beyond Plant Based Sausages Cajun") leaves
+      // nothing to subtract and returns null — minting a brand-only second box
+      // beside the real one every time it is scanned.
+      const linked = gtinProductFor(row.gtin);
+      if (linked && linked.itemId === itemId) {
+        products.push({ itemId, brand: linked.brand, variant: linked.variant, gtin: row.gtin });
+        return;
+      }
       if (!row.label) return;
       const item = items.find(i => i.id === itemId);
       if (!item) return;
       const variant = variantFor(row.label, row.brand, item.name);
       if (!row.brand && !variant) return;
-      products.push({ itemId, brand: row.brand, variant });
+      products.push({ itemId, brand: row.brand, variant, gtin: row.gtin });
+    };
+    /**
+     * The barcode of a row whose catalog id is already known.
+     *
+     * Read off the product draft `recordProduct` just pushed, so the words the
+     * link is filed under are the same ones `addProduct` is about to create —
+     * looking the box up by key is how `linkScannedGtins` finds it. A row with
+     * no box still gets a link, carrying nulls: the item-level half is the
+     * durable one and is exactly what an unfound barcode has instead of a box.
+     */
+    const recordGtinLink = (itemId: string, row: ScanRow) => {
+      if (!row.gtin) return;
+      const box = products.find(p => p.itemId === itemId && p.gtin === row.gtin);
+      gtinLinks.push({
+        gtin: row.gtin,
+        itemId,
+        brand: box?.brand ?? null,
+        variant: box?.variant ?? null,
+      });
     };
     rows.forEach((row, index) => {
       if (!row.included || !row.name.trim()) return;
@@ -367,10 +425,14 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         itemIds.push(itemId);
         if (row.frozen) frozenItemIds.add(itemId);
         recordProduct(itemId, row);
+        recordGtinLink(itemId, row);
         return;
       }
       const offListId = confidentOffListMatchId(match);
-      if (offListId) recordProduct(offListId, row);
+      if (offListId) {
+        recordProduct(offListId, row);
+        recordGtinLink(offListId, row);
+      }
       toAdd.push({
         existingItemId: offListId,
         name: row.name.trim(),
@@ -385,6 +447,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         quantity: row.quantity,
         priceMinor: null,
         frozen: row.frozen,
+        // Only read for a row this mints — a promoted one was linked above,
+        // where its id was already known. See `Props.onApply`.
+        gtin: row.gtin,
       });
     });
     // Only rows whose label came off a lookup are worth remembering. A typed
@@ -405,8 +470,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         .filter(d => d.existingItemId !== null && !!d.label)
         .map(d => ({ shopId: null, rawText: d.label, itemId: d.existingItemId as string })),
     ]);
-    onApply(itemIds, toAdd, frozenItemIds, products);
-  }, [rows, matches, items, onApply, rememberAliases]);
+    onApply(itemIds, toAdd, frozenItemIds, products, gtinLinks);
+  }, [rows, matches, items, onApply, rememberAliases, gtinProductFor]);
 
   /** What a row resolved to, or null when it has nothing to say yet. */
   const captionFor = (row: ScanRow, index: number): string | null => {
@@ -418,11 +483,19 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
     if (itemId) {
       const item = items.find(i => i.id === itemId);
       if (!item) return null;
+      // Both arrive as `remembered`, since a barcode link resolves through the
+      // same alias tier a phrase does. Naming which of the two it was is worth
+      // the branch: "as you scanned it before" is checkable against the box in
+      // your hand, where the generic wording sends someone looking for a name
+      // they typed and never find, the row having been renamed since.
+      const viaGtin = !!row.gtin && gtinItemFor(row.gtin) === itemId;
       if (context === 'pantry') {
+        if (viaGtin) return `Matches “${item.name}”, as you scanned it before`;
         return match?.confidence === 'remembered'
           ? `Matches “${item.name}”, as you matched it before`
           : `Matches “${item.name}” in your pantry`;
       }
+      if (viaGtin) return `On your list as ${item.name}, as you scanned it before`;
       return match?.confidence === 'remembered'
         ? `On your list as ${item.name}, as you matched it before`
         : `On your list as ${item.name}`;

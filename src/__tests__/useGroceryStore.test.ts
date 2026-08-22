@@ -24,6 +24,7 @@ import {
   dbGetAllItemSubLinks,
   dbSetItemSubLink,
   dbSetItemProduct,
+  dbSetProductGtin,
   dbDeleteItemProduct,
   dbDeleteItemSubLink,
   dbGetLastShopId,
@@ -40,7 +41,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
 import { OUT_OF_IT_UNTIL, probablyHaveReason } from '../utils/grocerySuggest';
 import { expiryDaysFromNow } from '../utils/groceryShelfLife';
-import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, Shop, Task } from '../types';
+import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, Shop, StoreAlias, Task } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetAllGroceryItems: jest.fn().mockReturnValue([]),
@@ -71,6 +72,7 @@ jest.mock('../db/database', () => ({
   dbGetAllStoreAliases: jest.fn(() => []),
   dbSetStoreAlias: jest.fn(),
   dbSetItemProduct: jest.fn(),
+  dbSetProductGtin: jest.fn(),
   dbDeleteItemProduct: jest.fn(),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
   dbSetLastShopId: jest.fn(),
@@ -157,6 +159,7 @@ function makeProduct(itemId: string, brand: string | null, variant: string | nul
     note: '',
     purchaseCount: 0,
     lastPurchasedAt: null,
+    gtin: null,
     createdAt: '2026-01-01T00:00:00.000Z',
   };
 }
@@ -223,6 +226,7 @@ function seed(
     itemShops?: ItemShopLink[];
     itemSubs?: ItemSubLink[];
     itemProducts?: ItemProduct[];
+    storeAliases?: StoreAlias[];
     tripShopId?: string | null;
     tripStartedAt?: string | null;
   } = {}
@@ -237,6 +241,7 @@ function seed(
     itemShops: extra.itemShops ?? [],
     itemSubs: extra.itemSubs ?? [],
     itemProducts: extra.itemProducts ?? [],
+    storeAliases: extra.storeAliases ?? [],
     lastShopId: null,
     tripShopId: extra.tripShopId ?? null,
     tripStartedAt: extra.tripStartedAt ?? null,
@@ -3685,6 +3690,99 @@ describe('addManyToPantry', () => {
     expect(useGroceryStore.getState().itemProducts).toHaveLength(2);
     expect(useGroceryStore.getState().itemById(bread.id)!.preferredProductId).toBe(chosen.id);
   });
+
+  // What a receipt read on the Pantry screen hands over, keyed by the same raw
+  // name the box and the freezer flag already are. See KitchenScreen's
+  // handleReceiptApply.
+  it('records a price per name, on a row it minted as readily as one it stamped', () => {
+    const flour = makeItem({ name: 'Flour', inCatalog: true });
+    seed([flour]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Flour', 'Eggs'],
+      undefined,
+      undefined,
+      { byName: new Map([['Flour', 449], ['Eggs', 699]]), shopId: null }
+    );
+
+    const byName = Object.fromEntries(useGroceryStore.getState().items.map(i => [i.name, i]));
+    expect(byName.Flour.lastPriceMinor).toBe(449);
+    expect(byName.Eggs.lastPriceMinor).toBe(699);
+  });
+
+  it('leaves a name the receipt put no price against alone', () => {
+    const flour = makeItem({ name: 'Flour', inCatalog: true, lastPriceMinor: 399 });
+    seed([flour]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Flour'],
+      undefined,
+      undefined,
+      { byName: new Map(), shopId: null }
+    );
+
+    expect(useGroceryStore.getState().items[0].lastPriceMinor).toBe(399);
+  });
+
+  it('puts the price on the named store’s link too, when there is one', () => {
+    const costco = makeShop('Costco');
+    const flour = makeItem({ name: 'Flour', inCatalog: true });
+    seed([flour], {
+      shops: [costco],
+      itemShops: [
+        { itemId: flour.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null, unavailableAt: null, lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [], productId: null, unavailableProductIds: {} },
+      ],
+    });
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Flour'],
+      undefined,
+      undefined,
+      { byName: new Map([['Flour', 449]]), shopId: costco.id }
+    );
+
+    expect(useGroceryStore.getState().itemShops[0].lastPriceMinor).toBe(449);
+    // Recording a price is not a purchase — this isn't a trip, so nothing
+    // about how often it's been bought here changes.
+    expect(useGroceryStore.getState().itemShops[0].purchaseCount).toBe(2);
+  });
+
+  it('mints no store link for a price at a store the item has never had one at', () => {
+    const costco = makeShop('Costco');
+    const flour = makeItem({ name: 'Flour', inCatalog: true });
+    seed([flour], { shops: [costco] });
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Flour'],
+      undefined,
+      undefined,
+      { byName: new Map([['Flour', 449]]), shopId: costco.id }
+    );
+
+    // A price is not a claim that the store stocks it — same rule setItemPrice
+    // follows everywhere else. The item's own price still lands.
+    expect(useGroceryStore.getState().itemShops).toHaveLength(0);
+    expect(useGroceryStore.getState().items[0].lastPriceMinor).toBe(449);
+  });
+
+  it('undoing a session that priced an already-stamped row restores its old price', () => {
+    const flour = makeItem({
+      name: 'Flour', onHandUntil: null, inCatalog: false, onList: true, lastPriceMinor: 399,
+    });
+    seed([flour]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Flour'],
+      undefined,
+      undefined,
+      { byName: new Map([['Flour', 449]]), shopId: null }
+    );
+    expect(useGroceryStore.getState().items[0].lastPriceMinor).toBe(449);
+
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().items).toEqual([flour]);
+  });
 });
 
 describe('setStaple', () => {
@@ -4926,5 +5024,163 @@ describe('swapForSubstitute', () => {
     const restored = useGroceryStore.getState().items;
     expect(restored.find(i => i.id === mysteryHerb.id)).toEqual(mysteryHerb);
     expect(restored.find(i => i.id === basil.id)).toEqual(basil);
+  });
+});
+
+describe('linking a barcode to what it turned out to be', () => {
+  const GTIN = '00850003201115';
+
+  it('points the barcode at the box the scan resolved to', () => {
+    const sausage = makeItem({ name: 'Sausage' });
+    seed([sausage]);
+    const box = useGroceryStore.getState().addProduct(sausage.id, {
+      brand: 'Beyond Meat', variant: 'Cajun',
+    })!;
+
+    useGroceryStore.getState().linkScannedGtins([
+      { gtin: GTIN, itemId: sausage.id, brand: 'Beyond Meat', variant: 'Cajun' },
+    ]);
+
+    expect(dbSetProductGtin).toHaveBeenCalledWith(box.id, GTIN);
+    expect(useGroceryStore.getState().gtinProductFor(GTIN)?.id).toBe(box.id);
+    expect(useGroceryStore.getState().gtinItemFor(GTIN)).toBe(sausage.id);
+  });
+
+  // The case the whole feature is for: rename the row to something that shares
+  // nothing with what the barcode database calls it, and the link still holds.
+  it('survives renaming the item out of all resemblance to the product name', () => {
+    const sausage = makeItem({ name: 'Beyond plant based sausages Cajun' });
+    seed([sausage]);
+    useGroceryStore.getState().addProduct(sausage.id, { brand: 'Beyond Meat', variant: 'Cajun' });
+    useGroceryStore.getState().linkScannedGtins([
+      { gtin: GTIN, itemId: sausage.id, brand: 'Beyond Meat', variant: 'Cajun' },
+    ]);
+
+    useGroceryStore.getState().renameItem(sausage.id, 'vegan sausage');
+
+    expect(useGroceryStore.getState().gtinItemFor(GTIN)).toBe(sausage.id);
+    expect(useGroceryStore.getState().gtinProductFor(GTIN)).toMatchObject({
+      brand: 'Beyond Meat',
+      variant: 'Cajun',
+    });
+  });
+
+  // An unfound barcode has no brand and no variant, so there is no box to
+  // point at — and it is the code most worth remembering, since nothing about
+  // it is ever going to improve on its own.
+  it('remembers a barcode for a row that has no box at all', () => {
+    const loose = makeItem({ name: 'Vegan sausage' });
+    seed([loose]);
+
+    useGroceryStore.getState().linkScannedGtins([
+      { gtin: GTIN, itemId: loose.id, brand: null, variant: null },
+    ]);
+
+    expect(dbSetProductGtin).not.toHaveBeenCalled();
+    expect(useGroceryStore.getState().gtinProductFor(GTIN)).toBeNull();
+    expect(useGroceryStore.getState().gtinItemFor(GTIN)).toBe(loose.id);
+  });
+
+  it('falls back to the item when the box a barcode named is deleted', () => {
+    const sausage = makeItem({ name: 'Sausage' });
+    seed([sausage]);
+    const box = useGroceryStore.getState().addProduct(sausage.id, { brand: 'Beyond Meat', variant: null })!;
+    useGroceryStore.getState().linkScannedGtins([
+      { gtin: GTIN, itemId: sausage.id, brand: 'Beyond Meat', variant: null },
+    ]);
+
+    useGroceryStore.getState().deleteProduct(box.id);
+
+    expect(useGroceryStore.getState().gtinProductFor(GTIN)).toBeNull();
+    expect(useGroceryStore.getState().gtinItemFor(GTIN)).toBe(sausage.id);
+  });
+
+  // The latest thing a person confirmed is what the code means, the same rule
+  // the alias table applies to a phrase.
+  it('moves a barcode when it is scanned onto a different row', () => {
+    const sausage = makeItem({ name: 'Sausage' });
+    const burger = makeItem({ name: 'Burger' });
+    seed([sausage, burger]);
+    const first = useGroceryStore.getState().addProduct(sausage.id, { brand: 'Beyond Meat', variant: null })!;
+    useGroceryStore.getState().linkScannedGtins([
+      { gtin: GTIN, itemId: sausage.id, brand: 'Beyond Meat', variant: null },
+    ]);
+    const second = useGroceryStore.getState().addProduct(burger.id, { brand: 'Beyond Meat', variant: null })!;
+    useGroceryStore.getState().linkScannedGtins([
+      { gtin: GTIN, itemId: burger.id, brand: 'Beyond Meat', variant: null },
+    ]);
+
+    expect(useGroceryStore.getState().gtinItemFor(GTIN)).toBe(burger.id);
+    // The old box lets go in memory as well as in SQLite, or two rows would
+    // claim one code until the next reload.
+    const byId = Object.fromEntries(useGroceryStore.getState().itemProducts.map(p => [p.id, p.gtin]));
+    expect(byId[first.id]).toBeNull();
+    expect(byId[second.id]).toBe(GTIN);
+  });
+
+  it('says nothing about a barcode nobody has scanned', () => {
+    seed([makeItem({ name: 'Sausage' })]);
+    expect(useGroceryStore.getState().gtinItemFor(GTIN)).toBeNull();
+    expect(useGroceryStore.getState().gtinItemFor(null)).toBeNull();
+  });
+
+  it('ignores a link naming a row that is not there', () => {
+    seed([]);
+    useGroceryStore.getState().linkScannedGtins([
+      { gtin: GTIN, itemId: 'gone', brand: null, variant: null },
+    ]);
+    expect(useGroceryStore.getState().gtinItemFor(GTIN)).toBeNull();
+  });
+
+  // A barcode confirmed against a box that is now this box is exactly the
+  // pointer a merge must not drop.
+  it('keeps a barcode when its box is deduped into the survivor’s', () => {
+    const survivor = makeItem({ name: 'Sausage' });
+    const loser = makeItem({ name: 'Sausages' });
+    seed([survivor, loser]);
+    useGroceryStore.getState().addProduct(survivor.id, { brand: 'Beyond Meat', variant: null });
+    const loserBox = useGroceryStore.getState().addProduct(loser.id, { brand: 'Beyond Meat', variant: null })!;
+    useGroceryStore.getState().linkScannedGtins([
+      { gtin: GTIN, itemId: loser.id, brand: 'Beyond Meat', variant: null },
+    ]);
+    expect(useGroceryStore.getState().gtinProductFor(GTIN)?.id).toBe(loserBox.id);
+
+    useGroceryStore.getState().mergeItems(loser.id, survivor.id);
+
+    // One box, under the survivor, still carrying the code.
+    const boxes = useGroceryStore.getState().itemProducts;
+    expect(boxes).toHaveLength(1);
+    expect(boxes[0]).toMatchObject({ itemId: survivor.id, gtin: GTIN });
+    expect(useGroceryStore.getState().gtinItemFor(GTIN)).toBe(survivor.id);
+  });
+});
+
+describe('addManyToPantry links the barcodes it was handed', () => {
+  const GTIN = '00850003201115';
+
+  it('links a row it mints, which had no id for the sheet to link', () => {
+    seed([]);
+    useGroceryStore.getState().addManyToPantry(
+      ['Vegan sausage'],
+      undefined,
+      new Map([['Vegan sausage', { brand: 'Beyond Meat', variant: null, gtin: GTIN }]])
+    );
+
+    const minted = useGroceryStore.getState().items.find(i => i.name === 'Vegan sausage')!;
+    expect(useGroceryStore.getState().gtinItemFor(GTIN)).toBe(minted.id);
+    expect(useGroceryStore.getState().gtinProductFor(GTIN)).toMatchObject({ brand: 'Beyond Meat' });
+  });
+
+  it('links a barcode for a row with no box to hang it on', () => {
+    seed([]);
+    useGroceryStore.getState().addManyToPantry(
+      ['Bananas'],
+      undefined,
+      new Map([['Bananas', { brand: null, variant: null, gtin: GTIN }]])
+    );
+
+    const minted = useGroceryStore.getState().items.find(i => i.name === 'Bananas')!;
+    expect(useGroceryStore.getState().gtinItemFor(GTIN)).toBe(minted.id);
+    expect(useGroceryStore.getState().itemProducts).toEqual([]);
   });
 });

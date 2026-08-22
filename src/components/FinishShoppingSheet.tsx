@@ -20,6 +20,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { PillGroup } from './PillGroup';
+import { InlineAction } from './InlineAction';
 import { haptics } from '../utils/haptics';
 import {
   formatPriceInput,
@@ -59,6 +60,19 @@ interface Props {
   seedShopId?: string | null;
   seedPriceText?: Record<string, string>;
   /**
+   * Changes every time a receipt is read, and is the whole mechanism by which
+   * a receipt scanned *from this sheet* reaches it.
+   *
+   * The seeds above are otherwise read once, on opening, and deliberately so
+   * (see the effect that does it). But `onScanReceipt` opens the receipt sheet
+   * over the top of this one rather than closing it, so there is no opening for
+   * the answers to arrive on: they have to land on a sheet already up. A stamp
+   * rather than the seeds themselves because two receipts can legitimately name
+   * the same store and the same prices, and re-reading one is still a fresh
+   * answer that should re-fill the fields.
+   */
+  seedStamp?: string;
+  /**
    * A scanned receipt's purchase date, read off the paper (or defaulted to
    * today when it wasn't readable or looked implausible) — passed straight
    * through to `onFinished`. This sheet doesn't offer its own date field;
@@ -66,6 +80,20 @@ interface Props {
    * hand-finished trip, which stamps `now` exactly as it always has (#1806).
    */
   seedPurchasedAt?: string;
+  /**
+   * Opens the receipt sheet over this one, when the screen offers it.
+   *
+   * Optional because the reading needs an Anthropic API key, and whether there
+   * is one is the screen's business rather than this sheet's — the same call
+   * the shopping list's own "Scan a receipt" button makes. Absent, the action
+   * isn't rendered at all.
+   *
+   * The trip is *not* ended, cancelled or reset by taking it: this sheet stays
+   * mounted and visible underneath, so the leftover ticks and the substitute
+   * answers someone has already given survive the detour. What comes back
+   * arrives through `seedStamp`.
+   */
+  onScanReceipt?: () => void;
   onClose: () => void;
   onFinished: (
     shopId: string | null,
@@ -146,6 +174,8 @@ export function FinishShoppingSheet({
   seedShopId,
   seedPriceText,
   seedPurchasedAt,
+  seedStamp,
+  onScanReceipt,
   onClose,
   onFinished,
 }: Props) {
@@ -220,6 +250,21 @@ export function FinishShoppingSheet({
     }
   }, [visible]);
 
+  // A receipt read from this sheet, arriving while it's still up — see
+  // `seedStamp`. The prices merge rather than replace, because a price typed by
+  // hand before reaching for the camera is an answer too, and the receipt is
+  // only entitled to the rows it actually named.
+  const appliedStampRef = useRef(seedStamp);
+  useEffect(() => {
+    if (!visible || seedStamp === undefined || seedStamp === appliedStampRef.current) return;
+    appliedStampRef.current = seedStamp;
+    // `undefined` is no receipt at all; `null` is a receipt naming no store,
+    // which is a real answer — the same distinction the open-time seed makes.
+    if (seedShopId !== undefined) setSelected(seedShopId);
+    if (seedPriceText) setPriceText(prev => ({ ...prev, ...seedPriceText }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, seedStamp]);
+
   // A "they didn't have it" is about one named store, so changing the store
   // throws the answers away rather than refiling them. Includes the reset
   // above, which is the same rule at the start of a trip. The substitute
@@ -264,11 +309,20 @@ export function FinishShoppingSheet({
       const minor = parsePriceInput(text);
       if (minor !== null) priceById[id] = minor;
     }
+    // Only rows that are *still* leftovers. A receipt read from this sheet
+    // ticks rows into the cart underneath it (that's the point of the scan
+    // action), so a row answered "they didn't have it" a moment ago can have
+    // stopped being a leftover since — it vanishes from the section above, but
+    // its id would otherwise still be in here. `finishShopping` runs after the
+    // claim and clears it again, so the recorded state came out right either
+    // way; this is about not submitting an answer the user can no longer see.
+    // The substitutes follow, since one is only ever about an unavailable row.
+    const stillLeftover = unavailable.filter(id => leftover.some(l => l.id === id));
     onFinished(
       selected,
-      selected ? unavailable : [],
+      selected ? stillLeftover : [],
       priceById,
-      selected ? resolveShoppingSubstitutes(unavailable, substituteFor) : [],
+      selected ? resolveShoppingSubstitutes(stillLeftover, substituteFor) : [],
       seedPurchasedAt
     );
   };
@@ -340,6 +394,20 @@ export function FinishShoppingSheet({
           <Text style={styles.intro}>
             {countLabel}. Everything stays in your catalog for next time.
           </Text>
+
+          {/* Above the questions it answers, because that's what it is: the
+              store and the price of every row are printed on the paper in your
+              hand, and typing forty of them is the thing nobody does. It stays
+              an offer rather than a step — the sheet works untouched. */}
+          {!!onScanReceipt && (
+            <View style={styles.scanWrap}>
+              <InlineAction
+                label="Scan a receipt"
+                icon="receipt-outline"
+                onPress={onScanReceipt}
+              />
+            </View>
+          )}
 
           <Text style={styles.label}>WHERE DID YOU SHOP?</Text>
           <Text style={styles.hint}>
@@ -581,11 +649,15 @@ function makeStyles(colors: Colors) {
     },
     headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
+    // No margin of its own: the intro above already carries `spacing.md`
+    // beneath it and the section label below carries the same above it, which
+    // is the gap a stacked block wants on each side.
+    scanWrap: { alignItems: 'flex-start' },
     intro: { color: colors.textSecondary, fontSize: font.md, marginBottom: spacing.md },
     label: {
       fontSize: font.xs,
       fontWeight: fontWeight.semibold,
-      color: colors.textTertiary,
+      color: colors.textSecondary,
       letterSpacing: 0.8,
       marginTop: spacing.md,
     },

@@ -67,6 +67,7 @@ import {
   dbGetAllItemProducts,
   dbSetItemProduct,
   dbDeleteItemProduct,
+  dbSetProductGtin,
   dbClearGroceryList,
   dbGetGroceryAisleOrder,
   dbGetGroceryAisleOverrides,
@@ -1806,6 +1807,7 @@ function makeProduct(
     note: '',
     purchaseCount: 0,
     lastPurchasedAt: null,
+    gtin: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
@@ -1947,6 +1949,78 @@ describe('grocery items', () => {
     expect(() =>
       dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g1', brand: "Arnold's", variant: 'wheat' }))
     ).toThrow();
+  });
+
+  it('leaves a box’s barcode alone when the row is rewritten', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
+    const product = makeProduct({ id: 'p1', itemId: 'g1', brand: 'Beyond Meat', variant: 'Cajun' });
+    dbSetItemProduct(product);
+    dbSetProductGtin('p1', '00850003201115');
+    // The upsert deliberately carries no `gtin` column, so a stale value on the
+    // row handed in can't wipe a link — see dbSetItemProduct.
+    dbSetItemProduct({ ...product, note: 'the green packet' });
+
+    expect(dbGetAllItemProducts()[0]).toMatchObject({
+      note: 'the green packet',
+      gtin: '00850003201115',
+    });
+  });
+
+  // A GTIN denotes one box in the world, so pointing it at a second one has to
+  // take it off the first rather than fail or duplicate.
+  it('moves a barcode off the box that held it', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
+    dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: 'Beyond Meat' }));
+    dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g1', brand: 'Field Roast' }));
+    dbSetProductGtin('p1', '00850003201115');
+    dbSetProductGtin('p2', '00850003201115');
+
+    const byId = Object.fromEntries(dbGetAllItemProducts().map(p => [p.id, p.gtin]));
+    expect(byId).toEqual({ p1: null, p2: '00850003201115' });
+  });
+
+  it('is a no-op to re-claim a barcode the same box already has', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
+    dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: 'Beyond Meat' }));
+    dbSetProductGtin('p1', '00850003201115');
+    dbSetProductGtin('p1', '00850003201115');
+
+    expect(dbGetAllItemProducts()[0].gtin).toBe('00850003201115');
+  });
+
+  // The uniqueness guarantee lives in SQLite rather than only in the write
+  // path, same as the product-key index above.
+  it('refuses two boxes claiming one barcode behind dbSetProductGtin’s back', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
+    dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: 'Beyond Meat' }));
+    dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g1', brand: 'Field Roast' }));
+    dbSetProductGtin('p1', '00850003201115');
+    expect(() =>
+      mockRawDb
+        .prepare('UPDATE grocery_item_products SET gtin = ? WHERE id = ?')
+        .run('00850003201115', 'p2')
+    ).toThrow();
+  });
+
+  // Partial index: the barcode-less majority isn't indexed and can't collide
+  // with itself.
+  it('allows any number of boxes with no barcode', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
+    dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: "Arnold's" }));
+    dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g1', brand: "Dave's" }));
+
+    expect(dbGetAllItemProducts().every(p => p.gtin === null)).toBe(true);
+  });
+
+  it('drops the link with the box, so a deleted product frees its barcode', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
+    dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: 'Beyond Meat' }));
+    dbSetProductGtin('p1', '00850003201115');
+    dbDeleteItemProduct('p1');
+    dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g1', brand: 'Field Roast' }));
+
+    expect(() => dbSetProductGtin('p2', '00850003201115')).not.toThrow();
+    expect(dbGetAllItemProducts()[0].gtin).toBe('00850003201115');
   });
 
   // Scoped to the item, not the catalog: two items may both have a "store

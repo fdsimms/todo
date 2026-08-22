@@ -2,6 +2,7 @@ import {
   aliasDraftsFrom,
   aliasItemIdFor,
   aliasKeyFor,
+  gtinAliasText,
   type AliasDraft,
 } from '../utils/storeAliases';
 import type { StoreAlias } from '../types';
@@ -116,5 +117,36 @@ describe('aliasDraftsFrom', () => {
 
   it('keeps a store-scoped draft apart from a store-less one', () => {
     expect(aliasDraftsFrom([draft(), draft({ shopId: null })])).toHaveLength(2);
+  });
+});
+
+describe('gtinAliasText', () => {
+  it('survives keying, so a barcode can be stored and looked up as itself', () => {
+    expect(aliasKeyFor(gtinAliasText('00850003201115'))).toBe('gtin 00850003201115');
+  });
+
+  // The whole reason for the prefix. `aliasKeyFor` keeps digits and only strips
+  // a leading code when letters follow, so an all-digits line would otherwise
+  // key identically to the barcode of the same number.
+  it('cannot collide with a receipt line that is nothing but digits', () => {
+    expect(aliasKeyFor(gtinAliasText('00850003201115')))
+      .not.toBe(aliasKeyFor('00850003201115'));
+  });
+
+  it('reads back as the row it was confirmed against, at any store', () => {
+    const aliases = [
+      alias({ rawKey: aliasKeyFor(gtinAliasText('00850003201115')), itemId: 'sausage' }),
+    ];
+    // Store-less, so standing in a different shop makes no difference — a
+    // barcode is the same barcode wherever it was bought.
+    expect(aliasItemIdFor(aliases, null, gtinAliasText('00850003201115'))).toBe('sausage');
+    expect(aliasItemIdFor(aliases, 'costco', gtinAliasText('00850003201115'))).toBe('sausage');
+  });
+
+  it('says nothing about a barcode nobody has named', () => {
+    const aliases = [
+      alias({ rawKey: aliasKeyFor(gtinAliasText('00850003201115')), itemId: 'sausage' }),
+    ];
+    expect(aliasItemIdFor(aliases, null, gtinAliasText('00000012345670'))).toBeNull();
   });
 });

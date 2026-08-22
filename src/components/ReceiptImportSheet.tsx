@@ -82,6 +82,16 @@ export interface ReceiptAddDraft {
   priceMinor: number | null;
   /** The barcode scan sheet's per-row freezer toggle. Always undefined here — a receipt has no shelf to ask about. */
   frozen?: boolean;
+  /**
+   * The barcode this row was scanned from, so the row it mints can be linked
+   * back to the code — see `linkScannedGtins`.
+   *
+   * Undefined from a receipt, which prints no barcodes, and null for a scan
+   * row that was typed rather than read. It rides the shared draft for the
+   * reason `brand` does: both paths mint rows through one handler, and only
+   * that handler knows the id a minted row ends up with.
+   */
+  gtin?: string | null;
 }
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
@@ -91,6 +101,24 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   /**
+   * Which screen is scanning, and so what the paper is being read *against* —
+   * the same split `BarcodeScanSheet` makes, for the same reason.
+   *
+   * `'shopping'` (from `GroceryScreen`, at the checkout or mid-unpack) reads
+   * the lines against this week's list and hands the trip to the finish sheet.
+   * `'pantry'` (from `KitchenScreen`) reads them against the whole catalog and
+   * puts what you bought in the kitchen — there is no list to tick off and no
+   * trip to end, so a shop you never made a list for is still worth
+   * photographing. See `ReceiptScope`.
+   *
+   * Three things are shopping-only, and each is absent rather than inert:
+   * the purchase date (nothing in the pantry writes one — `addToPantry` stamps
+   * on-hand from now), the "already in the cart" note, and the prices-only
+   * pairing flow, which needs a list of what the trip bought to pair against
+   * and has none here.
+   */
+  context: 'shopping' | 'pantry';
+  /**
    * Hands the confirmed reading back to the screen: which store, which rows to
    * check off, and what each of them cost.
    *
@@ -98,6 +126,12 @@ interface Props {
    * finish sheet ends a shop, and it also asks the one question a receipt can't
    * answer — which of the leftovers the store didn't have. Ending the trip from
    * here would either skip that question or duplicate it.
+   *
+   * In `'pantry'` context the caller reads the same arguments differently —
+   * see `KitchenScreen`'s `handleReceiptApply`, which resolves `itemIds` back
+   * to names and routes everything through `addManyToPantry` rather than
+   * checking anything off a list. `purchasedAt` is passed but unused there;
+   * nothing in the pantry records a purchase date.
    */
   onApply: (
     shopId: string | null,
@@ -125,6 +159,23 @@ interface Props {
  * Two confirms sounds like one too many until you look at what the second one
  * is guarding: `finishShopping` takes the whole list off in one pass.
  *
+ * **Two contexts, because a receipt is a fact about shopping and not about a
+ * list** (`context`, the same prop `BarcodeScanSheet` carries). Reading one
+ * used to be reachable only from the foot of the shopping list, which put it
+ * behind having made a list at all and behind not having finished the trip
+ * yet — so the paper in your hand was useless the moment you tapped Finish, or
+ * if you'd just popped out for milk. It now opens from the finish sheet, where
+ * someone standing at the checkout actually is, and from the Pantry, where the
+ * answer is "put this in the kitchen" rather than "tick this off".
+ *
+ * **What's already in the cart is taken as read.** A row ticked into the
+ * trolley is the user having already said they bought it, so a line landing on
+ * one is corroboration: it breaks ties between two equally good readings and it
+ * lets a weak match arrive checked, since the only thing the line is adding is
+ * the price. The row says so, because a pre-checked weak match with no
+ * explanation is exactly the "chicken thighs for chicken breast" mistake this
+ * sheet is otherwise careful about. The rules are in `receiptMatch.ts`.
+ *
  * **A weak match is shown but never pre-checked.** The tiers come from
  * `receiptMatch.ts`; what this sheet adds is that the difference is *visible* —
  * an unchecked row with "Is this…?" on it is a question, and a pre-checked one
@@ -146,7 +197,8 @@ interface Props {
  * `isPlausibleReceiptDate` (#1806). Either way it's editable, and it's what
  * every checked row — matched or added as bought — is dated with.
  */
-export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
+export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props) {
+  const pantry = context === 'pantry';
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -219,7 +271,12 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
       // scoped to the printer that produced the text.
       const readShopId = matchReceiptShop(result.storeName, shops)?.id ?? null;
       setMatches(
-        matchReceiptLines(result.lines, items, line => aliasItemFor(readShopId, line.label))
+        matchReceiptLines(
+          result.lines,
+          items,
+          line => aliasItemFor(readShopId, line.label),
+          pantry ? 'catalog' : 'list',
+        )
       );
       setShopId(readShopId);
       const now = new Date();
@@ -234,7 +291,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [photo, items, shops, aliasItemFor]);
+  }, [photo, items, shops, aliasItemFor, pantry]);
 
   /**
    * What arrives checked, re-decided whenever the reading or the named store
@@ -473,9 +530,21 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
             {match.line.label}
             {!!match.line.quantity && ` · ${match.line.quantity}`}
           </Text>
+          {/* First, because on a weak match it's the reason the row arrived
+              ticked at all, and a caveat reads better after the thing it's a
+              caveat about. Confirmation rather than caution, so the quiet grey
+              and not the orange below it. */}
+          {match.inTrolley && !pantry && (
+            <Text style={styles.rowRemembered}>Already in your cart</Text>
+          )}
           {weak && (
             <Text style={styles.rowWeak}>
-              Not sure this is the same thing. Check before you accept it.
+              {match.inTrolley
+                // Ticked into the cart *and* only a half-match by name: the
+                // row is going through either way, so the question worth
+                // asking is about the number, not about whether it came home.
+                ? 'Not sure this is the same thing. Check the price is for this row.'
+                : 'Not sure this is the same thing. Check before you accept it.'}
             </Text>
           )}
           {/* Says why a line nothing could have matched by name is sitting on a
@@ -606,7 +675,11 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
       return (
         <>
           <RecipeSourcePicker
-            intro="Photograph your receipt and dundundun will check the items off your list, record what they cost, and file the trip against the store."
+            intro={
+              pantry
+                ? 'Photograph your receipt and dundundun will put what you bought in the pantry and record what it cost.'
+                : 'Photograph your receipt and dundundun will check the items off your list, record what they cost, and file the trip against the store.'
+            }
             photoOnly
             photoHint="Lay it flat and get the whole receipt in the frame. A long one is fine folded, as long as the item lines are readable."
             mode="photo"
@@ -635,7 +708,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
           <Text style={styles.emptyTitle}>Nothing readable on that one</Text>
           <Text style={styles.emptyText}>
             Try again with the whole receipt in frame and more light on it. Nothing has been
-            changed on your list.
+            changed {pantry ? 'in your pantry' : 'on your list'}.
           </Text>
           <TouchableOpacity
             style={styles.retry}
@@ -660,6 +733,24 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
           <Text style={styles.hint}>
             You've said this store doesn't give a receipt, so there's nothing here to read. Pick a
             different store above, or change what its receipts show.
+          </Text>
+        </>
+      );
+    }
+
+    // A store that prints prices with no names has nothing the pantry can use:
+    // the pairing flow below works by putting each price against a row the trip
+    // bought, and on the list those rows are already ticked there waiting. The
+    // pantry has no such set — every row in the catalog is equally a candidate
+    // — so this says so rather than offering a grid of two hundred items.
+    if (opaque && pantry) {
+      return (
+        <>
+          {storePicker()}
+          <Text style={styles.hint}>
+            You've said this store's receipts show prices without item names, so there's nothing
+            here to name what you bought. Pick a different store above, or change what its
+            receipts show.
           </Text>
         </>
       );
@@ -690,17 +781,20 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
           {receipt.totalMinor !== null
             ? `, totalling ${formatPrice(receipt.totalMinor, currencySymbol)}`
             : ''}
-          . Nothing is recorded until you finish shopping.
+          . Nothing is recorded until you {pantry ? 'tap Add' : 'finish shopping'}.
         </Text>
 
         {storePicker()}
-        {datePicker()}
+        {/* Shopping only. The pantry writes no purchase date — see `context`. */}
+        {!pantry && datePicker()}
 
         {claimed.length > 0 && (
           <>
-            <Text style={styles.label}>ON YOUR LIST</Text>
+            <Text style={styles.label}>{pantry ? 'WHAT YOU BOUGHT' : 'ON YOUR LIST'}</Text>
             <Text style={styles.hint}>
-              Checked rows come off the list when you finish, with the receipt’s price on each.
+              {pantry
+                ? 'Checked rows go in the pantry, with the receipt’s price on each.'
+                : 'Checked rows come off the list when you finish, with the receipt’s price on each.'}
             </Text>
             <View style={styles.card}>{claimed.map(renderMatch)}</View>
             {recordedMinor > 0 && (
@@ -724,9 +818,13 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
                 heading says. */}
             <Text style={styles.label}>LEFT ALONE</Text>
             <Text style={styles.hint}>
-              {claimed.length > 0
-                ? 'These didn’t match anything on your list, or your list only asked for one. Check one to add it as bought.'
-                : 'None of these matched anything on your list. Check one to add it as bought.'}
+              {pantry
+                ? claimed.length > 0
+                  ? 'These didn’t match anything you’ve bought before, or the receipt printed two of the same thing. Check one to add it.'
+                  : 'None of these matched anything you’ve bought before. Check one to add it.'
+                : claimed.length > 0
+                  ? 'These didn’t match anything on your list, or your list only asked for one. Check one to add it as bought.'
+                  : 'None of these matched anything on your list. Check one to add it as bought.'}
             </Text>
             <View style={styles.card}>
               {unclaimed.map((match, i) => {
@@ -740,7 +838,11 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
                     onPress={() => toggleAddAsBought(i)}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: on }}
-                    accessibilityLabel={`Add ${match.line.label} as bought`}
+                    accessibilityLabel={
+                      pantry
+                        ? `Add ${match.line.label} to the pantry`
+                        : `Add ${match.line.label} as bought`
+                    }
                   >
                     <View style={[styles.check, on && styles.checkOn]}>
                       {on && <Ionicons name="checkmark" size={14} color={colors.onAccent} />}
@@ -752,6 +854,9 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
                           A second {nameFor(match.duplicateOf)} — the first one is above.
                         </Text>
                       )}
+                      {/* In the pantry every catalog row was already a
+                          candidate, so an unclaimed line there matched nothing
+                          at all and `offListMatchId` is always null. */}
                       <Text style={styles.rowLabel} numberOfLines={1}>
                         {catalogName
                           ? `Matches “${catalogName}” already in your catalog.`
@@ -779,10 +884,12 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
         <View style={styles.root}>
           <View style={styles.header}>
             <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
-            <Text style={styles.headerTitle}>Scan a receipt</Text>
+            <Text style={styles.headerTitle}>
+              {pantry ? 'Receipt into pantry' : 'Scan a receipt'}
+            </Text>
             {receipt && receipt.lines.length > 0 ? (
               <SheetHeaderButton
-                label="Apply"
+                label={pantry ? 'Add' : 'Apply'}
                 onPress={handleApply}
                 disabled={acceptedCount === 0}
                 minWidth={64}

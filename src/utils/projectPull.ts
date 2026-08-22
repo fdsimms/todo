@@ -174,7 +174,7 @@ export interface ProjectPullPlan {
 /**
  * A mid-chain step is undated by construction and advances on completion, not
  * by date (see completeTask's spawnsNext logic) — dating one is meaningless.
- * Same test deloadPlan.findBlocker uses for its 'chain' blocker.
+ * Same test taskMoves.deloadBlockerFor uses for its 'chain' blocker.
  */
 function isPullable(task: Task): boolean {
   return !(task.chainEnabled && task.chainItems.length > 0 && task.chainIndex > 0);

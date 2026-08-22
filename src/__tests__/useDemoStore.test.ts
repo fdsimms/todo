@@ -9,6 +9,7 @@
  * are genuinely separate stores and a leak between them would show up as a
  * real test failure rather than being papered over by a shared handle.
  */
+import { addDays } from 'date-fns/addDays';
 import { useDemoStore } from '../store/useDemoStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -22,6 +23,7 @@ import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUt
 import { pantryEntries } from '../utils/grocerySuggest';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { standingSwapMap } from '../utils/standingSwaps';
+import { normalizeGtin } from '../utils/gtin';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
 import { flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
@@ -80,6 +82,11 @@ import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
 import { buildDayBuckets, canProject } from '../utils/calendarMonth';
 import { buildDayLoads, describeDayLoad, weightFor } from '../utils/dayLoad';
+import {
+  buildLookAhead,
+  describeLookAheadLead,
+  describeLookAheadLoad,
+} from '../utils/lookAhead';
 import { buildCalendarGrid } from '../utils/calendarGrid';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -451,6 +458,39 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // Look ahead is a window, so a seed that stops at the edge of one shows a
+  // sheet with nothing distinctive in it — no far side, and nothing to judge
+  // a deadline against.
+  it('seeds a window Look ahead can actually read', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const today = getCurrentDayStart();
+    const la = buildLookAhead(tasks, { cutoff: addDays(today, 14), now: today });
+
+    // The window itself has work in it, priced and unpriced both, so the lead
+    // and its "at least" qualifier each have something to say.
+    expect(la.totals.taskCount).toBeGreaterThan(0);
+    expect(la.totals.minutes).toBeGreaterThan(0);
+    expect(describeLookAheadLead(la)).toContain('land');
+    expect(describeLookAheadLoad(la)).not.toBe('');
+    // Recurrences project into it, so the day captions have a reason to exist.
+    expect(la.totals.projected).toBeGreaterThan(0);
+
+    // And something lands past the cutoff, so setting a return date fills the
+    // one bucket nothing else in the app can show.
+    const away = buildLookAhead(tasks, {
+      cutoff: addDays(today, 14),
+      awayEnd: addDays(today, 21),
+      now: today,
+    });
+    expect(away.away.length).toBeGreaterThan(0);
+    // A deadline among them, which is the half that can actually be missed.
+    expect(away.away.some(e => e.kind === 'deadline')).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // The editor's Kind picker offers four shapes; a picker naming a kind demo
   // mode has no example of reads as a feature the app doesn't really have.
   it('seeds one task of every kind the Kind picker offers', () => {
@@ -788,6 +828,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const counts = new Map<string, number>();
     for (const p of itemProducts) counts.set(p.itemId, (counts.get(p.itemId) ?? 0) + 1);
     expect(Math.max(...counts.values())).toBeGreaterThan(1);
+    // ...and a box carrying the barcode that names it. Invisible without a
+    // camera, so an unseeded link reads as a feature the app hasn't got — and
+    // it has to be on a row whose name shares nothing with the box's own
+    // words, since that is the case name matching cannot cover.
+    const scanned = itemProducts.find(p => p.gtin);
+    expect(scanned).toBeDefined();
+    expect(normalizeGtin(scanned!.gtin!)).toBe(scanned!.gtin);
+    const scannedItem = items.find(i => i.id === scanned!.itemId)!;
+    expect(scannedItem.nameKey).not.toContain(scanned!.brand!.toLowerCase());
+    expect(useGroceryStore.getState().gtinItemFor(scanned!.gtin)).toBe(scannedItem.id);
     // ...and a rating, on a box that isn't the preferred one — "the one I
     // avoid" and "the one I want" being the same row would read as a bug.
     const avoided = itemProducts.find(p => p.rating === 'avoid');

@@ -2,6 +2,14 @@ name: Tests
 
 on:
   pull_request:
+  # Also on main, because the generated-doc checks are only as good as the
+  # branch everything is cut from. Nothing checked main, so a merge that
+  # landed a new export without regenerating docs/module-map.md left main
+  # stale — and every branch cut from it afterwards inherited the staleness
+  # and failed a check it hadn't caused. That is what makes one missed
+  # regeneration read as "CI is broken" rather than as one red PR.
+  push:
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

@@ -4,6 +4,7 @@ import {
   lacksPreferredProduct,
   parseUnavailableProductIds,
   preferredProductOf,
+  productForGtin,
   productKeyFor,
   productsForItem,
 } from '../utils/groceryProduct';
@@ -19,6 +20,7 @@ function product(overrides: Partial<ItemProduct> & { id: string }): ItemProduct 
     note: '',
     purchaseCount: 0,
     lastPurchasedAt: null,
+    gtin: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
@@ -211,5 +213,25 @@ describe('describeProductPurchases', () => {
 
   it('says nothing about a box that has never come home', () => {
     expect(describeProductPurchases(product({ id: 'a' }))).toBeNull();
+  });
+});
+
+describe('productForGtin', () => {
+  const linked = product({ id: 'p-cajun', brand: 'Beyond Meat', variant: 'Cajun', gtin: '00850003201115' });
+  const plain = product({ id: 'p-plain', brand: 'Store brand' });
+
+  it('finds the box a barcode names', () => {
+    expect(productForGtin([plain, linked], '00850003201115')?.id).toBe('p-cajun');
+  });
+
+  it('says nothing about a barcode no box carries', () => {
+    expect(productForGtin([plain, linked], '00000012345670')).toBeNull();
+  });
+
+  // A blank code must not match the overwhelming majority of boxes, which have
+  // no barcode at all.
+  it('refuses an empty code rather than matching every unlinked box', () => {
+    expect(productForGtin([plain, linked], null)).toBeNull();
+    expect(productForGtin([plain, linked], '')).toBeNull();
   });
 });

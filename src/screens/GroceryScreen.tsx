@@ -15,7 +15,7 @@ import {
   Share,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -45,6 +45,7 @@ import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
+import type { ScannedGtinLink } from '../utils/scanResolve';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { StartTripPrompt } from '../components/StartTripPrompt';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
@@ -74,6 +75,7 @@ import { resolveGroceryDrop, groceryDragRange, placeNewGroceryItems } from '../u
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { generateId } from '../utils/id';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
@@ -134,6 +136,7 @@ export function GroceryScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
 
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
@@ -150,6 +153,7 @@ export function GroceryScreen() {
   const addExisting = useGroceryStore(s => s.addExisting);
   const addByName = useGroceryStore(s => s.addByName);
   const addProduct = useGroceryStore(s => s.addProduct);
+  const linkScannedGtins = useGroceryStore(s => s.linkScannedGtins);
   const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
   const linkItemSub = useGroceryStore(s => s.linkItemSub);
   const swapForSubstitute = useGroceryStore(s => s.swapForSubstitute);
@@ -183,7 +187,18 @@ export function GroceryScreen() {
   // apart, since a receipt naming no store is a real answer and not an absent
   // one.
   const [receiptSeed, setReceiptSeed] = useState<
-    { shopId: string | null; priceText: Record<string, string>; purchasedAt: string } | null
+    {
+      shopId: string | null;
+      priceText: Record<string, string>;
+      purchasedAt: string;
+      /**
+       * Distinguishes one reading from the next, for the finish sheet's sake —
+       * see its `seedStamp` prop. A receipt read while that sheet is open has
+       * no opening to arrive on, and two receipts can name the same store and
+       * the same prices.
+       */
+      stamp: string;
+    } | null
   >(null);
   const [tripOpen, setTripOpen] = useState(false);
   // Which verb ShoppingTripSheet's header button should be, since the sheet
@@ -326,6 +341,29 @@ export function GroceryScreen() {
   }, [activeTripShop, items, itemShops, shops, itemSubs, itemProducts]);
 
   const checkedCount = useMemo(() => items.filter(i => i.onList && i.checked).length, [items]);
+
+  /**
+   * "Finish the shop" asked for from somewhere that hasn't got the sheet — the
+   * trip Live Activity's Finish button (`dundundun://groceries?finish=1`) and
+   * the trip banner on Recipes/Meal plan/Pantry, both of which route through
+   * `resetToGroceries(true)`.
+   *
+   * Stamped-param handoff, the same one MealPlanScreen's `focusStamp` uses:
+   * compared against the last value handled, so asking twice in a row still
+   * fires twice. Gated on the cart having something in it, which is the same
+   * thing the header action's `disabled` and the banner's own button say — a
+   * request that arrives with an empty cart lands on the list and stops there,
+   * because there is nothing for the sheet to finish. The stamp is marked
+   * handled either way: a request that found nothing to do is answered, not
+   * left pending against the next tick.
+   */
+  const openFinishStamp: number | undefined = route.params?.openFinish;
+  const [handledFinishStamp, setHandledFinishStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (openFinishStamp === undefined || openFinishStamp === handledFinishStamp) return;
+    setHandledFinishStamp(openFinishStamp);
+    if (checkedCount > 0) setFinishOpen(true);
+  }, [openFinishStamp, handledFinishStamp, checkedCount]);
   // Empty for nothing left to buy, which is what the header action's disabled
   // state gates on — see buildGroceryListShareText.
   const shareText = useMemo(() => buildGroceryListShareText(items), [items]);
@@ -735,8 +773,13 @@ export function GroceryScreen() {
           Object.entries(allPriceById).map(([id, minor]) => [id, priceToInput(minor)])
         ),
         purchasedAt,
+        stamp: generateId(),
       });
       setReceiptOpen(false);
+      // Already true when the scan was started from the finish sheet, which is
+      // the point of that entry: it stays mounted underneath, so the ticks and
+      // substitutes given before reaching for the camera are still there when
+      // the receipt's own answers land on top of them.
       setFinishOpen(true);
     },
     [setCheckedMany, addExisting, addByName]
@@ -782,11 +825,16 @@ export function GroceryScreen() {
       itemIds: string[],
       toAdd: ReceiptAddDraft[],
       frozenItemIds: ReadonlySet<string>,
-      products: ScanProductDraft[]
+      products: ScanProductDraft[],
+      gtinLinks: ScannedGtinLink[]
     ) => {
       animateLayout();
       const allIds = [...itemIds];
       const frozenIds = new Set(itemIds.filter(id => frozenItemIds.has(id)));
+      // A row this loop mints, with the barcode it came from. The sheet linked
+      // everything whose id it already knew; these are the ones that had no id
+      // until a moment ago. See BarcodeScanSheet's `onApply`.
+      const mintedLinks: ScannedGtinLink[] = [];
       for (const draft of toAdd) {
         let id: string;
         if (draft.existingItemId) {
@@ -799,6 +847,11 @@ export function GroceryScreen() {
             brand: draft.brand,
             aisle: draft.aisle,
           }).id;
+          // Brand-only, matching what addByName just filed: a minted row is
+          // *named* after the residue, so there is no variant left over.
+          if (draft.gtin) {
+            mintedLinks.push({ gtin: draft.gtin, itemId: id, brand: draft.brand, variant: null });
+          }
         }
         allIds.push(id);
         if (draft.frozen) frozenIds.add(id);
@@ -810,6 +863,10 @@ export function GroceryScreen() {
       for (const product of products) {
         addProduct(product.itemId, { brand: product.brand, variant: product.variant });
       }
+      // Last, because a link finds its box by the brand and variant the writes
+      // above just filed. Running it earlier would land every scan on the
+      // item-level fallback and never on the box it actually read.
+      linkScannedGtins([...gtinLinks, ...mintedLinks]);
       if (allIds.length > 0) setCheckedMany(allIds, true);
       // Merged rather than replaced: a second scan session before the trip
       // finishes shouldn't forget what the first one flagged.
@@ -820,7 +877,7 @@ export function GroceryScreen() {
       setScanOpen(false);
       setFinishOpen(true);
     },
-    [setCheckedMany, addExisting, addByName, addProduct]
+    [setCheckedMany, addExisting, addByName, addProduct, linkScannedGtins]
   );
 
   const handleClearTrip = useCallback(() => {
@@ -1096,6 +1153,7 @@ export function GroceryScreen() {
             setTripIntent('start');
             setTripOpen(true);
           }}
+          onFinish={() => setFinishOpen(true)}
           onClear={handleClearTrip}
         />
       )}
@@ -1275,6 +1333,10 @@ export function GroceryScreen() {
         seedShopId={receiptSeed?.shopId}
         seedPriceText={receiptSeed?.priceText}
         seedPurchasedAt={receiptSeed?.purchasedAt}
+        seedStamp={receiptSeed?.stamp}
+        // Gated on a key for the reason the list's own button is: without one
+        // the action opens a sheet that can only apologise.
+        onScanReceipt={anthropicApiKey ? () => setReceiptOpen(true) : undefined}
         onClose={() => {
           setFinishOpen(false);
           setReceiptSeed(null);
@@ -1288,8 +1350,12 @@ export function GroceryScreen() {
         onApply={handleScanApply}
       />
 
+      {/* Rendered over the finish sheet rather than instead of it when that's
+          where it was opened from — the two are siblings, and the finish
+          sheet's own `visible` is left alone. */}
       <ReceiptImportSheet
         visible={receiptOpen}
+        context="shopping"
         onClose={() => setReceiptOpen(false)}
         onApply={handleReceiptApply}
       />

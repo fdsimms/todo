@@ -695,7 +695,7 @@ function makeStyles(colors: Colors) {
     label: {
       fontSize: font.xs,
       fontWeight: fontWeight.semibold,
-      color: colors.textTertiary,
+      color: colors.textSecondary,
       letterSpacing: 0.8,
       marginTop: spacing.xl,
     },

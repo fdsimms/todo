@@ -108,6 +108,36 @@ that pair are the argument for the whole shape:
   home. Coming home with something refutes the whole shelf-shaped claim at once, and it's the one
   correction nobody should have to make by hand.
 
+**A barcode names a box, and that is where a scan's memory lives** (`ItemProduct.gtin`). It is the
+only globally unique identity in this file — `productKey` right beside it is unique *within* an
+item, because two items may each have a "store brand" — so it gets its own partial UNIQUE index and
+a release-then-claim write (`dbSetProductGtin`), since pointing a code at a second box has to take
+it off the first.
+
+- **It is not on `gtin_lookups`,** and that table's own doc comment is why: it is excluded from
+  both sync and backup on the grounds that it records nothing about the user, so a pointer at one
+  of their catalog rows kept there would not survive a restore and would never reach a second
+  device. What a barcode *denotes* is shared and impersonal; which of your boxes it is, is yours.
+- **A second, item-level link is written alongside it**, as a GTIN-keyed `StoreAlias` with a
+  null `shopId` (`gtinAliasText`, prefixed so an all-digits receipt line can't key the same).
+  The two are different facts and the item-level one is the durable half: it is what answers for
+  a row with no box at all, which is the unfound-barcode case, and it is the code most worth
+  remembering since nothing about it will ever improve on its own. `gtinItemFor` reads box first,
+  alias second.
+- **The link is what stops the box being re-derived, and that was a real bug.** `variantFor`
+  subtracts the item's own name from the product name, so a row renamed away from the source's
+  wording ("vegan sausage" for "Beyond Plant Based Sausages Cajun") leaves nothing to subtract and
+  returns null — minting a brand-only second box beside the real one on every scan. Once a barcode
+  names a box, `BarcodeScanSheet` uses that box rather than deriving one.
+- **A merge folds it like a rating: the survivor's wins, the loser's fills a silence.** It is the
+  one product field `dbSetItemProduct` doesn't carry, so `mergeItems` claims an adopted code
+  explicitly — release-then-claim is what makes that safe while the loser's row is still waiting
+  for the cascade.
+- **Nothing infers one.** Like an alias, a link is only written from a scan session the user
+  applied. That includes rows the session *mints*, which is the deliberate difference from the
+  label alias beside it: a phrase alias on a minted row would map a name to itself and teach
+  nothing, where a barcode link on one teaches everything.
+
 **A product is not a substitute, and the line is: same box → product, different thing →
 substitute.** A hamburger bun standing in for bread is a different thing you buy, with its own
 aisle, its own pantry state and its own recipes calling for it, so it stays an `ItemSubLink`
@@ -244,13 +274,13 @@ which rows you don't usually get here.
   you're there now. Overloading the one button would set the mode at exactly the wrong moment.
   Offered for a single selection only: you can only stand in one store, and a two-stop plan is
   still a plan. Nothing anywhere infers a trip.
-- **Three terminators, and they're in three different places for a reason.** The Clear button and
-  `clearList` end it in the store; finishing ends it in `GroceryScreen.handleFinished` rather than
-  inside `finishShopping`, because that early-returns on an empty trolley and finishing a shop you
-  bought nothing at still ends the trip. Expiry is handled twice — `initialize` repairs at read
-  time (not written back, like the aisle order), and `checkTripExpiry` on screen focus clears the
-  fields so an expiry that happened while the app was open becomes *visible* rather than merely
-  true; a memo whose inputs haven't changed won't re-render itself away.
+- **Three terminators, and they're in three different places for a reason.** The banner's Stop
+  button and `clearList` end it in the store; finishing ends it in `GroceryScreen.handleFinished`
+  rather than inside `finishShopping`, because that early-returns on an empty trolley and finishing
+  a shop you bought nothing at still ends the trip. Expiry is handled twice — `initialize` repairs
+  at read time (not written back, like the aisle order), and `checkTripExpiry` on screen focus
+  clears the fields so an expiry that happened while the app was open becomes *visible* rather than
+  merely true; a memo whose inputs haven't changed won't re-render itself away.
 - **Silence is the default and it's load-bearing** (`tripMarkerFor`). Only three things can be
   said, and each is backed by something the user recorded: `unavailable` ("Not at Safeway", their
   own negative claim), `only` ("Only at Costco", every store on record is one other — a hand
@@ -263,6 +293,28 @@ which rows you don't usually get here.
   `StartTripPrompt`. A mode indicator that scrolls away is one you can't find to turn off, and
   it's the answer to "why does this row say that" at the moment you're looking at the row. The two
   never render together: the card is for deciding where to go, the banner says you've gone.
+- **The banner is where a trip ends, and Finish outranks Stop on it.** It used to spend its only
+  button — accent-filled, the one the eye goes to — on Clear, while finishing was reachable only
+  from `bag-check-outline`, fifth in a row of header icons. That ranked the escape hatch above the
+  action every trip actually ends in. Finish is the filled button now, full width under the store
+  name and sized for a walking thumb; Stop (the old Clear, renamed because "clear" beside "finish"
+  reads as *clear the list*, which is a different and real action) is the quiet pill beside it. The
+  header icon stays: it carries the cart badge, and it's where anyone already using this reaches.
+  The Finish button appears with the first ticked row and not before, which is what the header
+  action's `disabled` has always said — an empty cart has nothing to finish, and Stop is the honest
+  way out of one.
+- **The three kitchen screens without a finish sheet route to the one that has it.** Recipes, Meal
+  plan and Pantry pass `resetToGroceries(true)`, which lands on Groceries with a stamped
+  `openFinish` param the screen turns into an open sheet — the same handoff `resetToMealPlan`'s
+  `focusDay` uses, and the same one `dundundun://groceries?finish=1` goes through.
+- **The Live Activity can finish a trip too, and it's a `Link` rather than an intent.** A Live
+  Activity button's AppIntent runs in the background only and can't bring the app forward (see
+  `TimerLiveActivity.swift`'s own note), which is why the trip activity had no button at all until
+  now: finishing is a question — which leftovers didn't the store have, what did each thing cost —
+  and can only be answered inside the app. The deep link *is* that question asked from the Lock
+  Screen. It carries no count, because the attributes are fixed when the trip starts and nothing
+  is ever pushed an update; `GroceryScreen` decides on arrival whether there's anything to finish,
+  and lands on the list without a sheet when there isn't.
 - **The row caption is its own third text treatment**, borrowing `note`'s colour and
   `alternatives`' weight. A row can carry all three at once (a noted either/or item on record
   elsewhere); at identical styling they run together into a block you can't read while walking.
