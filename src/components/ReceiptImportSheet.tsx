@@ -82,6 +82,16 @@ export interface ReceiptAddDraft {
   priceMinor: number | null;
   /** The barcode scan sheet's per-row freezer toggle. Always undefined here — a receipt has no shelf to ask about. */
   frozen?: boolean;
+  /**
+   * The barcode this row was scanned from, so the row it mints can be linked
+   * back to the code — see `linkScannedGtins`.
+   *
+   * Undefined from a receipt, which prints no barcodes, and null for a scan
+   * row that was typed rather than read. It rides the shared draft for the
+   * reason `brand` does: both paths mint rows through one handler, and only
+   * that handler knows the id a minted row ends up with.
+   */
+  gtin?: string | null;
 }
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */

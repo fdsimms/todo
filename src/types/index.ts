@@ -1634,6 +1634,24 @@ export interface ItemProduct {
   // subset of it. Nothing sums them to produce a total.
   purchaseCount: number;
   lastPurchasedAt: string | null;
+  // The barcode on this box, once a scan has been confirmed against it. Null
+  // for every product named by hand, which is most of them.
+  //
+  // **This is the one identity here that is globally unique**, unlike
+  // `productKey` right above it, and the two are unique for opposite reasons:
+  // a product key is scoped to its item because two items may each have a
+  // "store brand", while a GTIN denotes one box in the world. Hence its own
+  // partial UNIQUE index rather than a second `(item_id, …)` one, and hence
+  // `dbSetProductGtin`'s release-then-claim write: moving a barcode to another
+  // box has to take it off the first.
+  //
+  // **It lives here, and not on `gtin_lookups`, because it is a personal
+  // fact.** That table is excluded from both sync and backup on the grounds
+  // that it records nothing about the user (see `GtinLookup`), so a pointer at
+  // one of their catalog rows kept there would not survive a restore and would
+  // never reach a second device. What a barcode *denotes* is shared; which of
+  // your boxes it is, is yours.
+  gtin: string | null;
   createdAt: string;
 }
 

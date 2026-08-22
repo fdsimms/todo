@@ -45,6 +45,7 @@ import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
+import type { ScannedGtinLink } from '../utils/scanResolve';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { StartTripPrompt } from '../components/StartTripPrompt';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
@@ -150,6 +151,7 @@ export function GroceryScreen() {
   const addExisting = useGroceryStore(s => s.addExisting);
   const addByName = useGroceryStore(s => s.addByName);
   const addProduct = useGroceryStore(s => s.addProduct);
+  const linkScannedGtins = useGroceryStore(s => s.linkScannedGtins);
   const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
   const linkItemSub = useGroceryStore(s => s.linkItemSub);
   const swapForSubstitute = useGroceryStore(s => s.swapForSubstitute);
@@ -782,11 +784,16 @@ export function GroceryScreen() {
       itemIds: string[],
       toAdd: ReceiptAddDraft[],
       frozenItemIds: ReadonlySet<string>,
-      products: ScanProductDraft[]
+      products: ScanProductDraft[],
+      gtinLinks: ScannedGtinLink[]
     ) => {
       animateLayout();
       const allIds = [...itemIds];
       const frozenIds = new Set(itemIds.filter(id => frozenItemIds.has(id)));
+      // A row this loop mints, with the barcode it came from. The sheet linked
+      // everything whose id it already knew; these are the ones that had no id
+      // until a moment ago. See BarcodeScanSheet's `onApply`.
+      const mintedLinks: ScannedGtinLink[] = [];
       for (const draft of toAdd) {
         let id: string;
         if (draft.existingItemId) {
@@ -799,6 +806,11 @@ export function GroceryScreen() {
             brand: draft.brand,
             aisle: draft.aisle,
           }).id;
+          // Brand-only, matching what addByName just filed: a minted row is
+          // *named* after the residue, so there is no variant left over.
+          if (draft.gtin) {
+            mintedLinks.push({ gtin: draft.gtin, itemId: id, brand: draft.brand, variant: null });
+          }
         }
         allIds.push(id);
         if (draft.frozen) frozenIds.add(id);
@@ -810,6 +822,10 @@ export function GroceryScreen() {
       for (const product of products) {
         addProduct(product.itemId, { brand: product.brand, variant: product.variant });
       }
+      // Last, because a link finds its box by the brand and variant the writes
+      // above just filed. Running it earlier would land every scan on the
+      // item-level fallback and never on the box it actually read.
+      linkScannedGtins([...gtinLinks, ...mintedLinks]);
       if (allIds.length > 0) setCheckedMany(allIds, true);
       // Merged rather than replaced: a second scan session before the trip
       // finishes shouldn't forget what the first one flagged.
@@ -820,7 +836,7 @@ export function GroceryScreen() {
       setScanOpen(false);
       setFinishOpen(true);
     },
-    [setCheckedMany, addExisting, addByName, addProduct]
+    [setCheckedMany, addExisting, addByName, addProduct, linkScannedGtins]
   );
 
   const handleClearTrip = useCallback(() => {

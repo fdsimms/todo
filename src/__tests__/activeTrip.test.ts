@@ -309,6 +309,7 @@ describe('tripMarkerFor', () => {
       note: '',
       purchaseCount: 0,
       lastPurchasedAt: null,
+      gtin: null,
       createdAt: '2026-01-01T00:00:00.000Z',
     }];
     const strict = item('milk', { preferredProductId: GOOD_CULTURE, productStrict: true });
@@ -350,7 +351,7 @@ describe('tripMarkerFor', () => {
       const withStore = [...products, {
         id: 'p-store', itemId: 'milk', brand: 'Store brand', variant: null,
         productKey: 'store brand|', rating: null, note: '',
-        purchaseCount: 0, lastPurchasedAt: null, createdAt: '2026-02-01T00:00:00.000Z',
+        purchaseCount: 0, lastPurchasedAt: null, gtin: null, createdAt: '2026-02-01T00:00:00.000Z',
       }];
       const links = [link('milk', safeway.id, 3, NO_PRODUCT)];
       expect(tripMarkerFor(strict, links, shops, safeway, [], [], withStore)).toEqual({
@@ -368,7 +369,7 @@ describe('tripMarkerFor', () => {
       const withAvoided = [...products, {
         id: 'p-store', itemId: 'milk', brand: 'Store brand', variant: null,
         productKey: 'store brand|', rating: 'avoid' as const, note: '',
-        purchaseCount: 0, lastPurchasedAt: null, createdAt: '2026-02-01T00:00:00.000Z',
+        purchaseCount: 0, lastPurchasedAt: null, gtin: null, createdAt: '2026-02-01T00:00:00.000Z',
       }];
       const links = [link('milk', safeway.id, 3, NO_PRODUCT)];
       expect(tripMarkerFor(strict, links, shops, safeway, [], [], withAvoided)?.alternativeProduct)
@@ -381,7 +382,7 @@ describe('tripMarkerFor', () => {
       const withStore = [...products, {
         id: 'p-store', itemId: 'milk', brand: 'Store brand', variant: null,
         productKey: 'store brand|', rating: null, note: '',
-        purchaseCount: 0, lastPurchasedAt: null, createdAt: '2026-02-01T00:00:00.000Z',
+        purchaseCount: 0, lastPurchasedAt: null, gtin: null, createdAt: '2026-02-01T00:00:00.000Z',
       }];
       const bothMissing = {
         unavailableProductIds: {

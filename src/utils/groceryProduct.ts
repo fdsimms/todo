@@ -151,6 +151,27 @@ export function productsForItem(
 }
 
 /**
+ * The box a barcode was last confirmed against, or null.
+ *
+ * The most specific answer a scan can get, and the reason `ItemProduct.gtin`
+ * exists rather than only a GTIN alias onto the item: this names *which* box,
+ * so a rescan can restore the brand and variant instead of re-deriving them
+ * from the product name. `variantFor` can no longer do that once the item has
+ * been renamed away from the source's wording, which is exactly the case
+ * linking a barcode is for.
+ *
+ * A blank code answers nothing rather than matching every product with no
+ * barcode, the same guard `aliasItemIdFor` puts on an empty key.
+ */
+export function productForGtin(
+  products: readonly ItemProduct[],
+  gtin: string | null,
+): ItemProduct | null {
+  if (!gtin) return null;
+  return products.find(p => p.gtin === gtin) ?? null;
+}
+
+/**
  * The box this item's row is asking for, or null for the common "any of them
  * will do" case.
  *
