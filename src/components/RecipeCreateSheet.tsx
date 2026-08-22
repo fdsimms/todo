@@ -19,9 +19,7 @@ import {
   font,
   fontWeight,
   border,
-  iconSize,
   interaction,
-  checkboxRadius,
   type Colors,
 } from '../theme';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
@@ -38,13 +36,15 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker, type RecipeInputMode } from './RecipeSourcePicker';
 import { ExtractedIngredientRow, type ExtractedIngredientRowHandle } from './ExtractedIngredientRow';
+import { ImportApplyRow } from './ImportApplyRow';
+import {
+  methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines,
+} from '../utils/recipeImportPreview';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
 import { ImportedComponentRow } from './ImportedComponentRow';
 import { coveredIngredients, importableReferences } from '../utils/recipeImportComponents';
 import { haptics } from '../utils/haptics';
-
-const CHECKBOX_SIZE = 22;
 
 interface Props {
   visible: boolean;
@@ -81,6 +81,15 @@ interface Props {
  * fallback for whichever a site doesn't publish as structured data. The page's
  * own steps are preferred when both exist; only attribution stays link-only,
  * since nothing else names where a recipe came from.
+ *
+ * **The method and the prep tasks are reviewable rows, not a footnote** (#1618).
+ * They used to be written to the new recipe unconditionally, announced only by
+ * a sentence in the intro saying how many of each had been found — so the one
+ * part of an import you couldn't check before committing to it was the part
+ * with the most words in it, and prep tasks additionally schedule themselves
+ * days ahead of the meal. Both now sit in the list as `ImportApplyRow`s that
+ * unfold what they'd add, ticked by default because a new recipe has nothing
+ * of the user's own for them to land on top of.
  */
 export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onCreated }: Props) {
   const colors = useColors();
@@ -117,6 +126,12 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   const [name, setName] = useState('');
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const [applyDetails, setApplyDetails] = useState(true);
+  // Both default *on*, unlike `RecipeExtractSheet`'s: the recipe is being
+  // created here, so there is nothing of the user's own for these to land on
+  // top of and nothing a tick could overwrite. The checkbox exists so a method
+  // the model read badly can be declined, not to protect existing content.
+  const [applyMethod, setApplyMethod] = useState(true);
+  const [applyPrepTasks, setApplyPrepTasks] = useState(true);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   // Whichever add-menu item opened it — "From a link" and "From a photo" both
   // land here, and each opens on its own tab rather than making that tap feel
@@ -147,6 +162,8 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     setName('');
     setAccepted(new Set());
     setApplyDetails(true);
+    setApplyMethod(true);
+    setApplyPrepTasks(true);
     resetInput();
     resetComponents();
   }, [resetInput, resetComponents]);
@@ -268,14 +285,18 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       if (page.author) setAuthor(recipe.id, page.author);
     }
     // The page's own steps when it has them (verbatim structured data),
-    // otherwise whatever the model read off the source itself.
-    methodSteps.forEach(step => addStep(recipe.id, step));
-    extracted.prepTasks.forEach(task => {
-      const added = addPrepTask(recipe.id, task.title);
-      if (added && task.offsetDays !== added.offsetDays) {
-        updatePrepTask(recipe.id, added.id, { offsetDays: task.offsetDays });
-      }
-    });
+    // otherwise whatever the model read off the source itself. Both of these
+    // used to be written unconditionally, announced only by a sentence in the
+    // intro — now they're rows you can read and untick like everything else.
+    if (applyMethod) methodSteps.forEach(step => addStep(recipe.id, step));
+    if (applyPrepTasks) {
+      extracted.prepTasks.forEach(task => {
+        const added = addPrepTask(recipe.id, task.title);
+        if (added && task.offsetDays !== added.offsetDays) {
+          updatePrepTask(recipe.id, added.id, { offsetDays: task.offsetDays });
+        }
+      });
+    }
     haptics.success();
     // Close first, then navigate: a navigate fired from under a live pageSheet
     // renders the destination behind the sheet.
@@ -293,13 +314,13 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
           extracted.prepMinutes !== null ? `, about ${extracted.prepMinutes} min` : ''}`
       : `About ${extracted.prepMinutes} min`;
 
-  // The method isn't in the review list — there's nothing to tick or correct —
-  // but arriving with steps nobody mentioned is a surprise, so the count is
-  // said out loud. The page's own steps (verbatim structured data) win over
-  // the model's read of the same source when both exist.
+  // The page's own steps (verbatim structured data) win over the model's read
+  // of the same source when both exist.
   const methodSteps = (input.page?.steps.length ?? 0) > 0 ? input.page!.steps : (extracted?.steps ?? []);
-  const stepCount = methodSteps.length;
-  const prepTaskCount = extracted?.prepTasks.length ?? 0;
+  const extractedPrepTasks = extracted?.prepTasks ?? [];
+  // Nothing to append after: this recipe doesn't exist yet.
+  const methodMeta = methodRowMeta(methodSteps.length, false);
+  const prepTasksMeta = prepTasksRowMeta(extractedPrepTasks.length, false);
 
 
   // A deterministic failure — a mistyped address, a site that refuses us, a page
@@ -454,34 +475,46 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
         </View>
 
         <Text style={styles.intro}>
-          Untick anything you don't want added, or tap a name or amount to change it.
-          {stepCount > 0 && ` The method comes across too — ${stepCount} step${stepCount === 1 ? '' : 's'}.`}
-          {prepTaskCount > 0 && ` So do any prep tasks it needs ahead of time — ${prepTaskCount} found.`}
+          Uncheck anything you don't want added, or tap a name or amount to change it.
         </Text>
 
         {(extracted.servings !== null || extracted.prepMinutes !== null) && (
-          <TouchableOpacity
-            style={styles.row}
-            activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); setApplyDetails(v => !v); }}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: applyDetails }}
+          <ImportApplyRow
+            checked={applyDetails}
+            onToggle={() => setApplyDetails(v => !v)}
+            title={extracted.servings !== null
+              ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
+              : `About ${extracted.prepMinutes} min`}
+            meta={extracted.servings !== null && extracted.prepMinutes !== null
+              ? `About ${extracted.prepMinutes} min`
+              : null}
             accessibilityLabel={detailsLabel}
-          >
-            <View style={[styles.checkbox, applyDetails && styles.checkboxOn]}>
-              {applyDetails && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-            </View>
-            <View style={styles.body}>
-              <Text style={styles.name}>
-                {extracted.servings !== null
-                  ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
-                  : `About ${extracted.prepMinutes} min`}
-              </Text>
-              {extracted.servings !== null && extracted.prepMinutes !== null && (
-                <Text style={styles.meta}>About {extracted.prepMinutes} min</Text>
-              )}
-            </View>
-          </TouchableOpacity>
+          />
+        )}
+
+        {methodSteps.length > 0 && (
+          <ImportApplyRow
+            checked={applyMethod}
+            onToggle={() => setApplyMethod(v => !v)}
+            title="Method"
+            meta={methodMeta}
+            accessibilityLabel={`Method, ${methodMeta}`}
+            preview={methodPreviewLines(methodSteps)}
+            ordered
+            previewNoun="step"
+          />
+        )}
+
+        {extractedPrepTasks.length > 0 && (
+          <ImportApplyRow
+            checked={applyPrepTasks}
+            onToggle={() => setApplyPrepTasks(v => !v)}
+            title="Prep tasks"
+            meta={prepTasksMeta}
+            accessibilityLabel={`Prep tasks, ${prepTasksMeta}`}
+            preview={prepTaskPreviewLines(extractedPrepTasks)}
+            previewNoun="task"
+          />
         )}
 
         {renderReferences()}
@@ -605,29 +638,5 @@ function makeStyles(colors: Colors) {
     },
     dupeText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
     dupeAction: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.semibold },
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      backgroundColor: colors.bgSecondary,
-      marginHorizontal: spacing.md,
-      marginVertical: 2,
-      borderRadius: radius.md,
-      paddingVertical: 12,
-      paddingHorizontal: spacing.md,
-    },
-    checkbox: {
-      width: CHECKBOX_SIZE,
-      height: CHECKBOX_SIZE,
-      borderRadius: checkboxRadius(CHECKBOX_SIZE),
-      borderWidth: border.md,
-      borderColor: colors.separator,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    checkboxOn: { backgroundColor: colors.purple, borderColor: colors.purple },
-    body: { flex: 1 },
-    name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
   });
 }

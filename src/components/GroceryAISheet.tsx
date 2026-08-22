@@ -288,8 +288,8 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
         <Text style={styles.intro}>
           {mode === 'tidy'
-            ? 'Untick anything you’d rather leave where it is.'
-            : 'Untick anything you already have.'}
+            ? 'Uncheck anything you’d rather leave where it is.'
+            : 'Uncheck anything you already have.'}
         </Text>
         {(mode === 'tidy' ? tidyRows : recipeRows).map((row, i) => {
           const on = accepted.has(i);

@@ -3,7 +3,6 @@ import {
   Modal,
   View,
   Text,
-  TouchableOpacity,
   ScrollView,
   ActivityIndicator,
   StyleSheet,
@@ -15,13 +14,9 @@ import type { Recipe } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import {
   spacing,
-  radius,
   font,
   fontWeight,
   border,
-  iconSize,
-  interaction,
-  checkboxRadius,
   type Colors,
 } from '../theme';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -38,13 +33,15 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
 import { ExtractedIngredientRow, type ExtractedIngredientRowHandle } from './ExtractedIngredientRow';
+import { ImportApplyRow } from './ImportApplyRow';
+import {
+  methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines,
+} from '../utils/recipeImportPreview';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
 import { ImportedComponentRow } from './ImportedComponentRow';
 import { coveredIngredients, importableReferences } from '../utils/recipeImportComponents';
 import { haptics } from '../utils/haptics';
-
-const CHECKBOX_SIZE = 22;
 
 interface Props {
   visible: boolean;
@@ -73,9 +70,10 @@ interface Props {
  * this sheet has always applied, and why they were the original exception. The
  * method (from a paste or a photo) and prep tasks (from any source) are a
  * *model's* guess instead, same as the ingredient list already is — reviewed
- * the same way, by the row's tick and its count, rather than left un-offered.
- * A link's own steps are still preferred over the model's read of the same
- * page when both exist.
+ * the same way, by the row's tick and by unfolding the lines it would write
+ * (#1618), rather than left un-offered. A count alone was not a review: it
+ * said seven steps were coming without showing one of them. A link's own steps
+ * are still preferred over the model's read of the same page when both exist.
  */
 export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const colors = useColors();
@@ -301,14 +299,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const backLabel = input.usingLink ? 'Change the link' : 'Go back';
   const goBack = () => { setError(null); setExtracted(null); };
 
-  // Says what will happen rather than only what was found: the method row is
-  // the one place a recipe can end up with two methods, so the row that does
-  // it is where that has to be readable.
-  const methodMeta = `${methodSteps.length} step${methodSteps.length === 1 ? '' : 's'}${
-    recipeHasMethod(recipe) ? ', added after the method it already has' : ''}`;
-
-  const prepTasksMeta = `${extractedPrepTasks.length} task${extractedPrepTasks.length === 1 ? '' : 's'}${
-    recipeHasPrepTasks(recipe) ? ', added after what it already has' : ''}`;
+  const methodMeta = methodRowMeta(methodSteps.length, recipeHasMethod(recipe));
+  const prepTasksMeta = prepTasksRowMeta(extractedPrepTasks.length, recipeHasPrepTasks(recipe));
 
   const sourceMeta = [
     [input.page?.siteName, input.page?.author].filter(Boolean).join(' · ') || input.page?.url,
@@ -346,32 +338,6 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       </>
     );
   };
-
-  /** The tick-to-apply row this list is built from — three of them now. */
-  const renderToggle = ({ checked, onToggle, title, meta, label }: {
-    checked: boolean;
-    onToggle: () => void;
-    title: string;
-    meta: string | null;
-    label: string;
-  }) => (
-    <TouchableOpacity
-      style={styles.row}
-      activeOpacity={interaction.activeOpacity}
-      onPress={() => { haptics.tap(); onToggle(); }}
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked }}
-      accessibilityLabel={label}
-    >
-      <View style={[styles.checkbox, checked && styles.checkboxOn]}>
-        {checked && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-      </View>
-      <View style={styles.body}>
-        <Text style={styles.name}>{title}</Text>
-        {!!meta && <Text style={styles.meta}>{meta}</Text>}
-      </View>
-    </TouchableOpacity>
-  );
 
   const renderBody = () => {
     if (loading) {
@@ -458,44 +424,57 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     return (
       <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
         <Text style={styles.intro}>
-          Untick anything you don't want added, or tap a name or amount to change it.
+          Uncheck anything you don't want added, or tap a name or amount to change it.
         </Text>
 
-        {hasDetails && renderToggle({
-          checked: applyDetails,
-          onToggle: () => setApplyDetails(v => !v),
-          title: extracted.servings !== null
-            ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
-            : `About ${extracted.prepMinutes} min`,
-          meta: extracted.servings !== null && extracted.prepMinutes !== null
-            ? `About ${extracted.prepMinutes} min`
-            : null,
-          label: detailsLabel,
-        })}
+        {hasDetails && (
+          <ImportApplyRow
+            checked={applyDetails}
+            onToggle={() => setApplyDetails(v => !v)}
+            title={extracted.servings !== null
+              ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
+              : `About ${extracted.prepMinutes} min`}
+            meta={extracted.servings !== null && extracted.prepMinutes !== null
+              ? `About ${extracted.prepMinutes} min`
+              : null}
+            accessibilityLabel={detailsLabel}
+          />
+        )}
 
-        {methodSteps.length > 0 && renderToggle({
-          checked: applyMethod,
-          onToggle: () => setApplyMethod(v => !v),
-          title: 'Method',
-          meta: methodMeta,
-          label: `Method, ${methodMeta}`,
-        })}
+        {methodSteps.length > 0 && (
+          <ImportApplyRow
+            checked={applyMethod}
+            onToggle={() => setApplyMethod(v => !v)}
+            title="Method"
+            meta={methodMeta}
+            accessibilityLabel={`Method, ${methodMeta}`}
+            preview={methodPreviewLines(methodSteps)}
+            ordered
+            previewNoun="step"
+          />
+        )}
 
-        {extractedPrepTasks.length > 0 && renderToggle({
-          checked: applyPrepTasks,
-          onToggle: () => setApplyPrepTasks(v => !v),
-          title: 'Prep tasks',
-          meta: prepTasksMeta,
-          label: `Prep tasks, ${prepTasksMeta}`,
-        })}
+        {extractedPrepTasks.length > 0 && (
+          <ImportApplyRow
+            checked={applyPrepTasks}
+            onToggle={() => setApplyPrepTasks(v => !v)}
+            title="Prep tasks"
+            meta={prepTasksMeta}
+            accessibilityLabel={`Prep tasks, ${prepTasksMeta}`}
+            preview={prepTaskPreviewLines(extractedPrepTasks)}
+            previewNoun="task"
+          />
+        )}
 
-        {!!input.page && renderToggle({
-          checked: applySource,
-          onToggle: () => setApplySource(v => !v),
-          title: 'Where it’s from',
-          meta: sourceMeta,
-          label: `Where it’s from, ${sourceMeta}`,
-        })}
+        {!!input.page && (
+          <ImportApplyRow
+            checked={applySource}
+            onToggle={() => setApplySource(v => !v)}
+            title="Where it’s from"
+            meta={sourceMeta}
+            accessibilityLabel={`Where it’s from, ${sourceMeta}`}
+          />
+        )}
 
         {renderReferences()}
 
@@ -587,29 +566,5 @@ function makeStyles(colors: Colors) {
     groupBlock: { marginBottom: spacing.sm },
     pasteWrap: { padding: spacing.md, gap: spacing.md },
     photoError: { color: colors.red, fontSize: font.sm, textAlign: 'center' },
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      backgroundColor: colors.bgSecondary,
-      marginHorizontal: spacing.md,
-      marginVertical: 2,
-      borderRadius: radius.md,
-      paddingVertical: 12,
-      paddingHorizontal: spacing.md,
-    },
-    checkbox: {
-      width: CHECKBOX_SIZE,
-      height: CHECKBOX_SIZE,
-      borderRadius: checkboxRadius(CHECKBOX_SIZE),
-      borderWidth: border.md,
-      borderColor: colors.separator,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    checkboxOn: { backgroundColor: colors.purple, borderColor: colors.purple },
-    body: { flex: 1 },
-    name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
   });
 }
