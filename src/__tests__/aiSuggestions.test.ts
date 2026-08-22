@@ -504,7 +504,82 @@ describe('extractRecipe', () => {
       servingsMax: null,
       prepMinutes: 45,
       ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
+      references: [],
     });
+  });
+
+  it('reads the cross-references to other recipes off the page', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Carnitas tacos',
+        items: [{ name: 'pork shoulder', quantity: '3 lb', aisle: 'Meat & Seafood' }],
+        referencedRecipes: [
+          { name: '  Salsa verde  ', reference: '  page 45  ' },
+          { name: 'Mexican rice', reference: 'p. 112' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.references).toEqual([
+      { name: 'Salsa verde', reference: 'page 45' },
+      { name: 'Mexican rice', reference: 'p. 112' },
+    ]);
+  });
+
+  it('drops a reference the model gave no locator for', async () => {
+    // "Serve with rice" names a dish and points nowhere. Without this the
+    // closing line of every method becomes a recipe to go photograph.
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Carnitas tacos',
+        items: [],
+        referencedRecipes: [
+          { name: 'Rice', reference: '' },
+          { name: 'Salsa verde', reference: 'page 45' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.references).toEqual([{ name: 'Salsa verde', reference: 'page 45' }]);
+  });
+
+  it('drops an unnamed reference and collapses two spellings of one name', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Carnitas tacos',
+        items: [],
+        referencedRecipes: [
+          { name: '  ', reference: 'page 9' },
+          { name: 'Salsa verde', reference: 'page 45' },
+          { name: 'SALSA VERDE', reference: 'p. 45' },
+          { name: 'Herb oil', reference: 12 },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.references).toEqual([{ name: 'Salsa verde', reference: 'page 45' }]);
+  });
+
+  it('caps how many references one page can claim', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Carnitas tacos',
+        items: [],
+        referencedRecipes: Array.from({ length: 10 }, (_, i) => ({
+          name: `Side ${i}`,
+          reference: `page ${i + 10}`,
+        })),
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.references).toHaveLength(4);
+  });
+
+  it('comes back with no references when the model omits the field', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', { name: 'Chili', items: [] })
+    );
+    await expect(extractRecipe('some recipe', AISLES)).resolves.toMatchObject({ references: [] });
   });
 
   it('reads the model\'s component field into section', async () => {
@@ -590,6 +665,7 @@ describe('extractRecipe', () => {
     const spy = jest.spyOn(global, 'fetch');
     await expect(extractRecipe('   ', AISLES)).resolves.toEqual({
       name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+      references: [],
     });
     expect(spy).not.toHaveBeenCalled();
   });
@@ -643,6 +719,7 @@ describe('extractRecipe', () => {
         servingsMax: null,
         prepMinutes: 45,
         ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
+        references: [],
       });
     });
 
@@ -666,6 +743,7 @@ describe('extractRecipe', () => {
       const spy = jest.spyOn(global, 'fetch');
       await expect(extractRecipe({ base64: '', mediaType: 'image/jpeg' }, AISLES)).resolves.toEqual({
         name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+        references: [],
       });
       expect(spy).not.toHaveBeenCalled();
     });

@@ -112,6 +112,51 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   follow-up to cooking one. The week-level `AddWeekToListSheet` deliberately has no chips of its
   own: it aggregates many recipes, and each entry already carries its own answers.
 
+## Component recipes read off a photo (`recipeImportComponents.ts`)
+
+A cookbook page routinely points at another recipe in the same book: "1 cup salsa verde
+(page 45)". That is a `Recipe.components` link, and getting it wrong has a concrete cost — the
+parent's own "salsa verde" ingredient line and the component's tomatillos both land on the
+shopping list, buying a jar of the thing you are about to spend twenty minutes making.
+`extractRecipe` returns these as `references` (the model's `referencedRecipes`), and the two
+import sheets offer them above the ingredient list.
+
+- **The offer is made during the import, while the book is still open**, not filed away to
+  act on later. The app cannot fetch page 45; the only thing that can is the phone already
+  held over the book, and it is one page turn away. A stored "you never imported the salsa"
+  note is about a book that has gone back on the shelf. Nothing here is persisted: an
+  ignored reference leaves no trace, and the ingredient line it was attached to behaves
+  exactly as it always did.
+- **The whole flow stays inside the sheet that's already open.** The referenced page is read
+  into `useRecipeComponentImports` state and nothing is written until the sheet's own
+  Create/Add, which lands the parent, the components and the links together. Creating the
+  parent first and *then* asking would leave a committed recipe behind a half-finished
+  import, so backing out would mean cleaning up.
+- **A reference with no locator is dropped, in code and not only in the prompt.** "Serve with
+  rice" names a dish and points nowhere; without the gate, the closing line of every method
+  becomes a recipe the app pesters you to photograph. `parseExtractedReferences` requires a
+  non-empty `reference` — same split `parseExtractedItems` makes between *asking* the model
+  for an aisle and *canonicalising* whatever comes back.
+- **It is a different field from an ingredient's `component`, and the prompt says so in as
+  many words.** That one labels a part of *this* recipe's own list ("For the frosting") and
+  lands on `RecipeIngredient.section`; this one names a separate recipe with its own page.
+  The two words are one keystroke apart in meaning and the model will otherwise conflate them.
+- **Accepting a reference unticks the ingredient line that names it** (`coveredIngredients`,
+  matched on `groceryNameKey`), with a note on the row saying why. A row that unticks itself
+  with no explanation reads as a bug; a row that stays ticked is the double-buy above.
+- **`importableReferences` drops anything `addComponent` would refuse** — the recipe being
+  imported into, a component it already has, a link that would be a cycle — using the same
+  `wouldCreateRecipeCycle` the store checks with. An offer that ends in a silent no-op is an
+  offer not worth making.
+- **The component import is photo-only.** The main import offers paste and link too, because
+  a recipe started from scratch could come from anywhere. A reference has already said where
+  it is: page 45 of the book in front of you.
+- **A page number is kept, because the source stated it.** `referencePageNumber` pulls "45"
+  out of "page 45" and the imported recipe gets `sourceType: 'cookbook'` plus that
+  `sourcePage` — the same provenance-not-a-guess argument that lets a link import write the
+  site name. A locator that names no page ("opposite") leaves both alone rather than writing
+  "opposite" into a field rendered as a page number.
+
 ## Sections (`recipeSections.ts`) — the heading an ingredient sits under
 
 `RecipeIngredient.section` is a label on a flat list, not a nested groups type. A *populated*

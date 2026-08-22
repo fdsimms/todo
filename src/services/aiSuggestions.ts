@@ -294,6 +294,14 @@ const MAX_AISLE_NAMES = 60;
  */
 export const MAX_RECIPE_CHARS = 4_000;
 const MAX_RECIPE_ITEMS = 40;
+/**
+ * Cross-references to other recipes we'll carry back from one page. A cookbook
+ * recipe points at one or two of its neighbours; a page claiming six of them is
+ * a model reading the index, not the recipe.
+ */
+const MAX_RECIPE_REFERENCES = 4;
+/** The locator, verbatim — "page 45", "p. 212", "opposite". Not a sentence. */
+const RECIPE_REFERENCE_MAX_LENGTH = 40;
 
 /**
  * Case-insensitively resolves a model-supplied aisle to the canonical spelling
@@ -440,6 +448,61 @@ function parseExtractedItems(
 }
 
 /**
+ * One "and there's another recipe for this bit, over there" pointer read off
+ * the page — "1 cup salsa verde (page 45)", "serve with the herb oil on p. 12".
+ *
+ * This is what `Recipe.components` is for (see docs/arch/recipes.md): the
+ * referenced dish is a recipe of its own, cooked separately, and linking the
+ * two is what stops "salsa verde" being shopped for as a jar while its own
+ * tomatillos are shopped for as well.
+ *
+ * **Deliberately not the same field as an ingredient's `component`.** That one
+ * labels a part of *this* recipe's own list ("For the frosting") and lands on
+ * `RecipeIngredient.section`; this one names a different recipe entirely. The
+ * prompt says so in as many words, because the two words are one keystroke
+ * apart in meaning and the model will happily conflate them.
+ */
+export interface ExtractedRecipeReference {
+  /** The referenced recipe's own title, as the page prints it. Never empty. */
+  name: string;
+  /**
+   * Where the page says to find it, in its own words — "page 45", "p. 212".
+   * Never empty: see `parseExtractedReferences` for why that's a hard rule.
+   */
+  reference: string;
+}
+
+/**
+ * **A reference with no locator is dropped, and that gate is the whole
+ * false-positive story.** "Serve with rice" mentions a dish and points nowhere;
+ * "serve with the salsa verde on page 45" points somewhere. Without the rule,
+ * every closing line of every method becomes a recipe the app pesters you to go
+ * photograph. The prompt asks for the same thing, but a prompt is a request and
+ * this is the enforcement — same split `parseExtractedItems` makes between
+ * asking for an aisle and canonicalising whatever comes back.
+ */
+function parseExtractedReferences(raw: unknown): ExtractedRecipeReference[] {
+  const items = raw as Array<{ name?: unknown; reference?: unknown }> | undefined;
+  if (!Array.isArray(items)) return [];
+
+  const seen = new Set<string>();
+  const result: ExtractedRecipeReference[] = [];
+  for (const item of items) {
+    if (typeof item?.name !== 'string' || typeof item?.reference !== 'string') continue;
+    const name = item.name.trim().slice(0, RECIPE_NAME_MAX_LENGTH);
+    const reference = item.reference.trim().slice(0, RECIPE_REFERENCE_MAX_LENGTH);
+    if (!name || !reference) continue;
+    // Same key the recipe box files names under, so "Salsa Verde" and "salsa
+    // verde" can't both come back as two things to import.
+    const key = groceryNameKey(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push({ name, reference });
+  }
+  return result.slice(0, MAX_RECIPE_REFERENCES);
+}
+
+/**
  * The shopping-item array schema `extract_recipe` uses, factored out so the
  * invented-meal draft below (#1063) asks for the same shape and reads it back
  * through the same `parseExtractedItems` validator. Two prompts, one schema,
@@ -506,6 +569,12 @@ export interface ExtractedRecipe {
   /** Null when not stated. */
   prepMinutes: number | null;
   ingredients: RecipeGroceryItem[];
+  /**
+   * Other recipes this one tells you to go and make, printed elsewhere in the
+   * same book or on the same site. Empty for the overwhelming majority of
+   * sources; see `ExtractedRecipeReference`.
+   */
+  references: ExtractedRecipeReference[];
 }
 
 /**
@@ -518,6 +587,7 @@ function sharedRecipeInstructions(availableAisles: string[]): string[] {
     'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, just with the prep instruction dropped — "4 cloves" or "3 cloves", not "1 bulb". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method for the shopping list, and skip water.',
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
     'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
+    'A recipe often calls for another recipe printed elsewhere and points you to it: "1 cup salsa verde (page 45)", "serve with the herb oil on p. 12", "uses the pizza dough from page 210". List each of those in "referencedRecipes", with the dish\'s own name and the source\'s own words for where to find it. Two rules: only list one when the source actually points somewhere else for it — "serve with rice" names no recipe and belongs nowhere near this list — and never list a part of this recipe\'s own ingredient list. "For the frosting" is the "component" field above; these are separate recipes with their own pages.',
   ];
 }
 
@@ -547,7 +617,7 @@ export async function extractRecipe(
   const { apiKey, model } = requireFeature('recipeExtraction');
 
   const empty: ExtractedRecipe = {
-    name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+    name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [], references: [],
   };
   const image = typeof source === 'string' ? null : source;
   const text = typeof source === 'string' ? source.trim().slice(0, MAX_RECIPE_CHARS) : '';
@@ -605,6 +675,24 @@ export async function extractRecipe(
             availableAisles,
             'The things a shopper needs to buy for this recipe.',
           ),
+          referencedRecipes: {
+            type: 'array',
+            description: 'Other recipes this one tells you to make, printed elsewhere in the same book or site. Empty array when the source points at nothing.',
+            items: {
+              type: 'object',
+              properties: {
+                name: {
+                  type: 'string',
+                  description: `The referenced recipe's own title, as the source prints it — "Salsa verde", not "the salsa". Under ${RECIPE_NAME_MAX_LENGTH} characters.`,
+                },
+                reference: {
+                  type: 'string',
+                  description: 'Where the source says to find it, in its own words: "page 45", "p. 212", "pages 112-115". Leave the whole entry out if the source names a dish but never says where its recipe is.',
+                },
+              },
+              required: ['name', 'reference'],
+            },
+          },
         },
         required: ['name', 'items'],
       },
@@ -615,7 +703,8 @@ export async function extractRecipe(
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
-    name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown; items?: unknown;
+    name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown;
+    items?: unknown; referencedRecipes?: unknown;
   } | undefined;
   if (!input) throw new Error('No suggestions returned');
 
@@ -636,6 +725,7 @@ export async function extractRecipe(
   return {
     name, servings, servingsMax, prepMinutes,
     ingredients: parseExtractedItems(input.items, availableAisles),
+    references: parseExtractedReferences(input.referencedRecipes),
   };
 }
 
