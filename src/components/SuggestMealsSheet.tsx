@@ -888,7 +888,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionHeader: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     letterSpacing: 0.8,
   },
   sectionHint: { fontSize: font.sm, color: colors.textTertiary, lineHeight: lineHeight.sm },
