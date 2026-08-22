@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  SectionList,
   StyleSheet,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -18,6 +17,7 @@ import {
   radius,
   font,
   fontWeight,
+  border,
   iconSize,
   interaction,
   type Colors,
@@ -30,11 +30,21 @@ import {
   describeKitchen,
   kitchenInventory,
   useUpEntries,
+  FREEZER_SECTION,
   type KitchenEntry,
 } from '../utils/kitchenInventory';
+import {
+  buildKitchenRows,
+  kitchenDragRange,
+  kitchenRowKey,
+  resolveKitchenDrop,
+  type KitchenMove,
+  type KitchenRow,
+} from '../utils/kitchenReorder';
 import { describeUseUpRecipe, useUpRecipes } from '../utils/useUpRecipes';
 import { groceryNameKey } from '../utils/groceryParse';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ReorderableList } from '../components/ReorderableList';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
@@ -77,6 +87,15 @@ import { haptics } from '../utils/haptics';
  * guessing "eaten" would quietly write a fridge-history row the user never
  * chose. Its row opens `LeftoverSheet`, which asks properly.
  *
+ * **A row is dragged to say where the thing is.** Long-pressing one and
+ * dropping it under another heading is the same gesture the shopping list uses
+ * to move an item between aisles, and it means what the heading says: the
+ * freezer for either kind, the fridge for a container, an aisle for a catalog
+ * row. The resolution is `utils/kitchenReorder.ts` and the writes are the same
+ * store actions the two sheets call, so nothing here is a second way of saying
+ * it — see `docs/arch/groceries.md` for why an empty place still gets a
+ * heading, and why a drop inside one section writes nothing.
+ *
  * The two things this screen writes by itself are `addToPantry`, off the
  * field at the top, and `addManyToPantry`, off the barcode action in the
  * header — the same one-bit assertion the item sheet's "Got it" pill writes,
@@ -107,6 +126,8 @@ export function KitchenScreen() {
   const addToPantry = useGroceryStore(s => s.addToPantry);
   const addManyToPantry = useGroceryStore(s => s.addManyToPantry);
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
+  const setFrozen = useGroceryStore(s => s.setFrozen);
+  const setAisle = useGroceryStore(s => s.setAisle);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
 
@@ -138,6 +159,35 @@ export function KitchenScreen() {
   const sections = useMemo(
     () => buildKitchenSections(entries, aisleOrder, query),
     [entries, aisleOrder, query]
+  );
+
+  // A drop that resolves to nothing — a row put back in the section it came
+  // from, or one the model has no write for — leaves the store untouched, and
+  // `ReorderableList` holds the order it committed locally until the `data`
+  // prop it was given changes identity. These rows are derived, so nothing
+  // else would ever change it: this is what hands the list a fresh array so it
+  // drops that copy and re-renders the real order. Bumped on every drop rather
+  // than only the empty ones, because a move that *is* written re-derives from
+  // the store in the same commit anyway.
+  const [dropNonce, setDropNonce] = useState(0);
+
+  // One flat stream of headings and rows, which is what makes "put this in the
+  // freezer" a drag rather than a trip into the item sheet — see
+  // `utils/kitchenReorder.ts`. Both places carry an empty target when they
+  // have no section this render, since a heading that only exists once
+  // something is already under it can't be the way things get there, and the
+  // list can't grow one mid-drag (a key change cancels the drag).
+  const rows = useMemo<KitchenRow[]>(
+    () =>
+      sections.length === 0
+        ? []
+        : buildKitchenRows(sections, {
+            // Something to take back out of the freezer: with no fridge
+            // section rendered, any container that's still live is in it.
+            fridge: entries.some(e => e.kind === 'leftover'),
+            freezer: entries.length > 0,
+          }),
+    [sections, entries, dropNonce]
   );
 
   // What to cook with what's dying. Off `useUpEntries` rather than the whole
@@ -248,6 +298,34 @@ export function KitchenScreen() {
     if (markOutOfMany([entry.sourceId]) > 0) haptics.success();
   };
 
+  // The other half of a drop (`resolveKitchenDrop` is the first): each move is
+  // written through the same store action the row's own sheet writes, so a
+  // drag says exactly what the freezer toggle and the aisle picker already
+  // said, and none of the reconciling either one does is bypassed.
+  //
+  // Leaving the freezer for an aisle is two writes because it's two facts —
+  // the thaw, and where the item is filed — and both are idempotent, so a row
+  // dragged between aisles without ever having been frozen still writes only
+  // the one that changed.
+  const applyMoves = (moves: readonly KitchenMove[]) => {
+    setDropNonce(n => n + 1);
+    if (moves.length === 0) return;
+    for (const move of moves) {
+      if (move.kind === 'grocery') {
+        if (move.to.place === 'freezer') setFrozen(move.sourceId, true);
+        else if (move.to.place === 'aisle') {
+          setFrozen(move.sourceId, false);
+          setAisle(move.sourceId, move.to.aisle);
+        }
+      } else if (move.to.place === 'freezer') {
+        setLeftoverFrozen(move.sourceId, true);
+      } else if (move.to.place === 'fridge') {
+        setLeftoverFrozen(move.sourceId, false);
+      }
+    }
+    haptics.success();
+  };
+
   // The scan sheet only ever hands back which rows to check off a list
   // (itemIds) and which to mint or promote (toAdd) — shopping-list concepts
   // that don't apply here. What this screen wants out of a session is just
@@ -279,26 +357,29 @@ export function KitchenScreen() {
     if (addManyToPantry(names, frozenNames) > 0) haptics.success();
   };
 
-  const renderItem = ({ item: entry }: { item: KitchenEntry }) => {
+  const renderEntry = (entry: KitchenEntry, drag: () => void, isActive: boolean) => {
     // Three levels for four states, the fridge card's own rule: `fresh` reads
     // as ordinary tertiary text, so most of a kitchen stays quiet and the one
     // thing going off is the one thing coloured.
     const tint = entry.freshness ? freshnessColor(entry.freshness, colors) : colors.textTertiary;
     return (
       <TouchableOpacity
-        style={styles.row}
+        style={[styles.row, isActive && styles.rowActive]}
         activeOpacity={interaction.activeOpacity}
         onPress={() => {
           haptics.tap();
           if (entry.kind === 'leftover') setOpenLeftoverId(entry.sourceId);
           else setOpenItemId(entry.sourceId);
         }}
+        // The lift haptic is ReorderableList's own, so there's none here.
+        onLongPress={drag}
+        delayLongPress={interaction.delayLongPress}
         accessibilityRole="button"
         accessibilityLabel={`${entry.title}, ${entry.caption}`}
         accessibilityHint={
           entry.kind === 'leftover'
-            ? 'Opens the container, where you can close it out'
-            : 'Opens the item, where you can correct it further'
+            ? 'Opens the container, where you can close it out. Long press to move it between the fridge and the freezer'
+            : 'Opens the item, where you can correct it further. Long press to move it to another aisle or the freezer'
         }
       >
         <View style={styles.body}>
@@ -327,6 +408,36 @@ export function KitchenScreen() {
         )}
       </TouchableOpacity>
     );
+  };
+
+  const renderRow = ({
+    item: row,
+    drag,
+    isActive,
+  }: {
+    item: KitchenRow;
+    drag: () => void;
+    isActive: boolean;
+  }) => {
+    if (row.type === 'header') {
+      return (
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{row.section}</Text>
+        </View>
+      );
+    }
+    if (row.type === 'dropHint') {
+      return (
+        <View style={styles.dropHint}>
+          <Text style={styles.dropHintText}>
+            {row.section === FREEZER_SECTION
+              ? 'Drag something here to put it in the freezer'
+              : 'Drag a container here to take it out of the freezer'}
+          </Text>
+        </View>
+      );
+    }
+    return renderEntry(row.entry, drag, isActive);
   };
 
   return (
@@ -380,23 +491,22 @@ export function KitchenScreen() {
         </Text>
       )}
 
-      <SectionList
-        sections={sections}
-        keyExtractor={entry => entry.id}
-        renderItem={renderItem}
-        renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{section.section}</Text>
-          </View>
-        )}
+      <ReorderableList
+        data={rows}
+        keyExtractor={kitchenRowKey}
+        renderItem={renderRow}
+        // dragTick, not tap: a fast drag crosses several rows between frames
+        // and unthrottled ticks run together into one long buzz. The lift
+        // itself is fired by ReorderableList.
+        onHoverChange={haptics.dragTick}
+        dragRange={kitchenDragRange}
+        placeholderStyle={styles.dropSlot}
+        onReorder={reordered => applyMoves(resolveKitchenDrop(reordered))}
         ListHeaderComponent={suggestionHeader}
-        stickySectionHeadersEnabled={false}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
         // Full height when empty so the empty state's `flex: 1` has something
         // to centre in, and without the list's padding shifting that centre.
         contentContainerStyle={
-          sections.length === 0
+          rows.length === 0
             ? styles.emptyContainer
             : [styles.list, { paddingBottom: tabBarHeight + spacing.xl }]
         }
@@ -531,6 +641,35 @@ function makeStyles(colors: Colors) {
       paddingVertical: 12,
       paddingHorizontal: spacing.md,
     },
+    rowActive: {
+      // The lifted card, one surface brighter — the same "picked up" treatment
+      // a dragged grocery row and a dragged aisle get.
+      backgroundColor: colors.bgTertiary,
+    },
+    dropSlot: {
+      // Matches the row geometry above, so the gap that opens is exactly the
+      // shape of the row about to land in it.
+      marginHorizontal: spacing.md,
+      marginVertical: 2,
+      borderRadius: radius.md,
+      backgroundColor: colors.bgSecondary,
+      opacity: 0.55,
+    },
+    // The empty target under a place with nothing in it. Dashed and unfilled
+    // so it reads as a space waiting for something rather than as a row that
+    // is already there — the only row on this screen that isn't a thing you
+    // have.
+    dropHint: {
+      marginHorizontal: spacing.md,
+      marginVertical: 2,
+      borderRadius: radius.md,
+      borderWidth: border.sm,
+      borderStyle: 'dashed',
+      borderColor: colors.separator,
+      paddingVertical: 12,
+      paddingHorizontal: spacing.md,
+    },
+    dropHintText: { fontSize: font.sm, color: colors.textTertiary },
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
