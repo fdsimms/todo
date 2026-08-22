@@ -72,8 +72,8 @@ import { applyMeasuredTime } from '../utils/effort';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
-import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
-import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
+import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
+import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import {
   postponeOutcome,
@@ -2173,7 +2173,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   markMissed(id) {
     const task = get().tasks.find(t => t.id === id);
-    if (!task || task.completed || task.recurrenceType === 'none') return;
+    if (!task || task.completed) return;
+    // A meal-plan task is recurring in every way a user would recognize —
+    // writeMealSlotTasks writes a fresh row per day of its rolling window
+    // regardless of what happened to this one — but it never carries a
+    // recurrenceType, since its schedule comes from that generator rather
+    // than the recurrence engine. isMissableMealPlanTask is its equivalent
+    // of "eligible, and its day has come" (it has no schedule to roll
+    // forward on, so unlike a recurring task it just isn't missable yet).
+    if (task.recurrenceType === 'none' && !isMissableMealPlanTask(task)) return;
     // A recurring row can be showing in Later ahead of its own day, and you
     // cannot have missed something that hasn't come round yet — completeTask
     // refuses it outright (isRecurrenceNotYetDue), which would make every
@@ -2403,6 +2411,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         const nextChainIndex = chainAdvances
           ? (atChainEnd ? 0 : task.chainIndex + 1)
           : task.chainIndex;
+        // A meal-slot chain step's own time gate (see mealSlotStepTimeSegments)
+        // doesn't carry via ...effective like everything else here — it depends
+        // on *where in the chain* the spawned row lands, not on what the step
+        // being completed happened to be gated by. Only the step that finishes
+        // the chain (Eat, Eat X) hides behind the meal's time-of-day segment;
+        // every earlier one (Choose, Prepare, Cook X) is visible all day.
+        // `!atChainEnd` because a real meal-slot task never carries a
+        // recurrence rule (see NO_RECURRENCE) — the wrap branch below is only
+        // ever reached by a user-made chain that happens to repeat, and this
+        // must not reach into that for a `generatedKind` it isn't using the
+        // way this generator does.
+        const mealSlotSource = chainAdvances && !atChainEnd && effective.generatedKind === 'mealSlot'
+          ? parseMealSlotSource(effective.generatedSourceId)
+          : null;
+        const nextTimeSegments = mealSlotSource
+          ? mealSlotStepTimeSegments(mealSlotSource.slot, nextChainIndex, task.chainItems.length)
+          : effective.timeSegments;
         // A fixed deadline is a one-off target date and doesn't carry to the next
         // occurrence. A relative deadline (deadlineOffsetDays or deadlineMonthDay
         // set — mutually exclusive) recomputes against the new dueDate instead,
@@ -2431,6 +2456,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           dueDate: effectiveDue ? effectiveDue.toISOString() : null,
           deadline: nextDeadline,
           deferUntil: null,
+          timeSegments: nextTimeSegments,
           pinned: false, // pin resets on new occurrence
           progressCount: 0, // a quota starts the new day empty
           // The question carries via ...effective, the answer doesn't: this
@@ -4578,10 +4604,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  // Bulk equivalent of markMissed. Same per-task guard applies (recurring
-  // and not already completed; a task not yet due rolls forward silently
-  // instead of stamping a miss), so a mixed selection just skips whatever
-  // doesn't qualify rather than needing its own filtering here.
+  // Bulk equivalent of markMissed. Same per-task guard applies (recurring or
+  // a meal-plan task, and not already completed; a task not yet due rolls
+  // forward or is skipped instead of stamping a miss), so a mixed selection
+  // just skips whatever doesn't qualify rather than needing its own
+  // filtering here.
   bulkMarkMissed(ids) {
     if (ids.length === 0) return;
     const missedIds: string[] = [];

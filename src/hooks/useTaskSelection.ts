@@ -1,6 +1,6 @@
 import { Alert } from 'react-native';
 import type { Task } from '../types';
-import { isLiveRecurring } from '../utils/visibilityUtils';
+import { isLiveRecurring, isMissableMealPlanTask } from '../utils/visibilityUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRowSelection } from './useRowSelection';
 import { confirmDelete } from '../utils/confirmDelete';
@@ -17,20 +17,21 @@ export function useTaskSelection(allTasks: Task[]) {
 
   // A live recurring task in the selection makes "delete" ambiguous — see
   // the matching prompt in TaskItem's single-task delete flow (now folded
-  // into this same bulk path). For a mixed selection, "This Task(s)" marks
-  // just the recurring ones missed — closing each out as not-done and moving
-  // it to its next occurrence — and deletes the rest;
-  // "This and Future Tasks" deletes everything, ending any series in the
+  // into this same bulk path). A meal-plan task whose day has come is the
+  // same ambiguity for a different reason: it has no series to end, but
+  // deleting it outright still loses the record a mark-missed would have
+  // kept. For a mixed selection, "Mark Missed" marks just those tasks
+  // missed and deletes the rest; "Delete Everything" deletes the whole
   // selection.
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
     const count = ids.length;
     const plural = count === 1 ? 'task' : 'tasks';
-    const liveRecurringIds = ids.filter(id => {
+    const missableIds = ids.filter(id => {
       const t = allTasks.find(x => x.id === id);
-      return t ? isLiveRecurring(t) : false;
+      return t ? (isLiveRecurring(t) || isMissableMealPlanTask(t)) : false;
     });
-    if (liveRecurringIds.length === 0) {
+    if (missableIds.length === 0) {
       confirmDelete({
         title: `Delete ${count} ${plural}?`,
         message: `You're about to delete ${count} ${plural}. You can undo this by shaking your phone right after.`,
@@ -41,22 +42,22 @@ export function useTaskSelection(allTasks: Task[]) {
       });
       return;
     }
-    const restIds = ids.filter(id => !liveRecurringIds.includes(id));
+    const restIds = ids.filter(id => !missableIds.includes(id));
     Alert.alert(
       `Delete ${count} ${plural}?`,
-      'Some selected tasks repeat. Mark just this occurrence missed for those, or delete everything and stop their series? You can undo this by shaking your phone right after.',
+      'Some selected tasks repeat or came from your meal plan. Mark those missed instead of deleting them, or delete everything? You can undo this by shaking your phone right after.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'This Task(s)',
+          text: 'Mark Missed',
           onPress: () => {
-            liveRecurringIds.forEach(id => markMissed(id));
+            missableIds.forEach(id => markMissed(id));
             bulkDeleteTasks(restIds);
             exitSelection();
           },
         },
         {
-          text: 'This and Future Tasks',
+          text: 'Delete Everything',
           style: 'destructive',
           onPress: () => {
             bulkDeleteTasks(ids);

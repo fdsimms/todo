@@ -566,6 +566,21 @@ export function isRecurrenceNotYetDue(task: Task): boolean {
   return task.recurrenceType !== 'none' && !task.completed && !hasDayArrived(task);
 }
 
+// True for a meal-plan task (written by writeMealSlotTasks in mealSlotTasks.ts)
+// whose own day has come. It's the meal-plan equivalent of the "day hasn't
+// arrived yet" half of isRecurrenceNotYetDue, generalized to the one other
+// task kind the missed button — and the "mark missed instead of deleting"
+// escape hatch — now cover. A meal-plan task never carries a recurrenceType
+// (its day-to-day repetition comes from the generator writing a fresh row
+// per day, not from the recurrence engine), so it needs its own check rather
+// than reusing isRecurrenceNotYetDue, which is gated on recurrenceType.
+// Unlike a recurring task, one not yet due isn't "missable in a different
+// way" — it has no schedule to roll forward on, so it's simply not missable
+// yet.
+export function isMissableMealPlanTask(task: Task): boolean {
+  return task.generatedKind === 'mealSlot' && !task.completed && hasDayArrived(task);
+}
+
 // True for a not-yet-completed recurring task that still has a next
 // occurrence ahead of it. Used to decide whether deleting this task is
 // ambiguous (could mean "skip this one" vs. "end the series") — a task whose

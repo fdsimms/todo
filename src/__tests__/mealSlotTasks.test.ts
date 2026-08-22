@@ -7,6 +7,7 @@ import {
   mealSlotDrift,
   mealSlotLinkUrl,
   mealSlotSourceId,
+  mealSlotStepTimeSegments,
   mealSlotTaskDraft,
   mealSlotTaskFields,
   mealSlotTaskTitle,
@@ -107,12 +108,31 @@ describe('the chain, given what the slot holds', () => {
 });
 
 describe('the fields a slot owns', () => {
-  it('hides each meal behind its own part of the day', () => {
-    expect(mealSlotTaskFields('2026-08-22', 'breakfast', null).timeSegments).toEqual(['morning']);
-    expect(mealSlotTaskFields('2026-08-22', 'lunch', null).timeSegments).toEqual(['afternoon']);
-    expect(mealSlotTaskFields('2026-08-22', 'dinner', null).timeSegments).toEqual(['evening']);
+  it('does not hide an unanswered slot\'s first step — Choose is not the meal itself', () => {
+    // [Choose, Prepare, Eat]: mealSlotTaskFields always describes step 0, and
+    // deciding what's for dinner isn't a thing that happens at dinner time.
+    expect(mealSlotTaskFields('2026-08-22', 'breakfast', null).timeSegments).toEqual([]);
+    expect(mealSlotTaskFields('2026-08-22', 'lunch', null).timeSegments).toEqual([]);
+    expect(mealSlotTaskFields('2026-08-22', 'dinner', null).timeSegments).toEqual([]);
+  });
+
+  it('does not hide a planned meal\'s Cook step either', () => {
+    // [Cook Chili, Eat Chili]: still step 0, still not the meal's own moment.
+    const planned = entry({ recipeId: 'r1', title: 'Chili' });
+    expect(mealSlotTaskFields('2026-08-22', 'dinner', planned).timeSegments).toEqual([]);
+  });
+
+  it('hides a one-step slot behind its own part of the day — it is its own last step', () => {
+    const takeaway = entry({ title: 'Takeaway' });
+    expect(mealSlotTaskFields('2026-08-22', 'dinner', takeaway).timeSegments).toEqual(['evening']);
+    const leftover = entry({ recipeId: 'r1', leftoverId: 'lo-1', title: "Tuesday's chilli" });
+    expect(mealSlotTaskFields('2026-08-22', 'dinner', leftover).timeSegments).toEqual(['evening']);
+  });
+
+  it('never segments a snack, whatever step it is', () => {
     // A snack is whenever, so segmenting it would invent a time nobody said.
     expect(mealSlotTaskFields('2026-08-22', 'snack', null).timeSegments).toEqual([]);
+    expect(mealSlotTaskFields('2026-08-22', 'snack', entry({ title: 'Chips' })).timeSegments).toEqual([]);
     expect(MEAL_SLOT_SEGMENTS.snack).toEqual([]);
   });
 
@@ -136,6 +156,30 @@ describe('the fields a slot owns', () => {
   });
 });
 
+describe('mealSlotStepTimeSegments', () => {
+  it('gates only the step that finishes the chain', () => {
+    // [Choose, Prepare, Eat] — only index 2 (Eat) is the meal itself.
+    expect(mealSlotStepTimeSegments('dinner', 0, 3)).toEqual([]);
+    expect(mealSlotStepTimeSegments('dinner', 1, 3)).toEqual([]);
+    expect(mealSlotStepTimeSegments('dinner', 2, 3)).toEqual(['evening']);
+  });
+
+  it('gates the last step of a two-step chain, not the first', () => {
+    // [Cook X, Eat X]
+    expect(mealSlotStepTimeSegments('lunch', 0, 2)).toEqual([]);
+    expect(mealSlotStepTimeSegments('lunch', 1, 2)).toEqual(['afternoon']);
+  });
+
+  it('gates a one-step slot immediately — it is its own last step', () => {
+    expect(mealSlotStepTimeSegments('breakfast', 0, 1)).toEqual(['morning']);
+  });
+
+  it('never gates a snack, whatever step it is', () => {
+    expect(mealSlotStepTimeSegments('snack', 0, 3)).toEqual([]);
+    expect(mealSlotStepTimeSegments('snack', 2, 3)).toEqual([]);
+  });
+});
+
 describe('drift', () => {
   it('writes nothing when nothing has changed', () => {
     // The reconcile runs on every meal-plan mutation, most of which (a scale
@@ -151,19 +195,34 @@ describe('drift', () => {
     expect(updates.title).toBe('Chili');
     expect(updates.chainItems!.map(c => c.title)).toEqual(['Cook Chili', 'Eat Chili']);
     expect(updates.linkUrl).toBe('dundundun://mealplan?date=2026-08-22');
+    // Still step 0 of its (now two-step) chain either way — nothing to write.
+    expect(updates.timeSegments).toBeUndefined();
   });
 
-  it('holds the steps once the chain has been started', () => {
+  it('holds the steps — and the time gate — once the chain has been started', () => {
     // chainIndex > 0 means a step has been ticked and the next row spawned, and
     // the index only means anything against the list it came from: step 1 of
-    // [Choose, Prepare, Eat] has no honest answer in [Cook X, Eat X].
+    // [Choose, Prepare, Eat] has no honest answer in [Cook X, Eat X]. Which
+    // step is time-gated is exactly as chain-position-dependent, so it's
+    // withheld the same way.
     const task = taskFor('2026-08-22', 'dinner', null, { chainIndex: 1 });
     const planned = entry({ recipeId: 'r1', title: 'Chili' });
     const updates = mealSlotDrift(task, '2026-08-22', 'dinner', planned)!;
     expect(updates.chainItems).toBeUndefined();
     expect(updates.chainEnabled).toBeUndefined();
+    expect(updates.timeSegments).toBeUndefined();
     // The rest still chases the meal.
     expect(updates.title).toBe('Chili');
+  });
+
+  it('picks up a new time gate on an unstarted row when the answer changes its step count', () => {
+    // Still chainIndex 0, but the slot going from unanswered (3 steps) to a
+    // leftover (1 step, its own last step) moves step 0 from "not the meal"
+    // to "is the meal" — a real drift, not a no-op.
+    const task = taskFor('2026-08-22', 'dinner', null);
+    const leftover = entry({ recipeId: 'r1', leftoverId: 'lo-1', title: "Tuesday's chilli" });
+    const updates = mealSlotDrift(task, '2026-08-22', 'dinner', leftover)!;
+    expect(updates.timeSegments).toEqual(['evening']);
   });
 
   it('never touches the date', () => {
