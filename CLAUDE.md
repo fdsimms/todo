@@ -245,6 +245,7 @@ exports.
 | pulling tasks out of a project | `src/utils/projectPull.ts` |
 | what a task is waiting on, and what it blocks | `src/utils/blocking.ts` + `src/utils/blockerRegistry.ts` |
 | how loaded a day is, and lightening an overloaded one | `src/utils/dayLoad.ts` + `src/utils/deloadPlan.ts` |
+| what lands before a date, and whether it fits | `src/utils/lookAhead.ts` (+ `src/utils/taskMoves.ts`, shared with `deloadPlan`) |
 | a recurring habit and whether it's on track | `src/utils/rhythms.ts` (+ `rhythmsSettings.ts`) |
 | what to suggest when a task is snoozed | `src/utils/snoozeEngine.ts` |
 | a task that was missed, and the grace it gets | `src/utils/missed.ts` + `src/utils/expiredTaskGrace.ts` |

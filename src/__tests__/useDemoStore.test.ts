@@ -9,6 +9,7 @@
  * are genuinely separate stores and a leak between them would show up as a
  * real test failure rather than being papered over by a shared handle.
  */
+import { addDays } from 'date-fns/addDays';
 import { useDemoStore } from '../store/useDemoStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -78,6 +79,11 @@ import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
 import { buildDayBuckets, canProject } from '../utils/calendarMonth';
 import { buildDayLoads, describeDayLoad, weightFor } from '../utils/dayLoad';
+import {
+  buildLookAhead,
+  describeLookAheadLead,
+  describeLookAheadLoad,
+} from '../utils/lookAhead';
 import { buildCalendarGrid } from '../utils/calendarGrid';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -411,6 +417,39 @@ describe('demo mode', () => {
     // And one of them can say how much, rather than only shading a cell —
     // the sentence needs rows that carry an estimate between them.
     expect(ahead.some(l => describeDayLoad(l) !== '')).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  // Look ahead is a window, so a seed that stops at the edge of one shows a
+  // sheet with nothing distinctive in it — no far side, and nothing to judge
+  // a deadline against.
+  it('seeds a window Look ahead can actually read', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const today = getCurrentDayStart();
+    const la = buildLookAhead(tasks, { cutoff: addDays(today, 14), now: today });
+
+    // The window itself has work in it, priced and unpriced both, so the lead
+    // and its "at least" qualifier each have something to say.
+    expect(la.totals.taskCount).toBeGreaterThan(0);
+    expect(la.totals.minutes).toBeGreaterThan(0);
+    expect(describeLookAheadLead(la)).toContain('land');
+    expect(describeLookAheadLoad(la)).not.toBe('');
+    // Recurrences project into it, so the day captions have a reason to exist.
+    expect(la.totals.projected).toBeGreaterThan(0);
+
+    // And something lands past the cutoff, so setting a return date fills the
+    // one bucket nothing else in the app can show.
+    const away = buildLookAhead(tasks, {
+      cutoff: addDays(today, 14),
+      awayEnd: addDays(today, 21),
+      now: today,
+    });
+    expect(away.away.length).toBeGreaterThan(0);
+    // A deadline among them, which is the half that can actually be missed.
+    expect(away.away.some(e => e.kind === 'deadline')).toBe(true);
 
     useDemoStore.getState().exitDemoMode();
   });

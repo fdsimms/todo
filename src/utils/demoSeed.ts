@@ -368,6 +368,25 @@ export function seedDemoData(): void {
     effort: 3,
     dueDate: addDays(today, 9).toISOString(),
     deadline: addDays(today, 21).toISOString(),
+    // An estimate as well as a deadline, which is the pair Look ahead needs
+    // before it will say anything about whether the work still fits: a task
+    // carrying only one of the two is deliberately never judged.
+    estimatedMinutes: 90,
+  });
+
+  // Look ahead needs something on the *far* side of a fortnight to have
+  // anything to say: with a return date set, this is what "due while you are
+  // away" is about, and without one it is simply past the default cutoff. A
+  // seed that stopped at two weeks would make the sheet look like a second
+  // Later list.
+  addTask({
+    title: 'Pay the car insurance',
+    notes: 'Renews automatically, but the card on file expired.',
+    category: 'Home',
+    tags: ['bills'],
+    dueDate: addDays(today, 16).toISOString(),
+    deadline: addDays(today, 18).toISOString(),
+    estimatedMinutes: 15,
   });
 
   addTask({

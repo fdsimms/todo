@@ -94,8 +94,11 @@ export interface DayLoad {
   busyMinutes: number;
   /**
    * Everything that will occupy the day, in minutes, with a stand-in for what
-   * isn't estimated. **For ranking only** — `weightFor` is its one reader.
-   * Rendering it would state a number half of which the user never typed.
+   * isn't estimated. **For ranking only** — `weightFor` reads it for a day's
+   * cue, and `lookAhead.tightDeadlines` sums it across a span to compare
+   * against the same threshold. Neither renders it, and nothing should:
+   * stating it would put a number in front of the user half of which they
+   * never typed.
    */
   rankedMinutes: number;
 }

@@ -48,7 +48,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
 - `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isOpenAppUrl, isGroceriesUrl, isRecipesUrl, isMealPlanUrl, mealPlanUrlDayKey, mealPlanUrlPickSlot, +6 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, deliverableMeta, asksOnCompletion, normalizeDeliverableValue, formatDeliverableValue, formatTaskDeliverable
-- `src/utils/deloadPlan.ts` — DeloadBlocker, DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan, deloadUpdates
+- `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan; re-exports DeloadBlocker, deloadUpdates from taskMoves
 - `src/utils/demoSeed.ts` — seedDemoData
 - `src/utils/demoState.ts` — isDemoModeActive, setDemoModeActive
 - `src/utils/editorFold.ts` — FoldRow, FoldResult, foldRows, moreLabel, moreHint, foldedSummary
@@ -83,6 +83,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskNeedsUpdate
 - `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, keepUntilKeyFor, keepDaysBetween, isLiveLeftover, +21 more
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
+- `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, tightDeadlines, PushProposal, buildPushPlan, describeLookAheadLead, describeLookAheadLoad, describeLookAheadEvents, describeCrowding, describeAwayEntry
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +4 more
 - `src/utils/mealPlan.ts` — slotRank, slotLabel, sortMealEntries, entriesForDay, entriesForSlot, nextSortOrder, upcomingDays, daysWithoutMeal, shiftDayKey, MealCopyDraft, +14 more
@@ -167,6 +168,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, flattenLaterSections, isLaterHeader, +16 more
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, TIMED_MINUTE_OPTIONS, +9 more
+- `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, deloadUpdates
 - `src/utils/templateGrouping.ts` — TemplateListItem, groupTemplatesByCategory, TemplateDropResolution, resolveTemplateDrop
 - `src/utils/templateQuestions.ts` — questionsForTree, answerFromDates, defaultAnswer, resolveAnswers, placeholderValuesFor, liveConditions, itemMatchesAnswers, initialLeafSelection, reselectForAnswers, questionLabel, +2 more
 - `src/utils/templateSchedule.ts` — TemplateRunDue, DEFAULT_TEMPLATE_SCHEDULE_TIME, defaultTemplateSchedule, periodKeyFor, triggerDayFor, scheduledRunName, dueTemplateRun, ordinal, describeTemplateSchedule
