@@ -80,7 +80,8 @@ import {
   pantryCoverageForRecipe,
   type PantryCoverage,
 } from '../utils/recipeUtils';
-import { recentlyCookedTitles } from '../utils/mealIdeas';
+import { expiringItemHints, recentlyCookedTitles } from '../utils/mealIdeas';
+import { kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { excludeRecipesByTags } from '../utils/recipeTags';
 import {
   applyChoice,
@@ -975,32 +976,39 @@ export function MealPlanScreen() {
               whole past week) with nothing left to plan.
             */}
             {isFirstPrevious && (
-              <View style={styles.dayHeaderRow}>
-                <TouchableOpacity
-                  style={styles.dayHeader}
-                  onPress={() => {
-                    haptics.tap();
-                    animateLayout();
-                    setPreviousDaysExpanded(e => !e);
-                  }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${previousDaysExpanded ? 'Collapse' : 'Expand'} previous days`}
-                  accessibilityState={{ expanded: previousDaysExpanded }}
-                >
-                  <View style={styles.dayHeaderLeft}>
-                    <Text style={styles.dayName}>Previous days</Text>
-                    {!previousDaysExpanded && previousDaysInfo.count > 0 && (
-                      <Text style={styles.dayCount}>({previousDaysInfo.count})</Text>
-                    )}
-                    <Ionicons
-                      name={previousDaysExpanded ? 'chevron-down' : 'chevron-forward'}
-                      size={iconSize.xs}
-                      color={colors.textTertiary}
-                    />
-                  </View>
-                </TouchableOpacity>
-              </View>
+              /*
+                A label with a rule running off it, rather than the day header
+                shape used below. This one heads a *run* of days, and given the
+                same uppercase-label-and-chevron treatment as its own children
+                it read as a fourth day between Saturday and Sunday. The rule
+                is the cheapest thing that says "group boundary" without
+                inventing a text size the app doesn't otherwise use, and it
+                carries neither of the two things every day header has (a date
+                and an add button), which is the other half of the difference.
+              */
+              <TouchableOpacity
+                style={styles.previousHeader}
+                onPress={() => {
+                  haptics.tap();
+                  animateLayout();
+                  setPreviousDaysExpanded(e => !e);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`${previousDaysExpanded ? 'Collapse' : 'Expand'} previous days`}
+                accessibilityState={{ expanded: previousDaysExpanded }}
+              >
+                <Text style={styles.dayName}>Previous days</Text>
+                {!previousDaysExpanded && previousDaysInfo.count > 0 && (
+                  <Text style={styles.dayCount}>({previousDaysInfo.count})</Text>
+                )}
+                <Ionicons
+                  name={previousDaysExpanded ? 'chevron-down' : 'chevron-forward'}
+                  size={iconSize.xs}
+                  color={colors.textTertiary}
+                />
+                <View style={styles.previousRule} />
+              </TouchableOpacity>
             )}
             {(!isPrevious || previousDaysExpanded) && (
               <>
@@ -1026,20 +1034,23 @@ export function MealPlanScreen() {
                     accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${dayLabel}`}
                     accessibilityState={{ expanded: !collapsed }}
                   >
-                    <View style={styles.dayHeaderLeft}>
-                      <Text style={[styles.dayName, today && styles.dayNameToday]}>
-                        {weekdayName}
-                      </Text>
-                      {collapsed && dayEntries.length > 0 && (
-                        <Text style={styles.dayCount}>({dayEntries.length})</Text>
-                      )}
-                      <Ionicons
-                        name={collapsed ? 'chevron-forward' : 'chevron-down'}
-                        size={iconSize.xs}
-                        color={colors.textTertiary}
-                      />
-                    </View>
+                    <Text style={[styles.dayName, today && styles.dayNameToday]}>
+                      {weekdayName}
+                    </Text>
+                    {/* Beside the name rather than pushed to the far edge of
+                        the row. Split apart, the day and its date read as two
+                        unrelated things with a gap between them, and the date
+                        sat directly against the add button — the one part of
+                        the row that is a target. */}
                     <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
+                    {collapsed && dayEntries.length > 0 && (
+                      <Text style={styles.dayCount}>({dayEntries.length})</Text>
+                    )}
+                    <Ionicons
+                      name={collapsed ? 'chevron-forward' : 'chevron-down'}
+                      size={iconSize.xs}
+                      color={colors.textTertiary}
+                    />
                   </TouchableOpacity>
                   {!selectionMode && (
                     <TouchableOpacity
@@ -1211,6 +1222,15 @@ export function MealPlanScreen() {
   // cheap and only read when the sheet is open.
   const plannedMealTitles = useMemo(() => entries.map(e => e.title).filter(Boolean), [entries]);
   const recentMealTitles = useMemo(() => recentlyCookedTitles(recipes, new Date()), [recipes]);
+  // Same "close to going bad" set the Kitchen screen's own use-up shelf reads
+  // (useUpEntries), handed to the AI generator as inspiration — never a
+  // requirement, see suggestMealIdeas' own doc. Doesn't touch the offline
+  // ranking above, which already answers "what can I make from the catalog"
+  // on its own terms.
+  const expiringMealHints = useMemo(
+    () => expiringItemHints(useUpEntries(kitchenInventory(groceryItems, leftovers, new Date()))),
+    [groceryItems, leftovers]
+  );
 
   const planSuggestion = (recipe: Recipe, dateKey: string) => {
     animateLayout();
@@ -1784,6 +1804,7 @@ export function MealPlanScreen() {
         aiIdeasEnabled={!!anthropicApiKey}
         plannedTitles={plannedMealTitles}
         recentTitles={recentMealTitles}
+        expiringItemHints={expiringMealHints}
         slotsToFill={suggesting?.days.length ?? 0}
         onPlan={planSuggestion}
         onClose={() => setSuggesting(null)}
@@ -1887,20 +1908,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
     paddingBottom: spacing.xs,
   },
+  // Name, date and chevron in one group at the leading edge; the trailing
+  // edge carries the add button and nothing else.
   dayHeader: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'baseline',
-    justifyContent: 'space-between',
+    gap: spacing.xs,
   },
   dayAdd: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dayHeaderLeft: {
+  previousHeader: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     gap: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  previousRule: {
+    flex: 1,
+    height: border.hairline,
+    backgroundColor: colors.separator,
+    marginLeft: spacing.xs,
   },
   // Uppercase section-header treatment, matching every other list section
   // header in the app.
@@ -1958,6 +1988,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
     marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
+    // A block's worth of gap under it, not half of one: the first day header
+    // has no top margin of its own, so spacing.sm left the week jammed up
+    // against a row of buttons that isn't part of it.
+    marginBottom: spacing.md,
   },
 });

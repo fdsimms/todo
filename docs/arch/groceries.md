@@ -453,6 +453,23 @@ chicken too.
   froze in July. It's also why a frozen grocery row leaves its aisle: nothing in a freezer is
   filed by the aisle it came from, so `buildKitchenSections` now routes on `section` rather than
   on `kind`.
+- **And it's a drop target, which is how the bit gets set now.** Long-pressing a Pantry row drags
+  it under another heading, and `utils/kitchenReorder.ts` reads the heading it landed under back
+  into a write: the freezer for either kind, the fridge for a container, an aisle for a catalog
+  row (which is a thaw and a refiling at once). The section was already how you *find* frozen
+  food; dragging is how you say it, without the trip into the item sheet a one-bit correction
+  didn't earn. Two moves the stream can describe are refused rather than guessed at — a container
+  has no aisle, and a catalog row has no place in the fridge, which is the location taxonomy this
+  section rules out above.
+  - **An empty place still gets a heading while there's something to put in it.** The freezer is
+    unreachable by drag until something is already frozen otherwise, and the list can't grow the
+    heading once the drag starts: `ReorderableList` cancels an in-flight drag the moment its row
+    keys change. So `buildKitchenRows` emits a dashed target under the heading instead, and the
+    same for the fridge when every container in it is frozen.
+  - **A drop is a filing and never an order.** The kitchen's rows rank by what's about to be
+    wasted (`compareKitchenEntries`), so a drag that lands in the section it came from writes
+    nothing at all — the one place this differs from the shopping list, where a drop always
+    writes a rank as well as an aisle.
 - **A frozen container is still live.** `finishedAt` remains the only thing that ends a leftover,
   and a frozen portion stays plannable onto a night of the week — which is most of what anyone
   freezes one for. `isPlannedPastKeepUntil` is false while frozen, closing the hand-wave in its

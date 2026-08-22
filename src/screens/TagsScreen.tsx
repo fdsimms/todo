@@ -48,6 +48,7 @@ export function TagsScreen() {
   const addTag = useTaskStore(s => s.addTag);
   const deleteTag = useTaskStore(s => s.deleteTag);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
@@ -307,6 +308,7 @@ export function TagsScreen() {
                 onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
                 onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
                 onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+                onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
                 onSelectAll={() => selectAll(tagTasks.map(t => t.id))}
                 onDeselectAll={deselectAll}
                 onCancel={exitSelection}

@@ -31,6 +31,8 @@ interface Props {
   onSetCategory: (category: string | null) => void;
   onAddTags: (tags: string[]) => void;
   onSetPriority: (priority: Priority) => void;
+  /** Marks every recurring task in the selection missed — a no-op for anything else, same guard as the per-row action. */
+  onMarkMissed: () => void;
   // Grouping is Today/Later-only for now — other screens that bulk-select
   // tasks (Categories, Inbox, Tags) simply omit this and the action hides.
   onGroup?: (title: string) => void;
@@ -62,6 +64,7 @@ export function BulkActionBar({
   onSetCategory,
   onAddTags,
   onSetPriority,
+  onMarkMissed,
   onGroup,
   onTogglePin,
   allPinned = false,
@@ -224,6 +227,14 @@ export function BulkActionBar({
               <Ionicons name="arrow-up-circle-outline" size={18} color={colors.textSecondary} />
               <Text style={styles.moreRowText}>Priority</Text>
               <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+            {/* No chevron — this fires immediately instead of opening a sub-panel. */}
+            <TouchableOpacity
+              style={styles.moreRow}
+              onPress={() => { haptics.impactMedium(); onMarkMissed(); }}
+            >
+              <Ionicons name="close-circle-outline" size={18} color={colors.textSecondary} />
+              <Text style={styles.moreRowText}>Missed</Text>
             </TouchableOpacity>
           </View>
         )}

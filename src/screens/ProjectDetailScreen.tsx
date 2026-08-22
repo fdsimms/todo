@@ -56,6 +56,7 @@ export function ProjectDetailScreen() {
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
   const reorderProjectTasks = useTaskStore(s => s.reorderProjectTasks);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
@@ -398,6 +399,7 @@ export function ProjectDetailScreen() {
             onSetCategory={cat => { bulkSetCategory(Array.from(selectedIds), cat); exitSelection(); }}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+            onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
             onSelectAll={() => selectAll(selectableTasks.map(t => t.id))}
             onDeselectAll={deselectAll}
             onCancel={exitSelection}

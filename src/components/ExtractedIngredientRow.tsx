@@ -19,6 +19,13 @@ interface Props {
   onEditName: (name: string) => void;
   onEditQuantity: (quantity: string) => void;
   sectionHeader?: string | null;
+  /**
+   * Why this row arrived unticked, when something other than the user unticked
+   * it — currently only "the recipe it names is being added as a component"
+   * (see `coveredIngredients`). A row that unticks itself with no explanation
+   * reads as a bug, and the explanation only fits under the name.
+   */
+  note?: string | null;
 }
 
 export interface ExtractedIngredientRowHandle {
@@ -53,7 +60,7 @@ export interface ExtractedIngredientRowHandle {
  * writes to `grocery_item_subs`.
  */
 export const ExtractedIngredientRow = forwardRef<ExtractedIngredientRowHandle, Props>(function ExtractedIngredientRow({
-  row, checked, onToggle, onEditName, onEditQuantity, sectionHeader,
+  row, checked, onToggle, onEditName, onEditQuantity, sectionHeader, note,
 }: Props, ref) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -108,7 +115,7 @@ export const ExtractedIngredientRow = forwardRef<ExtractedIngredientRowHandle, P
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
           accessibilityRole="checkbox"
           accessibilityState={{ checked }}
-          accessibilityLabel={`${row.name}, ${row.aisle}`}
+          accessibilityLabel={`${row.name}, ${note || row.aisle}`}
         >
           <View style={[styles.checkbox, checked && styles.checkboxOn]}>
             {checked && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
@@ -138,7 +145,9 @@ export const ExtractedIngredientRow = forwardRef<ExtractedIngredientRowHandle, P
           ) : (
             <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
           )}
-          <Text style={styles.meta} numberOfLines={1}>{row.aisle}</Text>
+          <Text style={note ? styles.note : styles.meta} numberOfLines={2}>
+            {note || row.aisle}
+          </Text>
         </TouchableOpacity>
 
         {!!row.quantity && (
@@ -217,6 +226,9 @@ function makeStyles(colors: Colors) {
       minHeight: 20,
     },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
+    // Accent rather than tertiary: it explains a state the app put the row in,
+    // where the aisle it replaces is just where the thing lives in the shop.
+    note: { fontSize: font.xs, color: colors.accent, marginTop: 2 },
     qtyPill: {
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.sm,

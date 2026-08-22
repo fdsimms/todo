@@ -294,6 +294,18 @@ const MAX_AISLE_NAMES = 60;
  */
 export const MAX_RECIPE_CHARS = 4_000;
 const MAX_RECIPE_ITEMS = 40;
+/**
+ * Cross-references to other recipes we'll carry back from one page. A cookbook
+ * recipe points at one or two of its neighbours; a page claiming six of them is
+ * a model reading the index, not the recipe.
+ */
+const MAX_RECIPE_REFERENCES = 4;
+/** The locator, verbatim — "page 45", "p. 212", "opposite". Not a sentence. */
+const RECIPE_REFERENCE_MAX_LENGTH = 40;
+const MAX_RECIPE_STEPS = 30;
+const MAX_RECIPE_PREP_TASKS = 8;
+/** Matches PrepTaskSheet's own OFFSET_MIN — a week out is a Task with its own due date, not a recipe prep task. */
+const MAX_PREP_DAYS_AHEAD = 7;
 
 /**
  * Case-insensitively resolves a model-supplied aisle to the canonical spelling
@@ -440,6 +452,61 @@ function parseExtractedItems(
 }
 
 /**
+ * One "and there's another recipe for this bit, over there" pointer read off
+ * the page — "1 cup salsa verde (page 45)", "serve with the herb oil on p. 12".
+ *
+ * This is what `Recipe.components` is for (see docs/arch/recipes.md): the
+ * referenced dish is a recipe of its own, cooked separately, and linking the
+ * two is what stops "salsa verde" being shopped for as a jar while its own
+ * tomatillos are shopped for as well.
+ *
+ * **Deliberately not the same field as an ingredient's `component`.** That one
+ * labels a part of *this* recipe's own list ("For the frosting") and lands on
+ * `RecipeIngredient.section`; this one names a different recipe entirely. The
+ * prompt says so in as many words, because the two words are one keystroke
+ * apart in meaning and the model will happily conflate them.
+ */
+export interface ExtractedRecipeReference {
+  /** The referenced recipe's own title, as the page prints it. Never empty. */
+  name: string;
+  /**
+   * Where the page says to find it, in its own words — "page 45", "p. 212".
+   * Never empty: see `parseExtractedReferences` for why that's a hard rule.
+   */
+  reference: string;
+}
+
+/**
+ * **A reference with no locator is dropped, and that gate is the whole
+ * false-positive story.** "Serve with rice" mentions a dish and points nowhere;
+ * "serve with the salsa verde on page 45" points somewhere. Without the rule,
+ * every closing line of every method becomes a recipe the app pesters you to go
+ * photograph. The prompt asks for the same thing, but a prompt is a request and
+ * this is the enforcement — same split `parseExtractedItems` makes between
+ * asking for an aisle and canonicalising whatever comes back.
+ */
+function parseExtractedReferences(raw: unknown): ExtractedRecipeReference[] {
+  const items = raw as Array<{ name?: unknown; reference?: unknown }> | undefined;
+  if (!Array.isArray(items)) return [];
+
+  const seen = new Set<string>();
+  const result: ExtractedRecipeReference[] = [];
+  for (const item of items) {
+    if (typeof item?.name !== 'string' || typeof item?.reference !== 'string') continue;
+    const name = item.name.trim().slice(0, RECIPE_NAME_MAX_LENGTH);
+    const reference = item.reference.trim().slice(0, RECIPE_REFERENCE_MAX_LENGTH);
+    if (!name || !reference) continue;
+    // Same key the recipe box files names under, so "Salsa Verde" and "salsa
+    // verde" can't both come back as two things to import.
+    const key = groceryNameKey(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push({ name, reference });
+  }
+  return result.slice(0, MAX_RECIPE_REFERENCES);
+}
+
+/**
  * The shopping-item array schema `extract_recipe` uses, factored out so the
  * invented-meal draft below (#1063) asks for the same shape and reads it back
  * through the same `parseExtractedItems` validator. Two prompts, one schema,
@@ -475,6 +542,42 @@ function groceryItemsSchema(availableAisles: string[], description: string) {
   };
 }
 
+export interface ExtractedPrepTask {
+  /** Under TITLE_MAX_LENGTH. */
+  title: string;
+  /** Days before the meal this needs to start. Always negative. */
+  offsetDays: number;
+}
+
+/** Same validation the shopping list gets, extended to a step's plain text. */
+function parseExtractedSteps(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const steps: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') continue;
+    const text = item.trim();
+    if (!text) continue;
+    steps.push(text);
+  }
+  return steps.slice(0, MAX_RECIPE_STEPS);
+}
+
+function parseExtractedPrepTasks(raw: unknown): ExtractedPrepTask[] {
+  const items = raw as Array<{ title?: unknown; daysAhead?: unknown }> | undefined;
+  if (!items) return [];
+  const result: ExtractedPrepTask[] = [];
+  for (const item of items) {
+    if (typeof item?.title !== 'string') continue;
+    const title = item.title.trim().slice(0, TITLE_MAX_LENGTH);
+    if (!title) continue;
+    const daysAhead = typeof item.daysAhead === 'number' && item.daysAhead > 0
+      ? Math.round(item.daysAhead)
+      : 1;
+    result.push({ title, offsetDays: -Math.max(1, Math.min(MAX_PREP_DAYS_AHEAD, daysAhead)) });
+  }
+  return result.slice(0, MAX_RECIPE_PREP_TASKS);
+}
+
 /**
  * The four the Messages API accepts. `recipePhoto.ts` always re-encodes to JPEG,
  * so in practice only the first one is ever produced — the union exists so a
@@ -506,6 +609,16 @@ export interface ExtractedRecipe {
   /** Null when not stated. */
   prepMinutes: number | null;
   ingredients: RecipeGroceryItem[];
+  /**
+   * Other recipes this one tells you to go and make, printed elsewhere in the
+   * same book or on the same site. Empty for the overwhelming majority of
+   * sources; see `ExtractedRecipeReference`.
+   */
+  references: ExtractedRecipeReference[];
+  /** The method, in order. Empty when `includeMethod` was false or none was found. */
+  steps: string[];
+  /** Only genuine advance-prep — see extractRecipe's prompt. Empty likewise. */
+  prepTasks: ExtractedPrepTask[];
 }
 
 /**
@@ -515,9 +628,36 @@ export interface ExtractedRecipe {
  */
 function sharedRecipeInstructions(availableAisles: string[]): string[] {
   return [
-    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, just with the prep instruction dropped — "4 cloves" or "3 cloves", not "1 bulb". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method for the shopping list, and skip water.',
+    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, just with the prep instruction dropped — "4 cloves" or "3 cloves", not "1 bulb". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method when deciding what goes on the shopping list, and skip water.',
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
     'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
+  ];
+}
+
+/**
+ * The paragraph asking which other recipes this one points at. Gated the same
+ * way `methodInstructions` is, and for the same reason: `suggestRecipeGroceries`
+ * has nowhere to put a component link, so it shouldn't pay for the ask.
+ *
+ * Separate from `sharedRecipeInstructions` rather than a fourth bullet in it
+ * *because* of that gate — everything in there goes out on every call.
+ */
+function referenceInstructions(): string[] {
+  return [
+    'A recipe often calls for another recipe printed elsewhere and points you to it: "1 cup salsa verde (page 45)", "serve with the herb oil on p. 12", "uses the pizza dough from page 210". List each of those in "referencedRecipes", with the dish\'s own name and the source\'s own words for where to find it. Two rules: only list one when the source actually points somewhere else for it — "serve with rice" names no recipe and belongs nowhere near this list — and never list a part of this recipe\'s own ingredient list. "For the frosting" is the "component" field above; these are separate recipes with their own pages.',
+  ];
+}
+
+/**
+ * The paragraphs asking for the method and any advance-prep tasks — shared by
+ * both sources, only included when the caller actually wants them
+ * (`suggestRecipeGroceries` doesn't, so it skips these to keep the response
+ * shorter).
+ */
+function methodInstructions(): string[] {
+  return [
+    'Also pull out the method as an ordered list of separate steps, matching however the recipe itself divides them (numbered steps, one instruction per line or paragraph). Keep the wording close to the source rather than summarizing it, and never invent a step that isn\'t actually there.',
+    'Separately, list any "prep tasks": things that genuinely have to be started well ahead of cooking because they need lead time to work — soaking dried beans or lentils overnight, marinating or brining meat overnight, thawing something frozen, letting a dough rest or proof overnight, activating a starter or sourdough the day before. Do NOT list routine same-day steps just because they happen early in the method — chopping vegetables, mixing dry ingredients, bringing something to room temperature for half an hour, preheating the oven. If nothing in the recipe genuinely needs advance lead time, return an empty list. For each one, say roughly how many days ahead it needs to start: 1 for "overnight" or "the night before", more only when the recipe is explicit about needing longer.',
   ];
 }
 
@@ -539,31 +679,51 @@ function sharedRecipeInstructions(availableAisles: string[]): string[] {
  * image), and the instructions gain a paragraph about page furniture and one
  * about refusing to guess at an illegible shot. The text path still sends a
  * bare string, so its request body is byte-for-byte what it always was.
+ *
+ * **`includeReferences` gates the cross-references to other recipes** on the
+ * same terms as `includeMethod` below: `suggestRecipeGroceries` has nowhere to
+ * put a component link, so it doesn't ask for one.
+ *
+ * **`includeMethod` also decides whether the method/prep-tasks paragraphs and
+ * schema fields are sent at all**, not just whether the result is read — a
+ * caller with no use for them (`suggestRecipeGroceries`) shouldn't pay for a
+ * longer response it's about to throw away. A link import runs this same text
+ * path over the fetched page (see `useRecipeImportSource`), so a page with no
+ * `schema.org` instructions still gets a model-read method as a fallback —
+ * the review sheets prefer the page's own verbatim steps when both exist.
  */
 export async function extractRecipe(
   source: RecipeSource,
   availableAisles: string[],
+  options: { includeMethod?: boolean; includeReferences?: boolean } = {},
 ): Promise<ExtractedRecipe> {
+  const { includeMethod = true, includeReferences = true } = options;
   const { apiKey, model } = requireFeature('recipeExtraction');
 
   const empty: ExtractedRecipe = {
     name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+    references: [], steps: [], prepTasks: [],
   };
   const image = typeof source === 'string' ? null : source;
   const text = typeof source === 'string' ? source.trim().slice(0, MAX_RECIPE_CHARS) : '';
   // Same "nothing in, no network call" guard for both sources.
   if (image ? !image.base64 : !text) return empty;
 
+  const foundLine = `its shopping list${includeMethod ? ', and its method' : ''}`;
   const prompt = image
     ? [
-        'This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves, its total prep/cook time, and its shopping list.',
+        `This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves, its total prep/cook time, and ${foundLine}.`,
         'Ignore anything on the page that is not part of this recipe: page numbers, running heads, chapter titles, headnotes and stories, photo captions, and text bleeding in from a facing page. If the page shows more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.',
         ...sharedRecipeInstructions(availableAisles),
-        'If the photo is too blurry, too dark, cut off, or otherwise unreadable, return an empty name and an empty item list rather than guessing. Never invent an ingredient you cannot actually read.',
+        ...(includeReferences ? referenceInstructions() : []),
+        ...(includeMethod ? methodInstructions() : []),
+        'If the photo is too blurry, too dark, cut off, or otherwise unreadable, return an empty name and an empty item list rather than guessing. Never invent an ingredient, step, or prep task you cannot actually read.',
       ].join('\n\n')
     : [
-        'Extract this recipe: its name, how many it serves, its total prep/cook time, and its shopping list.',
+        `Extract this recipe: its name, how many it serves, its total prep/cook time, and ${foundLine}.`,
         ...sharedRecipeInstructions(availableAisles),
+        ...(includeReferences ? referenceInstructions() : []),
+        ...(includeMethod ? methodInstructions() : []),
         `Recipe:\n${text}`,
       ].join('\n\n');
 
@@ -578,10 +738,12 @@ export async function extractRecipe(
     : prompt;
 
   const data = await callAnthropic({
-    max_tokens: 2000,
+    // A method with a full page of steps plus any prep tasks needs more room
+    // than the shopping-list-only response this used to always be.
+    max_tokens: includeMethod ? 3000 : 2000,
     tools: [{
       name: 'extract_recipe',
-      description: 'Extract a recipe\'s name, servings, prep time, and shopping list',
+      description: `Extract a recipe's name, servings, prep time, and shopping list${includeMethod ? ', method, and prep tasks' : ''}`,
       input_schema: {
         type: 'object',
         properties: {
@@ -605,6 +767,51 @@ export async function extractRecipe(
             availableAisles,
             'The things a shopper needs to buy for this recipe.',
           ),
+          ...(includeReferences ? {
+            referencedRecipes: {
+              type: 'array',
+              description: 'Other recipes this one tells you to make, printed elsewhere in the same book or site. Empty array when the source points at nothing.',
+              items: {
+                type: 'object',
+                properties: {
+                  name: {
+                    type: 'string',
+                    description: `The referenced recipe's own title, as the source prints it — "Salsa verde", not "the salsa". Under ${RECIPE_NAME_MAX_LENGTH} characters.`,
+                  },
+                  reference: {
+                    type: 'string',
+                    description: 'Where the source says to find it, in its own words: "page 45", "p. 212", "pages 112-115". Leave the whole entry out if the source names a dish but never says where its recipe is.',
+                  },
+                },
+                required: ['name', 'reference'],
+              },
+            },
+          } : {}),
+          ...(includeMethod ? {
+            steps: {
+              type: 'array',
+              description: `The method, as an ordered list of steps in the recipe's own words. Under ${MAX_RECIPE_STEPS} steps. Empty array if no method is given.`,
+              items: { type: 'string' },
+            },
+            prepTasks: {
+              type: 'array',
+              description: 'Only genuine advance-prep that needs to start well ahead of cooking — never routine same-day prep. Empty array when nothing needs advance lead time.',
+              items: {
+                type: 'object',
+                properties: {
+                  title: {
+                    type: 'string',
+                    description: `What to do, e.g. "Soak the beans overnight". Under ${TITLE_MAX_LENGTH} characters.`,
+                  },
+                  daysAhead: {
+                    type: 'integer',
+                    description: 'How many days before cooking this needs to start. 1 for "overnight" or "the night before".',
+                  },
+                },
+                required: ['title', 'daysAhead'],
+              },
+            },
+          } : {}),
         },
         required: ['name', 'items'],
       },
@@ -616,6 +823,7 @@ export async function extractRecipe(
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
     name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown; items?: unknown;
+    referencedRecipes?: unknown; steps?: unknown; prepTasks?: unknown;
   } | undefined;
   if (!input) throw new Error('No suggestions returned');
 
@@ -636,19 +844,25 @@ export async function extractRecipe(
   return {
     name, servings, servingsMax, prepMinutes,
     ingredients: parseExtractedItems(input.items, availableAisles),
+    references: includeReferences ? parseExtractedReferences(input.referencedRecipes) : [],
+    steps: includeMethod ? parseExtractedSteps(input.steps) : [],
+    prepTasks: includeMethod ? parseExtractedPrepTasks(input.prepTasks) : [],
   };
 }
 
 /**
  * Pulls just the shopping items out of a pasted or photographed recipe —
  * GroceryAISheet's "From a recipe" mode, which has no use for the
- * name/servings/prep time.
+ * name/servings/prep time, or the method.
  */
 export async function suggestRecipeGroceries(
   source: RecipeSource,
   availableAisles: string[],
 ): Promise<RecipeGroceryItem[]> {
-  const extracted = await extractRecipe(source, availableAisles);
+  const extracted = await extractRecipe(source, availableAisles, {
+    includeMethod: false,
+    includeReferences: false,
+  });
   return extracted.ingredients;
 }
 
@@ -658,6 +872,8 @@ export async function suggestRecipeGroceries(
 const MAX_MEAL_HINT_CHARS = 200;
 /** Planned/recent dinners named in the prompt. A fortnight of context, not a year of it. */
 const MAX_MEAL_CONTEXT_TITLES = 20;
+/** About-to-expire kitchen items offered as inspiration. A handful, not the whole pantry. */
+const MAX_EXPIRING_ITEMS = 8;
 
 /**
  * Invents meal ideas for the empty nights of a week.
@@ -672,6 +888,14 @@ const MAX_MEAL_CONTEXT_TITLES = 20;
  * Bounds and the case-insensitive dedupe are `suggestTemplateItems`' — asked
  * for in the schema and enforced on the way back by `dedupeMealIdeas`, which
  * also drops anything colliding with a title the caller already knows about.
+ *
+ * `expiringItems` (`mealIdeas.expiringItemHints`, off `useUpEntries`) is
+ * inspiration, not a constraint the model is asked to satisfy — the prompt
+ * says so explicitly. Left as a hard requirement, this would do exactly what
+ * the offline "Use it up" shelf refuses to (see `useUpRecipes.ts`'s own
+ * comment on a wrong suggestion costing more than a missing one): a forced
+ * dish is worse than no suggestion at all, so the wording only ever asks for
+ * a genuinely good one that happens to use something dying, never a stretch.
  */
 export async function suggestMealIdeas(
   plannedTitles: string[],
@@ -679,11 +903,13 @@ export async function suggestMealIdeas(
   slotsToFill: number,
   hints?: string,
   excludedTags: readonly string[] = [],
+  expiringItems: readonly string[] = [],
 ): Promise<MealIdea[]> {
   const { apiKey, model } = requireFeature('mealIdeas');
 
   const planned = plannedTitles.map(t => t.trim()).filter(Boolean).slice(0, MAX_MEAL_CONTEXT_TITLES);
   const recent = recentTitles.map(t => t.trim()).filter(Boolean).slice(0, MAX_MEAL_CONTEXT_TITLES);
+  const expiring = expiringItems.map(t => t.trim()).filter(Boolean).slice(0, MAX_EXPIRING_ITEMS);
   const nudge = (hints ?? '').trim().slice(0, MAX_MEAL_HINT_CHARS);
   const wanted = clampIdeaCount(slotsToFill);
 
@@ -693,6 +919,9 @@ export async function suggestMealIdeas(
   const recentPart = recent.length > 0
     ? `Cooked in the last few weeks — avoid these too, but they are a fair guide to the kind of cooking that gets done here:\n${recent.map(t => `- ${t}`).join('\n')}`
     : 'There is no recent cooking history to go on, so keep the ideas broad and unfussy.';
+  const expiringPart = expiring.length > 0
+    ? `A few things in the kitchen are close to going bad, for inspiration:\n${expiring.map(t => `- ${t}`).join('\n')}\nIf a genuinely good dish uses one or two of these — even a creative or unexpected use — that's a welcome bonus. But never force one in where it doesn't belong just to use it up, and a dish that ignores this list entirely is completely fine.`
+    : '';
   // The same free-form words the recipe box's own tags use (see
   // excludeRecipesByTags) — never an ingredient database, just the cook's own
   // vocabulary handed to the model as instructions rather than asked to be
@@ -740,6 +969,7 @@ export async function suggestMealIdeas(
         'Each one must be a specific, cookable dish a home cook could shop for and make on a weeknight — not a cuisine, not a category, not a theme. Favour everyday cooking over restaurant cooking, and vary the ideas across the set rather than offering the same dish three ways.',
         plannedPart,
         recentPart,
+        expiringPart,
         dietPart,
         nudge ? `What they asked for: ${nudge}` : '',
       ].filter(Boolean).join('\n\n'),

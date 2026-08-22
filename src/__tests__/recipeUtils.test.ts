@@ -41,6 +41,7 @@ import {
   formatServingsRange,
   looksLikeBareUrl,
   recipeHasMethod,
+  recipeHasPrepTasks,
   recipeHasAttribution,
 } from '../utils/recipeUtils';
 import type { GroceryItem, ItemSubLink, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
@@ -1767,6 +1768,23 @@ describe('recipeHasMethod', () => {
   it('shrugs off a missing recipe', () => {
     expect(recipeHasMethod(null)).toBe(false);
     expect(recipeHasMethod(undefined)).toBe(false);
+  });
+});
+
+describe('recipeHasPrepTasks', () => {
+  it('is true for a recipe with a prep task', () => {
+    expect(recipeHasPrepTasks(recipe('Chilli', {
+      prepTasks: [{ id: 'p1', title: 'Soak the beans', offsetDays: -1, reminderOffsetMinutes: null }],
+    }))).toBe(true);
+  });
+
+  it('is false for a recipe with none', () => {
+    expect(recipeHasPrepTasks(recipe('Chilli'))).toBe(false);
+  });
+
+  it('shrugs off a missing recipe', () => {
+    expect(recipeHasPrepTasks(null)).toBe(false);
+    expect(recipeHasPrepTasks(undefined)).toBe(false);
   });
 });
 

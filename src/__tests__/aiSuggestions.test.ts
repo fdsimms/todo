@@ -486,6 +486,18 @@ describe('suggestRecipeGroceries', () => {
       'No suggestions returned'
     );
   });
+
+  // It never reads .steps/.prepTasks, so it shouldn't pay for a longer
+  // response asking the model to produce them either.
+  it('does not ask the model for a method or prep tasks', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_groceries', { items: [] }));
+    await suggestRecipeGroceries('some recipe', AISLES);
+
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content).not.toContain('prep task');
+    expect(body.tools[0].input_schema.properties.steps).toBeUndefined();
+    expect(body.tools[0].input_schema.properties.prepTasks).toBeUndefined();
+  });
 });
 
 describe('extractRecipe', () => {
@@ -504,7 +516,84 @@ describe('extractRecipe', () => {
       servingsMax: null,
       prepMinutes: 45,
       ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
+      references: [],
+      steps: [],
+      prepTasks: [],
     });
+  });
+
+  it('reads the cross-references to other recipes off the page', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Carnitas tacos',
+        items: [{ name: 'pork shoulder', quantity: '3 lb', aisle: 'Meat & Seafood' }],
+        referencedRecipes: [
+          { name: '  Salsa verde  ', reference: '  page 45  ' },
+          { name: 'Mexican rice', reference: 'p. 112' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.references).toEqual([
+      { name: 'Salsa verde', reference: 'page 45' },
+      { name: 'Mexican rice', reference: 'p. 112' },
+    ]);
+  });
+
+  it('drops a reference the model gave no locator for', async () => {
+    // "Serve with rice" names a dish and points nowhere. Without this the
+    // closing line of every method becomes a recipe to go photograph.
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Carnitas tacos',
+        items: [],
+        referencedRecipes: [
+          { name: 'Rice', reference: '' },
+          { name: 'Salsa verde', reference: 'page 45' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.references).toEqual([{ name: 'Salsa verde', reference: 'page 45' }]);
+  });
+
+  it('drops an unnamed reference and collapses two spellings of one name', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Carnitas tacos',
+        items: [],
+        referencedRecipes: [
+          { name: '  ', reference: 'page 9' },
+          { name: 'Salsa verde', reference: 'page 45' },
+          { name: 'SALSA VERDE', reference: 'p. 45' },
+          { name: 'Herb oil', reference: 12 },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.references).toEqual([{ name: 'Salsa verde', reference: 'page 45' }]);
+  });
+
+  it('caps how many references one page can claim', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Carnitas tacos',
+        items: [],
+        referencedRecipes: Array.from({ length: 10 }, (_, i) => ({
+          name: `Side ${i}`,
+          reference: `page ${i + 10}`,
+        })),
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.references).toHaveLength(4);
+  });
+
+  it('comes back with no references when the model omits the field', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', { name: 'Chili', items: [] })
+    );
+    await expect(extractRecipe('some recipe', AISLES)).resolves.toMatchObject({ references: [] });
   });
 
   it('reads the model\'s component field into section', async () => {
@@ -590,6 +679,7 @@ describe('extractRecipe', () => {
     const spy = jest.spyOn(global, 'fetch');
     await expect(extractRecipe('   ', AISLES)).resolves.toEqual({
       name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+      references: [], steps: [], prepTasks: [],
     });
     expect(spy).not.toHaveBeenCalled();
   });
@@ -599,6 +689,90 @@ describe('extractRecipe', () => {
     await expect(extractRecipe('some recipe', AISLES)).rejects.toThrow('No suggestions returned');
   });
 
+  it('extracts the method as an ordered list of steps', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili',
+        items: [],
+        steps: ['Brown the beef.', 'Add the beans and simmer.'],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.steps).toEqual(['Brown the beef.', 'Add the beans and simmer.']);
+  });
+
+  it('drops blank and non-string steps', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili', items: [], steps: ['Brown the beef.', '   ', 42, 'Simmer.'],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.steps).toEqual(['Brown the beef.', 'Simmer.']);
+  });
+
+  it('caps steps at 30', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili', items: [], steps: Array.from({ length: 40 }, (_, i) => `Step ${i}`),
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.steps).toHaveLength(30);
+  });
+
+  it('extracts prep tasks, turning daysAhead into a negative offsetDays', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili',
+        items: [],
+        prepTasks: [{ title: 'Soak the beans overnight', daysAhead: 1 }],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.prepTasks).toEqual([{ title: 'Soak the beans overnight', offsetDays: -1 }]);
+  });
+
+  it('clamps daysAhead to 1-7, and defaults a missing one to 1', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili',
+        items: [],
+        prepTasks: [
+          { title: 'Brine the turkey', daysAhead: 30 },
+          { title: 'Defrost the lamb' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.prepTasks).toEqual([
+      { title: 'Brine the turkey', offsetDays: -7 },
+      { title: 'Defrost the lamb', offsetDays: -1 },
+    ]);
+  });
+
+  it('drops a prep task with no title', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili', items: [], prepTasks: [{ daysAhead: 1 }, { title: '   ', daysAhead: 1 }],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.prepTasks).toEqual([]);
+  });
+
+  it('caps prep tasks at 8', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili',
+        items: [],
+        prepTasks: Array.from({ length: 12 }, (_, i) => ({ title: `Task ${i}`, daysAhead: 1 })),
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.prepTasks).toHaveLength(8);
+  });
+
   it('sends pasted text as a bare string, not a content block array', async () => {
     const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
     await extractRecipe('some recipe', AISLES);
@@ -606,6 +780,56 @@ describe('extractRecipe', () => {
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
     expect(typeof body.messages[0].content).toBe('string');
     expect(body.messages[0].content).toContain('Recipe:\nsome recipe');
+  });
+
+  it('asks for the method and prep tasks by default', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+    await extractRecipe('some recipe', AISLES);
+
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content).toContain('prep task');
+    expect(body.tools[0].input_schema.properties.steps).toBeDefined();
+    expect(body.tools[0].input_schema.properties.prepTasks).toBeDefined();
+  });
+
+  it('skips the method and prep-task instructions when includeMethod is false', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+    await extractRecipe('some recipe', AISLES, { includeMethod: false });
+
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content).not.toContain('prep task');
+    expect(body.tools[0].input_schema.properties.steps).toBeUndefined();
+    expect(body.tools[0].input_schema.properties.prepTasks).toBeUndefined();
+  });
+
+  it('returns no steps or prep tasks when includeMethod is false, even if the model sends them', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili', items: [], steps: ['Brown the beef.'], prepTasks: [{ title: 'Soak', daysAhead: 1 }],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES, { includeMethod: false });
+    expect(result.steps).toEqual([]);
+    expect(result.prepTasks).toEqual([]);
+  });
+
+  it('skips the cross-reference instructions when includeReferences is false', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+    await extractRecipe('some recipe', AISLES, { includeReferences: false });
+
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content).not.toContain('referencedRecipes');
+    expect(body.tools[0].input_schema.properties.referencedRecipes).toBeUndefined();
+  });
+
+  it('returns no references when includeReferences is false, even if the model sends them', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili', items: [], referencedRecipes: [{ name: 'Salsa verde', reference: 'page 45' }],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES, { includeReferences: false });
+    expect(result.references).toEqual([]);
   });
 
   describe('from a photo', () => {
@@ -643,6 +867,9 @@ describe('extractRecipe', () => {
         servingsMax: null,
         prepMinutes: 45,
         ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
+        references: [],
+        steps: [],
+        prepTasks: [],
       });
     });
 
@@ -666,8 +893,23 @@ describe('extractRecipe', () => {
       const spy = jest.spyOn(global, 'fetch');
       await expect(extractRecipe({ base64: '', mediaType: 'image/jpeg' }, AISLES)).resolves.toEqual({
         name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+        references: [], steps: [], prepTasks: [],
       });
       expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('extracts steps and prep tasks from a photo too', async () => {
+      mockFetchOnce(
+        toolUseResponse('extract_recipe', {
+          name: 'Chili',
+          items: [],
+          steps: ['Brown the beef.'],
+          prepTasks: [{ title: 'Soak the beans overnight', daysAhead: 1 }],
+        })
+      );
+      const result = await extractRecipe(PHOTO, AISLES);
+      expect(result.steps).toEqual(['Brown the beef.']);
+      expect(result.prepTasks).toEqual([{ title: 'Soak the beans overnight', offsetDays: -1 }]);
     });
 
     it('throws when the model returns no tool use', async () => {
@@ -864,6 +1106,52 @@ describe('suggestMealIdeas', () => {
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     expect(body.tool_choice).toEqual({ type: 'tool', name: 'suggest_meals' });
+  });
+
+  it('names what is about to go bad as inspiration, not a requirement', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(ideasResponse([])),
+    } as Response);
+
+    await suggestMealIdeas([], [], 3, undefined, [], ['Spinach — Use by today', 'Mushrooms — 2 days left']);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content as string;
+    expect(content).toContain('Spinach — Use by today');
+    expect(content).toContain('Mushrooms — 2 days left');
+    expect(content).toContain('never force one in');
+    expect(content).toContain('completely fine');
+  });
+
+  it('adds no expiring-items text when none are given', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(ideasResponse([])),
+    } as Response);
+
+    await suggestMealIdeas([], [], 3);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content as string).not.toContain('close to going bad');
+  });
+
+  it('caps the expiring items named in the prompt', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(ideasResponse([])),
+    } as Response);
+    const many = Array.from({ length: 20 }, (_, i) => `Item ${i}`);
+
+    await suggestMealIdeas([], [], 3, undefined, [], many);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content as string;
+    expect(content).toContain('Item 0');
+    expect(content).not.toContain('Item 19');
   });
 });
 

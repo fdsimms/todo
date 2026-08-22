@@ -14,6 +14,35 @@ export interface ResolvedRecipeSource {
 }
 
 /**
+ * The "we asked and they said no" alert, shared with `useRecipeComponentImports`
+ * rather than written twice.
+ *
+ * iOS only ever prompts once, so without an alert naming the permission a second
+ * tap on "Take a photo" does nothing visible at all — which is the reason this
+ * exists, and the reason two surfaces that both pick photos must not drift into
+ * two phrasings of it.
+ */
+export function alertPhotoAccessDenied(
+  source: RecipePhotoSource,
+  canAskAgain: boolean,
+  purpose: string,
+): void {
+  const what = source === 'camera' ? 'the camera' : 'your photos';
+  Alert.alert(
+    `dundundun can't reach ${what}`,
+    canAskAgain
+      ? `Allow access to ${what} to ${purpose}.`
+      : `Turn on access to ${what} in Settings to ${purpose}.`,
+    canAskAgain
+      ? [{ text: 'OK' }]
+      : [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ],
+  );
+}
+
+/**
  * The paste-or-link-or-photo state every recipe import sheet keeps, plus the
  * three non-success outcomes of picking a photo.
  *
@@ -69,19 +98,7 @@ export function useRecipeImportSource(
         haptics.success();
         setPhoto(result.photo);
       } else if (result.status === 'denied') {
-        const what = source === 'camera' ? 'the camera' : 'your photos';
-        Alert.alert(
-          `dundundun can't reach ${what}`,
-          result.canAskAgain
-            ? `Allow access to ${what} to ${purpose}.`
-            : `Turn on access to ${what} in Settings to ${purpose}.`,
-          result.canAskAgain
-            ? [{ text: 'OK' }]
-            : [
-                { text: 'Not now', style: 'cancel' },
-                { text: 'Open Settings', onPress: () => Linking.openSettings() },
-              ],
-        );
+        alertPhotoAccessDenied(source, result.canAskAgain, purpose);
       } else if (result.status === 'failed') {
         setPhotoError(result.message);
       }

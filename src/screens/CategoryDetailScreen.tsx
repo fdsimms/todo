@@ -43,6 +43,7 @@ export function CategoryDetailScreen() {
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
@@ -223,6 +224,7 @@ export function CategoryDetailScreen() {
             onSetCategory={cat => { bulkSetCategory(Array.from(selectedIds), cat); exitSelection(); }}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+            onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
             onSelectAll={() => selectAll(categoryTasks.map(t => t.id))}
             onDeselectAll={deselectAll}
             onCancel={exitSelection}
