@@ -188,22 +188,13 @@ export function RecipeDetailScreen() {
   // ==== local state (drafts, the sheets this screen opens) ====
   const [draft, setDraft] = useState('');
   // What new ingredients are filed under, until changed or cleared — the add
-  // field's own equivalent of RecipeIngredientSheet's Section field. A picker
-  // now, like that one, over the headings this recipe already has — it used
-  // to be free text, on the theory that a picker would be empty exactly when
-  // someone first needed it, but "New section" (below) is what actually
-  // fills that gap, so there's no longer a reason to let a typo here mint a
-  // heading nothing else can find. Re-filing a row that already exists is the
-  // sheet's job, or a drag.
+  // field's own equivalent of RecipeIngredientSheet's Section field, and its
+  // picker works the same way (same PillGroup, same onCreate): it used to be
+  // free text, on the theory that a picker would be empty exactly when
+  // someone first needed it, but the grid's own "New section" reveal field
+  // fills that gap without letting a typo mint a heading nothing else can
+  // find. Re-filing a row that already exists is the sheet's job, or a drag.
   const [sectionDraft, setSectionDraft] = useState('');
-  // The standalone "declare a heading with nothing under it yet" field, up by
-  // the Ingredients label — see Recipe.emptySections. Deliberately not the
-  // same state as sectionDraft above: that one tags ingredients as they're
-  // typed, this one creates a heading on its own, and conflating the two
-  // controls was the mistake the first pass at this made.
-  const [addingSection, setAddingSection] = useState(false);
-  const [newSectionName, setNewSectionName] = useState('');
-  const [sectionError, setSectionError] = useState<string | null>(null);
   const [pickingImage, setPickingImage] = useState(false);
   const draftInputRef = useRef<TextInput>(null);
   const [prepDraft, setPrepDraft] = useState('');
@@ -290,27 +281,6 @@ export function RecipeDetailScreen() {
     setTimeout(() => {
       draftInputRef.current?.focus();
     }, 50);
-  };
-
-  const closeNewSection = () => {
-    setAddingSection(false);
-    setNewSectionName('');
-    setSectionError(null);
-  };
-
-  const submitNewSection = () => {
-    const cleaned = newSectionName.trim();
-    if (!cleaned) { closeNewSection(); return; }
-    if (allSections.includes(cleaned)) {
-      setSectionError('Already a heading on this recipe.');
-      haptics.warning();
-      return;
-    }
-    if (addEmptySection(recipe.id, newSectionName)) {
-      haptics.success();
-      animateLayout();
-      closeNewSection();
-    }
   };
 
   // ==== actions: add to list, share, plan, edit an ingredient ====
@@ -1082,50 +1052,7 @@ export function RecipeDetailScreen() {
           <RecipeTimerRow verb="Cook" {...cookTimer} />
         </View>
 
-        {/* A heading you can declare on its own, with nothing filed under it
-            yet (Recipe.emptySections) — its own action up by the section
-            label, not folded into the add-ingredient flow below. Same
-            reveal-an-inline-field shape PillGroup's "New {noun}" uses: an
-            empty field blurred is someone who changed their mind, so it
-            closes itself rather than leaving a dead row behind. */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionLabel, styles.sectionLabelInline]}>Ingredients</Text>
-          {!addingSection && (
-            <InlineAction
-              label="New section"
-              icon="add"
-              onPress={() => { haptics.tap(); animateLayout(); setAddingSection(true); }}
-              accessibilityLabel="Add a new section heading"
-            />
-          )}
-        </View>
-        {addingSection && (
-          <View style={styles.addSectionWrap}>
-            <View style={styles.addRow}>
-              <TextInput
-                style={[styles.addInput, !!sectionError && styles.addInputError]}
-                value={newSectionName}
-                onChangeText={t => { setNewSectionName(t); if (sectionError) setSectionError(null); }}
-                onSubmitEditing={submitNewSection}
-                onBlur={() => { if (!newSectionName.trim()) closeNewSection(); }}
-                placeholder="e.g. For serving"
-                placeholderTextColor={colors.textTertiary}
-                maxLength={RECIPE_SECTION_MAX_LENGTH}
-                returnKeyType="done"
-                autoCapitalize="words"
-                autoFocus
-                accessibilityLabel="New section name"
-              />
-              <InlineAction
-                label="Add"
-                icon="add"
-                onPress={submitNewSection}
-                disabled={!newSectionName.trim()}
-              />
-            </View>
-            {!!sectionError && <Text style={styles.sectionErrorText}>{sectionError}</Text>}
-          </View>
-        )}
+        <Text style={styles.sectionLabel}>Ingredients</Text>
 
         {/* Above the list rather than up by the summary: it's the quantities
             below that visibly change, and a control that far from what it
@@ -1179,35 +1106,46 @@ export function RecipeDetailScreen() {
         {/* Which heading newly-typed ingredients below file under — a picker
             over headings this recipe already has, not a field you type a new
             one into. That used to be free text, on the theory that a picker
-            would be empty exactly when it's first needed; "New section" above
-            removed that problem, so the picker can be the only way in and a
-            typo can no longer mint a heading nothing else matches. Rows
-            already on the list are moved between headings by dragging them,
-            which is what the hint below says. */}
-        {allSections.length > 0 && (
-          <View style={styles.sectionPickerWrap}>
-            <Text style={styles.inputHint}>New ingredients below go under:</Text>
-            <PillGroup
-              noun="section"
-              surface="page"
-              options={[
-                {
-                  key: '__none__',
-                  label: 'No section',
-                  pinned: true,
-                  selected: !sectionDraft,
-                  onPress: () => { haptics.tap(); setSectionDraft(''); },
-                },
-                ...allSections.map(name => ({
-                  key: name,
-                  label: name,
-                  selected: sectionDraft === name,
-                  onPress: () => { haptics.tap(); setSectionDraft(name); },
-                })),
-              ]}
-            />
-          </View>
-        )}
+            would be empty exactly when it's first needed; the grid's own
+            "New section" reveal field (onCreate) removed that problem, so
+            typing a heading here is deliberate and validated instead of a
+            typo that mints one nothing else matches. Always shown, even with
+            no sections yet, since this is now the only way to declare one —
+            including a heading with nothing filed under it yet
+            (Recipe.emptySections), if the field's blurred before an
+            ingredient names it. Rows already on the list are moved between
+            headings by dragging them, which is what the hint below says. */}
+        <View style={styles.sectionPickerWrap}>
+          <Text style={styles.inputHint}>New ingredients below go under:</Text>
+          <PillGroup
+            noun="section"
+            surface="page"
+            filterPlaceholder="Find or name a section…"
+            createMaxLength={RECIPE_SECTION_MAX_LENGTH}
+            onCreate={name => {
+              const cleaned = name.trim();
+              if (allSections.includes(cleaned)) return 'Already a heading on this recipe.';
+              if (!addEmptySection(recipe.id, name)) return 'That isn’t a usable section name.';
+              haptics.success();
+              setSectionDraft(cleaned.slice(0, RECIPE_SECTION_MAX_LENGTH));
+            }}
+            options={[
+              {
+                key: '__none__',
+                label: 'No section',
+                pinned: true,
+                selected: !sectionDraft,
+                onPress: () => { haptics.tap(); setSectionDraft(''); },
+              },
+              ...allSections.map(name => ({
+                key: name,
+                label: name,
+                selected: sectionDraft === name,
+                onPress: () => { haptics.tap(); setSectionDraft(name); },
+              })),
+            ]}
+          />
+        </View>
         {/* Only once there's a heading to drag under. Sections are a label on a
             flat list, so the order *is* the grouping — this is the one place
             that's worth saying out loud, since nothing about a row suggests
@@ -1583,17 +1521,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: spacing.md,
   },
-  // "Ingredients" plus "New section" — the row carries the label's own
-  // marginTop instead (see sectionLabelInline), so the two align on one line.
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.md,
-  },
-  sectionLabelInline: {
-    marginTop: 0,
-  },
   hint: {
     color: colors.textTertiary,
     fontSize: font.sm,
@@ -1839,7 +1766,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.xs,
   },
   // Wraps the "new ingredients file under" picker so its caption and pills
-  // read as one control, the same shape addSectionWrap gives its own field.
+  // read as one control.
   sectionPickerWrap: {
     marginTop: spacing.md,
   },
@@ -1847,20 +1774,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  // Wraps the "New section" reveal field so its error text sits under the
-  // whole row rather than under just the input.
-  addSectionWrap: {
-    marginTop: spacing.sm,
-  },
-  addInputError: {
-    borderWidth: 1,
-    borderColor: colors.red,
-  },
-  sectionErrorText: {
-    color: colors.red,
-    fontSize: font.xs,
     marginTop: spacing.xs,
   },
   inputHint: {
