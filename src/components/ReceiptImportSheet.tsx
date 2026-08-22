@@ -62,6 +62,16 @@ export interface ReceiptAddDraft {
   name: string;
   /** The line exactly as printed, passed through as the raw text a new row is added from. */
   label: string;
+  /**
+   * Who makes it, when the source said so — recorded as the minted row's first
+   * `ItemProduct`.
+   *
+   * Always null from a receipt, which prints a store's own shorthand for a
+   * product and never its maker. It is on the shared draft rather than a
+   * scan-only one because the two paths mint rows through the same handler, and
+   * a second draft type would only be this field's absence.
+   */
+  brand: string | null;
   quantity: string;
   priceMinor: number | null;
 }
@@ -285,6 +295,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply }: Props) {
         existingItemId: m.offListMatchId,
         name: m.line.name,
         label: m.line.label,
+        brand: null,
         quantity: m.line.quantity,
         priceMinor: m.line.priceMinor,
       }));

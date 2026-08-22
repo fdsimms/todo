@@ -38,6 +38,7 @@ import {
   matchScans,
   pluScannedItem,
   scannedItemFor,
+  sourceLabelFor,
   unknownScannedItem,
   type ScannedItem,
 } from '../utils/scanResolve';
@@ -308,6 +309,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         // exactly as a receipt hands over its printed line. Falls back to the
         // shopper name for a typed row, which has no other words to offer.
         label: row.label || row.name.trim(),
+        // Only a looked-up row has one; a typed row's brand is null, and the
+        // screen skips the product write rather than storing an empty box.
+        brand: row.brand,
         quantity: row.quantity,
         priceMinor: null,
       });
@@ -468,8 +472,12 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                         accessibilityLabel="Item name"
                       />
                       {/* The words the lookup used, kept verbatim: the only way
-                          to check the name above is against the box in hand. */}
-                      {!!row.label && <Text style={styles.rowLabel}>{row.label}</Text>}
+                          to check the name above is against the box in hand.
+                          The maker leads it when the name doesn't already say
+                          who it is — see `sourceLabelFor`. */}
+                      {!!row.label && (
+                        <Text style={styles.rowLabel}>{sourceLabelFor(row.label, row.brand)}</Text>
+                      )}
                       {!!caption && (
                         <Text style={row.error ? styles.rowError : styles.rowCaption}>{caption}</Text>
                       )}

@@ -3,6 +3,7 @@ import {
   matchScans,
   scannedItemFor,
   shopperNameFor,
+  sourceLabelFor,
   unknownScannedItem,
   type ScannedItem,
 } from '../utils/scanResolve';
@@ -122,6 +123,32 @@ describe('alreadyScanned', () => {
 
   it('never matches a typed row, which carries no code', () => {
     expect(alreadyScanned([scan({ name: 'Bananas' })], '00036000291452')).toBe(false);
+  });
+});
+
+describe('sourceLabelFor', () => {
+  it('leads with the maker when the name does not say who it is', () => {
+    expect(sourceLabelFor('Sun Sausage Plant-based Links Cajun', 'Beyond Meat'))
+      .toBe('Beyond Meat · Sun Sausage Plant-based Links Cajun');
+  });
+
+  it('does not repeat a brand the name already starts with', () => {
+    expect(sourceLabelFor('Great Value 2% Reduced Fat Milk', 'Great Value'))
+      .toBe('Great Value 2% Reduced Fat Milk');
+  });
+
+  it('ignores case when deciding the name already says it', () => {
+    expect(sourceLabelFor("DAVE'S KILLER BREAD 21 Grain", "Dave's Killer Bread"))
+      .toBe("DAVE'S KILLER BREAD 21 Grain");
+  });
+
+  it('is the label alone when the source named no brand', () => {
+    expect(sourceLabelFor('Semi-skimmed milk', null)).toBe('Semi-skimmed milk');
+    expect(sourceLabelFor('Semi-skimmed milk', '   ')).toBe('Semi-skimmed milk');
+  });
+
+  it('is the brand alone rather than a dangling separator when there is no label', () => {
+    expect(sourceLabelFor('', 'Beyond Meat')).toBe('Beyond Meat');
   });
 });
 

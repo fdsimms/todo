@@ -37,7 +37,13 @@ export interface ScannedItem {
   label: string;
   /** The shopping-list name — what a row gets called. Editable before committing. */
   name: string;
-  /** Who makes it, when the source said. Kept for the review row, not yet written anywhere. */
+  /**
+   * Who makes it, when the source said.
+   *
+   * Shown on the review row via `sourceLabelFor`, and written as the minted
+   * row's first `ItemProduct` — a scan is the one input path handed a brand for
+   * free, and `ItemProduct` is where a brand already lives.
+   */
   brand: string | null;
   /** Pack size as the source printed it. Empty when unstated. */
   quantity: string;
@@ -83,6 +89,34 @@ export function shopperNameFor(fullName: string, brand: string | null): string {
 
   const tidied = name.replace(EDGE_JUNK, '').replace(/\s+/g, ' ');
   return tidied || full;
+}
+
+/** Separates the maker from the product in the review row's source line. */
+const BRAND_SEPARATOR = ' · ';
+
+/**
+ * The source's own words for the review row: the product name, with the brand
+ * in front of it when the name doesn't already say who makes it.
+ *
+ * The brand goes *into* this line rather than onto one of its own because the
+ * line already means "what the database called this", and the brand is the same
+ * kind of fact from the same answer. A row is one to three lines as it is, and
+ * the fourth is the one nobody reads (see the note on `rowGtin`).
+ *
+ * **The prefix is conditional, and that is the whole function.** Half of these
+ * names lead with the maker already ("Great Value 2% Reduced Fat Milk"), and
+ * `shopperNameFor` strips exactly that prefix off the name above — so pasting
+ * the brand back on unconditionally would print "Great Value · Great Value 2%
+ * Reduced Fat Milk" under a row whose entire point is checking the words
+ * against the box in your hand.
+ */
+export function sourceLabelFor(label: string, brand: string | null): string {
+  const words = label.trim();
+  const maker = brand?.trim();
+  if (!maker) return words;
+  if (!words) return maker;
+  if (words.toLowerCase().startsWith(maker.toLowerCase())) return words;
+  return `${maker}${BRAND_SEPARATOR}${words}`;
 }
 
 /** A looked-up product as a row waiting to be reviewed. */
