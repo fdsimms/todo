@@ -80,7 +80,7 @@ export function useUpTaskFields(
  * The full draft for a newly spawned use-up task, back-pointer included.
  *
  * `category` is applied here and nowhere else — on creation only, never on a
- * reconcile — same as cookTaskDraft/useUpTaskDraft (grocery). See
+ * reconcile — same as mealSlotTaskDraft/useUpTaskDraft (grocery). See
  * leftoverUseUpTaskCategory.
  */
 export function useUpTaskDraft(

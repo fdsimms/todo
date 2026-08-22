@@ -42,7 +42,7 @@ import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, da
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { asksOnCompletion } from '../utils/deliverables';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish } from '../utils/chain';
@@ -97,12 +97,6 @@ const QUOTA_TOPPING_MS = animation.duration.normal;
 // the row has gone. Every further tap pushes this out again, so the window is
 // the gap between taps, not a budget for the whole burst.
 const QUOTA_LINGER_MS = 4000;
-
-// The daily-target meter's level as a 0–1 fraction of the target. Exported so
-// the Logbook can fill its own circle to the same proportion rather than
-// collapsing progress to a static dash.
-export const quotaFraction = (task: Task) =>
-  task.targetCount ? Math.min(1, task.progressCount / task.targetCount) : 0;
 
 interface Props {
   task: Task;

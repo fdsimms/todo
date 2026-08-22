@@ -292,7 +292,16 @@ export const DEFAULT_NUDGE_CADENCE_DAYS = 0;
  * that generator having forgotten every task it ever wrote.
  */
 export type GeneratedKind =
+  // Retired in favour of 'mealSlot' below, and kept only because these are
+  // storage values: rows written before the fold still say 'mealCook', and a
+  // kind the code no longer recognises reads as the app having forgotten every
+  // cook task it ever wrote. Nothing writes it any more — see
+  // src/utils/mealSlotTasks.ts for what replaced it and why.
   | 'mealCook'
+  // A meal of the day as one task, whose steps are what's left to decide:
+  // Choose -> Prepare -> Eat for a slot with nothing in it, and the same chain
+  // with its first step already gone once something is planned.
+  | 'mealSlot'
   | 'groceryUseUp'
   | 'leftoverUseUp'
   | 'mealPlanNudge'
@@ -509,7 +518,7 @@ export interface Task {
 
   // Which generator wrote this task, and the row it was projected from — both
   // null on every task a person typed. See src/utils/generatedTasks.ts for the
-  // mechanism and src/utils/{mealTasks,groceryExpiry,leftoverTasks,
+  // mechanism and src/utils/{mealSlotTasks,groceryExpiry,leftoverTasks,
   // mealPlanNudge}.ts for each generator's own rules.
   //
   // These replaced a column per generator (mealEntryId, groceryItemId,
@@ -2620,9 +2629,16 @@ export interface MealPlanEntry {
    */
   recipeScale: number;
   /**
-   * Whether this meal gets a "Cook X" task on Today — `true`/`false` when the
-   * user has said so for this meal, `null` when they haven't and the
-   * `mealCookTasks` setting decides (see wantsCookTask in utils/mealTasks.ts).
+   * Whether this meal's slot gets a task on Today — `true`/`false` when the
+   * user has said so for this meal, `null` when they haven't and
+   * `mealSlotsEnabled` decides (see utils/mealSlotTasks.ts).
+   *
+   * It outlived the cook tasks it was built for: a meal task is keyed by a day
+   * and a slot rather than by a meal, but "not this one" is still a thing a
+   * *meal* says, so this stays the per-meal answer both the daily pass and the
+   * reconcile read. An explicit `true` is also the one way a task appears
+   * outside that pass — a lunch you cook once a month can have a task without
+   * lunch being a meal you want asked about every day.
    *
    * **Three states rather than a boolean, because "no" has to be sayable
    * separately from "not yet asked".** Deleting the spawned task records

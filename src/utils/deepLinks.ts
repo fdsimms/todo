@@ -11,6 +11,7 @@ import {
   resetToProjectPull,
   openQuickAddFromShortcut,
 } from '../navigation/navigationRef';
+import { MEAL_SLOTS, type MealSlot } from '../types';
 
 export interface AddTaskLink {
   title: string;
@@ -149,6 +150,28 @@ export function mealPlanUrlDayKey(url: string): string | null {
   return DAY_KEY_RE.test(dayKey) ? dayKey : null;
 }
 
+/**
+ * The slot a meal-plan link asks to open the picker on, or null when it doesn't
+ * ask for one.
+ *
+ * `dundundun://mealplan?date=2026-08-22&pick=lunch` — the link an unanswered
+ * meal task carries (see `mealSlotLinkUrl`), so its first step is one tap from
+ * the sheet that answers it rather than a trip through the week to find the
+ * right row. Answered slots carry the bare dated link and return null here,
+ * which is how the same row stops offering to re-decide once it's been decided.
+ *
+ * Validated against MEAL_SLOTS rather than passed through: this ends up as a
+ * navigation param the Meal Plan screen hands straight to the picker's
+ * `defaultSlot`, and an unknown string there would select no chip at all.
+ */
+export function mealPlanUrlPickSlot(url: string): MealSlot | null {
+  if (typeof url !== 'string') return null;
+  const match = MEAL_PLAN_RE.exec(url.trim());
+  if (!match) return null;
+  const slot = (parseQuery(match[1] ?? '').pick ?? '').trim();
+  return (MEAL_SLOTS as readonly string[]).includes(slot) ? (slot as MealSlot) : null;
+}
+
 // `dundundun://kitchen[?item=…]` — what the grocery and leftover "Use up X"
 // tasks carry (see kitchenInventory.kitchenLinkUrl), so tapping one opens the
 // pantry/fridge view rather than the bare grocery list the groceries link
@@ -227,7 +250,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     return true;
   }
   if (isMealPlanUrl(url)) {
-    resetToMealPlan(mealPlanUrlDayKey(url));
+    resetToMealPlan(mealPlanUrlDayKey(url), mealPlanUrlPickSlot(url));
     return true;
   }
   if (isKitchenUrl(url)) {

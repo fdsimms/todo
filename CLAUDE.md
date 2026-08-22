@@ -194,6 +194,7 @@ exports.
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
 | a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` |
+| a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
@@ -259,16 +260,16 @@ exports.
 **Read narrowly.** 34 files are over 1,000 lines, 20 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (4.8k), `components/TaskEditor.tsx` (4.2k), `db/database.ts` (3.6k),
+`store/useTaskStore.ts` (5.0k), `components/TaskEditor.tsx` (4.2k), `db/database.ts` (3.6k),
 `screens/TodayScreen.tsx` (3.6k), `store/useGroceryStore.ts` (3.6k),
 `components/TaskItem.tsx` (3.3k), `types/index.ts` (2.9k),
-`components/QuickAddModal.tsx` (2.6k), `screens/MealPlanScreen.tsx` (2.0k),
-`store/useSettingsStore.ts` (1.9k).
+`components/QuickAddModal.tsx` (2.6k), `store/useSettingsStore.ts` (2.0k),
+`screens/MealPlanScreen.tsx` (2.0k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **167 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **168 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

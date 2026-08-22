@@ -119,6 +119,7 @@ function AppRoot() {
   const dripStalledProjects = useTaskStore(s => s.dripStalledProjects);
   const checkMealPlanNudge = useTaskStore(s => s.checkMealPlanNudge);
   const checkProjectReviewTasks = useTaskStore(s => s.checkProjectReviewTasks);
+  const checkMealSlotTasks = useTaskStore(s => s.checkMealSlotTasks);
   const checkPantryCheckTasks = useTaskStore(s => s.checkPantryCheckTasks);
   const checkScheduledTemplates = useTemplateStore(s => s.checkScheduledTemplates);
   const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
@@ -172,8 +173,13 @@ function AppRoot() {
       // all — running the cheaper pass first means this one never writes a
       // task the drip is about to make wrong.
       ['check project review tasks', checkProjectReviewTasks],
+      // Today's meal tasks — one per meal the user says they eat, whose steps
+      // are what's left to decide about it. After initSettings, since the day
+      // it writes for is the *logical* one; after initTasks, whose fan-out
+      // creates the meal plan tables it reads to see what's already planned.
+      ['check meal slot tasks', checkMealSlotTasks],
       // Ask about anything the pantry has quietly stopped vouching for (off by
-      // default). Grouped with the review pass above because it has the same
+      // default). Grouped with the two passes above because it shares their
       // trigger — time passing rather than a source mutation — and it reads the
       // grocery catalog initTasks' fan-out has already loaded.
       ['check pantry checks', checkPantryCheckTasks],
@@ -206,7 +212,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkPantryCheckTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   View,
@@ -10,7 +10,6 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { HighlightedText } from './HighlightedText';
 import { SearchField } from './SearchField';
@@ -19,7 +18,8 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
-import { quickSearch } from '../utils/quickSearch';
+import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
+import { TaskCheckbox } from './TaskCheckbox';
 import { haptics } from '../utils/haptics';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { Task } from '../types';
@@ -75,9 +75,20 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
 
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
 
+  // Tasks ticked from this card, held in their slot so the tick is visible
+  // rather than re-sorting the row past the cap and out of the card (see
+  // quickSearch). Dropped whenever the query moves on, since that's a new set
+  // of results and nothing is being held in place any more.
+  const [heldIds, setHeldIds] = useState<ReadonlySet<string>>(new Set());
+  const hold = useCallback(
+    (taskId: string) => setHeldIds(prev => new Set(prev).add(taskId)),
+    []
+  );
+  useEffect(() => setHeldIds(new Set()), [debouncedQuery]);
+
   const { results, total } = useMemo(
-    () => quickSearch(tasks, debouncedQuery, projectNamesById),
-    [tasks, debouncedQuery, projectNamesById]
+    () => quickSearch(tasks, debouncedQuery, projectNamesById, QUICK_SEARCH_LIMIT, heldIds),
+    [tasks, debouncedQuery, projectNamesById, heldIds]
   );
 
   useEffect(() => {
@@ -159,33 +170,39 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
 
           {results.length > 0 && (
             <View style={styles.results}>
+              {/* A plain View holding two touchables, not one touchable
+                  wrapping the box: a TouchableOpacity is `accessible` by
+                  default, so a checkbox nested inside one is folded into the
+                  row's single element and never announced on its own. */}
               {results.map(({ task, titleMatches }) => (
-                <TouchableOpacity
-                  key={task.id}
-                  style={styles.resultRow}
-                  onPress={() => handleSelect(task)}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={[
-                    task.title,
-                    task.archived ? 'archived' : null,
-                    task.completed ? 'completed' : null,
-                  ].filter(Boolean).join(', ')}
-                  accessibilityHint="Double tap to open task"
-                >
-                  {task.completed
-                    ? <Ionicons name="checkmark-circle" size={20} color={colors.green} />
-                    : <View style={styles.circle} />
-                  }
-                  <HighlightedText
-                    text={task.title}
-                    ranges={titleMatches}
-                    style={[styles.resultTitle, task.completed && styles.resultTitleDone]}
-                    highlightStyle={styles.highlight}
-                    numberOfLines={1}
-                  />
-                  {task.archived && <Text style={styles.archivedLabel}>Archived</Text>}
-                </TouchableOpacity>
+                <View key={task.id} style={styles.resultRow}>
+                  <TaskCheckbox task={task} onTicked={hold} />
+                  <TouchableOpacity
+                    style={styles.resultTap}
+                    onPress={() => handleSelect(task)}
+                    activeOpacity={interaction.activeOpacity}
+                    // Puts the row's own padding back into the tap target, which
+                    // the title alone doesn't cover. Nothing on the left: that
+                    // side belongs to the checkbox.
+                    hitSlop={{ top: 9, bottom: 9, right: spacing.xs }}
+                    accessibilityRole="button"
+                    accessibilityLabel={[
+                      task.title,
+                      task.archived ? 'archived' : null,
+                      task.completed ? 'completed' : null,
+                    ].filter(Boolean).join(', ')}
+                    accessibilityHint="Double tap to open task"
+                  >
+                    <HighlightedText
+                      text={task.title}
+                      ranges={titleMatches}
+                      style={[styles.resultTitle, task.completed && styles.resultTitleDone]}
+                      highlightStyle={styles.highlight}
+                      numberOfLines={1}
+                    />
+                    {task.archived && <Text style={styles.archivedLabel}>Archived</Text>}
+                  </TouchableOpacity>
+                </View>
               ))}
             </View>
           )}
@@ -231,12 +248,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.xs,
     borderRadius: radius.sm,
   },
-  circle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: colors.bgQuaternary,
+  resultTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   resultTitle: {
     flex: 1,

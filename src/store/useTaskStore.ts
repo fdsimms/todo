@@ -62,15 +62,17 @@ import {
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
-import { generatedBy, generatedSourceOf, generatedTaskCountOf } from '../utils/generatedTasks';
-import type { TaskGroup } from '../types';
+import { generatedBy, generatedSourceOf, generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask } from '../utils/generatedTasks';
+import type { MealSlot, TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
-import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getLogicalToday, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
+import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
+import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import {
@@ -439,6 +441,14 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
   switch (task.generatedKind) {
     case 'mealPlanNudge':
       return;
+    // Nothing to write, for the nudge's reason: a day and a slot name a square
+    // on the calendar, not a row. Swiping today's lunch task away is honoured
+    // by mealSlotTasksWrittenThroughDayKey instead — the pass only ever writes
+    // days ahead of its mark, so a day it has covered is never revisited and
+    // the row stays gone. That's what keeps this generator off the
+    // growing-record path generatedTasks.ts warns about.
+    case 'mealSlot':
+      return;
     // A stamp, not a `false`, and the one generator whose opt-out expires. The
     // fields a project could carry a permanent "no" on are nudgeOptIn and
     // nudgeCadenceDays, and both mean "never chase me about this again" — far
@@ -480,6 +490,71 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       return;
     default:
       return;
+  }
+}
+
+/**
+ * The meal a slot task's day and slot currently hold, or null for a slot with
+ * nothing in it.
+ *
+ * Read from SQLite rather than from `useMealPlanStore.entries`, which holds
+ * only the week the Meal Plan screen has open — a task ticked off on Today is
+ * routinely about a day that store has never loaded, and a bare filter over it
+ * would report every meal as unplanned. Same call `checkMealPlanNudge` makes
+ * for the same reason.
+ */
+function mealSlotEntryId(task: Task): string | null {
+  const source = parseMealSlotSource(generatedSourceOf(task, 'mealSlot'));
+  if (!source) return null;
+  const entries = dbGetMealPlanEntries(source.dayKey, source.dayKey);
+  return entriesForSlot(entries, source.dayKey, source.slot)[0]?.id ?? null;
+}
+
+/**
+ * Write the missing meal tasks for a span of days and a set of meals.
+ *
+ * Shared by the daily pass and the settings backfill, which differ only in
+ * which days and which meals they are asking about. One SQLite read covers the
+ * whole span — the meals already planned in it are what decide each task's
+ * steps (see mealSlotChain).
+ */
+function writeMealSlotTasks(fromKey: string, toKey: string, slots: readonly MealSlot[]): void {
+  const entries = dbGetMealPlanEntries(fromKey, toKey);
+  // Ensured here as well as at startup for checkProjectReviewTasks' reason:
+  // this generator ships on, so nobody flips the switch that would otherwise
+  // create the category, and an uncategorized row lands in the loose block
+  // above every section.
+  ensureGeneratedTaskCategory('mealSlot');
+  const category = useSettingsStore.getState().mealCookTaskCategory;
+
+  for (let dayKey = fromKey; dayKey <= toKey; dayKey = shiftDayKey(dayKey, 1)) {
+    for (const slot of slots) {
+      const tasks = useTaskStore.getState().tasks;
+      const sourceId = mealSlotSourceId(dayKey, slot);
+      // Live or finished: a slot dealt with already is not a slot to ask about
+      // again. Same question blocksOnFinished asks for a cook task, and the
+      // same answer — a meal is one event.
+      if (hasAnyGeneratedTask(tasks, 'mealSlot', sourceId)) continue;
+      const entry = entriesForSlot(entries, dayKey, slot)[0] ?? null;
+      // A meal the user has explicitly refused a task for keeps its refusal
+      // through the fold: MealPlanEntry.cookTask is still the per-meal "no",
+      // and it's the one thing a slot task inherits from the cook task it
+      // replaces. `true` needs no case — an enabled slot gets a row anyway.
+      if (entry?.cookTask === false) continue;
+      // A legacy cook task for this slot's meal still covers it. Only matters
+      // for the launch or two after the fold, while rows written as `mealCook`
+      // drain; without it the first pass would write a second row under a
+      // "Cook X" the user is already looking at.
+      if (entry && liveGeneratedTask(tasks, 'mealCook', entry.id)) continue;
+      // Already cooked before the pass ran — there is nothing left to do and
+      // nothing to ask.
+      if (entry?.cookedAt) continue;
+      useTaskStore.getState().addTask(
+        mealSlotTaskDraft(dayKey, slot, entry, category),
+        derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
+        { skipCategoryDefault: true, skipTitleRules: true },
+      );
+    }
   }
 }
 
@@ -1049,6 +1124,16 @@ interface TaskStore {
    * project has stopped being quiet. See src/utils/projectReviewTasks.ts.
    */
   checkProjectReviewTasks: () => void;
+  /**
+   * Write today's meal tasks, once per logical day — see the implementation
+   * for why the day is both the unit and the whole opt-out.
+   */
+  checkMealSlotTasks: () => void;
+  /**
+   * Fill the already-written days with meals just switched on in Settings —
+   * see the implementation for why the mark is never rewound instead.
+   */
+  backfillMealSlotTasks: (slots: readonly MealSlot[]) => void;
   /**
    * Give every grocery item whose pantry guess has just run out a "Check if you
    * still have X" task, and clear the ones that have since been answered,
@@ -2368,8 +2453,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // is a one-off by construction (nothing gives one a recurrence rule);
           // this is the defensive half of that, for a row the user made
           // recurring by hand.
-          generatedKind: null,
-          generatedSourceId: null,
+          //
+          // **A mid-chain step is the exception, and it's the case the rule
+          // above was never about.** The reasoning is a *recurrence* one — a
+          // second occupant claiming a source the first one already answered.
+          // Stepping from "Choose lunch" to "Prepare lunch" isn't a second
+          // claimant, it's the same run continuing, and exactly one row is live
+          // at any point in it. Cleared here, a chained generated task loses
+          // its identity at step two: its reconcile stops finding it (so a plan
+          // change no longer reaches the row), its delete stops writing an
+          // opt-out, and the next firing pass, seeing nothing live, writes a
+          // duplicate underneath it. So the clear stops at the wrap: the last
+          // step of a repeating chain starts a fresh cycle and does have to let
+          // go, which is what `!atChainEnd` says. See utils/mealSlotTasks.ts,
+          // the first generator whose task is a chain.
+          generatedKind: chainAdvances && !atChainEnd ? effective.generatedKind : null,
+          generatedSourceId: chainAdvances && !atChainEnd ? effective.generatedSourceId : null,
           // Never carried forward: the old occurrence's device event still
           // shows the old deadline, and this is a fresh row with a fresh
           // deadline (nextDeadline above) that needs its own event, created
@@ -2569,7 +2668,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Placed after the set() so the task is already committed as completed,
     // which is what makes the call back into this store from setCooked a no-op.
     // Never on a miss — marking a task missed says the cooking didn't happen.
-    const cookedEntryId = generatedSourceOf(task, 'mealCook');
+    //
+    // A meal task asks the same question one step later. A cook task answered
+    // it by existing — one task, one tick, one cooking — but a chain's first
+    // tick is "I've decided what to have", which is nowhere near having had it.
+    // So only the step that finishes the chain counts (completesMealSlot), and
+    // a slot with nothing planned in it has no meal to mark either way.
+    const cookedEntryId =
+      generatedSourceOf(task, 'mealCook') ??
+      (completesMealSlot(task) ? mealSlotEntryId(task) : null);
     const undoMealCooked = !missed && cookedEntryId
       ? useMealPlanStore.getState().setCookedPaired(cookedEntryId, true)
       : null;
@@ -2705,7 +2812,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // MealPlanScreen's setCooked for why undo and un-tick differ here). Safe to
     // call unconditionally: the entry is already un-cooked when this runs as
     // part of a completion's undo, so setCooked returns early.
-    const uncookedEntryId = generatedSourceOf(task, 'mealCook');
+    const uncookedEntryId =
+      generatedSourceOf(task, 'mealCook') ??
+      // The mirror of the completion's own test: un-ticking the step that ended
+      // the chain is the one that un-cooks the meal. Read off the row as it
+      // stands, which is the step that was ticked — the chain hasn't moved on,
+      // since finishing one spawns nothing.
+      (completesMealSlot(task) ? mealSlotEntryId(task) : null);
     if (uncookedEntryId) useMealPlanStore.getState().setCooked(uncookedEntryId, false);
 
     // Un-ticking a "Use up X" task retracts whatever resolve prompt it just
@@ -3284,6 +3397,72 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       });
     });
     // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  /**
+   * Lay down meal tasks for the days ahead — one per meal the user says they
+   * eat, for each day out to `MEAL_SLOT_TASK_DAYS`.
+   *
+   * The generator `mealCook` folded into (see utils/mealSlotTasks.ts). A cook
+   * task was projected from a *meal*, so it could only exist where one had
+   * already been planned; this is projected from the *day*, so the slot nobody
+   * has answered gets a row too, and its first step is answering it.
+   *
+   * **The written-through mark is the whole opt-out**, and the reason this only
+   * ever looks forward. A slot names a square on the calendar rather than a
+   * row, so there is nowhere to write a per-source "no" the way a meal, a
+   * grocery item or a leftover carries one — and a growing (kind, sourceId)
+   * suppression record is the shape generatedTasks.ts warns against, because
+   * nothing prunes it. A high-water mark solves it with one string: days at or
+   * before it are never revisited, so a row the user deleted stays deleted, and
+   * each launch writes the one new day that has come into range rather than
+   * re-deciding the window.
+   *
+   * That is also what makes it cheap to run on every foreground.
+   */
+  checkMealSlotTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.mealCookTasks || settings.mealSlotsEnabled.length === 0) return;
+
+    // The *logical* day, not the calendar one: at 1am with a 2am reset the meal
+    // tasks that belong on screen are still yesterday's, and dayKeyOf(new Date())
+    // would open the window a day early. See CLAUDE.md on the grace window.
+    const today = dayKeyOf(getLogicalToday());
+    const horizonEnd = shiftDayKey(today, MEAL_SLOT_TASK_DAYS - 1);
+    const mark = settings.mealSlotTasksWrittenThroughDayKey;
+    // A mark behind today means the app has been closed for a while: pick up
+    // from today rather than filling in the days that have already gone past,
+    // which is the one direction a meal task is no use in.
+    const from = mark && mark >= today ? shiftDayKey(mark, 1) : today;
+    if (from > horizonEnd) return;
+
+    writeMealSlotTasks(from, horizonEnd, settings.mealSlotsEnabled);
+    settings.setMealSlotTasksWrittenThroughDayKey(horizonEnd);
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  /**
+   * Give the days already written the meals that have just been switched on.
+   *
+   * The counterpart to the mark never being rewound. Rewinding would make the
+   * next pass rewrite the whole window, and rewriting a window is exactly what
+   * resurrects a row the user deleted — turn breakfast on and last Thursday's
+   * deleted dinner comes back with it. So the mark stands and this fills in the
+   * one thing that changed, scoped to the added slots.
+   *
+   * Without it a newly-named meal would produce nothing until the horizon rolled
+   * past the mark, which with a week's window is a week of silence after
+   * answering a question in Settings.
+   */
+  backfillMealSlotTasks(slots) {
+    const settings = useSettingsStore.getState();
+    if (!settings.mealCookTasks || slots.length === 0) return;
+    const today = dayKeyOf(getLogicalToday());
+    const mark = settings.mealSlotTasksWrittenThroughDayKey;
+    // Nothing written yet, or nothing still ahead of us: the ordinary pass has
+    // the whole window to do and will pick these up with everything else.
+    if (!mark || mark < today) return;
+    writeMealSlotTasks(today, mark, slots);
   },
 
   checkPantryCheckTasks() {

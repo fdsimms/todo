@@ -229,9 +229,15 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Two of them are *not* flagged `kitchen`: the section is shared, but a quiet
   // project has nothing to do with the grocery area, so hiding its rows along
   // with the kitchen's would take away a setting that still does something.
-  { id: 'mealCookTasks', groupId: 'tasksProjects', label: 'Cook tasks', section: 'Tasks the app adds',
-    keywords: ['meal plan', 'recipe', 'dinner', 'auto', 'generated', 'automatic'], kitchen: true },
-  { id: 'mealCookTaskCategory', groupId: 'tasksProjects', label: 'File cook tasks under', section: 'Tasks the app adds',
+  { id: 'mealCookTasks', groupId: 'tasksProjects', label: 'Meal tasks', section: 'Tasks the app adds',
+    keywords: ['meal plan', 'recipe', 'cook', 'cook task', 'breakfast', 'lunch', 'dinner', 'eat',
+      'what to eat', 'auto', 'generated', 'automatic'], kitchen: true },
+  // Its own entry rather than riding the row above: "which meals" is what a
+  // person types when they want breakfast to stop asking, and the setting they
+  // need is a toggle inside another generator's card.
+  { id: 'mealSlotsEnabled', groupId: 'tasksProjects', label: 'Meals you eat', section: 'Tasks the app adds',
+    keywords: ['breakfast', 'lunch', 'dinner', 'snack', 'skip', 'which ones'], kitchen: true },
+  { id: 'mealCookTaskCategory', groupId: 'tasksProjects', label: 'File meal tasks under', section: 'Tasks the app adds',
     keywords: ['category', 'meal plan', 'kitchen'], kitchen: true },
   { id: 'groceryUseUpTasks', groupId: 'tasksProjects', label: 'Use-up tasks for groceries', section: 'Tasks the app adds',
     keywords: ['expiry', 'expires', 'expiration', 'use by', 'best before', 'perishable', 'spoil',
