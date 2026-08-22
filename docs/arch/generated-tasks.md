@@ -176,13 +176,17 @@ re-deriving:
   remaining ones are the user's; a plan change mid-cook updates the title and the link and leaves the
   steps alone. Rewriting would have to remap the index onto a different-length list, and step 1 of
   [Choose, Prepare, Eat] has no honest answer in [Cook X, Eat X].
-- **Firing once per logical day is the entire opt-out** (`mealSlotTasksLastFiredDayKey`, the
-  day-scale twin of the nudge's week key). There is no row to stamp a "no" on, and a generic
-  `(kind, sourceId)` suppression record is exactly what the note above forbids, because nothing
-  prunes it. Once a day is bounded for free: swiping today's lunch away sticks because the pass has
-  already run, and tomorrow's is a fresh write rather than a "no" somebody has to expire.
-  `setMealSlotsEnabled` clears the key, so naming a meal at nine in the morning gives you its task
-  today rather than tomorrow.
+- **A high-water mark is the entire opt-out** (`mealSlotTasksWrittenThroughDayKey`). There is no
+  row to stamp a "no" on, and a generic `(kind, sourceId)` suppression record is exactly what the
+  note above forbids, because nothing prunes it. One string solves it instead: the pass only ever
+  writes days *after* the mark, so a day it has covered is never revisited and a deleted row stays
+  deleted. It also means each launch does one day's work rather than re-deciding the window, which
+  is what makes it cheap enough to run on every foreground.
+  - **The mark is never rewound**, and that is load-bearing rather than tidy: rewinding makes the
+    next pass rewrite the window, and rewriting a window resurrects every row the user deleted in
+    it. So switching a meal *on* in Settings calls `backfillMealSlotTasks([slot])`, which fills the
+    already-written days with that slot alone. Without it a newly-named meal would produce nothing
+    until the horizon rolled past the mark — a week of silence after answering a question.
 - **The reconcile in `useMealPlanStore` never creates**, which is why it doesn't go through
   `reconcileGeneratedTask`. Creation belongs to `checkMealSlotTasks` alone — a reconcile that created
   on demand would hand back the row the user swiped away the moment they planned that meal from the
@@ -191,9 +195,12 @@ re-deriving:
 - **It doesn't chase the date.** The day is baked into the source id and never moves, so the only
   thing that can change `dueDate` is the user deferring the row — and rewriting that back onto today
   is the one thing this must not do. `projectReview` draws the same line for the same reason.
-- **Today only.** A cook task appeared the moment its meal was planned, dated forward and invisible
-  until its day; generalising that would put 21 rows on Later for a week nobody has planned, most of
-  them saying "Choose lunch".
+- **A week at a time** (`MEAL_SLOT_TASK_DAYS`), matching the meal plan's own `upcomingDays` and the
+  horizon the weekly nudge asks about. This shipped as today-only, on the grounds that a week of
+  rows saying "Choose lunch" would be noise; it isn't, because those meals genuinely are undecided
+  and a Later screen that says so is being accurate. What the narrower version actually cost was the
+  honest half — a meal you *had* planned had something to say ahead of time, exactly as a cook task
+  did, and no row to say it on.
 
 `MealPlanEntry.cookTask` survives the fold unchanged — it is still the per-meal "no", read by both
 the pass and the reconcile, and the one thing a meal task inherits from the cook task it replaces.

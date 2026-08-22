@@ -1281,8 +1281,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     mealTasks.forEach(task => {
       const source = parseMealSlotSource(task.generatedSourceId);
       expect(source).not.toBeNull();
-      expect(source!.dayKey).toBe(todayKey);
+      expect(source!.dayKey >= todayKey).toBe(true);
     });
+    // A week's worth, not just today's: the days ahead are what show a planned
+    // meal saying "Cook X" before its day, and an unplanned one honestly saying
+    // it hasn't been decided. Both states in one screen is the seed's job.
+    const days = new Set(mealTasks.map(t => parseMealSlotSource(t.generatedSourceId)!.dayKey));
+    expect(days.size).toBeGreaterThan(1);
     // Segmented to its slot — the mechanism that keeps dinner off the morning.
     expect(mealTasks.some(t => t.timeSegments.includes('evening'))).toBe(true);
 

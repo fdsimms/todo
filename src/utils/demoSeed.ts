@@ -1852,9 +1852,10 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // context rows instead — both sides of the same section, which is what the
   // arrangement is for.
   //
-  // A slot with *nothing* planned is the case with no row on today, so it's
-  // seeded a day out instead: see the open dinner on offset 6 above, whose
-  // task will read "Choose dinner" when that day comes round.
+  // It writes a week rather than a day, which is what puts both states on one
+  // screen: the nights already planned read "Cook X" on their own day, and the
+  // slots nobody has filled in (the open dinner on offset 6 above, every lunch
+  // past the ones seeded) read "Choose dinner" — undecided, and saying so.
   useTaskStore.getState().checkMealSlotTasks();
 
   // This week's ingredients have been through "Add week to list" already —

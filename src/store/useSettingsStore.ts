@@ -394,22 +394,28 @@ interface SettingsStore {
    */
   mealSlotsEnabled: MealSlot[];
   /**
-   * The last logical day `checkMealSlotTasks` wrote for, or null.
+   * The last day `checkMealSlotTasks` has written meal tasks through, or null
+   * for "never run".
    *
-   * The day-scale twin of `mealPlanNudgeLastFiredWeekKey`, and it does the same
-   * job for the same reason: this generator's source id names a square on the
-   * calendar rather than a row, so there is nowhere to write a per-source "no"
-   * the way a meal, a grocery item or a leftover carries one. Firing once per
-   * logical day is what makes a swipe stick — the pass has already run for
-   * today, so the row doesn't come straight back, and tomorrow's is a fresh
-   * write rather than a suppression that has to be remembered and pruned. See
-   * generatedTasks.ts on why a growing (kind, sourceId) record isn't the
-   * answer.
+   * **A high-water mark, and it is this generator's entire opt-out.** Its source
+   * id names a square on the calendar rather than a row, so there is nowhere to
+   * write a per-source "no" the way a meal, a grocery item or a leftover carries
+   * one — and a growing (kind, sourceId) suppression record is the shape
+   * generatedTasks.ts forbids, because nothing prunes it.
    *
-   * Cleared by `setMealSlotsEnabled`, so turning a meal on gives you its task
-   * today instead of tomorrow.
+   * A mark solves it with one string. The pass only ever writes days *after*
+   * the mark, so a day it has covered is never revisited: delete next
+   * Thursday's lunch task and it stays deleted, because Thursday is behind the
+   * mark. It also means each launch does one day's work rather than
+   * re-deciding the whole window — the mark advances to the far end of the
+   * horizon on the first run, then by a day at a time.
+   *
+   * **Deliberately never rewound.** Rewinding is the one thing that would
+   * resurrect a row the user deleted, which is why turning a meal *on* backfills
+   * only that meal's slots (`backfillMealSlotTasks`) instead of clearing this
+   * and letting the pass rewrite the window.
    */
-  mealSlotTasksLastFiredDayKey: string | null;
+  mealSlotTasksWrittenThroughDayKey: string | null;
   // Whether marking a meal cooked can offer to restock the ingredients it used
   // that aren't on the list — see CookedOfferBanner and MealPlanScreen's
   // restockOffer. Defaults on: the offer is already gated on the app being
@@ -678,7 +684,7 @@ interface SettingsStore {
   setMealCookTasks: (on: boolean) => void;
   setMealCookTaskCategory: (category: string | null) => void;
   setMealSlotsEnabled: (slots: MealSlot[]) => void;
-  setMealSlotTasksLastFiredDayKey: (dayKey: string | null) => void;
+  setMealSlotTasksWrittenThroughDayKey: (dayKey: string | null) => void;
   setRestockOfferEnabled: (on: boolean) => void;
   setProductLookupEnabled: (on: boolean) => void;
   setSortOption: (sort: SortOption) => void;
@@ -782,7 +788,7 @@ const DEFAULT_SETTINGS = {
   mealCookTasks: true,
   mealCookTaskCategory: null,
   mealSlotsEnabled: [...DEFAULT_MEAL_SLOTS_ENABLED],
-  mealSlotTasksLastFiredDayKey: null,
+  mealSlotTasksWrittenThroughDayKey: null,
   restockOfferEnabled: true,
   productLookupEnabled: true,
   groceryUseUpTasks: false,
@@ -1090,7 +1096,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   mealCookTasks: true,
   mealCookTaskCategory: null,
   mealSlotsEnabled: [...DEFAULT_MEAL_SLOTS_ENABLED],
-  mealSlotTasksLastFiredDayKey: null,
+  mealSlotTasksWrittenThroughDayKey: null,
   restockOfferEnabled: true,
   productLookupEnabled: true,
   groceryUseUpTasks: false,
@@ -1233,7 +1239,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // back.
     const storedMealSlots = dbGetSetting('mealSlotsEnabled');
     const mealSlotsEnabled = parseMealSlots(storedMealSlots);
-    const mealSlotTasksLastFiredDayKey = dbGetSetting('mealSlotTasksLastFiredDayKey') || null;
+    const mealSlotTasksWrittenThroughDayKey = dbGetSetting('mealSlotTasksWrittenThroughDayKey') || null;
     // Defaults on, same reading as mealCookTasks above.
     const restockOfferEnabled = dbGetSetting('restockOfferEnabled') !== 'false';
     // Reads `!== 'false'` like the booleans above it, so an install that
@@ -1360,7 +1366,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, hideHelpText, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksLastFiredDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, hideHelpText, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1720,22 +1726,22 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   // Kept in MEAL_SLOTS order rather than the order they were tapped, so the
   // pass lays a day's rows down breakfast-first however the pills were used.
   //
-  // Clearing the last-fired day is what makes turning a meal on feel like an
-  // answer: without it, saying "yes, I eat breakfast" at nine in the morning
-  // would produce nothing until tomorrow. It can only *add* work for today —
-  // the pass skips any slot that already has a task, live or finished — so it
-  // can't resurrect a row that was already dealt with.
+  // **It deliberately doesn't touch the written-through mark.** Rewinding that
+  // would make the next pass rewrite the whole window, which is the one thing
+  // that resurrects a row the user deleted — turn breakfast on and Thursday's
+  // deleted dinner comes back with it. Turning a meal on instead backfills that
+  // meal's slots alone, through useTaskStore.backfillMealSlotTasks, so the days
+  // already written gain the new meal and nothing else changes.
   setMealSlotsEnabled(slots: MealSlot[]) {
     const next = MEAL_SLOTS.filter(slot => slots.includes(slot));
     dbSetSetting('mealSlotsEnabled', JSON.stringify(next));
-    dbSetSetting('mealSlotTasksLastFiredDayKey', '');
-    set({ mealSlotsEnabled: next, mealSlotTasksLastFiredDayKey: null });
+    set({ mealSlotsEnabled: next });
   },
 
-  // '' for "never fired", the same reading mealPlanNudgeLastFiredWeekKey uses.
-  setMealSlotTasksLastFiredDayKey(dayKey: string | null) {
-    dbSetSetting('mealSlotTasksLastFiredDayKey', dayKey ?? '');
-    set({ mealSlotTasksLastFiredDayKey: dayKey });
+  // '' for "never run", the same reading mealPlanNudgeLastFiredWeekKey uses.
+  setMealSlotTasksWrittenThroughDayKey(dayKey: string | null) {
+    dbSetSetting('mealSlotTasksWrittenThroughDayKey', dayKey ?? '');
+    set({ mealSlotTasksWrittenThroughDayKey: dayKey });
   },
 
   // Leaves an offer already standing when this is switched off mid-flight

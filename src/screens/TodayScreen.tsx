@@ -841,9 +841,11 @@ export function TodayScreen() {
           useTaskStore.getState().checkProjectReviewTasks();
           // A day rolls over purely by time passing, and a phone left open
           // across midnight never sees another cold start — so without this
-          // the meal tasks would be yesterday's until the app was force-quit.
-          // Idempotent within a logical day (mealSlotTasksLastFiredDayKey), so
-          // running it here as well as in the launch sequence can't double-fire.
+          // the window would stop advancing until the app was force-quit. It
+          // only ever writes past its own mark
+          // (mealSlotTasksWrittenThroughDayKey), so running it here as well as
+          // in the launch sequence costs one day's work at most and can never
+          // double-fire.
           useTaskStore.getState().checkMealSlotTasks();
           // And any template whose schedule came due while the app sat in the
           // background (#1781) — a weekly run would otherwise wait for the next

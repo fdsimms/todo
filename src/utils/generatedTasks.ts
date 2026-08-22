@@ -145,8 +145,8 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // rather than a row anything could be written back to — the same position
     // mealPlanNudge is in, and the reason writeGeneratedOptOut has nothing to
     // write for either. What stops a swiped-away meal task coming straight back
-    // is mealSlotTasksLastFiredDayKey, the day-scale twin of the nudge's
-    // mealPlanNudgeLastFiredWeekKey.
+    // is mealSlotTasksWrittenThroughDayKey, a high-water mark the pass only
+    // ever writes past — so a day it has covered is never revisited.
     sourced: false,
     categorized: true,
     defaultCategory: 'Meal Plan',

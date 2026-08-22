@@ -92,6 +92,22 @@ export const MEAL_SLOT_SEGMENTS: Record<MealSlot, TimeOfDay[]> = {
 const SOURCE_SEP = '#';
 
 /**
+ * How many days of meal tasks exist at a time, counting today.
+ *
+ * A week, matching the meal plan's own `upcomingDays` and the horizon the
+ * weekly nudge asks about — plan Friday's dinner on Tuesday and its task is
+ * there on Later straight away, dated forward and hidden by `isTaskVisible`
+ * until Friday, exactly as a cook task used to be.
+ *
+ * This shipped as today-only, on the grounds that a week of rows saying "Choose
+ * lunch" would be noise. It isn't: those meals genuinely are undecided, and a
+ * Later screen that says so is being accurate rather than loud. What the
+ * narrower version actually cost was the honest half — a meal you *had* planned
+ * had something to say ahead of time and no row to say it on.
+ */
+export const MEAL_SLOT_TASK_DAYS = 7;
+
+/**
  * The meals a day gets a task for until the user says otherwise.
  *
  * Breakfast, lunch and dinner — the same three `MEAL_PLAN_NUDGE_SLOTS` counts a

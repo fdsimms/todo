@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
+import { useTaskStore } from '../../store/useTaskStore';
 import { ensureGeneratedTaskCategory } from '../../store/useCategoryStore';
 import {
   GENERATED_KIND_LIST,
@@ -257,13 +258,22 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
                 iconColor={on ? colors.accent : undefined}
                 label={MEAL_SLOT_LABELS[slot]}
                 toggle={on}
-                onPress={() =>
+                onPress={() => {
                   s.setMealSlotsEnabled(
                     on
                       ? s.mealSlotsEnabled.filter(x => x !== slot)
                       : [...s.mealSlotsEnabled, slot]
-                  )
-                }
+                  );
+                  // Switching a meal *on* fills it into the days already
+                  // written, so the answer takes effect now rather than when
+                  // the horizon rolls forward a week from here. Scoped to this
+                  // slot alone — rewinding the generator's mark instead would
+                  // rewrite the whole window and resurrect rows the user has
+                  // deleted. Switching one off writes nothing: the tasks
+                  // already there stay, the same restraint setMealCookTasks
+                  // keeps. Nothing to undo on the off path, hence no else.
+                  if (!on) useTaskStore.getState().backfillMealSlotTasks([slot]);
+                }}
                 accessibilityLabel={`A task for ${MEAL_SLOT_LABELS[slot].toLowerCase()} each day`}
               />
             );
