@@ -277,7 +277,12 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       // Swapped for a line in the same slot rather than simply dropped: an
       // offer that vanishes on tap reads the same as one you dismissed, and
       // there's no lit pill here to show the state the way the item sheet does.
-      setStatus(`“${pantryOffer.name}” marked ${answer === 'out' ? 'out of it' : 'running low'}`);
+      // "marked not on hand" / "marked nearly out", not a bare "marked out of
+      // it" — that idiom reads as disoriented rather than as the pantry state,
+      // and GroceryItemSheet's own accessibility copy already avoids it the
+      // same way ("Out of it" is a pill label; the sentence says "mark as not
+      // on hand").
+      setStatus(`“${pantryOffer.name}” marked ${answer === 'out' ? 'not on hand' : 'nearly out'}`);
       setPantryOffer(null);
     },
     [pantryOffer, setOnHandUntil, setRunningLow]
