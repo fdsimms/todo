@@ -7,7 +7,6 @@ import { spacing, radius, font, fontWeight, interaction, iconSize, type Colors }
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useNowTick } from '../hooks/useNowTick';
-import { InlineAction } from './InlineAction';
 import { useFabIntentSelector, type FabIntentChannel } from './FabDropZones';
 import {
   describeFridge,
@@ -126,8 +125,8 @@ interface Props {
  * the purge takes the last one, so it can't become permanent for someone who
  * has moved on — and the moment the fridge empties is exactly when "did we eat
  * it or bin it" gets asked, which is precisely when the old rule hid the
- * answer. With nothing live it shrinks to its caption and its two actions,
- * not to a full empty state.
+ * answer. With nothing live it shrinks to a single line — the status and the
+ * two icon actions beside it — not to a full empty state.
  */
 export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, drag }: Props) {
   const colors = useColors();
@@ -248,18 +247,37 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Ionicons name="snow-outline" size={iconSize.sm} color={colors.textTertiary} />
-          <Text style={styles.headerText}>{describeFridge(leftovers)}</Text>
+          {/* A section header labels the card under it; with the fridge empty
+              there is no card, so the same sentence is a status line and is
+              styled as one. Uppercase for a zero state put "NOTHING IN THE
+              FRIDGE" at the same rank as the day headers below it, which is
+              the loudest thing on the screen saying the least. */}
+          <Text style={live.length > 0 ? styles.headerText : styles.headerStatus}>
+            {describeFridge(leftovers)}
+          </Text>
         </View>
-        <TouchableOpacity
-          style={styles.headerAdd}
-          onPress={onAdd}
-          activeOpacity={interaction.activeOpacity}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          accessibilityRole="button"
-          accessibilityLabel="Log a leftover"
-        >
-          <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          {hasHistory && (
+            <TouchableOpacity
+              onPress={onHistory}
+              activeOpacity={interaction.activeOpacity}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="What happened to past leftovers"
+            >
+              <Ionicons name="time-outline" size={iconSize.md} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            onPress={onAdd}
+            activeOpacity={interaction.activeOpacity}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Log a leftover"
+          >
+            <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {live.length > 0 && (
@@ -346,21 +364,6 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
           </TouchableOpacity>
         )}
       </View>
-      )}
-
-      {/* The add button moved into the header (see below) — this row is now
-          History alone, and only renders once there's something to show. */}
-      {hasHistory && (
-        <View style={styles.actions}>
-          <InlineAction
-            label="History"
-            icon="time-outline"
-            onPress={onHistory}
-            variant="neutral"
-            surface="page"
-            accessibilityLabel="What happened to past leftovers"
-          />
-        </View>
       )}
     </View>
   );
@@ -462,9 +465,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
   },
-  headerAdd: {
+  // Both of the card's own actions, in its header rather than on a row of
+  // their own below it: History used to be a lone pill under the card, which
+  // on an empty fridge left a caption, a button and a pill on three separate
+  // lines to say the fridge was empty.
+  headerActions: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing.md,
   },
   headerText: {
     color: colors.textSecondary,
@@ -473,6 +481,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
+  headerStatus: {
+    color: colors.textTertiary,
+    fontSize: font.sm,
+  },
   card: {
     backgroundColor: colors.bgSecondary,
     // radius.md, matching a day's card rather than the larger corner this had:
@@ -480,11 +492,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // importance, and the fridge is not the more important of the two (#1375).
     borderRadius: radius.md,
     overflow: 'hidden',
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
   },
   row: {
     flexDirection: 'row',
