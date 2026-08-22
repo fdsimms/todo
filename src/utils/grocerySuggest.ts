@@ -425,6 +425,44 @@ export function probablyHaveReason(item: GroceryItem, now: Date): string | null 
 }
 
 /**
+ * The `probablyHaveReason` worth offering a correction for when the item is put
+ * on the shopping list, or null when there's nothing to ask about.
+ *
+ * Putting something on the list is evidence the pantry is wrong about it, but
+ * only evidence — stocking up before you run out is ordinary, which is why
+ * `addByName` writes none of these columns and this is an *offer* rather than a
+ * rule. See "Rows on the list are deliberately in it" in docs/arch/groceries.md
+ * for the other half of that: an item can be both recently bought and back on
+ * the list, and neither claim gets to delete the other.
+ *
+ * Three of `probablyHaveReason`'s rungs are excluded, and the line is whether
+ * adding to the list actually contradicts the claim — deliberately *not*
+ * whether the user or the app made it, since two of the three excluded ones are
+ * hand-typed:
+ *
+ * - **A staple** is true *because* it gets restocked, so putting salt on the
+ *   list is the staple working rather than a contradiction of it. It doubles as
+ *   the opt-out: marking something a staple silences this for good, and means
+ *   the right thing while doing it.
+ * - **Running low** is the answer already given, and `setRunningLow` is the
+ *   most likely reason the row is on the list at all.
+ * - **The freezer** isn't emptied by buying more, and a bag bought monthly sits
+ *   there for months by design.
+ *
+ * That leaves the two rungs that say "you have this" and nothing else — a live
+ * "Got it" and the purchase reading — which share one wording and one offer,
+ * because the user can't be assumed to have said either.
+ *
+ * Reads the columns rather than matching on the returned string: the reasons
+ * are prose (and one of them carries a date), so a string comparison would be a
+ * second copy of the ladder waiting to drift from the first.
+ */
+export function correctableHaveReason(item: GroceryItem, now: Date): string | null {
+  if (item.isStaple || item.runningLowAt || item.frozenAt) return null;
+  return probablyHaveReason(item, now);
+}
+
+/**
  * How far out a fresh "Got it" should assert on-hand, measured from the tap:
  * `onHandWindowDays`, the same length a purchase reads as on hand for.
  *

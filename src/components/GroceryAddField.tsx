@@ -20,7 +20,8 @@ import {
   type Colors,
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
-import { rankGrocerySuggestions } from '../utils/grocerySuggest';
+import { correctableHaveReason, OUT_OF_IT_UNTIL, rankGrocerySuggestions } from '../utils/grocerySuggest';
+import { InlineAction } from './InlineAction';
 import { resolveGroceryTokens, splitAlternativeNames } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -101,10 +102,27 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const addManyFromText = useGroceryStore(s => s.addManyFromText);
   const setLastAction = useGroceryStore(s => s.setLastAction);
   const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
+  const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
+  const setRunningLow = useGroceryStore(s => s.setRunningLow);
 
   const [text, setText] = useState('');
   const [focused, setFocused] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  /**
+   * The item just added that the pantry still claims you have, and the claim's
+   * own words — see `correctableHaveReason`. Held rather than derived because
+   * it's about the add that just happened, not about what's currently typed:
+   * the field is empty the moment it appears.
+   *
+   * Cleared by the next keystroke, exactly as `status` is. That's what keeps it
+   * out of the way of a burst of ten items: the sheet stays up across the whole
+   * burst, so an offer that survived typing would stack up behind the next
+   * line. It only lives through a pause, which is the only time anyone would
+   * act on it anyway.
+   */
+  const [pantryOffer, setPantryOffer] = useState<
+    { id: string; name: string; reason: string } | null
+  >(null);
   // Named by the exact parsed text they dismissed, not a plain on/off flag —
   // see resolveGroceryTokens for why that's what makes a rejection survive
   // continued typing without needing an effect to reconcile it.
@@ -184,6 +202,9 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     haptics.success();
     setText('');
     setStatus(null);
+    // Two rows, so there's no single item the offer could be about — same call
+    // the paste path makes, and for the same reason.
+    setPantryOffer(null);
     setRejectedQuantity(null);
     setRejectedPrep(null);
     setRejectedPurpose(null);
@@ -207,7 +228,14 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
         note?: string | null;
         brand?: string | null;
         variant?: string | null;
-      }
+      },
+      /**
+       * False on the "Done" path, which commits and then dismisses the sheet:
+       * the offer would appear for the length of the fade-out and go with it,
+       * which is a flash of something you were never given the chance to
+       * answer. It needs the field to still be there afterwards.
+       */
+      offerPantry = true
     ) => {
       const trimmed = raw.trim();
       if (!trimmed) return;
@@ -220,28 +248,70 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       setRejectedPrep(null);
       setRejectedPurpose(null);
       resetAttributes();
+      // Read off the row addByName just returned, which is safe because it
+      // writes none of the columns the claim is built from — it only ever sets
+      // `onList`, and `probablyHaveReason` has never consulted that.
+      const reason = offerPantry ? correctableHaveReason(item, new Date()) : null;
+      setPantryOffer(reason ? { id: item.id, name: item.name, reason } : null);
       onAdded?.([item]);
     },
     [addByName, onAdded, resetAttributes]
   );
 
-  const submit = useCallback(() => {
-    if (!tokens) return;
-    commit(text, {
-      name: tokens.name,
-      quantity: tokens.quantity,
-      note: tokens.note,
-      // Only the field this add actually typed a value into — an empty chip
-      // must not overwrite an existing item's brand/variant on re-add, same
-      // rule addByName already applies to quantity and note.
-      brand: brand.trim() || null,
-      variant: variant.trim() || null,
-    });
-  }, [tokens, text, commit, brand, variant]);
+  /**
+   * The two corrections the offer above puts within reach, both of them the
+   * write the item sheet's own Pantry pills already make. Nothing new is
+   * recorded here — what was missing was the moment, not the mechanism: the
+   * ✕ on a Pantry row could always say this, but only if you went looking for
+   * the row, which nobody does straight after adding milk.
+   */
+  const resolvePantry = useCallback(
+    (answer: 'out' | 'low') => {
+      if (!pantryOffer) return;
+      haptics.tap();
+      animateLayout();
+      if (answer === 'out') setOnHandUntil(pantryOffer.id, OUT_OF_IT_UNTIL);
+      // Its own `onList` write is a no-op here (the row was just added), which
+      // is why this doesn't register an undo of its own — see setRunningLow.
+      else setRunningLow(pantryOffer.id, true);
+      // Swapped for a line in the same slot rather than simply dropped: an
+      // offer that vanishes on tap reads the same as one you dismissed, and
+      // there's no lit pill here to show the state the way the item sheet does.
+      setStatus(`“${pantryOffer.name}” marked ${answer === 'out' ? 'out of it' : 'running low'}`);
+      setPantryOffer(null);
+    },
+    [pantryOffer, setOnHandUntil, setRunningLow]
+  );
+
+  const submitWith = useCallback(
+    (offerPantry: boolean) => {
+      if (!tokens) return;
+      commit(
+        text,
+        {
+          name: tokens.name,
+          quantity: tokens.quantity,
+          note: tokens.note,
+          // Only the field this add actually typed a value into — an empty chip
+          // must not overwrite an existing item's brand/variant on re-add, same
+          // rule addByName already applies to quantity and note.
+          brand: brand.trim() || null,
+          variant: variant.trim() || null,
+        },
+        offerPantry
+      );
+    },
+    [tokens, text, commit, brand, variant]
+  );
+
+  // Arg-less on purpose: it's `onSubmitEditing`'s handler, which would
+  // otherwise hand its own event object over as the first parameter.
+  const submit = useCallback(() => submitWith(true), [submitWith]);
 
   const discardPending = useCallback(() => {
     setText('');
     setStatus(null);
+    setPantryOffer(null);
     setRejectedQuantity(null);
     setRejectedPrep(null);
     setRejectedPurpose(null);
@@ -249,9 +319,11 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
 
   useImperativeHandle(ref, () => ({
     focus: () => inputRef.current?.focus(),
-    commitPending: submit,
+    // Without the offer — see `commit`'s own note on why the closing sheet
+    // isn't somewhere to put a question.
+    commitPending: () => submitWith(false),
     discardPending,
-  }), [submit, discardPending]);
+  }), [submitWith, discardPending]);
 
   /**
    * Multi-line paste, without making this a multiline input.
@@ -266,6 +338,9 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       if (!next.includes('\n')) {
         setText(next);
         if (status) setStatus(null);
+        // Unconditional: React bails out when it's already null, so this needs
+        // no dependency of its own the way `status` above does.
+        setPantryOffer(null);
         return;
       }
 
@@ -274,6 +349,11 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       // item left for a Brand/Variant chip typed a moment ago to apply to, so
       // it doesn't silently carry over onto whatever's typed next either.
       resetAttributes();
+      // And no one item for a pantry offer to be about, for the same reason.
+      // A paste of ten lines is not the pause the offer is built for, and
+      // captioning it with whichever line happened to be last would be worse
+      // than saying nothing.
+      setPantryOffer(null);
       const { added, alreadyOnList } = addManyFromText(next);
       const total = added.length + alreadyOnList.length;
       if (total === 0) {
@@ -300,7 +380,8 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   // offer, the paste status, the matches — or nothing at all.
   const hasTokenChips =
     !!tokens && (tokens.quantityAccepted || tokens.prepAccepted || tokens.purposeAccepted);
-  const hasResults = hasTokenChips || !!alternatives || !!status || suggestions.length > 0;
+  const hasResults =
+    hasTokenChips || !!alternatives || !!status || !!pantryOffer || suggestions.length > 0;
 
   // `results` is pinned off the bottom of everything static above it — see
   // FIELD_HEIGHT's own note. The toolbar is always there; the panel only adds
@@ -531,6 +612,41 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
 
       {!!status && <Text style={styles.status}>{status}</Text>}
 
+      {/* The pantry still says you have the thing you just put on the list.
+          Stated, not asked: silence is a real answer here (stocking up early is
+          ordinary), so there's no "yes" pill and ignoring this costs nothing.
+          Both actions are accent because they're two coequal answers rather
+          than a primary and its quieter sibling — and a neutral one would sit
+          directly under the grey Aisle/Brand/Note chips above and read as a
+          fourth one. */}
+      {!!pantryOffer && (
+        <View style={styles.pantryOffer}>
+          <Text style={styles.pantryOfferLine} numberOfLines={1}>
+            “{pantryOffer.name}” is in your pantry
+          </Text>
+          {/* probablyHaveReason's own words, verbatim — the same line the
+              pantry row and the item sheet already draw. A second phrasing
+              here would be a second thing to keep true, and it's also what
+              makes one wording cover both a hand-typed "Got it" and the
+              purchase reading. */}
+          <Text style={styles.pantryOfferWhy} numberOfLines={1}>
+            {pantryOffer.reason}
+          </Text>
+          <View style={styles.pantryOfferActions}>
+            <InlineAction
+              label="Out of it"
+              onPress={() => resolvePantry('out')}
+              accessibilityLabel={`Out of ${pantryOffer.name}, mark as not on hand`}
+            />
+            <InlineAction
+              label="Running low"
+              onPress={() => resolvePantry('low')}
+              accessibilityLabel={`Running low on ${pantryOffer.name}, mark as nearly out`}
+            />
+          </View>
+        </View>
+      )}
+
       {suggestions.length > 0 && (
         <View style={styles.matches}>
           <ScrollView keyboardShouldPersistTaps="handled" bounces={false} style={styles.matchesScroll}>
@@ -695,6 +811,30 @@ function makeStyles(colors: Colors) {
       fontSize: font.sm,
       color: colors.textSecondary,
       marginLeft: spacing.xs,
+    },
+    pantryOffer: {
+      // Aligned with `status` above, which is the other plain text in this
+      // block. The top margin is its own: the toolbar it hangs under stays put
+      // rather than being replaced by this, so the two need a real gap between
+      // them and neither has one of its own.
+      marginLeft: spacing.xs,
+      marginTop: spacing.md,
+    },
+    pantryOfferLine: {
+      fontSize: font.sm,
+      color: colors.textSecondary,
+    },
+    // A step quieter than the claim it explains, the same way the either/or
+    // offer's hint sits under its title.
+    pantryOfferWhy: {
+      fontSize: font.xs,
+      color: colors.textTertiary,
+      marginTop: 2,
+    },
+    pantryOfferActions: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
     },
     tokenRow: {
       flexDirection: 'row',
