@@ -20,6 +20,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
+import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
@@ -38,6 +39,8 @@ import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors }
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
+import { resolveActiveTrip } from '../utils/activeTrip';
+import { resetToGroceries } from '../navigation/navigationRef';
 import {
   cleanRecipeName,
   countLikelyInPantry,
@@ -109,6 +112,18 @@ export function RecipesScreen() {
   const setRecipeFavoritesOnly = useSettingsStore(s => s.setRecipeFavoritesOnly);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const shops = useGroceryStore(useShallow(s => s.shops));
+  const tripShopId = useGroceryStore(s => s.tripShopId);
+  const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
+  const endTrip = useGroceryStore(s => s.endTrip);
+  const activeTripShop = useMemo(
+    () => resolveActiveTrip(tripShopId, tripStartedAt, shops, new Date()),
+    [tripShopId, tripStartedAt, shops]
+  );
+  const handleClearTrip = useCallback(() => {
+    animateLayout();
+    endTrip();
+  }, [endTrip]);
 
   const { planRecipe, offerPrepTasks } = usePlanMeal();
   // The recipe whose day is being picked; null closes the sheet.
@@ -435,6 +450,13 @@ export function RecipesScreen() {
         ] : undefined}
       />
       <GroceriesHubPills active="Recipes" />
+      {!selectionMode && !!activeTripShop && (
+        <ActiveTripBanner
+          shopName={activeTripShop.name}
+          onChange={resetToGroceries}
+          onClear={handleClearTrip}
+        />
+      )}
 
       {recipes.length === 0 ? (
         <EmptyState

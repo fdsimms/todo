@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -46,6 +46,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ReorderableList } from '../components/ReorderableList';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
+import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { PressableScale } from '../components/PressableScale';
@@ -56,6 +57,9 @@ import type { ReceiptAddDraft } from '../components/ReceiptImportSheet';
 import { freshnessColor } from '../components/LeftoversCard';
 import { useNowTick } from '../hooks/useNowTick';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
+import { resolveActiveTrip } from '../utils/activeTrip';
+import { resetToGroceries } from '../navigation/navigationRef';
 
 /**
  * Everything the app currently thinks is in your kitchen, in one place — the
@@ -130,6 +134,18 @@ export function KitchenScreen() {
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
   const setFrozen = useGroceryStore(s => s.setFrozen);
   const setAisle = useGroceryStore(s => s.setAisle);
+  const shops = useGroceryStore(useShallow(s => s.shops));
+  const tripShopId = useGroceryStore(s => s.tripShopId);
+  const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
+  const endTrip = useGroceryStore(s => s.endTrip);
+  const activeTripShop = useMemo(
+    () => resolveActiveTrip(tripShopId, tripStartedAt, shops, new Date()),
+    [tripShopId, tripStartedAt, shops]
+  );
+  const handleClearTrip = useCallback(() => {
+    animateLayout();
+    endTrip();
+  }, [endTrip]);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
 
@@ -474,6 +490,13 @@ export function KitchenScreen() {
         ]}
       />
       <GroceriesHubPills active="Kitchen" />
+      {!!activeTripShop && (
+        <ActiveTripBanner
+          shopName={activeTripShop.name}
+          onChange={resetToGroceries}
+          onClear={handleClearTrip}
+        />
+      )}
 
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />

@@ -73,18 +73,6 @@ export function openQuickAddFromShortcut(): void {
   });
 }
 
-// The persistent trip bar's "Finish" tap (PersistentTripBar.tsx, mounted
-// outside the tab navigator so it can float over every screen) — lands on
-// Groceries and asks it to pop FinishShoppingSheet open, same stamped-param
-// handoff openQuickAddFromShortcut uses.
-export function openFinishShoppingFromTripBar(): void {
-  if (!navigationRef.isReady()) return;
-  navigationRef.navigate({
-    name: 'Groceries',
-    params: { openFinish: Date.now() },
-  });
-}
-
 // Where `dundundun://kitchen[?item=…]` lands — the grocery and leftover
 // "Use up X" tasks' own link (see kitchenInventory.kitchenLinkUrl). Lands on
 // the Kitchen screen, the peer of resetToGroceries/resetToRecipes/

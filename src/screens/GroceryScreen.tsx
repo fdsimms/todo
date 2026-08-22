@@ -15,7 +15,7 @@ import {
   Share,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -134,7 +134,6 @@ export function GroceryScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
-  const route = useRoute<any>();
 
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
@@ -281,18 +280,6 @@ export function GroceryScreen() {
       checkTripExpiry();
     }, [checkTripExpiry])
   );
-
-  // The persistent trip bar's "Finish" tap (openFinishShoppingFromTripBar in
-  // navigationRef.ts) — this screen may not even be mounted when it's tapped,
-  // so the handoff is a stamped route param rather than a direct call, same
-  // shape Today's openQuickAdd shortcut uses. Guarded on selectionMode for the
-  // same reason the header's own Finish icon is disabled during it.
-  const [handledOpenFinish, setHandledOpenFinish] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    if (route.params?.openFinish === undefined || route.params.openFinish === handledOpenFinish) return;
-    setHandledOpenFinish(route.params.openFinish);
-    if (!selectionMode) setFinishOpen(true);
-  }, [route.params?.openFinish, handledOpenFinish, selectionMode]);
 
   // Computed here rather than in the row for the reason `alternatives` is:
   // only the screen has the links, and a row that subscribed to them would
