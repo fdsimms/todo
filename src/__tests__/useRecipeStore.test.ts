@@ -43,6 +43,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     cookCount: 0,
     lastCookedAt: null,
+    vote: null,
     estimatedMinutes: null,
     timerStartedAt: null,
     timerElapsedSeconds: 0,
@@ -267,6 +268,20 @@ describe('field setters', () => {
 
     useRecipeStore.getState().setMealType(r.id, null);
     expect(useRecipeStore.getState().recipeById(r.id)!.mealType).toBeNull();
+  });
+
+  it('sets and clears the vote', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setVote(r.id, 'up');
+    expect(useRecipeStore.getState().recipeById(r.id)!.vote).toBe('up');
+
+    useRecipeStore.getState().setVote(r.id, 'down');
+    expect(useRecipeStore.getState().recipeById(r.id)!.vote).toBe('down');
+
+    useRecipeStore.getState().setVote(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.vote).toBeNull();
   });
 
   it('cleans and de-duplicates tags on the way in', () => {

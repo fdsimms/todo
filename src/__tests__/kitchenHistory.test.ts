@@ -75,6 +75,7 @@ function recipe(id: string, name: string): Recipe {
     createdAt: '2026-08-01T12:00:00.000Z',
     cookCount: 0,
     lastCookedAt: null,
+    vote: null,
     estimatedMinutes: null,
     timerStartedAt: null,
     timerElapsedSeconds: 0,

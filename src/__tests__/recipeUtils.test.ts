@@ -100,6 +100,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     cookCount: 0,
     lastCookedAt: null,
+    vote: null,
     estimatedMinutes: null,
     timerStartedAt: null,
     timerElapsedSeconds: 0,
@@ -771,6 +772,14 @@ describe('sortRecipesBy', () => {
     const never = recipe('Never', { lastCookedAt: null });
     expect(sortRecipesBy([never, recent, older], 'cooked-oldest').map(r => r.name))
       .toEqual(['Older', 'Recent', 'Never']);
+  });
+
+  it('sorts by vote, loved first and not-for-me last, no opinion in between', () => {
+    const loved = recipe('Loved', { vote: 'up' });
+    const noOpinion = recipe('No opinion', { vote: null });
+    const notForMe = recipe('Not for me', { vote: 'down' });
+    expect(sortRecipesBy([notForMe, noOpinion, loved], 'voted').map(r => r.name))
+      .toEqual(['Loved', 'No opinion', 'Not for me']);
   });
 
   it('sorts by ingredient count, ascending and descending', () => {

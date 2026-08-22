@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, ReceiptStyle, Shop, StoreAlias, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -899,6 +899,9 @@ export function initDatabase(): void {
     // Null on every row cached before this shipped and deliberately never
     // backfilled — see GtinLookup.category.
     'ALTER TABLE gtin_lookups ADD COLUMN category TEXT',
+    // NULL for every existing recipe — no opinion is exactly what a recipe
+    // written before this shipped has. See Recipe.vote.
+    'ALTER TABLE recipes ADD COLUMN vote TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -3057,6 +3060,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     createdAt: row.created_at as string,
     cookCount: (row.cook_count as number) ?? 0,
     lastCookedAt: (row.last_cooked_at as string) ?? null,
+    vote: row.vote === 'up' || row.vote === 'down' ? (row.vote as RecipeVote) : null,
     estimatedMinutes: (row.estimated_minutes as number) ?? null,
     timerStartedAt: (row.timer_started_at as string) ?? null,
     timerElapsedSeconds: (row.timer_elapsed_seconds as number) ?? 0,
@@ -3082,10 +3086,10 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, servings, servings_max, recipe_yield, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, favorite, sort_order, created_at, cook_count, last_cooked_at,
+      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, servings, servings_max, recipe_yield, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, favorite, sort_order, created_at, cook_count, last_cooked_at, vote,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
        prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
@@ -3098,7 +3102,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.emptySections),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks), JSON.stringify(recipe.steps),
       recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
-      recipe.cookCount, recipe.lastCookedAt ?? null,
+      recipe.cookCount, recipe.lastCookedAt ?? null, recipe.vote ?? null,
       recipe.estimatedMinutes ?? null, recipe.timerStartedAt ?? null, recipe.timerElapsedSeconds,
       recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
       recipe.prepMinutes ?? null, recipe.prepTimerStartedAt ?? null, recipe.prepTimerElapsedSeconds,
@@ -3111,7 +3115,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
        name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, servings=?, servings_max=?, recipe_yield=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?,
-       favorite=?, sort_order=?, cook_count=?, last_cooked_at=?,
+       favorite=?, sort_order=?, cook_count=?, last_cooked_at=?, vote=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
        prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?
      WHERE id=?`,
@@ -3127,7 +3131,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.emptySections),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks), JSON.stringify(recipe.steps),
       recipe.favorite ? 1 : 0, recipe.sortOrder,
-      recipe.cookCount, recipe.lastCookedAt ?? null,
+      recipe.cookCount, recipe.lastCookedAt ?? null, recipe.vote ?? null,
       recipe.estimatedMinutes ?? null, recipe.timerStartedAt ?? null, recipe.timerElapsedSeconds,
       recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
       recipe.prepMinutes ?? null, recipe.prepTimerStartedAt ?? null, recipe.prepTimerElapsedSeconds,

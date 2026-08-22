@@ -2,7 +2,7 @@ export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
-export type RecipeSortOption = 'default' | 'name' | 'cooked-recent' | 'cooked-oldest' | 'ingredients-asc' | 'ingredients-desc';
+export type RecipeSortOption = 'default' | 'name' | 'cooked-recent' | 'cooked-oldest' | 'ingredients-asc' | 'ingredients-desc' | 'voted';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
 // 'persistent' is 'alarm' that re-rings on an interval until the task is
 // completed, rather than once — see src/utils/alarmChain.ts.
@@ -2217,6 +2217,17 @@ export const RECIPE_SOURCE_TYPE_LABELS: Record<RecipeSourceType, string> = {
   other: 'Other',
 };
 
+// Whether you'd cook it again. Two poles and null (no opinion, the common
+// state — nothing infers one, cooking a recipe isn't liking it), the same
+// shape ProductRating uses for a grocery product and for the same reason: the
+// question is "would I make this again", not a score to keep consistent.
+export type RecipeVote = 'up' | 'down';
+
+export const RECIPE_VOTE_LABELS: Record<RecipeVote, string> = {
+  up: 'Loved it',
+  down: 'Not for me',
+};
+
 // A dish you cook, with what it takes to shop for it.
 //
 // Its own table rather than a TaskTemplate variant: applyTemplate materialises
@@ -2353,6 +2364,12 @@ export interface Recipe {
   cookCount: number;
   /** When this recipe was last marked cooked; null if never. */
   lastCookedAt: string | null;
+  /**
+   * Set from the edit page, or offered the first time the recipe is marked
+   * cooked (see useRecipeStore.setVote, MealPlanScreen.setCooked). Null is
+   * "no opinion yet", not "fine" — see RecipeVote.
+   */
+  vote: RecipeVote | null;
 
   // Duration + cook timer + actual-time logging (#1091).
 

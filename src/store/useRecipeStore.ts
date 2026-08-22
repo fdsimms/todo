@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep } from '../types';
+import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
@@ -97,6 +97,12 @@ interface RecipeStore {
    */
   setImage: (id: string, uri: string | null) => void;
   setMealType: (id: string, mealType: RecipeMealType | null) => void;
+  /**
+   * Set from the edit page's Vote row, or from the "How was it?" prompt
+   * markRecipeCooked's caller shows the first time a recipe is cooked (see
+   * MealPlanScreen.setCooked) — the same field either way.
+   */
+  setVote: (id: string, vote: RecipeVote | null) => void;
   /**
    * Replaces a recipe's whole tag list — the editor holds a draft and commits
    * on Done, same as it does for meal type, so there's no per-tag add/remove
@@ -370,6 +376,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       cookCount: 0,
       lastCookedAt: null,
+      vote: null,
       estimatedMinutes: null,
       timerStartedAt: null,
       timerElapsedSeconds: 0,
@@ -487,6 +494,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     save(set, { ...recipe, mealType });
+  },
+
+  setVote(id, vote) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, vote });
   },
 
   setTags(id, tags) {

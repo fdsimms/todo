@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { Recipe, RecipeMealType, RecipeSourceType } from '../types';
+import type { Recipe, RecipeMealType, RecipeSourceType, RecipeVote } from '../types';
 import {
   RECIPE_MEAL_TYPES,
   RECIPE_MEAL_TYPE_LABELS,
@@ -20,6 +20,7 @@ import {
   RECIPE_SOURCE_TYPE_LABELS,
   RECIPE_PAGE_MAX_LENGTH,
   RECIPE_TAG_MAX_LENGTH,
+  RECIPE_VOTE_LABELS,
   LEFTOVER_KEEP_DAYS_DEFAULT,
   LEFTOVER_KEEP_DAYS_MAX,
   LEFTOVER_KEEP_DAYS_MIN,
@@ -38,6 +39,7 @@ import { formatDuration } from '../utils/effort';
 import { describeKeepDays } from '../utils/leftovers';
 import { CollapsibleField } from './CollapsibleField';
 import { CountStepper } from './CountStepper';
+import { SegmentedControl } from './SegmentedControl';
 import { distinctRecipeValues, filterRecipeSuggestions, formatServingsRange, totalMinutes } from '../utils/recipeUtils';
 import { EditorRow } from './EditorRow';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -83,6 +85,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const setPrepMinutes = useRecipeStore(s => s.setPrepMinutes);
   const setMealType = useRecipeStore(s => s.setMealType);
+  const setVote = useRecipeStore(s => s.setVote);
   const setTags = useRecipeStore(s => s.setTags);
   const deleteRecipe = useRecipeStore(s => s.deleteRecipe);
 
@@ -97,6 +100,8 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [servingsMax, setServingsMaxDraft] = useState<number | null>(null);
   const [recipeYield, setRecipeYieldDraft] = useState('');
   const [mealType, setMealTypeDraft] = useState<RecipeMealType | null>(null);
+  const [vote, setVoteDraft] = useState<RecipeVote | null>(null);
+  const [voteOpen, setVoteOpen] = useState(false);
   const [tags, setTagsDraft] = useState<string[]>([]);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [addingTag, setAddingTag] = useState(false);
@@ -169,6 +174,8 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setRecipeYieldDraft(recipe.recipeYield ?? '');
     setLeftoverKeepDaysDraft(recipe.leftoverKeepDays);
     setMealTypeDraft(recipe.mealType);
+    setVoteDraft(recipe.vote);
+    setVoteOpen(false);
     setTagsDraft(recipe.tags);
     setTagsOpen(false);
     setAddingTag(false);
@@ -207,6 +214,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setEstimatedMinutes(recipe.id, estimatedMinutes);
     setPrepMinutes(recipe.id, prepMinutes);
     setMealType(recipe.id, mealType);
+    setVote(recipe.id, vote);
     // A tag half-typed when Done was tapped still counts — the field commits on
     // blur, but tapping Done can beat the blur.
     setTags(recipe.id, addingTag ? [...tags, cleanRecipeTag(newTag)] : tags);
@@ -416,6 +424,25 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
               </TouchableOpacity>
             ))}
           </View>
+        </CollapsibleField>
+        <CollapsibleField
+          label="Vote"
+          summary={vote ? RECIPE_VOTE_LABELS[vote] : undefined}
+          hint="Whether you'd cook this again. Offered automatically the first time you mark it cooked. Also used to sort the recipe box."
+          expanded={voteOpen}
+          onToggle={() => setVoteOpen(v => !v)}
+        >
+          <SegmentedControl<RecipeVote | null>
+            options={[
+              { value: 'up', label: 'Loved it', icon: 'thumbs-up-outline' },
+              { value: null, label: 'No opinion' },
+              { value: 'down', label: 'Not for me', icon: 'thumbs-down-outline' },
+            ]}
+            value={vote}
+            onChange={next => { setVoteDraft(next); setVoteOpen(false); }}
+            label="Vote"
+            surface="page"
+          />
         </CollapsibleField>
         <CollapsibleField
           label="Tags"

@@ -107,6 +107,7 @@ function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): 
     totalPrepMinutes: 0,
     cookCount: 0,
     lastCookedAt: null,
+    vote: null,
     ...overrides,
   };
 }

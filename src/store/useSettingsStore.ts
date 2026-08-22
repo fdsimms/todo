@@ -803,7 +803,7 @@ const DEFAULT_SETTINGS = {
 
 const SORT_OPTIONS: SortOption[] = ['default', 'priority', 'effort-asc', 'effort-desc', 'due-date', 'streak'];
 const RECIPE_SORT_OPTIONS: RecipeSortOption[] =
-  ['default', 'name', 'cooked-recent', 'cooked-oldest', 'ingredients-asc', 'ingredients-desc'];
+  ['default', 'name', 'cooked-recent', 'cooked-oldest', 'ingredients-asc', 'ingredients-desc', 'voted'];
 
 /** The Settings row's preset pills for defaultReminderLeadMinutes. */
 export const DEFAULT_REMINDER_LEAD_OPTIONS: { value: number | null; label: string }[] = [

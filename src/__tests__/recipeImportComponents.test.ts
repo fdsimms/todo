@@ -51,6 +51,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     ...overrides,
     cookCount: 0,
     lastCookedAt: null,
+    vote: null,
   };
 }
 

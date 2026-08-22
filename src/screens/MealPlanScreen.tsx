@@ -305,6 +305,7 @@ export function MealPlanScreen() {
   const markRecipeCooked = useRecipeStore(s => s.markCooked);
   const startCookTimer = useRecipeStore(s => s.startCookTimer);
   const restoreCookStats = useRecipeStore(s => s.restoreCookStats);
+  const setRecipeVote = useRecipeStore(s => s.setVote);
 
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
   const logLeftover = useLeftoverStore(s => s.logLeftover);
@@ -792,6 +793,23 @@ export function MealPlanScreen() {
     });
 
     if (!cooked) return;
+
+    // Asked once, the first time this recipe is ever marked cooked — before
+    // is the pre-bump snapshot, so cookCount === 0 there is exactly "never
+    // cooked until this tap". Skipped if a vote is already set (from the
+    // edit page, or a previous prompt on a recipe with older cook history
+    // than this app's own tracking, e.g. a restored backup).
+    if (recipe && before && before.cookCount === 0 && recipe.vote === null) {
+      Alert.alert(
+        'How was it?',
+        `Rate "${recipe.name}" so it's easy to find, or skip, next time.`,
+        [
+          { text: 'Skip', style: 'cancel' },
+          { text: 'Not for me', onPress: () => setRecipeVote(recipe.id, 'down') },
+          { text: 'Loved it', onPress: () => setRecipeVote(recipe.id, 'up') },
+        ]
+      );
+    }
 
     // The "was that the last of it?" ask belongs here, not at plan time —
     // the meal has actually been eaten now. Only asked once: a leftover
