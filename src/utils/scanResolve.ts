@@ -59,6 +59,24 @@ export interface ScannedItem {
   aisle: string | null;
 }
 
+/**
+ * One barcode a scan session confirmed against a catalog row, on its way to
+ * being remembered. See `linkScannedGtins`.
+ *
+ * Carries the box's words as well as the row, because a scan resolves to both
+ * and the two are written to different places. `brand`/`variant` are how the
+ * product is found rather than fields to write: `addProduct` has already
+ * decided what boxes exist by the time this is handed over, and a link naming
+ * one that isn't there settles for pointing the barcode at the item.
+ */
+export interface ScannedGtinLink {
+  /** Canonical GTIN-14. */
+  gtin: string;
+  itemId: string;
+  brand: string | null;
+  variant: string | null;
+}
+
 /** Words a brand-stripped name shouldn't be left starting or ending with. */
 const EDGE_JUNK = /^[\s,;:.\-–—]+|[\s,;:.\-–—]+$/g;
 
@@ -220,6 +238,17 @@ export function alreadyScanned(scans: readonly ScannedItem[], gtin: string): boo
 }
 
 /**
+ * "Which catalog row is this scan?", asked of something that can see the whole
+ * scan rather than just its words.
+ *
+ * `AliasResolver` takes a `ReceiptLine`, which is all a receipt has. A scan
+ * additionally carries the barcode, and that is the half worth asking first —
+ * so this is the scan-shaped version, and `matchScans` adapts it down to the
+ * line-shaped one the matcher speaks.
+ */
+export type ScanResolver = (scan: ScannedItem) => string | null;
+
+/**
  * Each scan read against the catalog, aligned index for index with `scans`.
  *
  * A scan's alias is looked up with no store, and that is the right shape
@@ -231,17 +260,34 @@ export function alreadyScanned(scans: readonly ScannedItem[], gtin: string): boo
  * Rows with no name yet are passed through as empty lines rather than skipped,
  * so the indexes still line up and a row the user is midway through naming
  * simply matches nothing until it says something.
+ *
+ * **The resolver is handed the scan, not the line, and the map is what makes
+ * that work.** `matchReceiptLines` calls back with one of the very line
+ * objects built here, so keying on object identity walks back to the scan it
+ * came from. Passing an index instead would mean widening `AliasResolver` for
+ * every receipt caller to carry a number none of them have any use for.
  */
 export function matchScans(
   scans: readonly ScannedItem[],
   items: readonly GroceryItem[],
-  aliasFor?: AliasResolver,
+  resolveScan?: ScanResolver,
 ): ReceiptMatch[] {
-  const lines: ReceiptLine[] = scans.map(scan => ({
-    label: scan.label,
-    name: scan.name,
-    quantity: scan.quantity,
-    priceMinor: null,
-  }));
+  const scanByLine = new Map<ReceiptLine, ScannedItem>();
+  const lines: ReceiptLine[] = scans.map(scan => {
+    const line: ReceiptLine = {
+      label: scan.label,
+      name: scan.name,
+      quantity: scan.quantity,
+      priceMinor: null,
+    };
+    scanByLine.set(line, scan);
+    return line;
+  });
+  const aliasFor: AliasResolver | undefined = resolveScan
+    ? line => {
+        const scan = scanByLine.get(line);
+        return scan ? resolveScan(scan) : null;
+      }
+    : undefined;
   return matchReceiptLines(lines, items, aliasFor);
 }

@@ -108,6 +108,36 @@ that pair are the argument for the whole shape:
   home. Coming home with something refutes the whole shelf-shaped claim at once, and it's the one
   correction nobody should have to make by hand.
 
+**A barcode names a box, and that is where a scan's memory lives** (`ItemProduct.gtin`). It is the
+only globally unique identity in this file — `productKey` right beside it is unique *within* an
+item, because two items may each have a "store brand" — so it gets its own partial UNIQUE index and
+a release-then-claim write (`dbSetProductGtin`), since pointing a code at a second box has to take
+it off the first.
+
+- **It is not on `gtin_lookups`,** and that table's own doc comment is why: it is excluded from
+  both sync and backup on the grounds that it records nothing about the user, so a pointer at one
+  of their catalog rows kept there would not survive a restore and would never reach a second
+  device. What a barcode *denotes* is shared and impersonal; which of your boxes it is, is yours.
+- **A second, item-level link is written alongside it**, as a GTIN-keyed `StoreAlias` with a
+  null `shopId` (`gtinAliasText`, prefixed so an all-digits receipt line can't key the same).
+  The two are different facts and the item-level one is the durable half: it is what answers for
+  a row with no box at all, which is the unfound-barcode case, and it is the code most worth
+  remembering since nothing about it will ever improve on its own. `gtinItemFor` reads box first,
+  alias second.
+- **The link is what stops the box being re-derived, and that was a real bug.** `variantFor`
+  subtracts the item's own name from the product name, so a row renamed away from the source's
+  wording ("vegan sausage" for "Beyond Plant Based Sausages Cajun") leaves nothing to subtract and
+  returns null — minting a brand-only second box beside the real one on every scan. Once a barcode
+  names a box, `BarcodeScanSheet` uses that box rather than deriving one.
+- **A merge folds it like a rating: the survivor's wins, the loser's fills a silence.** It is the
+  one product field `dbSetItemProduct` doesn't carry, so `mergeItems` claims an adopted code
+  explicitly — release-then-claim is what makes that safe while the loser's row is still waiting
+  for the cascade.
+- **Nothing infers one.** Like an alias, a link is only written from a scan session the user
+  applied. That includes rows the session *mints*, which is the deliberate difference from the
+  label alias beside it: a phrase alias on a minted row would map a name to itself and teach
+  nothing, where a barcode link on one teaches everything.
+
 **A product is not a substitute, and the line is: same box → product, different thing →
 substitute.** A hamburger bun standing in for bread is a different thing you buy, with its own
 aisle, its own pantry state and its own recipes calling for it, so it stays an `ItemSubLink`

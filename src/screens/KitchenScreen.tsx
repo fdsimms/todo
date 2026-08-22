@@ -54,6 +54,7 @@ import { PressableScale } from '../components/PressableScale';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { LeftoverSheet } from '../components/LeftoverSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
+import type { ScannedGtinLink } from '../utils/scanResolve';
 import type { ReceiptAddDraft } from '../components/ReceiptImportSheet';
 import { freshnessColor } from '../components/LeftoversCard';
 import { useNowTick } from '../hooks/useNowTick';
@@ -370,11 +371,19 @@ export function KitchenScreen() {
   // box — brand and variant — is reduced the same way: `products` (matched
   // rows) and `draft.brand` (minted rows) both key by itemId or draft, so
   // they're re-keyed onto the same name strings before the call.
+  //
+  // The barcode itself rides along on the same map, for the same reason the
+  // freezer flag does: a row this batch mints has no id until addManyToPantry
+  // creates it, so the link can only be made from inside that loop. Unlike the
+  // box, a barcode is worth carrying for a row that has no brand or variant at
+  // all — an unfound code the user just named is the one most worth
+  // remembering, so `noteScanned` writes an entry either way.
   const handleScanApply = (
     itemIds: string[],
     toAdd: ReceiptAddDraft[],
     frozenItemIds: ReadonlySet<string>,
-    products: ScanProductDraft[]
+    products: ScanProductDraft[],
+    gtinLinks: ScannedGtinLink[]
   ) => {
     const names = [
       ...itemIds
@@ -390,18 +399,35 @@ export function KitchenScreen() {
       ...toAdd.filter(draft => draft.frozen).map(draft => draft.name),
     ]);
     const productByItemId = new Map(products.map(p => [p.itemId, p]));
-    const productNames = new Map<string, { brand: string | null; variant: string | null }>();
+    const gtinByItemId = new Map(gtinLinks.map(link => [link.itemId, link.gtin]));
+    const productNames = new Map<
+      string,
+      { brand: string | null; variant: string | null; gtin?: string | null }
+    >();
+    const noteScanned = (
+      name: string,
+      box: { brand: string | null; variant: string | null } | undefined,
+      gtin: string | null
+    ) => {
+      if (!box && !gtin) return;
+      productNames.set(name, { brand: box?.brand ?? null, variant: box?.variant ?? null, gtin });
+    };
     for (const id of itemIds) {
       const item = items.find(i => i.id === id);
-      const product = item && productByItemId.get(id);
-      if (item && product) productNames.set(item.name, { brand: product.brand, variant: product.variant });
+      if (!item) continue;
+      noteScanned(item.name, productByItemId.get(id), gtinByItemId.get(id) ?? null);
     }
     for (const draft of toAdd) {
       const matched = draft.existingItemId ? productByItemId.get(draft.existingItemId) : undefined;
-      if (matched) productNames.set(draft.name, { brand: matched.brand, variant: matched.variant });
+      // A promoted row was linked by the sheet, which knew its id; a minted one
+      // carries its code on the draft because nothing knew its id yet.
+      const gtin = draft.existingItemId
+        ? gtinByItemId.get(draft.existingItemId) ?? null
+        : draft.gtin ?? null;
       // A minted row's brand only, same as GroceryScreen's own scan handler —
       // there's no existing item name yet for `variantFor` to subtract from.
-      else if (draft.brand) productNames.set(draft.name, { brand: draft.brand, variant: null });
+      const box = matched ?? (draft.brand ? { brand: draft.brand, variant: null } : undefined);
+      noteScanned(draft.name, box, gtin);
     }
     setScanOpen(false);
     if (names.length === 0) return;

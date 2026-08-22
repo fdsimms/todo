@@ -1149,6 +1149,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     addProduct,
     updateProduct,
     setPreferredProduct,
+    linkScannedGtins,
     setProductStrict,
     setProductUnavailable,
     setAisle,
@@ -1252,6 +1253,22 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // Already the preference by virtue of being added first — set explicitly so
   // the seed says what it means rather than depending on insertion order.
   if (arnolds) setPreferredProduct(bread, arnolds.id);
+
+  // A box with the barcode that names it, which is invisible until something
+  // uses it: the demo has no camera, so without a seeded link "scanning this
+  // again lands on the row you filed it under" reads as a feature the app
+  // hasn't got. Put on the box the demo already tells the longest story about,
+  // and deliberately on one whose row name ("Bread") shares nothing with what
+  // a barcode database would call it — which is the case the link exists for,
+  // and the one name matching cannot do.
+  //
+  // A real GTIN-14 for Dave's Killer Bread 21 Whole Grains, check digit and
+  // all, so it round-trips through normalizeGtin exactly as a scan would.
+  if (daves) {
+    linkScannedGtins([
+      { gtin: '00013764000315', itemId: bread, brand: "Dave's Killer", variant: '21 whole grains' },
+    ]);
+  }
 
   const traderJoes = newShop("Trader Joe's");
   const costco = newShop('Costco');

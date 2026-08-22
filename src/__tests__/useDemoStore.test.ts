@@ -21,6 +21,7 @@ import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUt
 import { pantryEntries } from '../utils/grocerySuggest';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { standingSwapMap } from '../utils/standingSwaps';
+import { normalizeGtin } from '../utils/gtin';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
 import { flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
@@ -791,6 +792,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const counts = new Map<string, number>();
     for (const p of itemProducts) counts.set(p.itemId, (counts.get(p.itemId) ?? 0) + 1);
     expect(Math.max(...counts.values())).toBeGreaterThan(1);
+    // ...and a box carrying the barcode that names it. Invisible without a
+    // camera, so an unseeded link reads as a feature the app hasn't got — and
+    // it has to be on a row whose name shares nothing with the box's own
+    // words, since that is the case name matching cannot cover.
+    const scanned = itemProducts.find(p => p.gtin);
+    expect(scanned).toBeDefined();
+    expect(normalizeGtin(scanned!.gtin!)).toBe(scanned!.gtin);
+    const scannedItem = items.find(i => i.id === scanned!.itemId)!;
+    expect(scannedItem.nameKey).not.toContain(scanned!.brand!.toLowerCase());
+    expect(useGroceryStore.getState().gtinItemFor(scanned!.gtin)).toBe(scannedItem.id);
     // ...and a rating, on a box that isn't the preferred one — "the one I
     // avoid" and "the one I want" being the same row would read as a bug.
     const avoided = itemProducts.find(p => p.rating === 'avoid');

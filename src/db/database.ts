@@ -291,6 +291,7 @@ export function initDatabase(): void {
       note TEXT NOT NULL DEFAULT '',
       purchase_count INTEGER NOT NULL DEFAULT 0,
       last_purchased_at TEXT,
+      gtin TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -906,6 +907,15 @@ export function initDatabase(): void {
     // generator that didn't exist, and NULL is what "never asked" means for
     // this column. See GroceryItem.pantryCheckDeclinedAt.
     'ALTER TABLE grocery_items ADD COLUMN pantry_check_declined_at TEXT',
+    // The barcode on a box, NULL for every product named by hand. See
+    // ItemProduct.gtin.
+    'ALTER TABLE grocery_item_products ADD COLUMN gtin TEXT',
+    // Partial, because a GTIN is globally unique where a product key is unique
+    // only within its item — and because the overwhelming majority of rows
+    // have no barcode, which a plain UNIQUE index would index anyway. SQLite
+    // treats NULLs as distinct, so the WHERE clause is about size and intent
+    // rather than correctness.
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_grocery_item_products_gtin ON grocery_item_products(gtin) WHERE gtin IS NOT NULL',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2758,6 +2768,7 @@ function rowToItemProduct(row: Record<string, unknown>): ItemProduct {
     note: (row.note as string) ?? '',
     purchaseCount: (row.purchase_count as number) ?? 0,
     lastPurchasedAt: (row.last_purchased_at as string) ?? null,
+    gtin: (row.gtin as string) ?? null,
     createdAt: row.created_at as string,
   };
 }
@@ -2777,6 +2788,15 @@ export function dbGetAllItemProducts(): ItemProduct[] {
  * The UNIQUE index on `(item_id, product_key)` is what refuses a duplicate, so
  * this throws rather than silently merging two boxes into one. The store
  * catches that and matches the existing product instead — see `addProduct`.
+ *
+ * **`gtin` is deliberately absent from both the insert and the update**, which
+ * is the one place this breaks the "the caller passes the row it wants to
+ * exist" contract. A barcode is globally unique, so claiming one has to
+ * release it from whichever box held it before, and that is two statements
+ * rather than a column in an upsert — `dbSetProductGtin` is the only writer.
+ * Without the carve-out `mergeItems` would throw: it re-parents the loser's
+ * products *before* the cascade deletes them, so for a moment two rows would
+ * claim one barcode.
  */
 export function dbSetItemProduct(product: ItemProduct): void {
   db.runSync(
@@ -2804,6 +2824,32 @@ export function dbSetItemProduct(product: ItemProduct): void {
       product.createdAt,
     ]
   );
+}
+
+/**
+ * Points a barcode at one box, taking it off whichever box held it before.
+ *
+ * Release then claim, in that order, because the partial UNIQUE index on
+ * `gtin` means the two can't overlap even for a statement. That ordering is
+ * also what makes this safe to call at any point during `mergeItems`, where a
+ * folded product adopts the loser's barcode while the loser's row is still
+ * there waiting for the cascade.
+ *
+ * **Two bare statements, no transaction of its own**, deliberately: both call
+ * sites already run inside `dbTransaction`, and opening a second one there
+ * would nest `withTransactionSync` — the thing that comment warns against.
+ * Wrap a future standalone caller rather than putting one back here; a run
+ * that released without claiming loses a link, which is recoverable, where a
+ * nested BEGIN throws on device and passes in tests (better-sqlite3 nests via
+ * savepoints, expo-sqlite does not).
+ *
+ * Re-scanning a barcode onto a different box is an ordinary correction, not an
+ * error: the latest thing a person confirmed is what the code means, the same
+ * rule `dbSetStoreAlias` applies to a phrase.
+ */
+export function dbSetProductGtin(productId: string, gtin: string): void {
+  db.runSync('UPDATE grocery_item_products SET gtin = NULL WHERE gtin = ? AND id != ?', [gtin, productId]);
+  db.runSync('UPDATE grocery_item_products SET gtin = ? WHERE id = ?', [gtin, productId]);
 }
 
 /**
