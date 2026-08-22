@@ -53,7 +53,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/demoState.ts` — isDemoModeActive, setDemoModeActive
 - `src/utils/editorFold.ts` — FoldRow, FoldResult, foldRows, moreLabel, moreHint, foldedSummary
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows
-- `src/utils/effort.ts` — applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, EstimateSource, estimatedMinutesFor, sumEstimatedMinutes, formatDuration
+- `src/utils/effort.ts` — applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, EstimateSource, estimatedMinutesFor, sumEstimatedMinutes, formatDuration, formatClockDuration
 - `src/utils/email.ts` — mailtoUrl, isEmailable
 - `src/utils/emojiCatalog.ts` — EmojiEntry, EmojiGroup, EMOJI_GROUPS, ALL_EMOJI, searchEmoji
 - `src/utils/emojiInput.ts` — firstEmoji, isSingleEmoji
@@ -62,6 +62,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, resolveFabDrop, targetKey, +15 more
 - `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, focusStepRemaining, +12 more
 - `src/utils/focusSettings.ts` — FOCUS_DEFAULTS, FOCUS_WINDOW_MIN, FOCUS_WINDOW_MAX, FOCUS_WINDOW_STEP, FocusSettingsSource, parseFocusWorkCapMinutes, parseFocusDefaultWorkMinutes, parseFocusRestMinutes, parseFocusLongRestMinutes, parseFocusRestAfterTasks, +14 more
+- `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusReason
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, GroupSearchResult, searchGroups

@@ -14,7 +14,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { formatDuration } from '../utils/effort';
+import { formatClockDuration, formatDuration } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { buildFocusPlan, focusPlanTotals } from '../utils/focusPlan';
 import { focusPlanOptionsFrom } from '../utils/focusSettings';
@@ -31,6 +31,8 @@ import {
   FOCUS_WINDOW_STEP,
 } from '../utils/focusSettings';
 import { CountStepper } from './CountStepper';
+import { calendarWindow } from '../utils/focusWindow';
+import { useCalendarStore } from '../store/useCalendarStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { Task } from '../types';
@@ -93,6 +95,10 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
    * to say so every time. It resets when the app does, which is about right.
    */
   const [windowMinutes, setWindowMinutes] = useState<number | null>(null);
+
+  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarLoaded = useCalendarStore(s => s.loaded);
 
   // Snapshotted at open, like the pins sheet and the deload sheet: this is a
   // proposal being decided on, not a live derivation that should reshuffle
@@ -226,6 +232,17 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
     [selected, planOptions]
   );
 
+  /**
+   * "Until my 3pm", when there is one. Gated on `loaded` as well as on the
+   * setting, per that flag's own note: an empty event list and a calendar the
+   * app couldn't open look identical, and only one of them means the afternoon
+   * is actually free. Recomputed per render rather than memoized, since it has
+   * to be right relative to *now* and the sheet is only open for a moment.
+   */
+  const suggestedWindow = calendarReadEnabled && calendarLoaded
+    ? calendarWindow(calendarEvents, new Date(), { minMinutes: FOCUS_WINDOW_MIN })
+    : null;
+
   // Floored at zero: the suggester can't produce an overrunning queue, and a
   // negative "left over" would be a state with no way to reach it.
   const spare = windowMinutes === null ? 0 : Math.max(0, windowMinutes - totals.totalMinutes);
@@ -325,17 +342,54 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
               step={FOCUS_WINDOW_STEP}
               allowNull
               emptyLabel="Any"
-              format={formatDuration}
+              format={formatClockDuration}
               label="Time available"
               describeValue={n => (n === null ? 'No limit' : `${n} minutes`)}
             />
           </View>
 
+          {/* A preset beside a free input, so a pill rather than a segment
+              (see the carve-out list in SegmentedControl's doc): the set on
+              screen isn't the set of possible values, it's one shortcut to a
+              value the stepper can also reach. */}
+          {suggestedWindow !== null && (
+            <View style={styles.suggestedRow}>
+              <TouchableOpacity
+                style={[
+                  styles.windowPill,
+                  windowMinutes === suggestedWindow.minutes && styles.windowPillOn,
+                ]}
+                onPress={() => changeWindow(suggestedWindow.minutes)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityState={{ selected: windowMinutes === suggestedWindow.minutes }}
+                accessibilityLabel={`Use the time until ${suggestedWindow.title} at ${formatTimeOfDay(suggestedWindow.startsAt)}, ${formatClockDuration(suggestedWindow.minutes)}`}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={iconSize.xs}
+                  color={windowMinutes === suggestedWindow.minutes ? colors.onAccent : colors.accent}
+                />
+                <Text
+                  style={[
+                    styles.windowPillText,
+                    windowMinutes === suggestedWindow.minutes && styles.windowPillTextOn,
+                  ]}
+                >
+                  {`Until ${formatTimeOfDay(suggestedWindow.startsAt)}`}
+                </Text>
+              </TouchableOpacity>
+              <Text style={styles.suggestedCaption} numberOfLines={1}>
+                {suggestedWindow.title}
+              </Text>
+            </View>
+          )}
+
           {slots.length === 0 ? (
             <Text style={styles.emptyHint}>
               {windowMinutes === null
                 ? 'Nothing to suggest. Everything on today is done, or waiting on another task.'
-                : `Nothing on today fits in ${formatDuration(windowMinutes)}. Allow more time, or shorten a task’s estimate.`}
+                : `Nothing on today fits in ${formatClockDuration(windowMinutes)}. Allow more time, or shorten a task’s estimate.`}
             </Text>
           ) : (
             <Text style={styles.hint}>
@@ -369,8 +423,8 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
                   {windowMinutes === null
                     ? `Ends around ${endsAt} if it all runs to time`
                     : spare === 0
-                      ? `Fills your ${formatDuration(windowMinutes)}. Ends around ${endsAt}`
-                      : `${formatDuration(spare)} of your ${formatDuration(windowMinutes)} left over. Ends around ${endsAt}`}
+                      ? `Fills your ${formatClockDuration(windowMinutes)}. Ends around ${endsAt}`
+                      : `${formatClockDuration(spare)} of your ${formatClockDuration(windowMinutes)} left over. Ends around ${endsAt}`}
                 </Text>
               )}
             </View>
@@ -436,6 +490,27 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
   },
+  suggestedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    marginTop: -spacing.sm,
+  },
+  windowPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 5,
+  },
+  windowPillOn: { backgroundColor: colors.accent },
+  windowPillText: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
+  windowPillTextOn: { color: colors.onAccent },
+  suggestedCaption: { flex: 1, color: colors.textTertiary, fontSize: font.xs },
   windowLabelWrap: { flex: 1, gap: 1 },
   windowLabel: { color: colors.text, fontSize: font.md },
   windowHint: { color: colors.textTertiary, fontSize: font.xs },

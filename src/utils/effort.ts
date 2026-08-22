@@ -100,6 +100,31 @@ export function sumEstimatedMinutes(tasks: readonly EstimateSource[]): number {
   return tasks.reduce((sum, t) => sum + (estimatedMinutesFor(t) ?? 0), 0);
 }
 
+/**
+ * A duration read off a clock, e.g. 15m, 45m, 1h, 1h 20m, 8h.
+ *
+ * The other half of the pair below, and the split is what each number *is*.
+ * `formatDuration` is for an estimate, where 1.3h is a perfectly good way to
+ * say "about an hour and a bit" and the decimal keeps a column of them
+ * scannable. This one is for a quantity that came from the clock — the time
+ * until your next meeting, a window you set in fifteen-minute steps — where
+ * "1.3h" invites the reader to do the arithmetic back to 2:30 themselves.
+ *
+ * Two older private copies of this shape exist (`activeTrip.ts`,
+ * `dateUtils.ts`) and are deliberately left alone: each bakes in its own
+ * trailing word and its own rounding rules for its one caller, so folding them
+ * in would mean parameterising this for two cases that never grow a third.
+ * A *fourth* copy is what this exists to stop.
+ */
+export function formatClockDuration(min: number): string {
+  const whole = Math.max(0, Math.round(min));
+  const hours = Math.floor(whole / 60);
+  const minutes = whole % 60;
+  if (hours === 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
 /** Compact human label for a duration in minutes, e.g. 15m, 45m, 1h, 1.5h, 8h. */
 export function formatDuration(min: number): string {
   if (min < 60) return `${min}m`;

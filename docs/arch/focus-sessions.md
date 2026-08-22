@@ -111,10 +111,36 @@ Three things to keep right:
   about length, one hard and one soft, would only reorder picks that all fit
   anyway, for no reason the user could see.
 
+### "Until my next meeting"
+
+`src/utils/focusWindow.ts` turns the next thing on the calendar into a window,
+offered as a pill beside the stepper. It is a *source* for `windowMinutes` and
+nothing more: everything downstream sees an ordinary number of minutes and
+knows nothing about where it came from, which is why the calendar arrived after
+the window and changed nothing about it.
+
+- **Gated on `loaded`, not just on the setting.** Per that flag's own note in
+  `useCalendarStore`, an empty event list and a calendar the app couldn't open
+  look identical, and only one of them means the afternoon is free.
+- **A horizon, because a meeting six hours out isn't what bounds the next
+  hour.** Past `FOCUS_CALENDAR_HORIZON_MINUTES` the pill doesn't appear;
+  under `FOCUS_WINDOW_MIN` it doesn't either, since there'd be nothing to
+  suggest for it.
+- **The gap is floored and carries no buffer.** Rounding up would put the last
+  stretch inside the meeting. A buffer would be kinder but would make the
+  pill's own label a lie: it says "Until 2:30", so the number behind it has to
+  be the time until 2:30.
+
+A pill rather than a segment, per the carve-out list in `SegmentedControl`'s
+doc comment: it's a preset beside a free input, the set on screen isn't the set
+of possible values, and a preset is a shortcut rather than a value.
+
 The control is a `CountStepper` in 15-minute steps rather than preset chips,
 per the rule in `CLAUDE.md`: the value is an open-ended number, and chips would
 have to pick both a granularity and a ceiling for everyone. `allowNull` at the
-floor is what "Any" is. Changing the window re-picks from scratch rather than
+floor is what "Any" is. Window figures are printed with `formatClockDuration`
+(1h 20m) rather than `formatDuration` (1.3h): a window came off a clock, and
+the decimal form asks the reader to do the arithmetic back to 2:30 themselves. Changing the window re-picks from scratch rather than
 trimming what's on screen, because a different amount of time is a different
 question and the best answer to it is rarely a prefix of the answer to the old
 one. The window itself is *not* reset when the sheet reopens: how long you tend
@@ -163,12 +189,6 @@ objects and no store standing behind it.
 - **No Live Activity.** The task timer has one (`src/utils/liveActivity.ts`)
   and a focus step is the same shape of run, but it's native work in the widget
   target rather than anything this feature can reach from JS.
-- **The window is not read from the calendar.** The app already reads free/busy
-  (`src/utils/calendarBusy.ts`, and `nextEventAfter` answers exactly "how long
-  until the next thing"), so "until my 3pm" is a window this could offer rather
-  than make you count out. Deliberately left for its own change: the window is
-  a plain number of minutes, so a calendar-derived one is only a new *source*
-  for it and needs nothing here to move.
 - **No reordering on the setup sheet.** The suggester's order is "best first,
   and each one partly chosen for going with the ones above it", which is a
   defensible run order. Dragging inside that sheet is the `SortableList`
