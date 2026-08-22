@@ -534,7 +534,8 @@ export function KitchenScreen() {
       {!!activeTripShop && (
         <ActiveTripBanner
           shopName={activeTripShop.name}
-          onChange={resetToGroceries}
+          onChange={() => resetToGroceries()}
+          onFinish={() => resetToGroceries(true)}
           onClear={handleClearTrip}
         />
       )}
