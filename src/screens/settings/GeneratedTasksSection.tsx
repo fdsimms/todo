@@ -8,6 +8,9 @@ import {
   type GeneratedKindSpec,
 } from '../../utils/generatedTasks';
 import {
+  MEAL_SLOTS,
+  MEAL_SLOT_LABELS,
+  type MealSlot,
   GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   GROCERY_USE_UP_LEAD_DAYS_MAX,
   GROCERY_USE_UP_LEAD_DAYS_MIN,
@@ -60,6 +63,19 @@ import { makeSettingsStyles } from './settingsStyles';
 // the segments themselves, the same compression the calendar's own header uses
 // to fit all seven across 390pt. Moved here with the nudge's controls.
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/**
+ * A glyph per meal, borrowed from the time-of-day pills in quick add — the same
+ * three parts of the day MEAL_SLOT_SEGMENTS hides each meal's task behind, so
+ * the row and the behaviour agree. Snack gets the cup, since it's the one with
+ * no part of the day to name.
+ */
+const MEAL_SLOT_ICONS: Record<MealSlot, string> = {
+  breakfast: 'sunny-outline',
+  lunch: 'partly-sunny-outline',
+  dinner: 'moon-outline',
+  snack: 'cafe-outline',
+};
 const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 /** Weekday segments rotated to start at weekStartsOn, matching the calendar's header order. */
@@ -106,6 +122,11 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
   // instead of its own. An exhaustive switch makes that a typecheck failure.
   const enabledOf = (kind: GeneratedKind): boolean => {
     switch (kind) {
+      // One arm for both: mealSlot is what mealCook folded into, and it kept
+      // the setting keys rather than migrating preferences people had already
+      // set (see the note above). Legacy rows still read as mealCook, so the
+      // kind stays answerable even though nothing lists it any more.
+      case 'mealSlot':
       case 'mealCook': return s.mealCookTasks;
       case 'groceryUseUp': return s.groceryUseUpTasks;
       case 'leftoverUseUp': return s.leftoverUseUpTasks;
@@ -117,6 +138,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
   const toggle = (kind: GeneratedKind): void => {
     const next = !enabledOf(kind);
     switch (kind) {
+      case 'mealSlot':
       case 'mealCook': s.setMealCookTasks(next); break;
       case 'groceryUseUp': s.setGroceryUseUpTasks(next); break;
       case 'leftoverUseUp': s.setLeftoverUseUpTasks(next); break;
@@ -133,6 +155,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
 
   const categoryOf = (kind: GeneratedKind): string | null => {
     switch (kind) {
+      case 'mealSlot':
       case 'mealCook': return s.mealCookTaskCategory;
       case 'groceryUseUp': return s.groceryUseUpTaskCategory;
       case 'leftoverUseUp': return s.leftoverUseUpTaskCategory;
@@ -145,6 +168,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
   // one tap reads as a stutter.
   const setCategory = (kind: GeneratedKind, category: string | null): void => {
     switch (kind) {
+      case 'mealSlot':
       case 'mealCook': s.setMealCookTaskCategory(category); break;
       case 'groceryUseUp': s.setGroceryUseUpTaskCategory(category); break;
       case 'leftoverUseUp': s.setLeftoverUseUpTaskCategory(category); break;
@@ -205,6 +229,49 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       );
     }
 
+    if (kind === 'mealSlot') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="restaurant-outline"
+            iconColor={s.mealSlotsEnabled.length > 0 ? colors.accent : undefined}
+            label="Meals you eat"
+            hint={
+              s.mealSlotsEnabled.length === 0
+                ? 'No meals picked, so no tasks are added'
+                : 'A task each day for each of these, whether or not a meal is planned'
+            }
+            tight
+          />
+          {/* Four toggles rather than one row of pills: these are four
+              independent yes/no answers, not one field with four values, and a
+              row of toggles is what the rest of this card already is. The
+              segmented control next door is single-choice by construction. */}
+          {MEAL_SLOTS.map(slot => {
+            const on = s.mealSlotsEnabled.includes(slot);
+            return (
+              <SettingsRow
+                key={slot}
+                icon={MEAL_SLOT_ICONS[slot]}
+                iconColor={on ? colors.accent : undefined}
+                label={MEAL_SLOT_LABELS[slot]}
+                toggle={on}
+                onPress={() =>
+                  s.setMealSlotsEnabled(
+                    on
+                      ? s.mealSlotsEnabled.filter(x => x !== slot)
+                      : [...s.mealSlotsEnabled, slot]
+                  )
+                }
+                accessibilityLabel={`A task for ${MEAL_SLOT_LABELS[slot].toLowerCase()} each day`}
+              />
+            );
+          })}
+        </>
+      );
+    }
+
     if (kind === 'mealPlanNudge') {
       return (
         <>
@@ -247,7 +314,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
   return (
     <SettingsSection
       label="Tasks the app adds"
-      footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again. The meal, the grocery item or the leftover it came from remembers your answer."
+      footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again: the grocery item or the leftover it came from remembers your answer, and a meal task stays gone for the rest of the day."
     >
       {GENERATED_KIND_LIST.map((spec, i) => {
         const on = enabledOf(spec.kind);

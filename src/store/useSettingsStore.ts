@@ -2,16 +2,18 @@ import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
-import type { SortOption, RecipeSortOption, Priority, Effort, TimeOfDay, TitleRule } from '../types';
+import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule } from '../types';
 import {
   DEFAULT_CURRENCY_SYMBOL,
   CURRENCY_SYMBOL_MAX_LENGTH,
+  MEAL_SLOTS,
   GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   GROCERY_USE_UP_LEAD_DAYS_MAX,
   GROCERY_USE_UP_LEAD_DAYS_MIN,
   USE_UP_TASK_CAP_MAX,
   USE_UP_TASK_CAP_MIN,
 } from '../types';
+import { DEFAULT_MEAL_SLOTS_ENABLED } from '../utils/mealSlotTasks';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
@@ -350,13 +352,16 @@ interface SettingsStore {
   // fixed short list rather than free text or a locale lookup, because the
   // point is to render a number correctly, not to know about money.
   currencySymbol: string;
-  // Whether planning a meal also puts a "Cook X" task on the day it's planned
-  // for. On by default, but deliberately with no backfill — only meals planned
-  // from here on get one — so an install upgrading into this sees nothing
-  // appear in a list it didn't ask to have changed. The per-meal override and
-  // the rules for which meals qualify live in src/utils/mealTasks.ts.
+  // The meal-task generator's on/off, covering every meal of every day — see
+  // mealSlotsEnabled below for which meals, and src/utils/mealSlotTasks.ts for
+  // what each task says.
+  //
+  // Still named for the cook tasks it was introduced for (#1402): the key is
+  // kept rather than migrated, because renaming it would rewrite a preference
+  // people have already set for nothing a person can see. Same call the rest of
+  // the generators' keys make.
   mealCookTasks: boolean;
-  // Which category a cook task files itself under, by name, or null for none.
+  // Which category a meal task files itself under, by name, or null for none.
   //
   // Worth a setting rather than a constant because of where an uncategorized
   // task actually renders: makeCategoryGroups puts loose tasks in a
@@ -371,6 +376,40 @@ interface SettingsStore {
   // newTaskDefaults.category; a name that no longer exists resolves to no
   // category, same as any other stale category reference here.
   mealCookTaskCategory: string | null;
+  /**
+   * Which meals of the day get a task — the set `checkMealSlotTasks` lays down
+   * one row each morning for. Empty is a valid answer and means "none".
+   *
+   * This is what turned cook tasks from a projection of the *meal plan* into a
+   * projection of the *day*: a cook task could only exist where a meal already
+   * did, so the slot you hadn't answered was the one the list said nothing
+   * about. Naming the meals you actually eat is the only thing the app can't
+   * work out for itself — it knows what you planned, never what you skip.
+   *
+   * Snack is off by default and the other three are on. A snack has no
+   * time-of-day segment (see MEAL_SLOT_SEGMENTS), so its task would sit on
+   * Today from the moment the day starts rather than surfacing when the meal
+   * does, and a day isn't incomplete for want of one — the same call
+   * MEAL_PLAN_NUDGE_SLOTS makes when it counts a day out of three.
+   */
+  mealSlotsEnabled: MealSlot[];
+  /**
+   * The last logical day `checkMealSlotTasks` wrote for, or null.
+   *
+   * The day-scale twin of `mealPlanNudgeLastFiredWeekKey`, and it does the same
+   * job for the same reason: this generator's source id names a square on the
+   * calendar rather than a row, so there is nowhere to write a per-source "no"
+   * the way a meal, a grocery item or a leftover carries one. Firing once per
+   * logical day is what makes a swipe stick — the pass has already run for
+   * today, so the row doesn't come straight back, and tomorrow's is a fresh
+   * write rather than a suppression that has to be remembered and pruned. See
+   * generatedTasks.ts on why a growing (kind, sourceId) record isn't the
+   * answer.
+   *
+   * Cleared by `setMealSlotsEnabled`, so turning a meal on gives you its task
+   * today instead of tomorrow.
+   */
+  mealSlotTasksLastFiredDayKey: string | null;
   // Whether marking a meal cooked can offer to restock the ingredients it used
   // that aren't on the list — see CookedOfferBanner and MealPlanScreen's
   // restockOffer. Defaults on: the offer is already gated on the app being
@@ -638,6 +677,8 @@ interface SettingsStore {
   setCurrencySymbol: (symbol: string) => void;
   setMealCookTasks: (on: boolean) => void;
   setMealCookTaskCategory: (category: string | null) => void;
+  setMealSlotsEnabled: (slots: MealSlot[]) => void;
+  setMealSlotTasksLastFiredDayKey: (dayKey: string | null) => void;
   setRestockOfferEnabled: (on: boolean) => void;
   setProductLookupEnabled: (on: boolean) => void;
   setSortOption: (sort: SortOption) => void;
@@ -740,6 +781,8 @@ const DEFAULT_SETTINGS = {
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
   mealCookTaskCategory: null,
+  mealSlotsEnabled: [...DEFAULT_MEAL_SLOTS_ENABLED],
+  mealSlotTasksLastFiredDayKey: null,
   restockOfferEnabled: true,
   productLookupEnabled: true,
   groceryUseUpTasks: false,
@@ -903,6 +946,26 @@ function parseRecipeTagList(raw: string | null): string[] {
   }
 }
 
+/**
+ * The stored set of meals that get a task.
+ *
+ * A missing row falls back to the shipped default (breakfast, lunch, dinner)
+ * rather than to none — see the note where this is read. Anything stored is
+ * filtered against MEAL_SLOTS and re-ordered by it, so a hand-edited or
+ * partially-synced value can't put an unknown string in front of the pass, and
+ * an explicit empty list survives as the real answer it is.
+ */
+function parseMealSlots(raw: string | null): MealSlot[] {
+  if (raw === null || raw === '') return [...DEFAULT_MEAL_SLOTS_ENABLED];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [...DEFAULT_MEAL_SLOTS_ENABLED];
+    return MEAL_SLOTS.filter(slot => parsed.includes(slot));
+  } catch {
+    return [...DEFAULT_MEAL_SLOTS_ENABLED];
+  }
+}
+
 function parseAppFontPool(raw: string | null): AppFont[] {
   if (!raw) return [];
   try {
@@ -1026,6 +1089,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
   mealCookTaskCategory: null,
+  mealSlotsEnabled: [...DEFAULT_MEAL_SLOTS_ENABLED],
+  mealSlotTasksLastFiredDayKey: null,
   restockOfferEnabled: true,
   productLookupEnabled: true,
   groceryUseUpTasks: false,
@@ -1160,6 +1225,15 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // '' persists as "no category", matching how newTaskDefaults.category reads.
     const storedCookCategory = dbGetSetting('mealCookTaskCategory');
     const mealCookTaskCategory = storedCookCategory ? storedCookCategory : null;
+    // Absent (an install upgrading into this) reads as the default set rather
+    // than as none, so the meal tasks are live on arrival for the three meals
+    // a day is counted out of — the fold replaces cook tasks, which were on by
+    // default too, and a silent "none" would read as the feature having gone.
+    // An explicit "[]" is a real answer and stays one; only a missing row falls
+    // back.
+    const storedMealSlots = dbGetSetting('mealSlotsEnabled');
+    const mealSlotsEnabled = parseMealSlots(storedMealSlots);
+    const mealSlotTasksLastFiredDayKey = dbGetSetting('mealSlotTasksLastFiredDayKey') || null;
     // Defaults on, same reading as mealCookTasks above.
     const restockOfferEnabled = dbGetSetting('restockOfferEnabled') !== 'false';
     // Reads `!== 'false'` like the booleans above it, so an install that
@@ -1286,7 +1360,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, hideHelpText, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, hideHelpText, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksLastFiredDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1641,6 +1715,27 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setMealCookTaskCategory(category: string | null) {
     dbSetSetting('mealCookTaskCategory', category ?? '');
     set({ mealCookTaskCategory: category });
+  },
+
+  // Kept in MEAL_SLOTS order rather than the order they were tapped, so the
+  // pass lays a day's rows down breakfast-first however the pills were used.
+  //
+  // Clearing the last-fired day is what makes turning a meal on feel like an
+  // answer: without it, saying "yes, I eat breakfast" at nine in the morning
+  // would produce nothing until tomorrow. It can only *add* work for today —
+  // the pass skips any slot that already has a task, live or finished — so it
+  // can't resurrect a row that was already dealt with.
+  setMealSlotsEnabled(slots: MealSlot[]) {
+    const next = MEAL_SLOTS.filter(slot => slots.includes(slot));
+    dbSetSetting('mealSlotsEnabled', JSON.stringify(next));
+    dbSetSetting('mealSlotTasksLastFiredDayKey', '');
+    set({ mealSlotsEnabled: next, mealSlotTasksLastFiredDayKey: null });
+  },
+
+  // '' for "never fired", the same reading mealPlanNudgeLastFiredWeekKey uses.
+  setMealSlotTasksLastFiredDayKey(dayKey: string | null) {
+    dbSetSetting('mealSlotTasksLastFiredDayKey', dayKey ?? '');
+    set({ mealSlotTasksLastFiredDayKey: dayKey });
   },
 
   // Leaves an offer already standing when this is switched off mid-flight

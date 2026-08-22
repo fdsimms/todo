@@ -121,6 +121,7 @@ import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
 import { useProjectStore } from '../store/useProjectStore';
 import { DayContextRow } from '../components/DayContextRow';
+import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
@@ -838,6 +839,12 @@ export function TodayScreen() {
           // task's own row, which nothing else would then clear. Same reason
           // the passes around it run here rather than waiting for a cold start.
           useTaskStore.getState().checkProjectReviewTasks();
+          // A day rolls over purely by time passing, and a phone left open
+          // across midnight never sees another cold start — so without this
+          // the meal tasks would be yesterday's until the app was force-quit.
+          // Idempotent within a logical day (mealSlotTasksLastFiredDayKey), so
+          // running it here as well as in the launch sequence can't double-fire.
+          useTaskStore.getState().checkMealSlotTasks();
           // And any template whose schedule came due while the app sat in the
           // background (#1781) — a weekly run would otherwise wait for the next
           // cold start, which for a phone left open all week never comes. Same
@@ -1310,17 +1317,18 @@ export function TodayScreen() {
    * matches it word for word.
    *
    * `setCookedPaired` because the recipe's counters have to move with the
-   * entry, exactly as they do when the "Cook X" task is ticked off two rows up
-   * this same list. Null back from it means nothing happened (a stale row, an
+   * entry, exactly as they do when a meal task's last step is ticked off two
+   * rows up this same list. Null back from it means nothing happened (a stale row, an
    * entry already cooked), so nothing is animated and no undo is stored.
    *
-   * **The leftover close-out is asked here too.** A leftover never gets a cook
-   * task by default (see `wantsCookTask`), so a leftover-backed meal is exactly
-   * what these rows are made of — skipping the ask would mean the one surface
-   * most likely to tick one off is the one that never closes the container. The
-   * restock offer the Meal plan screen also makes is deliberately *not* copied:
-   * it's a banner that screen owns, it needs a recipe, and Today already
-   * doesn't make it when a cook task is ticked off.
+   * **The leftover close-out is asked here too.** A meal only gets a task when
+   * its slot is one of the meals the user named (see `mealSlotTasks.ts`), so a
+   * leftover-backed meal in a slot they didn't is exactly what these rows are
+   * made of — skipping the ask would mean the one surface most likely to tick
+   * one off is the one that never closes the container. The restock offer the
+   * Meal plan screen also makes is deliberately *not* copied: it's a banner
+   * that screen owns, it needs a recipe, and Today already doesn't make it when
+   * a meal task is ticked off.
    */
   const handleMarkMealCooked = useCallback((entryId: string, title: string) => {
     const undo = setMealCookedPaired(entryId, true);
@@ -1447,7 +1455,14 @@ export function TodayScreen() {
     if (mealsOnToday === 'inline' && todayMealEntries) {
       rows.push(...mealContextRows(todayMealEntries, recipesById, {
         category: mealCookTaskCategory,
-        hasCookTask: entryId => !!liveGeneratedTask(allTasks, 'mealCook', entryId),
+        // Either generator covering this meal suppresses its row — the meal
+        // task keyed by the day and slot it's in, or a legacy cook task keyed
+        // by the meal itself, which still exists for a launch or two after the
+        // fold. Captioning a meal that already has a task in the list is the
+        // duplication this whole arrangement removed.
+        hasCookTask: entry =>
+          !!liveGeneratedTask(allTasks, 'mealSlot', mealSlotSourceId(entry.date, entry.slot))
+          || !!liveGeneratedTask(allTasks, 'mealCook', entry.id),
       }));
     }
     return rows;

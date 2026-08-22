@@ -309,7 +309,7 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Feature areas"
-        footer="Turning this off hides the groceries, recipes and meal plan screens, the cook tasks and meal reminders that come with them, and their settings. Nothing is deleted. Your lists, recipes and planned meals are kept, and turning it back on returns everything as you left it."
+        footer="Turning this off hides the groceries, recipes and meal plan screens, the meal tasks and reminders that come with them, and their settings. Nothing is deleted. Your lists, recipes and planned meals are kept, and turning it back on returns everything as you left it."
       >
         <SettingsRow
           icon="cart-outline"
@@ -328,7 +328,7 @@ export function TasksProjectsSettings() {
       <>
       <SettingsSection
         label="Meals on Today"
-        footer="A meal with no cook task behind it (a leftover, a takeaway, a dinner you typed) shows as a row in the list, filed under the same category as cook tasks — and so does anything in the pantry about to go off, above them. Neither can be checked off; tapping opens the meal plan or the pantry. Cook tasks themselves are under Tasks the app adds, below."
+        footer="A meal with no task behind it shows as a row in the list, filed under the same category as meal tasks — and so does anything in the pantry about to go off, above them. Neither can be checked off; tapping opens the meal plan or the pantry. Meal tasks themselves are under Tasks the app adds, below."
       >
         {/* A toggle rather than a track of two: one bounded choice with two
             answers is what a switch is for, and the two shapes this used to
@@ -339,7 +339,7 @@ export function TasksProjectsSettings() {
           iconColor={mealsOnToday === 'inline' ? colors.accent : undefined}
           label="Show the day's meals"
           hint={mealsOnToday === 'inline'
-            ? 'As rows in the task list, with the cook tasks'
+            ? 'As rows in the task list, with the meal tasks'
             : 'Nothing. Meals stay on the Meal plan tab'}
           toggle={mealsOnToday === 'inline'}
           onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}

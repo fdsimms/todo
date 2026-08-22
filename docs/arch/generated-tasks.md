@@ -1,6 +1,6 @@
 # Generated tasks: the five things that write a task unattended
 
-The shared mechanism behind cook tasks, use-up tasks, the meal-plan nudge and
+The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge and
 project reviews. Read this before adding a sixth generator: the whole point of
 the refactor it describes is that a new one costs a rules module and a registry
 entry, not a column.
@@ -14,7 +14,7 @@ doesn't already cover.
 
 ## Generated tasks — the five things that write a task unattended
 
-A planned meal becomes "Cook X", a perishable grocery and an ageing leftover each become "Use up
+Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
 X", an opt-in weekly trigger becomes "Plan meals for…", and a project that has gone quiet becomes
 "Review X". The first four were each built by copying the last, which is fine twice and had reached
 four — four nullable back-pointer columns on `Task`, four hand-written "don't pile up" rules, three
@@ -138,6 +138,82 @@ registry entry, a firing beside the nudge's, and no `extrasFor` case in Settings
     projects are queued, and losing that contest is no reason to delete a row the user already
     deferred to Saturday. The cost, stated plainly: a review task can be stale until the next
     sweep, which the banner — being pure derivation — never could be.
+
+## `mealSlot` — the fold that turned cook tasks into meal tasks
+
+`mealCook` is retired. It is still in the `GeneratedKind` union (those are storage values, and rows
+written before the fold still say it), `writeGeneratedOptOut` still has its case, and
+`liveGeneratedTask` still matches it — but it is out of `GENERATED_KINDS`, nothing creates one, and
+they drain within a day or two of ordinary use. `mealSlotTasks.ts` is what replaced it.
+
+**The unit stopped being the meal and became the slot.** A cook task was projected from a
+`MealPlanEntry`, so it could only exist where a meal had already been planned — which meant the day
+the plan was blank was the day the task list said nothing at all. That is the day it is needed: at
+noon with no answer, the app knew it had a meal planner, a recipe box, a fridge and a ranked list of
+things to cook, and offered none of it from the list you were looking at. So the source id is now
+`2026-08-22#lunch` — a day and a slot, a square on the calendar rather than a row.
+
+**What's in the slot decides the steps**, and the task is a chain:
+
+| The slot holds | The chain |
+|---|---|
+| nothing | Choose → Prepare → Eat |
+| a recipe | Cook X → Eat X |
+| a leftover, takeaway, a typed answer | Eat X (one step, so `chainEnabled: false`) |
+
+"Already chosen" is the same task with its first step gone, not a different task — which is why the
+table is read on every reconcile rather than only at creation. Six consequences worth not
+re-deriving:
+
+- **`completeTask` no longer clears `generatedKind` on a mid-chain spawn**, and that one-line change
+  is what makes a chained generator possible at all. The clear's reasoning was always a *recurrence*
+  one (a second occupant claiming a source the first already answered); a mid-chain step is the same
+  run continuing, with exactly one row live at any point in it. Cleared, the task lost its identity
+  at step two: no reconcile could reach it, its delete wrote no opt-out, and the next firing pass
+  wrote a duplicate underneath it. The clear now stops at `!atChainEnd`, so a repeating chain still
+  lets go at the wrap, which is a genuine new cycle.
+- **The chain is only rewritten while `chainIndex === 0`.** Once a step has been ticked the
+  remaining ones are the user's; a plan change mid-cook updates the title and the link and leaves the
+  steps alone. Rewriting would have to remap the index onto a different-length list, and step 1 of
+  [Choose, Prepare, Eat] has no honest answer in [Cook X, Eat X].
+- **Firing once per logical day is the entire opt-out** (`mealSlotTasksLastFiredDayKey`, the
+  day-scale twin of the nudge's week key). There is no row to stamp a "no" on, and a generic
+  `(kind, sourceId)` suppression record is exactly what the note above forbids, because nothing
+  prunes it. Once a day is bounded for free: swiping today's lunch away sticks because the pass has
+  already run, and tomorrow's is a fresh write rather than a "no" somebody has to expire.
+  `setMealSlotsEnabled` clears the key, so naming a meal at nine in the morning gives you its task
+  today rather than tomorrow.
+- **The reconcile in `useMealPlanStore` never creates**, which is why it doesn't go through
+  `reconcileGeneratedTask`. Creation belongs to `checkMealSlotTasks` alone — a reconcile that created
+  on demand would hand back the row the user swiped away the moment they planned that meal from the
+  Meal Plan screen. It is the update half only, and it runs for **both** slots on a move: the one
+  the meal landed in and the one it left.
+- **It doesn't chase the date.** The day is baked into the source id and never moves, so the only
+  thing that can change `dueDate` is the user deferring the row — and rewriting that back onto today
+  is the one thing this must not do. `projectReview` draws the same line for the same reason.
+- **Today only.** A cook task appeared the moment its meal was planned, dated forward and invisible
+  until its day; generalising that would put 21 rows on Later for a week nobody has planned, most of
+  them saying "Choose lunch".
+
+`MealPlanEntry.cookTask` survives the fold unchanged — it is still the per-meal "no", read by both
+the pass and the reconcile, and the one thing a meal task inherits from the cook task it replaces.
+The settings keys survive too (`mealCookTasks`, `mealCookTaskCategory`): renaming them would be a
+migration over preferences people have already set, for nothing a person can see. What is new is
+`mealSlotsEnabled`, which is the only thing the app can't work out for itself — it knows what you
+planned, never what you skip.
+
+**Completion moved one step later.** A cook task answered "did this happen" by existing; a chain's
+first tick is "I have decided what to have", which is nowhere near having had it. So only the step
+that ends the chain stamps `cookedAt` (`completesMealSlot`), and marking a meal cooked from the Meal
+Plan screen walks the whole remaining chain rather than ticking one step and leaving "Eat dinner"
+outstanding on a night already logged.
+
+**The picker is reached by link, not hosted on Today.** An unanswered slot's `linkUrl` carries
+`&pick=<slot>`, which `openInAppUrl` routes to the Meal Plan screen with `RecipePickerSheet` already
+open on the right slot — the same call `projectReview` makes in reverse. A second copy of that sheet
+over Today would be a second place for "what am I eating" to be answered, which is how two of these
+drift apart. The link's slot beats the sheet's remembered one (`forceSlot`): "Choose lunch" named
+the slot before the sheet opened.
 
 - **They still write straight to Today**, rather than proposing into a review surface the way
   `deloadPlan`/`projectPull` do. That fork is real and was deliberately left alone here: it's a

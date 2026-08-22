@@ -58,6 +58,18 @@ interface Props {
   /** "Tue 5 Aug" — names the day being planned, so the sheet doesn't need the calendar. */
   dayLabel: string;
   defaultSlot: MealSlot;
+  /**
+   * A slot the *caller* has already established, which beats both the session's
+   * remembered slot and `defaultSlot`.
+   *
+   * The distinction `defaultSlot` alone can't draw: it is the ambient guess
+   * ("probably dinner"), and `lastPickedSlot` rightly overrides a guess. A meal
+   * task's link is not a guess — "Choose lunch" named the slot before the sheet
+   * opened, and re-tapping the Lunch chip because the last thing planned was a
+   * dinner is exactly the re-answering the row exists to save. Omit it
+   * everywhere the user is picking a slot as much as a meal (the + on a day).
+   */
+  forceSlot?: MealSlot | null;
   onPick: (pick: MealPick) => void;
   onClose: () => void;
 }
@@ -109,7 +121,7 @@ const PRESET_PLANS = ['Leftovers', 'Takeout', 'Eating out'];
  * MealPlanScreen's markCooked), not here before it's been eaten. See
  * Leftover.finishedAt.
  */
-export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPick, onClose }: Props) {
+export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forceSlot = null, onPick, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -178,7 +190,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
   useEffect(() => {
     if (!visible) return;
     setQuery('');
-    setSlot(lastPickedSlot ?? defaultSlot);
+    setSlot(forceSlot ?? lastPickedSlot ?? defaultSlot);
     translateY.setValue(600);
     backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
@@ -187,7 +199,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
     ]).start();
-  }, [visible, defaultSlot]);
+  }, [visible, defaultSlot, forceSlot]);
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();

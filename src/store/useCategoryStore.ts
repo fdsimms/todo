@@ -250,6 +250,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
 } {
   const s = useSettingsStore.getState();
   switch (kind) {
+    // Shared arm: mealSlot is the fold of mealCook and kept its settings keys.
+    case 'mealSlot':
     case 'mealCook':
       return { key: 'mealCookTaskCategory', current: s.mealCookTaskCategory, assign: s.setMealCookTaskCategory };
     case 'groceryUseUp':
@@ -267,6 +269,7 @@ function generatedCategorySetting(kind: GeneratedKind): {
 function generatorEnabled(kind: GeneratedKind): boolean {
   const s = useSettingsStore.getState();
   switch (kind) {
+    case 'mealSlot':
     case 'mealCook': return s.mealCookTasks;
     case 'groceryUseUp': return s.groceryUseUpTasks;
     case 'leftoverUseUp': return s.leftoverUseUpTasks;

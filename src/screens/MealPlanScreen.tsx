@@ -29,6 +29,7 @@ import { WeekPlanOverview } from '../components/WeekPlanOverview';
 import { MealSlotRow } from '../components/MealSlotRow';
 import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
+import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { CookedOfferBanner } from '../components/CookedOfferBanner';
@@ -345,6 +346,17 @@ export function MealPlanScreen() {
 
   // The day being planned; null when the picker is closed.
   const [planningDay, setPlanningDay] = useState<string | null>(null);
+  /**
+   * Which slot the picker opens on, when something asked for one.
+   *
+   * Null means "the caller didn't say", and the sheet falls back to its own
+   * remembered/dinner default — which is right for the + button on a day, where
+   * the user is choosing a slot as much as a meal. A meal task's link is the
+   * case that *does* say: "Choose lunch" has already named the slot, and making
+   * someone re-tap the Lunch chip after tapping a row that says Lunch is the
+   * kind of re-answering this whole feature exists to remove.
+   */
+  const [planningSlot, setPlanningSlot] = useState<MealSlot | null>(null);
   // Held by id rather than by value so the entry sheet's chips follow a move it
   // just made — the row itself is re-read from the store on every render.
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -638,6 +650,7 @@ export function MealPlanScreen() {
   // to move before there is a row to scroll to.
   const focusDay: string | undefined = route.params?.focusDay;
   const focusStamp: number | undefined = route.params?.focusStamp;
+  const pickSlot: MealSlot | undefined = route.params?.pickSlot;
   const [handledFocus, setHandledFocus] = useState<number | null>(null);
   const pendingFocusRef = useRef<string | null>(null);
 
@@ -660,7 +673,14 @@ export function MealPlanScreen() {
     });
     if (focusDay < dayKeyOf(new Date())) setPreviousDaysExpanded(true);
     pendingFocusRef.current = focusDay;
-  }, [focusDay, focusStamp, handledFocus]);
+    // The other half of an unanswered meal task's link: land on the day, then
+    // open the picker on the slot it named. Set here rather than in its own
+    // effect so it rides the same stamp — one navigation, one open.
+    if (pickSlot) {
+      setPlanningDay(focusDay);
+      setPlanningSlot(pickSlot);
+    }
+  }, [focusDay, focusStamp, handledFocus, pickSlot]);
 
   // Runs after `days` has been rebuilt around the new anchor, which is what
   // makes the index findable — scrolling in the effect above would search the
@@ -1155,9 +1175,12 @@ export function MealPlanScreen() {
 
   // Read from the task list rather than from `selected.cookTask`, because the
   // flag's third state (null, "the setting decides") doesn't answer the
-  // question the row is asking — whether a task exists right now.
+  // question the row is asking — whether a task exists right now. Keyed by the
+  // meal's day and slot now rather than by the meal, since that's what a meal
+  // task points at (see mealSlotTasks.ts).
   const selectedHasCookTask = useTaskStore(
-    s => !!selected && !!liveGeneratedTask(s.tasks, 'mealCook', selected.id)
+    s => !!selected
+      && !!liveGeneratedTask(s.tasks, 'mealSlot', mealSlotSourceId(selected.date, selected.slot))
   );
 
   // The either/or slots this meal has to answer, read under its own current
@@ -1700,10 +1723,15 @@ export function MealPlanScreen() {
         dayLabel={planningDay ? format(dayKeyToDate(planningDay), 'EEEE') : ''}
         // Dinner is what a week plan is mostly about, and it's the slot a tap
         // means when the user didn't say. The chips are right there to say
-        // otherwise.
+        // otherwise — and a meal task's link *has* said, which is what
+        // planningSlot carries.
         defaultSlot="dinner"
+        forceSlot={planningSlot}
         onPick={pick}
-        onClose={() => setPlanningDay(null)}
+        onClose={() => {
+          setPlanningDay(null);
+          setPlanningSlot(null);
+        }}
       />
 
       {/*

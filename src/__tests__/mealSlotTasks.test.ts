@@ -1,0 +1,202 @@
+import type { MealPlanEntry, MealSlot, Task } from '../types';
+import {
+  DEFAULT_MEAL_SLOTS_ENABLED,
+  MEAL_SLOT_SEGMENTS,
+  completesMealSlot,
+  mealSlotChain,
+  mealSlotDrift,
+  mealSlotLinkUrl,
+  mealSlotSourceId,
+  mealSlotTaskDraft,
+  mealSlotTaskFields,
+  mealSlotTaskTitle,
+  parseMealSlotSource,
+} from '../utils/mealSlotTasks';
+
+// mealSlotTasks reaches dateUtils for dayKeyToDate, which reaches the settings
+// store for dayResetTime — nothing here needs it, since every date this module
+// handles is a calendar day key it was handed. Same defensive mock as
+// mealPlanNudge.test.ts / mealPlan.test.ts.
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
+}));
+
+let seq = 0;
+function entry(overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
+  seq += 1;
+  return {
+    id: `m-${seq}`,
+    date: '2026-08-22',
+    slot: 'dinner',
+    recipeId: null,
+    title: `Meal ${seq}`,
+    sortOrder: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    cookedAt: null,
+    leftoverId: null,
+    recipeChoices: [],
+    recipeScale: 1,
+    cookTask: null,
+    calendarEventId: null,
+    ...overrides,
+  };
+}
+
+/** A live meal task, as the daily pass would have written it. */
+function taskFor(dayKey: string, slot: MealSlot, e: MealPlanEntry | null, over: Partial<Task> = {}) {
+  const fields = mealSlotTaskFields(dayKey, slot, e);
+  return { ...fields, chainIndex: 0, recurrenceType: 'none', ...over } as Task;
+}
+
+beforeEach(() => { seq = 0; });
+
+describe('source ids', () => {
+  it('round-trips a day and a slot', () => {
+    expect(mealSlotSourceId('2026-08-22', 'lunch')).toBe('2026-08-22#lunch');
+    expect(parseMealSlotSource('2026-08-22#lunch')).toEqual({ dayKey: '2026-08-22', slot: 'lunch' });
+  });
+
+  it('refuses anything that isn\'t one', () => {
+    // A meal entry id, which is what this generator's predecessor stored — the
+    // one string that must not be mistaken for a slot, since a completion
+    // reads it to decide which meal to mark cooked.
+    expect(parseMealSlotSource('m-12')).toBeNull();
+    expect(parseMealSlotSource(null)).toBeNull();
+    expect(parseMealSlotSource('2026-08-22#brunch')).toBeNull();
+    expect(parseMealSlotSource('not-a-day#lunch')).toBeNull();
+    // The day key contains '-' and the split is on '#', so this is unambiguous
+    // rather than merely usually right.
+    expect(parseMealSlotSource('#lunch')).toBeNull();
+  });
+});
+
+describe('the chain, given what the slot holds', () => {
+  it('asks you to choose when there is nothing in it', () => {
+    expect(mealSlotChain('lunch', null).map(c => c.title))
+      .toEqual(['Choose lunch', 'Prepare lunch', 'Eat lunch']);
+    expect(mealSlotTaskTitle('lunch', null)).toBe('Lunch');
+  });
+
+  it('drops the choosing once something is planned', () => {
+    // "Already chosen" is the same task with its first step gone.
+    const planned = entry({ recipeId: 'r1', title: 'Chili' });
+    expect(mealSlotChain('dinner', planned).map(c => c.title))
+      .toEqual(['Cook Chili', 'Eat Chili']);
+    expect(mealSlotTaskTitle('dinner', planned)).toBe('Chili');
+  });
+
+  it('drops the cooking too for a leftover or a takeaway', () => {
+    // A recipe is the app's own evidence that a meal is something you make;
+    // pointing at the fridge is the opposite of a thing to cook.
+    const leftover = entry({ recipeId: 'r1', leftoverId: 'lo-1', title: "Tuesday's chilli" });
+    const takeaway = entry({ title: 'Takeaway' });
+    expect(mealSlotChain('dinner', leftover).map(c => c.title)).toEqual(["Eat Tuesday's chilli"]);
+    expect(mealSlotChain('dinner', takeaway).map(c => c.title)).toEqual(['Eat Takeaway']);
+    // One step, so no chain at all — a single-item chain reads as a plain task
+    // everywhere in the UI anyway (see activeChainStep).
+    expect(mealSlotTaskFields('2026-08-22', 'dinner', takeaway).chainEnabled).toBe(false);
+    expect(mealSlotTaskTitle('dinner', takeaway)).toBe('Eat Takeaway');
+  });
+
+  it('gives its steps ids derived from the slot, so an unchanged chain compares equal', () => {
+    const a = mealSlotChain('lunch', null);
+    const b = mealSlotChain('lunch', null);
+    expect(a.map(c => c.id)).toEqual(b.map(c => c.id));
+    expect(a[0].id).toBe('lunch-choose');
+  });
+});
+
+describe('the fields a slot owns', () => {
+  it('hides each meal behind its own part of the day', () => {
+    expect(mealSlotTaskFields('2026-08-22', 'breakfast', null).timeSegments).toEqual(['morning']);
+    expect(mealSlotTaskFields('2026-08-22', 'lunch', null).timeSegments).toEqual(['afternoon']);
+    expect(mealSlotTaskFields('2026-08-22', 'dinner', null).timeSegments).toEqual(['evening']);
+    // A snack is whenever, so segmenting it would invent a time nobody said.
+    expect(mealSlotTaskFields('2026-08-22', 'snack', null).timeSegments).toEqual([]);
+    expect(MEAL_SLOT_SEGMENTS.snack).toEqual([]);
+  });
+
+  it('lands on the slot\'s own day, noon-normalized', () => {
+    expect(mealSlotTaskFields('2026-08-22', 'lunch', null).dueDate.startsWith('2026-08-22')).toBe(true);
+  });
+
+  it('offers the picker only while the slot is unanswered', () => {
+    expect(mealSlotLinkUrl('2026-08-22', 'lunch', false))
+      .toBe('dundundun://mealplan?date=2026-08-22&pick=lunch');
+    // Answered, so the row stops offering to re-decide.
+    expect(mealSlotLinkUrl('2026-08-22', 'lunch', true)).toBe('dundundun://mealplan?date=2026-08-22');
+  });
+
+  it('files a new task under the category it was given, and points back at its slot', () => {
+    const draft = mealSlotTaskDraft('2026-08-22', 'lunch', null, 'Meal Plan');
+    expect(draft.category).toBe('Meal Plan');
+    expect(draft.generatedKind).toBe('mealSlot');
+    expect(draft.generatedSourceId).toBe('2026-08-22#lunch');
+    expect(draft.chainIndex).toBe(0);
+  });
+});
+
+describe('drift', () => {
+  it('writes nothing when nothing has changed', () => {
+    // The reconcile runs on every meal-plan mutation, most of which (a scale
+    // change, a re-sort, an edit to another slot) change nothing this shows.
+    const task = taskFor('2026-08-22', 'dinner', null);
+    expect(mealSlotDrift(task, '2026-08-22', 'dinner', null)).toBeNull();
+  });
+
+  it('rewrites the whole row when the slot is answered', () => {
+    const task = taskFor('2026-08-22', 'dinner', null);
+    const planned = entry({ recipeId: 'r1', title: 'Chili' });
+    const updates = mealSlotDrift(task, '2026-08-22', 'dinner', planned)!;
+    expect(updates.title).toBe('Chili');
+    expect(updates.chainItems!.map(c => c.title)).toEqual(['Cook Chili', 'Eat Chili']);
+    expect(updates.linkUrl).toBe('dundundun://mealplan?date=2026-08-22');
+  });
+
+  it('holds the steps once the chain has been started', () => {
+    // chainIndex > 0 means a step has been ticked and the next row spawned, and
+    // the index only means anything against the list it came from: step 1 of
+    // [Choose, Prepare, Eat] has no honest answer in [Cook X, Eat X].
+    const task = taskFor('2026-08-22', 'dinner', null, { chainIndex: 1 });
+    const planned = entry({ recipeId: 'r1', title: 'Chili' });
+    const updates = mealSlotDrift(task, '2026-08-22', 'dinner', planned)!;
+    expect(updates.chainItems).toBeUndefined();
+    expect(updates.chainEnabled).toBeUndefined();
+    // The rest still chases the meal.
+    expect(updates.title).toBe('Chili');
+  });
+
+  it('never touches the date', () => {
+    // Set once at creation from the day in the source id, which never changes —
+    // so the only thing that can move it is the user, and chasing it would
+    // rewrite a row they deferred to tomorrow straight back onto today.
+    const deferred = taskFor('2026-08-22', 'dinner', null, { dueDate: '2026-08-25T12:00:00.000Z' });
+    const updates = mealSlotDrift(deferred, '2026-08-22', 'dinner', null);
+    expect(updates).toBeNull();
+  });
+});
+
+describe('completesMealSlot', () => {
+  it('is only the last step of a real chain', () => {
+    // A cook task answered "did this happen" by existing. A chain's first tick
+    // is "I have decided what to have", which is nowhere near having had it.
+    const chain = taskFor('2026-08-22', 'dinner', null);
+    expect(completesMealSlot({ ...chain, chainIndex: 0 })).toBe(false);
+    expect(completesMealSlot({ ...chain, chainIndex: 1 })).toBe(false);
+    expect(completesMealSlot({ ...chain, chainIndex: 2 })).toBe(true);
+  });
+
+  it('is immediate for a slot with only one step', () => {
+    // A leftover or a takeaway is its own last step.
+    const single = taskFor('2026-08-22', 'dinner', entry({ title: 'Takeaway' }));
+    expect(completesMealSlot(single)).toBe(true);
+  });
+});
+
+describe('the default set of meals', () => {
+  it('is the three a day is counted out of', () => {
+    // Matches MEAL_PLAN_NUDGE_SLOTS: a day isn't incomplete for want of a
+    // snack, and a snack has no part of the day to surface in.
+    expect([...DEFAULT_MEAL_SLOTS_ENABLED]).toEqual(['breakfast', 'lunch', 'dinner']);
+  });
+});

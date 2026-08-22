@@ -24,6 +24,8 @@ import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanG
 import { flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
 import { kitchenEvents, kitchenHistoryDays } from '../utils/kitchenHistory';
+import { mealSlotSourceId, parseMealSlotSource } from '../utils/mealSlotTasks';
+import type { MealSlot } from '../types';
 import {
   countLikelyInPantry,
   describePantryCoverage,
@@ -1267,28 +1269,41 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     });
   });
 
-  it('seeds cook tasks, and a meal that deliberately has none', () => {
+  it('seeds meal tasks as chains, and a meal that deliberately has none', () => {
     const { entries } = useMealPlanStore.getState();
     const { tasks } = useTaskStore.getState();
+    const todayKey = dayKeyOf(getCurrentDayStart());
 
-    const cookTasks = tasks.filter(t => t.generatedKind === 'mealCook');
-    expect(cookTasks.length).toBeGreaterThan(0);
-    // Each points at a meal that really exists, and says what to cook.
-    cookTasks.forEach(task => {
-      const entry = entries.find(e => e.id === task.generatedSourceId);
-      expect(entry).toBeDefined();
-      expect(task.title).toBe(`Cook ${entry!.title}`);
+    const mealTasks = tasks.filter(t => t.generatedKind === 'mealSlot');
+    expect(mealTasks.length).toBeGreaterThan(0);
+    // Each is keyed by the day and the slot it asks about, not by a meal —
+    // which is what lets one exist for a slot nobody has answered.
+    mealTasks.forEach(task => {
+      const source = parseMealSlotSource(task.generatedSourceId);
+      expect(source).not.toBeNull();
+      expect(source!.dayKey).toBe(todayKey);
     });
     // Segmented to its slot — the mechanism that keeps dinner off the morning.
-    expect(cookTasks.some(t => t.timeSegments.includes('evening'))).toBe(true);
+    expect(mealTasks.some(t => t.timeSegments.includes('evening'))).toBe(true);
 
-    // The per-meal opt-out is invisible unless something uses it.
+    // Today's answered slots step through cooking and then eating, so the chain
+    // is visible in the seed rather than only on a day nobody has planned.
+    const dinner = mealTasks.find(
+      t => t.generatedSourceId === mealSlotSourceId(todayKey, 'dinner')
+    )!;
+    expect(dinner.chainEnabled).toBe(true);
+    expect(dinner.chainItems.map(c => c.title))
+      .toEqual(['Cook Weeknight chicken stir-fry', 'Eat Weeknight chicken stir-fry']);
+    // Answered, so its link opens the day rather than the picker.
+    expect(dinner.linkUrl).toBe('dundundun://mealplan?date=' + todayKey);
+
+    // The per-meal opt-out is invisible unless something uses it — today's
+    // lunch is the meal that says no, and so has no task and renders as a
+    // context row instead.
     expect(entries.some(e => e.cookTask === false)).toBe(true);
     expect(entries.some(e => e.cookTask === null)).toBe(true);
-
-    // Nothing spawned for free text or for a leftover night.
-    const freeOrLeftover = entries.filter(e => !e.recipeId || e.leftoverId).map(e => e.id);
-    expect(cookTasks.every(t => !freeOrLeftover.includes(t.generatedSourceId!))).toBe(true);
+    expect(mealTasks.some(t => t.generatedSourceId === mealSlotSourceId(todayKey, 'lunch')))
+      .toBe(false);
   });
 
   it('seeds a quiet project and the review task the app writes about it', () => {
@@ -1400,10 +1415,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Half of today's meals are a task in the list; the other half have no
     // task and are the ones that render as context rows (see dayContextRows).
     // A seed where every meal had a cook task would show only one of the two.
-    const hasCookTask = (id: string) =>
-      tasks.some(t => t.generatedKind === 'mealCook' && t.generatedSourceId === id && !t.completed);
-    expect(todayEntries.some(e => hasCookTask(e.id))).toBe(true);
-    expect(todayEntries.some(e => !hasCookTask(e.id))).toBe(true);
+    const hasMealTask = (e: { date: string; slot: MealSlot }) =>
+      tasks.some(t =>
+        t.generatedKind === 'mealSlot'
+        && t.generatedSourceId === mealSlotSourceId(e.date, e.slot)
+        && !t.completed);
+    expect(todayEntries.some(hasMealTask)).toBe(true);
+    expect(todayEntries.some(e => !hasMealTask(e))).toBe(true);
 
     // And they land in a category rather than loose above every section —
     // which is the arrangement the fold is worth having. The names are the

@@ -3,6 +3,7 @@ import { isMissed, isRealCompletion } from '../utils/missed';
 import { isTaskNew } from '../utils/visibilityUtils';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { emptyExtraTaskDraft } from '../utils/extraTask';
+import type { MealPlanEntry, MealSlot } from '../types';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -3176,6 +3177,209 @@ describe('checkMealPlanNudge', () => {
     useTaskStore.getState().checkMealPlanNudge();
 
     expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+// ─── checkMealSlotTasks ─────────────────────────────────────────────────────
+
+describe('checkMealSlotTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const setLastFired = jest.fn();
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    kitchenEnabled: true,
+    mealCookTasks: true,
+    mealCookTaskCategory: 'Meal Plan',
+    mealSlotsEnabled: ['breakfast', 'lunch', 'dinner'] as MealSlot[],
+    mealSlotTasksLastFiredDayKey: null as string | null,
+    setMealSlotTasksLastFiredDayKey: setLastFired,
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    ...overrides,
+  });
+
+  function mealEntry(date: string, slot: MealSlot, over: Partial<MealPlanEntry> = {}): MealPlanEntry {
+    return {
+      id: `m-${slot}`, date, slot, recipeId: null, title: 'Chili', sortOrder: 1,
+      createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+      recipeChoices: [], recipeScale: 1, cookTask: null, calendarEventId: null,
+      ...over,
+    };
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 7, 22, 9, 0, 0));
+    setLastFired.mockClear();
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
+  });
+
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('writes one row per meal, each a chain that starts by choosing', () => {
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealSlotTasks();
+
+    const rows = useTaskStore.getState().tasks;
+    expect(rows.map(t => t.title)).toEqual(['Breakfast', 'Lunch', 'Dinner']);
+    expect(rows.every(t => t.generatedKind === 'mealSlot')).toBe(true);
+    expect(rows.every(t => t.category === 'Meal Plan')).toBe(true);
+    const lunch = rows.find(t => t.title === 'Lunch')!;
+    expect(lunch.chainItems.map(c => c.title))
+      .toEqual(['Choose lunch', 'Prepare lunch', 'Eat lunch']);
+    // Hidden until the meal is roughly due — the whole reason three of these
+    // don't crowd the morning.
+    expect(lunch.timeSegments).toEqual(['afternoon']);
+    expect(setLastFired).toHaveBeenCalledWith('2026-08-22');
+  });
+
+  it('skips the choosing for a slot that is already answered', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      mealEntry('2026-08-22', 'dinner', { recipeId: 'r1', title: 'Chili' }),
+    ]);
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['dinner'] }));
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealSlotTasks();
+
+    const dinner = useTaskStore.getState().tasks[0];
+    expect(dinner.chainItems.map(c => c.title)).toEqual(['Cook Chili', 'Eat Chili']);
+    expect(dinner.title).toBe('Chili');
+  });
+
+  it('writes nothing for a meal that has said no', () => {
+    // MealPlanEntry.cookTask is still the per-meal refusal, and it's the one
+    // thing a meal task inherits from the cook task it replaces.
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      mealEntry('2026-08-22', 'dinner', { recipeId: 'r1', cookTask: false }),
+    ]);
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['dinner'] }));
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealSlotTasks();
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+
+  it('leaves a meal already cooked alone', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      mealEntry('2026-08-22', 'dinner', { recipeId: 'r1', cookedAt: '2026-08-22T02:00:00.000Z' }),
+    ]);
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['dinner'] }));
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealSlotTasks();
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+
+  it('fires once per logical day, which is the whole opt-out', () => {
+    // A slot names a square on the calendar, not a row, so there is nowhere to
+    // write a per-source "no". Swiping today's lunch away sticks because the
+    // pass has already run for today — and a growing suppression record is the
+    // shape generatedTasks.ts warns against.
+    useSettingsStore.getState.mockReturnValue(settings({
+      mealSlotTasksLastFiredDayKey: '2026-08-22',
+    }));
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealSlotTasks();
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+
+  it('keeps its identity across a step, and writes no second row for the slot', () => {
+    // Two things at once, because they're the same fact. Completing a step
+    // spawns the next, and `completeTask` used to clear generatedKind on every
+    // spawn — which would leave "Prepare lunch" unrecognisable, so this pass
+    // would see nothing live for the slot and write a duplicate underneath it.
+    // A mid-chain step is the same run continuing, not a second claimant.
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().checkMealSlotTasks();
+    const first = useTaskStore.getState().tasks[0];
+    useTaskStore.getState().completeTask(first.id);
+
+    const spawned = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(spawned.generatedKind).toBe('mealSlot');
+    expect(spawned.generatedSourceId).toBe('2026-08-22#lunch');
+    expect(spawned.chainIndex).toBe(1);
+
+    // And so the day's second pass finds it and adds nothing: one ticked step
+    // plus the one it spawned, never a third.
+    useSettingsStore.getState.mockReturnValue(settings({
+      mealSlotsEnabled: ['lunch'], mealSlotTasksLastFiredDayKey: null,
+    }));
+    useTaskStore.getState().checkMealSlotTasks();
+    expect(useTaskStore.getState().tasks.filter(t => t.generatedKind === 'mealSlot'))
+      .toHaveLength(2);
+  });
+
+  it('lets go of the source at the wrap of a repeating chain', () => {
+    // The clear is right there and only there: a new cycle is a second run, and
+    // a fresh occupant of a source the last one already answered is exactly
+    // what the rule in completeTask exists to prevent.
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    const looping = useTaskStore.getState().addTask({
+      title: 'Lunch',
+      recurrenceType: 'daily',
+      chainEnabled: true,
+      chainItems: [{ id: 'a', title: 'A', estimatedMinutes: null }],
+      generatedKind: 'mealSlot',
+      generatedSourceId: '2026-08-22#lunch',
+    });
+
+    useTaskStore.getState().completeTask(looping.id);
+
+    const next = useTaskStore.getState().tasks.find(t => !t.completed && t.title === 'Lunch')!;
+    expect(next.generatedKind).toBeNull();
+    expect(next.generatedSourceId).toBeNull();
+  });
+
+  it('stands aside for a legacy cook task still covering the slot', () => {
+    // Only matters for the launch or two after the fold, while rows written as
+    // `mealCook` drain — but without it the first pass writes a second row
+    // under a "Cook X" the user is already looking at.
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      mealEntry('2026-08-22', 'dinner', { id: 'm-legacy', recipeId: 'r1' }),
+    ]);
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['dinner'] }));
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().addTask({
+      title: 'Cook Chili', generatedKind: 'mealCook', generatedSourceId: 'm-legacy',
+    });
+
+    useTaskStore.getState().checkMealSlotTasks();
+
+    expect(useTaskStore.getState().tasks.filter(t => t.generatedKind === 'mealSlot')).toHaveLength(0);
+  });
+
+  it('writes nothing while the generator is off, or no meals are named', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ mealCookTasks: false }));
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().checkMealSlotTasks();
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: [] }));
+    useTaskStore.getState().checkMealSlotTasks();
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+    // And neither counts as having fired, so naming a meal later still works
+    // today rather than tomorrow.
+    expect(setLastFired).not.toHaveBeenCalled();
+  });
+
+  it('derives each row\'s id from its day and slot, so two devices agree without syncing', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().checkMealSlotTasks();
+    const first = useTaskStore.getState().tasks[0].id;
+
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().checkMealSlotTasks();
+    expect(useTaskStore.getState().tasks[0].id).toBe(first);
   });
 });
 

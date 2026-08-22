@@ -1,4 +1,5 @@
 import { createNavigationContainerRef } from '@react-navigation/native';
+import type { MealSlot } from '../types';
 
 // Shared with AppNavigator's <NavigationContainer ref={navigationRef}>, so
 // code outside the component tree (deep link handling) can navigate without
@@ -38,11 +39,22 @@ export function resetToRecipes(): void {
 // reason — the screen compares against the last value it handled, so tapping
 // two different days in a row (or the same one twice) has to look different
 // each time. Omitted entirely for the bare link, which leaves the week alone.
-export function resetToMealPlan(focusDay?: string | null): void {
+// `pickSlot` is the second half, carried by an unanswered meal task
+// (mealSlotTasks.mealSlotLinkUrl): land on the day *and* open the picker on
+// that slot, so "Choose lunch" is one tap from the sheet that chooses it.
+// Rides the same focusStamp, so it can't fire twice for one navigation.
+//
+// The picker opens here rather than over Today because that's where it already
+// lives, with the day's other meals around it — the same call
+// resetToProjectPull makes in reverse, sending a review task to the sheet
+// Today already mounts rather than giving Projects a second copy.
+export function resetToMealPlan(focusDay?: string | null, pickSlot?: MealSlot | null): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate({
     name: 'MealPlan',
-    params: focusDay ? { focusDay, focusStamp: Date.now() } : undefined,
+    params: focusDay
+      ? { focusDay, focusStamp: Date.now(), ...(pickSlot ? { pickSlot } : {}) }
+      : undefined,
   });
 }
 

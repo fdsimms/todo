@@ -1843,6 +1843,20 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // spoken for does not.
   plan(6, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
 
+  // Today's meal tasks, through the generator rather than written out here —
+  // the same call the app makes on every launch, so the demo can't show a shape
+  // the real pass wouldn't produce. It reads today's slots as they now stand,
+  // which is why it runs after the week above is planted: breakfast and dinner
+  // are answered and get "Cook X → Eat X", and the two nights that opted out
+  // (`cookTask: false` on lunch and the snack) get no task and appear as
+  // context rows instead — both sides of the same section, which is what the
+  // arrangement is for.
+  //
+  // A slot with *nothing* planned is the case with no row on today, so it's
+  // seeded a day out instead: see the open dinner on offset 6 above, whose
+  // task will read "Choose dinner" when that day comes round.
+  useTaskStore.getState().checkMealSlotTasks();
+
   // This week's ingredients have been through "Add week to list" already —
   // a stamp on the week header, never a lock on adding again.
   stampAddedToList(dayKeyOf(buildWeekDays(today, weekStartsOn)[0]));
