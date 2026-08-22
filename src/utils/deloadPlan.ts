@@ -1,9 +1,20 @@
 import type { Task } from '../types';
 import { computeSnoozeSuggestion } from './snoozeEngine';
 import { estimatedMinutesFor } from './effort';
-import { getLogicalTomorrow, getTaskDayStart } from './dateUtils';
+import { getLogicalTomorrow } from './dateUtils';
 import type { BusyEvent } from './calendarBusy';
 import { useSettingsStore } from '../store/useSettingsStore';
+import {
+  SOFT_DELOAD_BLOCKERS,
+  deloadBlockerFor,
+  isDateAnchored,
+  wouldMissDeadline,
+  type DeloadBlocker,
+} from './taskMoves';
+
+// Re-exported so the sheet and the tests keep one import for the whole
+// feature; the rules themselves live in the leaf, see its own note.
+export { deloadUpdates, type DeloadBlocker } from './taskMoves';
 
 /**
  * "Lighten this day" — takes the tasks currently sitting on Today and proposes
@@ -21,21 +32,6 @@ import { useSettingsStore } from '../store/useSettingsStore';
  * tomorrow, because "not today, deal with it tomorrow" is the move people
  * actually want half the time and spreading the day out is the other half.
  */
-
-/** Why a task is blocked outright, or merely unchecked by default. */
-export type DeloadBlocker =
-  | 'pinned'
-  | 'running'
-  | 'deadline'
-  | 'urgent'
-  | 'quota'
-  | 'chain'
-  | 'streak'
-  | 'started'
-  | 'high-priority';
-
-/** Blockers that leave the task movable but unchecked — the user can opt in. */
-const SOFT_BLOCKERS: ReadonlySet<DeloadBlocker> = new Set(['streak', 'started', 'high-priority']);
 
 /** Where a task could go, in one of the sheet's two destination modes. */
 export interface DeloadDestination {
@@ -93,61 +89,6 @@ function taskMinutes(t: Task): number {
 }
 
 /**
- * Does this task's dueDate carry meaning beyond "the day it shows up"? A
- * recurrence anchors its whole future grid to it (getNextDueDate), and a
- * series member's date was hand-picked out of a set. Both move by deferring so
- * the stored date survives; everything else can just be rescheduled.
- */
-function isAnchored(task: Task): boolean {
-  return task.recurrenceType !== 'none' || task.seriesId !== null;
-}
-
-/**
- * Hard and soft blockers, in the order they should be reported. Hard blockers
- * mean "this can't move at all"; they're still listed so the sheet can explain
- * why the day won't get any lighter than it does.
- */
-function findBlocker(task: Task): { blocker: DeloadBlocker; label: string } | null {
-  if (task.pinned) return { blocker: 'pinned', label: 'Pinned to today' };
-  if (task.timerStartedAt !== null) return { blocker: 'running', label: 'Timer running' };
-  if (task.priority === 4) return { blocker: 'urgent', label: 'Urgent' };
-  // A quota is a per-day target that resets with each occurrence (progressCount
-  // starts at 0), so moving today's occurrence just discards today's progress.
-  if (task.targetCount !== null) return { blocker: 'quota', label: 'Daily target' };
-  // A mid-chain step was spawned by the step before it and has no schedule of
-  // its own to move; the chain advances on completion, not by date.
-  if (task.chainEnabled && task.chainItems.length > 0 && task.chainIndex > 0) {
-    return { blocker: 'chain', label: 'Mid-chain step' };
-  }
-  // Soft from here down — movable, but never checked for you.
-  if (task.streakCount > 1) {
-    return { blocker: 'streak', label: `${task.streakCount}-day streak` };
-  }
-  // Banked countdown time means this occurrence was already worked on today.
-  // The banked seconds travel with the row, so moving it loses nothing — but
-  // it shouldn't be swept along by default either. (timerElapsedSeconds resets
-  // to 0 on each new occurrence, so this only ever means "started *today*".)
-  if (task.timerElapsedSeconds > 0) {
-    return { blocker: 'started', label: 'Already started' };
-  }
-  if (task.priority === 3) return { blocker: 'high-priority', label: 'High priority' };
-  return null;
-}
-
-/**
- * True when moving the task to `dest` would push it past its own deadline.
- * Also catches a deadline that's already today or earlier, since every
- * candidate destination is at least tomorrow.
- */
-function missesDeadline(task: Task, dest: Date, dayResetTime: string): boolean {
-  if (!task.deadline) return false;
-  return (
-    getTaskDayStart(dest, dayResetTime) >
-    getTaskDayStart(new Date(task.deadline), dayResetTime)
-  );
-}
-
-/**
  * Builds the plan for a day.
  *
  * `todaysTasks` is what's on the day being lightened (TodayScreen's visible
@@ -179,9 +120,9 @@ export function buildDeloadPlan(
   tomorrowDate.setHours(12, 0, 0, 0);
 
   const proposals: DeloadProposal[] = ordered.map(({ task, minutes }) => {
-    const found = findBlocker(task);
-    const hardBlocked = found !== null && !SOFT_BLOCKERS.has(found.blocker);
-    const mode: 'defer' | 'reschedule' = isAnchored(task) ? 'defer' : 'reschedule';
+    const found = deloadBlockerFor(task);
+    const hardBlocked = found !== null && !SOFT_DELOAD_BLOCKERS.has(found.blocker);
+    const mode: 'defer' | 'reschedule' = isDateAnchored(task) ? 'defer' : 'reschedule';
 
     if (hardBlocked) {
       return {
@@ -198,7 +139,7 @@ export function buildDeloadPlan(
 
     // Tomorrow is the nearest any destination gets, so a deadline it misses is
     // one nothing can satisfy — that's the whole task blocked, not one option.
-    if (missesDeadline(task, tomorrowDate, resetTime)) {
+    if (wouldMissDeadline(task, tomorrowDate, resetTime)) {
       return {
         task,
         minutes,
@@ -215,7 +156,7 @@ export function buildDeloadPlan(
     const pick = computeSnoozeSuggestion(task, working, busyEvents ?? []);
     // A pick past the deadline drops only that option — tomorrow still stands,
     // and the sheet lists the row under whichever mode can take it.
-    const suggested: DeloadDestination | null = missesDeadline(task, pick.date, resetTime)
+    const suggested: DeloadDestination | null = wouldMissDeadline(task, pick.date, resetTime)
       ? null
       : { date: pick.date, dayLabel: pick.dayLabel, reason: pick.reason };
 
@@ -247,15 +188,4 @@ export function buildDeloadPlan(
     .reduce((sum, p) => sum + p.minutes, 0);
 
   return { proposals, currentMinutes, projectedMinutes: currentMinutes - movedMinutes };
-}
-
-/**
- * The field updates that move one proposal to `date`, matching its `mode`.
- * The destination is passed in rather than read off the proposal because the
- * sheet offers three of them — the pick, tomorrow, and a hand-picked override.
- */
-export function deloadUpdates(proposal: DeloadProposal, date: Date | null): Partial<Task> | null {
-  if (!date) return null;
-  const iso = date.toISOString();
-  return proposal.mode === 'defer' ? { deferUntil: iso } : { dueDate: iso, deferUntil: null };
 }

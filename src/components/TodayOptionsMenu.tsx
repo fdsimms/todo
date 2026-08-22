@@ -22,6 +22,13 @@ interface Props {
   /** Summary of the day's planned time, shown as the action's hint. */
   plannedLabel?: string;
   /**
+   * Opens the "look ahead" sheet — everything landing before a date, and
+   * whether it fits. Passed unconditionally like onPullFromProjects: an empty
+   * today says nothing about the fortnight ahead, which is the whole point of
+   * looking past it.
+   */
+  onLookAhead: () => void;
+  /**
    * Opens the "pull from projects" sheet. Passed unconditionally, unlike
    * onLightenDay — it's how you go looking for a quiet project rather than
    * waiting to be offered one, and it explains itself when nothing is quiet.
@@ -48,6 +55,7 @@ export function TodayOptionsMenu({
   onHideCategoriesChange,
   onLightenDay,
   plannedLabel,
+  onLookAhead,
   onPullFromProjects,
   onReorderCategories,
   categoryCount,
@@ -112,6 +120,26 @@ export function TodayOptionsMenu({
               <View style={styles.optionSep} />
             </>
           )}
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => {
+              haptics.tap();
+              onLookAhead();
+            }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Look ahead"
+          >
+            <Ionicons name="telescope-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Look ahead</Text>
+              <Text style={styles.optionHint}>
+                See what lands before a date, and whether it fits
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+          <View style={styles.optionSep} />
           <TouchableOpacity
             style={styles.optionRow}
             onPress={() => {

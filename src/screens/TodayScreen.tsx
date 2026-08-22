@@ -117,6 +117,7 @@ import { SortFilterSheet } from '../components/SortFilterSheet';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
+import { LookAheadSheet } from '../components/LookAheadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
 import { useProjectStore } from '../store/useProjectStore';
@@ -549,6 +550,7 @@ export function TodayScreen() {
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [categoryOrderVisible, setCategoryOrderVisible] = useState(false);
   const [deloadVisible, setDeloadVisible] = useState(false);
+  const [lookAheadVisible, setLookAheadVisible] = useState(false);
   const [suggestedPinsVisible, setSuggestedPinsVisible] = useState(false);
   const [pullVisible, setPullVisible] = useState(false);
   // undefined = unscoped (opened from the "…" menu's "Pull from projects");
@@ -3394,6 +3396,10 @@ export function TodayScreen() {
             setDeloadVisible(true);
           } : undefined}
           plannedLabel={plannedLabel}
+          onLookAhead={() => {
+            setOptionsMenuVisible(false);
+            setLookAheadVisible(true);
+          }}
           onPullFromProjects={() => {
             setOptionsMenuVisible(false);
             setPullScopeProjectIds(undefined);
@@ -3421,6 +3427,11 @@ export function TodayScreen() {
           visible={deloadVisible}
           todaysTasks={visibleTasks}
           onClose={() => setDeloadVisible(false)}
+        />
+
+        <LookAheadSheet
+          visible={lookAheadVisible}
+          onClose={() => setLookAheadVisible(false)}
         />
 
         <SuggestedPinsSheet
