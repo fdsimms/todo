@@ -1,0 +1,4 @@
+{
+  "message": "A pinned daily target now unpins itself once logging catches it up to pace, instead of sitting pinned at the top of Today at quota until the next unit falls due.",
+  "date": "2026-08-22"
+}

@@ -7404,6 +7404,62 @@ describe('quota tasks', () => {
     });
   });
 
+  // A pinned target shows regardless of visibility (pinnedTasks() ignores it on
+  // purpose) — except pace, which unpins it after the same grace window a
+  // completion gets, rather than leaving it stuck pinned at quota until the
+  // next unit falls due.
+  describe('logQuotaUnit — pinned targets unpin on pace', () => {
+    it('keeps a pinned target pinned through the tap that catches it up to pace', () => {
+      useTaskStore.setState({ tasks: [quota({ pinned: true, progressCount: 1 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
+      expect(dbBulkSetPinned).not.toHaveBeenCalled();
+    });
+
+    it('unpins once the grace window passes with no further logging', () => {
+      useTaskStore.setState({ tasks: [quota({ pinned: true, progressCount: 1 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      jest.advanceTimersByTime(4000);
+      expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
+      expect(dbBulkSetPinned).toHaveBeenCalledWith(['water'], false);
+    });
+
+    it('lets a burst of logging land before unpinning', () => {
+      useTaskStore.setState({ tasks: [quota({ pinned: true, progressCount: 1 })] });
+      const store = useTaskStore.getState();
+      store.logQuotaUnit('water'); // 1 -> 2, catches up to pace
+      jest.advanceTimersByTime(2000);
+      store.logQuotaUnit('water'); // 2 -> 3, still on pace — resets the window
+      jest.advanceTimersByTime(2000);
+
+      expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
+
+      jest.advanceTimersByTime(2000);
+      expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
+    });
+
+    it('does not schedule an unpin for a task that is not pinned', () => {
+      useTaskStore.setState({ tasks: [quota({ pinned: false, progressCount: 1 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      jest.advanceTimersByTime(4000);
+      expect(dbBulkSetPinned).not.toHaveBeenCalled();
+    });
+
+    it('leaves it pinned if the catching-up log is undone before the window closes', () => {
+      useTaskStore.setState({ tasks: [quota({ pinned: true, progressCount: 1 })] });
+      const store = useTaskStore.getState();
+      store.logQuotaUnit('water');
+      store.unlogQuotaUnit('water'); // the long-press undo — back behind pace
+
+      jest.advanceTimersByTime(4000);
+      expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
+      expect(dbBulkSetPinned).not.toHaveBeenCalled();
+    });
+  });
+
   // A target you're keeping up with is Later Today's, same as a task whose
   // segment hasn't opened — it isn't due yet and it's back when the next unit
   // falls due.
