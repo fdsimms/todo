@@ -123,7 +123,7 @@ describe('mealContextRows', () => {
     const withoutTask = entry('lunch');
     const rows = mealContextRows([withTask, withoutTask], NO_RECIPES, {
       category: 'Kitchen',
-      hasCookTask: id => id === withTask.id,
+      hasCookTask: entry => entry.id === withTask.id,
     });
     expect(rows.map(r => r.title)).toEqual([withoutTask.title]);
   });

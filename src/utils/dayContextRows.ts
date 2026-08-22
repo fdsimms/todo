@@ -104,7 +104,8 @@ export function eventContextRows(
 /**
  * Today's meals as rows — but only the ones that aren't already a task.
  *
- * A recipe-backed meal gets a "Cook X" task (see `wantsCookTask`), and that
+ * A meal in a slot that gets a task (see `mealSlotTasks.ts`) is already a row
+ * in this list as that task, and that
  * task is a row in this list already; captioning it a second time here would be
  * the strip's duplication moved indoors. What's left is exactly the set with
  * nowhere else to appear — a leftover, a takeaway, a dinner typed by hand — and
@@ -113,16 +114,20 @@ export function eventContextRows(
  *
  * `hasCookTask` is passed in rather than read here because "is there a live
  * generated task for this entry" is a question about the task store, and this
- * module is the tested half. Cooked entries drop for `uncookedEntries`' reason:
- * the decision has been made.
+ * module is the tested half. It takes the whole entry rather than its id
+ * because the task covering a meal is no longer keyed by the meal: a meal task
+ * is keyed by the day and the slot it sits in (see `mealSlotTasks.ts`), which
+ * is exactly what lets one exist before the meal does — and what this filter
+ * has to be able to ask about. Cooked entries drop for `uncookedEntries`'
+ * reason: the decision has been made.
  */
 export function mealContextRows(
   entries: readonly MealPlanEntry[],
   recipesById: ReadonlyMap<string, Recipe>,
-  opts: { category: string | null; hasCookTask: (entryId: string) => boolean },
+  opts: { category: string | null; hasCookTask: (entry: MealPlanEntry) => boolean },
 ): ContextRow[] {
   return entries
-    .filter(entry => !entry.cookedAt && !opts.hasCookTask(entry.id))
+    .filter(entry => !entry.cookedAt && !opts.hasCookTask(entry))
     .slice()
     .sort((a, b) =>
       (SLOT_RANK.get(a.slot) ?? 0) - (SLOT_RANK.get(b.slot) ?? 0) || a.sortOrder - b.sortOrder)

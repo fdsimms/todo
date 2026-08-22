@@ -22,7 +22,7 @@ interface Props {
 }
 
 /**
- * A row on Today that isn't a task — a calendar event, a meal with no cook task
+ * A row on Today that isn't a task — a calendar event, a meal with no meal task
  * behind it (#1571), or something in the kitchen about to be wasted (#1689).
  *
  * **It is styled as an ordinary task row, and the glyph is the only tell.**

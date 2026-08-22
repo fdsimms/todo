@@ -416,7 +416,7 @@ export function MealEntrySheet({
           )}
 
           {/*
-            The per-meal override for the cook task (#1402). Applies immediately
+            The per-meal override for this slot's meal task (#1402). Applies immediately
             and leaves the sheet open — the same model the move chips and the
             cooked toggle follow — because it's a property of this meal being
             set, not an action being taken and left behind. It reads the entry
@@ -429,14 +429,14 @@ export function MealEntrySheet({
               <SheetActionRow
                 icon={hasCookTask ? 'checkbox' : 'square-outline'}
                 color={colors.accent}
-                label={hasCookTask ? 'Remove cook task' : 'Add cook task'}
+                label={hasCookTask ? 'Remove meal task' : 'Add meal task'}
                 onPress={() => { haptics.tap(); onSetCookTask(!hasCookTask); }}
                 accessibilityRole="switch"
                 accessibilityState={{ checked: hasCookTask }}
-                accessibilityLabel="Cook task on Today"
+                accessibilityLabel="Meal task on Today"
                 accessibilityHint={hasCookTask
-                  ? 'Removes the task to cook this meal'
-                  : 'Adds a task to cook this meal on the day it\'s planned for'}
+                  ? 'Removes the task for this meal'
+                  : 'Adds a task for this meal on the day it\'s planned for'}
               />
             </>
           )}

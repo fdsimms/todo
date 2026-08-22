@@ -194,6 +194,7 @@ exports.
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
 | a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` |
+| a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |

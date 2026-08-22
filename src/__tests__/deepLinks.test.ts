@@ -47,6 +47,7 @@ import {
   projectsUrlPullId,
   isQuickAddUrl,
   openInAppUrl,
+  mealPlanUrlPickSlot,
 } from '../utils/deepLinks';
 
 describe('parseAddTaskUrl', () => {
@@ -323,6 +324,26 @@ describe('openInAppUrl', () => {
     expect(openInAppUrl('dundundun://mealplan')).toBe(true);
     expect(mockResetToMealPlan).toHaveBeenCalledTimes(1);
     expect(mockResetToToday).not.toHaveBeenCalled();
+  });
+
+  it('opens the picker on the slot a meal task named', () => {
+    // The link an unanswered meal task carries: land on the day *and* open the
+    // picker on the right slot, so "Choose lunch" is one tap from the sheet
+    // that chooses it.
+    expect(mealPlanUrlPickSlot('dundundun://mealplan?date=2026-08-22&pick=lunch')).toBe('lunch');
+    expect(openInAppUrl('dundundun://mealplan?date=2026-08-22&pick=lunch')).toBe(true);
+    expect(mockResetToMealPlan).toHaveBeenCalledWith('2026-08-22', 'lunch');
+  });
+
+  it('carries no slot for a link that names none, or names a bad one', () => {
+    // An answered slot carries the bare dated link, which is how the same row
+    // stops offering to re-decide once it has been decided.
+    expect(mealPlanUrlPickSlot('dundundun://mealplan?date=2026-08-22')).toBeNull();
+    expect(mealPlanUrlPickSlot('dundundun://mealplan')).toBeNull();
+    // Validated rather than passed through — it ends up as the picker's
+    // defaultSlot, and an unknown string there selects no chip at all.
+    expect(mealPlanUrlPickSlot('dundundun://mealplan?date=2026-08-22&pick=brunch')).toBeNull();
+    expect(mealPlanUrlPickSlot('dundundun://groceries?pick=lunch')).toBeNull();
   });
 
   it('opens the pull sheet on one project — a review task\'s own link', () => {

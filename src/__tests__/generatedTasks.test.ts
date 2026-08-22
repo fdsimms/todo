@@ -245,9 +245,20 @@ describe('liveUseUpTaskCount', () => {
 });
 
 describe('the registry', () => {
-  it('describes every kind, and only the kinds', () => {
-    expect(Object.keys(GENERATED_KIND_SPECS).sort()).toEqual([...GENERATED_KINDS].sort());
+  it('describes every kind that is still written, and keeps the retired one answerable', () => {
+    // GENERATED_KINDS is what a *listing* enumerates; the specs are keyed by
+    // GeneratedKind, which is wider because it also holds 'mealCook'. That kind
+    // folded into 'mealSlot' but stays in the union: it's a storage value, and
+    // rows written before the fold still say it.
+    for (const kind of GENERATED_KINDS) {
+      expect(GENERATED_KIND_SPECS[kind]).toBeDefined();
+    }
     expect(GENERATED_KIND_LIST).toHaveLength(GENERATED_KINDS.length);
+    // Retired: described, so a legacy row is still recognised, but never listed
+    // — a settings row for it would offer to turn on a half that can't happen.
+    expect(GENERATED_KIND_SPECS.mealCook).toBeDefined();
+    expect(GENERATED_KINDS).not.toContain('mealCook');
+    expect(GENERATED_KIND_LIST.map(s => s.kind)).not.toContain('mealCook');
   });
 
   it('lists them in the declared order, which is the order Settings renders', () => {
@@ -269,11 +280,14 @@ describe('the registry', () => {
     }
   });
 
-  it('marks the meal-plan nudge as the one generator with no source row', () => {
-    // It's why generatedSourceId is nullable, and why deleting its task writes
-    // no opt-out — there is nothing to write it on.
+  it('marks the two calendar-shaped generators as having no source row', () => {
+    // It's why generatedSourceId is nullable, and why deleting either's task
+    // writes no opt-out — there is nothing to write it on.
     expect(GENERATED_KIND_SPECS.mealPlanNudge.sourced).toBe(false);
-    expect(GENERATED_KIND_SPECS.mealCook.sourced).toBe(true);
+    // And it stopped being the only one. A meal task's source id is a day and a
+    // slot — a square on the calendar, not a row — which is what lets one exist
+    // for a meal nobody has planned yet.
+    expect(GENERATED_KIND_SPECS.mealSlot.sourced).toBe(false);
     expect(GENERATED_KIND_SPECS.groceryUseUp.sourced).toBe(true);
     expect(GENERATED_KIND_SPECS.leftoverUseUp.sourced).toBe(true);
     // Sourced by the project it speaks for — the id its linkUrl scopes the
@@ -286,13 +300,13 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['mealCook', 'groceryUseUp', 'leftoverUseUp', 'mealPlanNudge', 'projectReview']);
+      .toEqual(['mealSlot', 'groceryUseUp', 'leftoverUseUp', 'mealPlanNudge', 'projectReview']);
   });
 
   it('shares one default category between planning the week and cooking it', () => {
     // Two generators, one section: the distinction between "plan the week" and
     // "cook what you planned" is one only the code makes.
-    expect(GENERATED_KIND_SPECS.mealCook.defaultCategory).toBe('Meal Plan');
+    expect(GENERATED_KIND_SPECS.mealSlot.defaultCategory).toBe('Meal Plan');
     expect(GENERATED_KIND_SPECS.mealPlanNudge.defaultCategory).toBe('Meal Plan');
     expect(GENERATED_KIND_SPECS.leftoverUseUp.defaultCategory).toBe('Leftovers');
     // Every kind has one — an unfiled generator is one whose tasks pile up in

@@ -19,9 +19,10 @@ import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useGroceryStore } from './useGroceryStore';
-import { cookTaskDraft, cookTaskFields, cookTaskNeedsUpdate, wantsCookTask } from '../utils/mealTasks';
-import { liveGeneratedTask } from '../utils/generatedTasks';
-import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
+import { generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask } from '../utils/generatedTasks';
+import { derivedId, spawnSeed } from '../utils/syncIds';
+import { ensureGeneratedTaskCategory } from './useCategoryStore';
+import { deleteGeneratedTaskQuietly, dropGeneratedTask } from './generatedTaskSync';
 import { syncMealEvent } from '../utils/mealCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
 import { classifyPlanned, consumedRows, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
@@ -31,6 +32,7 @@ import { normalizeScale } from '../utils/recipeScale';
 import { mealCookCounts, type CookingWindow, type MealCookCounts } from '../utils/cookingStats';
 import {
   cleanMealTitle,
+  entriesForSlot,
   isKeyInRange,
   mealPlanPurgeCutoffKey,
   nextSortOrder,
@@ -40,6 +42,7 @@ import {
   weekCopyDrafts,
 } from '../utils/mealPlan';
 import { countPlannedSlots } from '../utils/mealPlanNudge';
+import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft } from '../utils/mealSlotTasks';
 import { dayKeyToDate } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 
@@ -649,7 +652,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
 
     dbInsertMealPlanEntry(entry);
     patchInRange(set, get, entry);
-    reconcileCookTask(entry);
+    reconcileMealSlot(get, entry);
     reconcileMealEvent(entry);
     get().setLastAction({
       label: `Planned "${entry.title}"`,
@@ -658,6 +661,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         dropMealEvent(entry.id);
         dbDeleteMealPlanEntry(entry.id);
         set(s => ({ entries: s.entries.filter(e => e.id !== entry.id) }));
+        // After the delete, never before: the slot's task reads the slot as it
+        // now stands, and an emptied slot is what turns "Cook Chili" back into
+        // "Choose dinner". Same ordering everywhere a meal is removed below.
+        reconcileMealSlot(get, entry);
       },
     });
     return entry;
@@ -682,7 +689,12 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // Moving the meal moves its cook task: the day and the slot are two of the
     // three fields the entry owns on it. The calendar event carries both too —
     // the day it sits on and the slot in its title.
-    reconcileCookTask(moved);
+    reconcileMealSlot(get, moved);
+    // And the slot it vacated — a move is two slots changing, and only one of
+    // them is the one being moved to. Without this, dragging dinner to Friday
+    // leaves Thursday's row still saying "Cook Chili" for a meal that isn't
+    // there any more. A no-op when the move stayed inside one slot.
+    reconcileMealSlot(get, entry);
     reconcileMealEvent(moved);
     get().setLastAction({
       label: `Moved "${entry.title}"`,
@@ -690,7 +702,8 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         dbUpdateMealPlanEntry(entry);
         set(s => ({ entries: sortMealEntries(s.entries.filter(e => e.id !== id)) }));
         patchInRange(set, get, entry);
-        reconcileCookTask(entry);
+        reconcileMealSlot(get, entry);
+        reconcileMealSlot(get, moved);
         reconcileMealEvent(entry);
       },
     });
@@ -705,6 +718,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     dropMealEvent(id);
     dbDeleteMealPlanEntry(id);
     set(s => ({ entries: s.entries.filter(e => e.id !== id) }));
+    if (entry) reconcileMealSlot(get, entry);
     if (entry) {
       get().setLastAction({
         label: `Removed "${entry.title}"`,
@@ -712,7 +726,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         undo: () => {
           dbInsertMealPlanEntry(entry);
           patchInRange(set, get, entry);
-          reconcileCookTask(entry);
+          reconcileMealSlot(get, entry);
           reconcileMealEvent(entry);
         },
       });
@@ -730,7 +744,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const renamed: MealPlanEntry = { ...entry, title: cleaned };
     dbUpdateMealPlanEntry(renamed);
     set(s => ({ entries: s.entries.map(e => e.id === id ? renamed : e) }));
-    reconcileCookTask(renamed);
+    reconcileMealSlot(get, renamed);
     reconcileMealEvent(renamed);
     // The only single-entry mutation here that used to write without one.
     get().setLastAction({
@@ -738,7 +752,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       undo: () => {
         dbUpdateMealPlanEntry(entry);
         set(s => ({ entries: s.entries.map(e => e.id === id ? entry : e) }));
-        reconcileCookTask(entry);
+        reconcileMealSlot(get, entry);
         reconcileMealEvent(entry);
       },
     });
@@ -778,7 +792,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // the one in completeTask: whichever side moves first has already written
     // its own state by the time the other calls back, so the callee returns
     // early. Don't remove either guard.
-    syncCookTaskCompletion(id, cooked);
+    syncCookTaskCompletion(next, cooked);
   },
 
   setCookTask(id, value) {
@@ -787,7 +801,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const next: MealPlanEntry = { ...entry, cookTask: value };
     dbUpdateMealPlanEntry(next);
     set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
-    reconcileCookTask(next);
+    // The one path that may create a meal task outside the daily pass, and the
+    // exception proves the rule: every other caller of reconcileMealSlot is a
+    // *plan* change, where creating on demand would hand back the row the user
+    // swiped away. This is the user asking for the row in as many words, from
+    // the meal's own sheet. So an explicit per-meal "yes" beats the day's set
+    // of meals in both directions, exactly as the cook task's own tri-state
+    // beat the global setting — a lunch you cook once a month can have a task
+    // without lunch being a meal you want asked about every day.
+    if (value === true) createMealSlotTask(get, next);
+    reconcileMealSlot(get, next);
   },
 
   setCookedPaired(id, cooked) {
@@ -812,9 +835,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   bulkDeleteEntries(ids) {
     if (ids.length === 0) return;
     const idSet = new Set(ids);
+    // Captured before the rows go — the slot each meal occupied is the only
+    // thing that says which meal tasks now have nothing behind them.
+    const vacated = ids
+      .map(id => get().entries.find(e => e.id === id) ?? dbGetMealPlanEntry(id))
+      .filter((e): e is MealPlanEntry => !!e)
+      .map(e => ({ date: e.date, slot: e.slot }));
     ids.forEach(dropCookTask);
     ids.forEach(dropMealEvent);
     ids.forEach(id => dbDeleteMealPlanEntry(id));
+    vacated.forEach(e => reconcileMealSlot(get, e));
     // lastAction: null — see the doc comment. The delete registers no undo of
     // its own *and* takes the slot away from whatever was in it, so a shake
     // after this can't offer an unrelated action the user has moved on from.
@@ -848,7 +878,9 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const movedIds = new Set(moved.map(e => e.id));
     set(s => ({ entries: sortMealEntries(s.entries.filter(e => !movedIds.has(e.id))) }));
     moved.forEach(entry => patchInRange(set, get, entry));
-    moved.forEach(reconcileCookTask);
+    moved.forEach(e => reconcileMealSlot(get, e));
+    // The slots they came from, for moveEntry's reason one row at a time.
+    originals.forEach(e => reconcileMealSlot(get, e));
     moved.forEach(reconcileMealEvent);
 
     get().setLastAction({
@@ -857,7 +889,8 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         originals.forEach(dbUpdateMealPlanEntry);
         set(s => ({ entries: sortMealEntries(s.entries.filter(e => !movedIds.has(e.id))) }));
         originals.forEach(entry => patchInRange(set, get, entry));
-        originals.forEach(reconcileCookTask);
+        originals.forEach(e => reconcileMealSlot(get, e));
+        moved.forEach(e => reconcileMealSlot(get, e));
         originals.forEach(reconcileMealEvent);
       },
     });
@@ -885,7 +918,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // qualify. `cookTask` is deliberately kept by the replace (see the note on
     // recipeScale surviving a swap for the same reason), so an explicit
     // per-meal answer isn't quietly undone by changing what's cooked.
-    updated.forEach(reconcileCookTask);
+    updated.forEach(e => reconcileMealSlot(get, e));
     updated.forEach(reconcileMealEvent);
 
     get().setLastAction({
@@ -894,7 +927,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         toUpdate.forEach(dbUpdateMealPlanEntry);
         const originalById = new Map(toUpdate.map(e => [e.id, e]));
         set(s => ({ entries: s.entries.map(e => originalById.get(e.id) ?? e) }));
-        toUpdate.forEach(reconcileCookTask);
+        toUpdate.forEach(e => reconcileMealSlot(get, e));
         toUpdate.forEach(reconcileMealEvent);
       },
     });
@@ -913,7 +946,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     updated.forEach(dbUpdateMealPlanEntry);
     const byId = new Map(updated.map(e => [e.id, e]));
     set(s => ({ entries: s.entries.map(e => byId.get(e.id) ?? e) }));
-    updated.forEach(e => syncCookTaskCompletion(e.id, cooked));
+    updated.forEach(e => syncCookTaskCompletion(e, cooked));
 
     // Restores each entry's own original cookedAt, not just the opposite of
     // `cooked` — same reasoning as bulkMoveEntries' `originals`. Never touches
@@ -926,7 +959,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         toUpdate.forEach(dbUpdateMealPlanEntry);
         const originalById = new Map(toUpdate.map(e => [e.id, e]));
         set(s => ({ entries: s.entries.map(e => originalById.get(e.id) ?? e) }));
-        toUpdate.forEach(e => syncCookTaskCompletion(e.id, !!e.cookedAt));
+        toUpdate.forEach(e => syncCookTaskCompletion(e, !!e.cookedAt));
       },
     });
   },
@@ -952,7 +985,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     }));
     created.forEach(dbInsertMealPlanEntry);
     created.forEach(entry => patchInRange(set, get, entry));
-    created.forEach(reconcileCookTask);
+    created.forEach(e => reconcileMealSlot(get, e));
     created.forEach(reconcileMealEvent);
 
     const ids = new Set(created.map(e => e.id));
@@ -963,6 +996,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         created.forEach(e => dropMealEvent(e.id));
         created.forEach(e => dbDeleteMealPlanEntry(e.id));
         set(s => ({ entries: s.entries.filter(e => !ids.has(e.id)) }));
+        created.forEach(e => reconcileMealSlot(get, e));
       },
     });
     return created.length;
@@ -1079,54 +1113,119 @@ function useUpOfferFor(entry: MealPlanEntry): CookedOffer | null {
   };
 }
 
-// ─── Cook tasks (#1402) ─────────────────────────────────────────────────────
+// ─── Meal tasks (#1402, folded into slots) ──────────────────────────────────
 //
 // The meal plan is the master and the task is the replica; these helpers are
-// every write that crosses the line. The projection rules themselves — which
-// meals qualify, what the task says, which fields the meal owns — are in
-// utils/mealTasks so jest can reach them, and the create/update/delete
-// machinery they feed is shared with the other three generators in
-// store/generatedTaskSync (#1524).
+// every write that crosses the line. The projection rules themselves — what a
+// slot's task says, which fields the slot owns, when the chain may be rewritten
+// — are in utils/mealSlotTasks so jest can reach them.
+//
+// **Creation is not here.** A meal task belongs to a day and a slot rather than
+// to a meal, so the row exists before the meal does and is written once a day
+// by useTaskStore.checkMealSlotTasks. What crosses the line here is the update:
+// planning dinner rewrites the row from "Choose dinner" to "Cook Chili", and
+// clearing the slot rewrites it back. The one exception is setCookTask(true),
+// which is the user asking for the row in as many words.
 
-/** This meal's live cook task, if it has one. */
+/** This meal's live legacy cook task, if it still has one. */
 function liveCookTaskFor(entryId: string): Task | undefined {
   return liveGeneratedTask(useTaskStore.getState().tasks, 'mealCook', entryId);
 }
 
-/**
- * Brings this meal's cook task into line: creates it, updates it, or removes
- * it, depending on what the meal now says.
- *
- * **A cooked meal is left entirely alone.** Its task has either been ticked
- * (that's what cooked it) or is deliberately outstanding, and either way the
- * night has happened — re-dating or re-titling the task at that point edits
- * history. This is also what stops a completed cook task from being replaced
- * by a fresh one on the next edit. It's the one gate `reconcileGeneratedTask`
- * knows nothing about, because "cooked" is a fact about a meal.
- *
- * **It never spawns a second task for one meal**, even when the existing one
- * is completed or archived — that's `blocksOnFinished`, and cook tasks are the
- * only generator that sets it. A meal is one event; see `hasAnyGeneratedTask`
- * for why a grocery item and a leftover answer the opposite way.
- */
-function reconcileCookTask(entry: MealPlanEntry): void {
-  if (entry.cookedAt) return;
+/** The live meal task for a day and a slot, if there is one. */
+function liveMealSlotTask(dayKey: string, slot: MealSlot): Task | undefined {
+  return liveGeneratedTask(useTaskStore.getState().tasks, 'mealSlot', mealSlotSourceId(dayKey, slot));
+}
 
-  const { mealCookTasks, mealCookTaskCategory } = useSettingsStore.getState();
-  reconcileGeneratedTask({
-    kind: 'mealCook',
-    sourceId: entry.id,
-    wanted: wantsCookTask(entry, mealCookTasks),
-    drift: existing => (cookTaskNeedsUpdate(existing, entry) ? cookTaskFields(entry) : null),
-    draft: () => cookTaskDraft(entry, mealCookTaskCategory),
-    blocksOnFinished: true,
-  });
+/**
+ * What is currently in a slot — the loaded window first, SQLite for a day
+ * outside it.
+ *
+ * The same two-step `resolveEntry` makes one row at a time, and for the same
+ * reason: `entries` is the one week the Meal Plan screen has open, and a
+ * reconcile can be triggered from well outside it (a bulk move landing next
+ * month, an undo after the week was paged away). Reading only the store would
+ * report those slots as empty and rewrite a perfectly good task back to
+ * "Choose lunch"; reading only SQLite would go to disk for a day already in
+ * hand on every mutation.
+ */
+function slotEntry(get: () => MealPlanStore, dayKey: string, slot: MealSlot): MealPlanEntry | null {
+  const { entries, rangeStart, rangeEnd } = get();
+  const source = rangeStart && rangeEnd && isKeyInRange(dayKey, rangeStart, rangeEnd)
+    ? entries
+    : dbGetMealPlanEntries(dayKey, dayKey);
+  return entriesForSlot(source, dayKey, slot)[0] ?? null;
+}
+
+/**
+ * Writes a meal task for this meal's slot, if there isn't one and the generator
+ * is on at all.
+ *
+ * Only `setCookTask(true)` reaches this — see the note there on why creation is
+ * otherwise `checkMealSlotTasks`' alone. Deliberately not gated on
+ * `mealSlotsEnabled`: the slot set says which meals to *ask* about daily, and
+ * this is a meal saying it wants a task regardless.
+ */
+function createMealSlotTask(get: () => MealPlanStore, entry: MealPlanEntry): void {
+  if (!useSettingsStore.getState().mealCookTasks) return;
+  const sourceId = mealSlotSourceId(entry.date, entry.slot);
+  const { tasks, addTask } = useTaskStore.getState();
+  if (hasAnyGeneratedTask(tasks, 'mealSlot', sourceId)) return;
+  ensureGeneratedTaskCategory('mealSlot');
+  addTask(
+    // Re-read after ensureGeneratedTaskCategory, which may have just filled it.
+    mealSlotTaskDraft(entry.date, entry.slot, entry, useSettingsStore.getState().mealCookTaskCategory),
+    derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
+    { skipCategoryDefault: true, skipTitleRules: true },
+  );
+}
+
+/**
+ * Brings a slot's meal task into line with what the slot now holds.
+ *
+ * **It never creates one**, which is the difference from the cook-task
+ * reconcile it replaces and the reason it doesn't go through
+ * `reconcileGeneratedTask`. Creation belongs to `checkMealSlotTasks`, which
+ * fires once per logical day — and that once-a-day firing *is* this
+ * generator's opt-out (see its doc comment), so a reconcile that created on
+ * demand would hand back the lunch task the user swiped away the moment they
+ * planned lunch from the meal plan screen instead.
+ *
+ * So this is the update half only: planning dinner rewrites the row you're
+ * looking at from "Choose dinner" into "Cook Chili", and clearing the slot
+ * again rewrites it back.
+ *
+ * **A cooked meal is left alone**, the same gate the cook task had: the night
+ * has happened, and re-titling the task at that point edits history.
+ */
+function reconcileMealSlot(get: () => MealPlanStore, entry: Pick<MealPlanEntry, 'date' | 'slot'>): void {
+  const { date: dayKey, slot } = entry;
+  const live = liveMealSlotTask(dayKey, slot);
+  if (!live) return;
+
+  const current = slotEntry(get, dayKey, slot);
+  if (current?.cookedAt) return;
+  // The per-meal "no" survives the fold — MealPlanEntry.cookTask is still how
+  // one meal says it doesn't want a task, and it's the only thing a slot task
+  // inherits from the cook task it replaces. skipOptOut because this is the
+  // app tidying up after the answer, not the user giving one: routing through
+  // deleteTask would write `false` back onto a row that already says it.
+  if (current?.cookTask === false) {
+    deleteGeneratedTaskQuietly(live.id, { skipOptOut: true });
+    return;
+  }
+
+  const updates = mealSlotDrift(live, dayKey, slot, current);
+  // skipPostponeCount for reconcileGeneratedTask's reason: this row's date is
+  // the slot's date, and dragging Tuesday's dinner to Friday is not the user
+  // ducking anything.
+  if (updates) useTaskStore.getState().updateTask(live.id, updates, { skipPostponeCount: true });
 }
 
 /**
  * Drops this meal's cook task because the meal itself is going.
  *
- * Deliberately not `reconcileCookTask` with the flag off: that records an
+ * Deliberately not `reconcileMealSlot` with the flag off: that records an
  * opt-out, which is meaningless for a row about to stop existing, and it would
  * also skip the delete entirely for an entry that had already been cooked.
  * Completed cook tasks stay either way — deleting a meal must not erase the
@@ -1143,13 +1242,34 @@ function dropCookTask(entryId: string): void {
  * `completeTask` and `uncompleteTask` return early when the task is already in
  * the state being asked for, so the call back into this store is a no-op.
  */
-function syncCookTaskCompletion(entryId: string, cooked: boolean): void {
+function syncCookTaskCompletion(entry: MealPlanEntry, cooked: boolean): void {
   const { tasks, completeTask, uncompleteTask } = useTaskStore.getState();
+  const entryId = entry.id;
   if (cooked) {
     const live = liveCookTaskFor(entryId);
     if (live) completeTask(live.id);
+    // A meal task is a chain, so "the meal happened" can't be one tick: ticking
+    // "Prepare lunch" from here would leave "Eat lunch" outstanding on a night
+    // already marked cooked. Marking cooked says every remaining step happened,
+    // so every remaining step is completed — each spawning the next, which is
+    // what the loop walks. Bounded by the chain's own length rather than by
+    // `while (live)`, so a step that declines to complete can't spin.
+    let next = liveMealSlotTask(entry.date, entry.slot);
+    for (let i = 0; next && i <= (next.chainItems?.length || 1); i++) {
+      completeTask(next.id);
+      next = liveMealSlotTask(entry.date, entry.slot);
+    }
     return;
   }
+  // Un-ticking only ever reaches the step that ended the chain — the one whose
+  // completion marked the meal cooked in the first place (see completesMealSlot
+  // in useTaskStore). The earlier steps stay done, because they were.
+  const doneSlot = tasks.find(
+    t => t.generatedKind === 'mealSlot'
+      && t.generatedSourceId === mealSlotSourceId(entry.date, entry.slot)
+      && t.completed && !t.archived
+  );
+  if (doneSlot) uncompleteTask(doneSlot.id);
   // Deliberately not liveGeneratedTask: this one wants the *completed* task, to
   // untick it. Archived rows stay excluded — see liveGeneratedTask's note.
   const done = tasks.find(

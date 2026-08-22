@@ -49,8 +49,27 @@ export type { GeneratedKind };
  * row carrying the "no" is deleted by whatever deletes the source.
  */
 
+/**
+ * The generators a *listing* enumerates — Settings' section, and anything else
+ * asking "what writes tasks into my list".
+ *
+ * **`mealCook` is deliberately absent**, and is the first kind to leave this
+ * list without leaving `GeneratedKind`. It folded into `mealSlot`, which asks
+ * the same question of a wider set of days (see `mealSlotTasks.ts`): a slot
+ * with a recipe in it produces the cook step a cook task used to be, and a slot
+ * with nothing in it produces the choosing this app had no row for at all. One
+ * settings row covers both because to the person reading Today they are one
+ * feature, and two rows would offer a way to turn on the half that can't
+ * happen.
+ *
+ * Rows already written as `mealCook` keep working exactly as they did — the
+ * kind is still in the union, `liveGeneratedTask` still matches it, and
+ * `writeGeneratedOptOut` still has its case, so a legacy cook task swiped away
+ * still tells its meal not to ask again. They just aren't created any more, and
+ * they drain within a day or two of ordinary use.
+ */
 export const GENERATED_KINDS: readonly GeneratedKind[] = [
-  'mealCook',
+  'mealSlot',
   'groceryUseUp',
   'leftoverUseUp',
   'mealPlanNudge',
@@ -116,6 +135,25 @@ export interface GeneratedKindSpec {
 }
 
 export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
+  mealSlot: {
+    kind: 'mealSlot',
+    label: 'Meal tasks',
+    onHint: 'Each meal you eat gets a task: what to cook, or what to decide',
+    offHint: 'Meals add no tasks',
+    icon: 'restaurant-outline',
+    // Its source id is a day and a slot, which names a square on the calendar
+    // rather than a row anything could be written back to — the same position
+    // mealPlanNudge is in, and the reason writeGeneratedOptOut has nothing to
+    // write for either. What stops a swiped-away meal task coming straight back
+    // is mealSlotTasksWrittenThroughDayKey, a high-water mark the pass only
+    // ever writes past — so a day it has covered is never revisited.
+    sourced: false,
+    categorized: true,
+    defaultCategory: 'Meal Plan',
+  },
+  // Retired — see GENERATED_KINDS above. Kept in the specs because the record
+  // is keyed by GeneratedKind and legacy rows still carry the kind; nothing
+  // lists it, since GENERATED_KIND_LIST is built from GENERATED_KINDS.
   mealCook: {
     kind: 'mealCook',
     label: 'Cook tasks',
