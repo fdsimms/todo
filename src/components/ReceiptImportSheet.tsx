@@ -80,6 +80,8 @@ export interface ReceiptAddDraft {
   aisle: string | null;
   quantity: string;
   priceMinor: number | null;
+  /** The barcode scan sheet's per-row freezer toggle. Always undefined here — a receipt has no shelf to ask about. */
+  frozen?: boolean;
 }
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */

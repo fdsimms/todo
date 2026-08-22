@@ -173,6 +173,12 @@ export function GroceryScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  // The scan sheet's per-row freezer toggle, held here rather than written
+  // immediately: a scan only checks an item onto the list, and the item isn't
+  // bought yet — see finishShopping's own doc comment on frozenIds. Applied
+  // (and cleared) when the trip actually finishes; cleared without applying
+  // if the trip is abandoned instead.
+  const [scanFrozenIds, setScanFrozenIds] = useState<ReadonlySet<string>>(new Set());
   // What a scanned receipt read, held between the two sheets. Undefined rather
   // than null when there's no receipt in play: the finish sheet tells the two
   // apart, since a receipt naming no store is a real answer and not an absent
@@ -678,15 +684,20 @@ export function GroceryScreen() {
       }
       // The prices ride with the trip rather than being a fourth write: they're
       // about what it bought, so they have to land on the same rows in the same
-      // pass that takes them off the list.
-      if (finishShopping(shopId, priceById, purchasedAt) > 0) haptics.success();
+      // pass that takes them off the list. scanFrozenIds rides along the same
+      // way, for the same reason — see finishShopping's own doc comment.
+      if (finishShopping(shopId, priceById, purchasedAt, scanFrozenIds) > 0) haptics.success();
+      // Consumed either way: an id finishShopping didn't end up touching
+      // (marked unavailable, substituted away) was never going to be applied
+      // on some later trip either.
+      setScanFrozenIds(new Set());
       // Unconditional, and deliberately not inside finishShopping: that
       // early-returns on an empty trolley, and finishing a shop you bought
       // nothing at still ends the trip you were on.
       endTrip();
       setCartOpen(false);
     },
-    [finishShopping, markItemsUnavailable, linkItemSub, endTrip, itemSubs]
+    [finishShopping, markItemsUnavailable, linkItemSub, endTrip, itemSubs, scanFrozenIds]
   );
 
   /**
@@ -759,39 +770,47 @@ export function GroceryScreen() {
    * a shop, and the finish sheet is where a shop ends *and* where the one
    * question no scan can answer gets asked.
    *
-   * **The one thing a barcode knows that a receipt doesn't is who makes it**,
-   * and it goes through `addByName`'s own `brand` override — the same one
-   * GroceryAddField's Brand chip uses — so a minted row files it as its first
-   * `ItemProduct`: brand with no variant, the brand-level box ("any Beyond")
-   * that type exists to express. Deliberately not a follow-up `addProduct`
-   * call, which would also flip `inCatalog` and leave a scanned row that
-   * happened to carry a brand surviving a "remove from list" that deletes the
-   * brandless one beside it.
+   * The scan sheet's freezer toggle is captured into `scanFrozenIds` rather
+   * than written here, for the same reason: nothing is bought yet. It rides
+   * along to `finishShopping` in `handleFinished`, once it is.
    *
-   * It is written only for rows this session mints. An already-matched catalog
-   * row is the user's own, with its own boxes and possibly a deliberate
-   * `preferredProductId` that `ensureProductFor` would overwrite: unpacking
-   * twenty bags would then decide twenty items' preferences unasked. That case
-   * is #1866.
+   * **What a barcode knows and a receipt doesn't is the box**: who makes it,
+   * and which one of the item it is. A row this session mints takes its brand
+   * through `addByName`'s own override — the same one GroceryAddField's Brand
+   * chip uses — so it files as that row's first `ItemProduct`. Deliberately not
+   * a follow-up `addProduct` call, which would also flip `inCatalog` and leave
+   * a scanned row that happened to carry a brand surviving a "remove from list"
+   * that deletes the brandless one beside it.
+   *
+   * A row that matched an item the catalog already had travels in `products`
+   * instead, and is written with `promote: false` — the scan is recording that
+   * a box came home, which is not the user choosing it (#1866).
    */
   const handleScanApply = useCallback(
-    (itemIds: string[], toAdd: ReceiptAddDraft[], products: ScanProductDraft[]) => {
+    (
+      itemIds: string[],
+      toAdd: ReceiptAddDraft[],
+      frozenItemIds: ReadonlySet<string>,
+      products: ScanProductDraft[]
+    ) => {
       animateLayout();
       const allIds = [...itemIds];
+      const frozenIds = new Set(itemIds.filter(id => frozenItemIds.has(id)));
       for (const draft of toAdd) {
+        let id: string;
         if (draft.existingItemId) {
           addExisting(draft.existingItemId);
-          allIds.push(draft.existingItemId);
+          id = draft.existingItemId;
         } else {
-          allIds.push(
-            addByName(draft.label, {
-              name: draft.name,
-              quantity: draft.quantity || null,
-              brand: draft.brand,
-              aisle: draft.aisle,
-            }).id
-          );
+          id = addByName(draft.label, {
+            name: draft.name,
+            quantity: draft.quantity || null,
+            brand: draft.brand,
+            aisle: draft.aisle,
+          }).id;
         }
+        allIds.push(id);
+        if (draft.frozen) frozenIds.add(id);
       }
       // After the loop, so a row this session minted is already there to hang a
       // box off. `promote: false` is the whole of #1866: the scan is recording
@@ -800,6 +819,11 @@ export function GroceryScreen() {
         addProduct(product.itemId, { brand: product.brand, variant: product.variant }, { promote: false });
       }
       if (allIds.length > 0) setCheckedMany(allIds, true);
+      // Merged rather than replaced: a second scan session before the trip
+      // finishes shouldn't forget what the first one flagged.
+      if (frozenIds.size > 0) {
+        setScanFrozenIds(prev => new Set([...prev, ...frozenIds]));
+      }
       setReceiptSeed(null);
       setScanOpen(false);
       setFinishOpen(true);
@@ -810,6 +834,8 @@ export function GroceryScreen() {
   const handleClearTrip = useCallback(() => {
     animateLayout();
     endTrip();
+    // The trip these were flagged for is the one being abandoned.
+    setScanFrozenIds(new Set());
   }, [endTrip]);
 
   // Starting a trip and planning one are different verbs on the same sheet:

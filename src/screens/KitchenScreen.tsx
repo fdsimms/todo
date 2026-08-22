@@ -253,16 +253,30 @@ export function KitchenScreen() {
   // that don't apply here. What this screen wants out of a session is just
   // the names: an already-matched row's current name, or a new row's shopper
   // name, fed through addManyToPantry exactly like the typed field above.
-  const handleScanApply = (itemIds: string[], toAdd: ReceiptAddDraft[]) => {
+  // `frozenItemIds`/`draft.frozen` carry the sheet's per-row freezer toggle;
+  // both are reduced to the same name strings so addManyToPantry can match
+  // them back up (see its own doc comment on why that's safe).
+  const handleScanApply = (
+    itemIds: string[],
+    toAdd: ReceiptAddDraft[],
+    frozenItemIds: ReadonlySet<string>
+  ) => {
     const names = [
       ...itemIds
         .map(id => items.find(i => i.id === id)?.name)
         .filter((name): name is string => !!name),
       ...toAdd.map(draft => draft.name),
     ];
+    const frozenNames = new Set([
+      ...itemIds
+        .filter(id => frozenItemIds.has(id))
+        .map(id => items.find(i => i.id === id)?.name)
+        .filter((name): name is string => !!name),
+      ...toAdd.filter(draft => draft.frozen).map(draft => draft.name),
+    ]);
     setScanOpen(false);
     if (names.length === 0) return;
-    if (addManyToPantry(names) > 0) haptics.success();
+    if (addManyToPantry(names, frozenNames) > 0) haptics.success();
   };
 
   const renderItem = ({ item: entry }: { item: KitchenEntry }) => {
