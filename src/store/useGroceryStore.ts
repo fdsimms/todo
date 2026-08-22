@@ -455,8 +455,18 @@ interface GroceryStore {
    * collides with another in this same batch already collapses onto one row
    * (`addToPantry` upserts by `nameKey`), so "frozen" collapsing with it too
    * is the existing model, not a new gap.
+   *
+   * `products` is the same barcode's own box — who makes it, which one it is
+   * — keyed the same way `frozenNames` is. Applied through `addProduct` with
+   * its default promotion rule, so the very first box a pantry item has ever
+   * seen becomes what it shows, and a box it already has an opinion about
+   * stays exactly what it was.
    */
-  addManyToPantry: (names: readonly string[], frozenNames?: ReadonlySet<string>) => number;
+  addManyToPantry: (
+    names: readonly string[],
+    frozenNames?: ReadonlySet<string>,
+    products?: ReadonlyMap<string, { brand: string | null; variant: string | null }>
+  ) => number;
   /**
    * The day this should be used up by, as a `YYYY-MM-DD` key, or null for
    * "doesn't go off on a schedule worth naming".
@@ -2055,7 +2065,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     return item;
   },
 
-  addManyToPantry(names, frozenNames) {
+  addManyToPantry(names, frozenNames, products) {
     const addedIds: string[] = [];
     const revertRows: GroceryItem[] = [];
     let count = 0;
@@ -2071,6 +2081,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // (or delete of a fresh row) already reverts the freeze along with it —
       // no separate bookkeeping needed for this half of the batch.
       if (frozenNames?.has(raw)) get().setFrozen(item.id, true);
+      // Same reasoning: not part of the undo snapshot, matching addProduct's
+      // own callers everywhere else — a box named is never itself undoable.
+      const product = products?.get(raw);
+      if (product && (product.brand || product.variant)) {
+        get().addProduct(item.id, { brand: product.brand, variant: product.variant });
+      }
     }
     // One combined undo for the whole scan session rather than addToPantry's
     // per-call one, which the loop above suppresses — see addManyFromText.

@@ -41,7 +41,7 @@ import { InlineAction } from '../components/InlineAction';
 import { PressableScale } from '../components/PressableScale';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { LeftoverSheet } from '../components/LeftoverSheet';
-import { BarcodeScanSheet } from '../components/BarcodeScanSheet';
+import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
 import type { ReceiptAddDraft } from '../components/ReceiptImportSheet';
 import { freshnessColor } from '../components/LeftoversCard';
 import { useNowTick } from '../hooks/useNowTick';
@@ -88,6 +88,8 @@ import { haptics } from '../utils/haptics';
  * cooked, which is what `LeftoverSheet`'s log flow is for. The scan sheet
  * itself is shared with `GroceryScreen` (`BarcodeScanSheet`, `context` prop)
  * — same camera and lookup, only the row wording and the write path differ.
+ * The barcode's own box (brand, variant) still lands on the item the same
+ * way it does from `GroceryScreen` — see `addManyToPantry`'s `products` param.
  *
  * That keeps the model the one #1040 settled on — computed from what you buy,
  * corrected when it's wrong, never an inventory anybody has to keep up.
@@ -255,11 +257,15 @@ export function KitchenScreen() {
   // name, fed through addManyToPantry exactly like the typed field above.
   // `frozenItemIds`/`draft.frozen` carry the sheet's per-row freezer toggle;
   // both are reduced to the same name strings so addManyToPantry can match
-  // them back up (see its own doc comment on why that's safe).
+  // them back up (see its own doc comment on why that's safe). The barcode's
+  // box — brand and variant — is reduced the same way: `products` (matched
+  // rows) and `draft.brand` (minted rows) both key by itemId or draft, so
+  // they're re-keyed onto the same name strings before the call.
   const handleScanApply = (
     itemIds: string[],
     toAdd: ReceiptAddDraft[],
-    frozenItemIds: ReadonlySet<string>
+    frozenItemIds: ReadonlySet<string>,
+    products: ScanProductDraft[]
   ) => {
     const names = [
       ...itemIds
@@ -274,9 +280,23 @@ export function KitchenScreen() {
         .filter((name): name is string => !!name),
       ...toAdd.filter(draft => draft.frozen).map(draft => draft.name),
     ]);
+    const productByItemId = new Map(products.map(p => [p.itemId, p]));
+    const productNames = new Map<string, { brand: string | null; variant: string | null }>();
+    for (const id of itemIds) {
+      const item = items.find(i => i.id === id);
+      const product = item && productByItemId.get(id);
+      if (item && product) productNames.set(item.name, { brand: product.brand, variant: product.variant });
+    }
+    for (const draft of toAdd) {
+      const matched = draft.existingItemId ? productByItemId.get(draft.existingItemId) : undefined;
+      if (matched) productNames.set(draft.name, { brand: matched.brand, variant: matched.variant });
+      // A minted row's brand only, same as GroceryScreen's own scan handler —
+      // there's no existing item name yet for `variantFor` to subtract from.
+      else if (draft.brand) productNames.set(draft.name, { brand: draft.brand, variant: null });
+    }
     setScanOpen(false);
     if (names.length === 0) return;
-    if (addManyToPantry(names, frozenNames) > 0) haptics.success();
+    if (addManyToPantry(names, frozenNames, productNames) > 0) haptics.success();
   };
 
   const renderItem = ({ item: entry }: { item: KitchenEntry }) => {
