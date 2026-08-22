@@ -16,6 +16,7 @@ import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
 import { generatedBy } from './generatedTasks';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
+import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -621,7 +622,7 @@ export function seedDemoData(): void {
   // for meals there's no way to open.
   if (useSettingsStore.getState().kitchenEnabled) {
     const recipes = seedRecipes();
-    seedGroceries(recipes);
+    seedGroceries(recipes, today);
     seedMealPlanAndFridge(recipes, today);
   }
 }
@@ -1115,7 +1116,9 @@ function idsNamed(names: readonly string[]): string[] {
  * the sections fill themselves; the hand-filed ones exist precisely to show
  * that a filing by hand outranks the lexicon and is remembered.
  */
-function seedGroceries(recipes: DemoRecipes): void {
+function seedGroceries(recipes: DemoRecipes, today: Date): void {
+  const { addTask } = useTaskStore.getState();
+  const { addCategory, setCategoryEmoji } = useCategoryStore.getState();
   const {
     addByName,
     addExistingMany,
@@ -1303,6 +1306,31 @@ function seedGroceries(recipes: DemoRecipes): void {
   setCheckedMany(idsNamed(STAPLES), true);
   finishShopping(null);
 
+  // An item whose pantry guess has quietly run out — the state
+  // utils/pantryCheckTasks.ts exists for, and the one thing about the kitchen
+  // nobody can watch happen: no row changes and nothing is written, the item
+  // simply stops being read as on hand. Three trips, because the check is
+  // gated on MIN_PURCHASES_FOR_CADENCE — a row bought once or twice has a
+  // window the app has already admitted it made up.
+  //
+  // All three are back-dated through finishShopping's own `purchasedAt`
+  // argument rather than a raw row write, like everything else here. A trip
+  // finished this second is the one shape that can never lapse, so without the
+  // back-date this is the feature the demo couldn't show at all. Twenty days
+  // for the last one, against the flat fortnight a demo row falls back to (its
+  // createdAt is seconds old, so there is no cadence to divide out) — which
+  // leaves it six days lapsed and comfortably inside PANTRY_CHECK_GRACE_DAYS.
+  //
+  // Rolled oats because the shelf-life lexicon doesn't recognise it: a use-by
+  // date on the same row would spawn a "Use up" task beside the check, and one
+  // item carrying two of the app's own tasks demonstrates them fighting rather
+  // than either of them working.
+  [70, 45, 20].forEach(daysBack => {
+    addExistingMany(idsNamed(['Rolled oats']));
+    setCheckedMany(idsNamed(['Rolled oats']), true);
+    finishShopping(traderJoes.id, {}, subDays(new Date(), daysBack).toISOString());
+  });
+
   // Two names for one thing (#1570) — nameKey doesn't stem or synonymise, so
   // "cilantro" and "coriander" sit as two catalog rows until someone merges
   // them. Left unmerged on purpose, as the demo's one example of what "Merge
@@ -1445,6 +1473,31 @@ function seedGroceries(recipes: DemoRecipes): void {
   // than "Need to buy" when a recipe's ingredients get added to the list.
   setStaple(itemNamed('Salt').id, true);
   setStaple(itemNamed('Black pepper').id, true);
+
+  // ...and the check the app writes about the row whose guess ran out above.
+  // Seeded rather than left to `checkPantryCheckTasks`, for the reason the
+  // quiet project's own review task is: that pass reads the *real* install's
+  // settings, and this generator ships off, so a demo relying on it would show
+  // the feature only to people who had already found it.
+  //
+  // The category is named here for the same reason the meal-plan and leftover
+  // ones are (see seedMealPlanAndFridge) — the demo swaps the database, not
+  // the preferences, so anything left to ensureGeneratedTaskCategory would
+  // look different depending on the person's own settings. It's shared with
+  // the grocery use-up task below, which is the pairing the registry's
+  // defaultCategory already describes: both are questions about the same
+  // cupboard.
+  addCategory('Groceries');
+  setCategoryEmoji('Groceries', '🛒');
+  useSettingsStore.getState().setPantryCheckTaskCategory('Groceries');
+  useSettingsStore.getState().setGroceryUseUpTaskCategory('Groceries');
+  addTask({
+    title: pantryCheckTitle(itemNamed('Rolled oats')),
+    dueDate: today.toISOString(),
+    linkUrl: pantryCheckLinkUrl(itemNamed('Rolled oats').id),
+    category: 'Groceries',
+    ...generatedBy('pantryCheck', itemNamed('Rolled oats').id),
+  });
 
   // The use-by half. The three finished trips above already stamped a date on
   // everything the shelf-life lexicon recognises, so most of that is here for

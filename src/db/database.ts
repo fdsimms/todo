@@ -902,6 +902,10 @@ export function initDatabase(): void {
     // NULL for every existing recipe — no opinion is exactly what a recipe
     // written before this shipped has. See Recipe.vote.
     'ALTER TABLE recipes ADD COLUMN vote TEXT',
+    // NULL on every existing row — nobody has turned down a pantry check for a
+    // generator that didn't exist, and NULL is what "never asked" means for
+    // this column. See GroceryItem.pantryCheckDeclinedAt.
+    'ALTER TABLE grocery_items ADD COLUMN pantry_check_declined_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2224,6 +2228,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     useUpTask: row.use_up_task === null || row.use_up_task === undefined
       ? null
       : Boolean(row.use_up_task),
+    pantryCheckDeclinedAt: (row.pantry_check_declined_at as string) ?? null,
     priceHistory: parsePriceHistory(row.price_history as string | null),
   };
 }
@@ -2241,8 +2246,9 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       (id, name, name_key, aisle, quantity, quantity_from_recipe, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
+       pantry_check_declined_at,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -2253,6 +2259,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
       item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
+      item.pantryCheckDeclinedAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0,
     ]
@@ -2266,6 +2273,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
        expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
+       pantry_check_declined_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?
      WHERE id=?`,
@@ -2279,6 +2287,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
       item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
+      item.pantryCheckDeclinedAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0,
       item.id,

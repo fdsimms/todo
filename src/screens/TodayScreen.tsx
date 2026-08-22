@@ -821,6 +821,17 @@ export function TodayScreen() {
   const [minuteTick, forceRefresh] = useState(0);
   useFocusEffect(
     useCallback(() => {
+      // On *focus* as well as on foreground below, which is this pass alone and
+      // deliberate: a pantry check is answered on another screen — its own link
+      // opens the item sheet — and the six writes that answer it (both Pantry
+      // pills, the kitchen row's ✕, the freezer, running low, marking a staple)
+      // are six call sites that would each have to remember to clear the row.
+      // That is the "four call sites and still missed one" the stacks note
+      // warns about, so the sweep hangs off the one place the stale row would
+      // actually be seen instead. Same move checkTripExpiry makes on focus, and
+      // for the same reason: it turns something already true into something
+      // visible. A no-op boolean check while the setting is off.
+      useTaskStore.getState().checkPantryCheckTasks();
       const interval = setInterval(() => forceRefresh(n => n + 1), 30000);
       // Also refresh the instant the app comes back to the foreground
       // (e.g. reopened the next morning), instead of waiting on the tick.
@@ -847,6 +858,10 @@ export function TodayScreen() {
           // in the launch sequence costs one day's work at most and can never
           // double-fire.
           useTaskStore.getState().checkMealSlotTasks();
+          // Same shape one shelf over: a pantry guess runs out purely by time
+          // passing, and stops needing an answer the moment the user gives one
+          // from the sheet this task links to.
+          useTaskStore.getState().checkPantryCheckTasks();
           // And any template whose schedule came due while the app sat in the
           // background (#1781) — a weekly run would otherwise wait for the next
           // cold start, which for a phone left open all week never comes. Same

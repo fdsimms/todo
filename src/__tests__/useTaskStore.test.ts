@@ -8,6 +8,8 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { MAX_PROJECT_REVIEW_TASKS } from '../utils/projectReviewTasks';
+import { MAX_PANTRY_CHECK_TASKS } from '../utils/pantryCheckTasks';
+import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -42,7 +44,7 @@ import {
 } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
-import type { Project, Task, TaskGroup, TitleRule } from '../types';
+import type { GroceryItem, Project, Task, TaskGroup, TitleRule } from '../types';
 
 jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
@@ -2741,6 +2743,237 @@ describe('checkProjectReviewTasks', () => {
     const [review] = reviewTasks();
     expect(review.title).toBe('Review Kitchen reno');
     expect(review.dueDate).toBe(saturday);
+  });
+});
+
+// ─── checkPantryCheckTasks ──────────────────────────────────────────────────
+
+describe('checkPantryCheckTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    kitchenEnabled: true,
+    pantryCheckTasks: true,
+    pantryCheckTaskCategory: 'Groceries',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
+  /**
+   * A catalog row whose purchase reading has just run out: bought three times
+   * over a year (a 122-day cadence) and last bought 125 days ago.
+   */
+  const lapsedItem = (overrides: Partial<GroceryItem> = {}): GroceryItem => ({
+    id: 'g-1', name: 'Flour', nameKey: 'flour', preferredProductId: null, productStrict: false,
+    aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
+    onList: false, checked: false, inCatalog: true, sortOrder: 1,
+    purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(125), createdAt: daysAgo(366),
+    onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+    isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
+    shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null,
+    lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
+    ...overrides,
+  });
+
+  const seedItems = (...items: GroceryItem[]) => {
+    useGroceryStore.setState({
+      items, aisleOrder: [], hiddenAisles: [], aisleOverrides: {},
+      shops: [], itemShops: [], lastShopId: null, cartHoldIds: [],
+      pendingUseUpItemId: null, initialized: true,
+    });
+  };
+
+  const checkTasks = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'pantryCheck' && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  it('writes a check for an item the pantry has stopped vouching for', () => {
+    seedItems(lapsedItem());
+
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    const [check] = checkTasks();
+    expect(check.title).toBe('Check if you still have Flour');
+    expect(check.generatedSourceId).toBe('g-1');
+    // The item's own sheet, which is where the two answers live.
+    expect(check.linkUrl).toBe('dundundun://kitchen?item=grocery-g-1');
+    expect(check.category).toBe('Groceries');
+    expect(check.dueDate).not.toBeNull();
+  });
+
+  it('writes nothing while the item is still inside its window', () => {
+    seedItems(lapsedItem({ lastPurchasedAt: daysAgo(30) }));
+
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(checkTasks()).toHaveLength(0);
+  });
+
+  it('is a no-op while the setting is off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ pantryCheckTasks: false }));
+    seedItems(lapsedItem());
+
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(checkTasks()).toHaveLength(0);
+  });
+
+  // The gate the other grocery generators don't need: they fire on a purchase
+  // or an edit, which can't happen while the area is hidden, and this one fires
+  // on time passing.
+  it('is a no-op while the whole grocery area is switched off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: false }));
+    seedItems(lapsedItem());
+
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(checkTasks()).toHaveLength(0);
+  });
+
+  it('does not pile up a second task on the next sweep', () => {
+    seedItems(lapsedItem());
+
+    useTaskStore.getState().checkPantryCheckTasks();
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(checkTasks()).toHaveLength(1);
+  });
+
+  it('caps how many it asks at once', () => {
+    seedItems(...['Flour', 'Rice', 'Oats', 'Barley', 'Lentils'].map((name, i) =>
+      lapsedItem({ id: `g-${i}`, name, nameKey: name.toLowerCase(), lastPurchasedAt: daysAgo(125 + i) })
+    ));
+
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(checkTasks()).toHaveLength(MAX_PANTRY_CHECK_TASKS);
+  });
+
+  // The drift the sweep exists for. Answering happens on the item sheet, and
+  // nothing about writing onHandUntil knows a task is sitting on Today asking
+  // the question it just answered.
+  it('clears a task once the user says they still have it', () => {
+    seedItems(lapsedItem());
+    useTaskStore.getState().checkPantryCheckTasks();
+    expect(checkTasks()).toHaveLength(1);
+
+    useGroceryStore.setState({
+      items: [lapsedItem({ onHandUntil: new Date(Date.now() + 30 * 86_400_000).toISOString() })],
+    });
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(checkTasks()).toHaveLength(0);
+  });
+
+  it('clears a task once the user says they are out of it', () => {
+    seedItems(lapsedItem());
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    useGroceryStore.setState({ items: [lapsedItem({ onHandUntil: OUT_OF_IT_UNTIL })] });
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(checkTasks()).toHaveLength(0);
+  });
+
+  // …and clearing it must not read as the user declining, or the question would
+  // be suppressed after the *next* purchase on the strength of the app's own
+  // tidying up.
+  it('does not stamp the item as declined when it clears its own task', () => {
+    seedItems(lapsedItem());
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    useGroceryStore.setState({ items: [lapsedItem({ onHandUntil: OUT_OF_IT_UNTIL })] });
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(useGroceryStore.getState().items[0].pantryCheckDeclinedAt).toBeNull();
+  });
+
+  it('takes a deleted task as a refusal, and does not hand it back', () => {
+    seedItems(lapsedItem());
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    useTaskStore.getState().deleteTask(checkTasks()[0].id);
+    expect(useGroceryStore.getState().items[0].pantryCheckDeclinedAt).not.toBeNull();
+
+    useTaskStore.getState().checkPantryCheckTasks();
+    expect(checkTasks()).toHaveLength(0);
+  });
+
+  // A stamp, not a verdict: unlike useUpTask's `false`, it is spent the moment
+  // there is a new purchase to lapse. A refusal from before the last trip is a
+  // refusal about the bag that trip replaced.
+  it('asks again once the item has been bought since the refusal', () => {
+    seedItems(lapsedItem({
+      purchaseCount: 4,
+      pantryCheckDeclinedAt: daysAgo(200),
+      lastPurchasedAt: daysAgo(95), // past a 366/4 = 91.5-day window
+    }));
+
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(checkTasks()).toHaveLength(1);
+  });
+
+  it('undo clears the refusal again, and leaves the restored task alone', () => {
+    seedItems(lapsedItem());
+    useTaskStore.getState().checkPantryCheckTasks();
+    const taskId = checkTasks()[0].id;
+
+    useTaskStore.getState().deleteTask(taskId);
+    useTaskStore.getState().lastAction!.undo();
+
+    expect(useGroceryStore.getState().items[0].pantryCheckDeclinedAt).toBeNull();
+    expect(useTaskStore.getState().tasks.find(t => t.id === taskId)).toBeDefined();
+  });
+
+  // Ticking it off is an answer for this bag, and the row going away is what
+  // makes it one — nothing is live afterwards, so without it the very next
+  // foreground would write an identical task.
+  it('does not hand back a task the user has just ticked off', () => {
+    seedItems(lapsedItem());
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    useTaskStore.getState().completeTask(checkTasks()[0].id);
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(checkTasks()).toHaveLength(0);
+  });
+
+  it('does not hand back one the user archived either', () => {
+    seedItems(lapsedItem());
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    useTaskStore.getState().archiveTask(checkTasks()[0].id);
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(checkTasks()).toHaveLength(0);
+  });
+
+  it('chases a renamed item, and leaves a rescheduled row where the user put it', () => {
+    seedItems(lapsedItem());
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    const saturday = new Date(Date.now() + 3 * 86_400_000).toISOString();
+    useTaskStore.getState().updateTask(checkTasks()[0].id, { dueDate: saturday });
+    useGroceryStore.setState({ items: [lapsedItem({ name: 'Plain flour', nameKey: 'plain flour' })] });
+
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    const [check] = checkTasks();
+    expect(check.title).toBe('Check if you still have Plain flour');
+    expect(check.dueDate).toBe(saturday);
   });
 });
 
@@ -8524,6 +8757,7 @@ describe('deleting a use-up task', () => {
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: '2026-08-17', frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null,
+    pantryCheckDeclinedAt: null,
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
   };
 
@@ -8571,6 +8805,7 @@ describe('completing a use-up task', () => {
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: '2026-08-17', frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null,
+    pantryCheckDeclinedAt: null,
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
   };
   const seedItem = () => {

@@ -62,6 +62,7 @@ import { useUpRecipes } from '../utils/useUpRecipes';
 import { probablyHaveReason } from '../utils/grocerySuggest';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
+import { wantedPantryChecks } from '../utils/pantryCheckTasks';
 import { findProjectStalls } from '../utils/projectPull';
 import { kitchenContextRows, plannedUsesToday } from '../utils/dayContextRows';
 import { planTrip, summarizeTrip, describeShopCoverage } from '../utils/shoppingTrip';
@@ -1356,6 +1357,41 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // nobody backgrounded the app.
     const stalls = findProjectStalls(projects, tasks, 'nudge');
     expect(wantedProjectReviews(stalls).map(w => w.projectId)).toContain(garage.id);
+  });
+
+  it('seeds a pantry guess that has run out, and the check the app writes about it', () => {
+    const { tasks } = useTaskStore.getState();
+    const { items } = useGroceryStore.getState();
+    const oats = items.find(i => i.name === 'Rolled oats')!;
+
+    // The row has to be past the cadence gate, or the generator would rightly
+    // refuse to ask about a window it made up.
+    expect(oats.purchaseCount).toBeGreaterThanOrEqual(3);
+    // And its guess has to have actually run out — an item still inside its
+    // window is the state this feature has nothing to say about.
+    expect(probablyHaveReason(oats, new Date())).toBeNull();
+
+    const check = tasks.find(t => t.generatedKind === 'pantryCheck');
+    expect(check).toBeDefined();
+    expect(check!.title).toBe('Check if you still have Rolled oats');
+    expect(check!.generatedSourceId).toBe(oats.id);
+    // Tapping it opens that item's own sheet, on the Pantry pills.
+    expect(check!.linkUrl).toBe(`dundundun://kitchen?item=grocery-${oats.id}`);
+    expect(check!.category).toBe('Groceries');
+
+    // And the real rule agrees, so the first foreground sweep doesn't clear the
+    // seeded row as describing an item that wants nothing.
+    expect(wantedPantryChecks(items, tasks, new Date()).map(w => w.itemId)).toContain(oats.id);
+  });
+
+  it('leaves that item free of a use-by date, so it carries one task and not two', () => {
+    const { items } = useGroceryStore.getState();
+    const oats = items.find(i => i.name === 'Rolled oats')!;
+
+    // The shelf-life lexicon deliberately doesn't know rolled oats. If it did,
+    // the back-dated trips would have stamped a use-by date three weeks past,
+    // and the demo would open with a "Use up" task arguing with the check.
+    expect(oats.expiresAt).toBeNull();
   });
 
   it('seeds the weekly meal-plan nudge as a stack of seven day tasks', () => {

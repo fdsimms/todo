@@ -7,6 +7,7 @@ import {
   kitchenEntryId,
   kitchenInventory,
   kitchenLinkUrl,
+  parseKitchenEntryId,
   useUpEntries,
 } from '../utils/kitchenInventory';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -62,6 +63,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     runningLowAt: null,
     shelfLifeDays: null,
     useUpTask: null,
+    pantryCheckDeclinedAt: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -354,6 +356,28 @@ describe('kitchenEntryId', () => {
   it('kind-prefixes the raw id — what KitchenEntry.id is built from', () => {
     expect(kitchenEntryId('grocery', 'abc123')).toBe('grocery-abc123');
     expect(kitchenEntryId('leftover', 'abc123')).toBe('leftover-abc123');
+  });
+});
+
+describe('parseKitchenEntryId', () => {
+  it('round-trips what kitchenEntryId built', () => {
+    expect(parseKitchenEntryId(kitchenEntryId('grocery', 'abc123')))
+      .toEqual({ kind: 'grocery', sourceId: 'abc123' });
+    expect(parseKitchenEntryId(kitchenEntryId('leftover', 'abc123')))
+      .toEqual({ kind: 'leftover', sourceId: 'abc123' });
+  });
+
+  it('splits on the first hyphen, since a generated id may hold others', () => {
+    expect(parseKitchenEntryId('grocery-ab-cd-ef'))
+      .toEqual({ kind: 'grocery', sourceId: 'ab-cd-ef' });
+  });
+
+  it('refuses anything that is not one of these', () => {
+    expect(parseKitchenEntryId('recipe-abc')).toBeNull();
+    expect(parseKitchenEntryId('grocery-')).toBeNull();
+    expect(parseKitchenEntryId('-abc')).toBeNull();
+    expect(parseKitchenEntryId('grocery')).toBeNull();
+    expect(parseKitchenEntryId('')).toBeNull();
   });
 });
 

@@ -186,6 +186,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'mealPlanNudgeTaskCategory',
   'projectReviewTasks',
   'projectReviewTaskCategory',
+  'pantryCheckTasks',
+  'pantryCheckTaskCategory',
 
   // Vocabularies the user builds. These are data as much as preference — a
   // tag that exists but is unused, and the walk round the shop — and a device

@@ -220,11 +220,15 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['cache', 'clear', 'reset', 'wrong name', 'upc', 'gtin', 'scan again'], kitchen: true },
   { id: 'tripLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'], kitchen: true },
-  // The four generators, all in one section now (#1524) — they used to be three
+  // The generators, all in one section now (#1524) — they used to be three
   // sections here plus one over in Notifications. Each keeps its own entry
   // rather than collapsing to one "Tasks the app adds" row: a search index
   // exists to find the row you can't see, and "cook tasks" and "use-by" are
   // what people type, not the name of the section they happen to share.
+  //
+  // Two of them are *not* flagged `kitchen`: the section is shared, but a quiet
+  // project has nothing to do with the grocery area, so hiding its rows along
+  // with the kitchen's would take away a setting that still does something.
   { id: 'mealCookTasks', groupId: 'tasksProjects', label: 'Meal tasks', section: 'Tasks the app adds',
     keywords: ['meal plan', 'recipe', 'cook', 'cook task', 'breakfast', 'lunch', 'dinner', 'eat',
       'what to eat', 'auto', 'generated', 'automatic'], kitchen: true },
@@ -252,6 +256,15 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['meal plan', 'weekday', 'day', 'time', 'when'], kitchen: true },
   { id: 'mealPlanNudgeTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
     keywords: ['category', 'meal plan', 'weekly', 'nudge', 'kitchen'], kitchen: true },
+  { id: 'projectReviewTasks', groupId: 'tasksProjects', label: 'Review tasks for quiet projects', section: 'Tasks the app adds',
+    keywords: ['stalled', 'stale', 'nudge', 'pull', 'idle', 'abandoned', 'generated', 'automatic'] },
+  { id: 'projectReviewTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
+    keywords: ['category', 'project', 'review', 'quiet'] },
+  { id: 'pantryCheckTasks', groupId: 'tasksProjects', label: 'Pantry checks', section: 'Tasks the app adds',
+    keywords: ['cupboard', 'stock', 'still have', 'run out', 'out of', 'grocery', 'kitchen',
+      'restock', 'generated', 'automatic'], kitchen: true },
+  { id: 'pantryCheckTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
+    keywords: ['category', 'pantry', 'grocery', 'kitchen'], kitchen: true },
   // Flagged too: it only ever restates a recipe's or a grocery row's amount, so
   // with the area gone there is nothing left for it to convert.
   { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',

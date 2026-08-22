@@ -60,6 +60,34 @@ export function kitchenEntryId(kind: KitchenKind, sourceId: string): string {
 }
 
 /**
+ * `kitchenEntryId` read back the other way, or null for anything that isn't one
+ * of these.
+ *
+ * What it's for: a link naming a row that *isn't in the list*. Every entry id
+ * in a live `KitchenEntry` can be matched by identity, so the screen's focus
+ * effect looks the id up in `entries` first — but a pantry check
+ * (`pantryCheckTasks.ts`) is by definition about an item the pantry has stopped
+ * vouching for, so its own link never matches one. The id still names a real
+ * catalog row, and the sheet the screen would have opened is the right place to
+ * land, so it opens that instead.
+ *
+ * Split on the *first* hyphen and validated against the two kinds, because a
+ * `generateId()` may itself contain one — the prefix is the only part with a
+ * known shape.
+ */
+export function parseKitchenEntryId(
+  entryId: string
+): { kind: KitchenKind; sourceId: string } | null {
+  const cut = entryId.indexOf('-');
+  if (cut <= 0) return null;
+  const kind = entryId.slice(0, cut);
+  const sourceId = entryId.slice(cut + 1);
+  if (!sourceId) return null;
+  if (kind !== 'grocery' && kind !== 'leftover') return null;
+  return { kind, sourceId };
+}
+
+/**
  * Where the bare `dundundun://kitchen` link lands — the grocery and leftover
  * use-up generators' own link (groceryExpiry.ts, leftoverTasks.ts) when built
  * through `kitchenLinkUrl` below, so a "Use up X" task opens into KitchenScreen

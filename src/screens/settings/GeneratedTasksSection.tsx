@@ -133,6 +133,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'leftoverUseUp': return s.leftoverUseUpTasks;
       case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
       case 'projectReview': return s.projectReviewTasks;
+      case 'pantryCheck': return s.pantryCheckTasks;
     }
   };
 
@@ -145,6 +146,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'leftoverUseUp': s.setLeftoverUseUpTasks(next); break;
       case 'mealPlanNudge': s.setMealPlanNudgeEnabled(next); break;
       case 'projectReview': s.setProjectReviewTasks(next); break;
+      case 'pantryCheck': s.setPantryCheckTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
@@ -162,6 +164,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'leftoverUseUp': return s.leftoverUseUpTaskCategory;
       case 'mealPlanNudge': return s.mealPlanNudgeTaskCategory;
       case 'projectReview': return s.projectReviewTaskCategory;
+      case 'pantryCheck': return s.pantryCheckTaskCategory;
     }
   };
 
@@ -175,6 +178,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'leftoverUseUp': s.setLeftoverUseUpTaskCategory(category); break;
       case 'mealPlanNudge': s.setMealPlanNudgeTaskCategory(category); break;
       case 'projectReview': s.setProjectReviewTaskCategory(category); break;
+      case 'pantryCheck': s.setPantryCheckTaskCategory(category); break;
     }
   };
 

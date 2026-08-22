@@ -47,6 +47,12 @@ import {
   wantedProjectReviews,
 } from '../utils/projectReviewTasks';
 import {
+  pantryCheckItemId,
+  pantryCheckLinkUrl,
+  stalePantryCheckTasks,
+  wantedPantryChecks,
+} from '../utils/pantryCheckTasks';
+import {
   dueMealPlanNudge,
   mealPlanNudgeLinkUrl,
   mealPlanNudgeSuppressed,
@@ -462,6 +468,21 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     case 'groceryUseUp':
       useGroceryStore.getState()
         .setUseUpTask(sourceId, value, value === null ? reconcileOff : undefined);
+      return;
+    // A stamp like projectReview's above, for the same reason — a permanent
+    // `false` would mean "never ask about this item again", where a swipe only
+    // means "not about this bag". It's spent against the item's own
+    // lastPurchasedAt rather than against the day, so the question comes back
+    // when there's a new purchase to lapse and not before. See
+    // GroceryItem.pantryCheckDeclinedAt.
+    //
+    // `value === null` is the undo path, and restores exactly what the delete
+    // wrote: any stamp already sitting there predated the last purchase (a
+    // later one would have suppressed the task in the first place), so clearing
+    // it changes nothing the reader can see.
+    case 'pantryCheck':
+      useGroceryStore.getState()
+        .setPantryCheckDeclinedAt(sourceId, value === false ? new Date().toISOString() : null);
       return;
     case 'leftoverUseUp':
       useLeftoverStore.getState()
@@ -1113,6 +1134,12 @@ interface TaskStore {
    * see the implementation for why the mark is never rewound instead.
    */
   backfillMealSlotTasks: (slots: readonly MealSlot[]) => void;
+  /**
+   * Give every grocery item whose pantry guess has just run out a "Check if you
+   * still have X" task, and clear the ones that have since been answered,
+   * restocked or put back on the list. See src/utils/pantryCheckTasks.ts.
+   */
+  checkPantryCheckTasks: () => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook.
@@ -3436,6 +3463,77 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // the whole window to do and will pick these up with everything else.
     if (!mark || mark < today) return;
     writeMealSlotTasks(today, mark, slots);
+  },
+
+  checkPantryCheckTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.pantryCheckTasks) return;
+    // The whole grocery area can be switched off (kitchenEnabled), and unlike
+    // every other grocery generator this one fires on time passing rather than
+    // on a purchase or an edit — so without this gate it would be the one part
+    // of a hidden feature still writing rows onto Today.
+    if (!settings.kitchenEnabled) return;
+
+    const tasks = get().tasks;
+    const items = useGroceryStore.getState().items;
+    // One `now` for both passes: the qualifier is a day-count comparison, and
+    // two clocks a few milliseconds apart could in principle have the create
+    // pass disagree with the drop pass about a lapse landing exactly on the
+    // boundary. Bare `new Date()` on purpose — a pantry window is measured in
+    // real elapsed days from a till receipt, not in logical days (see the
+    // dayResetTime note in CLAUDE.md, and isTaskExpired for the same call).
+    const now = new Date();
+
+    // Clear first, create second, and never the reverse — same ordering
+    // checkProjectReviewTasks runs on, and for the same reason: the stale set
+    // includes the row for an item the user has just answered from this very
+    // task, and a create pass running first would be deciding against a list
+    // that still held it.
+    //
+    // dropGeneratedTask rather than deleteGeneratedTaskQuietly: that routes
+    // through deleteTask, which writes the source's opt-out — here it would
+    // stamp pantryCheckDeclinedAt on an item the user never turned down, and so
+    // suppress the question after the *next* purchase on the strength of the
+    // app's own tidying up.
+    const stale = stalePantryCheckTasks(tasks, items, now);
+    stale.forEach(task => dropGeneratedTask('pantryCheck', pantryCheckItemId(task)));
+
+    const wanted = wantedPantryChecks(items, tasks, now);
+    if (wanted.length === 0) return;
+
+    ensureGeneratedTaskCategory('pantryCheck');
+    const category = useSettingsStore.getState().pantryCheckTaskCategory;
+    // Noon today, the landing every other unattended writer picks: an offer
+    // dated forward is an offer you can't see, and deferring it afterwards is
+    // the user's own call.
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'pantryCheck',
+        sourceId: want.itemId,
+        // Never false: the not-wanted half is decided over the whole catalog at
+        // once and was handled by the drop pass above. A `false` here would
+        // delete through deleteTask and stamp the item as declined.
+        wanted: true,
+        // The title is the only thing a live row chases, and only when the item
+        // has been renamed under it. Deliberately not the due date: by the time
+        // a second sweep runs the user may have deferred this row to Saturday,
+        // and rewriting it back to today would take that back.
+        drift: existing => (existing.title === want.title ? null : { title: want.title }),
+        draft: () => ({
+          title: want.title,
+          dueDate: dueDate.toISOString(),
+          // Opens the item's own sheet on the Pantry pills — the two answers
+          // this row is asking for. See pantryCheckLinkUrl.
+          linkUrl: pantryCheckLinkUrl(want.itemId),
+          category,
+          ...generatedBy('pantryCheck', want.itemId),
+        }),
+      });
+    });
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
   },
 
   skipNextRecurrence(id) {

@@ -1785,6 +1785,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     runningLowAt: null,
     shelfLifeDays: null,
     useUpTask: null,
+    pantryCheckDeclinedAt: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -1856,6 +1857,7 @@ describe('grocery items', () => {
       isStaple: true,
       expiresAt: '2026-08-17',
       useUpTask: true,
+      pantryCheckDeclinedAt: null,
       preferredProductId: 'p1',
       productStrict: true,
     });

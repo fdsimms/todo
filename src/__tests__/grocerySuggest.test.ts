@@ -8,6 +8,7 @@ import {
   probablyHaveReason,
   correctableHaveReason,
   defaultOnHandUntil,
+  pantryGuessLapsedDays,
   OUT_OF_IT_UNTIL,
   pantryEntries,
 } from '../utils/grocerySuggest';
@@ -51,6 +52,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     runningLowAt: null,
     shelfLifeDays: null,
     useUpTask: null,
+    pantryCheckDeclinedAt: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -507,6 +509,50 @@ describe('defaultOnHandUntil', () => {
   it('falls back to a flat two weeks with no cadence to trust', () => {
     const item = makeItem({ name: 'Saffron', purchaseCount: 0 });
     expect(defaultOnHandUntil(item, NOW)).toBe(daysAgo(-14));
+  });
+});
+
+// ─── pantryGuessLapsedDays ───────────────────────────────────────────────────
+
+describe('pantryGuessLapsedDays', () => {
+  it('is null while the purchase reading still vouches for the item', () => {
+    // 30-day cadence, 10 days since: probablyHaveReason still answers.
+    const item = makeItem({
+      name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+    });
+    expect(probablyHaveReason(item, NOW)).not.toBeNull();
+    expect(pantryGuessLapsedDays(item, NOW)).toBeNull();
+  });
+
+  it('reports how long ago the window ran out', () => {
+    const item = makeItem({
+      name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(34),
+    });
+    // The exact moment probablyHaveReason goes quiet — the state change nobody
+    // can see, which is what pantryCheckTasks offers to ask about.
+    expect(probablyHaveReason(item, NOW)).toBeNull();
+    expect(pantryGuessLapsedDays(item, NOW)).toBeCloseTo(4, 5);
+  });
+
+  it('is zero on the day the window closes', () => {
+    const item = makeItem({
+      name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(30),
+    });
+    expect(pantryGuessLapsedDays(item, NOW)).toBeCloseTo(0, 5);
+  });
+
+  it('stays null below the cadence gate, whatever the flat window says', () => {
+    // Two purchases means the window is a made-up fortnight, and this is
+    // deliberately gated harder than probablyHaveReason is: the reading is
+    // happy to guess, but asking the user about a guess is a different bar.
+    const item = makeItem({ name: 'Saffron', purchaseCount: 2, lastPurchasedAt: daysAgo(200) });
+    expect(probablyHaveReason(item, NOW)).toBeNull();
+    expect(pantryGuessLapsedDays(item, NOW)).toBeNull();
+  });
+
+  it('stays null for a row nothing was ever bought on', () => {
+    const item = makeItem({ name: 'Tahini', purchaseCount: 0, lastPurchasedAt: null });
+    expect(pantryGuessLapsedDays(item, NOW)).toBeNull();
   });
 });
 

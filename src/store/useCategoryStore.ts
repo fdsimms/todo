@@ -262,6 +262,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'mealPlanNudgeTaskCategory', current: s.mealPlanNudgeTaskCategory, assign: s.setMealPlanNudgeTaskCategory };
     case 'projectReview':
       return { key: 'projectReviewTaskCategory', current: s.projectReviewTaskCategory, assign: s.setProjectReviewTaskCategory };
+    case 'pantryCheck':
+      return { key: 'pantryCheckTaskCategory', current: s.pantryCheckTaskCategory, assign: s.setPantryCheckTaskCategory };
   }
 }
 
@@ -275,20 +277,21 @@ function generatorEnabled(kind: GeneratedKind): boolean {
     case 'leftoverUseUp': return s.leftoverUseUpTasks;
     case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
     case 'projectReview': return s.projectReviewTasks;
+    case 'pantryCheck': return s.pantryCheckTasks;
   }
 }
 
 /**
  * Give a generator's tasks a category to file under.
  *
- * The same move `ensureCalendarEventCategory` makes, for the five kinds that
+ * The same move `ensureCalendarEventCategory` makes, for the six kinds that
  * write tasks: a generator left at its shipped default filed *nothing*, and an
  * uncategorized task renders in the loose block above every section — so the
  * tasks the app writes unasked ended up at the very top of Today, which is the
  * position this whole change exists to give back to real work.
  *
- * Two of the five name the same category, which is why this reads the registry
- * rather than taking a name: see `GeneratedKindSpec.defaultCategory`.
+ * Two pairs of them name the same category, which is why this reads the
+ * registry rather than taking a name: see `GeneratedKindSpec.defaultCategory`.
  */
 export function ensureGeneratedTaskCategory(kind: GeneratedKind, opts: { force?: boolean } = {}): void {
   if (!generatorEnabled(kind)) return;
