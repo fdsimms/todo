@@ -486,6 +486,18 @@ describe('suggestRecipeGroceries', () => {
       'No suggestions returned'
     );
   });
+
+  // It never reads .steps/.prepTasks, so it shouldn't pay for a longer
+  // response asking the model to produce them either.
+  it('does not ask the model for a method or prep tasks', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_groceries', { items: [] }));
+    await suggestRecipeGroceries('some recipe', AISLES);
+
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content).not.toContain('prep task');
+    expect(body.tools[0].input_schema.properties.steps).toBeUndefined();
+    expect(body.tools[0].input_schema.properties.prepTasks).toBeUndefined();
+  });
 });
 
 describe('extractRecipe', () => {
@@ -504,6 +516,8 @@ describe('extractRecipe', () => {
       servingsMax: null,
       prepMinutes: 45,
       ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
+      steps: [],
+      prepTasks: [],
     });
   });
 
@@ -589,7 +603,7 @@ describe('extractRecipe', () => {
   it('does not call the network for empty text', async () => {
     const spy = jest.spyOn(global, 'fetch');
     await expect(extractRecipe('   ', AISLES)).resolves.toEqual({
-      name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+      name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [], steps: [], prepTasks: [],
     });
     expect(spy).not.toHaveBeenCalled();
   });
@@ -599,6 +613,90 @@ describe('extractRecipe', () => {
     await expect(extractRecipe('some recipe', AISLES)).rejects.toThrow('No suggestions returned');
   });
 
+  it('extracts the method as an ordered list of steps', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili',
+        items: [],
+        steps: ['Brown the beef.', 'Add the beans and simmer.'],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.steps).toEqual(['Brown the beef.', 'Add the beans and simmer.']);
+  });
+
+  it('drops blank and non-string steps', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili', items: [], steps: ['Brown the beef.', '   ', 42, 'Simmer.'],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.steps).toEqual(['Brown the beef.', 'Simmer.']);
+  });
+
+  it('caps steps at 30', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili', items: [], steps: Array.from({ length: 40 }, (_, i) => `Step ${i}`),
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.steps).toHaveLength(30);
+  });
+
+  it('extracts prep tasks, turning daysAhead into a negative offsetDays', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili',
+        items: [],
+        prepTasks: [{ title: 'Soak the beans overnight', daysAhead: 1 }],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.prepTasks).toEqual([{ title: 'Soak the beans overnight', offsetDays: -1 }]);
+  });
+
+  it('clamps daysAhead to 1-7, and defaults a missing one to 1', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili',
+        items: [],
+        prepTasks: [
+          { title: 'Brine the turkey', daysAhead: 30 },
+          { title: 'Defrost the lamb' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.prepTasks).toEqual([
+      { title: 'Brine the turkey', offsetDays: -7 },
+      { title: 'Defrost the lamb', offsetDays: -1 },
+    ]);
+  });
+
+  it('drops a prep task with no title', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili', items: [], prepTasks: [{ daysAhead: 1 }, { title: '   ', daysAhead: 1 }],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.prepTasks).toEqual([]);
+  });
+
+  it('caps prep tasks at 8', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili',
+        items: [],
+        prepTasks: Array.from({ length: 12 }, (_, i) => ({ title: `Task ${i}`, daysAhead: 1 })),
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.prepTasks).toHaveLength(8);
+  });
+
   it('sends pasted text as a bare string, not a content block array', async () => {
     const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
     await extractRecipe('some recipe', AISLES);
@@ -606,6 +704,37 @@ describe('extractRecipe', () => {
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
     expect(typeof body.messages[0].content).toBe('string');
     expect(body.messages[0].content).toContain('Recipe:\nsome recipe');
+  });
+
+  it('asks for the method and prep tasks by default', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+    await extractRecipe('some recipe', AISLES);
+
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content).toContain('prep task');
+    expect(body.tools[0].input_schema.properties.steps).toBeDefined();
+    expect(body.tools[0].input_schema.properties.prepTasks).toBeDefined();
+  });
+
+  it('skips the method and prep-task instructions when includeMethod is false', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+    await extractRecipe('some recipe', AISLES, { includeMethod: false });
+
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content).not.toContain('prep task');
+    expect(body.tools[0].input_schema.properties.steps).toBeUndefined();
+    expect(body.tools[0].input_schema.properties.prepTasks).toBeUndefined();
+  });
+
+  it('returns no steps or prep tasks when includeMethod is false, even if the model sends them', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili', items: [], steps: ['Brown the beef.'], prepTasks: [{ title: 'Soak', daysAhead: 1 }],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES, { includeMethod: false });
+    expect(result.steps).toEqual([]);
+    expect(result.prepTasks).toEqual([]);
   });
 
   describe('from a photo', () => {
@@ -643,6 +772,8 @@ describe('extractRecipe', () => {
         servingsMax: null,
         prepMinutes: 45,
         ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
+        steps: [],
+        prepTasks: [],
       });
     });
 
@@ -665,9 +796,23 @@ describe('extractRecipe', () => {
     it('does not call the network for an empty image', async () => {
       const spy = jest.spyOn(global, 'fetch');
       await expect(extractRecipe({ base64: '', mediaType: 'image/jpeg' }, AISLES)).resolves.toEqual({
-        name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+        name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [], steps: [], prepTasks: [],
       });
       expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('extracts steps and prep tasks from a photo too', async () => {
+      mockFetchOnce(
+        toolUseResponse('extract_recipe', {
+          name: 'Chili',
+          items: [],
+          steps: ['Brown the beef.'],
+          prepTasks: [{ title: 'Soak the beans overnight', daysAhead: 1 }],
+        })
+      );
+      const result = await extractRecipe(PHOTO, AISLES);
+      expect(result.steps).toEqual(['Brown the beef.']);
+      expect(result.prepTasks).toEqual([{ title: 'Soak the beans overnight', offsetDays: -1 }]);
     });
 
     it('throws when the model returns no tool use', async () => {
