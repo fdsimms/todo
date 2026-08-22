@@ -6,12 +6,13 @@ import {
   catalogPruneCandidates,
   estimatedPurchaseCadenceDays,
   probablyHaveReason,
+  correctableHaveReason,
   defaultOnHandUntil,
   OUT_OF_IT_UNTIL,
   pantryEntries,
 } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
-import type { GroceryItem } from '../types';
+import { FROZEN_REASON, RUNNING_LOW_REASON, type GroceryItem } from '../types';
 
 const NOW = new Date('2026-08-07T12:00:00.000Z');
 
@@ -418,6 +419,80 @@ describe('probablyHaveReason', () => {
   it('a staple outranks even a past onHandUntil', () => {
     const item = makeItem({ name: 'Salt', isStaple: true, onHandUntil: daysAgo(1) });
     expect(probablyHaveReason(item, NOW)).toBe('always have it');
+  });
+});
+
+// ─── correctableHaveReason ───────────────────────────────────────────────────
+
+describe('correctableHaveReason', () => {
+  // The two rungs that say "you have this" and nothing more. Both get offered,
+  // and they share one wording, because nothing may assume the user said either.
+  it('offers the purchase reading, in probablyHaveReason\'s own words', () => {
+    const item = makeItem({
+      name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+    });
+    expect(correctableHaveReason(item, NOW)).toBe('bought 3× · last on 28 Jul');
+  });
+
+  it('offers a live "Got it" in the same breath as the purchase reading', () => {
+    const item = makeItem({ name: 'Rice', onHandUntil: daysAgo(-5) });
+    expect(correctableHaveReason(item, NOW)).toBe('marked as on hand');
+  });
+
+  it('says nothing when the pantry does not claim the item at all', () => {
+    const item = makeItem({
+      name: 'Tahini', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(40),
+    });
+    expect(correctableHaveReason(item, NOW)).toBeNull();
+  });
+
+  it('says nothing about an "Out of it" row — there is no claim left to correct', () => {
+    const item = makeItem({ name: 'Milk', onHandUntil: OUT_OF_IT_UNTIL });
+    expect(correctableHaveReason(item, NOW)).toBeNull();
+  });
+
+  // The three exclusions. None of them turns on who made the claim — two of
+  // the three are hand-typed — only on whether listing the item contradicts it.
+  it('stays quiet for a staple, which is true because it gets restocked', () => {
+    const item = makeItem({ name: 'Salt', isStaple: true });
+    expect(probablyHaveReason(item, NOW)).toBe('always have it');
+    expect(correctableHaveReason(item, NOW)).toBeNull();
+  });
+
+  it('stays quiet for a staple that would otherwise have a purchase reading too', () => {
+    const item = makeItem({
+      name: 'Salt', isStaple: true, purchaseCount: 3,
+      createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+    });
+    expect(correctableHaveReason(item, NOW)).toBeNull();
+  });
+
+  it('stays quiet when the answer has already been given as "running low"', () => {
+    const item = makeItem({ name: 'Milk', runningLowAt: daysAgo(1) });
+    expect(probablyHaveReason(item, NOW)).toBe(RUNNING_LOW_REASON);
+    expect(correctableHaveReason(item, NOW)).toBeNull();
+  });
+
+  it('stays quiet for a frozen row — buying more does not empty the freezer', () => {
+    const item = makeItem({ name: 'Chicken', frozenAt: daysAgo(30) });
+    expect(probablyHaveReason(item, NOW)).toBe(FROZEN_REASON);
+    expect(correctableHaveReason(item, NOW)).toBeNull();
+  });
+
+  // The exclusions read the columns, not the reason string, so a row carrying
+  // an excluded state *and* a purchase reading is still silent — the string
+  // never mentions the freezer once probablyHaveReason has ranked past it.
+  it('stays quiet for a frozen row with a live purchase reading underneath it', () => {
+    const item = makeItem({
+      name: 'Chicken', frozenAt: daysAgo(30), purchaseCount: 3,
+      createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+    });
+    expect(correctableHaveReason(item, NOW)).toBeNull();
+  });
+
+  it('is unmoved by the row already being on the list', () => {
+    const item = makeItem({ name: 'Rice', onList: true, onHandUntil: daysAgo(-5) });
+    expect(correctableHaveReason(item, NOW)).toBe('marked as on hand');
   });
 });
 
