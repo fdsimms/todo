@@ -27,6 +27,19 @@ export const FOCUS_REST_AFTER_MINUTES_MAX = 120;
 export const FOCUS_LONG_REST_EVERY_MIN = 2;
 export const FOCUS_LONG_REST_EVERY_MAX = 10;
 
+/**
+ * Bounds for the setup sheet's "time available" stepper.
+ *
+ * A stepper rather than a row of preset chips, per the rule in `CLAUDE.md`:
+ * the value is an open-ended number, and chips would have to pick both a
+ * granularity and a ceiling for everyone. 15-minute steps because that's the
+ * granularity people actually describe free time in, and nobody means 47
+ * minutes when they say they have most of an hour.
+ */
+export const FOCUS_WINDOW_MIN = 15;
+export const FOCUS_WINDOW_MAX = 480;
+export const FOCUS_WINDOW_STEP = 15;
+
 export const FOCUS_DEFAULTS = {
   workCapMinutes: 25,
   defaultWorkMinutes: 25,

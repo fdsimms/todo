@@ -83,6 +83,43 @@ The shipped defaults are a classic pomodoro (25 / 5 / 15 every fourth) with the
 task-count trigger **off** — on at 1 it turns a queue of three short tasks into
 three breaks in twenty minutes.
 
+## The time window
+
+The setup sheet's "Time available" is a hard constraint on what gets
+suggested, not a weight: say you have forty minutes and only a queue that fits
+in forty minutes is offered. A suggestion that overruns the time you said you
+had is not a worse suggestion, it is the wrong answer to the question asked.
+Off (`null`) by default, and then the soft `FOCUS_BUDGET_MINUTES` penalty
+shapes the queue's length as it did before.
+
+Three things to keep right:
+
+- **Fit is measured against the plan, never the estimates.** `planTotalMinutes`
+  builds the real run and counts its breaks. An hour of estimates is an hour
+  and ten minutes of wall clock under the shipped settings, so a queue chosen
+  by summing estimates overruns by exactly the rest it was going to need. This
+  is why `FocusContext` carries `planOptions` at all: the scorer would rather
+  not know about breaks, but a window that ignored them would be a window that
+  lies.
+- **The pick is "best that fits", not "best, if it fits".** A 55-minute task
+  that can't fit the 30 minutes left is filtered out of the round rather than
+  winning it and then being rejected, which would end the queue early and leave
+  the window half empty. It fills greedily by score rather than solving for the
+  tightest packing: a queue chosen to waste the fewest minutes would put three
+  small chores ahead of the one thing that actually matters.
+- **The soft budget penalty switches off while a window is set.** Two opinions
+  about length, one hard and one soft, would only reorder picks that all fit
+  anyway, for no reason the user could see.
+
+The control is a `CountStepper` in 15-minute steps rather than preset chips,
+per the rule in `CLAUDE.md`: the value is an open-ended number, and chips would
+have to pick both a granularity and a ceiling for everyone. `allowNull` at the
+floor is what "Any" is. Changing the window re-picks from scratch rather than
+trimming what's on screen, because a different amount of time is a different
+question and the best answer to it is rarely a prefix of the answer to the old
+one. The window itself is *not* reset when the sheet reopens: how long you tend
+to have is a fact about your day, not about this sheet.
+
 ## One mechanism for a task leaving the plan
 
 A task can stop being workable three ways: completed from inside the session,
@@ -126,6 +163,12 @@ objects and no store standing behind it.
 - **No Live Activity.** The task timer has one (`src/utils/liveActivity.ts`)
   and a focus step is the same shape of run, but it's native work in the widget
   target rather than anything this feature can reach from JS.
+- **The window is not read from the calendar.** The app already reads free/busy
+  (`src/utils/calendarBusy.ts`, and `nextEventAfter` answers exactly "how long
+  until the next thing"), so "until my 3pm" is a window this could offer rather
+  than make you count out. Deliberately left for its own change: the window is
+  a plain number of minutes, so a calendar-derived one is only a new *source*
+  for it and needs nothing here to move.
 - **No reordering on the setup sheet.** The suggester's order is "best first,
   and each one partly chosen for going with the ones above it", which is a
   defensible run order. Dragging inside that sheet is the `SortableList`

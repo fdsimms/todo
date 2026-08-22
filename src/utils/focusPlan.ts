@@ -246,6 +246,22 @@ export function focusPlanTotals(steps: readonly FocusStep[]): FocusPlanTotals {
 }
 
 /**
+ * How long a queue would actually take: the plan built from it, breaks and all.
+ *
+ * The one number a time window has to be measured against. Summing estimates
+ * instead is off by every break in the run — an hour of work under the shipped
+ * settings is an hour and ten minutes of wall clock — so a queue chosen to fit
+ * "I have an hour" by its estimates overruns by exactly the amount of rest it
+ * was going to need.
+ */
+export function planTotalMinutes(
+  tasks: readonly FocusPlanTask[],
+  options: FocusPlanOptions,
+): number {
+  return focusPlanTotals(buildFocusPlan(tasks, options)).totalMinutes;
+}
+
+/**
  * Minutes left in the session: what's left of the current step, plus every
  * step after it at its full length.
  *

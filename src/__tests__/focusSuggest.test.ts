@@ -9,6 +9,7 @@
 
 import {
   buildFocusContext,
+  fitsWindow,
   focusReason,
   nextFocusSuggestion,
   scoreFocusTask,
@@ -17,6 +18,7 @@ import {
   MAX_SUGGESTED_FOCUS,
   type FocusContext,
 } from '../utils/focusSuggest';
+import type { FocusPlanOptions } from '../utils/focusPlan';
 import { resolverFor } from '../utils/blocking';
 import type { Task } from '../types';
 
@@ -135,11 +137,28 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   ...overrides,
 });
 
-/** A context over the given pool, with the clock pinned. */
-const ctxFor = (tasks: Task[], segment: FocusContext['currentSegment'] = 'morning'): FocusContext => ({
+/** The shipped rest rules: 25 minute cap, 5 minute break every 25 worked. */
+const PLAN: FocusPlanOptions = {
+  workCapMinutes: 25,
+  defaultWorkMinutes: 25,
+  restAfterTasks: null,
+  restAfterMinutes: 25,
+  restMinutes: 5,
+  longRestEvery: 4,
+  longRestMinutes: 15,
+};
+
+/** A context over the given pool, with the clock pinned and no time limit. */
+const ctxFor = (
+  tasks: Task[],
+  over: Partial<Pick<FocusContext, 'currentSegment' | 'windowMinutes' | 'planOptions'>> = {},
+): FocusContext => ({
   todayStart: TODAY_START,
-  currentSegment: segment,
+  currentSegment: 'morning',
   resolve: resolverFor(tasks),
+  windowMinutes: null,
+  planOptions: PLAN,
+  ...over,
 });
 
 // ---------------------------------------------------------------------------
@@ -265,6 +284,76 @@ describe('scoring', () => {
   });
 });
 
+describe('the time window', () => {
+  it('measures fit against the plan, breaks included, not against the estimates', () => {
+    // 50 minutes of estimates, but the 25-minute rest trigger fires after the
+    // first task, so the run is 55 minutes of wall clock.
+    const tasks = [makeTask({ id: 'a', estimatedMinutes: 25 }), makeTask({ id: 'b', estimatedMinutes: 25 })];
+    expect(fitsWindow([tasks[0]], tasks[1], ctxFor(tasks, { windowMinutes: 50 }))).toBe(false);
+    expect(fitsWindow([tasks[0]], tasks[1], ctxFor(tasks, { windowMinutes: 55 }))).toBe(true);
+  });
+
+  it('always fits when no window is set', () => {
+    const huge = makeTask({ id: 'huge', estimatedMinutes: 600 });
+    expect(fitsWindow([], huge, ctxFor([huge]))).toBe(true);
+  });
+
+  it('keeps the queue inside the window', () => {
+    const pool = Array.from({ length: 6 }, (_, i) =>
+      makeTask({ id: `t${i}`, estimatedMinutes: 20, sortOrder: i })
+    );
+    const ctx = ctxFor(pool, { windowMinutes: 60 });
+    const picked = suggestFocusTasks(pool, ctx);
+    const queue = picked.map(id => pool.find(t => t.id === id)!);
+
+    expect(picked.length).toBeGreaterThan(0);
+    expect(fitsWindow(queue, null, ctx)).toBe(true);
+    // Without the window the same pool fills the whole shortlist.
+    expect(suggestFocusTasks(pool, ctxFor(pool))).toHaveLength(MAX_SUGGESTED_FOCUS);
+  });
+
+  it('takes the best candidate that fits rather than stopping at one that does not', () => {
+    // The urgent task is far too big for the window; the queue should be the
+    // small ones rather than empty.
+    const pool = [
+      makeTask({ id: 'big', estimatedMinutes: 120, priority: 4, sortOrder: 1 }),
+      makeTask({ id: 'small1', estimatedMinutes: 10, sortOrder: 2 }),
+      makeTask({ id: 'small2', estimatedMinutes: 10, sortOrder: 3 }),
+    ];
+    expect(suggestFocusTasks(pool, ctxFor(pool, { windowMinutes: 30 }))).toEqual(['small1', 'small2']);
+  });
+
+  it('offers nothing when even the smallest task overruns the window', () => {
+    const pool = [makeTask({ id: 'a', estimatedMinutes: 60 })];
+    expect(suggestFocusTasks(pool, ctxFor(pool, { windowMinutes: 30 }))).toEqual([]);
+  });
+
+  it('charges an unestimated task the default stretch, so it can overrun a window too', () => {
+    // No estimate, so the plan gives it defaultWorkMinutes (25).
+    const pool = [makeTask({ id: 'bare' })];
+    expect(suggestFocusTasks(pool, ctxFor(pool, { windowMinutes: 15 }))).toEqual([]);
+    expect(suggestFocusTasks(pool, ctxFor(pool, { windowMinutes: 30 }))).toEqual(['bare']);
+  });
+
+  it('drops the soft budget penalty once a hard window is doing the work', () => {
+    const candidate = makeTask({ id: 'c', estimatedMinutes: 20 });
+    const big = makeTask({ id: 'big', estimatedMinutes: FOCUS_BUDGET_MINUTES });
+    const pool = [candidate, big];
+    const windowed = ctxFor(pool, { windowMinutes: 480 });
+    expect(scoreFocusTask(candidate, [big], windowed)).toBe(scoreFocusTask(candidate, [], windowed));
+    // …and still applies it when there is no window.
+    const open = ctxFor(pool);
+    expect(scoreFocusTask(candidate, [big], open)).toBeLessThan(scoreFocusTask(candidate, [], open));
+  });
+
+  it('will not offer a swap that would not fit', () => {
+    const kept = makeTask({ id: 'kept', estimatedMinutes: 20, sortOrder: 1 });
+    const big = makeTask({ id: 'big', estimatedMinutes: 90, sortOrder: 2 });
+    const pool = [kept, big];
+    expect(nextFocusSuggestion(pool, [kept], ['kept'], ctxFor(pool, { windowMinutes: 30 }))).toBeNull();
+  });
+});
+
 describe('nextFocusSuggestion', () => {
   it('skips everything excluded and offers the next best', () => {
     const pool = [
@@ -321,7 +410,7 @@ describe('buildFocusContext', () => {
     const blocker = makeTask({ id: 'blocker' });
     const blocked = makeTask({ id: 'blocked', blockedById: 'blocker' });
     // The blocker is off today, so it is in allTasks but not in the pool.
-    const ctx = buildFocusContext([blocker, blocked]);
+    const ctx = buildFocusContext([blocker, blocked], { windowMinutes: null, planOptions: PLAN });
     // Handed only the candidate, the scorer still sees it as blocked.
     expect(suggestFocusTasks([blocked], ctx)).toEqual([]);
     expect(suggestFocusTasks([blocker], ctx)).toEqual(['blocker']);

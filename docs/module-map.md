@@ -60,9 +60,9 @@ render, so listing them adds lines without adding answers.
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/extraTask.ts` — MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N, ExtraTaskRule, extraTaskRule, advanceExtraTaskTally, completionsUntilExtraTask, extraTaskSummary, describeExtraTaskRule, emptyExtraTaskDraft, parseExtraTaskDraft, +2 more
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, resolveFabDrop, targetKey, +15 more
-- `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, focusStepRemaining, +11 more
-- `src/utils/focusSettings.ts` — FOCUS_DEFAULTS, FocusSettingsSource, parseFocusWorkCapMinutes, parseFocusDefaultWorkMinutes, parseFocusRestMinutes, parseFocusLongRestMinutes, parseFocusRestAfterTasks, parseFocusRestAfterMinutes, parseFocusLongRestEvery, serializeOptionalCount, +11 more
-- `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusReason
+- `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, focusStepRemaining, +12 more
+- `src/utils/focusSettings.ts` — FOCUS_DEFAULTS, FOCUS_WINDOW_MIN, FOCUS_WINDOW_MAX, FOCUS_WINDOW_STEP, FocusSettingsSource, parseFocusWorkCapMinutes, parseFocusDefaultWorkMinutes, parseFocusRestMinutes, parseFocusLongRestMinutes, parseFocusRestAfterTasks, +14 more
+- `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusReason
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, GroupSearchResult, searchGroups
 - `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, wantsGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind, hasAnyGeneratedTask, generatedTaskCountOf, generatedSourceOf, +3 more

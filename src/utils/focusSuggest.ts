@@ -2,6 +2,7 @@ import { PRIORITY_LABELS, type Task, type TimeOfDay } from '../types';
 import { getDeadlineCountdown, getLogicalToday } from './dateUtils';
 import { estimatedMinutesFor, formatDuration } from './effort';
 import { currentTimeSegment, overdueDays } from './pinSuggest';
+import { planTotalMinutes, type FocusPlanOptions } from './focusPlan';
 import { isBlocked, resolverFor, type TaskResolver } from './blocking';
 
 /**
@@ -29,6 +30,21 @@ import { isBlocked, resolverFor, type TaskResolver } from './blocking';
  *   here is a judgement about what's worth doing next; a task waiting on
  *   another one is work you *cannot* do, and a queue that puts you in front of
  *   it has already failed.
+ *
+ * On top of the scoring sits a hard constraint: the **time window**. "I have an
+ * hour" is answered by only ever offering a queue that actually fits in an
+ * hour, which is a filter rather than a weight — a suggestion that overruns the
+ * time you said you had is not a worse suggestion, it's the wrong answer to the
+ * question asked. Two things follow, and both are easy to get wrong:
+ *
+ * - **Fit is measured against the plan, not the estimates.** `planTotalMinutes`
+ *   builds the real run and counts its breaks. An hour of estimates is an hour
+ *   and ten minutes of wall clock under the shipped settings, so summing
+ *   estimates would overrun by exactly the rest the queue was going to need.
+ * - **The pick is "best that fits", not "best, if it fits".** A 55-minute task
+ *   that can't fit the 30 minutes left doesn't end the search; the loop moves
+ *   on to the best candidate that can. That's what lets a short window fill up
+ *   with short work instead of stopping at the first big thing.
  */
 
 /** How many tasks the suggester offers up. */
@@ -84,6 +100,17 @@ export interface FocusContext {
   currentSegment: TimeOfDay;
   /** Resolves blocker ids, so a blocked task can be dropped from the pool. */
   resolve: TaskResolver;
+  /**
+   * How long the user says they have, in minutes. null = no limit, and then
+   * the soft `FOCUS_BUDGET_MINUTES` penalty shapes the queue's length instead.
+   */
+  windowMinutes: number | null;
+  /**
+   * The rest rules, needed because fit is measured against the built plan. The
+   * scorer would rather not know about breaks at all, but a window that
+   * ignored them would be a window that lies.
+   */
+  planOptions: FocusPlanOptions;
 }
 
 /**
@@ -93,12 +120,33 @@ export interface FocusContext {
  * to be able to find a blocker that isn't itself a candidate, which is the
  * usual case (you're blocked by something that isn't on today).
  */
-export function buildFocusContext(allTasks: readonly Task[]): FocusContext {
+export function buildFocusContext(
+  allTasks: readonly Task[],
+  opts: { windowMinutes: number | null; planOptions: FocusPlanOptions },
+): FocusContext {
   return {
     todayStart: getLogicalToday(),
     currentSegment: currentTimeSegment(),
     resolve: resolverFor([...allTasks]),
+    windowMinutes: opts.windowMinutes,
+    planOptions: opts.planOptions,
   };
+}
+
+/**
+ * Would this queue still fit the window with `candidate` added to the end?
+ *
+ * Always true when no window is set. Exported because the setup sheet asks the
+ * same question about the selection the user has assembled by hand.
+ */
+export function fitsWindow(
+  listed: readonly Task[],
+  candidate: Task | null,
+  ctx: FocusContext,
+): boolean {
+  if (ctx.windowMinutes == null) return true;
+  const queue = candidate === null ? [...listed] : [...listed, candidate];
+  return planTotalMinutes(queue, ctx.planOptions) <= ctx.windowMinutes;
 }
 
 function dueScore(task: Task, ctx: FocusContext): number {
@@ -150,7 +198,11 @@ function queueMinutes(tasks: readonly Task[]): number {
   return tasks.reduce((sum, t) => sum + (estimatedMinutesFor(t) ?? 0), 0);
 }
 
-function overflowScore(task: Task, listed: readonly Task[]): number {
+function overflowScore(task: Task, listed: readonly Task[], ctx: FocusContext): number {
+  // With a window set, the hard fit check has already decided what may be in
+  // the queue at all, and a second, softer opinion about length on top of it
+  // would only reorder picks that all fit — for no reason the user could see.
+  if (ctx.windowMinutes != null) return 0;
   const total = queueMinutes([...listed, task]);
   if (total <= FOCUS_BUDGET_MINUTES) return 0;
   const penalty = ((total - FOCUS_BUDGET_MINUTES) / 10) * WEIGHTS.overflowPer10Min;
@@ -170,7 +222,7 @@ export function scoreFocusTask(task: Task, listed: readonly Task[], ctx: FocusCo
     ? 0
     : Math.max(...listed.map(other => affinity(task, other)));
 
-  return base + batch + overflowScore(task, listed);
+  return base + batch + overflowScore(task, listed, ctx);
 }
 
 /**
@@ -201,7 +253,8 @@ function eligible(tasks: readonly Task[], ctx: FocusContext, exclude: Set<string
  * Exported for the same reason `nextPinSuggestion` is: the setup sheet needs
  * the greedy step one pick at a time, so swapping a row means "best candidate
  * not already on screen and not rejected", scored against the rows the user is
- * keeping. Returns null when the pool is exhausted.
+ * keeping. Returns null when the pool is exhausted, or when nothing left in it
+ * fits alongside `listed` in the time window.
  */
 export function nextFocusSuggestion(
   tasks: readonly Task[],
@@ -209,7 +262,12 @@ export function nextFocusSuggestion(
   excludeIds: readonly string[],
   ctx: FocusContext,
 ): string | null {
-  const pool = eligible(tasks, ctx, new Set(excludeIds));
+  // Filtered before scoring, not after: the answer is the best candidate that
+  // *fits*, so one that can't is not in the running at all rather than being
+  // the winner that then gets rejected (which would end the queue early and
+  // leave the window half empty).
+  const pool = eligible(tasks, ctx, new Set(excludeIds))
+    .filter(task => fitsWindow(listed, task, ctx));
   if (pool.length === 0) return null;
 
   let best = pool[0];
@@ -232,6 +290,13 @@ export function nextFocusSuggestion(
  * The order they come back in is the order they were picked, which is also the
  * order the session will run them: the first pick is what most wants doing,
  * and each one after it is chosen partly for going with the ones above it.
+ *
+ * With a window set the loop stops early, when nothing left fits the time
+ * remaining — so a 30-minute window returns a short queue rather than `limit`
+ * tasks that overrun it. It fills greedily by score rather than solving for
+ * the tightest packing: a queue chosen to waste the fewest minutes would put
+ * three small chores ahead of the one thing that actually matters, which is
+ * the wrong trade for a list you are about to sit down and work.
  */
 export function suggestFocusTasks(
   tasks: readonly Task[],

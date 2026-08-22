@@ -25,6 +25,12 @@ import {
   suggestFocusTasks,
   MAX_SUGGESTED_FOCUS,
 } from '../utils/focusSuggest';
+import {
+  FOCUS_WINDOW_MAX,
+  FOCUS_WINDOW_MIN,
+  FOCUS_WINDOW_STEP,
+} from '../utils/focusSettings';
+import { CountStepper } from './CountStepper';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { Task } from '../types';
@@ -58,6 +64,14 @@ interface Props {
  * real `buildFocusPlan` over the current selection, not by adding up estimates
  * (which would quietly omit every break). It re-runs as rows are ticked, which
  * is the point: unticking the 90-minute task should visibly buy back the hour.
+ *
+ * The window at the top is what makes the sheet a question rather than a list:
+ * say you have forty minutes and only a queue that fits in forty minutes is
+ * offered. Changing it re-picks from scratch rather than trimming what's on
+ * screen, because a different amount of time is a different question and the
+ * best answer to it is rarely a prefix of the answer to the old one. That does
+ * discard rows the user had already ticked or swapped, which is the trade: the
+ * alternative is a list that half-remembers a window it no longer fits.
  */
 export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: Props) {
   const colors = useColors();
@@ -69,6 +83,16 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
   // refuses to work with. Compared field by field, it changes only when a
   // focus setting actually does.
   const planOptions = useSettingsStore(useShallow(s => focusPlanOptionsFrom(s)));
+
+  /**
+   * Minutes the user says they have, or null for no limit.
+   *
+   * Deliberately *not* reset when the sheet opens, unlike everything below it:
+   * how long you tend to have is a fact about your day rather than about this
+   * particular sheet, and someone who works in 45-minute blocks should not have
+   * to say so every time. It resets when the app does, which is about right.
+   */
+  const [windowMinutes, setWindowMinutes] = useState<number | null>(null);
 
   // Snapshotted at open, like the pins sheet and the deload sheet: this is a
   // proposal being decided on, not a live derivation that should reshuffle
@@ -83,24 +107,40 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
   const translateY = useRef(new Animated.Value(700)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    if (!visible) return;
+  /**
+   * Take a fresh shortlist for the given window.
+   *
+   * `tasks` is snapshotted here rather than read live, so a task completed on
+   * the list behind the sheet doesn't reshuffle a proposal mid-read.
+   */
+  const repick = (window: number | null) => {
     const snapshot = tasks.map(t => t);
-    const nextCtx = buildFocusContext(allTasks);
+    const nextCtx = buildFocusContext(allTasks, { windowMinutes: window, planOptions });
     const picked = suggestFocusTasks(snapshot, nextCtx);
     setPool(snapshot);
     setCtx(nextCtx);
     setSlotIds(picked);
     setSelectedIds(new Set(picked));
     setRejectedIds([]);
+  };
+
+  useEffect(() => {
+    if (!visible) return;
+    repick(windowMinutes);
     translateY.setValue(700);
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
     ]).start();
-    // Keyed on `visible` alone — the shortlist is taken once, at open.
+    // Keyed on `visible` alone — the shortlist is taken once, at open, and
+    // after that only a window change re-takes it.
   }, [visible]);
+
+  const changeWindow = (next: number | null) => {
+    setWindowMinutes(next);
+    repick(next);
+  };
 
   const dismiss = () => {
     Animated.parallel([
@@ -186,6 +226,10 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
     [selected, planOptions]
   );
 
+  // Floored at zero: the suggester can't produce an overrunning queue, and a
+  // negative "left over" would be a state with no way to reach it.
+  const spare = windowMinutes === null ? 0 : Math.max(0, windowMinutes - totals.totalMinutes);
+
   const endsAt = totals.totalMinutes > 0
     ? formatTimeOfDay(new Date(Date.now() + totals.totalMinutes * 60_000))
     : null;
@@ -264,9 +308,34 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
             </View>
           </View>
 
+          <View style={styles.windowRow}>
+            <View style={styles.windowLabelWrap}>
+              <Text style={styles.windowLabel}>Time available</Text>
+              {/* Kept to one line each: the stepper sits beside this, and a
+                  hint that wraps leaves the two optically unaligned. */}
+              <Text style={styles.windowHint}>
+                {windowMinutes === null ? 'No time limit' : 'Breaks count toward it'}
+              </Text>
+            </View>
+            <CountStepper
+              value={windowMinutes}
+              onChange={changeWindow}
+              min={FOCUS_WINDOW_MIN}
+              max={FOCUS_WINDOW_MAX}
+              step={FOCUS_WINDOW_STEP}
+              allowNull
+              emptyLabel="Any"
+              format={formatDuration}
+              label="Time available"
+              describeValue={n => (n === null ? 'No limit' : `${n} minutes`)}
+            />
+          </View>
+
           {slots.length === 0 ? (
             <Text style={styles.emptyHint}>
-              Nothing to suggest. Everything on today is done, or waiting on another task.
+              {windowMinutes === null
+                ? 'Nothing to suggest. Everything on today is done, or waiting on another task.'
+                : `Nothing on today fits in ${formatDuration(windowMinutes)}. Allow more time, or shorten a task’s estimate.`}
             </Text>
           ) : (
             <Text style={styles.hint}>
@@ -296,7 +365,13 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
                   : ', no breaks'}`}
               </Text>
               {endsAt !== null && (
-                <Text style={styles.summarySub}>Ends around {endsAt} if it all runs to time</Text>
+                <Text style={styles.summarySub}>
+                  {windowMinutes === null
+                    ? `Ends around ${endsAt} if it all runs to time`
+                    : spare === 0
+                      ? `Fills your ${formatDuration(windowMinutes)}. Ends around ${endsAt}`
+                      : `${formatDuration(spare)} of your ${formatDuration(windowMinutes)} left over. Ends around ${endsAt}`}
+                </Text>
               )}
             </View>
           )}
@@ -353,6 +428,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   countRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   countText: { color: colors.textTertiary, fontSize: font.sm },
   countValue: { color: colors.accent, fontWeight: fontWeight.semibold },
+  windowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  windowLabelWrap: { flex: 1, gap: 1 },
+  windowLabel: { color: colors.text, fontSize: font.md },
+  windowHint: { color: colors.textTertiary, fontSize: font.xs },
   hint: {
     color: colors.textTertiary,
     fontSize: font.xs,

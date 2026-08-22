@@ -14,6 +14,7 @@ import {
   isFocusStepDone,
   normalizePlanTail,
   pauseFocusSession,
+  planTotalMinutes,
   pruneFocusPlan,
   resumeFocusSession,
   splitMinutes,
@@ -204,6 +205,26 @@ describe('focusPlanTotals', () => {
       taskCount: 2,
       restCount: 2,
     });
+  });
+});
+
+describe('planTotalMinutes', () => {
+  it('counts the breaks, not just the work', () => {
+    // 25 + 25 of work, with the 25-minute trigger putting a 5-minute break
+    // between them: 55 minutes of wall clock for 50 minutes of estimates.
+    expect(planTotalMinutes([task('a', 25), task('b', 25)], OPTIONS)).toBe(55);
+  });
+
+  it('matches the estimates exactly when no break fits', () => {
+    expect(planTotalMinutes([task('a', 10), task('b', 10)], OPTIONS)).toBe(20);
+  });
+
+  it('charges the default stretch for a task with no estimate', () => {
+    expect(planTotalMinutes([task('a', null)], OPTIONS)).toBe(OPTIONS.defaultWorkMinutes);
+  });
+
+  it('is zero for an empty queue', () => {
+    expect(planTotalMinutes([], OPTIONS)).toBe(0);
   });
 });
 
