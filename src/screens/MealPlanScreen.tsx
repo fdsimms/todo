@@ -1407,7 +1407,8 @@ export function MealPlanScreen() {
       {!selectionMode && !!activeTripShop && (
         <ActiveTripBanner
           shopName={activeTripShop.name}
-          onChange={resetToGroceries}
+          onChange={() => resetToGroceries()}
+          onFinish={() => resetToGroceries(true)}
           onClear={handleClearTrip}
         />
       )}

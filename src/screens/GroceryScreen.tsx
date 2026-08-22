@@ -15,7 +15,7 @@ import {
   Share,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -136,6 +136,7 @@ export function GroceryScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
 
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
@@ -340,6 +341,29 @@ export function GroceryScreen() {
   }, [activeTripShop, items, itemShops, shops, itemSubs, itemProducts]);
 
   const checkedCount = useMemo(() => items.filter(i => i.onList && i.checked).length, [items]);
+
+  /**
+   * "Finish the shop" asked for from somewhere that hasn't got the sheet — the
+   * trip Live Activity's Finish button (`dundundun://groceries?finish=1`) and
+   * the trip banner on Recipes/Meal plan/Pantry, both of which route through
+   * `resetToGroceries(true)`.
+   *
+   * Stamped-param handoff, the same one MealPlanScreen's `focusStamp` uses:
+   * compared against the last value handled, so asking twice in a row still
+   * fires twice. Gated on the cart having something in it, which is the same
+   * thing the header action's `disabled` and the banner's own button say — a
+   * request that arrives with an empty cart lands on the list and stops there,
+   * because there is nothing for the sheet to finish. The stamp is marked
+   * handled either way: a request that found nothing to do is answered, not
+   * left pending against the next tick.
+   */
+  const openFinishStamp: number | undefined = route.params?.openFinish;
+  const [handledFinishStamp, setHandledFinishStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (openFinishStamp === undefined || openFinishStamp === handledFinishStamp) return;
+    setHandledFinishStamp(openFinishStamp);
+    if (checkedCount > 0) setFinishOpen(true);
+  }, [openFinishStamp, handledFinishStamp, checkedCount]);
   // Empty for nothing left to buy, which is what the header action's disabled
   // state gates on — see buildGroceryListShareText.
   const shareText = useMemo(() => buildGroceryListShareText(items), [items]);
@@ -1129,6 +1153,7 @@ export function GroceryScreen() {
             setTripIntent('start');
             setTripOpen(true);
           }}
+          onFinish={() => setFinishOpen(true)}
           onClear={handleClearTrip}
         />
       )}

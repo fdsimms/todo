@@ -48,6 +48,7 @@ import {
   parseAddTaskUrl,
   handleIncomingUrl,
   isGroceriesUrl,
+  groceriesUrlFinish,
   isMealPlanUrl,
   mealPlanUrlDayKey,
   isKitchenUrl,
@@ -155,12 +156,42 @@ describe('isGroceriesUrl', () => {
     expect(isGroceriesUrl('  dundundun://groceries  ')).toBe(true);
   });
 
+  it('accepts the finish form the trip Live Activity sends', () => {
+    expect(isGroceriesUrl('dundundun://groceries?finish=1')).toBe(true);
+    expect(isGroceriesUrl('dundundun://groceries/?finish=1')).toBe(true);
+  });
+
   it('rejects anything else', () => {
     expect(isGroceriesUrl('dundundun://')).toBe(false);
     expect(isGroceriesUrl('dundundun://add?title=milk')).toBe(false);
     expect(isGroceriesUrl('dundundun://groceries/milk')).toBe(false);
     expect(isGroceriesUrl('spotify://')).toBe(false);
     expect(isGroceriesUrl('')).toBe(false);
+  });
+});
+
+describe('groceriesUrlFinish', () => {
+  it('reads the finish flag the Live Activity button sends', () => {
+    expect(groceriesUrlFinish('dundundun://groceries?finish=1')).toBe(true);
+    expect(groceriesUrlFinish('DUNDUNDUN://Groceries/?finish=1')).toBe(true);
+    expect(groceriesUrlFinish('  dundundun://groceries?finish=1  ')).toBe(true);
+  });
+
+  it('is false for the bare link a "Grocery run" task carries', () => {
+    expect(groceriesUrlFinish('dundundun://groceries')).toBe(false);
+    expect(groceriesUrlFinish('dundundun://groceries/')).toBe(false);
+  });
+
+  it('is false for anything but the one value the button writes', () => {
+    expect(groceriesUrlFinish('dundundun://groceries?finish=0')).toBe(false);
+    expect(groceriesUrlFinish('dundundun://groceries?finish')).toBe(false);
+    expect(groceriesUrlFinish('dundundun://groceries?finish=yes')).toBe(false);
+    expect(groceriesUrlFinish('dundundun://groceries?other=1')).toBe(false);
+  });
+
+  it('is false for a URL that isn\'t a groceries link at all', () => {
+    expect(groceriesUrlFinish('dundundun://recipes?finish=1')).toBe(false);
+    expect(groceriesUrlFinish('')).toBe(false);
   });
 });
 
@@ -387,6 +418,17 @@ describe('openInAppUrl', () => {
     mockEnqueueWidgetCompletion.mockClear();
     mockStopCookTimer.mockClear();
     mockStopPrepTimer.mockClear();
+  });
+
+  it('opens the grocery list for the bare link, without asking for the sheet', () => {
+    expect(openInAppUrl('dundundun://groceries')).toBe(true);
+    expect(mockResetToGroceries).toHaveBeenCalledWith(false);
+  });
+
+  // The trip Live Activity's Finish button — see TripLiveActivity.swift.
+  it('asks the grocery list to open the finish sheet', () => {
+    expect(openInAppUrl('dundundun://groceries?finish=1')).toBe(true);
+    expect(mockResetToGroceries).toHaveBeenCalledWith(true);
   });
 
   // A task's timer Live Activity Done button — see TimerLiveActivity.swift.
