@@ -491,6 +491,13 @@ the block would inherit none.
 - **`pinnedTasks()` ignores visibility on purpose** — a pinned task shows in the block whether or not
   it's due today. So the copy passes `hidesWhenOnPace: false`, and a pinned task that isn't visible
   today has only the one row rather than two.
+- **One exception to that: a pinned daily target unpins itself once logging catches it up to pace.**
+  Otherwise it would sit pinned at the top of Today, at quota, until the next unit falls due hours
+  later — the exact "hidden until later" state pinning is supposed to override for a task that
+  merely isn't due, not one that's already met for now. `logQuotaUnit` (`useTaskStore.ts`) is where
+  this lives, gated on `isQuotaOnPace`, with the same grace window (`QUOTA_PACE_UNPIN_HOLD_MS`) the
+  completion unpin above gets, since either row's meter can still be mid-burst (see
+  `QUOTA_HOLD_BACKSTOP_MS`) when the unit that catches it up lands.
 
 ### Recurrence
 
