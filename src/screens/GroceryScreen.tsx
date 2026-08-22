@@ -150,7 +150,6 @@ export function GroceryScreen() {
   const finishShopping = useGroceryStore(s => s.finishShopping);
   const addExisting = useGroceryStore(s => s.addExisting);
   const addByName = useGroceryStore(s => s.addByName);
-  const addProduct = useGroceryStore(s => s.addProduct);
   const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
   const linkItemSub = useGroceryStore(s => s.linkItemSub);
   const swapForSubstitute = useGroceryStore(s => s.swapForSubstitute);
@@ -760,13 +759,19 @@ export function GroceryScreen() {
    * question no scan can answer gets asked.
    *
    * **The one thing a barcode knows that a receipt doesn't is who makes it**,
-   * and a minted row records it as its first `ItemProduct` — brand with no
-   * variant, which is the brand-level box ("any Beyond") that type exists to
-   * express. It is written only for rows this session mints. An already-matched
-   * catalog row is the user's own, with its own boxes and possibly a deliberate
-   * `preferredProductId`, and `addProduct` promotes the first product on an item
-   * that hasn't got one: unpacking twenty bags would then decide twenty items'
-   * preferences unasked. That case is #1866.
+   * and it goes through `addByName`'s own `brand` override — the same one
+   * GroceryAddField's Brand chip uses — so a minted row files it as its first
+   * `ItemProduct`: brand with no variant, the brand-level box ("any Beyond")
+   * that type exists to express. Deliberately not a follow-up `addProduct`
+   * call, which would also flip `inCatalog` and leave a scanned row that
+   * happened to carry a brand surviving a "remove from list" that deletes the
+   * brandless one beside it.
+   *
+   * It is written only for rows this session mints. An already-matched catalog
+   * row is the user's own, with its own boxes and possibly a deliberate
+   * `preferredProductId` that `ensureProductFor` would overwrite: unpacking
+   * twenty bags would then decide twenty items' preferences unasked. That case
+   * is #1866.
    */
   const handleScanApply = useCallback(
     (itemIds: string[], toAdd: ReceiptAddDraft[]) => {
@@ -777,12 +782,13 @@ export function GroceryScreen() {
           addExisting(draft.existingItemId);
           allIds.push(draft.existingItemId);
         } else {
-          const minted = addByName(draft.label, {
-            name: draft.name,
-            quantity: draft.quantity || null,
-          });
-          if (draft.brand) addProduct(minted.id, { brand: draft.brand, variant: null });
-          allIds.push(minted.id);
+          allIds.push(
+            addByName(draft.label, {
+              name: draft.name,
+              quantity: draft.quantity || null,
+              brand: draft.brand,
+            }).id
+          );
         }
       }
       if (allIds.length > 0) setCheckedMany(allIds, true);
@@ -790,7 +796,7 @@ export function GroceryScreen() {
       setScanOpen(false);
       setFinishOpen(true);
     },
-    [setCheckedMany, addExisting, addByName, addProduct]
+    [setCheckedMany, addExisting, addByName]
   );
 
   const handleClearTrip = useCallback(() => {
