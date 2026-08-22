@@ -5,11 +5,61 @@ import SwiftUI
 // Shown on the Lock Screen and in the Dynamic Island while a shopping trip
 // is running (tripShopId/tripStartedAt — see src/utils/activeTrip.ts and
 // src/utils/tripLiveActivity.ts, which is the only thing that starts or ends
-// this). No interactive controls, unlike TimerLiveActivity's Done button:
-// ending a trip means Finish (mark what a store didn't have) or Clear, and
-// both only make sense inside the app, so tapping the activity opens it
-// straight to the grocery list — `dundundun://groceries`, the same link a
-// "Grocery run" task's own linkUrl carries (src/utils/deepLinks.ts).
+// this). Tapping anywhere non-interactive opens the app straight to the
+// grocery list — `dundundun://groceries`, the same link a "Grocery run"
+// task's own linkUrl carries (src/utils/deepLinks.ts).
+//
+// The Finish button below is a `Link` rather than an AppIntent, for the
+// reason TimerLiveActivity's Done button spells out at length: a Live
+// Activity button's intent runs in the background only and cannot bring the
+// containing app forward, so a deep link is the one thing that reliably
+// works. That constraint is why this activity had no button at all until
+// now — ending a trip is a question (which of the leftovers didn't the store
+// have, what did each thing cost) and not a verb, so it can only be answered
+// inside the app. `dundundun://groceries?finish=1` is that question asked
+// from the Lock Screen: it opens the list with FinishShoppingSheet already
+// up, instead of the app-then-hunt-for-the-header-icon it replaced.
+//
+// It carries no count, because it can't: the attributes are fixed when the
+// trip starts and nothing here is ever pushed an update, so the button can
+// only ever say "Finish". GroceryScreen is what decides whether there is
+// anything to finish when the link lands.
+
+@available(iOS 17.0, *)
+private struct TripFinishButton: View {
+    let palette: WidgetPalette
+
+    // Only fails if scheme/host is empty, which they never are.
+    private var finishURL: URL {
+        var components = URLComponents()
+        components.scheme = "dundundun"
+        components.host = "groceries"
+        components.queryItems = [URLQueryItem(name: "finish", value: "1")]
+        return components.url!
+    }
+
+    var body: some View {
+        Link(destination: finishURL) { label }
+    }
+
+    private var label: some View {
+        HStack(spacing: 5) {
+            // Plain `checkmark`, the same glyph TimerLiveActivity's Done
+            // button uses. The in-app button is `bag-check-outline`, but SF
+            // Symbols has no bag-with-tick, and a systemName that doesn't
+            // resolve renders as nothing at all — a silent blank next to the
+            // word, which is worse than not matching the app.
+            Image(systemName: "checkmark")
+                .font(.system(size: 11, weight: .bold))
+            Text("Finish")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Capsule().fill(palette.accent))
+    }
+}
 
 @available(iOS 17.0, *)
 private struct TripClockView: View {
@@ -53,6 +103,8 @@ private struct TripLockScreenView: View {
             }
 
             Spacer(minLength: 8)
+
+            TripFinishButton(palette: palette)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -93,6 +145,15 @@ struct TripLiveActivity: Widget {
                         .foregroundColor(palette.text)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    // Interactive controls only work in the Lock Screen
+                    // presentation and the *expanded* island regions —
+                    // compactLeading/compactTrailing/minimal are
+                    // non-interactive, same as TimerLiveActivity's Done
+                    // button, so this appears in those two places only.
+                    TripFinishButton(palette: palette)
+                        .padding(.top, 2)
                 }
             } compactLeading: {
                 Image(systemName: "storefront")

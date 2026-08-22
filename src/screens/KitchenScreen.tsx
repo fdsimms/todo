@@ -25,6 +25,7 @@ import {
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import {
   buildKitchenSections,
   describeKitchen,
@@ -55,7 +56,7 @@ import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { LeftoverSheet } from '../components/LeftoverSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
 import type { ScannedGtinLink } from '../utils/scanResolve';
-import type { ReceiptAddDraft } from '../components/ReceiptImportSheet';
+import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
 import { freshnessColor } from '../components/LeftoversCard';
 import { useNowTick } from '../hooks/useNowTick';
 import { haptics } from '../utils/haptics';
@@ -103,18 +104,28 @@ import { resetToGroceries } from '../navigation/navigationRef';
  * heading, and why a drop inside one section writes nothing.
  *
  * The two things this screen writes by itself are `addToPantry`, off the
- * field at the top, and `addManyToPantry`, off the barcode action in the
+ * field at the top, and `addManyToPantry`, off the two scan actions in the
  * header — the same one-bit assertion the item sheet's "Got it" pill writes,
- * one name or a whole scan session at a time. They exist because that
- * correction was unreachable for anything with no row yet: you can only open
- * an item's sheet from the list or from Buy again, so "I have flour" was
- * unsayable until flour had been bought through the app at least once. Both
- * add to the pantry and never to the fridge; a container is something you
- * cooked, which is what `LeftoverSheet`'s log flow is for. The scan sheet
- * itself is shared with `GroceryScreen` (`BarcodeScanSheet`, `context` prop)
- * — same camera and lookup, only the row wording and the write path differ.
- * The barcode's own box (brand, variant) still lands on the item the same
- * way it does from `GroceryScreen` — see `addManyToPantry`'s `products` param.
+ * one name or a whole session at a time. They exist because that correction
+ * was unreachable for anything with no row yet: you can only open an item's
+ * sheet from the list or from Buy again, so "I have flour" was unsayable until
+ * flour had been bought through the app at least once. All of them add to the
+ * pantry and never to the fridge; a container is something you cooked, which
+ * is what `LeftoverSheet`'s log flow is for. Both scan sheets are shared with
+ * `GroceryScreen` (`BarcodeScanSheet` and `ReceiptImportSheet`, each with a
+ * `context` prop) — same camera, lookup and reading, only the row wording and
+ * the write path differ. The barcode's own box (brand, variant) still lands on
+ * the item the same way it does from `GroceryScreen` — see
+ * `addManyToPantry`'s `products` param.
+ *
+ * **A receipt is the one of the two that scales.** A shop you never made a
+ * list for used to be unrecordable except a barcode at a time, which is why
+ * reading one is offered here and not only at the foot of the shopping list:
+ * the paper names thirty things at once, and this screen is where someone
+ * standing over the bags actually is. What it records is smaller than a
+ * finished trip's — names, and what each cost — because it isn't a trip: no
+ * purchase count, no store stocking claim, no purchase date (see
+ * `handleReceiptApply`).
  *
  * That keeps the model the one #1040 settled on — computed from what you buy,
  * corrected when it's wrong, never an inventory anybody has to keep up.
@@ -138,6 +149,7 @@ export function KitchenScreen() {
   const setAisle = useGroceryStore(s => s.setAisle);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const tripShopId = useGroceryStore(s => s.tripShopId);
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
   const endTrip = useGroceryStore(s => s.endTrip);
   const activeTripShop = useMemo(
@@ -164,6 +176,7 @@ export function KitchenScreen() {
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [openLeftoverId, setOpenLeftoverId] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
+  const [receiptOpen, setReceiptOpen] = useState(false);
 
   // This screen never unmounts once visited (the drawer's tabs stay mounted
   // under `enableScreens(false)`), so a use-by day computed once at mount
@@ -434,6 +447,53 @@ export function KitchenScreen() {
     if (addManyToPantry(names, frozenNames, productNames) > 0) haptics.success();
   };
 
+  /**
+   * A receipt, read into the kitchen rather than onto a list.
+   *
+   * The same sheet `GroceryScreen` uses (`ReceiptImportSheet`, `context`
+   * prop), reduced the same way the barcode session above is: it hands back
+   * shopping-list concepts, and what this screen wants out of it is names and
+   * prices. Matched rows here came from the catalog rather than the list — see
+   * `ReceiptScope` — so `itemIds` are ordinary items whose current name is
+   * what `addManyToPantry` files them under, exactly as the typed field does.
+   *
+   * `purchasedAt` is dropped, and the sheet doesn't ask for it here: nothing
+   * in the pantry writes a purchase date. `addToPantry` stamps on-hand from
+   * now, and a use-by day comes from `finishShopping`, which this isn't one of.
+   *
+   * The prices ride the same name-keyed map the freezer flag and the box do,
+   * for the reason `addManyToPantry` gives — a row this batch mints has no id
+   * until the loop creates it. What they record is deliberately smaller than a
+   * trip's: see that action's own doc comment.
+   */
+  const handleReceiptApply = (
+    shopId: string | null,
+    itemIds: string[],
+    priceById: Record<string, number>,
+    _purchasedAt: string,
+    toAdd: ReceiptAddDraft[]
+  ) => {
+    const nameOf = (id: string) => items.find(i => i.id === id)?.name;
+    const names = [
+      ...itemIds.map(nameOf).filter((name): name is string => !!name),
+      ...toAdd.map(draft => draft.name),
+    ];
+    const priceByName = new Map<string, number>();
+    for (const id of itemIds) {
+      const name = nameOf(id);
+      const minor = priceById[id];
+      if (name && minor !== undefined) priceByName.set(name, minor);
+    }
+    for (const draft of toAdd) {
+      if (draft.priceMinor !== null) priceByName.set(draft.name, draft.priceMinor);
+    }
+    setReceiptOpen(false);
+    if (names.length === 0) return;
+    if (
+      addManyToPantry(names, undefined, undefined, { byName: priceByName, shopId }) > 0
+    ) haptics.success();
+  };
+
   const renderEntry = (entry: KitchenEntry, drag: () => void, isActive: boolean) => {
     // Three levels for four states, the fridge card's own rule: `fresh` reads
     // as ordinary tertiary text, so most of a kitchen stays quiet and the one
@@ -523,6 +583,18 @@ export function KitchenScreen() {
         title="Pantry"
         subtitle={entries.length > 0 ? describeKitchen(entries) : undefined}
         actions={[
+          // Gated on a key for the reason the shopping list's own receipt
+          // button is: the reading is the whole feature, and without one this
+          // opens a sheet that can only apologise.
+          ...(anthropicApiKey
+            ? [
+                {
+                  icon: 'receipt-outline' as const,
+                  onPress: () => setReceiptOpen(true),
+                  accessibilityLabel: 'Scan a receipt into the pantry',
+                },
+              ]
+            : []),
           {
             icon: 'barcode-outline',
             onPress: () => setScanOpen(true),
@@ -534,7 +606,8 @@ export function KitchenScreen() {
       {!!activeTripShop && (
         <ActiveTripBanner
           shopName={activeTripShop.name}
-          onChange={resetToGroceries}
+          onChange={() => resetToGroceries()}
+          onFinish={() => resetToGroceries(true)}
           onClear={handleClearTrip}
         />
       )}
@@ -601,7 +674,7 @@ export function KitchenScreen() {
             subtitle={
               typed
                 ? 'Nothing you probably have goes by that name. Add it above to say you do.'
-                : 'Finish a shopping trip and what you bought turns up here, along with anything you put in the fridge. Type a name above, or scan a barcode, to add something you already have.'
+                : 'Finish a shopping trip and what you bought turns up here, along with anything you put in the fridge. Type a name above, or scan a barcode or a receipt, to add something you already have.'
             }
             bottomOffset={tabBarHeight}
           />
@@ -623,6 +696,13 @@ export function KitchenScreen() {
         context="pantry"
         onClose={() => setScanOpen(false)}
         onApply={handleScanApply}
+      />
+
+      <ReceiptImportSheet
+        visible={receiptOpen}
+        context="pantry"
+        onClose={() => setReceiptOpen(false)}
+        onApply={handleReceiptApply}
       />
 
       <LeftoverSheet
