@@ -4,11 +4,18 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { haptics } from '../utils/haptics';
 
 interface Props {
   shopName: string;
   onChange: () => void;
+  /**
+   * Finish the trip — open `FinishShoppingSheet` on Groceries, or get to the
+   * screen that has it from the other three. Never called while the cart is
+   * empty; the button isn't rendered then.
+   */
+  onFinish: () => void;
   onClear: () => void;
 }
 
@@ -26,10 +33,34 @@ interface Props {
  * rows have started carrying captions about other stores, and a caption whose
  * cause isn't on screen reads as the app having opinions.
  *
- * On Groceries, `onChange` reopens the trip sheet in place. Elsewhere it's
- * `resetToGroceries` (navigationRef.ts) — those three screens have no trip
- * sheet of their own, so changing the store means going to the one screen
- * that can.
+ * **Finishing the shop is the banner's job, not just the header's.** It used to
+ * be reachable only from `bag-check-outline`, fifth in a row of header icons,
+ * which is a small target with a non-obvious glyph for the one action every
+ * trip ends in — while the banner spent its only button, accent-filled, on
+ * *Clear*, the escape hatch. The ranking was backwards: the filled pill is what
+ * the eye goes to, and it was offered to the action that throws the trip away
+ * rather than the one that records it. So Finish is the filled pill now, sized
+ * to a walking thumb, and Clear is the quiet one beside it. The header button
+ * stays — it's where the badge lives and where anyone who has been using this
+ * already reaches.
+ *
+ * **The count comes from the store, not a prop.** Same shape `GroceriesHubPills`
+ * and `SideMenuDrawer` already use for the list's own count: a derived scalar,
+ * so the banner re-renders when the number changes and not on every unrelated
+ * item edit. Threading it through four screens instead would be four filters
+ * that can drift.
+ *
+ * **Finish appears with the first ticked row and not before**, which is also
+ * what the header button's `disabled` says: a trip with an empty cart has
+ * nothing to finish, and Clear is the honest way out of it. Coming and going
+ * costs a layout change mid-shop, but it happens once, on the tick that makes
+ * the button mean something — and `handleToggle` (GroceryScreen) already runs
+ * that tick through `animateLayout`, so the banner grows with the row.
+ *
+ * On Groceries, `onChange` reopens the trip sheet in place and `onFinish` opens
+ * the finish sheet. Elsewhere both are `resetToGroceries` (navigationRef.ts) —
+ * those three screens have neither sheet of their own, so both mean going to
+ * the one screen that can, `onFinish` asking it to open the sheet on arrival.
  *
  * On Groceries it is a sibling of the list rather than its
  * `ListHeaderComponent`, unlike `StartTripPrompt`: a mode indicator that
@@ -39,9 +70,11 @@ interface Props {
  * where to go, and this says you've gone — so the fixed height it costs is
  * only ever paid during a shop.
  */
-export function ActiveTripBanner({ shopName, onChange, onClear }: Props) {
+export function ActiveTripBanner({ shopName, onChange, onFinish, onClear }: Props) {
   const colors = useColors();
   const styles = makeStyles(colors);
+
+  const checkedCount = useGroceryStore(s => s.items.filter(i => i.onList && i.checked).length);
 
   const handleClear = () => {
     haptics.tap();
@@ -53,37 +86,61 @@ export function ActiveTripBanner({ shopName, onChange, onClear }: Props) {
     onChange();
   };
 
+  const handleFinish = () => {
+    haptics.tap();
+    onFinish();
+  };
+
+  const clearButton = (
+    <PressableScale
+      style={styles.clearButton}
+      onPress={handleClear}
+      accessibilityLabel={`Stop shopping at ${shopName}`}
+    >
+      <Text style={styles.clearText}>Stop</Text>
+    </PressableScale>
+  );
+
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.summary}
-        onPress={handleChange}
-        activeOpacity={interaction.activeOpacity}
-        accessibilityRole="button"
-        accessibilityLabel={`Shopping at ${shopName}. Change store`}
-      >
-        <Ionicons name="storefront-outline" size={iconSize.sm} color={colors.accent} />
-        <Text style={styles.text} numberOfLines={1}>
-          Shopping at <Text style={styles.shop}>{shopName}</Text>
-        </Text>
-      </TouchableOpacity>
-      <PressableScale
-        style={styles.button}
-        onPress={handleClear}
-        accessibilityLabel={`Stop shopping at ${shopName}`}
-      >
-        <Text style={styles.buttonText}>Clear</Text>
-      </PressableScale>
+      <View style={styles.summaryRow}>
+        <TouchableOpacity
+          style={styles.summary}
+          onPress={handleChange}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`Shopping at ${shopName}. Change store`}
+        >
+          <Ionicons name="storefront-outline" size={iconSize.sm} color={colors.accent} />
+          <Text style={styles.text} numberOfLines={1}>
+            Shopping at <Text style={styles.shop}>{shopName}</Text>
+          </Text>
+          <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
+        </TouchableOpacity>
+        {/* With nothing in the cart the row keeps its old shape: the store, and
+            the one way out of the mode. */}
+        {checkedCount === 0 && clearButton}
+      </View>
+
+      {checkedCount > 0 && (
+        <View style={styles.actionRow}>
+          {clearButton}
+          <PressableScale
+            style={styles.finishButton}
+            onPress={handleFinish}
+            accessibilityLabel={`Finish shopping at ${shopName}, ${checkedCount} in cart`}
+          >
+            <Ionicons name="bag-check-outline" size={iconSize.sm} color={colors.onAccent} />
+            <Text style={styles.finishText}>Finish · {checkedCount} in cart</Text>
+          </PressableScale>
+        </View>
+      )}
     </View>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
     backgroundColor: colors.bgSunken,
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
@@ -92,6 +149,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingLeft: spacing.md,
     paddingRight: spacing.sm,
     borderRadius: radius.lg,
+    gap: spacing.sm,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   summary: {
     flex: 1,
@@ -101,11 +165,37 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   text: { flexShrink: 1, color: colors.text, fontSize: font.md },
   shop: { fontWeight: fontWeight.bold },
-  button: {
-    backgroundColor: colors.accent,
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  clearButton: {
+    // `bgSecondary` and not `bgTertiary`, which is what a neutral pill on a
+    // *card* takes (InlineAction's own `surface` rule). This one sits on
+    // `bgSunken`, and tertiary is only three percent off sunken in the light
+    // theme — the pill all but disappears there, while a card surface on a
+    // sunken region is the pairing `TaskGroupTray` already reads as raised in
+    // both themes.
+    backgroundColor: colors.bgSecondary,
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: 7,
+    minHeight: 32,
+    justifyContent: 'center',
     borderRadius: radius.full,
   },
-  buttonText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.bold },
+  clearText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.bold },
+  finishButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+    minHeight: 32,
+    borderRadius: radius.full,
+  },
+  finishText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.bold },
 });
