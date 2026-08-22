@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, type AccessibilityRole
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../../theme/ThemeContext';
 import { interaction } from '../../theme';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import { makeSettingsStyles } from './settingsStyles';
 
 interface Props {
@@ -57,6 +58,8 @@ export function SettingsRow({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
+  const hideHelpText = useSettingsStore(s => s.hideHelpText);
+  const showHint = !!hint && !hideHelpText;
 
   const role: AccessibilityRole | undefined =
     toggle !== undefined ? 'switch' : onPress && !disabled ? 'button' : undefined;
@@ -71,7 +74,7 @@ export function SettingsRow({
       />
       <View style={styles.rowContent}>
         <Text style={[styles.rowLabel, !!labelColor && { color: labelColor }]}>{label}</Text>
-        {!!hint && <Text style={[styles.rowHint, !!children && styles.rowHintSpaced]}>{hint}</Text>}
+        {showHint && <Text style={[styles.rowHint, !!children && styles.rowHintSpaced]}>{hint}</Text>}
         {children}
       </View>
       {!!value && <Text style={styles.rowValue}>{value}</Text>}
@@ -99,7 +102,7 @@ export function SettingsRow({
   const style = [
     styles.row,
     !!tight && styles.rowTight,
-    !!tight && !!hint && styles.rowTightHinted,
+    !!tight && showHint && styles.rowTightHinted,
     !!children && styles.rowStacked,
   ];
 
