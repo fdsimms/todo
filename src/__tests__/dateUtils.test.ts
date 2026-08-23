@@ -121,6 +121,7 @@ const baseTask: Task = {
   calendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
+  backfillDismissedFields: [],
 };
 
 // June 10, 2025 10:00 AM — a Tuesday (getDay() === 2)

@@ -1,5 +1,6 @@
 import {
-  isFieldMissing, backfillCandidates, backfillFieldCounts, estimatePatchFor, BACKFILL_FIELDS,
+  isFieldMissing, isBackfillDismissed, backfillCandidates, backfillFieldCounts,
+  dismissBackfillField, estimatePatchFor, BACKFILL_FIELDS,
 } from '../utils/fieldBackfill';
 import type { Task } from '../types';
 
@@ -89,6 +90,7 @@ const baseTask: Task = {
   calendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
+  backfillDismissedFields: [],
 };
 
 describe('isFieldMissing', () => {
@@ -138,6 +140,36 @@ describe('backfillCandidates', () => {
     ];
     expect(backfillCandidates(tasks, 'estimate').map(t => t.id)).toEqual(['b', 'a']);
   });
+
+  it('excludes a task dismissed for that field, but not for another', () => {
+    const tasks: Task[] = [
+      { ...baseTask, id: 'a', backfillDismissedFields: ['estimate'] },
+      { ...baseTask, id: 'b', backfillDismissedFields: ['priority'] },
+    ];
+    expect(backfillCandidates(tasks, 'estimate').map(t => t.id)).toEqual(['b']);
+  });
+});
+
+describe('isBackfillDismissed / dismissBackfillField', () => {
+  it('is false until the field has been dismissed', () => {
+    expect(isBackfillDismissed(baseTask, 'estimate')).toBe(false);
+  });
+
+  it('dismissing appends the field id', () => {
+    const patch = dismissBackfillField(baseTask, 'estimate');
+    expect(patch.backfillDismissedFields).toEqual(['estimate']);
+    expect(isBackfillDismissed({ ...baseTask, ...patch }, 'estimate')).toBe(true);
+  });
+
+  it('preserves other dismissed fields already on the task', () => {
+    const task = { ...baseTask, backfillDismissedFields: ['priority'] };
+    expect(dismissBackfillField(task, 'estimate').backfillDismissedFields).toEqual(['priority', 'estimate']);
+  });
+
+  it('dismissing twice does not duplicate the entry', () => {
+    const task = { ...baseTask, backfillDismissedFields: ['estimate'] };
+    expect(dismissBackfillField(task, 'estimate').backfillDismissedFields).toEqual(['estimate']);
+  });
 });
 
 describe('backfillFieldCounts', () => {
@@ -156,6 +188,11 @@ describe('backfillFieldCounts', () => {
     for (const field of BACKFILL_FIELDS) {
       expect(counts[field.id]).toBe(1);
     }
+  });
+
+  it('does not count a task dismissed for that field', () => {
+    const task = { ...baseTask, backfillDismissedFields: ['estimate'] };
+    expect(backfillFieldCounts([task])).toEqual({ estimate: 0, priority: 1, category: 1 });
   });
 });
 

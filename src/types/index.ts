@@ -508,6 +508,15 @@ export interface Task {
   effort: Effort;
   estimatedMinutes: number | null; // precise time estimate; effort is the derived coarse bucket
 
+  /**
+   * Which Backfill fields (see `src/utils/fieldBackfill.ts`) this task has
+   * been told to stop asking about — "this one genuinely doesn't need a time
+   * estimate", not "not right now". Holds `BackfillFieldId` values as plain
+   * strings, since a `Task` field can't depend on a type from `src/utils`.
+   * An id the user never actually skipped just means it hasn't been asked.
+   */
+  backfillDismissedFields: string[];
+
   reminderTime: string | null; // ISO datetime for scheduled notification
   // 'alarm' rings as a native iOS system alarm (AlarmKit, iOS 26+) instead of
   // a plain notification; falls back to 'notification' wherever AlarmKit is
@@ -889,7 +898,7 @@ export interface Task {
 // source, so a series row or a template application can't inherit a count.
 // extraTaskTally is the same kind of thing — the rule (extraTaskEveryN,
 // extraTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"
