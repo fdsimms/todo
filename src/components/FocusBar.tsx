@@ -27,10 +27,10 @@ interface Props {
  * The strip on Today saying a focus session is running, and how far into the
  * current stretch it is.
  *
- * Same job `ActiveTripBanner` and `CategoryFocusBanner` do for their modes: a
- * session that's been closed back to the task list has no other affordance on
- * screen, and without this the only evidence it exists is a chime some minutes
- * later. Tapping anywhere along it reopens the session.
+ * Same job `ActiveTripBanner` does for its mode: a session that's been closed
+ * back to the task list has no other affordance on screen, and without this
+ * the only evidence it exists is a chime some minutes later. Tapping anywhere
+ * along it reopens the session.
  *
  * Renders nothing when there's no session, so Today pays no height for it the
  * rest of the time. The pause control is here as well as inside the sheet

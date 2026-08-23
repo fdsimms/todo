@@ -18,7 +18,7 @@ export type CategoryListItem =
 // What Today renders is a *superset* of what it can drag: a calendar event and
 // an uncooked meal fold into the list as `context` rows (see
 // src/utils/dayContextRows.ts), and they belong to their category for every
-// read that groups, collapses or focuses a section. They are deliberately not
+// read that groups or collapses a section. They are deliberately not
 // in `CategoryListItem`, which is the drop machinery's domain — `resolveDrop`
 // assigns a category and a sortOrder to everything it's handed, and neither
 // means anything to a row the app doesn't own. The screen filters them out
@@ -581,51 +581,6 @@ export function applyCategoryCollapse(
     }
     return true;
   });
-}
-
-/**
- * Narrow the list down to one category's rows — the opposite of
- * applyCategoryCollapse: that hides a section's content and keeps its header,
- * this hides every OTHER section entirely, header included. "Later Today" is a
- * section, not a category, so it's kept only when one of the rows under it
- * belongs to the focused category — a single forward pass, since a header's
- * fate depends on whether anything after it (before the next header) matches,
- * and a header can't know that until it sees it.
- */
-export function applyCategoryFocus(
-  items: TodayListItem[],
-  focusedCategory: string | null,
-): TodayListItem[] {
-  if (!focusedCategory) return items;
-  const matches = (item: TodayListItem): boolean => {
-    if (item.type === 'task') {
-      return (item.task.category ?? UNCATEGORIZED) === focusedCategory;
-    }
-    if (item.type === 'group') return (item.group.category ?? UNCATEGORIZED) === focusedCategory;
-    // A context row belongs to its section like anything else in it: focusing
-    // Calendar Events and getting an empty section back would read as the
-    // focus having broken, since that section's rows are the only thing in it.
-    if (item.type === 'context') return (item.row.category ?? UNCATEGORIZED) === focusedCategory;
-    return false;
-  };
-
-  const out: TodayListItem[] = [];
-  let pendingHeader: TodayListItem | null = null;
-  let headerEmitted = false;
-  for (const item of items) {
-    if (item.type === 'header') {
-      pendingHeader = item;
-      headerEmitted = false;
-      continue;
-    }
-    if (!matches(item)) continue;
-    if (pendingHeader && !headerEmitted) {
-      out.push(pendingHeader);
-      headerEmitted = true;
-    }
-    out.push(item);
-  }
-  return out;
 }
 
 /**

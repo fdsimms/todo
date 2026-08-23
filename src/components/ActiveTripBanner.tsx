@@ -27,8 +27,8 @@ interface Props {
  * gone, so a trip now shows nowhere outside these four, and this is the only
  * banner it gets on any of them.
  *
- * The same job `CategoryFocusBanner` does on Today: a mode with no other
- * visible affordance needs one thing on screen saying it's on, and one way out.
+ * The same job `FocusBar` does on Today: a mode with no other visible
+ * affordance needs one thing on screen saying it's on, and one way out.
  * That matters more here than there, because this mode is the reason grocery
  * rows have started carrying captions about other stores, and a caption whose
  * cause isn't on screen reads as the app having opinions.
