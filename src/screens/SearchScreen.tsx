@@ -17,10 +17,11 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useCategoryStore } from '../store/useCategoryStore';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
-import type { Task, TaskGroup } from '../types';
+import type { Category, Task, TaskGroup } from '../types';
 import type { SearchResult, GroupSearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch, searchGroups } from '../utils/fuzzySearch';
 import { collapseOccurrences, formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
@@ -28,6 +29,7 @@ import { displayTitleFor, groupRoster, isQuotaPartial } from '../utils/visibilit
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { tagColor } from '../utils/tagColor';
+import { categoryLabel } from '../utils/categoryLabel';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -45,10 +47,11 @@ import { format } from 'date-fns/format';
 // what's on screen while still keeping the recompute off every keystroke.
 const SEARCH_DEBOUNCE_MS = 180;
 
-function SearchResultItem({ result, onPress, onTicked, styles, colors }: {
+function SearchResultItem({ result, onPress, onTicked, categories, styles, colors }: {
   result: CollapsedOccurrence<SearchResult>;
   onPress: () => void;
   onTicked: (taskId: string) => void;
+  categories: Category[];
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
@@ -65,6 +68,7 @@ function SearchResultItem({ result, onPress, onTicked, styles, colors }: {
 
   const displayTitle = displayTitleFor(task);
   const answer = formatTaskDeliverable(task);
+  const category = categoryLabel(task.category, categories);
   // What this row stands for besides itself, when it's one date of a repeat
   // (see collapseOccurrences). Null on an ordinary one-off, which is most rows.
   const countLabel = formatOccurrenceCount(occurrenceCount);
@@ -72,6 +76,7 @@ function SearchResultItem({ result, onPress, onTicked, styles, colors }: {
   const a11yLabel = [
     displayTitle,
     projectName ? `in ${projectName}` : null,
+    task.category ? `in ${task.category}` : null,
     task.archived ? 'archived' : null,
     isCompleted
       ? partial
@@ -134,6 +139,13 @@ function SearchResultItem({ result, onPress, onTicked, styles, colors }: {
                 numberOfLines={1}
               />
             </View>
+          )}
+          {/* Plain text with its emoji rather than a chip of its own: the
+              project-chip-then-category pairing NewTasksBanner already uses.
+              A title can be too generic to place on its own ("Follow up"),
+              and a task with no project has only this to say where it lives. */}
+          {category !== '' && (
+            <Text style={styles.metaText} numberOfLines={1}>{category}</Text>
           )}
           {task.tags.slice(0, 3).map(tag => (
             <View key={tag} style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
@@ -244,6 +256,7 @@ export function SearchScreen() {
   const tasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(s => s.projects);
   const groups = useTaskGroupStore(s => s.groups);
+  const categories = useCategoryStore(s => s.categories);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -432,6 +445,7 @@ export function SearchScreen() {
         result={item.result}
         onPress={() => openTask(item.result.task)}
         onTicked={hold}
+        categories={categories}
         styles={styles}
         colors={colors}
       />

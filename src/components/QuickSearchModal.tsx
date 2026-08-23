@@ -9,15 +9,18 @@ import {
   StyleSheet,
   Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import { HighlightedText } from './HighlightedText';
 import { SearchField } from './SearchField';
 import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useCategoryStore } from '../store/useCategoryStore';
+import { categoryLabel } from '../utils/categoryLabel';
 import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
 import type { SearchResult } from '../utils/fuzzySearch';
 import { formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
@@ -56,22 +59,30 @@ interface Props {
  * "Choose breakfast" highlighted the "st", five characters along from where
  * the match was.
  *
- * The date is here for the same reason and against the card's own rule below:
- * a generated task exists once per day, so a search for one matches a stack of
- * rows with the same title, and a card that shows five of them is showing one
- * task five times with nothing to tell them apart. `collapseOccurrences` folds
- * those into a single row, and this line is where that row says which
- * occurrence it is and how many it stands for. Undated one-off results with
- * nothing to count render the single line they always did.
+ * The meta line under it is here against the card's own rule below, and earns
+ * it twice over. A generated task exists once per day, so a search for one
+ * matches a stack of rows with the same title: a card showing five of them is
+ * showing one task five times. `collapseOccurrences` folds those into a single
+ * row, and the **date** is how that row says which occurrence it is and how
+ * many it stands for. The **project and category** answer the other half — a
+ * title alone is often too generic to place ("Choose breakfast", "Follow up",
+ * "Order more"), and which of the two answers it varies by task, so neither
+ * one is the one that gets dropped when the other is present.
+ *
+ * A result with no project, no category, no date and nothing to count renders
+ * the single line it always did — most one-off searches look unchanged.
  */
-function QuickSearchRow({ result, onSelect, onTicked, styles }: {
+function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
   result: CollapsedOccurrence<SearchResult>;
   onSelect: (task: Task) => void;
   onTicked: (taskId: string) => void;
   styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
 }) {
-  const { task, titleMatches, occurrenceCount } = result;
+  const { task, titleMatches, projectName, projectMatches, occurrenceCount } = result;
+  const categories = useCategoryStore(s => s.categories);
   const displayTitle = displayTitleFor(task);
+  const category = categoryLabel(task.category, categories);
 
   // A completed row is placed by when it was done; a live one by the date it
   // sits on (formatTaskDate reads the defer/due rule, so the label can't name a
@@ -80,6 +91,37 @@ function QuickSearchRow({ result, onSelect, onTicked, styles }: {
     ? task.completedAt ? `Done ${format(new Date(task.completedAt), 'MMM d')}` : 'Done'
     : formatTaskDate(task);
   const countLabel = formatOccurrenceCount(occurrenceCount);
+
+  // Built as a list so the dots between the parts can be interleaved rather
+  // than each part having to know what's beside it. A generic-sounding title
+  // ("Choose breakfast", "Follow up") is the case this line exists for, and
+  // which of the three facts answers it varies by task, so none of them can be
+  // the one that's dropped when another is present. The project and the
+  // category shrink and truncate; the date doesn't, since a truncated date
+  // says nothing and it's the part that tells one occurrence from another.
+  const meta: React.ReactNode[] = [];
+  if (projectName) {
+    meta.push(
+      <View style={styles.projectChip}>
+        <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+        {/* Highlighted like the title: a result can match on its project's
+            name alone, and the row should say why it's in the list. */}
+        <HighlightedText
+          text={projectName}
+          ranges={projectMatches}
+          style={styles.projectText}
+          highlightStyle={styles.metaHighlight}
+          numberOfLines={1}
+        />
+      </View>
+    );
+  }
+  if (category) {
+    // Plain text with its emoji, no icon — the pairing NewTasksBanner and the
+    // Search screen's rows already use for a category beside a project chip.
+    meta.push(<Text style={styles.categoryText} numberOfLines={1}>{category}</Text>);
+  }
+  if (dateLabel) meta.push(<Text style={styles.dateText}>{dateLabel}</Text>);
 
   return (
     // A plain View holding two touchables, not one touchable wrapping the
@@ -99,6 +141,8 @@ function QuickSearchRow({ result, onSelect, onTicked, styles }: {
         accessibilityRole="button"
         accessibilityLabel={[
           displayTitle,
+          projectName ? `in ${projectName}` : null,
+          task.category ? `in ${task.category}` : null,
           task.archived ? 'archived' : null,
           task.completed ? 'completed' : null,
           dateLabel,
@@ -116,9 +160,14 @@ function QuickSearchRow({ result, onSelect, onTicked, styles }: {
           />
           {task.archived && <Text style={styles.archivedLabel}>Archived</Text>}
         </View>
-        {(dateLabel || countLabel) && (
+        {meta.length > 0 && (
           <View style={styles.resultMeta}>
-            {dateLabel && <Text style={styles.metaText}>{dateLabel}</Text>}
+            {meta.map((node, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && <Text style={styles.metaDot}>·</Text>}
+                {node}
+              </React.Fragment>
+            ))}
             {countLabel && (
               <View style={styles.countPill}>
                 <Text style={styles.countText}>{countLabel}</Text>
@@ -138,8 +187,8 @@ function QuickSearchRow({ result, onSelect, onTicked, styles }: {
  * Deliberately a *narrower* thing than the Search tab rather than a smaller
  * copy of it. The Search screen's rows carry tags, a notes preview and a
  * project chip and split into Active/Completed sections; this carries none of
- * that, and only the one meta line a row needs to be told apart from its own
- * other occurrences (see QuickSearchRow). Anything the cap can't answer goes
+ * that, and only the one meta line a row needs to be placed and told apart
+ * from its own other occurrences (see QuickSearchRow). Anything the cap can't answer goes
  * to the footer row, which is why there's no scrolling here — a card you have
  * to scroll isn't quick.
  */
@@ -275,6 +324,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
                   onSelect={handleSelect}
                   onTicked={hold}
                   styles={styles}
+                  colors={colors}
                 />
               ))}
             </View>
@@ -340,9 +390,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   resultMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   metaText: { color: colors.textSecondary, fontSize: font.xs },
+  metaHighlight: { color: colors.accent, fontWeight: fontWeight.semibold },
+  // Dots rather than the Search screen's bare gaps: that row separates its
+  // parts with an icon, coloured tag dots and a "Due" prefix, and this one has
+  // none of those, so "Home Friday" would read as one phrase.
+  metaDot: { color: colors.textTertiary, fontSize: font.xs },
+  projectChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 1,
+  },
+  // flexShrink on the Text itself, not just on the chip around it: RN defaults
+  // a Text to flexShrink 0, so a chip that can shrink holding a text that
+  // can't just pushes the date off the end of the row instead of truncating.
+  projectText: { color: colors.textSecondary, fontSize: font.xs, flexShrink: 1 },
+  categoryText: { color: colors.textSecondary, fontSize: font.xs, flexShrink: 1 },
+  dateText: { color: colors.textSecondary, fontSize: font.xs, flexShrink: 0 },
   // Enclosed rather than loose in the meta row: "4 more dates" beside a date
   // reads as part of the date otherwise, and the count is a fact about the
   // row rather than about the day it names.
