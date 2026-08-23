@@ -3809,6 +3809,47 @@ describe('addManyToPantry', () => {
     expect(useGroceryStore.getState().itemById(bread.id)!.preferredProductId).toBe(chosen.id);
   });
 
+  // The source's own category, same map as the box — see BarcodeScanSheet's
+  // aisle read and GroceryScreen.handleScanApply's own restraint. Named so the
+  // offline lexicon can't already guess it, unlike "Chips" (-> Snacks): this
+  // has to prove the scanned aisle landed, not that aisleForName agrees with it.
+  it('files a newly minted row under the scanned aisle', () => {
+    seed([]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Qorvexx Puffs'],
+      undefined,
+      new Map([['Qorvexx Puffs', { brand: null, variant: null, aisle: 'Snacks' }]])
+    );
+
+    expect(useGroceryStore.getState().items.find(i => i.name === 'Qorvexx Puffs')!.aisle).toBe('Snacks');
+  });
+
+  it('never moves a row it merely found to the scanned aisle', () => {
+    const chips = makeItem({ name: 'Chips', aisle: 'Pantry', inCatalog: true });
+    seed([chips]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Chips'],
+      undefined,
+      new Map([['Chips', { brand: null, variant: null, aisle: 'Snacks' }]])
+    );
+
+    expect(useGroceryStore.getState().itemById(chips.id)!.aisle).toBe('Pantry');
+  });
+
+  it('lets a remembered correction for the name outrank the scanned aisle', () => {
+    seed([], { aisleOverrides: { chips: 'Household' } });
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Chips'],
+      undefined,
+      new Map([['Chips', { brand: null, variant: null, aisle: 'Snacks' }]])
+    );
+
+    expect(useGroceryStore.getState().items.find(i => i.name === 'Chips')!.aisle).toBe('Household');
+  });
+
   // What a receipt read on the Pantry screen hands over, keyed by the same raw
   // name the box and the freezer flag already are. See KitchenScreen's
   // handleReceiptApply.

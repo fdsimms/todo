@@ -11,6 +11,7 @@ import {
 import { generateId } from '../utils/id';
 import {
   cleanLeftoverTitle,
+  isLiveLeftover,
   keepDaysBetween,
   keepUntilKeyFor,
   leftoverPurgeCutoff,
@@ -107,6 +108,26 @@ interface LeftoverStore {
    * one for.
    */
   setFrozen: (id: string, frozen: boolean) => void;
+
+  /**
+   * Splits a live container in two — one copy staying exactly where it is, a
+   * second logged on the opposite side of the fridge/freezer line. What
+   * `setFrozen` can't do on its own: it moves the one row you have, so
+   * freezing half a pot logged to the fridge on Sunday meant deleting it and
+   * re-logging as "Both", losing the days it had already spent there.
+   *
+   * The new row shares `title`, `recipeId` and `sourceEntryId` with the
+   * original — same dish, same cooking — and its `storedAt` is the
+   * *original's* `storedAt`, not now: the food is that old regardless of which
+   * half of it this row is. Built through `logLeftover` so a split row is
+   * indistinguishable from one the "Both" log flow would have written.
+   *
+   * The original is left untouched. No merge-back: finishing one and editing
+   * the other already says the same thing a merge would.
+   *
+   * Null when there's no such live container to split.
+   */
+  splitLeftover: (id: string) => Leftover | null;
 
   /**
    * Closes the row out — the explicit action that is deliberately *not* implied
@@ -302,6 +323,22 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     // Freezing drops a use-up task that needsAttention no longer wants;
     // thawing spawns one if the restarted window lands inside the threshold.
     reconcileLeftoverTask(updated);
+  },
+
+  splitLeftover(id) {
+    const leftover = get().leftovers.find(l => l.id === id);
+    if (!leftover || !isLiveLeftover(leftover)) return null;
+    return get().logLeftover({
+      title: leftover.title,
+      recipeId: leftover.recipeId,
+      sourceEntryId: leftover.sourceEntryId,
+      // The original's own put-away instant, not now — see this action's own
+      // doc comment on the store interface.
+      storedAt: leftover.storedAt,
+      keepDays: keepDaysBetween(leftover.storedAt, leftover.keepUntil),
+      // The opposite side from where the original already is.
+      frozen: !leftover.frozenAt,
+    });
   },
 
   finishLeftover(id, outcome) {

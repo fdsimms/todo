@@ -1,4 +1,4 @@
 {
-  "message": "Importing a recipe now captures what it makes even when that isn't a serving count, like \"2 loaves\" or \"3 cups\" — it used to be read off the page and then dropped",
+  "message": "Importing a recipe now captures what it makes even when that isn't a serving count, like \"2 loaves\" or \"3 cups\", instead of reading it off the page and then dropping it",
   "date": "2026-08-23"
 }
