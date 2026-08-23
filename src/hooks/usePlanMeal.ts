@@ -46,32 +46,55 @@ export function usePlanMeal() {
    * native alert, and presenting one from underneath a live `Modal` is the
    * "already presenting" case that cost RecipePickerSheet its prep-task offer
    * (see that file's `pick`).
+   *
+   * `onDone`, when given, fires once this entry's offer is fully resolved —
+   * shown and answered, or skipped outright because there was nothing to ask.
+   * Only `offerPrepTasksForEach` passes one; a single-entry caller has nothing
+   * to chain onto and can leave it off.
    */
-  const offerPrepTasks = useCallback((entry: MealPlanEntry) => {
+  const offerPrepTasks = useCallback((entry: MealPlanEntry, onDone?: () => void) => {
     const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
-    if (!recipe) return;
+    if (!recipe) { onDone?.(); return; }
     // A freshly planned entry has never had a choice made against it, so this
     // resolves to the defaults — same as leaving `resolution` off.
     const drafts = prepTaskDraftsForMeal(
       recipe, recipesById, dayKeyToDate(entry.date), { chosen: entry.recipeChoices }
     );
-    if (drafts.length === 0) return;
+    if (drafts.length === 0) { onDone?.(); return; }
     const one = drafts.length === 1;
     Alert.alert(
       'Add prep tasks?',
       `${recipe.name} has ${drafts.length} prep step${one ? '' : 's'}. Add ${one ? 'it' : 'them'} to your tasks?`,
       [
-        { text: 'Not now', style: 'cancel' },
+        { text: 'Not now', style: 'cancel', onPress: onDone },
         {
           text: 'Add',
           onPress: () => {
             drafts.forEach(({ title, dueDate, reminderTime }) => addTask({ title, dueDate, reminderTime }));
             haptics.success();
+            onDone?.();
           },
         },
       ]
     );
   }, [recipesById, addTask]);
+
+  /**
+   * The same offer, over a batch planned in one sitting — RecipePickerSheet's
+   * multi-pick session (#1384) is the one caller today. A native alert can't
+   * stack on top of another one, so each entry's offer only opens once the
+   * one before it (shown and answered, or skipped) is out of the way, chained
+   * through `offerPrepTasks`'s own `onDone`.
+   */
+  const offerPrepTasksForEach = useCallback((entries: readonly MealPlanEntry[]) => {
+    const queue = [...entries];
+    const next = () => {
+      const entry = queue.shift();
+      if (!entry) return;
+      offerPrepTasks(entry, next);
+    };
+    next();
+  }, [offerPrepTasks]);
 
   /**
    * Puts a recipe on a night. Returns the entry, or null if the store refused
@@ -87,5 +110,5 @@ export function usePlanMeal() {
     [planMeal]
   );
 
-  return { planRecipe, offerPrepTasks };
+  return { planRecipe, offerPrepTasks, offerPrepTasksForEach };
 }

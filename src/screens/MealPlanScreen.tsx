@@ -371,7 +371,7 @@ export function MealPlanScreen() {
   // this screen, the recipe detail screen, a recipe row and the Cook again
   // shelf. `planRecipe` is unused here: this screen plans free text and
   // leftovers too, so it calls planMeal directly and only shares the offer.
-  const { offerPrepTasks } = usePlanMeal();
+  const { offerPrepTasks, offerPrepTasksForEach } = usePlanMeal();
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   // "Always use oat milk for milk", applied to every read here that shops or
@@ -823,22 +823,22 @@ export function MealPlanScreen() {
     setAnchor(a => addWeeks(a, delta));
   }, [selectionMode, exitSelection]);
 
-  // A pick arrives *after* the sheet has closed itself — see
-  // RecipePickerSheet.pick, which dismisses first so the prep-task alert below
-  // isn't raised from underneath a live Modal. `planningDay` has been cleared
-  // by then, which is why the day rides along on the pick rather than being
-  // read back off screen state here.
-  const pick = (pickResult: MealPick) => {
-    if (!pickResult.date) return;
+  // RecipePickerSheet writes each pick immediately now, possibly more than
+  // once in a session (#1384) — this is its `onPlan`, called while the sheet
+  // is still open, so it must not do anything that could raise a native
+  // alert (see usePlanMeal.offerPrepTasks). The batched offer for everything
+  // picked this session runs from `onPlanned` below instead, once the sheet
+  // has actually closed.
+  const planFromPicker = (pickResult: MealPick) => {
+    if (!pickResult.date) return null;
     animateLayout();
-    const entry = planMeal({
+    return planMeal({
       date: pickResult.date,
       slot: pickResult.slot,
       recipeId: pickResult.recipeId,
       leftoverId: pickResult.leftoverId,
       title: pickResult.title,
     });
-    if (entry) offerPrepTasks(entry);
   };
 
   // Components' prep steps come along with their ingredients — "boil the
@@ -1872,7 +1872,8 @@ export function MealPlanScreen() {
         // planningSlot carries.
         defaultSlot="dinner"
         forceSlot={planningSlot}
-        onPick={pick}
+        onPlan={planFromPicker}
+        onPlanned={offerPrepTasksForEach}
         onClose={() => {
           setPlanningDay(null);
           setPlanningSlot(null);
