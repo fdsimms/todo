@@ -245,9 +245,9 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   has foreign keys off, so `ON DELETE CASCADE` would silently do nothing — same reason
   `dbBulkDeleteTasks` walks `parent_id` itself. Readers are resolve-or-shrug anyway
   (`shopsForItem` drops a link whose shop is gone), like every other cross-row pointer here.
-- **Manage stores in the setup sheet, browse them in Buy again.** The Stores tab of
+- **Manage stores in the setup sheet, browse them in the catalog.** The Stores tab of
   `GroceryAislesSheet` is add/rename/reorder/delete only; the "what does Costco carry" read is the
-  filter chip row in `BuyAgainSheet`, because that's the catalog browser and it's open exactly
+  filter chip row in `GroceryCatalogSheet`, because that's the catalog browser and it's open exactly
   when you're deciding what to buy where. **There is still no store chip on the shopping list
   rows** — the row is already dense, and a chip on every row is a column you can't act on. What
   a row can now carry is one quiet caption, and only while a trip is running: see below.
@@ -424,7 +424,7 @@ gesture onto it — that's the inventory again.
 - **The one write is `addToPantry`**, off the field at the top, and it writes the same assertion
   the item sheet's "Got it" pill writes (`defaultOnHandUntil`) on the same catalog row. It exists
   because that correction was *unreachable* for anything with no row yet — an item sheet opens
-  from the list or from Buy again, so "I have flour" was unsayable until flour had been bought
+  from the list or from the catalog, so "I have flour" was unsayable until flour had been bought
   through the app once. One bit, the one the pills already own; the things it deliberately doesn't
   record are how much and until when.
 - **It never touches `onList`.** Saying you have something is not a plan to buy it. It promotes
@@ -468,7 +468,7 @@ gesture onto it — that's the inventory again.
 - **`GroceryItemSheet` and `LeftoverSheet` render as plain sibling `Modal`s under the screen**,
   the same way `GroceryScreen` renders its own item sheet — there's no outer `Modal` to nest inside
   of any more now that the kitchen is a screen rather than a sheet, so the nesting `KitchenSheet`
-  needed (and `BuyAgainSheet` still needs, being itself a `Modal`) doesn't apply here. Correcting a
+  needed (and `GroceryCatalogSheet` still needs, being itself a `Modal`) doesn't apply here. Correcting a
   row still drops you back into the list you were reading, because the screen underneath was never
   unmounted to begin with.
 

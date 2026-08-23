@@ -271,7 +271,7 @@ exports.
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
-| grocery autocomplete, Buy again ranking | `src/utils/grocerySuggest.ts` |
+| grocery autocomplete, catalog ranking | `src/utils/grocerySuggest.ts` |
 | which bread — brands, variants, and rating them | `src/utils/groceryProduct.ts` (`ItemProduct`) — see `docs/arch/groceries.md` |
 | which store an item comes from | `src/utils/groceryShops.ts` — see `docs/arch/groceries.md` |
 | the store you're shopping at right now | `src/utils/activeTrip.ts` — see `docs/arch/groceries.md` |

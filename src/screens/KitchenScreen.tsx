@@ -109,7 +109,7 @@ import { resetToGroceries } from '../navigation/navigationRef';
  * header — the same one-bit assertion the item sheet's "Got it" pill writes,
  * one name or a whole session at a time. They exist because that correction
  * was unreachable for anything with no row yet: you can only open an item's
- * sheet from the list or from Buy again, so "I have flour" was unsayable until
+ * sheet from the list or from the catalog, so "I have flour" was unsayable until
  * flour had been bought through the app at least once. All of them add to the
  * pantry and never to the fridge; a container is something you cooked, which
  * is what `LeftoverSheet`'s log flow is for. Both scan sheets are shared with

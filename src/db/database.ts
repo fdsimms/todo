@@ -483,7 +483,7 @@ export function initDatabase(): void {
     // -store guarantee belongs in SQLite, not in a store method a future call
     // site could go around.
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_grocery_shops_name_key ON grocery_shops(name_key)',
-    // The store → items read (the Buy again filter). item → shops needs no
+    // The store → items read (the catalog's store filter). item → shops needs no
     // index: it's the leading column of the primary key.
     'CREATE INDEX IF NOT EXISTS idx_grocery_item_shops_shop ON grocery_item_shops(shop_id)',
     // The reverse read — "what is this item a substitute *for*" — which the
@@ -2418,7 +2418,7 @@ export function dbDeleteGroceryItem(id: string): void {
  *
  * This is an UPDATE and never a DELETE, and the reason isn't only that the
  * catalog is the feature. purchase_count/last_purchased_at *are* the ranking
- * signal behind autocomplete and Buy again — delete the row and the eleventh
+ * signal behind autocomplete and the catalog ranking — delete the row and the eleventh
  * milk ranks like the typo you made once.
  *
  * `shopId` is optional and null is a real answer, not a missing one: a trip

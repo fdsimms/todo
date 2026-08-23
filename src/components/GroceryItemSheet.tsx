@@ -1651,7 +1651,7 @@ export function GroceryItemSheet({
       </View>
 
       {/* Rendered inside this Modal rather than beside it, for the reason
-          BuyAgainSheet nests this sheet: a Modal presents from the view
+          GroceryCatalogSheet nests this sheet: a Modal presents from the view
           controller its React parent belongs to, so a sibling would be asking
           the screen's controller to present a second sheet while this one is
           already up. */}
