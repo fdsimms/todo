@@ -102,7 +102,10 @@ const defaultExpandedSections = (): Set<PlanCategory> => new Set<PlanCategory>([
  * Two row actions, shared with AddWeekToListSheet and documented here because
  * this is where they were written:
  *
- * - **"Already have it"** on every needToBuy row. Unticking a row only skips
+ * - **"In pantry"** on every needToBuy row. It says the app's own word for
+ *   where the line ends up rather than the longer "Already have it" it
+ *   shipped as: the button is on every row now, and the label was costing a
+ *   long ingredient name the width it needed to be read at all. Unticking a row only skips
  *   it for this add — the pantry guess forgets nothing was said. Stamping the
  *   on-hand window (the same write GroceryItemSheet's "Got it" makes) is what
  *   actually keeps that ingredient from being offered again next time, which
@@ -585,9 +588,9 @@ export function RecipeToListSheet({
                                   activeOpacity={interaction.activeOpacity}
                                   onPress={() => markAlreadyHave(row)}
                                   accessibilityRole="button"
-                                  accessibilityLabel={`Already have ${row.name}, skip it and remember it for next time`}
+                                  accessibilityLabel={`${row.name} is in the pantry, skip it and remember it for next time`}
                                 >
-                                  <Text style={styles.haveButtonText}>Already have it</Text>
+                                  <Text style={styles.haveButtonText}>In pantry</Text>
                                 </TouchableOpacity>
                               )}
                             </View>

@@ -72,7 +72,7 @@ const defaultExpandedSections = (): Set<PlanCategory> => new Set<PlanCategory>([
  * this trip.
  *
  * The row actions are RecipeToListSheet's, and they mean the same thing here:
- * "Already have it" stamps the on-hand window through `addToPantry` (minting
+ * "In pantry" stamps the on-hand window through `addToPantry` (minting
  * the catalog row when a week's recipes name something the app has never
  * seen), and the substitutes marker opens SubstituteSheet on the lines you've
  * recorded a stand-in for. A week's shop is where both matter most — it's the
@@ -363,9 +363,9 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
                                   activeOpacity={interaction.activeOpacity}
                                   onPress={() => markAlreadyHave(row)}
                                   accessibilityRole="button"
-                                  accessibilityLabel={`Already have ${row.name}, skip it and remember it for next time`}
+                                  accessibilityLabel={`${row.name} is in the pantry, skip it and remember it for next time`}
                                 >
-                                  <Text style={styles.haveButtonText}>Already have it</Text>
+                                  <Text style={styles.haveButtonText}>In pantry</Text>
                                 </TouchableOpacity>
                               )}
                             </View>
