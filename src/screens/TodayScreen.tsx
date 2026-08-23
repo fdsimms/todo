@@ -48,6 +48,7 @@ import {
   laterTodaySections as computeLaterTodaySections,
   applyCategoryCollapse as applyCategoryCollapseTo,
   sectionTaskIds as computeSectionTaskIds,
+  sectionTasksByLabel,
   findTaskJumpTarget,
   type LaterListItem,
   type CategoryListItem,
@@ -261,7 +262,7 @@ function SectionHeader({
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
-      accessibilityHint={onLongPress ? `Double tap and hold to ${allPinned ? 'unpin' : 'pin'} every task in ${label}` : undefined}
+      accessibilityHint={onLongPress ? `Double tap and hold to ${allPinned ? 'unpin' : 'pin'} the tasks shown under ${label}` : undefined}
     >
       <View style={styles.categorySectionHeaderLeft}>
         {allPinned && <PinIcon filled size={13} color={colors.orange} />}
@@ -513,8 +514,6 @@ export function TodayScreen() {
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const updateTask = useTaskStore(s => s.updateTask);
   const clearAllPins = useTaskStore(s => s.clearAllPins);
-  const pinCategory = useTaskStore(s => s.pinCategory);
-  const tasksByCategory = useTaskStore(s => s.tasksByCategory);
   const reorderPinnedTasks = useTaskStore(s => s.reorderPinnedTasks);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
   const reorderWithCategoryUpdates = useTaskStore(s => s.reorderWithCategoryUpdates);
@@ -990,23 +989,34 @@ export function TodayScreen() {
   };
 
   /**
-   * Long-press a category header to pin every task in it at once — the same
-   * toggle CategoryDetailScreen's header button runs, reachable here without
-   * leaving Today. Pins the category unless every task in it is already
-   * pinned, in which case it unpins them; see pinCategory. A header can exist
-   * for a category holding only calendar-event context rows (see the `data`
-   * memo above), so this still checks for live tasks the way
-   * CategoryDetailScreen's own handlePinCategory does.
+   * Long-press a category header to pin its section in one go. Pins unless
+   * every row under the header is already pinned, in which case it unpins
+   * them — the same mixed-selection rule the bulk bar's pin uses, which is
+   * why this goes through bulkTogglePin rather than the store's pinCategory.
+   *
+   * The scope is the section as rendered (see sectionTasksByLabel), not the
+   * category: a header speaks for the rows beneath it, and Today's sections
+   * hold today's work. pinCategory reaches every live task filed under the
+   * category, so a long-press here used to pin things dated weeks out as
+   * well, and because pinnedTasks() ignores visibility on purpose (see the
+   * Pinning note in CLAUDE.md) each of them landed in the Pinned block and
+   * stayed. CategoryDetailScreen's own button keeps pinCategory: it sits
+   * above a list of exactly the tasks it pins.
+   *
+   * A header can exist for a category holding only calendar-event context
+   * rows (see the `data` memo below), which is why an empty section is still
+   * checked for.
    */
   const handlePinCategory = (label: string) => {
     if (expandedTaskId !== null) {
       setExpandedTaskId(null);
       return;
     }
-    if (tasksByCategory(label).length === 0) return;
+    const sectionTasks = sectionTasksByCategory.get(label) ?? NO_GROUP_CHILDREN;
+    if (sectionTasks.length === 0) return;
     haptics.tap();
     animateLayout();
-    pinCategory(label);
+    bulkTogglePin(sectionTasks.map(t => t.id));
   };
 
   // Sort & filter state. Persisted, like hideCategories below — the three are
@@ -1549,6 +1559,12 @@ export function TodayScreen() {
     // at all — makeCategoryGroups only knows about tasks and stacks.
     return insertContextRows(grouped, contextRows, { categoryOrder: allCategories });
   }, [filtered, allCategories, visibleGroupItems, sort, contextRows]);
+
+  // The rows under each category header, for the header's own pin toggle and
+  // the pin glyph that reports its state. Built from `listItems` rather than
+  // `data` — before collapse and hideCategories run — so a collapsed header
+  // still pins the section it has folded away.
+  const sectionTasksByCategory = useMemo(() => sectionTasksByLabel(listItems), [listItems]);
 
   // Whether anything other than the pinned block is on screen.
   const restVisible = !othersHidden;
@@ -2141,7 +2157,7 @@ export function TodayScreen() {
       // via the list wrapper's onTouchEnd.)
       const isCategory = item.label !== LATER_TODAY_LABEL;
       const sectionIds = sectionTaskIds.get(item.label) ?? NO_SECTION_TASKS;
-      const categoryTasks = isCategory ? tasksByCategory(item.label) : NO_GROUP_CHILDREN;
+      const categoryTasks = isCategory ? sectionTasksByCategory.get(item.label) ?? NO_GROUP_CHILDREN : NO_GROUP_CHILDREN;
       const allPinned = categoryTasks.length > 0 && categoryTasks.every(t => t.pinned);
       return (
         <CompletionCollapse taskIds={sectionIds}>

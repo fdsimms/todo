@@ -691,6 +691,45 @@ export function sectionTaskIds(items: TodayListItem[]): Map<string, string[]> {
 }
 
 /**
+ * The tasks sitting under each category header, keyed by the header's label.
+ *
+ * This is the scope of anything a header does to its own section — today, the
+ * pin toggle on its long-press. Read the category out of the store instead and
+ * the answer is every live task filed under it, dated weeks out included; since
+ * `pinnedTasks()` ignores visibility on purpose (see the Pinning note in
+ * CLAUDE.md), each of those then arrives in the Pinned block and stays there.
+ * A header can only speak for the rows beneath it.
+ *
+ * A stack's children count towards the header its *tray* sits under, which is
+ * `group.category` and need not be the children's own — the tray is the row on
+ * screen, so that's the section they're in. Context rows (a calendar event, an
+ * uncooked meal) aren't tasks and are skipped; a category holding nothing else
+ * maps to an empty array, which is how a header with nothing to pin says so.
+ *
+ * Resolve this against the list BEFORE the collapse filters are applied: a
+ * collapsed header still speaks for the rows it has folded away.
+ *
+ * Not to be confused with `sectionTaskIds` above, which answers a different
+ * question (what has to finish for this header to leave) and deliberately
+ * abandons a section the moment it hits a stack.
+ */
+export function sectionTasksByLabel(items: TodayListItem[]): Map<string, Task[]> {
+  const sections = new Map<string, Task[]>();
+  let label: string | null = null;
+  for (const item of items) {
+    if (item.type === 'header') {
+      label = item.label;
+      if (!sections.has(label)) sections.set(label, []);
+      continue;
+    }
+    if (label === null) continue;
+    if (item.type === 'task') sections.get(label)!.push(item.task);
+    else if (item.type === 'group') sections.get(label)!.push(...item.children);
+  }
+  return sections;
+}
+
+/**
  * Where a task's row sits in a Today list, for scrolling to it from something
  * outside the list (the new-todos banner).
  *
