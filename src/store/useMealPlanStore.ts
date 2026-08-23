@@ -908,11 +908,17 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     ids.forEach(dropCookTask);
     ids.forEach(dropMealEvent);
     ids.forEach(id => dbDeleteMealPlanEntry(id));
-    vacated.forEach(e => reconcileMealSlot(get, e));
     // lastAction: null — see the doc comment. The delete registers no undo of
     // its own *and* takes the slot away from whatever was in it, so a shake
     // after this can't offer an unrelated action the user has moved on from.
     set(s => ({ entries: s.entries.filter(e => !idSet.has(e.id)), lastAction: null }));
+    // After the delete, never before: reconcileMealSlot reads the slot's
+    // current contents off this same `entries` array, and a reconcile run
+    // before the filter above still sees the just-removed meal as planned —
+    // so the live task never reverts to "Choose dinner". Same ordering
+    // removeEntry and copyWeek's undo already keep; this was the one path
+    // that had it backwards.
+    vacated.forEach(e => reconcileMealSlot(get, e));
   },
 
   bulkMoveEntries(ids, to) {

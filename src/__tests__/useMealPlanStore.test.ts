@@ -1153,6 +1153,32 @@ describe('bulkDeleteEntries', () => {
 
     expect(useMealPlanStore.getState().lastAction).toBeNull();
   });
+
+  // Regression: reconcileMealSlot used to run before the `entries` array had
+  // the removed rows filtered out of it, so it read the slot as still planned
+  // and left the live task saying "Cook X" forever — the same bug removeEntry
+  // and copyWeek's undo already avoided by reconciling after the state write.
+  it('puts the choosing back on the slot the removed meal vacated', () => {
+    loadWeek();
+    mockTaskState.addTask({
+      ...mealSlotTaskDraft('2026-08-05', 'dinner', null, 'Meal Plan'),
+    } as Partial<Task>);
+    const meal = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragu',
+    })!;
+    const slotTaskFor = (dayKey: string, slot: MealSlot) =>
+      mockTaskState.tasks.find(
+        (t: Task) => t.generatedSourceId === mealSlotSourceId(dayKey, slot) && !t.completed
+      );
+    expect(slotTaskFor('2026-08-05', 'dinner')!.title).toBe('Ragu');
+
+    useMealPlanStore.getState().bulkDeleteEntries([meal.id]);
+
+    const task = slotTaskFor('2026-08-05', 'dinner')!;
+    expect(task.title).toBe('Dinner');
+    expect(task.chainItems.map((c: { title: string }) => c.title))
+      .toEqual(['Choose dinner', 'Prepare dinner', 'Eat dinner']);
+  });
 });
 
 describe('bulkMoveEntries', () => {
