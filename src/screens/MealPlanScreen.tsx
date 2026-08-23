@@ -943,22 +943,11 @@ export function MealPlanScreen() {
       );
     }
 
-    // The "was that the last of it?" ask belongs here, not at plan time —
-    // the meal has actually been eaten now. Only asked once: a leftover
-    // that's already finished (or was never live) has nothing to ask about.
-    if (entry.leftoverId) {
-      const leftover = leftovers.find(l => l.id === entry.leftoverId);
-      if (leftover && isLiveLeftover(leftover)) {
-        Alert.alert(
-          'Finished the leftovers?',
-          `Was that the last of the ${leftover.title}?`,
-          [
-            { text: 'Still some left', style: 'cancel' },
-            { text: 'Finished it', onPress: () => finishLeftover(leftover.id, 'eaten') },
-          ]
-        );
-      }
-    }
+    // The "was that the last of it?" ask used to be raised here, but it's
+    // asked from useTaskStore.completeTask now — setEntryCooked above ticks
+    // the paired task the same way setCookedPaired does, so a leftover-backed
+    // entry ticked from this row already gets the ask via
+    // FinishLeftoverPrompt without doing it a second time.
 
     // Stored for any cooked recipe, and *not* gated on the count being above
     // zero right now — the banner renders nothing at 0 either way (see

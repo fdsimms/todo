@@ -35,6 +35,7 @@ import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
 import { UndoBar } from '../components/UndoBar';
 import { UseUpResolveSheet } from '../components/UseUpResolveSheet';
+import { FinishLeftoverPrompt } from '../components/FinishLeftoverPrompt';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
@@ -393,6 +394,11 @@ export default function AppNavigator() {
           the app is in for a few seconds, not a screen — see UndoBar's own
           doc comment for why it belongs beside DemoBanner. */}
       <UndoBar />
+      {/* Same placement again, and for the same "not tied to a screen" reason
+          UseUpResolveSheet is inside NavigationContainer — this one doesn't
+          need to be, since it renders nothing and touches no navigation
+          hooks. See its own doc comment. */}
+      <FinishLeftoverPrompt />
     </>
   );
 }

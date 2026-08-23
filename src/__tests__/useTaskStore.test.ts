@@ -37,6 +37,7 @@ import {
   dbMarkTaskSeen,
   dbTransaction,
   dbGetMealPlanEntries,
+  dbGetMealPlanEntry,
 } from '../db/database';
 import {
   scheduleTaskReminder,
@@ -126,6 +127,11 @@ jest.mock('../db/database', () => ({
   dbGetMealPlanAddedToList: jest.fn().mockReturnValue({}),
   // Read directly by checkMealPlanNudge, not through useMealPlanStore.
   dbGetMealPlanEntries: jest.fn().mockReturnValue([]),
+  // Read directly by the leftover-finish ask below, same reason.
+  dbGetMealPlanEntry: jest.fn().mockReturnValue(null),
+  // Written by useMealPlanStore.setCooked, reached via setCookedPaired when a
+  // meal task's finishing step is completed.
+  dbUpdateMealPlanEntry: jest.fn(),
   // …and to the leftover store.
   dbGetAllLeftovers: jest.fn().mockReturnValue([]),
 }));
@@ -9397,6 +9403,88 @@ describe('completing a use-up task', () => {
     useTaskStore.getState().uncompleteTask(task.id);
 
     expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBeNull();
+  });
+});
+
+describe('completing a leftover-backed meal task', () => {
+  const leftover = {
+    id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
+    storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14',
+    finishedAt: null as string | null, outcome: null as 'eaten' | 'tossed' | null,
+    frozenAt: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+  };
+  const seedLeftover = (overrides: Partial<typeof leftover> = {}) => {
+    useLeftoverStore.setState({
+      leftovers: [{ ...leftover, ...overrides }], pendingFinishLeftoverId: null, initialized: true,
+    });
+  };
+
+  const entry: MealPlanEntry = {
+    id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: null, title: 'Chicken stir-fry',
+    sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: 'l-1',
+    recipeChoices: [], recipeScale: 1, cookTask: null, calendarEventId: null,
+  };
+  const seedEntry = (overrides: Partial<MealPlanEntry> = {}) => {
+    const merged = { ...entry, ...overrides };
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([merged]);
+    (dbGetMealPlanEntry as jest.Mock).mockReturnValue(merged);
+    return merged;
+  };
+
+  const addEatTask = () => useTaskStore.getState().addTask({
+    title: 'Eat Chicken stir-fry', generatedKind: 'mealSlot', generatedSourceId: '2026-08-22#dinner',
+  });
+
+  it('points the fridge at the leftover a just-eaten meal was made from', () => {
+    seedLeftover();
+    seedEntry();
+    const task = addEatTask();
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBe('l-1');
+  });
+
+  it('leaves an ordinary meal, with no leftover behind it, alone', () => {
+    seedLeftover();
+    seedEntry({ leftoverId: null, id: 'm-2' });
+    const task = addEatTask();
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
+  });
+
+  it('does not ask again about a leftover that already finished', () => {
+    seedLeftover({ finishedAt: '2026-08-15T00:00:00.000Z', outcome: 'eaten' });
+    seedEntry();
+    const task = addEatTask();
+
+    useTaskStore.getState().completeTask(task.id);
+
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
+  });
+
+  it('does not ask when the deadline passed instead of the meal being eaten', () => {
+    seedLeftover();
+    seedEntry();
+    const task = addEatTask();
+
+    useTaskStore.getState().completeTask(task.id, { missed: true });
+
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
+  });
+
+  it('retracts the ask when the completion is undone', () => {
+    seedLeftover();
+    seedEntry();
+    const task = addEatTask();
+    useTaskStore.getState().completeTask(task.id);
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBe('l-1');
+
+    useTaskStore.getState().uncompleteTask(task.id);
+
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
   });
 });
 

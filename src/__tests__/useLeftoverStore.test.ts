@@ -115,6 +115,12 @@ describe('initialize', () => {
     useLeftoverStore.getState().initialize();
     expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBeNull();
   });
+
+  it('clears a pending finish-leftovers prompt too', () => {
+    useLeftoverStore.setState({ pendingFinishLeftoverId: 'l-1' });
+    useLeftoverStore.getState().initialize();
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
+  });
 });
 
 describe('setPendingUseUpLeftover', () => {
@@ -124,6 +130,16 @@ describe('setPendingUseUpLeftover', () => {
 
     useLeftoverStore.getState().setPendingUseUpLeftover(null);
     expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBeNull();
+  });
+});
+
+describe('setPendingFinishLeftover', () => {
+  it('is what FinishLeftoverPrompt watches to ask about the right leftover', () => {
+    useLeftoverStore.getState().setPendingFinishLeftover('l-1');
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBe('l-1');
+
+    useLeftoverStore.getState().setPendingFinishLeftover(null);
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
   });
 });
 
