@@ -65,6 +65,9 @@ const MENU_ITEMS: MenuItemWithGate[] = [
   { name: 'Templates', icon: 'copy-outline', label: 'Templates' },
   { name: 'Logbook', icon: 'book-outline', label: 'Logbook' },
   { name: 'Stats', icon: 'bar-chart-outline', label: 'Stats' },
+  // A maintenance tool for the fields already on every task, not a new
+  // surface over new data — sits with Stats rather than up with Tasks.
+  { name: 'Backfill', icon: 'flash-outline', label: 'Backfill' },
   { name: 'Waiting', icon: 'hourglass-outline', label: 'Waiting' },
   // Sits with Waiting rather than up with Tasks: both are "held out of the
   // daily list for a reason", and both are somewhere you go to clear a backlog
