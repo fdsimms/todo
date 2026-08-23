@@ -52,7 +52,8 @@ import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { PressableScale } from '../components/PressableScale';
-import { GroceryItemSheet } from '../components/GroceryItemSheet';
+import { GroceryItemSheet, type CollapsibleFieldKey } from '../components/GroceryItemSheet';
+import { ItemDisposalOffer } from '../components/ItemDisposalOffer';
 import { LeftoverSheet } from '../components/LeftoverSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
 import type { ScannedGtinLink } from '../utils/scanResolve';
@@ -174,6 +175,9 @@ export function KitchenScreen() {
 
   const [query, setQuery] = useState('');
   const [openItemId, setOpenItemId] = useState<string | null>(null);
+  // Which field the sheet opens on. Pantry for every row tap (see the sheet
+  // below); the repeat-waste offer is the one thing that asks for another.
+  const [openItemField, setOpenItemField] = useState<CollapsibleFieldKey>('pantry');
   const [openLeftoverId, setOpenLeftoverId] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -612,6 +616,15 @@ export function KitchenScreen() {
         />
       )}
 
+      {/* Outside the list rather than in its header, so it doesn't scroll away
+          from a question the user has just been asked. */}
+      <ItemDisposalOffer
+        onOpenShelfLife={id => {
+          setOpenItemField('useBy');
+          setOpenItemId(id);
+        }}
+      />
+
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
         <TextInput
@@ -684,11 +697,16 @@ export function KitchenScreen() {
       <GroceryItemSheet
         visible={openItemId !== null}
         itemId={openItemId}
-        onClose={() => setOpenItemId(null)}
+        onClose={() => {
+          setOpenItemId(null);
+          setOpenItemField('pantry');
+        }}
         // Opened on the Pantry pills, since that's what a catalog row here is:
         // the sheet is dense enough that a collapsed "Pantry" field halfway
-        // down it was, in practice, no way to say you're out of something.
-        initialField="pantry"
+        // down it was, in practice, no way to say you're out of something. The
+        // repeat-waste offer is the one thing that opens it anywhere else, and
+        // it lands on the field it's actually asking about.
+        initialField={openItemField}
       />
 
       <BarcodeScanSheet

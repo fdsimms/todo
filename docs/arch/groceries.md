@@ -635,6 +635,48 @@ Three things about it belong here rather than there:
   sweep. Ticking it off means "I've dealt with this" and writes nothing to the row — inferring "yes
   I still have it" from a tick is the guess a container's ✕ already refuses to make.
 
+### How a thing left the pantry (`itemDisposal.ts`)
+
+The fridge has recorded this since leftovers shipped: closing a container out is "Finished it" /
+"Threw it out" (`LeftoverOutcome`), read back by `describeFridgeHistory`. Marking a catalog row
+out of it was one bit, so the same fact about a bag of spinach was thrown away. The asymmetry was
+at its most visible in `UseUpResolveSheet`, where completing "Use up spinach" and completing "Use
+up leftover chili" open two sheets through one mechanism and only one of them asked what happened.
+`GroceryItem.usedUpCount` / `spoiledCount` / `lastSpoiledAt` close it.
+
+- **It is deliberately not a shelf-life estimator, and that's the first thing to not re-open.** The
+  obvious reason to want this is to learn how long things really keep, and it's the one thing these
+  answers can't support. Both are given when the user *notices* rather than when the food turned:
+  the bag found in the drawer on Sunday is recorded at twelve days when it went at five, and a
+  "used it up" carries a consumption rate rather than a shelf life. The lag is routinely larger
+  than the numbers being estimated (`SHELF_LIFE_LEXICON` runs 2 to 7 days for everything that
+  matters), and it biases both readings *later* — which is the direction that gets a use-up task
+  arriving after the food is already slime. `groceryShelfLife.ts` keeps its numbers at the cautious
+  end on purpose, and a learner fed only late observations would walk them the other way. There is
+  also nothing to fit against: the catalog keeps `purchaseCount` and `lastPurchasedAt`, not a
+  per-purchase log (see `estimatedPurchaseCadenceDays`, which makes the same admission).
+- **So the payoff is a hand-off, not an adjustment.** `shelfLifeDays` stays the correction, made by
+  a person holding the thing; the counts say when it's worth making one. Twice
+  (`REPEAT_WASTE_THRESHOLD`) turns the offer into "change how long the app thinks it keeps", which
+  opens the sheet on the Use by field. One waste is an accident the app has nothing to add to.
+- **The ✕ still writes one bit and the question comes after it.** `markOutOfMany` marks the row out
+  on the tap, so the pantry is already correct and the answer is pure extra — which is what lets
+  the cheapest correction in the app stay one tap, the trade this doc makes above when it gives a
+  catalog row a ✕ and a container a sheet. An ignored question leaves nothing wrong.
+- **A caller that already knows passes the outcome and nothing is asked.** `CookedUseUpSheet`
+  passes `'usedUp'`, because the cooking *is* the answer. It's also the one caller reporting
+  several rows at once, and a per-row question about a batch is the "recall five kitchens" the cook
+  offer already declines for `bulkSetCooked` — so the offer is raised only when exactly one row
+  actually changed.
+- **The offer is session-only, like `cookedOffer`.** It's about a tap just made, so there's nothing
+  for it to mean on the next launch and nothing to persist a dismissal for. A question about a bag
+  of spinach thrown out last Tuesday is not one anybody can answer.
+- **Only the spoiled side is ever named, and it's always dated.** "Used it up 5 of 5 times" is not
+  evidence about anything, and a line congratulating the user on eating their food is the
+  editorialising `describeOutcome` refuses when it picks "Thrown out" over "Wasted". Nothing decays
+  the counts, so `describeDisposalHistory` renders the age alongside them for `lastPricedAt`'s
+  reason: a bare "went bad 3 times" about a habit fixed a year ago is the UI lying.
+
 ### Cooking what's about to go off (`useUpRecipes.ts`)
 
 The kitchen knows what's dying and a recipe knows what it's made of, and nothing joined the two. A

@@ -38,6 +38,8 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { recipesUsingIngredient } from '../utils/recipeComponents';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { ItemDisposalOffer } from './ItemDisposalOffer';
+import { describeDisposalHistory } from '../utils/itemDisposal';
 import { SearchField } from './SearchField';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
@@ -97,7 +99,7 @@ const PRICE_INPUT_MAX_LENGTH = 8;
 const ITEM_PRICE_KEY = 'item';
 
 /** The five collapsible fields in the "More" card, in the order they render. */
-type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'usedIn';
+export type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'usedIn';
 
 interface Props {
   visible: boolean;
@@ -165,6 +167,7 @@ export function GroceryItemSheet({
   const setAisle = useGroceryStore(s => s.setAisle);
   const addAisle = useGroceryStore(s => s.addAisle);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
+  const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
   const setStaple = useGroceryStore(s => s.setStaple);
   const setFrozen = useGroceryStore(s => s.setFrozen);
   const setOpened = useGroceryStore(s => s.setOpened);
@@ -504,9 +507,14 @@ export function GroceryItemSheet({
     haptics.tap();
     setOnHandUntil(item.id, defaultOnHandUntil(item, new Date()));
   };
+  // Through markOutOfMany rather than the bare setter, so this pill and the
+  // pantry list's ✕ are one action: both leave the same undo entry, and both
+  // raise the same "how did it go?" question. A signal this rare shouldn't
+  // depend on where the tap landed, which is the call CookedUseUpOffer makes
+  // about its own two entry points.
   const markOutOfIt = () => {
     haptics.tap();
-    setOnHandUntil(item.id, OUT_OF_IT_UNTIL);
+    markOutOfMany([item.id]);
   };
   const clearOnHand = () => {
     haptics.tap();
@@ -1116,15 +1124,21 @@ export function GroceryItemSheet({
                     : undefined
             }
             emptySummary="None"
-            hint={
+            // The record goes on the end of whichever hint applies, rather
+            // than in a line of its own: it isn't a separate thing to read,
+            // it's the reason this field is worth changing. Empty for a row
+            // that has never gone bad, so a clean record says nothing at all —
+            // see describeDisposalHistory.
+            hint={[
               frozen
                 ? "How long this keeps once it comes out of the freezer. Nothing counts down while it's frozen."
                 : opened
                   ? 'The day this should be used up by, counted from when you opened it.'
                   : item.expiresAt
                   ? "The day this should be used up by. Finishing a shopping trip fills it in for things that go off, and the use-up task is dated from it."
-                  : "How long this keeps once bought. It doesn't count down yet — finishing a shopping trip starts the clock from there, and adds the use-up task."
-            }
+                  : "How long this keeps once bought. It doesn't count down yet — finishing a shopping trip starts the clock from there, and adds the use-up task.",
+              describeDisposalHistory(item),
+            ].filter(Boolean).join(' ')}
             expanded={openField === 'useBy'}
             onToggle={() => toggleField('useBy')}
           >
@@ -1302,6 +1316,11 @@ export function GroceryItemSheet({
           <Text style={styles.headerTitle}>Item</Text>
           <SheetHeaderButton label="Done" onPress={handleDone} minWidth={64} />
         </View>
+
+        {/* Scoped to the row on screen: the pantry list mounts the same
+            component unscoped, and an offer raised there is that screen's to
+            show, not this sheet's. */}
+        <ItemDisposalOffer itemId={item.id} onOpenShelfLife={() => setOpenField('useBy')} />
 
         <ScrollView
           ref={keyboardScroll.ref}

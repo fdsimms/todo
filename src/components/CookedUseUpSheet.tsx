@@ -105,7 +105,11 @@ export function CookedUseUpSheet({ visible, recipeName, rows, onClose }: Props) 
       .map(key => itemsByKey.get(key))
       .filter((id): id is string => !!id);
 
-    const marked = markOutOfMany(ids);
+    // 'usedUp' rather than a question: this sheet's whole subject is what the
+    // cooking consumed, so the answer is already in the tap. It's also the one
+    // caller that reports several rows at once, and asking per row would be the
+    // "recall five kitchens" the offer declines for bulkSetCooked.
+    const marked = markOutOfMany(ids, 'usedUp');
     if (marked > 0) haptics.success();
     onClose();
   };

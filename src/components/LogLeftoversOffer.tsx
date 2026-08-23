@@ -4,7 +4,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { leftoverKeepDaysFor, leftoverPartsFor } from '../utils/leftovers';
-import { CookedOfferBanner } from './CookedOfferBanner';
+import { OfferBanner } from './OfferBanner';
 import { LeftoverSheet } from './LeftoverSheet';
 
 /**
@@ -18,7 +18,7 @@ import { LeftoverSheet } from './LeftoverSheet';
  * the task is the moment the answer is known, so it's the moment to ask.
  *
  * **A banner, not a sheet that opens itself** — the same call the ingredients
- * question makes right beside it (see `CookedOfferBanner`), and the reason the
+ * question makes right beside it (see `OfferBanner`), and the reason the
  * meal plan made logging an action on the entry rather than something
  * mark-cooked did by itself: plenty of meals leave nothing, and a modal after
  * every cooking is one more thing to dismiss on the nights they don't.
@@ -64,7 +64,7 @@ export function LogLeftoversOffer() {
 
   return (
     <>
-      <CookedOfferBanner
+      <OfferBanner
         lead="Anything left over"
         rest={`from ${offer.title}?`}
         actionLabel="Log"

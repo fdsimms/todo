@@ -461,7 +461,7 @@ interface SettingsStore {
    */
   mealSlotTasksWrittenThroughDayKey: string | null;
   // Whether marking a meal cooked can offer to restock the ingredients it used
-  // that aren't on the list — see CookedOfferBanner and MealPlanScreen's
+  // that aren't on the list — see OfferBanner and MealPlanScreen's
   // restockOffer. Defaults on: the offer is already gated on the app being
   // able to name known items missing from the list (see #1481), so this is a
   // toggle for someone who never shops from a recipe, not a fix for a bad

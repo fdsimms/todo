@@ -1529,6 +1529,45 @@ export interface GroceryItem {
    */
   pantryCheckDeclinedAt: string | null;
   /**
+   * How many times the user has said they finished this, and how many times
+   * they've said it went bad — the two ways a thing leaves the pantry, counted.
+   *
+   * **The fridge already kept this and the pantry threw it away.** Closing a
+   * container out is "Finished it" / "Threw it out" (`LeftoverOutcome`), read
+   * back by `describeFridgeHistory`; marking a catalog row out of it was one
+   * bit, so the same fact about a bag of spinach was discarded. Completing
+   * "Use up spinach" and completing "Use up leftover chili" both land in
+   * `UseUpResolveSheet`, and until this only one of them remembered what
+   * happened.
+   *
+   * **Counts, never a rate, and deliberately not a shelf-life estimate.** The
+   * obvious use — learn how long things really keep — is the one thing these
+   * can't do. Both answers are recorded when the user *notices*, not when the
+   * food turned, and that lag is routinely longer than the shelf lives in
+   * `SHELF_LIFE_LEXICON` (2 days for chicken, 4 for berries). So both readings
+   * are biased late and would drag a learned estimate *longer*, which is the
+   * direction that makes a use-up task arrive after the food is already slime.
+   * `shelfLifeDays` stays the correction, made by a person looking at the
+   * thing; what these do is tell that person when it's worth making.
+   *
+   * **Nothing decays them.** A count is a count, which is why `lastSpoiledAt`
+   * sits alongside — `lastPricedAt`'s argument exactly: a bare "went bad 3
+   * times" from two years ago is the UI lying, so every read renders the age
+   * with it.
+   */
+  usedUpCount: number;
+  spoiledCount: number;
+  /**
+   * When the user last said this went bad. Null for a row that never has,
+   * including every row that predates these columns.
+   *
+   * Only the spoiled side gets a date. "Used it up" is the ordinary outcome
+   * and its age says nothing anyone would read; going bad is the one worth
+   * dating, because that's the count a caption qualifies and the prompt fires
+   * on.
+   */
+  lastSpoiledAt: string | null;
+  /**
    * The last few prices this item was bought at, newest first, capped at
    * `PRICE_HISTORY_LIMIT`.
    *
