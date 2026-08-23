@@ -147,6 +147,37 @@ describe('quickSearch', () => {
     });
   });
 
+  describe('repeated occurrences', () => {
+    // One generated task per day, the shape that used to fill the card: five
+    // rows reading "Breakfast", which is one task shown five times.
+    const week = Array.from({ length: 7 }, (_, i) =>
+      makeTask({
+        id: `m${i}`,
+        title: 'Breakfast',
+        generatedKind: 'mealSlot',
+        generatedSourceId: `2026-08-2${i}#breakfast`,
+        dueDate: new Date(Date.now() + i * 86400000).toISOString(),
+      })
+    );
+
+    it('spends one slot on a task that repeats, not the whole card', () => {
+      const { results, total } = quickSearch(week, 'breakfast');
+      expect(results).toHaveLength(1);
+      expect(total).toBe(1);
+    });
+
+    it('says how many dates the one row stands for', () => {
+      const { results } = quickSearch(week, 'breakfast');
+      expect(results[0].occurrenceCount).toBe(7);
+    });
+
+    it('leaves the other matches their slots back', () => {
+      const other = makeTask({ id: 'other', title: 'Breakfast meeting notes' });
+      const { results } = quickSearch([...week, other], 'breakfast');
+      expect(results.map(r => r.task.id)).toContain('other');
+    });
+  });
+
   describe('completed tasks', () => {
     it('includes them — a ticked task is still findable', () => {
       const tasks = [makeTask({ id: 'a', title: 'Pay rent', completed: true })];

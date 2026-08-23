@@ -19,6 +19,11 @@ import { spacing, radius, font, fontWeight, border, animation, interaction, type
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
+import type { SearchResult } from '../utils/fuzzySearch';
+import { formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
+import { displayTitleFor } from '../utils/visibilityUtils';
+import { formatTaskDate } from '../utils/dateUtils';
+import { format } from 'date-fns/format';
 import { TaskCheckbox } from './TaskCheckbox';
 import { haptics } from '../utils/haptics';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
@@ -40,14 +45,103 @@ interface Props {
 }
 
 /**
+ * One result in the quick-search card: the task's title, and a second line
+ * only when the row has something it must say to be identifiable.
+ *
+ * The title is `displayTitleFor`, not `task.title` — a chained task is named
+ * by its active step everywhere else in the app, and this row was the one
+ * surface that disagreed. It also *scored* as its step (see fuzzySearch), so
+ * the two disagreeing put the highlight ranges of one string onto another:
+ * searching "break" on a meal task titled "Breakfast" whose step reads
+ * "Choose breakfast" highlighted the "st", five characters along from where
+ * the match was.
+ *
+ * The date is here for the same reason and against the card's own rule below:
+ * a generated task exists once per day, so a search for one matches a stack of
+ * rows with the same title, and a card that shows five of them is showing one
+ * task five times with nothing to tell them apart. `collapseOccurrences` folds
+ * those into a single row, and this line is where that row says which
+ * occurrence it is and how many it stands for. Undated one-off results with
+ * nothing to count render the single line they always did.
+ */
+function QuickSearchRow({ result, onSelect, onTicked, styles }: {
+  result: CollapsedOccurrence<SearchResult>;
+  onSelect: (task: Task) => void;
+  onTicked: (taskId: string) => void;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const { task, titleMatches, occurrenceCount } = result;
+  const displayTitle = displayTitleFor(task);
+
+  // A completed row is placed by when it was done; a live one by the date it
+  // sits on (formatTaskDate reads the defer/due rule, so the label can't name a
+  // different day from the one the task actually surfaces on).
+  const dateLabel = task.completed
+    ? task.completedAt ? `Done ${format(new Date(task.completedAt), 'MMM d')}` : 'Done'
+    : formatTaskDate(task);
+  const countLabel = formatOccurrenceCount(occurrenceCount);
+
+  return (
+    // A plain View holding two touchables, not one touchable wrapping the
+    // box: a TouchableOpacity is `accessible` by default, so a checkbox
+    // nested inside one is folded into the row's single element and never
+    // announced on its own.
+    <View style={styles.resultRow}>
+      <TaskCheckbox task={task} taskLabel={displayTitle} onTicked={onTicked} />
+      <TouchableOpacity
+        style={styles.resultTap}
+        onPress={() => onSelect(task)}
+        activeOpacity={interaction.activeOpacity}
+        // Puts the row's own padding back into the tap target, which
+        // the title alone doesn't cover. Nothing on the left: that
+        // side belongs to the checkbox.
+        hitSlop={{ top: 9, bottom: 9, right: spacing.xs }}
+        accessibilityRole="button"
+        accessibilityLabel={[
+          displayTitle,
+          task.archived ? 'archived' : null,
+          task.completed ? 'completed' : null,
+          dateLabel,
+          countLabel ? `and ${countLabel}` : null,
+        ].filter(Boolean).join(', ')}
+        accessibilityHint="Double tap to open task"
+      >
+        <View style={styles.resultTitleRow}>
+          <HighlightedText
+            text={displayTitle}
+            ranges={titleMatches}
+            style={[styles.resultTitle, task.completed && styles.resultTitleDone]}
+            highlightStyle={styles.highlight}
+            numberOfLines={1}
+          />
+          {task.archived && <Text style={styles.archivedLabel}>Archived</Text>}
+        </View>
+        {(dateLabel || countLabel) && (
+          <View style={styles.resultMeta}>
+            {dateLabel && <Text style={styles.metaText}>{dateLabel}</Text>}
+            {countLabel && (
+              <View style={styles.countPill}>
+                <Text style={styles.countText}>{countLabel}</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+/**
  * The pull-down quick search: a small card over a dimmed screen, holding a
- * field and at most five one-line results.
+ * field and at most five results.
  *
  * Deliberately a *narrower* thing than the Search tab rather than a smaller
- * copy of it. The Search screen's rows carry tags, due dates and a notes
- * preview and split into Active/Completed sections; this carries none of
- * that. Anything the cap can't answer goes to the footer row, which is why
- * there's no scrolling here — a card you have to scroll isn't quick.
+ * copy of it. The Search screen's rows carry tags, a notes preview and a
+ * project chip and split into Active/Completed sections; this carries none of
+ * that, and only the one meta line a row needs to be told apart from its own
+ * other occurrences (see QuickSearchRow). Anything the cap can't answer goes
+ * to the footer row, which is why there's no scrolling here — a card you have
+ * to scroll isn't quick.
  */
 export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSearch }: Props) {
   const insets = useSafeAreaInsets();
@@ -174,35 +268,14 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
                   wrapping the box: a TouchableOpacity is `accessible` by
                   default, so a checkbox nested inside one is folded into the
                   row's single element and never announced on its own. */}
-              {results.map(({ task, titleMatches }) => (
-                <View key={task.id} style={styles.resultRow}>
-                  <TaskCheckbox task={task} onTicked={hold} />
-                  <TouchableOpacity
-                    style={styles.resultTap}
-                    onPress={() => handleSelect(task)}
-                    activeOpacity={interaction.activeOpacity}
-                    // Puts the row's own padding back into the tap target, which
-                    // the title alone doesn't cover. Nothing on the left: that
-                    // side belongs to the checkbox.
-                    hitSlop={{ top: 9, bottom: 9, right: spacing.xs }}
-                    accessibilityRole="button"
-                    accessibilityLabel={[
-                      task.title,
-                      task.archived ? 'archived' : null,
-                      task.completed ? 'completed' : null,
-                    ].filter(Boolean).join(', ')}
-                    accessibilityHint="Double tap to open task"
-                  >
-                    <HighlightedText
-                      text={task.title}
-                      ranges={titleMatches}
-                      style={[styles.resultTitle, task.completed && styles.resultTitleDone]}
-                      highlightStyle={styles.highlight}
-                      numberOfLines={1}
-                    />
-                    {task.archived && <Text style={styles.archivedLabel}>Archived</Text>}
-                  </TouchableOpacity>
-                </View>
+              {results.map(result => (
+                <QuickSearchRow
+                  key={result.task.id}
+                  result={result}
+                  onSelect={handleSelect}
+                  onTicked={hold}
+                  styles={styles}
+                />
               ))}
             </View>
           )}
@@ -248,8 +321,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.xs,
     borderRadius: radius.sm,
   },
+  // A column, not a row: the meta line sits under the title. The title's own
+  // row keeps the horizontal arrangement the Archived label needs.
   resultTap: {
     flex: 1,
+    gap: 2,
+  },
+  resultTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -259,6 +337,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
   },
+  resultMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metaText: { color: colors.textSecondary, fontSize: font.xs },
+  // Enclosed rather than loose in the meta row: "4 more dates" beside a date
+  // reads as part of the date otherwise, and the count is a fact about the
+  // row rather than about the day it names.
+  countPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgSunken,
+  },
+  countText: { color: colors.textSecondary, fontSize: font.xs },
   resultTitleDone: {
     color: colors.textTertiary,
     textDecorationLine: 'line-through',

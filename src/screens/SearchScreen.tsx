@@ -23,6 +23,7 @@ import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import type { Task, TaskGroup } from '../types';
 import type { SearchResult, GroupSearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch, searchGroups } from '../utils/fuzzySearch';
+import { collapseOccurrences, formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
 import { displayTitleFor, groupRoster, isQuotaPartial } from '../utils/visibilityUtils';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { formatQuotaProgress } from '../utils/quotaUnit';
@@ -45,13 +46,13 @@ import { format } from 'date-fns/format';
 const SEARCH_DEBOUNCE_MS = 180;
 
 function SearchResultItem({ result, onPress, onTicked, styles, colors }: {
-  result: SearchResult;
+  result: CollapsedOccurrence<SearchResult>;
   onPress: () => void;
   onTicked: (taskId: string) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
-  const { task, titleMatches, projectName, projectMatches } = result;
+  const { task, titleMatches, projectName, projectMatches, occurrenceCount } = result;
   const isCompleted = task.completed;
   // A daily target closed out short of its count (see rolloverQuotas) is still
   // `completed`, but a plain green checkmark would read as the same full
@@ -64,6 +65,9 @@ function SearchResultItem({ result, onPress, onTicked, styles, colors }: {
 
   const displayTitle = displayTitleFor(task);
   const answer = formatTaskDeliverable(task);
+  // What this row stands for besides itself, when it's one date of a repeat
+  // (see collapseOccurrences). Null on an ordinary one-off, which is most rows.
+  const countLabel = formatOccurrenceCount(occurrenceCount);
 
   const a11yLabel = [
     displayTitle,
@@ -76,6 +80,7 @@ function SearchResultItem({ result, onPress, onTicked, styles, colors }: {
       : null,
     isCompleted && asksOnCompletion(task) ? (answer !== null ? `answered ${answer}` : 'no answer') : null,
     !isCompleted && task.dueDate ? `due ${format(new Date(task.dueDate), 'MMM d')}` : null,
+    countLabel ? `and ${countLabel}` : null,
   ].filter(Boolean).join(', ');
 
   return (
@@ -159,6 +164,14 @@ function SearchResultItem({ result, onPress, onTicked, styles, colors }: {
           )}
           {!isCompleted && task.dueDate && (
             <Text style={styles.metaText}>Due {format(new Date(task.dueDate), 'MMM d')}</Text>
+          )}
+          {/* Last of the chips and first of the wrapping ones: it's the least
+              specific fact on the row, but it's the one that explains why the
+              other twenty occurrences aren't here. */}
+          {countLabel && (
+            <View style={styles.countPill}>
+              <Text style={styles.countText}>{countLabel}</Text>
+            </View>
           )}
           {task.notes.length > 0 && (
             <Text style={styles.notesPreview} numberOfLines={1}>{task.notes}</Text>
@@ -329,8 +342,17 @@ export function SearchScreen() {
   );
   useEffect(() => setHeldIds(new Set()), [debouncedQuery]);
 
-  const results: SearchResult[] = useMemo(
-    () => fuzzySearch(tasks, debouncedQuery, projectNamesById, heldIds),
+  // Collapsed the same way the quick-search card collapses, and for the same
+  // reason: a daily task is one thing on many days, and reading its rows back
+  // one per line buried the rest of the matches under thirty copies of it.
+  // The Logbook's own search is deliberately left uncollapsed — history is
+  // where every occurrence should be its own line.
+  const results: CollapsedOccurrence<SearchResult>[] = useMemo(
+    () => collapseOccurrences(
+      fuzzySearch(tasks, debouncedQuery, projectNamesById, heldIds),
+      tasks,
+      heldIds
+    ),
     [tasks, debouncedQuery, projectNamesById, heldIds]
   );
 
@@ -345,7 +367,7 @@ export function SearchScreen() {
 
   type ListItem =
     | { type: 'sectionHeader'; label: string }
-    | { type: 'result'; result: SearchResult }
+    | { type: 'result'; result: CollapsedOccurrence<SearchResult> }
     | { type: 'groupResult'; result: GroupSearchResult };
 
   const listData: ListItem[] = useMemo(() => {
@@ -585,6 +607,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   answerText: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.medium, flexShrink: 1 },
   completedLabel: { color: colors.green, fontSize: font.xs },
+  // The neutral twin of answerPill, and the same shape the quick-search card's
+  // count wears. Enclosed rather than loose: "4 more dates" sitting next to
+  // "Due Aug 26" otherwise reads as a qualifier on that date.
+  countPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgSunken,
+  },
+  countText: { color: colors.textSecondary, fontSize: font.xs },
   archivedLabel: { color: colors.orange, fontSize: font.xs, fontWeight: fontWeight.semibold },
   notesPreview: {
     color: colors.textTertiary,
