@@ -3,6 +3,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { choiceGroupKey } from '../utils/recipeComponents';
 import {
   collectPlannedIngredients,
+  hasShoppableMeals,
   plannedIngredientsForRecipe,
   parseQuantityAmount,
   mergeQuantities,
@@ -243,6 +244,49 @@ describe('collectPlannedIngredients', () => {
       ['Steak', 'Tue Steak with mash', 'Steak with mash'],
       ['Potatoes', 'Tue Mash', 'Mash'],
     ]);
+  });
+});
+
+describe('hasShoppableMeals', () => {
+  const soup = recipe('Soup', [ing('Stock')]);
+  const recipesById = new Map([[soup.id, soup]]);
+
+  it('is true for one uncooked meal whose recipe resolves', () => {
+    expect(hasShoppableMeals([entry('2026-08-11', soup.id)], recipesById, RANGE)).toBe(true);
+  });
+
+  it('is false for an empty week', () => {
+    expect(hasShoppableMeals([], recipesById, RANGE)).toBe(false);
+  });
+
+  it('is false when every meal is already cooked — the sheet would find nothing', () => {
+    const entries = [entry('2026-08-11', soup.id, { cookedAt: '2026-08-11T19:00:00.000Z' })];
+    expect(hasShoppableMeals(entries, recipesById, RANGE)).toBe(false);
+  });
+
+  it('is false for a free-text meal, which has no ingredients to add', () => {
+    expect(hasShoppableMeals([entry('2026-08-11', null)], recipesById, RANGE)).toBe(false);
+  });
+
+  it('is false when the recipe no longer resolves', () => {
+    expect(hasShoppableMeals([entry('2026-08-11', 'deleted')], recipesById, RANGE)).toBe(false);
+  });
+
+  it('ignores entries outside the range — a day scope reads its own day only', () => {
+    const entries = [entry('2026-08-11', soup.id)];
+    const tuesday = { startKey: '2026-08-11', endKey: '2026-08-11' };
+    const wednesday = { startKey: '2026-08-12', endKey: '2026-08-12' };
+    expect(hasShoppableMeals(entries, recipesById, tuesday)).toBe(true);
+    expect(hasShoppableMeals(entries, recipesById, wednesday)).toBe(false);
+  });
+
+  it('agrees with collectPlannedIngredients on the same set', () => {
+    const mixed = [
+      entry('2026-08-11', soup.id, { cookedAt: '2026-08-11T19:00:00.000Z' }),
+      entry('2026-08-12', null),
+    ];
+    expect(collectPlannedIngredients(mixed, recipesById, RANGE)).toHaveLength(0);
+    expect(hasShoppableMeals(mixed, recipesById, RANGE)).toBe(false);
   });
 });
 
