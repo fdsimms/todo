@@ -1,8 +1,10 @@
 import React, { useMemo } from 'react';
-import { Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
+import { PressableScale } from './PressableScale';
+import { haptics } from '../utils/haptics';
 import type { Shop } from '../types';
 
 interface Props {
@@ -12,6 +14,10 @@ interface Props {
   onStart: (shop: Shop) => void;
   /** Two or more stores: a real choice, so this opens ShoppingTripSheet instead. */
   onOpenSheet: () => void;
+  /** How many rows are already ticked into the trolley, with no trip running. */
+  checkedCount: number;
+  /** Opens `FinishShoppingSheet`. Only called with something in the trolley. */
+  onFinish: () => void;
 }
 
 /**
@@ -31,21 +37,46 @@ interface Props {
  * The coverage reasoning didn't go away — it's what `ShoppingTripSheet`
  * opens into and pre-selects with (`summarizeTrip`, `describeShopCoverage`
  * in shoppingTrip.ts), once you've actually said you're about to shop.
+ *
+ * **Ticking rows without starting a trip is shopping, and the card says so.**
+ * Nothing infers a trip from a tick (see `docs/arch/groceries.md` — the mode
+ * is explicit, because a wrongly-assumed store is what marks the list up with
+ * claims about the wrong shelves). But a cart with something in it still has
+ * to be finishable, and finishing used to live only on `bag-check-outline` in
+ * the header, which is gone: a small target with a non-obvious glyph, offering
+ * the action every shop ends in from the row of icons you scroll past. So the
+ * first ticked row grows a Finish button here, ranked and worded exactly as
+ * `ActiveTripBanner` ranks its own — filled, sized for a walking thumb, with
+ * the store line kept above it as the quiet half. The two cards are the same
+ * shape on purpose: the only difference is whether the app knows where you are.
+ *
+ * With no suggestable stores on file there is no store line to keep, and the
+ * card is the Finish button alone. That case is why the whole thing can't stay
+ * gated on `suggestable` being non-empty — someone with no stores recorded can
+ * still tick a list off, and they'd have no way to finish it at all.
  */
-export function StartTripPrompt({ suggestable, onStart, onOpenSheet }: Props) {
+export function StartTripPrompt({ suggestable, onStart, onOpenSheet, checkedCount, onFinish }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  if (suggestable.length === 0) return null;
+  const shopping = checkedCount > 0;
+  if (suggestable.length === 0 && !shopping) return null;
   // The only store there is: no choice to make, so no sheet in the way —
   // this is what makes the single-store case one tap instead of three.
   const single = suggestable.length === 1 ? suggestable[0] : null;
 
-  return (
+  const handleStart = () => (single ? onStart(single) : onOpenSheet());
+
+  const handleFinish = () => {
+    haptics.tap();
+    onFinish();
+  };
+
+  const startRow = suggestable.length > 0 && (
     <TouchableOpacity
-      style={styles.card}
+      style={styles.summary}
       activeOpacity={interaction.activeOpacity}
-      onPress={() => (single ? onStart(single) : onOpenSheet())}
+      onPress={handleStart}
       accessibilityRole="button"
       accessibilityLabel={single ? `Start shopping at ${single.name}` : 'Start shopping'}
       accessibilityHint={single ? undefined : 'Opens the shopping trip planner'}
@@ -57,16 +88,35 @@ export function StartTripPrompt({ suggestable, onStart, onOpenSheet }: Props) {
       <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
     </TouchableOpacity>
   );
+
+  return (
+    <View style={styles.card}>
+      {startRow}
+      {shopping && (
+        <PressableScale
+          style={styles.finishButton}
+          onPress={handleFinish}
+          accessibilityLabel={`Finish shopping, ${checkedCount} in cart`}
+        >
+          <Ionicons name="bag-check-outline" size={iconSize.sm} color={colors.onAccent} />
+          <Text style={styles.finishText}>Finish · {checkedCount} in cart</Text>
+        </PressableScale>
+      )}
+    </View>
+  );
 }
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     // Tinted rather than the list's own card surface: this is a starting
-    // action sitting above the list, not the first row of it.
+    // action sitting above the list, not the first row of it. The tint stays
+    // when the Finish button appears, rather than switching to
+    // `ActiveTripBanner`'s `bgSunken` — sunken is two or three percent off the
+    // screen background in both themes, which is legible for a banner carrying
+    // a neutral pill and not for one whose whole content is a filled accent
+    // button floating in an invisible box. Checked in mock, both themes.
     card: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
+      gap: spacing.sm,
       backgroundColor: colors.accent + '1A',
       borderRadius: radius.md,
       marginHorizontal: spacing.md,
@@ -75,6 +125,23 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm + 2,
     },
+    summary: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
     title: { flex: 1, color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+    finishButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      backgroundColor: colors.accent,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 7,
+      minHeight: 32,
+      borderRadius: radius.full,
+    },
+    finishText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.bold },
   });
 }
