@@ -162,7 +162,7 @@ export function currentTimeSegment(now: Date = new Date()): TimeOfDay {
 export function buildPinContext(completedTasks: Task[] = []): PinContext {
   const excludedCategories = new Set(
     useCategoryStore.getState().categories
-      .filter(c => c.excludeFromPinSuggestions)
+      .filter(c => c.excludeFromSuggestions)
       .map(c => c.name)
   );
 

@@ -22,7 +22,7 @@ import {
   interaction,
   type Colors,
 } from '../theme';
-import { RECIPE_NAME_MAX_LENGTH } from '../types';
+import { RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
@@ -103,6 +103,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const setServings = useRecipeStore(s => s.setServings);
+  const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
   const setSource = useRecipeStore(s => s.setSource);
@@ -141,6 +142,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   const [acceptedPrepTasks, setAcceptedPrepTasks] = useState<Set<number>>(new Set());
   const [servingsText, setServingsText] = useState('');
   const [minutesText, setMinutesText] = useState('');
+  const [yieldText, setYieldText] = useState('');
   const edits = usePendingEdits();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   // Whichever add-menu item opened it — "From a link" and "From a photo" both
@@ -180,6 +182,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     setAcceptedPrepTasks(new Set());
     setServingsText('');
     setMinutesText('');
+    setYieldText('');
     resetInput();
     resetComponents();
   }, [resetInput, resetComponents]);
@@ -202,7 +205,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       // one — a page that says what it's called is not a recipe with no name.
       setName(result.name || resolved.page?.title || '');
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
-      setApplyDetails(result.servings !== null || result.prepMinutes !== null);
+      setApplyDetails(result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null);
       const methodStepsFound = (resolved.page?.steps.length ?? 0) > 0
         ? resolved.page!.steps
         : result.steps;
@@ -212,6 +215,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       setAcceptedPrepTasks(new Set(result.prepTasks.map((_, i) => i)));
       setServingsText(formatServingsRange(result.servings, result.servingsMax) ?? '');
       setMinutesText(result.prepMinutes !== null ? String(result.prepMinutes) : '');
+      setYieldText(result.recipeYield ?? '');
     } catch (e) {
       setError(describeImportError(e));
       setCanRetry(isRetryableImportError(e));
@@ -328,6 +332,8 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       // in the prep half it would claim the whole recipe is mise en place.
       const minutes = parseInt(pendingText('details:minutes', minutesText), 10);
       if (minutes > 0) setEstimatedMinutes(recipe.id, minutes);
+      const yieldValue = pendingText('details:yield', yieldText).trim();
+      if (yieldValue) setRecipeYield(recipe.id, yieldValue);
     }
     // Everything a page told us about itself. Only ever set from structured
     // markup, so a paste and a photo leave all of it null as they always did.
@@ -366,18 +372,24 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
 
   const canCreate = !loading && !!extracted && !!cleaned && !duplicate;
 
-  // One checkbox applying two facts has to name both when it has both, and it
+  // One checkbox applying up to three facts has to name all it has, and it
   // reads out exactly what the row shows rather than a second phrasing of it.
   // Reads the boxes, not `extracted`, so it stays true once they're edited.
-  const detailsLabel = !extracted ? ''
-    : servingsText
-      ? `Serves ${servingsText}${minutesText ? `, about ${minutesText} min` : ''}`
-      : `About ${minutesText} min`;
+  const detailsLabel = !extracted ? '' : (() => {
+    const parts: string[] = [];
+    if (servingsText) parts.push(`Serves ${servingsText}`);
+    if (minutesText) parts.push(`about ${minutesText} min`);
+    if (yieldText) parts.push(`makes ${yieldText}`);
+    if (parts.length === 0) return '';
+    const [first, ...rest] = parts;
+    return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(', ');
+  })();
 
   // What the run found decides whether the details row exists; what's in its
-  // boxes decides what it applies. Emptying both must not unmount the row
+  // boxes decides what it applies. Emptying them must not unmount the row
   // mid-edit — there'd be no way to type a value back in.
-  const foundDetails = !!extracted && (extracted.servings !== null || extracted.prepMinutes !== null);
+  const foundDetails = !!extracted
+    && (extracted.servings !== null || extracted.prepMinutes !== null || extracted.recipeYield !== null);
 
   // Nothing to append after: this recipe doesn't exist yet.
   const methodMeta = methodRowMeta(acceptedSteps.size, steps.length, false);
@@ -573,6 +585,21 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
                 numberOfLines={1}
               />
               <Text style={styles.detailSep}>min</Text>
+            </View>
+            <View style={styles.detailFields}>
+              <Text style={styles.detailSep}>Makes</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="details:yield"
+                value={yieldText}
+                onCommit={setYieldText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. 2 loaves"
+                accessibilityLabel="yield"
+                maxLength={RECIPE_SOURCE_MAX_LENGTH}
+                numberOfLines={1}
+              />
             </View>
           </ImportApplyRow>
         )}

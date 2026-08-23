@@ -517,11 +517,52 @@ describe('extractRecipe', () => {
       servings: 4,
       servingsMax: null,
       prepMinutes: 45,
+      recipeYield: null,
       ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
       references: [],
       steps: [],
       prepTasks: [],
     });
+  });
+
+  it('reads a non-serving yield alongside servings', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Sourdough loaf',
+        servings: 8,
+        recipeYield: '2 loaves',
+        items: [{ name: 'flour', quantity: '1 kg', aisle: 'Pantry' }],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.servings).toBe(8);
+    expect(result.recipeYield).toBe('2 loaves');
+  });
+
+  it('trims and clamps a long recipeYield', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Cookies',
+        recipeYield: `  ${'a'.repeat(100)}  `,
+        items: [],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.recipeYield).toHaveLength(60);
+    expect(result.recipeYield).toBe('a'.repeat(60));
+  });
+
+  it('reads an empty recipeYield as null', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili',
+        servings: 4,
+        recipeYield: '',
+        items: [],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.recipeYield).toBeNull();
   });
 
   it('reads the cross-references to other recipes off the page', async () => {
@@ -680,7 +721,7 @@ describe('extractRecipe', () => {
   it('does not call the network for empty text', async () => {
     const spy = jest.spyOn(global, 'fetch');
     await expect(extractRecipe('   ', AISLES)).resolves.toEqual({
-      name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+      name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
       references: [], steps: [], prepTasks: [],
     });
     expect(spy).not.toHaveBeenCalled();
@@ -868,6 +909,7 @@ describe('extractRecipe', () => {
         servings: 4,
         servingsMax: null,
         prepMinutes: 45,
+        recipeYield: null,
         ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
         references: [],
         steps: [],
@@ -894,7 +936,7 @@ describe('extractRecipe', () => {
     it('does not call the network for an empty image', async () => {
       const spy = jest.spyOn(global, 'fetch');
       await expect(extractRecipe({ base64: '', mediaType: 'image/jpeg' }, AISLES)).resolves.toEqual({
-        name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+        name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
         references: [], steps: [], prepTasks: [],
       });
       expect(spy).not.toHaveBeenCalled();

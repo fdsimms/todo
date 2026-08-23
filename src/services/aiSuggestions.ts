@@ -5,6 +5,7 @@ import {
   GROCERY_QUANTITY_MAX_LENGTH,
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
+  RECIPE_SOURCE_MAX_LENGTH,
   SHOP_NAME_MAX_LENGTH,
 } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -608,6 +609,12 @@ export interface ExtractedRecipe {
   servingsMax: number | null;
   /** Null when not stated. */
   prepMinutes: number | null;
+  /**
+   * What the recipe makes when a serving count doesn't fit — "2 loaves", "3
+   * cups", "2 dozen cookies". Independent of servings/servingsMax; a recipe
+   * can give both. Null when not stated.
+   */
+  recipeYield: string | null;
   ingredients: RecipeGroceryItem[];
   /**
    * Other recipes this one tells you to go and make, printed elsewhere in the
@@ -701,7 +708,7 @@ export async function extractRecipe(
   const { apiKey, model } = requireFeature('recipeExtraction');
 
   const empty: ExtractedRecipe = {
-    name: '', servings: null, servingsMax: null, prepMinutes: null, ingredients: [],
+    name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
     references: [], steps: [], prepTasks: [],
   };
   const image = typeof source === 'string' ? null : source;
@@ -712,7 +719,7 @@ export async function extractRecipe(
   const foundLine = `its shopping list${includeMethod ? ', and its method' : ''}`;
   const prompt = image
     ? [
-        `This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves, its total prep/cook time, and ${foundLine}.`,
+        `This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`,
         'Ignore anything on the page that is not part of this recipe: page numbers, running heads, chapter titles, headnotes and stories, photo captions, and text bleeding in from a facing page. If the page shows more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.',
         ...sharedRecipeInstructions(availableAisles),
         ...(includeReferences ? referenceInstructions() : []),
@@ -720,7 +727,7 @@ export async function extractRecipe(
         'If the photo is too blurry, too dark, cut off, or otherwise unreadable, return an empty name and an empty item list rather than guessing. Never invent an ingredient, step, or prep task you cannot actually read.',
       ].join('\n\n')
     : [
-        `Extract this recipe: its name, how many it serves, its total prep/cook time, and ${foundLine}.`,
+        `Extract this recipe: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`,
         ...sharedRecipeInstructions(availableAisles),
         ...(includeReferences ? referenceInstructions() : []),
         ...(includeMethod ? methodInstructions() : []),
@@ -762,6 +769,10 @@ export async function extractRecipe(
           prepMinutes: {
             type: 'integer',
             description: 'Total prep/cook time in minutes, if stated. 0 if not stated.',
+          },
+          recipeYield: {
+            type: 'string',
+            description: `What the recipe makes, when that isn't a plain serving count — "2 loaves", "3 cups", "2 dozen cookies". Independent of servings: give both when the recipe states both ("serves 8" and "makes 2 loaves"). Under ${RECIPE_SOURCE_MAX_LENGTH} characters. Empty string if not stated or if it's just a serving count already captured in "servings".`,
           },
           items: groceryItemsSchema(
             availableAisles,
@@ -822,7 +833,7 @@ export async function extractRecipe(
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
-    name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown; items?: unknown;
+    name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown; recipeYield?: unknown; items?: unknown;
     referencedRecipes?: unknown; steps?: unknown; prepTasks?: unknown;
   } | undefined;
   if (!input) throw new Error('No suggestions returned');
@@ -840,9 +851,12 @@ export async function extractRecipe(
   const prepMinutes = typeof input.prepMinutes === 'number' && input.prepMinutes > 0
     ? Math.round(input.prepMinutes)
     : null;
+  const recipeYield = typeof input.recipeYield === 'string' && input.recipeYield.trim()
+    ? input.recipeYield.trim().slice(0, RECIPE_SOURCE_MAX_LENGTH)
+    : null;
 
   return {
-    name, servings, servingsMax, prepMinutes,
+    name, servings, servingsMax, prepMinutes, recipeYield,
     ingredients: parseExtractedItems(input.items, availableAisles),
     references: includeReferences ? parseExtractedReferences(input.referencedRecipes) : [],
     steps: includeMethod ? parseExtractedSteps(input.steps) : [],

@@ -21,6 +21,7 @@ import {
 } from '../utils/focusSuggest';
 import type { FocusPlanOptions } from '../utils/focusPlan';
 import { resolverFor } from '../utils/blocking';
+import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task } from '../types';
 
 const mockSettingsState = {
@@ -154,13 +155,14 @@ const PLAN: FocusPlanOptions = {
 /** A context over the given pool, with the clock pinned and no time limit. */
 const ctxFor = (
   tasks: Task[],
-  over: Partial<Pick<FocusContext, 'currentSegment' | 'windowMinutes' | 'planOptions'>> = {},
+  over: Partial<Pick<FocusContext, 'currentSegment' | 'windowMinutes' | 'planOptions' | 'excludedCategories'>> = {},
 ): FocusContext => ({
   todayStart: TODAY_START,
   currentSegment: 'morning',
   resolve: resolverFor(tasks),
   windowMinutes: null,
   planOptions: PLAN,
+  excludedCategories: new Set<string>(),
   ...over,
 });
 
@@ -210,6 +212,16 @@ describe('eligibility', () => {
   it('returns nothing at all when there is nothing eligible', () => {
     const pool = [makeTask({ id: 'a', completed: true })];
     expect(suggestFocusTasks(pool, ctxFor(pool))).toEqual([]);
+  });
+
+  it('never offers a task in a category opted out of suggestions', () => {
+    const pool = [
+      makeTask({ id: 'shower', category: 'Routine', priority: 4 }),
+      makeTask({ id: 'teeth', category: 'Routine', priority: 4 }),
+      makeTask({ id: 'deck', category: 'Work' }),
+    ];
+    const ctx = ctxFor(pool, { excludedCategories: new Set(['Routine']) });
+    expect(suggestFocusTasks(pool, ctx)).toEqual(['deck']);
   });
 });
 
@@ -458,5 +470,17 @@ describe('buildFocusContext', () => {
     // Handed only the candidate, the scorer still sees it as blocked.
     expect(suggestFocusTasks([blocked], ctx)).toEqual([]);
     expect(suggestFocusTasks([blocker], ctx)).toEqual(['blocker']);
+  });
+
+  it('collects the categories opted out of suggestions', () => {
+    (useCategoryStore.getState as jest.Mock).mockReturnValue({
+      categories: [
+        { name: 'Routine', excludeFromSuggestions: true },
+        { name: 'Work', excludeFromSuggestions: false },
+      ],
+    });
+    const ctx = buildFocusContext([], { windowMinutes: null, planOptions: PLAN });
+    expect(ctx.excludedCategories.has('Routine')).toBe(true);
+    expect(ctx.excludedCategories.has('Work')).toBe(false);
   });
 });

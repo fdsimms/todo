@@ -25,11 +25,12 @@ export interface Category {
   scheduleStart: string | null;    // "HH:MM"
   scheduleEnd: string | null;      // "HH:MM"
   hideOnVacation: boolean;         // hide tasks in this category while vacation mode is on
-  // Keep tasks in this category out of suggested pins (see suggestPinTasks).
-  // Only the suggester honours it — the tasks stay visible everywhere and can
-  // still be pinned by hand. For routines and errands, which are perfectly
-  // real work but bad company for whatever else lands in the pinned list.
-  excludeFromPinSuggestions: boolean;
+  // Keep tasks in this category out of suggested pins (see suggestPinTasks)
+  // and suggested focus queues (see suggestFocusTasks). Only the suggesters
+  // honour it — the tasks stay visible everywhere and can still be pinned or
+  // queued by hand. For routines and errands, which are perfectly real work
+  // but bad company for whatever else lands in a shortlist.
+  excludeFromSuggestions: boolean;
   // Keep tasks in this category from counting as "new" — no entry in the
   // "you have X new todos" banner, and no dot on their own row (see
   // isTaskNew). Both read the same signal, so this turns it off at the
@@ -1943,7 +1944,7 @@ export interface Shop {
   // case. Keeps the store fully available for manual linking (the item
   // sheet's picker, finishShopping's "which store") while pulling it out of
   // primaryShopFor/exclusiveShopFor and the grocery-run task button's store
-  // picker. Same naming convention as Category.excludeFromPinSuggestions.
+  // picker. Same naming convention as Category.excludeFromSuggestions.
   excludeFromSuggestions: boolean;
   /**
    * What this store's receipts are good for. See ReceiptStyle.

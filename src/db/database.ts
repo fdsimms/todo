@@ -2082,7 +2082,7 @@ function rowToCategory(row: Record<string, unknown>): Category {
     scheduleStart: (row.schedule_start as string) ?? null,
     scheduleEnd: (row.schedule_end as string) ?? null,
     hideOnVacation: Boolean(row.hide_on_vacation),
-    excludeFromPinSuggestions: Boolean(row.exclude_from_pin_suggestions),
+    excludeFromSuggestions: Boolean(row.exclude_from_pin_suggestions),
     excludeFromNewTasksBanner: Boolean(row.exclude_from_new_tasks_banner),
     defaultTimeSegments: parseTimeSegments(row.default_time_segments),
     sortOrder: row.sort_order as number,
@@ -2100,7 +2100,7 @@ export function dbInsertCategory(name: string): Category {
   const maxOrder = db.getFirstSync<{ m: number }>('SELECT COALESCE(MAX(sort_order), 0) AS m FROM categories')?.m ?? 0;
   const sortOrder = maxOrder + 1;
   db.runSync('INSERT INTO categories (id, name, sort_order) VALUES (?, ?, ?)', [id, name, sortOrder]);
-  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, excludeFromPinSuggestions: false, excludeFromNewTasksBanner: false, defaultTimeSegments: [], sortOrder, emoji: null };
+  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, excludeFromSuggestions: false, excludeFromNewTasksBanner: false, defaultTimeSegments: [], sortOrder, emoji: null };
 }
 
 export function dbBatchUpdateCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
@@ -2115,7 +2115,11 @@ export function dbSetCategoryHideOnVacation(id: string, hide: boolean): void {
   db.runSync('UPDATE categories SET hide_on_vacation = ? WHERE id = ?', [hide ? 1 : 0, id]);
 }
 
-export function dbSetCategoryExcludeFromPinSuggestions(id: string, exclude: boolean): void {
+// Column stays exclude_from_pin_suggestions — this predates the rename to
+// "excludeFromSuggestions" (see Category.excludeFromSuggestions) and renaming
+// it would need a data migration for existing installs, the same trade the
+// cycle_*/chain* columns already make.
+export function dbSetCategoryExcludeFromSuggestions(id: string, exclude: boolean): void {
   db.runSync('UPDATE categories SET exclude_from_pin_suggestions = ? WHERE id = ?', [exclude ? 1 : 0, id]);
 }
 
@@ -2169,7 +2173,7 @@ export function dbInsertCategoryRow(category: Category): void {
       category.scheduleStart,
       category.scheduleEnd,
       category.hideOnVacation ? 1 : 0,
-      category.excludeFromPinSuggestions ? 1 : 0,
+      category.excludeFromSuggestions ? 1 : 0,
       category.excludeFromNewTasksBanner ? 1 : 0,
       category.defaultTimeSegments.length ? JSON.stringify(category.defaultTimeSegments) : null,
       category.sortOrder,

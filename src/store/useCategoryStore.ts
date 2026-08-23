@@ -8,7 +8,7 @@ import {
   dbDeleteCategory,
   dbRenameCategory,
   dbSetCategoryHideOnVacation,
-  dbSetCategoryExcludeFromPinSuggestions,
+  dbSetCategoryExcludeFromSuggestions,
   dbSetCategoryExcludeFromNewTasksBanner,
   dbSetCategoryEmoji,
   dbSetCategoryDefaultTimeSegments,
@@ -33,7 +33,7 @@ interface CategoryStore {
   setCategorySchedule: (name: string, scheduleDays: number[], scheduleStart: string, scheduleEnd: string) => void;
   removeCategorySchedule: (name: string) => void;
   setCategoryHideOnVacation: (name: string, hide: boolean) => void;
-  setCategoryExcludeFromPinSuggestions: (name: string, exclude: boolean) => void;
+  setCategoryExcludeFromSuggestions: (name: string, exclude: boolean) => void;
   setCategoryExcludeFromNewTasksBanner: (name: string, exclude: boolean) => void;
   setCategoryEmoji: (name: string, emoji: string | null) => void;
   // Only what *new* tasks in this category start with. Retroactively moving
@@ -117,13 +117,13 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
     }));
   },
 
-  setCategoryExcludeFromPinSuggestions(name, exclude) {
+  setCategoryExcludeFromSuggestions(name, exclude) {
     const cat = get().categories.find(c => c.name === name);
     if (!cat) return;
-    dbSetCategoryExcludeFromPinSuggestions(cat.id, exclude);
+    dbSetCategoryExcludeFromSuggestions(cat.id, exclude);
     set(s => ({
       categories: s.categories.map(c =>
-        c.name === name ? { ...c, excludeFromPinSuggestions: exclude } : c
+        c.name === name ? { ...c, excludeFromSuggestions: exclude } : c
       ),
     }));
   },

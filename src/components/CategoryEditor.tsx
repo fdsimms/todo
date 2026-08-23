@@ -69,7 +69,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const setCategorySchedule = useCategoryStore(s => s.setCategorySchedule);
   const removeCategorySchedule = useCategoryStore(s => s.removeCategorySchedule);
   const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
-  const setCategoryExcludeFromPinSuggestions = useCategoryStore(s => s.setCategoryExcludeFromPinSuggestions);
+  const setCategoryExcludeFromSuggestions = useCategoryStore(s => s.setCategoryExcludeFromSuggestions);
   const setCategoryExcludeFromNewTasksBanner = useCategoryStore(s => s.setCategoryExcludeFromNewTasksBanner);
   const setCategoryEmoji = useCategoryStore(s => s.setCategoryEmoji);
   const setCategoryDefaultTimeSegments = useCategoryStore(s => s.setCategoryDefaultTimeSegments);
@@ -86,7 +86,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const [start, setStart] = useState(DEFAULT_START);
   const [end, setEnd] = useState(DEFAULT_END);
   const [hideOnVacation, setHideOnVacation] = useState(false);
-  const [excludeFromPins, setExcludeFromPins] = useState(false);
+  const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [excludeFromNewBanner, setExcludeFromNewBanner] = useState(false);
   const [defaultSegments, setDefaultSegments] = useState<TimeOfDay[]>([]);
   const [segmentsOpen, setSegmentsOpen] = useState(false);
@@ -107,7 +107,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     setStart(cat?.scheduleStart ?? DEFAULT_START);
     setEnd(cat?.scheduleEnd ?? DEFAULT_END);
     setHideOnVacation(!!cat?.hideOnVacation);
-    setExcludeFromPins(!!cat?.excludeFromPinSuggestions);
+    setExcludeFromSuggestions(!!cat?.excludeFromSuggestions);
     setExcludeFromNewBanner(!!cat?.excludeFromNewTasksBanner);
     setDefaultSegments(cat?.defaultTimeSegments ?? []);
     setSegmentsOpen(false);
@@ -220,8 +220,8 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     if (hideOnVacation !== !!cat?.hideOnVacation) {
       setCategoryHideOnVacation(category, hideOnVacation);
     }
-    if (excludeFromPins !== !!cat?.excludeFromPinSuggestions) {
-      setCategoryExcludeFromPinSuggestions(category, excludeFromPins);
+    if (excludeFromSuggestions !== !!cat?.excludeFromSuggestions) {
+      setCategoryExcludeFromSuggestions(category, excludeFromSuggestions);
     }
     if (excludeFromNewBanner !== !!cat?.excludeFromNewTasksBanner) {
       setCategoryExcludeFromNewTasksBanner(category, excludeFromNewBanner);
@@ -399,19 +399,19 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
             <View style={styles.sep} />
             <TouchableOpacity
               style={styles.optionRow}
-              onPress={() => { haptics.tap(); setExcludeFromPins(v => !v); }}
+              onPress={() => { haptics.tap(); setExcludeFromSuggestions(v => !v); }}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="switch"
-              accessibilityState={{ checked: excludeFromPins }}
-              accessibilityLabel="Skip in suggested pins"
+              accessibilityState={{ checked: excludeFromSuggestions }}
+              accessibilityLabel="Skip in suggestions"
             >
-              <Ionicons name="color-wand-outline" size={18} color={excludeFromPins ? colors.accent : colors.textSecondary} />
+              <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Skip in suggested pins</Text>
-                <Text style={styles.optionHint}>Keeps these out of suggested pins. You can still pin them by hand</Text>
+                <Text style={styles.optionLabel}>Skip in suggestions</Text>
+                <Text style={styles.optionHint}>Keeps these out of suggested pins and focus sessions. You can still pin or queue them by hand</Text>
               </View>
-              <View style={[styles.toggle, excludeFromPins && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, excludeFromPins && styles.toggleKnobOn]} />
+              <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
             <View style={styles.sep} />
