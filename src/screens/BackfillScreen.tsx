@@ -6,6 +6,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
@@ -16,6 +17,7 @@ import { spacing, radius, font, lineHeight, fontWeight, iconSize, interaction, t
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor } from '../utils/visibilityUtils';
+import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { formatDuration, EFFORT_MINUTES } from '../utils/effort';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import {
@@ -59,6 +61,8 @@ export function BackfillScreen() {
   const tasks = useTaskStore(useShallow(s => s.tasks));
   const updateTask = useTaskStore(s => s.updateTask);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
+  const projects = useProjectStore(useShallow(s => s.projects));
+  const projectNamesById = useMemo(() => new Map(projects.map(p => [p.id, p.title])), [projects]);
 
   const [activeField, setActiveField] = useState<BackfillFieldId | null>(null);
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
@@ -156,14 +160,13 @@ export function BackfillScreen() {
             {!!current.notes.trim() && (
               <Text style={styles.taskNotes} numberOfLines={2}>{current.notes.trim()}</Text>
             )}
-            {current.category && (
-              <View style={styles.categoryChip}>
-                <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.categoryChipText} numberOfLines={1}>
-                  {categoryLabel(current.category, getCategoryByName)}
-                </Text>
-              </View>
-            )}
+            <TaskContextRow
+              task={current}
+              categoryLabel={current.category ? categoryLabel(current.category, getCategoryByName) : null}
+              projectTitle={current.projectId ? projectNamesById.get(current.projectId) ?? null : null}
+              colors={colors}
+              styles={styles}
+            />
           </View>
 
           <FieldControl
@@ -199,6 +202,49 @@ function categoryLabel(
 ): string {
   const emoji = getCategoryByName(category)?.emoji;
   return emoji ? `${emoji} ${category}` : category;
+}
+
+/**
+ * Same schedule/category/project meta chips `ArchivedRow` shows, because a
+ * title alone is often not enough to place a task by — "Book activities" only
+ * reads once you know it's part of the Iceland trip. Missing every one of
+ * these is possible (a plain standalone task) and just means there's nothing
+ * more to show; it's not a reason to invent context that isn't on the row.
+ */
+function TaskContextRow({
+  task, categoryLabel, projectTitle, colors, styles,
+}: {
+  task: Task;
+  categoryLabel: string | null;
+  projectTitle: string | null;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const repeat = task.recurrenceType !== 'none' ? describeTaskRecurrence(task) : null;
+  if (!repeat && !categoryLabel && !projectTitle) return null;
+
+  return (
+    <View style={styles.metaRow}>
+      {repeat && (
+        <View style={styles.metaChip}>
+          <Ionicons name="repeat" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.metaText} numberOfLines={1}>{repeat}</Text>
+        </View>
+      )}
+      {categoryLabel && (
+        <View style={styles.metaChip}>
+          <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.metaText} numberOfLines={1}>{categoryLabel}</Text>
+        </View>
+      )}
+      {projectTitle && (
+        <View style={styles.metaChip}>
+          <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.metaText} numberOfLines={1}>{projectTitle}</Text>
+        </View>
+      )}
+    </View>
+  );
 }
 
 interface FieldControlProps {
@@ -288,14 +334,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   taskTitle: { color: colors.text, fontSize: font.lg, lineHeight: lineHeight.lg, fontWeight: fontWeight.semibold },
   taskNotes: { color: colors.textSecondary, fontSize: font.sm, lineHeight: lineHeight.sm },
-  categoryChip: {
+  // Wraps rather than squeezing, same call ArchivedRow's own meta row makes —
+  // a task carrying a schedule, a category and a project has more than fits
+  // on one line at 390pt.
+  metaRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 4,
-    alignSelf: 'flex-start',
+    gap: spacing.sm,
     marginTop: 2,
   },
-  categoryChipText: { color: colors.textSecondary, fontSize: font.xs },
+  metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
+  metaText: { color: colors.textSecondary, fontSize: font.xs },
 
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   pill: {
