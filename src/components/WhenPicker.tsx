@@ -320,9 +320,7 @@ export function WhenPicker({
     if (onBreakUp) {
       actions.push({
         key: 'break',
-        // The ellipsis is honest: this opens somewhere else to finish the job,
-        // the same promise the "Split into N…" pill on a recipe row makes.
-        label: 'Break it up…',
+        label: 'Break it up',
         onPress: () => { haptics.tap(); setCheckDismissed(true); onBreakUp(); },
       });
     }

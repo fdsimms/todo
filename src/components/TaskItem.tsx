@@ -355,7 +355,7 @@ export const TaskItem = React.memo(function TaskItem({
   const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
-  // The postpone prompt's "Break it up…" needs somewhere to send the user. With
+  // The postpone prompt's "Break it up" needs somewhere to send the user. With
   // a key it's the AI sheet; without one it falls back to the editor, where the
   // subtask field is. A row that can't do either (no onEdit) offers no pill.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
