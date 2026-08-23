@@ -3,6 +3,7 @@ import {
   normalizeTargetUnit,
   formatQuotaProgress,
   formatQuotaTarget,
+  formatQuotaCatchUp,
 } from '../utils/quotaUnit';
 
 describe('normalizeTargetUnit', () => {
@@ -56,5 +57,32 @@ describe('formatQuotaTarget', () => {
 
   it('drops the × once the unit says what is being counted', () => {
     expect(formatQuotaTarget(12, 'glasses')).toBe('12 glasses');
+  });
+});
+
+describe('formatQuotaCatchUp', () => {
+  it('gives both numbers while they differ — one to go quiet, one to be done', () => {
+    expect(formatQuotaCatchUp(4, 10, 2)).toBe(
+      '2 more to catch up and leave Today. All 6 to finish for the day.',
+    );
+  });
+
+  it('gives one number once catching up would finish it anyway', () => {
+    expect(formatQuotaCatchUp(7, 10, 3)).toBe('3 more to finish for the day.');
+    // Past the pace line, e.g. the span has closed and the lot is owed.
+    expect(formatQuotaCatchUp(7, 10, 5)).toBe('3 more to finish for the day.');
+  });
+
+  it('says so when nothing is owed yet', () => {
+    expect(formatQuotaCatchUp(4, 10, 0)).toBe('On pace for now. 6 more to finish for the day.');
+  });
+
+  it('names the last unit for what it is — that log completes the task', () => {
+    expect(formatQuotaCatchUp(9, 10, 1)).toBe('One more finishes it for the day.');
+    expect(formatQuotaCatchUp(9, 10, 0)).toBe('One more finishes it for the day.');
+  });
+
+  it('reads for an overshoot target logged past its target', () => {
+    expect(formatQuotaCatchUp(11, 10, 0)).toBe('Past the target of 10 for the day.');
   });
 });

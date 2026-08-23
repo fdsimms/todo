@@ -16,6 +16,8 @@ import { spacing, radius, font, fontWeight, lineHeight, border, animation, inter
 import { haptics } from '../utils/haptics';
 import { formatClockDuration, formatDuration } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
+import { isQuotaTask } from '../utils/visibilityUtils';
+import { formatQuotaProgress } from '../utils/quotaUnit';
 import { buildFocusPlan, focusPlanTotals, plannedTaskMinutes, type FocusPlanOptions } from '../utils/focusPlan';
 import { focusPlanOptionsFrom, focusRestsDisabled } from '../utils/focusSettings';
 import {
@@ -338,6 +340,12 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
   const renderRow = (task: Task) => {
     const checked = selectedIds.has(task.id);
     const reason = ctx ? focusReason(task, companyFor(task.id), ctx) : null;
+    // A daily target is logged a unit at a time rather than ticked off once, so
+    // its count leads the line: it's the difference between a stretch that
+    // finishes the task and one that gets you two glasses closer.
+    const count = isQuotaTask(task) && !task.completed
+      ? formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit)
+      : null;
     // Through the plan's own read, never `task.estimatedMinutes`: the summary
     // below charges an unestimated task the default stretch, so a row that
     // showed nothing for it left the "1.5h of work" under three blank rows
@@ -355,7 +363,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="checkbox"
           accessibilityState={{ checked }}
-          accessibilityLabel={`${task.title}${reason ? `, ${reason}` : ''}, ${spokenTime}`}
+          accessibilityLabel={`${task.title}${count ? `, ${count} logged` : ''}${reason ? `, ${reason}` : ''}, ${spokenTime}`}
         >
           <Ionicons
             name={checked ? 'checkmark-circle' : 'ellipse-outline'}
@@ -366,19 +374,23 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
             <Text style={[styles.rowTitle, !checked && styles.rowTitleUnchecked]} numberOfLines={1}>
               {task.title}
             </Text>
-            {/* Two Texts rather than one joined string: the reason can be as
-                long as a task title ("Goes with Draft the quarterly memo") and
-                on one line it's the duration that gets ellipsized away, which
-                is the one part of this line that is a fact rather than a
-                gloss. The reason shrinks; the minutes don't. */}
+            {/* Separate Texts rather than one joined string: the reason can be
+                as long as a task title ("Goes with Draft the quarterly memo")
+                and on one line it's the duration that gets ellipsized away,
+                which is the one part of this line that is a fact rather than a
+                gloss. The reason shrinks; the minutes don't, and neither does a
+                target's count, which is a fact of the same kind. */}
             <View style={styles.rowSubLine}>
+              {count !== null && (
+                <Text style={styles.rowSub} numberOfLines={1}>{count}</Text>
+              )}
               {reason !== null && (
                 <Text style={[styles.rowSub, styles.rowReason]} numberOfLines={1}>
-                  {reason}
+                  {count !== null ? ` · ${reason}` : reason}
                 </Text>
               )}
               <Text style={styles.rowSub} numberOfLines={1}>
-                {reason !== null ? ` · ${time}` : time}
+                {count !== null || reason !== null ? ` · ${time}` : time}
               </Text>
             </View>
           </View>

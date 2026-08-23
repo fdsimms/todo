@@ -247,6 +247,29 @@ Two details in `pruneFocusPlan`:
 Only *completion* is added to `completedTaskIds`. A deleted task was not an
 achievement, and skipping one (`skipTask`) says so too.
 
+## A daily target is logged, not ticked
+
+The session's tick action goes through `logQuotaUnit` for a quota task, exactly
+as the meter on its row does, and the button says "Log one" rather than "Done".
+It ran through `completeTask` at first, which fills `progressCount` to the
+target: one tap in a session finished all eight glasses, while the same task's
+row on Today only ever added one. Two surfaces disagreeing about what a tick
+means is worse than either answer.
+
+The last unit still completes the task, because `logQuotaUnit` hands off to
+`completeTask` when it meets the target — so recurrence, streaks and the
+Logbook are unchanged, and the session notices through `syncWithTasks` like any
+other completion.
+
+The count is spelled out on the stage above the clock, with
+`quotaUnitsToPace` (`visibilityUtils.ts`) and `formatQuotaCatchUp`
+(`quotaUnit.ts`) between them saying how many logs put it back on pace and how
+many finish the day. That sentence exists because a session is the one place a
+target is worked with no row in front of you: on Today the answer is implicit
+in the row being there, and going quiet when it isn't. **Both numbers, not
+one** — they only coincide as the day's span closes, and "how many before this
+goes quiet" is the question someone mid-session is actually asking.
+
 ## Why the store takes tasks as arguments
 
 `useTaskStore.initialize` fans out to `useFocusStore.initialize`, so an import
