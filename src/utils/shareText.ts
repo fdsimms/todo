@@ -160,6 +160,21 @@ export function buildGroceryListShareText(items: readonly GroceryItem[]): string
 }
 
 /**
+ * The same rows `buildGroceryListShareText` sends, as the plain lines another
+ * shopping app's paste box wants: no "Grocery list" title, no `- ` bullets,
+ * one item per line. Same reasoning as `buildIngredientsText` — a title line
+ * and a bullet each become part of an item on the other side.
+ *
+ * Empty string for nothing to copy, same gating convention as the rest.
+ */
+export function buildGroceryListText(items: readonly GroceryItem[]): string {
+  return items
+    .filter(i => i.onList && !i.checked)
+    .map(item => `${item.quantity ? `${item.quantity} ` : ''}${item.name}`)
+    .join('\n');
+}
+
+/**
  * A week's meal plan as text — "here's what we're eating", one line per
  * planned slot, days with nothing planned omitted rather than padded out
  * with blanks.

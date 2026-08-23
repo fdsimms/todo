@@ -1,6 +1,7 @@
 import type { GroceryItem, MealPlanEntry, MealSlot, Recipe, RecipeComponent, RecipeIngredient } from '../types';
 import {
-  buildGroceryListShareText, buildIngredientsText, buildRecipeShareText, buildWeekPlanShareText,
+  buildGroceryListShareText, buildGroceryListText, buildIngredientsText, buildRecipeShareText,
+  buildWeekPlanShareText,
 } from '../utils/shareText';
 
 // shareText reaches recipeUtils.ts (for describeAttribution/formatServings)
@@ -74,6 +75,19 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     lastPrepMinutes: null,
     prepTimeCount: 0,
     totalPrepMinutes: 0,
+    ...overrides,
+  };
+}
+
+function item(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
+  return {
+    id: `i-${++seq}`, name, nameKey: name.toLowerCase(), preferredProductId: null, productStrict: false,
+    aisle: 'Other', quantity: null, quantityFromRecipe: false, note: '',
+    onList: true, checked: false, inCatalog: true, sortOrder: seq, purchaseCount: 0,
+    lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+    onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+    isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, lastPriceMinor: null,
+    lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   };
 }
@@ -214,19 +228,6 @@ describe('buildIngredientsText', () => {
 });
 
 describe('buildGroceryListShareText', () => {
-  function item(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
-    return {
-      id: `i-${++seq}`, name, nameKey: name.toLowerCase(), preferredProductId: null, productStrict: false,
-      aisle: 'Other', quantity: null, quantityFromRecipe: false, note: '',
-      onList: true, checked: false, inCatalog: true, sortOrder: seq, purchaseCount: 0,
-      lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
-      onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
-      isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, lastPriceMinor: null,
-      lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
-      ...overrides,
-    };
-  }
-
   it('lists what is on the list and not checked, in the order given', () => {
     const items = [item('Milk'), item('Eggs', { quantity: 'x12' })];
     expect(buildGroceryListShareText(items)).toBe('Grocery list\n- Milk\n- x12 Eggs');
@@ -240,6 +241,26 @@ describe('buildGroceryListShareText', () => {
   it('is empty when nothing is on the list', () => {
     expect(buildGroceryListShareText([item('Milk', { checked: true })])).toBe('');
     expect(buildGroceryListShareText([])).toBe('');
+  });
+});
+
+describe('buildGroceryListText', () => {
+  it('is the items alone — no title line, no bullets', () => {
+    const items = [item('Milk', { quantity: '2 L' }), item('Bread')];
+    expect(buildGroceryListText(items)).toBe('2 L Milk\nBread');
+  });
+
+  it('leaves out a checked row and an off-list row, same as the share', () => {
+    const items = [
+      item('Milk'),
+      item('Eggs', { checked: true }),
+      item('Rice', { onList: false }),
+    ];
+    expect(buildGroceryListText(items)).toBe('Milk');
+  });
+
+  it('is empty when nothing is on the list, so a caller can gate on it', () => {
+    expect(buildGroceryListText([item('Rice', { onList: false })])).toBe('');
   });
 });
 

@@ -24,7 +24,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
-import * as Clipboard from 'expo-clipboard';
+import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient, RecipePrepTask, RecipeStep } from '../types';
@@ -86,13 +86,6 @@ type RootStackParamList = {
 type MergedIngredientRow =
   | { kind: 'ingredient'; id: string; ingredient: RecipeIngredient }
   | { kind: 'heading'; id: string; name: string; empty: boolean };
-
-/**
- * How long the copy button stays a tick after copying the ingredients. Long
- * enough to be read on the way to the other app, short enough that coming
- * back to this screen doesn't find a stale confirmation sitting there.
- */
-const COPIED_TICK_MS = 2000;
 
 export function RecipeDetailScreen() {
   // ==== store bindings and layout insets ====
@@ -349,20 +342,7 @@ export function RecipeDetailScreen() {
     [recipe, recipesById, scale, unitSystem]
   );
 
-  // The tick the copy button shows for a moment afterwards. A copy leaves no
-  // trace on screen otherwise, and this app has no toast to say so.
-  const [copiedIngredients, setCopiedIngredients] = useState(false);
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (copiedTimer.current) clearTimeout(copiedTimer.current); }, []);
-
-  const handleCopyIngredients = () => {
-    if (!ingredientsText) return;
-    haptics.success();
-    Clipboard.setStringAsync(ingredientsText).catch(() => {});
-    setCopiedIngredients(true);
-    if (copiedTimer.current) clearTimeout(copiedTimer.current);
-    copiedTimer.current = setTimeout(() => setCopiedIngredients(false), COPIED_TICK_MS);
-  };
+  const { copied: copiedIngredients, copy: copyIngredients } = useCopyToClipboard();
 
   const handleShareIngredients = () => {
     if (!ingredientsText) return;
@@ -1100,7 +1080,7 @@ export function RecipeDetailScreen() {
           {!selectionMode && !!ingredientsText && (
             <View style={styles.ingredientsHeaderActions}>
               <TouchableOpacity
-                onPress={handleCopyIngredients}
+                onPress={() => copyIngredients(ingredientsText)}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Copy the ingredients as plain text"
