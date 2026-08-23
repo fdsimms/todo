@@ -287,6 +287,46 @@ export function attentionLeftovers(
 }
 
 /**
+ * The containers `SuggestMealsSheet` may offer for a night with no dinner on
+ * it — live ones, most urgent first, minus any the week already points at.
+ *
+ * The sheet used to answer "what could I make this week" purely out of the
+ * recipe box and the grocery catalog, so a fridge holding two containers and a
+ * week holding four empty nights got four proposals to *cook* and no mention
+ * of the two dinners that already existed. A container is the cheapest meal in
+ * the house and the only one with a clock on it, which is why it leads the
+ * sheet rather than sitting among the ranked recipes.
+ *
+ * **Not the same question `attentionLeftovers` asks.** That one drives a nudge,
+ * so it fires only for what's nearly out of time. This one is filling a night,
+ * and a stew with three days left is a perfectly good Tuesday — the urgency
+ * decides the *order* here (`sortLeftovers`, which also files the frozen ones
+ * last), never whether a container is offered at all.
+ *
+ * **`plannedLeftoverIds` is what the week already spoke for.** Pointing a meal
+ * at a container isn't eating all of it (see `Leftover.finishedAt`), so a big
+ * pot genuinely can cover two nights — but that's a decision to make in front
+ * of the fridge card, which is where planning a container onto a specific night
+ * lives. A list of proposals offering the same chilli for Tuesday *and*
+ * Thursday, in a sheet that assigns days by itself, is just a double-booking
+ * with extra steps.
+ *
+ * Capped for the reason `suggestRecipesForEmptyNight` is: this is a shelf to
+ * read, not the fridge in full, and the whole fridge is one tap away on the
+ * card behind the sheet.
+ */
+export function suggestableLeftovers(
+  leftovers: readonly Leftover[],
+  plannedLeftoverIds: readonly string[] = [],
+  limit: number = 5
+): Leftover[] {
+  const planned = new Set(plannedLeftoverIds);
+  return liveLeftovers(leftovers)
+    .filter(l => !planned.has(l.id))
+    .slice(0, limit);
+}
+
+/**
  * Reading order for the fridge: soonest keep-until first, then the one that has
  * been in there longest, then by title.
  *

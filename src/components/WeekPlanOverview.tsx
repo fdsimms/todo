@@ -2,12 +2,15 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import type { Recipe } from '../types';
+import type { Leftover, Recipe } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { describeLeftover, isPlannedPastKeepUntil, liveFreshnessOf } from '../utils/leftovers';
+import { freshnessColor } from './LeftoversCard';
 import { InlineAction } from './InlineAction';
 import { titleForEntry } from '../utils/mealPlan';
+import { dayKeyOf } from '../utils/dateUtils';
 import { describePantryCoverage, type PantryCoverage } from '../utils/recipeUtils';
 import {
   describeWeekDecision,
@@ -27,6 +30,14 @@ interface Props {
   onAddWeekToList: () => void;
   /** Already ranked by suggestRecipesForEmptyNight; this renders the order it's given. */
   suggestions: readonly Recipe[];
+  /**
+   * The containers this shelf may offer, already narrowed by
+   * `suggestableLeftovers` and trimmed to what fits — they lead the shelf, for
+   * the same reason they lead `SuggestMealsSheet`: a dinner that already
+   * exists and is counting down is the answer to "from what you have" before
+   * any recipe is.
+   */
+  leftovers?: readonly Leftover[];
   pantryByRecipeId: ReadonlyMap<string, PantryCoverage>;
   /**
    * The night a suggestion would land on. Null when the week has no night left
@@ -37,6 +48,8 @@ interface Props {
    */
   planTarget: Date | null;
   onPlanSuggestion: (recipe: Recipe) => void;
+  /** Puts a container on `planTarget`. Omit and no fridge rows are rendered. */
+  onPlanLeftover?: (leftover: Leftover) => void;
   /** The full planning pass. Null when there's nowhere for it to land. */
   onSuggestMeals: (() => void) | null;
   /** "Copy 27 Jul – 2 Aug", when this week is empty and there's a week behind it. */
@@ -69,9 +82,11 @@ export function WeekPlanOverview({
   shopping,
   onAddWeekToList,
   suggestions,
+  leftovers = [],
   pantryByRecipeId,
   planTarget,
   onPlanSuggestion,
+  onPlanLeftover,
   onSuggestMeals,
   copyWeekLabel,
   onCopyWeek,
@@ -82,6 +97,7 @@ export function WeekPlanOverview({
 
   const decision = describeWeekDecision(nights);
   const targetLabel = planTarget ? format(planTarget, 'EEE') : null;
+  const fridge = onPlanLeftover ? leftovers : [];
 
   return (
     <ScrollView
@@ -176,12 +192,53 @@ export function WeekPlanOverview({
         </>
       )}
 
-      {!!planTarget && suggestions.length > 0 && (
+      {/* "What you have" is the fridge before it's the catalog, so the
+          containers lead — the same order SuggestMealsSheet puts them in, and
+          the same order the screen stacks LeftoversCard above this card in. */}
+      {!!planTarget && (suggestions.length > 0 || fridge.length > 0) && (
         <>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionLabel}>From what you have</Text>
           </View>
           <View style={styles.card}>
+            {fridge.map((leftover, idx) => {
+              // liveFreshnessOf, not freshnessOf: a frozen container's day is
+              // suspended, so tinting from it would glow red about food in no
+              // danger. Late wins over both — planning it on the target night
+              // is the thing being said.
+              const late = isPlannedPastKeepUntil(leftover, dayKeyOf(planTarget));
+              const freshness = liveFreshnessOf(leftover);
+              const tint = late
+                ? colors.red
+                : freshness ? freshnessColor(freshness, colors) : colors.textTertiary;
+              return (
+                <React.Fragment key={leftover.id}>
+                  {idx > 0 && <View style={styles.sep} />}
+                  <TouchableOpacity
+                    style={styles.suggestion}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => { haptics.tap(); onPlanLeftover?.(leftover); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      `Plan ${leftover.title} from the fridge for ${format(planTarget, 'EEEE')}. ${describeLeftover(leftover)}`
+                    }
+                  >
+                    <View style={[styles.dot, { backgroundColor: tint }]} />
+                    <View style={styles.suggestionText}>
+                      <Text style={styles.suggestionName} numberOfLines={1}>{leftover.title}</Text>
+                      <Text style={[styles.suggestionCoverage, { color: tint }]} numberOfLines={1}>
+                        {late ? `${describeLeftover(leftover)} · past its use-by on ${targetLabel}` : describeLeftover(leftover)}
+                      </Text>
+                    </View>
+                    <View style={styles.targetChip}>
+                      <Ionicons name="add" size={iconSize.xs} color={colors.accent} />
+                      <Text style={styles.targetChipText}>{targetLabel}</Text>
+                    </View>
+                  </TouchableOpacity>
+                </React.Fragment>
+              );
+            })}
+            {fridge.length > 0 && suggestions.length > 0 && <View style={styles.sep} />}
             {suggestions.map((recipe, idx) => {
               const coverage = pantryByRecipeId.get(recipe.id);
               const line = coverage ? describePantryCoverage(coverage) : null;
@@ -197,6 +254,13 @@ export function WeekPlanOverview({
                       `Plan ${recipe.name} for ${format(planTarget, 'EEEE')}${line ? `. ${line}` : ''}`
                     }
                   >
+                    {/* These rows share one card with the fridge rows above,
+                        so they hold the dot's slot open to keep every title on
+                        the same left edge — rendered only when there are fridge
+                        rows, so a shelf with an empty fridge is laid out
+                        exactly as it was. The sheet needs no equivalent: its
+                        fridge is a separate section under its own header. */}
+                    {fridge.length > 0 && <View style={styles.dot} />}
                     <View style={styles.suggestionText}>
                       <Text style={styles.suggestionName} numberOfLines={1}>{recipe.name}</Text>
                       {!!line && <Text style={styles.suggestionCoverage} numberOfLines={1}>{line}</Text>}
@@ -322,6 +386,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minHeight: 52,
   },
   suggestionText: { flex: 1, gap: 2 },
+  // The same 8pt dot the fridge card and the suggestion sheet use, so one
+  // container reads the same wherever it turns up.
+  dot: { width: 8, height: 8, borderRadius: 4 },
   suggestionName: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   suggestionCoverage: { color: colors.textSecondary, fontSize: font.xs },
   targetChip: {

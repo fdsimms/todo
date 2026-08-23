@@ -61,7 +61,13 @@ import {
 import { LeftoverSheet, type LeftoverSeed } from '../components/LeftoverSheet';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { FridgeHistorySheet } from '../components/FridgeHistorySheet';
-import { isLiveLeftover, leftoverKeepDaysFor, leftoverPartsFor, mealTitleForLeftover } from '../utils/leftovers';
+import {
+  isLiveLeftover,
+  leftoverKeepDaysFor,
+  leftoverPartsFor,
+  mealTitleForLeftover,
+  suggestableLeftovers,
+} from '../utils/leftovers';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -370,7 +376,12 @@ export function MealPlanScreen() {
   // sheet whose contents are recomputed from the week rewrites itself under
   // the finger that just tapped it. Null closes it.
   const [suggesting, setSuggesting] =
-    useState<{ recipes: Recipe[]; cookAgainRecipes: Recipe[]; days: Date[] } | null>(null);
+    useState<{
+      recipes: Recipe[];
+      cookAgainRecipes: Recipe[];
+      leftovers: Leftover[];
+      days: Date[];
+    } | null>(null);
   // Per-day collapse, local-only — folding one away is just less to scroll
   // past, not a decision worth persisting. Days before today are already
   // folded away wholesale by `previousDaysExpanded` below, so this starts
@@ -1248,6 +1259,28 @@ export function MealPlanScreen() {
     return map;
   }, [mealSuggestions, recipes, groceryItems, itemSubs]);
 
+  // What the fridge can fill a night with, for the same sheet. Live containers
+  // minus the ones this week already points at — the rule and its reasons live
+  // in suggestableLeftovers, so the sheet gets a list it can render in order
+  // rather than a fridge it has to think about.
+  const fridgeSuggestions = useMemo(
+    () => suggestableLeftovers(
+      leftovers,
+      entries.map(e => e.leftoverId).filter((id): id is string => !!id),
+    ),
+    [leftovers, entries],
+  );
+
+  // The overview's shelf is three rows, and the fridge takes the first of
+  // them — at most two, so a full fridge can't crowd the ranking out of a
+  // card whose whole job is the short answer. The sheet behind it is where
+  // the rest of both lists live.
+  const overviewFridge = useMemo(() => fridgeSuggestions.slice(0, 2), [fridgeSuggestions]);
+  const overviewRecipes = useMemo(
+    () => mealSuggestions.slice(0, 3 - overviewFridge.length),
+    [mealSuggestions, overviewFridge],
+  );
+
   // Offered whenever there's a night to fill and something to fill it with —
   // a ranked recipe, or a key for the generation half to invent one (#1063).
   //
@@ -1257,7 +1290,8 @@ export function MealPlanScreen() {
   // with every dinner spoken for still offers nothing, since there is nowhere
   // for an acceptance to land.
   const canSuggestMeals = openDinnerDays.length > 0
-    && (mealSuggestions.length > 0 || cookAgainSuggestions.length > 0 || !!anthropicApiKey);
+    && (mealSuggestions.length > 0 || cookAgainSuggestions.length > 0
+      || fridgeSuggestions.length > 0 || !!anthropicApiKey);
 
   // Context for the AI half of that sheet (#1063), so an invented idea isn't
   // something already on the week or something cooked last Tuesday. Both are
@@ -1273,6 +1307,22 @@ export function MealPlanScreen() {
     () => expiringItemHints(useUpEntries(kitchenInventory(groceryItems, leftovers, new Date()))),
     [groceryItems, leftovers]
   );
+
+  /**
+   * A container accepted from the suggestion sheet — the same write the fridge
+   * card's own plan action and its drag-onto-a-day make (planLeftoverOnDrop),
+   * down to the captured title. No prep-task offer: a leftover has no recipe
+   * behind it to have any.
+   */
+  const planLeftoverSuggestion = (leftover: Leftover, dateKey: string) => {
+    animateLayout();
+    planMeal({
+      date: dateKey,
+      slot: 'dinner',
+      leftoverId: leftover.id,
+      title: mealTitleForLeftover(leftover),
+    });
+  };
 
   const planSuggestion = (recipe: Recipe, dateKey: string) => {
     animateLayout();
@@ -1487,16 +1537,22 @@ export function MealPlanScreen() {
           // The same ranking the day list's own shelf is built from, capped at
           // what a glance can carry — the full set is one tap away in the sheet
           // below.
-          suggestions={mealSuggestions.slice(0, 3)}
+          suggestions={overviewRecipes}
+          leftovers={overviewFridge}
           pantryByRecipeId={suggestionPantryCoverage}
           planTarget={openDinnerDays[0] ?? null}
           onPlanSuggestion={recipe => {
             const target = openDinnerDays[0];
             if (target) planSuggestion(recipe, dayKeyOf(target));
           }}
+          onPlanLeftover={leftover => {
+            const target = openDinnerDays[0];
+            if (target) planLeftoverSuggestion(leftover, dayKeyOf(target));
+          }}
           onSuggestMeals={canSuggestMeals ? () => setSuggesting({
             recipes: mealSuggestions,
             cookAgainRecipes: cookAgainSuggestions,
+            leftovers: fridgeSuggestions,
             days: openDinnerDays,
           }) : null}
           copyWeekLabel={copySourceKey ? copySourceLabel : null}
@@ -1619,6 +1675,7 @@ export function MealPlanScreen() {
                           setSuggesting({
                             recipes: mealSuggestions,
                             cookAgainRecipes: cookAgainSuggestions,
+                            leftovers: fridgeSuggestions,
                             days: openDinnerDays,
                           });
                         }}
@@ -1858,6 +1915,7 @@ export function MealPlanScreen() {
         visible={suggesting !== null}
         recipes={suggesting?.recipes ?? []}
         cookAgainRecipes={suggesting?.cookAgainRecipes ?? []}
+        leftovers={suggesting?.leftovers ?? []}
         pantryByRecipeId={suggestionPantryCoverage}
         openDays={suggesting?.days ?? []}
         aiIdeasEnabled={!!anthropicApiKey}
@@ -1866,6 +1924,7 @@ export function MealPlanScreen() {
         expiringItemHints={expiringMealHints}
         slotsToFill={suggesting?.days.length ?? 0}
         onPlan={planSuggestion}
+        onPlanLeftover={planLeftoverSuggestion}
         onClose={() => setSuggesting(null)}
       />
 
