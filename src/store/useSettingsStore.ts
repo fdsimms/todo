@@ -372,6 +372,18 @@ interface SettingsStore {
   // more "File them under" row for a feature that renders at most one line
   // would cost more to read than it buys.
   kitchenOnToday: boolean;
+  /**
+   * Whether the meal plan's day list draws its days and meals at compact
+   * density (#1669's "Whole week" lens, folded back into the one list it was
+   * a second copy of).
+   *
+   * A stored preference rather than screen state, unlike the lens it replaces:
+   * a lens is a way of reading the week you are looking at right now, and
+   * density is how you want that screen drawn every time you open it. Off by
+   * default, read `=== 'true'` like recipeFavoritesOnly, so an install
+   * upgrading into it opens exactly as it did.
+   */
+  mealPlanCompact: boolean;
   // Which units recipe and grocery amounts are *shown* in — see
   // src/utils/unitConvert.ts. Display only: the quantity stored on the recipe
   // or the grocery row is never rewritten, and an editable field always shows
@@ -721,6 +733,7 @@ interface SettingsStore {
   setConfirmBeforeDeleting: (on: boolean) => void;
   setMealsOnToday: (mode: MealsOnToday) => void;
   setKitchenOnToday: (on: boolean) => void;
+  setMealPlanCompact: (compact: boolean) => void;
   setUnitSystem: (system: UnitSystem) => void;
   setCurrencySymbol: (symbol: string) => void;
   setMealCookTasks: (on: boolean) => void;
@@ -841,6 +854,7 @@ const DEFAULT_SETTINGS = {
   collapsedCategories: [] as string[],
   mealsOnToday: 'inline' as MealsOnToday,
   kitchenOnToday: true,
+  mealPlanCompact: false,
   unitSystem: 'asWritten' as UnitSystem,
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
@@ -1156,6 +1170,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   kitchenEnabled: true,
   mealsOnToday: 'inline',
   kitchenOnToday: true,
+  mealPlanCompact: false,
   unitSystem: 'asWritten',
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
@@ -1286,6 +1301,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const storedMealsOnToday = dbGetSetting('mealsOnToday');
     // Defaults on, read `!== 'false'` like kitchenEnabled above it.
     const kitchenOnToday = dbGetSetting('kitchenOnToday') !== 'false';
+    const mealPlanCompact = dbGetSetting('mealPlanCompact') === 'true';
     // 'strip' and 'block' are the retired values (see MealsOnToday). Anything
     // that isn't 'off' means "show me the day's meals", which is now one shape
     // — so they read forward rather than falling through to a default that
@@ -1445,7 +1461,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, hideHelpText, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, hideHelpText, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, mealPlanCompact, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1820,6 +1836,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setKitchenOnToday(on: boolean) {
     dbSetSetting('kitchenOnToday', on ? 'true' : 'false');
     set({ kitchenOnToday: on });
+  },
+
+  setMealPlanCompact(compact: boolean) {
+    dbSetSetting('mealPlanCompact', compact ? 'true' : 'false');
+    set({ mealPlanCompact: compact });
   },
 
   setUnitSystem(system: UnitSystem) {

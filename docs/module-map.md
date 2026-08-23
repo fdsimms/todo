@@ -189,7 +189,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/useSyncOnForeground.ts` — useSyncOnForeground
 - `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
 - `src/utils/visibilityUtils.ts` — isTaskBlocked, isSequenceBlocked, isHeldBack, isHiddenForVacation, sameTimeSegments, hasDayArrived, effectiveWindowEnd, isCompletionOnTime, isTaskWindowActive, isTaskExpired, +27 more
-- `src/utils/weekPlan.ts` — WeekNight, weekNights, decidableNights, describeWeekDecision, WeekShopping, summarizeWeekShopping, WeekShoppingCopy, describeWeekShopping, describeBareWeek
+- `src/utils/weekPlan.ts` — WeekNight, weekNights, decidableNights
 - `src/utils/widgetSync.ts` — useWidgetSync
 
 ## `src/store`

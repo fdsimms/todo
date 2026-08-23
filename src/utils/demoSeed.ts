@@ -1953,12 +1953,11 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
 
   seedMealPlanNudgeStack(today, weekStartsOn, plan);
 
-  // The run ends on a night nobody has decided yet, and that's the seed for
-  // the deciding lens (#1669): breakfast planned, dinner open, which is the one
-  // state a "No dinner" marker actually has to be shown for — a day holding
-  // something already can't be read as empty at a glance. It also leaves the
-  // suggestion shelf somewhere to land, which a fortnight with every dinner
-  // spoken for does not.
+  // The run ends on a night nobody has decided yet: breakfast planned, dinner
+  // open, which is the one state a day reads ambiguously in — a day holding
+  // something already can't be told from a decided one at a glance, least of
+  // all at compact density. It also leaves the suggestion shelf somewhere to
+  // land, which a fortnight with every dinner spoken for does not.
   plan(6, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
 
   // Today's meal tasks, through the generator rather than written out here —
