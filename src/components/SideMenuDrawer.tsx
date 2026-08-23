@@ -21,6 +21,7 @@ import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { TIPS } from '../utils/tips';
 
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.72);
 
@@ -74,6 +75,11 @@ const MENU_ITEMS: MenuItemWithGate[] = [
   // rather than somewhere you work.
   { name: 'Drift', icon: 'trending-down-outline', label: 'Drift' },
   { name: 'Archived', icon: 'archive-outline', label: 'Archived' },
+  // Last, next to Settings in the footer below rather than up among the
+  // working surfaces: it's reference material, not somewhere you go to do
+  // anything. The unread count on the row is the only thing that says the
+  // screen exists, which is the same problem the tips themselves are for.
+  { name: 'Tips', icon: 'bulb-outline', label: 'Tips' },
 ];
 
 interface Props {
@@ -94,6 +100,9 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   // The one row this can remove, so the filter runs on every render rather
   // than being hoisted — it's a ten-item array and the setting is a scalar.
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  // A scalar for the same reason groceryCount is one. TIPS is a module-level
+  // constant, so the only thing that can move this is a dismissal.
+  const unreadTipCount = useSettingsStore(s => TIPS.length - s.seenTips.length);
   const menuItems = kitchenEnabled ? MENU_ITEMS : MENU_ITEMS.filter(i => !i.kitchen);
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -285,6 +294,11 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
                   {item.name === 'Groceries' && groceryCount > 0 && (
                     <View style={[styles.badge, { backgroundColor: colors.accentSubtle }]}>
                       <Text style={[styles.badgeText, { color: colors.accent }]}>{groceryCount}</Text>
+                    </View>
+                  )}
+                  {item.name === 'Tips' && unreadTipCount > 0 && (
+                    <View style={[styles.badge, { backgroundColor: colors.accentSubtle }]}>
+                      <Text style={[styles.badgeText, { color: colors.accent }]}>{unreadTipCount}</Text>
                     </View>
                   )}
                 </TouchableOpacity>

@@ -38,6 +38,7 @@ import {
 import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
 import { normalizeRecipeTags } from '../utils/recipeTags';
 import { parseTitleRules } from '../utils/titleRules';
+import type { LastTipShown } from '../utils/tips';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
 
@@ -327,6 +328,31 @@ interface SettingsStore {
    * exactly the hints it already had.
    */
   hideHelpText: boolean;
+  /**
+   * Whether a tip may surface itself as a banner on a hub screen (`TipHost`).
+   * Off means the app never volunteers one; the Tips screen still lists every
+   * one of them, since turning off interruptions isn't the same as saying you
+   * don't want the documentation.
+   *
+   * Deliberately not folded into `hideHelpText` above, which is about the line
+   * *under a control you are already looking at*. Someone who finds those
+   * redundant hasn't thereby said they know the app has a meal plan.
+   */
+  tipsEnabled: boolean;
+  /**
+   * Tip ids already dismissed or marked read. Progress rather than a
+   * preference, so it stays out of DEFAULT_SETTINGS/resetToDefaults for the
+   * same reason patchNotesQaStatus does: "reset settings" replaying sixty tips
+   * at someone is not what they asked for. `resetTips` is the explicit way
+   * back, and it lives on the Tips screen where its effect is visible.
+   */
+  seenTips: string[];
+  /**
+   * The tip last put on screen, and the logical day it happened on. This is
+   * the whole of the once-a-day rate limit — see `chooseTip` in
+   * src/utils/tips.ts for why the limit is app-wide rather than per screen.
+   */
+  lastTipShown: LastTipShown | null;
   // Live Activity (Lock Screen / Dynamic Island) for a running task timer or
   // recipe cook/prep timer — see src/utils/liveActivity.ts. iOS 17+ only, a
   // no-op everywhere else. Defaults on, like hapticsEnabled/shakeToUndoEnabled
@@ -763,6 +789,19 @@ interface SettingsStore {
   setHideCategories: (on: boolean) => void;
   setSimpleTaskForm: (on: boolean) => void;
   setHideHelpText: (on: boolean) => void;
+  setTipsEnabled: (on: boolean) => void;
+  /**
+   * Records a tip as promoted, which spends that logical day's one slot.
+   *
+   * Takes the day key rather than computing it: `getLogicalDayKey` lives in
+   * dateUtils, which reads this store for `dayResetTime`, so importing it here
+   * would close a cycle. The caller is a component and can reach it freely.
+   */
+  stampTipShown: (id: string, day: string) => void;
+  markTipSeen: (id: string) => void;
+  /** Silences every tip at once, without turning the banner off for good. */
+  markAllTipsSeen: (ids: string[]) => void;
+  resetTips: () => void;
   setTimerLiveActivity: (on: boolean) => void;
   setTripLiveActivity: (on: boolean) => void;
   setFocusLiveActivity: (on: boolean) => void;
@@ -840,6 +879,10 @@ const DEFAULT_SETTINGS = {
   hideCategories: false,
   simpleTaskForm: false,
   hideHelpText: false,
+  // Only the on/off switch is a default. seenTips and lastTipShown are
+  // progress, and are cleared by resetTips rather than by a settings reset —
+  // see their notes on the interface above.
+  tipsEnabled: true,
   timerLiveActivity: true,
   tripLiveActivity: true,
   focusLiveActivity: true,
@@ -1155,6 +1198,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   hideCategories: false,
   simpleTaskForm: false,
   hideHelpText: false,
+  tipsEnabled: true,
+  seenTips: [],
+  lastTipShown: null,
   timerLiveActivity: true,
   tripLiveActivity: true,
   focusLiveActivity: true,
@@ -1419,6 +1465,34 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const mealPlanNudgeGroupId = dbGetSetting('mealPlanNudgeGroupId') || null;
     // '' persists as "no category", matching mealCookTaskCategory.
     const mealPlanNudgeTaskCategory = dbGetSetting('mealPlanNudgeTaskCategory') || null;
+    // `!== 'false'`, same as postponeCheckEnabled above: defaults on, so an
+    // install that predates the setting gets tips rather than silence.
+    const tipsEnabled = dbGetSetting('tipsEnabled') !== 'false';
+    // Both stored as JSON, and both fall back to "nothing seen yet" on a parse
+    // failure rather than throwing. The cost of getting this wrong is one
+    // extra tip, which is the right way round to fail.
+    let seenTips: string[] = [];
+    const storedSeenTips = dbGetSetting('seenTips');
+    if (storedSeenTips) {
+      try {
+        const parsed = JSON.parse(storedSeenTips);
+        if (Array.isArray(parsed)) seenTips = parsed.filter((id): id is string => typeof id === 'string');
+      } catch {
+        seenTips = [];
+      }
+    }
+    let lastTipShown: LastTipShown | null = null;
+    const storedLastTip = dbGetSetting('lastTipShown');
+    if (storedLastTip) {
+      try {
+        const parsed = JSON.parse(storedLastTip);
+        if (parsed && typeof parsed.id === 'string' && typeof parsed.day === 'string') {
+          lastTipShown = { id: parsed.id, day: parsed.day };
+        }
+      } catch {
+        lastTipShown = null;
+      }
+    }
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
     if (storedQaStatus) {
@@ -1453,7 +1527,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, hideHelpText, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1796,6 +1870,48 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setHideHelpText(on: boolean) {
     dbSetSetting('hideHelpText', on ? 'true' : 'false');
     set({ hideHelpText: on });
+  },
+
+  setTipsEnabled(on: boolean) {
+    dbSetSetting('tipsEnabled', on ? 'true' : 'false');
+    set({ tipsEnabled: on });
+  },
+
+  // Separate from markTipSeen because they answer different questions: this
+  // one records that today's single slot has been spent, and survives the tip
+  // sitting unread for a week. Dismissing is what marks it seen.
+  stampTipShown(id: string, day: string) {
+    const stamp: LastTipShown = { id, day };
+    dbSetSetting('lastTipShown', JSON.stringify(stamp));
+    set({ lastTipShown: stamp });
+  },
+
+  markTipSeen(id: string) {
+    set(state => {
+      if (state.seenTips.includes(id)) return {};
+      const next = [...state.seenTips, id];
+      dbSetSetting('seenTips', JSON.stringify(next));
+      return { seenTips: next };
+    });
+  },
+
+  // Takes the ids rather than reading TIPS itself, so this module keeps not
+  // importing the tip content — the caller is already rendering the list.
+  markAllTipsSeen(ids: string[]) {
+    set(state => {
+      const next = Array.from(new Set([...state.seenTips, ...ids]));
+      if (next.length === state.seenTips.length) return {};
+      dbSetSetting('seenTips', JSON.stringify(next));
+      return { seenTips: next };
+    });
+  },
+
+  // Clears the day stamp too. Without that, asking for the tips back and then
+  // getting nothing until tomorrow reads as the button having done nothing.
+  resetTips() {
+    dbSetSetting('seenTips', JSON.stringify([]));
+    dbSetSetting('lastTipShown', '');
+    set({ seenTips: [], lastTipShown: null });
   },
 
   setTimerLiveActivity(on: boolean) {
