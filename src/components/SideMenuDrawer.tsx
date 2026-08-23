@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -21,7 +21,10 @@ import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { TIPS } from '../utils/tips';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useTemplateStore } from '../store/useTemplateStore';
+import { screenShown } from '../utils/simpleMode';
+import { tipsFor } from '../utils/tips';
 
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.72);
 
@@ -47,6 +50,13 @@ interface MenuItemWithGate extends MenuItem {
   /** Dropped from the menu while `kitchenEnabled` is off. */
   kitchen?: boolean;
 }
+
+/**
+ * Which rows simplified mode drops is decided by `screenShown` rather than a
+ * flag here, because two of them are conditional: Stacks and Templates hold
+ * objects reachable from nowhere else, so they stay for as long as they hold
+ * any. See `src/utils/simpleMode.ts`.
+ */
 
 const MENU_ITEMS: MenuItemWithGate[] = [
   { name: 'Today', icon: 'checkbox-outline', label: 'Tasks' },
@@ -100,10 +110,25 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   // The one row this can remove, so the filter runs on every render rather
   // than being hoisted — it's a ten-item array and the setting is a scalar.
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   // A scalar for the same reason groceryCount is one. TIPS is a module-level
   // constant, so the only thing that can move this is a dismissal.
-  const unreadTipCount = useSettingsStore(s => TIPS.length - s.seenTips.length);
-  const menuItems = kitchenEnabled ? MENU_ITEMS : MENU_ITEMS.filter(i => !i.kitchen);
+  // Counted over `tipsFor`, not `TIPS`: the badge has to agree with the list
+  // behind it, and simplified mode can take thirty tips out of that list. That
+  // costs the O(1) subtraction this used to be, but the walk is 70 records on
+  // settings-store writes only, and it still returns a scalar.
+  const unreadTipCount = useSettingsStore(s =>
+    tipsFor(s.simpleMode).filter(tip => !s.seenTips.includes(tip.id)).length);
+  // Counted, not listed, for the same reason: a scalar selector is
+  // referentially stable, so the drawer doesn't re-render every time a stack
+  // or template is edited.
+  const stackCount = useTaskGroupStore(s => s.groups.length);
+  const templateCount = useTemplateStore(s => s.templates.length);
+  const menuItems = useMemo(() => {
+    const counts = { stacks: stackCount, templates: templateCount };
+    return MENU_ITEMS.filter(i =>
+      (kitchenEnabled || !i.kitchen) && screenShown(i.name, simpleMode, counts));
+  }, [kitchenEnabled, simpleMode, stackCount, templateCount]);
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const dragOffsetX = useRef(new Animated.Value(0)).current;

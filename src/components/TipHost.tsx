@@ -10,7 +10,7 @@ import { useTipSignals } from '../hooks/useTipSignals';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { haptics } from '../utils/haptics';
 import { getLogicalDayKey } from '../utils/dateUtils';
-import { chooseTip, unseenTipsForScreen, type Tip, type TipScreen } from '../utils/tips';
+import { chooseTip, tipsFor, unseenTipsForScreen, type Tip, type TipScreen } from '../utils/tips';
 
 /**
  * The one place the app volunteers something about itself.
@@ -38,12 +38,16 @@ import { chooseTip, unseenTipsForScreen, type Tip, type TipScreen } from '../uti
  */
 export function TipHost({ screen }: { screen: TipScreen }) {
   const tipsEnabled = useSettingsStore(s => s.tipsEnabled);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   const seenTips = useSettingsStore(s => s.seenTips);
   const lastTipShown = useSettingsStore(s => s.lastTipShown);
 
+  // Filtered before the screen and seen-set narrowing rather than after: a tip
+  // about a control simplified mode removed shouldn't be a candidate at all,
+  // and shouldn't spend the day's one slot on the way to being rejected.
   const candidates = useMemo(
-    () => (tipsEnabled ? unseenTipsForScreen(screen, seenTips) : []),
-    [tipsEnabled, screen, seenTips]
+    () => (tipsEnabled ? unseenTipsForScreen(screen, seenTips, tipsFor(simpleMode)) : []),
+    [tipsEnabled, simpleMode, screen, seenTips]
   );
 
   if (candidates.length === 0) return null;

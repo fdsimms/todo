@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { featureHidden } from '../utils/simpleMode';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 /**
  * Bulk-selection state for a list of rows, whatever the rows are — tasks
@@ -16,6 +18,7 @@ import { animateLayout } from '../utils/layoutAnimation';
  * `paintProps` below).
  */
 export function useRowSelection() {
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // True only while a paint gesture owns the touch (see PaintSelectionProvider);
@@ -96,12 +99,16 @@ export function useRowSelection() {
   // spreads it onto the provider wrapping its list.
   const paintProps = useMemo(
     () => ({
-      enabled: selectionMode,
+      // Gated here rather than at each of the five screens that spread this:
+      // painting is one gesture with one switch behind it, and a list that
+      // painted on Tags but not on Today would be the drift the bundle exists
+      // to prevent. Off, the dots take a tap each and the column scrolls.
+      enabled: selectionMode && !featureHidden('paintSelect', simpleMode),
       selectedIds,
       setSelected,
       onPaintingChange: setPainting,
     }),
-    [selectionMode, selectedIds, setSelected],
+    [selectionMode, simpleMode, selectedIds, setSelected],
   );
 
   return {

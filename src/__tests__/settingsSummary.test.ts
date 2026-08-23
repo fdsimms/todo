@@ -12,6 +12,7 @@ const defaults: SettingsSummaryInput = {
   remindersImportEnabled: false,
   groceryImportEnabled: false,
   kitchenEnabled: true,
+  simpleMode: false,
   calendarReadEnabled: false,
   calendarIds: [],
   vacationMode: false,
@@ -28,6 +29,11 @@ const summarise = (over: Partial<SettingsSummaryInput> = {}) =>
   settingsSummaries({ ...defaults, ...over });
 
 describe('settingsSummaries', () => {
+  it('leads the tasks group with simplified mode, which changes what the group holds', () => {
+    expect(summarise({ simpleMode: true })!.tasksProjects).toMatch(/^Simplified mode on/);
+    expect(summarise({ simpleMode: false })!.tasksProjects).not.toContain('Simplified');
+  });
+
   it('describes every group', () => {
     const summaries = summarise();
     for (const group of SETTINGS_GROUPS) {

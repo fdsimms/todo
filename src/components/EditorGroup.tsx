@@ -8,6 +8,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { foldRows, moreLabel, moreHint, foldedSummary, type FoldRow } from '../utils/editorFold';
 import { filterEditorRows } from '../utils/editorSearch';
 import { simplePrimaryRow } from '../utils/simpleTaskForm';
+import { editorRowShown } from '../utils/simpleMode';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 export interface EditorGroupRow {
@@ -87,7 +88,7 @@ interface Props {
 const NO_TERMS: string[] = [];
 
 export function EditorGroup({
-  label, rows, divider = 'icon', startOpen, forceOpen,
+  label, rows: allRows, divider = 'icon', startOpen, forceOpen,
   searchTerms = NO_TERMS, groupKey = label, onMatchCount,
 }: Props) {
   const colors = useColors();
@@ -97,6 +98,16 @@ export function EditorGroup({
   // means "fewer of them". See `simpleTaskForm.ts` — it demotes rows, it never
   // hides a set one, so a task still shows its own shape either way.
   const simple = useSettingsStore(s => s.simpleTaskForm);
+  // The other, blunter setting, and the whole of the task editor's share of it
+  // (`simpleMode.ts`): it removes a row rather than demoting it. Filtering here
+  // rather than at the 23 call sites is what keeps it to one place, and it
+  // works because a row already declares whether it holds a value — a chain
+  // task keeps its chain, a plain one never sees the option.
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  const rows = useMemo(
+    () => (simpleMode ? allRows.filter(r => editorRowShown(r.key, true, !!r.set)) : allRows),
+    [allRows, simpleMode]
+  );
 
   const searching = searchTerms.length > 0;
   const matches = useMemo(() => filterEditorRows(rows, searchTerms), [rows, searchTerms]);
@@ -142,6 +153,12 @@ export function EditorGroup({
     animateLayout();
     fn();
   };
+
+  // Simplified mode can empty a group outright — "Relationships" is Waiting on
+  // and Blocks and nothing else — and a card with no rows in it, or a folded
+  // line promising rows it can't show, is worse than no card. The group goes
+  // with its last row.
+  if (rows.length === 0) return null;
 
   // Searching replaces the fold rather than layering on top of it: the whole
   // point of typing a field's name is that you already know you want it, so
