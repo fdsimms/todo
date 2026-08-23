@@ -18,6 +18,15 @@ interface Props {
    * reading "Times read as 5:30 PM".
    */
   hint?: string;
+  /**
+   * Show `hint` even with "Hide help text" on. For a hint that explains what
+   * the row *means* — the normal case — hiding it is exactly what that
+   * setting promises. Reach for this only when the hint is instead the sole
+   * reason a row with no visible control isn't broken (e.g. "Tag a recipe
+   * first to pick from here" on an otherwise-empty row) — same reasoning as
+   * `CollapsibleField`'s `lockedHint`, which is never gated on it either.
+   */
+  alwaysShowHint?: boolean;
   /** Right-aligned accent value. */
   value?: string;
   /** Renders the standard switch, and makes the row announce itself as one. */
@@ -52,14 +61,14 @@ interface Props {
  * semantic would reach into all five editors.
  */
 export function SettingsRow({
-  icon, iconColor, label, labelColor, hint, value, toggle, chevron, expanded, busy,
+  icon, iconColor, label, labelColor, hint, alwaysShowHint, value, toggle, chevron, expanded, busy,
   trailing, children, onPress, disabled, tight,
   accessibilityLabel, accessibilityHint,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
-  const showHint = !!hint && !hideHelpText;
+  const showHint = !!hint && (alwaysShowHint || !hideHelpText);
 
   const role: AccessibilityRole | undefined =
     toggle !== undefined ? 'switch' : onPress && !disabled ? 'button' : undefined;
