@@ -563,7 +563,12 @@ export function RecipeToListSheet({
                                 </View>
                                 {!!shownQuantity && (
                                   <View style={styles.qtyPill}>
-                                    <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
+                                    {/* Two lines, same call as the name
+                                        above: "1 large pie…" names no amount
+                                        anyone can shop to. The pill is capped
+                                        by width, not by lines, so the second
+                                        one costs the row no width. */}
+                                    <Text style={styles.qtyText} numberOfLines={2}>{shownQuantity}</Text>
                                   </View>
                                 )}
                               </TouchableOpacity>
@@ -749,7 +754,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 3,
     maxWidth: 90,
   },
-  qtyText: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+  // Centred for the two-line case: the pill takes the width of its longest
+  // line, so this only moves the shorter one ("1 large" / "piece") and is a
+  // no-op on the single-line pills, which size to their own text.
+  qtyText: {
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
   // Icon-sized rather than a second text pill: it sits beside "Already have
   // it" on the same row, and two labelled pills leave a long ingredient name
   // nothing to be read in. The count only appears past one, where "2" is the
