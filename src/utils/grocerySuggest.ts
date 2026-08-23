@@ -1,5 +1,5 @@
 import { format } from 'date-fns/format';
-import type { GroceryItem } from '../types';
+import type { GroceryItem, ItemProduct } from '../types';
 import { FROZEN_REASON, RUNNING_LOW_REASON } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { OTHER_AISLE } from './groceryAisles';
@@ -322,7 +322,7 @@ export function estimatedPurchaseCadenceDays(item: GroceryItem, now: Date): numb
  * and the pantry list below can't drift on what a past or unparseable
  * timestamp means.
  */
-function onHandAssertion(item: GroceryItem, now: Date): boolean | null {
+function onHandAssertion(item: Pick<GroceryItem, 'onHandUntil'>, now: Date): boolean | null {
   if (!item.onHandUntil) return null;
   const until = new Date(item.onHandUntil).getTime();
   if (Number.isNaN(until)) return null;
@@ -405,7 +405,23 @@ export function pantryGuessLapsedDays(item: GroceryItem, now: Date): number | nu
  * store; the only thing a trip writes here now is a `null`, clearing an "Out
  * of it" the purchase refutes.
  */
-export function probablyHaveReason(item: GroceryItem, now: Date): string | null {
+export function probablyHaveReason(
+  item: GroceryItem,
+  now: Date,
+  /**
+   * This item's boxes, when the caller has them. Empty — the default, and what
+   * every caller passed before boxes could carry pantry state — makes this
+   * behave exactly as it always did, which is why adopting it is per-caller
+   * rather than a sweep.
+   *
+   * A box only ever *adds* an answer, never removes one: it's consulted below
+   * the item's own claims and above the purchase guess, so a packet the user
+   * has frozen or marked "Got it" keeps answering for the item after the item's
+   * own two-week window has run out. It cannot resurrect an item-level "Out of
+   * it", which still returns null before this is read — see the note there.
+   */
+  products: readonly ItemProduct[] = []
+): string | null {
   // A staple outranks everything below: it's a standing fact ("I always have
   // salt"), not a guess, and it doesn't need purchase history or an
   // onHandUntil assertion to be true. This is also why KitchenScreen — every
@@ -443,6 +459,18 @@ export function probablyHaveReason(item: GroceryItem, now: Date): string | null 
 
   if (asserted === true) return 'marked as on hand';
 
+  // A box's own claim, above the purchase guess below for the reason every
+  // hand-made statement in this ladder outranks it: the user said this about a
+  // packet they were holding, and the guess is arithmetic on a purchase date.
+  // The wording is the box's own and doesn't name it — a caller with the
+  // product in hand can say which one, and this answer is read by the callers
+  // asking the plain question "is there any of this in the kitchen".
+  for (const product of products) {
+    if (product.itemId !== item.id) continue;
+    const reason = productHaveReason(product, now);
+    if (reason) return reason;
+  }
+
   if (item.purchaseCount < 1 || !item.lastPurchasedAt) return null;
   if (daysBetween(now, item.lastPurchasedAt) >= onHandWindowDays(item, now)) return null;
 
@@ -450,6 +478,40 @@ export function probablyHaveReason(item: GroceryItem, now: Date): string | null 
   // in the same kind of caption and already share their halving.
   const times = item.purchaseCount === 1 ? 'once' : `${item.purchaseCount}×`;
   return `bought ${times} · last on ${format(new Date(item.lastPurchasedAt), 'd MMM')}`;
+}
+
+/**
+ * Why one *box* is in the pantry, or null when nothing has been said about it —
+ * `probablyHaveReason` addressed to a packet rather than to the catalog row it
+ * hangs off.
+ *
+ * **It reads assertions and nothing else**, which is the restraint the whole
+ * per-box pantry rests on. There is deliberately no per-box equivalent of the
+ * purchase reading below it, for two reasons that point the same way:
+ *
+ * - **The counter is biased.** `ItemProduct.purchaseCount` only bumps for
+ *   whichever box was *preferred* at the till (`dbFinishGroceryShopping`), so a
+ *   guess built on it would vouch for the brand you'd set as your preference
+ *   and stay silent about the one you actually alternate with — the exact case
+ *   boxes exist to describe.
+ * - **It would inflate the pantry.** Guessing would put a row on the Pantry
+ *   screen for every box anyone had ever named, three loaves of bread included,
+ *   which is the maintained inventory `docs/arch/groceries.md` rules out three
+ *   times over. A box earns its row by being spoken about, and the item's own
+ *   purchase reading goes on answering "do I have any of this".
+ *
+ * The ladder is the assertion half of `probablyHaveReason`'s, in the same
+ * order and for the same reasons — an explicit "Out of it" outranks the
+ * freezer so the Pantry row's ✕ can't read as a dead control, and a live
+ * freezer outranks a lapsed "Got it" because a freezer outlives every window
+ * the rest of the pantry reasons in.
+ */
+export function productHaveReason(product: ItemProduct, now: Date): string | null {
+  const asserted = onHandAssertion(product, now);
+  if (asserted === false) return null;
+  if (product.frozenAt) return FROZEN_REASON;
+  if (asserted === true) return 'marked as on hand';
+  return null;
 }
 
 /**
@@ -518,6 +580,12 @@ export interface PantryEntry {
    * everything it bought, this was true of every entry there could be.
    */
   asserted: boolean;
+  /**
+   * The box this entry is about, or null when it's about the item as a whole —
+   * which is every entry on an item nobody has said anything box-specific
+   * about, and so the overwhelming majority of them.
+   */
+  product: ItemProduct | null;
 }
 
 /**
@@ -530,14 +598,64 @@ export interface PantryEntry {
  * "Got it" disappeared from the pantry the moment it was added to a list —
  * which reads as the assertion having been forgotten. The caller says so on
  * the row instead.
+ *
+ * **A box's row joins the item's rather than replacing it**, and the reason is
+ * that the two answer different questions. The item row answers "do I have any
+ * vegan ground beef", off a purchase the user never had to record; a box row
+ * answers "where is the Beyond one". Replacing was tried first and hides data:
+ * freezing one packet would drop the item row, and with it the *other* packet,
+ * which is covered by nothing but the item's own purchase reading. An item
+ * silently leaving the pantry because you said something about one of its boxes
+ * is a worse failure than the mild redundancy of naming it twice.
+ *
+ * So an item with nothing said about its packets is exactly one row, as it has
+ * always been, and each packet spoken about adds one. Nothing is ever removed
+ * by adding a box.
+ *
+ * The item-level gate runs first and unchanged, so an "Out of it" on the item
+ * still empties the pantry of it, boxes and all. That's the blunter and later
+ * statement — "I'm out of vegan ground beef" is about all of them — and keeping
+ * it in front is what stops the ✕ on an item row reading as a dead control.
  */
-export function pantryEntries(items: readonly GroceryItem[], now: Date): PantryEntry[] {
+export function pantryEntries(
+  items: readonly GroceryItem[],
+  now: Date,
+  products: readonly ItemProduct[] = []
+): PantryEntry[] {
   const entries: PantryEntry[] = [];
   for (const item of items) {
-    const reason = probablyHaveReason(item, now);
+    const reason = probablyHaveReason(item, now, products);
     if (!reason) continue;
-    entries.push({ item, reason, asserted: onHandAssertion(item, now) === true });
+    // The item's own row, unchanged and always first — except when the only
+    // thing answering for the item *is* a box, in which case the item row would
+    // be that box's claim wearing the item's name, and the box row below says
+    // it better. That's the one case `probablyHaveReason`'s box rung produces,
+    // and it's exactly "the packet in the freezer is the only one I have".
+    const itemReason = probablyHaveReason(item, now);
+    if (itemReason) {
+      entries.push({ item, reason: itemReason, asserted: onHandAssertion(item, now) === true, product: null });
+    }
+    for (const product of products) {
+      if (product.itemId !== item.id) continue;
+      const boxReason = productHaveReason(product, now);
+      if (!boxReason) continue;
+      entries.push({
+        item,
+        reason: boxReason,
+        asserted: onHandAssertion(product, now) === true,
+        product,
+      });
+    }
   }
-  return entries.sort((a, b) => a.item.name.localeCompare(b.item.name));
+  // Name first, then the box's own key, so an item's packets sort together
+  // under it rather than scattering through the alphabet. The key rather than
+  // `describeProduct`'s words because that helper lives in groceryProduct.ts,
+  // which reads *down* into this module — and it's a normalised form of the
+  // same two words, so it orders them the same way.
+  return entries.sort(
+    (a, b) =>
+      a.item.name.localeCompare(b.item.name) ||
+      (a.product?.productKey ?? '').localeCompare(b.product?.productKey ?? '')
+  );
 }
 

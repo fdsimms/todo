@@ -1169,6 +1169,8 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     addProduct,
     updateProduct,
     setPreferredProduct,
+    setProductFrozen,
+    setProductOnHandUntil,
     linkScannedGtins,
     setProductStrict,
     setProductUnavailable,
@@ -1271,7 +1273,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   if (daves) updateProduct(daves.id, { rating: 'avoid', note: 'Too sweet' });
   // The brandless case, in the one place it's ordinary: a store's own label
   // has a variant worth naming and no maker worth naming.
-  addProduct(bread, { brand: null, variant: 'seeded sourdough' });
+  const sourdough = addProduct(bread, { brand: null, variant: 'seeded sourdough' });
   // Already the preference by virtue of being added first — set explicitly so
   // the seed says what it means rather than depending on insertion order.
   if (arnolds) setPreferredProduct(bread, arnolds.id);
@@ -1628,6 +1630,23 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // hide rather than a place in the kitchen.
   addToPantry('Frozen peas');
   setFrozen(itemNamed('Frozen peas').id, true);
+
+  // Two loaves in the kitchen at once, in two different places — the pantry
+  // state that lives on a *box* rather than on the item. This is the case those
+  // four columns exist for: freezing the spare loaf while you work through the
+  // one that's out is a thing everybody does, and with one slot per item the
+  // app could only ever have called both of them frozen. Deliberately the two
+  // boxes not rated "never again" — a loaf you avoid is not one you have two of.
+  //
+  // **After the trips, not beside the other product seeding**, because Arnold's
+  // is Bread's preferred box and a finished trip clears exactly these four
+  // columns on it (dbFinishGroceryShopping) — the packet you froze is not the
+  // packet you just carried home. Seeded up there, the trip below would wipe it
+  // and the demo would quietly lose the feature.
+  if (sourdough) setProductFrozen(sourdough.id, true);
+  if (arnolds) {
+    setProductOnHandUntil(arnolds.id, defaultOnHandUntil(itemNamed('Bread'), new Date()));
+  }
 
   // A walk order the user has clearly edited: a custom section they file two
   // things into by hand, a built-in they never shop deleted (which leaves the

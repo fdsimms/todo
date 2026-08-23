@@ -65,8 +65,17 @@ export type KitchenDestination =
 
 export interface KitchenMove {
   kind: KitchenKind;
-  /** The `GroceryItem.id` / `Leftover.id` to write, never the row's own id. */
+  /**
+   * The `GroceryItem.id` / `Leftover.id` / `ItemProduct.id` to write, never the
+   * row's own id.
+   */
   sourceId: string;
+  /**
+   * For a `product` move, the catalog row the box hangs off — an aisle is a
+   * fact about the food, so filing a box under a heading files its item. Null
+   * for the other two kinds, where `sourceId` already is the item.
+   */
+  itemId: string | null;
   title: string;
   to: KitchenDestination;
 }
@@ -142,17 +151,32 @@ export function resolveKitchenDrop(rows: readonly KitchenRow[]): KitchenMove[] {
     if (section === null || section === entry.section) continue;
 
     const to = destinationFor(section, entry.kind);
-    if (to) moves.push({ kind: entry.kind, sourceId: entry.sourceId, title: entry.title, to });
+    if (to) {
+      moves.push({
+        kind: entry.kind,
+        sourceId: entry.sourceId,
+        itemId: entry.itemId,
+        title: entry.title,
+        to,
+      });
+    }
   }
 
   return moves;
 }
 
-/** Null for the two moves the model has nothing to write for — see the note above. */
+/**
+ * Null for the two moves the model has nothing to write for — see the note
+ * above. A box moves exactly like the catalog row it hangs off: into the
+ * freezer, or into an aisle (which files its *item*, since two brands of one
+ * thing are not in two different aisles). Not into the fridge, for the same
+ * reason a catalog row isn't — that's the location taxonomy this feature rules
+ * out.
+ */
 function destinationFor(section: string, kind: KitchenKind): KitchenDestination | null {
   if (section === FREEZER_SECTION) return { place: 'freezer' };
   if (section === FRIDGE_SECTION) return kind === 'leftover' ? { place: 'fridge' } : null;
-  return kind === 'grocery' ? { place: 'aisle', aisle: section } : null;
+  return kind === 'grocery' || kind === 'product' ? { place: 'aisle', aisle: section } : null;
 }
 
 /**

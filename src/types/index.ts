@@ -1751,6 +1751,56 @@ export interface ItemProduct {
   // never reach a second device. What a barcode *denotes* is shared; which of
   // your boxes it is, is yours.
   gtin: string | null;
+  /**
+   * This box's own "Got it"/"Out of it", read exactly like
+   * `GroceryItem.onHandUntil` — a future instant is on hand, OUT_OF_IT_UNTIL is
+   * a confirmed absence, null defers to the item.
+   *
+   * **The four pantry columns here exist because a box is the thing you
+   * actually have**, and one item can hold two of them at once: two brands of
+   * vegan ground beef are interchangeable at the stove and are still two
+   * separate packets in the freezer, one of which may be open, frozen or gone
+   * while the other isn't. Before these, the pantry had one slot per item, so
+   * saying anything about one packet said it about both.
+   *
+   * **A box only enters the pantry when the user says so** — see
+   * `grocerySuggest.productHaveReason`, which reads these four and nothing
+   * else. There is deliberately no per-box purchase reading to match
+   * `probablyHaveReason`'s: `purchaseCount` here only ever bumps for whichever
+   * box was *preferred* at the till (see `dbFinishGroceryShopping`), so
+   * guessing from it would vouch for one brand and stay silent about the other
+   * — and it would put a row in the pantry for every box anyone had ever named.
+   * The item's own purchase reading stays the answer to "do I have any of
+   * this"; these say which packet.
+   *
+   * `runningLowAt` deliberately has no counterpart here. It's the one pantry
+   * assertion that writes `onList` (see its note on the item), and being nearly
+   * out of one brand while a full packet of the other sits beside it is not a
+   * reason to buy more.
+   */
+  onHandUntil: string | null;
+  /**
+   * This box's use-by day, `YYYY-MM-DD`, or null to fall back to the item's.
+   * Same meaning as `GroceryItem.expiresAt` — "is this about to be wasted" —
+   * scoped to the packet the date is actually about, which is the whole reason
+   * two packets of one item can't share one.
+   */
+  expiresAt: string | null;
+  /**
+   * ISO instant this box went in the freezer. Suspends its countdown exactly as
+   * `GroceryItem.frozenAt` suspends the item's, through the same
+   * `freshness.liveUseBy`, and reads as on hand for the same reason: a freezer
+   * outlives every window the rest of the pantry reasons in.
+   */
+  frozenAt: string | null;
+  /**
+   * ISO instant this box was opened, re-anchoring its use-by day off
+   * `OPEN_SHELF_LIFE_LEXICON` the way `GroceryItem.openedAt` does. The one of
+   * these four with the clearest claim to being per-box: an open jar and a
+   * sealed one of the same thing are the case the item-level column could never
+   * tell apart.
+   */
+  openedAt: string | null;
   createdAt: string;
 }
 
