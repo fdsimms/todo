@@ -33,16 +33,16 @@ interface Props {
  * rows have started carrying captions about other stores, and a caption whose
  * cause isn't on screen reads as the app having opinions.
  *
- * **Finishing the shop is the banner's job, not just the header's.** It used to
- * be reachable only from `bag-check-outline`, fifth in a row of header icons,
- * which is a small target with a non-obvious glyph for the one action every
- * trip ends in — while the banner spent its only button, accent-filled, on
- * *Clear*, the escape hatch. The ranking was backwards: the filled pill is what
- * the eye goes to, and it was offered to the action that throws the trip away
- * rather than the one that records it. So Finish is the filled pill now, sized
- * to a walking thumb, and Clear is the quiet one beside it. The header button
- * stays — it's where the badge lives and where anyone who has been using this
- * already reaches.
+ * **Finishing the shop is the banner's job, and now only the banner's.** It
+ * used to be reachable only from `bag-check-outline`, fifth in a row of header
+ * icons, which is a small target with a non-obvious glyph for the one action
+ * every trip ends in — while the banner spent its only button, accent-filled,
+ * on *Clear*, the escape hatch. The ranking was backwards: the filled pill is
+ * what the eye goes to, and it was offered to the action that throws the trip
+ * away rather than the one that records it. So Finish is the filled pill,
+ * sized to a walking thumb, and Clear is the quiet one beside it. The header
+ * icon has since gone entirely; `StartTripPrompt` grows the same button in the
+ * same shape for the other case, a cart ticked up with no trip running.
  *
  * **The count comes from the store, not a prop.** Same shape `GroceriesHubPills`
  * and `SideMenuDrawer` already use for the list's own count: a derived scalar,
@@ -50,9 +50,9 @@ interface Props {
  * item edit. Threading it through four screens instead would be four filters
  * that can drift.
  *
- * **Finish appears with the first ticked row and not before**, which is also
- * what the header button's `disabled` says: a trip with an empty cart has
- * nothing to finish, and Clear is the honest way out of it. Coming and going
+ * **Finish appears with the first ticked row and not before**: a trip with an
+ * empty cart has nothing to finish, and Clear is the honest way out of it.
+ * (`StartTripPrompt` draws its own Finish on the same rule.) Coming and going
  * costs a layout change mid-shop, but it happens once, on the tick that makes
  * the button mean something — and `handleToggle` (GroceryScreen) already runs
  * that tick through `animateLayout`, so the banner grows with the row.
@@ -63,12 +63,14 @@ interface Props {
  * the one screen that can, `onFinish` asking it to open the sheet on arrival.
  *
  * On Groceries it is a sibling of the list rather than its
- * `ListHeaderComponent`, unlike `StartTripPrompt`: a mode indicator that
- * scrolls away is one you can't find when you want to turn it off, and it's
- * the answer to "why does this row say that" at the moment you're looking at
- * the row. The two never appear together — the starting card is for deciding
- * where to go, and this says you've gone — so the fixed height it costs is
- * only ever paid during a shop.
+ * `ListHeaderComponent`: a mode indicator that scrolls away is one you can't
+ * find when you want to turn it off, and it's the answer to "why does this row
+ * say that" at the moment you're looking at the row. The two never appear
+ * together — the starting card is for deciding where to go, and this says
+ * you've gone — so the fixed height it costs is only ever paid during a shop.
+ * `StartTripPrompt` is the list's header while it's only an invitation, and
+ * moves up here beside this one once it's carrying a Finish button, for the
+ * same reason this one is fixed.
  */
 export function ActiveTripBanner({ shopName, onChange, onFinish, onClear }: Props) {
   const colors = useColors();

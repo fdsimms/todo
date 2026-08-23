@@ -147,6 +147,37 @@ export function collectPlannedIngredients(
 }
 
 /**
+ * Whether any of `entries` inside `range` would give
+ * `collectPlannedIngredients` something to work with — one uncooked meal that
+ * still resolves to a recipe.
+ *
+ * The gate every "add these ingredients" affordance is shown behind: the
+ * week's own pill, the cart button on a day header, and the one on a night row
+ * in the week lens. It exists so none of them can disagree with the sheet they
+ * open — the same three rules
+ * collectPlannedIngredients skips a row on, read without flattening a single
+ * recipe, since lighting up a button must not cost a walk of every planned
+ * recipe's component tree.
+ *
+ * A meal already marked cooked is the rule worth naming: its ingredients were
+ * either bought or are moot, so a day whose meals are all cooked offers
+ * nothing, rather than offering a sheet that opens on "Nothing to add".
+ */
+export function hasShoppableMeals(
+  entries: readonly MealPlanEntry[],
+  recipesById: ReadonlyMap<string, Recipe>,
+  range: { startKey: string; endKey: string },
+): boolean {
+  return entries.some(
+    e =>
+      isKeyInRange(e.date, range.startKey, range.endKey) &&
+      !!e.recipeId &&
+      !e.cookedAt &&
+      recipesById.has(e.recipeId)
+  );
+}
+
+/**
  * One recipe's ingredients, standing alone rather than flattened out of a
  * week — the source a single-recipe "Add ingredients to list" needs to run
  * through the same classifyPlanned pantry-awareness AddWeekToListSheet gets,

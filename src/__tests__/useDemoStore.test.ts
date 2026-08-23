@@ -52,7 +52,7 @@ import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
-import { freshnessOf, isLiveLeftover, needsAttention } from '../utils/leftovers';
+import { freshnessOf, isLiveLeftover, needsAttention, suggestableLeftovers } from '../utils/leftovers';
 import { liveExpiresAt, openShelfLifeDaysFor } from '../utils/groceryShelfLife';
 import {
   cookingWindow,
@@ -1295,6 +1295,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r =>
       r.sourceType === 'website' && r.sourceUrl && r.source && r.author && r.steps.length > 0,
     )).toBe(true);
+  });
+
+  it('leaves the suggestion sheet a fridge to offer, minus the container the week already eats', () => {
+    const { leftovers } = useLeftoverStore.getState();
+    const { entries } = useMealPlanStore.getState();
+    const plannedIds = entries.map(e => e.leftoverId).filter((id): id is string => !!id);
+
+    expect(plannedIds.length).toBeGreaterThan(0);
+    const offered = suggestableLeftovers(leftovers, plannedIds);
+    // Containers to fill a night with, and the one already planned isn't
+    // among them — both halves of the rule, on data the seed already had.
+    expect(offered.length).toBeGreaterThan(0);
+    expect(offered.some(l => plannedIds.includes(l.id))).toBe(false);
   });
 
   it('seeds a plan with history, a scaled meal, a picked side and a doubled-up night', () => {

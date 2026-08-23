@@ -29,6 +29,7 @@ import {
   needsAttention,
   outcomeCounts,
   sortLeftovers,
+  suggestableLeftovers,
   WHOLE_PART_KEY,
 } from '../utils/leftovers';
 import { recipeMap } from '../utils/recipeComponents';
@@ -346,6 +347,39 @@ describe('attentionLeftovers', () => {
 
     expect(attentionLeftovers([fine, tomorrow, past, done], NOW).map(l => l.id))
       .toEqual(['past', 'tomorrow']);
+  });
+});
+
+describe('suggestableLeftovers', () => {
+  it('offers every live container, not only the urgent ones', () => {
+    const fine = aged(0, 6, { id: 'fine' });
+    const soon = aged(2, 3, { id: 'soon' });
+    // attentionLeftovers would drop `fine`; filling a night is a different
+    // question from nudging about waste.
+    expect(suggestableLeftovers([fine, soon]).map(l => l.id)).toEqual(['soon', 'fine']);
+  });
+
+  it('leaves out what has already been closed out', () => {
+    const live = aged(1, 4, { id: 'live' });
+    const eaten = aged(1, 4, { id: 'eaten', finishedAt: NOW.toISOString(), outcome: 'eaten' });
+    expect(suggestableLeftovers([live, eaten]).map(l => l.id)).toEqual(['live']);
+  });
+
+  it('leaves out a container the week already points at', () => {
+    const planned = aged(0, 2, { id: 'planned' });
+    const spare = aged(0, 5, { id: 'spare' });
+    expect(suggestableLeftovers([planned, spare], ['planned']).map(l => l.id)).toEqual(['spare']);
+  });
+
+  it('files the frozen ones last, since nothing is counting down on them', () => {
+    const frozen = aged(20, 2, { id: 'frozen', frozenAt: new Date(2026, 6, 26).toISOString() });
+    const fresh = aged(0, 4, { id: 'fresh' });
+    expect(suggestableLeftovers([frozen, fresh]).map(l => l.id)).toEqual(['fresh', 'frozen']);
+  });
+
+  it('caps the shelf, keeping the most urgent end of it', () => {
+    const list = [aged(0, 1), aged(0, 2), aged(0, 3), aged(0, 4)];
+    expect(suggestableLeftovers(list, [], 2).map(l => l.id)).toEqual([list[0].id, list[1].id]);
   });
 });
 
