@@ -40,6 +40,7 @@ import {
 } from '../utils/fabDrop';
 import { GroceryRow } from '../components/GroceryRow';
 import { BuyAgainSheet } from '../components/BuyAgainSheet';
+import { SubstituteSheet } from '../components/SubstituteSheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
@@ -203,12 +204,8 @@ export function GroceryScreen() {
   >(null);
   const [tripOpen, setTripOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // Which field the item sheet should open pre-expanded to — the swap glyph's
-  // whole point is skipping the ellipsis-then-scroll-to-Substitutes path an
-  // ordinary open leaves at null.
-  const [editingInitialField, setEditingInitialField] = useState<
-    'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | null
-  >(null);
+  // The item whose substitutes are being looked at, from the row's swap glyph.
+  const [substitutesForId, setSubstitutesForId] = useState<string | null>(null);
   const [aiMode, setAiMode] = useState<GroceryAIMode | null>(null);
   const [recipeSourceOpen, setRecipeSourceOpen] = useState(false);
   const [recipeToAdd, setRecipeToAdd] = useState<Recipe | null>(null);
@@ -614,14 +611,15 @@ export function GroceryScreen() {
 
   const handleEdit = useCallback((id: string) => {
     haptics.tap();
-    setEditingInitialField(null);
     setEditingId(id);
   }, []);
 
+  // Straight to the substitutes sheet, not to the item sheet scrolled at its
+  // Substitutes field: the glyph asks one question, and the editor around that
+  // field is not the answer to it.
   const handleOpenSubstitutes = useCallback((id: string) => {
     haptics.tap();
-    setEditingInitialField('substitutes');
-    setEditingId(id);
+    setSubstitutesForId(id);
   }, []);
 
   // "Not at Safeway · or margarine", tapped — see storeMarkers above and
@@ -1359,17 +1357,20 @@ export function GroceryScreen() {
         onStart={handleStartTrip}
         intent="start"
       />
+      <SubstituteSheet
+        visible={substitutesForId !== null}
+        itemId={substitutesForId}
+        onSwap={subId => {
+          if (substitutesForId) handleSwapForSubstitute(substitutesForId, subId);
+        }}
+        onClose={() => setSubstitutesForId(null)}
+      />
       <GroceryItemSheet
         visible={editingId !== null}
         itemId={editingId}
-        initialField={editingInitialField ?? undefined}
-        onClose={() => {
-          setEditingId(null);
-          setEditingInitialField(null);
-        }}
+        onClose={() => setEditingId(null)}
         onOpenRecipe={recipeId => {
           setEditingId(null);
-          setEditingInitialField(null);
           openRecipe(recipeId);
         }}
         recipeExists={recipeId => recipeIds.has(recipeId)}

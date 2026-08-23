@@ -315,9 +315,11 @@ export const GroceryRow = React.memo(function GroceryRow({
         )}
       </TouchableOpacity>
 
-      {/* Tertiary grey, like the ellipsis beside it — this edits the row too,
-          just straight to one field of it. Left of the ellipsis, which opens
-          the same sheet at its top. */}
+      {/* Tertiary grey, like the ellipsis beside it, and left of it: the
+          ellipsis opens the whole item sheet, this one asks the single
+          question — what can I use instead — in a sheet of its own. It used to
+          open that same item sheet at its Substitutes field, which is a long
+          editor in answer to a one-line question. */}
       {!selectionMode && !!onOpenSubstitutes && (
         <TouchableOpacity
           onPress={() => onOpenSubstitutes(item.id)}

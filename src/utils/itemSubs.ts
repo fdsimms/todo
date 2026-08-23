@@ -100,6 +100,37 @@ export function substituteForItems(
 const NAME_LIMIT = 2;
 
 /**
+ * The sub-line under one substitute, wherever it's listed with room for a
+ * qualification — the item sheet's Substitutes field, and the substitutes
+ * sheet's "already recorded" rows.
+ *
+ * Order is what would change a decision first. `onHand` (the caller's
+ * `probablyHaveReason`) leads where it's passed, because whether you've got
+ * the thing is what settles "use it instead" at the shelf; then the standing
+ * swap, stated as what it does rather than as the setting's name, since it's
+ * the one part here that changes what a recipe shops for. The caveats follow.
+ *
+ * Null when there's nothing to qualify — a bare link with no note, ratio,
+ * reverse row or standing flag is fully described by the name above it.
+ */
+export function describeSubstituteLink(
+  sub: Substitute,
+  onHand: string | null = null
+): string | null {
+  const ratio = sub.link.ratioFrom && sub.link.ratioTo
+    ? `${sub.link.ratioFrom} → ${sub.link.ratioTo}`
+    : null;
+  const parts = [
+    onHand,
+    sub.link.standing ? 'always used instead' : null,
+    ratio,
+    sub.link.note,
+    sub.isMutual ? 'both ways' : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/**
  * "Margarine" · "Margarine, ghee" · "3 substitutes".
  *
  * One helper because more than one surface has to name a substitute in a
