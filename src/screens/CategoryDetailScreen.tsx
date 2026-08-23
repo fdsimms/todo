@@ -33,6 +33,10 @@ type RootStackParamList = {
   CategoryDetail: { category: string };
 };
 
+// One shared empty array for a task with no subtasks — a fresh `[]` per row per
+// render is exactly the identity churn the grouping below exists to avoid.
+const NO_SUBTASKS: Task[] = [];
+
 export function CategoryDetailScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -86,10 +90,48 @@ export function CategoryDetailScreen() {
     }, [])
   );
 
-  const openEditor = (task: Task) => {
+  // Every subtask on this screen, grouped once. Each row used to filter the
+  // whole task list for its own children inline, which is O(tasks) per row and
+  // — worse — handed the memoized row a fresh array on every render.
+  const subtasksByParent = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    for (const t of allTasks) {
+      if (!t.parentId) continue;
+      const list = map.get(t.parentId);
+      if (list) list.push(t);
+      else map.set(t.parentId, [t]);
+    }
+    return map;
+  }, [allTasks]);
+  const subtasksOf = (id: string): Task[] => subtasksByParent.get(id) ?? NO_SUBTASKS;
+
+  // The row handlers take the row's own id rather than closing over it, so one
+  // callback serves every row — TaskItem is memoized and a fresh arrow per row
+  // per render defeats its shallow compare silently, putting every mounted row
+  // back to re-rendering on each store write. Empty deps throughout: the expand
+  // toggle reaches state only through the functional form of setState, and the
+  // editor resolves its task from the store at call time rather than capturing
+  // it, so neither can read a stale value from its frozen closure.
+  const handleRowPress = useCallback((id: string) => {
+    setExpandedTaskId(prev => {
+      // A tap landing while a *different* row is spotlighted just dismisses
+      // that one, rather than expanding the row that was tapped.
+      if (prev !== null && prev !== id) return null;
+      return prev === id ? null : id;
+    });
+  }, []);
+
+  const handleRowEdit = useCallback((id: string) => {
+    const task = useTaskStore.getState().tasks.find(t => t.id === id);
+    if (!task) return;
     setEditingTask(task);
     setEditorVisible(true);
-  };
+  }, []);
+
+  const handleRowSwipeSelect = useCallback((id: string) => {
+    setExpandedTaskId(null);
+    enterSelectionMode(id);
+  }, [enterSelectionMode]);
 
   const listTouchStart = useRef<{ x: number; y: number } | null>(null);
   const handleListTouchStart = (e: GestureResponderEvent) => {
@@ -171,19 +213,13 @@ export function CategoryDetailScreen() {
             {...keyboardScroll.props}
             contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             renderItem={({ item }) => {
-              const subs = allTasks.filter(t => t.parentId === item.id);
+              const subs = subtasksOf(item.id);
               return (
                 <TaskItem
                   task={item}
-                  onPress={() => {
-                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
-                      setExpandedTaskId(null);
-                      return;
-                    }
-                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
-                  }}
+                  onPress={handleRowPress}
                   expanded={expandedTaskId === item.id}
-                  onEdit={() => openEditor(item)}
+                  onEdit={handleRowEdit}
                   subtaskCount={subs.length}
                   subtaskDoneCount={subs.filter(t => t.completed).length}
                   subtasks={subs}
@@ -191,8 +227,8 @@ export function CategoryDetailScreen() {
                   spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(item.id)}
-                  onSelect={() => toggleSelection(item.id)}
-                  onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
+                  onSelect={toggleSelection}
+                  onSwipeSelect={handleRowSwipeSelect}
                   showProject
                 />
               );
