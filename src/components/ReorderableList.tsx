@@ -239,6 +239,33 @@ export function ReorderableList<T>({
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   const scrollRef = keyboardScroll.ref;
   const dataRef = useRef(data);
+  // One `drag` callback per row key, cached for the life of that key.
+  //
+  // It used to be built inline in the render map, which handed every row a
+  // fresh function identity on every render of this list — enough on its own
+  // to defeat React.memo on whatever the caller renders, so a screen-state
+  // change as small as expanding one row re-rendered every mounted row in the
+  // list. The rows are not virtualized (see this file's own notes), so on
+  // Today or Later that is every row there is. Nothing in the callback needs
+  // to be rebuilt: it resolves the row's index from dataRef at call time
+  // precisely so it can survive the list changing under it.
+  const dragHandlersRef = useRef(new Map<string, () => void>());
+  const startDragRef = useRef<(index: number, key: string) => void>(() => {});
+  // Callers pass keyExtractor inline, so it too is read through a ref rather
+  // than captured: a cached handler outlives the render it was built in.
+  const keyExtractorRef = useRef(keyExtractor);
+  keyExtractorRef.current = keyExtractor;
+  const dragHandlerFor = (key: string): (() => void) => {
+    let handler = dragHandlersRef.current.get(key);
+    if (!handler) {
+      handler = () => {
+        const idx = dataRef.current.findIndex(d => keyExtractorRef.current(d) === key);
+        if (idx >= 0) startDragRef.current(idx, key);
+      };
+      dragHandlersRef.current.set(key, handler);
+    }
+    return handler;
+  };
   const onReorderRef = useRef(onReorder);
   const onDragEndRef = useRef(onDragEnd);
   const activeIndexRef = useRef<number | null>(null);
@@ -326,6 +353,11 @@ export function ReorderableList<T>({
         layoutYRef.current.delete(key);
         heightsRef.current.delete(key);
       }
+    }
+    // Same pruning for the cached drag callbacks, so a long-lived list doesn't
+    // accumulate one per key it has ever held.
+    for (const key of Array.from(dragHandlersRef.current.keys())) {
+      if (!live.has(key)) dragHandlersRef.current.delete(key);
     }
     // A ScrollView's native scroll offset isn't automatically clamped when its
     // content shrinks (e.g. a bulk edit removes most of the visible rows) —
@@ -831,6 +863,10 @@ export function ReorderableList<T>({
     haptics.impactMedium();
     onDragBegin?.();
   };
+  // startDrag is redeclared every render, so the cached handlers below reach it
+  // through a ref rather than closing over whichever copy happened to exist
+  // when the row first rendered.
+  startDragRef.current = startDrag;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -1025,14 +1061,7 @@ export function ReorderableList<T>({
                   for it) and shows the drop-slot marker instead. */}
               {isPlaceholder && <View style={[StyleSheet.absoluteFill, placeholderStyle]} pointerEvents="none" />}
               <View style={isPlaceholder ? styles.placeholder : undefined}>
-                {renderItem({
-                  item,
-                  drag: () => {
-                    const idx = dataRef.current.findIndex(d => keyExtractor(d) === key);
-                    if (idx >= 0) startDrag(idx, key);
-                  },
-                  isActive: false,
-                })}
+                {renderItem({ item, drag: dragHandlerFor(key), isActive: false })}
               </View>
             </Animated.View>
           );
