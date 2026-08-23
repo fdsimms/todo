@@ -14,7 +14,20 @@
  * Its one obligation is to stay in step with that JSX. An entry whose row was
  * renamed or deleted is a search result that goes nowhere, so
  * `settingsIndex.test.ts` guards the structural half of that.
+ *
+ * The one block that is *not* hand-written is the AI features section, and the
+ * reason is that it is the one block of Settings whose rows aren't hand-written
+ * either: `PrivacyAiSettings` maps straight over `aiFeaturesFor(kitchenEnabled)`,
+ * so a feature added to `AI_FEATURES` grows a row on its own and only the index
+ * had to be remembered separately. It wasn't — `substitutes` and `receiptImport`
+ * shipped rows with no entry at all, unfindable by search, and `taskBreakdown`
+ * kept an entry naming a label ("Task suggestions") the row had stopped
+ * rendering. Deriving the entries from the same list is what makes those three
+ * failures unrepresentable; only the keywords, which have no counterpart in
+ * `AI_FEATURES`, stay written out below.
  */
+
+import { AI_FEATURES, type AiFeatureId } from './aiFeatures';
 
 export type SettingsGroupId =
   | 'appearance'
@@ -83,6 +96,41 @@ export interface SettingsEntry {
    */
   kitchen?: boolean;
 }
+
+/**
+ * The words that should find an AI-feature row but don't appear in its label.
+ *
+ * The one thing the derivation below can't take from `AI_FEATURES`, since a
+ * feature's `hint` is written for someone reading the row rather than for
+ * someone searching for it. Keyed by `AiFeatureId` so a new feature is a type
+ * error here until it has been given some.
+ *
+ * `suggestions` is kept on `taskBreakdown` because that is what the row used to
+ * be called, and someone who set it up under the old name will search for the
+ * old name.
+ */
+const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
+  taskBreakdown: ['claude', 'model', 'subtasks', 'steps', 'split', 'suggestions', 'postpone'],
+  templateSuggestions: ['claude', 'model', 'checklist'],
+  groceryAisles: ['claude', 'model', 'shopping'],
+  recipeExtraction: ['claude', 'model', 'ingredients', 'paste', 'photo', 'link'],
+  mealIdeas: ['claude', 'model', 'dinner', 'suggest', 'meal plan'],
+  substitutes: ['claude', 'model', 'instead of', 'swap', 'replace', 'allergy', 'out of'],
+  receiptImport: ['claude', 'model', 'photo', 'till', 'shopping trip', 'prices'],
+};
+
+/** One entry per row `PrivacyAiSettings` actually renders, in the same order. */
+const AI_FEATURE_ENTRIES: SettingsEntry[] = AI_FEATURES.map(feature => ({
+  id: `ai:${feature.id}`,
+  groupId: 'privacyAi' as const,
+  label: feature.label,
+  section: 'AI features',
+  keywords: AI_FEATURE_KEYWORDS[feature.id],
+  // Carried across rather than restated: the row itself disappears with the
+  // area (`aiFeaturesFor`), so an entry that outlived it would be a result
+  // pointing at nothing.
+  ...(feature.kitchen ? { kitchen: true } : {}),
+}));
 
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Appearance
@@ -307,16 +355,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['grace', 'timeout'] },
   { id: 'apiKey', groupId: 'privacyAi', label: 'Anthropic API Key', section: 'AI suggestions',
     keywords: ['ai', 'claude', 'suggestions'] },
-  { id: 'aiTaskSuggestions', groupId: 'privacyAi', label: 'Task suggestions', section: 'AI features',
-    keywords: ['claude', 'model', 'tag', 'effort', 'category'] },
-  { id: 'aiTemplateSuggestions', groupId: 'privacyAi', label: 'Template drafting', section: 'AI features',
-    keywords: ['claude', 'model', 'checklist'] },
-  { id: 'aiGroceryAisles', groupId: 'privacyAi', label: 'Grocery aisle sorting', section: 'AI features',
-    keywords: ['claude', 'model', 'shopping'], kitchen: true },
-  { id: 'aiRecipeExtraction', groupId: 'privacyAi', label: 'Recipe import', section: 'AI features',
-    keywords: ['claude', 'model', 'ingredients'], kitchen: true },
-  { id: 'aiMealIdeas', groupId: 'privacyAi', label: 'Meal ideas', section: 'AI features',
-    keywords: ['claude', 'model', 'dinner', 'suggest', 'meal plan'], kitchen: true },
+  ...AI_FEATURE_ENTRIES,
 
   // Data & reset
   { id: 'syncEnabled', groupId: 'dataReset', label: 'Sync with iCloud', section: 'Sync',

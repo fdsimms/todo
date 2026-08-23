@@ -529,7 +529,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,
     paddingBottom: spacing.lg, minHeight: 44,
-    lineHeight: 22,
+    // No lineHeight on a TextInput. RN maps it onto the iOS paragraph style's
+    // minimum/maximum line height with no compensating baseline offset, so the
+    // glyphs are drawn a full line height below the top of the line box rather
+    // than one ascent below it: the notes sat low in the field while the caret
+    // stayed centred, and the placeholder inherited the same attributes so an
+    // empty field looked wrong too. The minHeight above is what keeps the box
+    // the size the lineHeight used to imply.
   },
   card: {
     backgroundColor: colors.bgSecondary,
