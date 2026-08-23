@@ -61,7 +61,7 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   // show, and it sits inline next to the stepper rather than owning a row.
   pill: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 10, borderRadius: radius.sm,
+    gap: 6, paddingVertical: 10, paddingHorizontal: spacing.md, borderRadius: radius.sm,
     backgroundColor: colors.bgTertiary,
     borderWidth: border.sm, borderColor: 'transparent',
   },

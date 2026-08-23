@@ -309,6 +309,10 @@ export function ProjectDetailScreen() {
             scrollEnabled={!painting && !draggingSubtask}
             data={incompleteProjectTasks}
             keyExtractor={t => t.id}
+            // An expanded row's card shadow falls across the row below it, so
+            // the row has to be lifted over its neighbours — see
+            // ReorderableList's own note on why this can't live on the card.
+            rowElevated={t => t.id === expandedTaskId}
             contentContainerStyle={[{ flexGrow: 1, paddingTop: spacing.sm }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             onHoverChange={haptics.dragTick}
             onReorder={reordered => reorderProjectTasks(projectId, reordered.map(t => t.id))}

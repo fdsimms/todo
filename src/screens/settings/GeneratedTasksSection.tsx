@@ -10,8 +10,8 @@ import {
 } from '../../utils/generatedTasks';
 import {
   MEAL_SLOTS,
+  MEAL_SLOT_ICONS,
   MEAL_SLOT_LABELS,
-  type MealSlot,
   GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   GROCERY_USE_UP_LEAD_DAYS_MAX,
   GROCERY_USE_UP_LEAD_DAYS_MIN,
@@ -65,18 +65,6 @@ import { makeSettingsStyles } from './settingsStyles';
 // to fit all seven across 390pt. Moved here with the nudge's controls.
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-/**
- * A glyph per meal, borrowed from the time-of-day pills in quick add — the same
- * three parts of the day MEAL_SLOT_SEGMENTS hides each meal's task behind, so
- * the row and the behaviour agree. Snack gets the cup, since it's the one with
- * no part of the day to name.
- */
-const MEAL_SLOT_ICONS: Record<MealSlot, string> = {
-  breakfast: 'sunny-outline',
-  lunch: 'partly-sunny-outline',
-  dinner: 'moon-outline',
-  snack: 'cafe-outline',
-};
 const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 /** Weekday segments rotated to start at weekStartsOn, matching the calendar's header order. */
