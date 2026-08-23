@@ -16,8 +16,8 @@ import { spacing, radius, font, fontWeight, lineHeight, border, animation, inter
 import { haptics } from '../utils/haptics';
 import { formatClockDuration, formatDuration } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
-import { buildFocusPlan, focusPlanTotals, plannedTaskMinutes } from '../utils/focusPlan';
-import { focusPlanOptionsFrom } from '../utils/focusSettings';
+import { buildFocusPlan, focusPlanTotals, plannedTaskMinutes, type FocusPlanOptions } from '../utils/focusPlan';
+import { focusPlanOptionsFrom, focusRestsDisabled } from '../utils/focusSettings';
 import {
   buildFocusContext,
   focusQueueFromPinned,
@@ -55,8 +55,13 @@ interface Props {
    */
   pinnedSeed?: readonly Task[];
   onClose: () => void;
-  /** The queue, in run order. Empty selections can't get here. */
-  onStart: (tasks: Task[]) => void;
+  /**
+   * The queue, in run order, and the plan options to build it with. Empty
+   * selections can't get here. Options come from this sheet rather than
+   * being re-read from settings by the caller, so a session-only override
+   * (see `breaksEnabled` below) actually reaches the plan the session runs.
+   */
+  onStart: (tasks: Task[], options: FocusPlanOptions) => void;
 }
 
 /**
@@ -91,6 +96,14 @@ interface Props {
  * `focusQueueFromPinned` takes the pinned order as-is instead of scoring for
  * one, since pinning already is the ranking; everything past that point (the
  * window, the plan preview, ticking, swapping) is the same sheet.
+ *
+ * The Breaks toggle is a per-session override, not a shortcut to Settings: it
+ * only ever turns breaks *off* for the run about to start, never on past what
+ * Settings already does, and it's dropped from the sheet entirely once
+ * Settings already has none configured (see `docs/arch/focus-sessions.md`,
+ * "with both triggers off the plan is a straight run of work, which is a
+ * legitimate thing to ask for"). The plan preview and `onStart` both read the
+ * same `effectivePlanOptions`, so what's shown is exactly what runs.
  */
 export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose, onStart }: Props) {
   const colors = useColors();
@@ -112,6 +125,20 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
    * to say so every time. It resets when the app does, which is about right.
    */
   const [windowMinutes, setWindowMinutes] = useState<number | null>(null);
+
+  /**
+   * Whether this session takes breaks, separate from the Settings toggle.
+   * Reset on every open (unlike `windowMinutes`): this is a decision about
+   * the run about to start, not a standing habit like how much time you tend
+   * to have. Only offered when Settings would otherwise insert breaks — with
+   * both triggers already off there's nothing left for it to turn off, and a
+   * switch that can't do anything is worse than no switch.
+   */
+  const [breaksEnabled, setBreaksEnabled] = useState(true);
+  const settingsHaveBreaks = !focusRestsDisabled({
+    focusRestAfterTasks: planOptions.restAfterTasks,
+    focusRestAfterMinutes: planOptions.restAfterMinutes,
+  });
 
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const calendarEvents = useCalendarStore(s => s.events);
@@ -175,6 +202,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
   useEffect(() => {
     if (!visible) return;
     repick(windowMinutes);
+    setBreaksEnabled(true);
     translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     Animated.parallel([
@@ -267,11 +295,18 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
     [slots, selectedIds]
   );
 
+  // Same options the session will actually start with, so the preview never
+  // shows a shape the run itself won't match.
+  const effectivePlanOptions: FocusPlanOptions = useMemo(
+    () => (breaksEnabled ? planOptions : { ...planOptions, restAfterTasks: null, restAfterMinutes: null }),
+    [planOptions, breaksEnabled]
+  );
+
   // The real plan, so the summary counts the breaks and any split stretches
   // rather than just adding up estimates.
   const totals = useMemo(
-    () => focusPlanTotals(buildFocusPlan(selected, planOptions)),
-    [selected, planOptions]
+    () => focusPlanTotals(buildFocusPlan(selected, effectivePlanOptions)),
+    [selected, effectivePlanOptions]
   );
 
   /**
@@ -296,7 +331,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
   const handleStart = () => {
     if (selected.length === 0) return;
     haptics.success();
-    onStart(selected);
+    onStart(selected, effectivePlanOptions);
     dismiss();
   };
 
@@ -449,6 +484,27 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
             </View>
           )}
 
+          {settingsHaveBreaks && (
+            <TouchableOpacity
+              style={styles.breaksRow}
+              onPress={() => { haptics.tap(); setBreaksEnabled(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Take breaks"
+              accessibilityState={{ checked: breaksEnabled }}
+            >
+              <View style={styles.windowLabelWrap}>
+                <Text style={styles.windowLabel}>Breaks</Text>
+                <Text style={styles.windowHint}>
+                  {breaksEnabled ? 'Break rules from Settings apply' : 'No breaks for this session'}
+                </Text>
+              </View>
+              <View style={[styles.toggle, breaksEnabled && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, breaksEnabled && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+          )}
+
           {slots.length === 0 ? (
             <Text style={styles.emptyHint}>
               {pinnedSeed
@@ -583,6 +639,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   windowLabelWrap: { flex: 1, gap: 1 },
   windowLabel: { color: colors.text, fontSize: font.md },
   windowHint: { color: colors.textTertiary, fontSize: font.xs },
+  breaksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  toggle: {
+    width: 46, height: 27, borderRadius: 14,
+    backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
+  },
+  toggleOn: { backgroundColor: colors.accent },
+  toggleKnob: {
+    width: 21, height: 21, borderRadius: 11,
+    backgroundColor: colors.bg,
+  },
+  toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
   hint: {
     color: colors.textTertiary,
     fontSize: font.xs,
