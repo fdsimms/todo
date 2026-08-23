@@ -9,8 +9,9 @@ import { dayKeyOf } from './dateUtils';
 import { describeWeekRange, entriesForDay, slotLabel, titleForEntry } from './mealPlan';
 
 /**
- * Plain text for RN's `Share.share`, for the three things in this app worth
- * sending to someone else. Deliberately plain text rather than a custom
+ * Plain text for RN's `Share.share` (and, for the ingredients, the
+ * clipboard), for the things in this app worth sending somewhere else.
+ * Deliberately plain text rather than a custom
  * format: what people actually want is something they can paste into
  * Messages, not an import file — see #1692. Every quantity renders through
  * the same scale and unit system the screen sharing it was showing, so what
@@ -107,6 +108,39 @@ export function buildRecipeShareText(
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Just the ingredients, one per line, and nothing else — the format another
+ * recipe or shopping app's "paste your ingredients here" box expects.
+ *
+ * Deliberately none of the furniture `buildRecipeShareText` adds, because
+ * every piece of it becomes a bogus ingredient on the other side: no recipe
+ * name, no servings line, no `Ingredients:` header, no `- ` bullets, and no
+ * `For the cake:` component headings. What travels is N lines for N
+ * ingredients, so a parser reading line by line gets N ingredients.
+ *
+ * Everything else matches the recipe share: components are flattened in (in
+ * order, just without their headings), choice groups resolve to their
+ * defaults, standing swaps stay out, and each line is scaled then converted
+ * through the caller's own `scale`/`unitSystem` so a doubled list pastes
+ * doubled.
+ *
+ * Empty string for a recipe with nothing to list, same gating convention as
+ * the two builders below.
+ */
+export function buildIngredientsText(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+  options: { scale?: number; unitSystem?: UnitSystem } = {},
+): string {
+  const scale = options.scale ?? 1;
+  const unitSystem = options.unitSystem ?? 'asWritten';
+  const flat = flattenRecipeIngredients(recipe, recipesById);
+  if (flat.length === 0) return '';
+  return flat
+    .map(line => formatShareIngredientLine(line.ingredient, scale, unitSystem))
+    .join('\n');
 }
 
 /**

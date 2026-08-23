@@ -1,5 +1,7 @@
 import type { GroceryItem, MealPlanEntry, MealSlot, Recipe, RecipeComponent, RecipeIngredient } from '../types';
-import { buildGroceryListShareText, buildRecipeShareText, buildWeekPlanShareText } from '../utils/shareText';
+import {
+  buildGroceryListShareText, buildIngredientsText, buildRecipeShareText, buildWeekPlanShareText,
+} from '../utils/shareText';
 
 // shareText reaches recipeUtils.ts (for describeAttribution/formatServings)
 // and mealPlan.ts directly, both of which reach dateUtils.ts → the settings
@@ -165,6 +167,49 @@ describe('buildRecipeShareText', () => {
     const r = recipe('r1', 'Idea');
     const text = buildRecipeShareText(r, recipeMap([r]));
     expect(text).toBe('Idea');
+  });
+});
+
+describe('buildIngredientsText', () => {
+  it('is the ingredient lines and nothing else — no name, no header, no bullets', () => {
+    const r = recipe('r1', 'Pancakes', {
+      servings: 4,
+      ingredients: [ing('Flour', { quantity: '1/2 tbsp' }), ing('Water', { quantity: '1 cup' })],
+      steps: [{ id: 's1', text: 'Mix.' }],
+      sourceUrl: 'https://example.com/pancakes',
+    });
+    expect(buildIngredientsText(r, recipeMap([r]))).toBe('1/2 tbsp Flour\n1 cup Water');
+  });
+
+  it('scales and converts each line the way the screen is showing it', () => {
+    const r = recipe('r1', 'Pancakes', {
+      ingredients: [ing('Flour', { quantity: '1 lb' }), ing('Salt', { quantity: '1/2 tsp' })],
+    });
+    const text = buildIngredientsText(r, recipeMap([r]), { scale: 2, unitSystem: 'metric' });
+    expect(text).toBe('≈910 g Flour\n≈5 ml Salt');
+  });
+
+  it('keeps prep and purpose on the line, same as the recipe share', () => {
+    const r = recipe('r1', 'Salad', {
+      ingredients: [ing('Garlic', { quantity: '2 cloves', prep: 'minced' }), ing('Limes', { purpose: 'margaritas' })],
+    });
+    expect(buildIngredientsText(r, recipeMap([r]))).toBe('2 cloves Garlic, minced\nLimes, for margaritas');
+  });
+
+  it('flattens a component\'s lines in without its heading', () => {
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Butter', { quantity: '2 tbsp' })] });
+    const steak = recipe('r1', 'Steak with mash', {
+      ingredients: [ing('Steak')],
+      components: [link('r2', 'Mash')],
+    });
+    const text = buildIngredientsText(steak, recipeMap([steak, mash]));
+    expect(text).toBe('Steak\n2 tbsp Butter');
+    expect(text).not.toContain('For the Mash');
+  });
+
+  it('is empty for a recipe with nothing to list, so a caller can gate on it', () => {
+    const r = recipe('r1', 'Idea', { steps: [{ id: 's1', text: 'Think about it.' }] });
+    expect(buildIngredientsText(r, recipeMap([r]))).toBe('');
   });
 });
 

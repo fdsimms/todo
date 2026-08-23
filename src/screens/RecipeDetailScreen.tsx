@@ -24,6 +24,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import * as Clipboard from 'expo-clipboard';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient, RecipePrepTask, RecipeStep } from '../types';
@@ -57,7 +58,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
 import { describeRecipe, totalMinutes } from '../utils/recipeUtils';
-import { buildRecipeShareText } from '../utils/shareText';
+import { buildIngredientsText, buildRecipeShareText } from '../utils/shareText';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, scaleQuantity } from '../utils/recipeScale';
@@ -85,6 +86,13 @@ type RootStackParamList = {
 type MergedIngredientRow =
   | { kind: 'ingredient'; id: string; ingredient: RecipeIngredient }
   | { kind: 'heading'; id: string; name: string; empty: boolean };
+
+/**
+ * How long the copy button stays a tick after copying the ingredients. Long
+ * enough to be read on the way to the other app, short enough that coming
+ * back to this screen doesn't find a stale confirmation sitting there.
+ */
+const COPIED_TICK_MS = 2000;
 
 export function RecipeDetailScreen() {
   // ==== store bindings and layout insets ====
@@ -331,6 +339,35 @@ export function RecipeDetailScreen() {
     animateLayout();
     removePrepTask(recipe.id, prepTask.id);
     haptics.tap();
+  };
+
+  // The ingredients alone, as the plain lines another app's paste box wants
+  // — built here rather than at press time so the copy and share actions can
+  // both gate themselves on it being non-empty (see shareText.ts).
+  const ingredientsText = useMemo(
+    () => (recipe ? buildIngredientsText(recipe, recipesById, { scale, unitSystem }) : ''),
+    [recipe, recipesById, scale, unitSystem]
+  );
+
+  // The tick the copy button shows for a moment afterwards. A copy leaves no
+  // trace on screen otherwise, and this app has no toast to say so.
+  const [copiedIngredients, setCopiedIngredients] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copiedTimer.current) clearTimeout(copiedTimer.current); }, []);
+
+  const handleCopyIngredients = () => {
+    if (!ingredientsText) return;
+    haptics.success();
+    Clipboard.setStringAsync(ingredientsText).catch(() => {});
+    setCopiedIngredients(true);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopiedIngredients(false), COPIED_TICK_MS);
+  };
+
+  const handleShareIngredients = () => {
+    if (!ingredientsText) return;
+    haptics.tap();
+    Share.share({ message: ingredientsText }).catch(() => {});
   };
 
   // Renders through the same scale and unit system the screen is showing,
@@ -1052,7 +1089,39 @@ export function RecipeDetailScreen() {
           <RecipeTimerRow verb="Cook" {...cookTimer} />
         </View>
 
-        <Text style={styles.sectionLabel}>Ingredients</Text>
+        {/* The two ways the list leaves the app, on the card they act on
+            rather than up in the screen header — that header's share button
+            sends the whole recipe (name, method, source), and these send the
+            ingredient lines alone, which is what another app's "paste your
+            ingredients" box can actually read. Hidden while selecting, like
+            every other action on this screen. */}
+        <View style={styles.ingredientsHeaderRow}>
+          <Text style={[styles.sectionLabel, styles.sectionLabelFlush]}>Ingredients</Text>
+          {!selectionMode && !!ingredientsText && (
+            <View style={styles.ingredientsHeaderActions}>
+              <TouchableOpacity
+                onPress={handleCopyIngredients}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Copy the ingredients as plain text"
+              >
+                <Ionicons
+                  name={copiedIngredients ? 'checkmark' : 'copy-outline'}
+                  size={iconSize.sm}
+                  color={copiedIngredients ? colors.green : colors.textSecondary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleShareIngredients}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Share the ingredients on their own"
+              >
+                <Ionicons name="share-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
 
         {/* Above the list rather than up by the summary: it's the quantities
             below that visibly change, and a control that far from what it
@@ -1520,6 +1589,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginTop: spacing.md,
+  },
+  // The Ingredients label and its copy/share buttons on one line. The row
+  // carries the label's own top margin, so the label goes flush inside it and
+  // the icons sit level with the text rather than pushed down by it.
+  ingredientsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+  },
+  sectionLabelFlush: {
+    marginTop: 0,
+  },
+  ingredientsHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   hint: {
     color: colors.textTertiary,
