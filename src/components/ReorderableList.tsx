@@ -109,6 +109,21 @@ interface Props<T> {
   dropIntoIndex?: number | null;
   /** Restricts how far the active row may move, e.g. to keep it within its own section. */
   dragRange?: (data: T[], activeIndex: number) => [number, number];
+  /**
+   * Rows that must paint above their neighbours — one that draws outside its
+   * own bounds. Today's stack tray while a nested `SortableList` is dragging
+   * one of its children (the floating card crosses the tray's edge), and an
+   * expanded row, whose card shadow falls across the row below it.
+   *
+   * It has to be applied *here*, on the row wrapper, and nowhere further in.
+   * RN's zIndex only orders a view among its own siblings, so a style on the
+   * row's content — which is what `GroupDropTarget` and `TaskItem` both used
+   * to carry for exactly these two cases — reorders that content inside a
+   * wrapper holding nothing else, and the row below still paints on top: rows
+   * are siblings of each other, not of anything inside one. Both were inert
+   * for years; the nested drag card is where it finally showed.
+   */
+  rowElevated?: (item: T) => boolean;
   /** Style for the slot shown where the dragged item will land. */
   placeholderStyle?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -201,6 +216,7 @@ export function ReorderableList<T>({
   dropDisabled = false,
   dropIntoIndex = null,
   dragRange,
+  rowElevated,
   placeholderStyle,
   contentContainerStyle,
   refreshControl,
@@ -1039,7 +1055,12 @@ export function ReorderableList<T>({
               // Animated transform ONLY while dragging. At rest the style is
               // plain, so the commit render (new order + no transform) is one
               // atomic React commit with no native animated value to race.
-              style={isDragging ? { transform: [{ translateY: getRowOffset(key) }] } : undefined}
+              // The elevation beside it is a plain static style either way, so
+              // it doesn't put an animated value back into the resting render.
+              style={[
+                isDragging && { transform: [{ translateY: getRowOffset(key) }] },
+                rowElevated?.(item) && styles.rowElevated,
+              ]}
               onLayout={e => {
                 heightsRef.current.set(key, e.nativeEvent.layout.height);
                 layoutYRef.current.set(key, e.nativeEvent.layout.y);
@@ -1093,6 +1114,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { flex: 1 },
   placeholder: { opacity: 0 },
+  // See the `rowElevated` prop. Same zIndex/elevation pair the rest of the
+  // app reaches for to lift one row over its neighbours.
+  rowElevated: {
+    zIndex: 10,
+    elevation: 10,
+  },
   // Shadow comes from the theme (shadows.fab) so the lifted card reads
   // correctly in both light and dark mode.
   overlay: {

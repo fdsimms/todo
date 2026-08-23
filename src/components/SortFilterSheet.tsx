@@ -249,7 +249,7 @@ export function SortFilterSheet({
             )}
 
             {/* Reminder filter */}
-            <Text style={styles.groupLabel}>Filter by reminder</Text>
+            <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Filter by reminder</Text>
             <View style={styles.chips}>
               <TouchableOpacity
                 style={[styles.chip, hasReminder && styles.chipActive]}

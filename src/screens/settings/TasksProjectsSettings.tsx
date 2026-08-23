@@ -569,7 +569,7 @@ export function TasksProjectsSettings() {
           iconColor={excludedRecipeTags.length > 0 ? colors.accent : undefined}
           label="Tags to avoid"
           hint={recipeTagVocabulary.length === 0 ? 'Tag a recipe first to pick from here' : undefined}
-          tight
+          tight={recipeTagVocabulary.length > 0}
         />
         {recipeTagVocabulary.length > 0 && (
           <View style={styles.pillGroupRow}>

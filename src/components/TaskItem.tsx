@@ -34,7 +34,7 @@ import Reanimated, {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import type { Task } from '../types';
-import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
+import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
@@ -61,6 +61,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { MEAL_PLAN_NUDGE_SLOT_COUNT, mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
+import { mealSlotOf } from '../utils/mealSlotTasks';
 import {
   describeProjectQuiet,
   projectQuietDays,
@@ -702,6 +703,13 @@ export const TaskItem = React.memo(function TaskItem({
   // (see mealPlanNudge.ts on why nothing here completes a task by itself).
   const mealPlanReady =
     plannedMeals !== undefined && plannedMeals >= MEAL_PLAN_NUDGE_SLOT_COUNT && !task.completed;
+
+  // Which meal an auto-generated meal task is for (mealSlotOf, off the row's
+  // own source id — no store read). Only its unanswered steps name the meal
+  // themselves ("Choose lunch"); once the slot is answered the title is the
+  // food, and a day's breakfast, lunch and dinner rows sit together under one
+  // category with nothing between them saying which is which.
+  const mealSlot = mealSlotOf(task);
 
   // A quiet project's review task: how long the project has actually been
   // silent, which is what the banner this replaced showed beside each name.
@@ -1548,7 +1556,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || timed || plannedMeals !== undefined || quietDays !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || timed || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -1569,6 +1577,24 @@ export const TaskItem = React.memo(function TaskItem({
                 />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
                   {formatScheduledDate(scheduledIso)}
+                </Text>
+              </View>
+            )}
+            {/* Which meal this row is. Sits at the front with the scheduled
+                chip rather than back with the counters, because it places the
+                task in the day the way that one does — three of these rows
+                share a category, a shape and (once each is planned) a title
+                that only names food. The glyph is the slot's own, the same one
+                the Settings row that switches the meal on wears. */}
+            {mealSlot !== null && (
+              <View style={styles.metaChip}>
+                <Ionicons
+                  name={MEAL_SLOT_ICONS[mealSlot] as keyof typeof Ionicons.glyphMap}
+                  size={iconSize.xs}
+                  color={colors.textTertiary}
+                />
+                <Text style={styles.mealSlotLabel} numberOfLines={1}>
+                  {MEAL_SLOT_LABELS[mealSlot]}
                 </Text>
               </View>
             )}
@@ -2505,7 +2531,6 @@ export const TaskItem = React.memo(function TaskItem({
             shadows.card,
             { opacity: isActive ? 1 : rowOpacity },
             isActive && styles.itemWrapperActive,
-            expanded && styles.itemWrapperElevated,
             indented && styles.itemWrapperIndented,
           ]}
           // Screens collapse the spotlight on any touch in the list area;
@@ -2706,10 +2731,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   rowActive: {
     backgroundColor: colors.bgTertiary,
-  },
-  itemWrapperElevated: {
-    zIndex: 10,
-    elevation: 10,
   },
   cardClip: {
     borderRadius: radius.md,
@@ -2941,6 +2962,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
   groupLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  // "Dinner" on an auto-generated meal task — plain tertiary like the chips
+  // around it, since it describes the row rather than asking anything of it.
+  mealSlotLabel: {
     color: colors.textTertiary,
     fontSize: font.xs,
   },

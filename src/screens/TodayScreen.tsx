@@ -289,20 +289,18 @@ function GroupDropTargetRow({
   channel,
   groupId,
   active,
-  elevated,
   children,
 }: {
   channel: FabIntentChannel;
   groupId: string;
   active: boolean;
-  elevated?: boolean;
   children: React.ReactNode;
 }) {
   const aimed = useFabIntentSelector(
     channel,
     intent => intent?.kind === 'joinGroup' && intent.groupId === groupId,
   );
-  return <GroupDropTarget active={active || aimed} elevated={elevated}>{children}</GroupDropTarget>;
+  return <GroupDropTarget active={active || aimed}>{children}</GroupDropTarget>;
 }
 
 // The add button, naming what a release right now would do.
@@ -1965,7 +1963,7 @@ export function TodayScreen() {
   // be told to stop scrolling for the drag to survive the first finger move
   // (see SortableList's onDragStateChange). Keyed by group id, not a plain
   // bool, so only the tray actually being dragged in gets lifted above its
-  // siblings below — see the `elevated` prop on GroupDropTargetRow.
+  // siblings below — see the list's `rowElevated`.
   const [draggingStackChildGroupId, setDraggingStackChildGroupId] = useState<string | null>(null);
   // Same deal for the pinned block's own SortableList, which sits in the list's
   // header — inside the scroll view, so the scroll has to stand down for it too.
@@ -2181,12 +2179,6 @@ export function TodayScreen() {
           channel={fabIntentChannel}
           groupId={item.group.id}
           active={joinGroupIntentId === item.group.id}
-          // Lifts this tray above the rows below it while one of its own
-          // children is being dragged, so the floating card (which is only
-          // painted above its own siblings inside the tray, not the whole
-          // screen — see SortableList) doesn't disappear under the next
-          // row down the moment it crosses the tray's edge.
-          elevated={draggingStackChildGroupId === item.group.id}
         >
           <TaskGroupTray>
             <TaskGroupHeader
@@ -2948,6 +2940,9 @@ export function TodayScreen() {
             rowScrollerRef={laterRowScroller}
             data={laterDraggableData}
             keyExtractor={item => item.key}
+            // See the Today list's own note: an expanded row's card shadow
+            // falls across the row below it.
+            rowElevated={item => item.type === 'task' && item.task.id === expandedTaskId}
             renderItem={({ item, drag, isActive }) => {
               let content: React.ReactNode;
               if (item.type === 'header') {
@@ -3072,6 +3067,16 @@ export function TodayScreen() {
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
+            // Two rows draw outside their own slot and so have to be lifted
+            // over the ones below them: a stack whose child is being dragged
+            // (the nested SortableList's floating card only paints above its
+            // own siblings inside the tray, so it disappears under the next
+            // row down the moment it crosses the tray's edge), and an expanded
+            // row, whose card shadow falls across its neighbour.
+            rowElevated={item =>
+              (item.type === 'group' && item.group.id === draggingStackChildGroupId) ||
+              (item.type === 'task' && item.task.id === expandedTaskId)
+            }
             ListHeaderComponent={todayListHeader}
             onDragBegin={() => {
               setExpandedTaskId(null);

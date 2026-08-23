@@ -228,6 +228,14 @@ re-deriving:
   remaining ones are the user's; a plan change mid-cook updates the title and the link and leaves the
   steps alone. Rewriting would have to remap the index onto a different-length list, and step 1 of
   [Choose, Prepare, Eat] has no honest answer in [Cook X, Eat X].
+- **The row says which meal it is, in the meta line rather than in the title** (`mealSlotOf`, read
+  off the source id — no store lookup). Only an unanswered slot names its meal in its own steps
+  ("Choose lunch"); the moment something is planned the title becomes the food, and a day's three
+  rows sit together under one category with nothing telling them apart. It's a chip beside the
+  scheduled one rather than a longer title because the title is also what Search, the Logbook and
+  the widget show, and "Cook Peanut Butter Tofu with Sriracha for dinner" wraps to two lines on a
+  390pt row. The glyph is `MEAL_SLOT_ICONS`, shared with the Settings row that switches the meal
+  on — one meal wearing two glyphs on two screens is the drift the shared primitives exist to stop.
 - **A high-water mark is the entire opt-out** (`mealSlotTasksWrittenThroughDayKey`). There is no
   row to stamp a "no" on, and a generic `(kind, sourceId)` suppression record is exactly what the
   note above forbids, because nothing prunes it. One string solves it instead: the pass only ever
