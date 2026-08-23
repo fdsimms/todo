@@ -23,13 +23,6 @@ interface Props {
   /** Summary of the day's planned time, shown as the action's hint. */
   plannedLabel?: string;
   /**
-   * Opens the focus session setup sheet, which suggests what to work through.
-   * Omitted while a session is already running — the bar on Today is the way
-   * back into that one, and offering to start a second would be offering to
-   * throw the first away.
-   */
-  onFocusSession?: () => void;
-  /**
    * Opens the "look ahead" sheet — everything landing before a date, and
    * whether it fits. Passed unconditionally like onPullFromProjects: an empty
    * today says nothing about the fortnight ahead, which is the whole point of
@@ -63,7 +56,6 @@ export function TodayOptionsMenu({
   onHideCategoriesChange,
   onLightenDay,
   plannedLabel,
-  onFocusSession,
   onLookAhead,
   onPullFromProjects,
   onReorderCategories,
@@ -124,30 +116,6 @@ export function TodayOptionsMenu({
                     {plannedLabel
                       ? `${plannedLabel} planned. Move some of it to a better day`
                       : 'Move some of today to a better day'}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
-              <View style={styles.optionSep} />
-            </>
-          )}
-          {onFocusSession && (
-            <>
-              <TouchableOpacity
-                style={styles.optionRow}
-                onPress={() => {
-                  haptics.tap();
-                  onFocusSession();
-                }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel="Start a focus session"
-              >
-                <Ionicons name="hourglass-outline" size={18} color={colors.textSecondary} />
-                <View style={styles.optionContent}>
-                  <Text style={styles.optionLabel}>Focus session</Text>
-                  <Text style={styles.optionHint}>
-                    Work through a few tasks one at a time, with breaks between them
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
