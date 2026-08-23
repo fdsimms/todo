@@ -293,7 +293,6 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
               placeholder="Category name"
               placeholderTextColor={colors.textTertiary}
               autoCapitalize="words"
-              autoCorrect={false}
               returnKeyType="done"
               accessibilityLabel="Category name"
             />

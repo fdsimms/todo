@@ -1337,7 +1337,6 @@ export function GroceryItemSheet({
             onSubmitEditing={commitName}
             placeholder="Item name"
             placeholderTextColor={colors.textTertiary}
-            autoCorrect={false}
             maxLength={GROCERY_NAME_MAX_LENGTH}
             accessibilityLabel="Item name"
           />

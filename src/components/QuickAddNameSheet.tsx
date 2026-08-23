@@ -173,7 +173,6 @@ export function QuickAddNameSheet({
               onSubmitEditing={handleAdd}
               returnKeyType="done"
               autoCapitalize={autoCapitalize}
-              autoCorrect={false}
               blurOnSubmit={false}
             />
             <TouchableOpacity

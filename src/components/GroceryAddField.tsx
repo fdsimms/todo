@@ -507,7 +507,12 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
             onChangeText={activePanel === 'brand' ? setBrand : setVariant}
             placeholder={activePanel === 'brand' ? 'e.g. Good Culture' : 'e.g. low fat, 4%, crunchy'}
             placeholderTextColor={colors.textTertiary}
-            autoCorrect={false}
+            // One field serving two panels, so the correction rule switches with
+            // it like every other prop here: a variant ("low fat", "crunchy") is
+            // ordinary prose worth correcting, a brand is a proper noun the
+            // dictionary doesn't know and will happily rewrite into something
+            // else. Same split ProductSheet's two separate fields make.
+            autoCorrect={activePanel !== 'brand'}
             autoCapitalize="words"
             returnKeyType="done"
             onSubmitEditing={() => setActivePanel(null)}

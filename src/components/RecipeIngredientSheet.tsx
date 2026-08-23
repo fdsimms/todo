@@ -492,7 +492,6 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
                 onChangeText={setGroupNameDraft}
                 maxLength={RECIPE_CHOICE_GROUP_MAX_LENGTH}
                 autoFocus
-                autoCorrect={false}
                 onSubmitEditing={commitGroupRename}
                 onBlur={commitGroupRename}
                 accessibilityLabel="Group name"

@@ -479,7 +479,6 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
                 maxLength={RECIPE_TAG_MAX_LENGTH}
                 returnKeyType="done"
                 autoCapitalize="none"
-                autoCorrect={false}
                 accessibilityLabel="New tag name"
               />
             ) : (
