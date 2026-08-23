@@ -120,8 +120,7 @@ interface Props<T> {
  * It assumed a card or sheet surface until #1669: `bgTertiary` against a light
  * theme's `bg` is nearly invisible, which is what kept it out of the one place
  * a lens switch belongs — straight under a screen's header. `surface="page"`
- * is that fix, and it's why the meal plan's Comfortable / Compact switch can be
- * a track rather than a second row of pills under the hub's own.
+ * is that fix.
  */
 export function SegmentedControl<T extends string | number | boolean | null>({
   options, value, onChange, columns, label, surface = 'card',

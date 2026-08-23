@@ -24,7 +24,6 @@ import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeade
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { InlineAction } from '../components/InlineAction';
-import { SegmentedControl } from '../components/SegmentedControl';
 import { PeriodNav } from '../components/PeriodNav';
 import { MealSlotRow } from '../components/MealSlotRow';
 import { MealEntrySheet } from '../components/MealEntrySheet';
@@ -309,17 +308,6 @@ export function MealPlanScreen() {
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
-  /**
-   * How densely the week below is drawn — a stored setting rather than screen
-   * state, unlike the "Whole week" lens whose nights card it replaces (#1669).
-   *
-   * A lens was a way of reading the week you had open right then, so it reset
-   * with the screen; how much of a week you want on one screen is a standing
-   * answer, and having to give it again on every visit is what would make the
-   * dense reading the one nobody uses.
-   */
-  const compact = useSettingsStore(s => s.mealPlanCompact);
-  const setDensity = useSettingsStore(s => s.setMealPlanCompact);
   // ==== local state (the week anchor, sheets, bulk selection, the fridge) ====
   // Any date inside the week on screen. Paging moves the anchor, never the days.
   const [anchor, setAnchor] = useState(() => new Date());
@@ -1130,7 +1118,7 @@ export function MealPlanScreen() {
     return (
       <FabDropZone zone={zone}>
         <DayDropTargetRow channel={fabIntentChannel} dayKey={key}>
-          <View style={[styles.section, compact && styles.sectionCompact]}>
+          <View style={styles.section}>
             {/*
               One toggle for the whole run of already-happened days, sitting
               above the first of them — see previousDaysExpanded. Replaces
@@ -1282,9 +1270,7 @@ export function MealPlanScreen() {
                     <View style={styles.card}>
                       {dayEntries.map((entry, idx) => (
                         <React.Fragment key={entry.id}>
-                          {idx > 0 && (
-                            <View style={[styles.sep, compact && styles.sepCompact]} />
-                          )}
+                          {idx > 0 && <View style={styles.sep} />}
                           <MealSlotRow
                             entry={entry}
                             title={titleForEntry(entry, recipesById)}
@@ -1303,7 +1289,6 @@ export function MealPlanScreen() {
                             // Matches styles.card, so the swipe panel is uncovered
                             // by the row rather than showing through it.
                             surface={colors.bgSecondary}
-                            compact={compact}
                           />
                         </React.Fragment>
                       ))}
@@ -1322,7 +1307,7 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, compact, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
@@ -1604,9 +1589,8 @@ export function MealPlanScreen() {
 
       {/*
         Widest scope first: the hub pills above pick a section, this picks the
-        week, the track below picks how densely that week is drawn. Under the
-        trip banner rather than over it, so the two week controls stay adjacent
-        when a trip is running.
+        week. Under the trip banner rather than over it, so the two week
+        controls stay adjacent when a trip is running.
       */}
       <PeriodNav
         label={describeWeekRange(days)}
@@ -1615,33 +1599,6 @@ export function MealPlanScreen() {
         prevAccessibilityLabel="Previous week"
         nextAccessibilityLabel="Next week"
       />
-
-      {/*
-        A track, not a second row of pills. The hub's own pills sit a couple of
-        rows above and *navigate*; this one only changes how the week below it
-        is drawn, and two rows of the same accent-filled pill would read as one
-        confused eight-item row. A `SegmentedControl` is what the app reaches
-        for to pick one of a small closed set, and `surface="page"` is what
-        finally lets it sit straight on the page in the light theme.
-
-        It used to switch between this list and a "Whole week" lens (#1669),
-        which was a second, read-only drawing of the same week: its nights card
-        is what compact density now does to the list itself, and the two
-        shortcuts it carried past that — the week's shopping and a shelf of
-        suggestions — are the buttons already sitting above the first day.
-      */}
-      <View style={styles.densityRow}>
-        <SegmentedControl
-          options={[
-            { value: false as const, label: 'Comfortable' },
-            { value: true as const, label: 'Compact' },
-          ]}
-          value={compact}
-          onChange={setDensity}
-          surface="page"
-          label="Meal plan density"
-        />
-      </View>
 
       {/* Both post-cook offers are siblings of the list rather than part of its
           header, like ActiveTripBanner and unlike the cards inside
@@ -2161,12 +2118,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
   },
-  // The other half of compact density, and the half that shows on an empty
-  // day: a week where four nights are unplanned is mostly the gaps between
-  // its headers, so the gap closes with the rows.
-  sectionCompact: {
-    paddingBottom: spacing.sm,
-  },
   dayHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2222,7 +2173,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
   },
-  densityRow: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm },
   card: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
@@ -2232,12 +2182,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: border.hairline,
     backgroundColor: colors.separator,
     marginLeft: spacing.md + 32 + spacing.md,
-  },
-  // Inset to where the compact row's own content starts — past the 24pt icon
-  // rather than past the 32pt one, and not past the slot column, which is a
-  // label on the row rather than a gutter beside it.
-  sepCompact: {
-    marginLeft: spacing.md + 24 + spacing.sm,
   },
   emptyWeekHint: {
     color: colors.textTertiary,
