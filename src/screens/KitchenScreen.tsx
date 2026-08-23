@@ -48,6 +48,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ReorderableList } from '../components/ReorderableList';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
+import { TipHost } from '../components/TipHost';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
@@ -676,6 +677,7 @@ export function KitchenScreen() {
         ]}
       />
       <GroceriesHubPills active="Kitchen" />
+      <TipHost screen="kitchen" />
       {!!activeTripShop && (
         <ActiveTripBanner
           shopName={activeTripShop.name}

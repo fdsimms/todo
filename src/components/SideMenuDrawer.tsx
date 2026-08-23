@@ -24,6 +24,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { screenShown } from '../utils/simpleMode';
+import { TIPS } from '../utils/tips';
 
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.72);
 
@@ -84,6 +85,11 @@ const MENU_ITEMS: MenuItemWithGate[] = [
   // rather than somewhere you work.
   { name: 'Drift', icon: 'trending-down-outline', label: 'Drift' },
   { name: 'Archived', icon: 'archive-outline', label: 'Archived' },
+  // Last, next to Settings in the footer below rather than up among the
+  // working surfaces: it's reference material, not somewhere you go to do
+  // anything. The unread count on the row is the only thing that says the
+  // screen exists, which is the same problem the tips themselves are for.
+  { name: 'Tips', icon: 'bulb-outline', label: 'Tips' },
 ];
 
 interface Props {
@@ -105,8 +111,12 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   // than being hoisted — it's a ten-item array and the setting is a scalar.
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
-  // Counted, not listed: a scalar selector is referentially stable, so the
-  // drawer doesn't re-render every time a stack or template is edited.
+  // A scalar for the same reason groceryCount is one. TIPS is a module-level
+  // constant, so the only thing that can move this is a dismissal.
+  const unreadTipCount = useSettingsStore(s => TIPS.length - s.seenTips.length);
+  // Counted, not listed, for the same reason: a scalar selector is
+  // referentially stable, so the drawer doesn't re-render every time a stack
+  // or template is edited.
   const stackCount = useTaskGroupStore(s => s.groups.length);
   const templateCount = useTemplateStore(s => s.templates.length);
   const menuItems = useMemo(() => {
@@ -304,6 +314,11 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
                   {item.name === 'Groceries' && groceryCount > 0 && (
                     <View style={[styles.badge, { backgroundColor: colors.accentSubtle }]}>
                       <Text style={[styles.badgeText, { color: colors.accent }]}>{groceryCount}</Text>
+                    </View>
+                  )}
+                  {item.name === 'Tips' && unreadTipCount > 0 && (
+                    <View style={[styles.badge, { backgroundColor: colors.accentSubtle }]}>
+                      <Text style={[styles.badgeText, { color: colors.accent }]}>{unreadTipCount}</Text>
                     </View>
                   )}
                 </TouchableOpacity>

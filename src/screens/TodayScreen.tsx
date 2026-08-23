@@ -145,6 +145,7 @@ import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeade
 import { EmptyState } from '../components/EmptyState';
 import { CompletionCollapse } from '../components/CompletionCollapse';
 import { NewTasksBanner } from '../components/NewTasksBanner';
+import { TipHost } from '../components/TipHost';
 import { FocusBar } from '../components/FocusBar';
 import { FocusSetupSheet } from '../components/FocusSetupSheet';
 import { FocusSessionSheet } from '../components/FocusSessionSheet';
@@ -2935,6 +2936,18 @@ export function TodayScreen() {
             are leftovers. Ranks itself behind the offer above, so the two never
             stack. Renders nothing unless a cook task raised one. */}
         {viewMode === 'today' && <LogLeftoversOffer />}
+
+        {/* Last of the things above the list, because it's the least urgent of
+            them by a distance: anything the app actually has to *ask* is above
+            it, and a tip is only ever an aside.
+
+            Explicitly suppressed while the new-tasks banner is up, which is
+            the one competing notice this screen knows the state of. The two
+            offers above self-gate internally (they draw nothing unless a cook
+            just raised one), so a tip can in principle land under one — bounded
+            by the fact that both are rare and clear themselves, and by the tip
+            side's own once-a-day limit. See `chooseTip`. */}
+        {viewMode === 'today' && newTasks.length === 0 && <TipHost screen="today" />}
 
         {/*
           Nothing about the day's calendar or its menu renders above the list

@@ -1090,6 +1090,107 @@ describe('hideHelpText', () => {
   });
 });
 
+describe('tips', () => {
+  // On by default, and `!== 'false'` in initialize, so an install that
+  // upgrades into the feature actually gets the tips rather than silence.
+  it('defaults tipsEnabled on, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().tipsEnabled).toBe(true);
+  });
+
+  it('reads a stored "false"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'tipsEnabled' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().tipsEnabled).toBe(false);
+  });
+
+  it('round-trips through setTipsEnabled', () => {
+    useSettingsStore.getState().setTipsEnabled(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('tipsEnabled', 'false');
+    expect(useSettingsStore.getState().tipsEnabled).toBe(false);
+  });
+
+  it('starts with nothing seen and nothing stamped', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().seenTips).toEqual([]);
+    expect(useSettingsStore.getState().lastTipShown).toBeNull();
+  });
+
+  it('reads stored seenTips and lastTipShown back as JSON', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => {
+      if (key === 'seenTips') return JSON.stringify(['swipe-actions', 'pin-tasks']);
+      if (key === 'lastTipShown') return JSON.stringify({ id: 'pin-tasks', day: '2026-08-23' });
+      return null;
+    });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().seenTips).toEqual(['swipe-actions', 'pin-tasks']);
+    expect(useSettingsStore.getState().lastTipShown).toEqual({ id: 'pin-tasks', day: '2026-08-23' });
+  });
+
+  // Failing open here means one extra tip, which is the right way round to
+  // fail: the alternative is a parse error taking the whole settings load down.
+  it('falls back to nothing seen when the stored JSON is unreadable', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'seenTips' || key === 'lastTipShown' ? '{not json' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().seenTips).toEqual([]);
+    expect(useSettingsStore.getState().lastTipShown).toBeNull();
+  });
+
+  it('ignores a stored seenTips that is not an array of strings', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'seenTips' ? JSON.stringify(['ok', 7, null]) : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().seenTips).toEqual(['ok']);
+  });
+
+  it('ignores a stored lastTipShown missing either half', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'lastTipShown' ? JSON.stringify({ id: 'pin-tasks' }) : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().lastTipShown).toBeNull();
+  });
+
+  it('marks a tip seen once, without duplicating it', () => {
+    useSettingsStore.getState().initialize();
+    useSettingsStore.getState().markTipSeen('pin-tasks');
+    useSettingsStore.getState().markTipSeen('pin-tasks');
+    expect(useSettingsStore.getState().seenTips).toEqual(['pin-tasks']);
+    expect(dbSetSetting).toHaveBeenCalledWith('seenTips', JSON.stringify(['pin-tasks']));
+  });
+
+  it('merges markAllTipsSeen with what was already seen', () => {
+    useSettingsStore.getState().initialize();
+    useSettingsStore.getState().markTipSeen('a');
+    useSettingsStore.getState().markAllTipsSeen(['a', 'b', 'c']);
+    expect(useSettingsStore.getState().seenTips).toEqual(['a', 'b', 'c']);
+  });
+
+  it('stamps the tip shown with the day it was given', () => {
+    useSettingsStore.getState().stampTipShown('pin-tasks', '2026-08-23');
+    expect(useSettingsStore.getState().lastTipShown).toEqual({ id: 'pin-tasks', day: '2026-08-23' });
+    expect(dbSetSetting).toHaveBeenCalledWith(
+      'lastTipShown',
+      JSON.stringify({ id: 'pin-tasks', day: '2026-08-23' }),
+    );
+  });
+
+  // The day stamp has to go too. Asking for the tips back and then getting
+  // none until tomorrow reads as the button having done nothing.
+  it('clears the day stamp as well as the seen list on reset', () => {
+    useSettingsStore.getState().markTipSeen('a');
+    useSettingsStore.getState().stampTipShown('a', '2026-08-23');
+    useSettingsStore.getState().resetTips();
+    expect(useSettingsStore.getState().seenTips).toEqual([]);
+    expect(useSettingsStore.getState().lastTipShown).toBeNull();
+  });
+});
+
 describe('timerLiveActivity', () => {
   // Same reasoning as hapticsEnabled/shakeToUndoEnabled: defaults on so an
   // install predating the setting keeps the Live Activity it already had.

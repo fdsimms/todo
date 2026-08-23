@@ -4180,6 +4180,70 @@ describe('setOpened', () => {
   });
 });
 
+describe('markOpenedMany', () => {
+  it('stamps every row it is given, re-dating the ones the open lexicon knows', () => {
+    const salsa = makeItem({ name: 'Salsa', expiresAt: '2026-05-01' });
+    const spinach = makeItem({ name: 'Spinach', expiresAt: '2026-08-20' });
+    seed([salsa, spinach]);
+
+    const changed = useGroceryStore.getState().markOpenedMany([salsa.id, spinach.id]);
+
+    expect(changed).toBe(2);
+    const [openedSalsa, openedSpinach] = useGroceryStore.getState().items;
+    expect(expiryDaysFromNow(openedSalsa.expiresAt!, new Date())).toBe(7);
+    // Recorded either way; only the date is conditional on the lexicon.
+    expect(openedSpinach.openedAt).not.toBeNull();
+    expect(openedSpinach.expiresAt).toBe('2026-08-20');
+  });
+
+  // openedAt is when it was first opened. A second cook out of the same jar
+  // doesn't restart its clock, and the count says so.
+  it('skips a row that is already open rather than re-stamping it', () => {
+    const salsa = makeItem({ name: 'Salsa', openedAt: '2026-08-01T09:00:00.000Z' });
+    const jam = makeItem({ name: 'Jam' });
+    seed([salsa, jam]);
+
+    const changed = useGroceryStore.getState().markOpenedMany([salsa.id, jam.id]);
+
+    expect(changed).toBe(1);
+    expect(useGroceryStore.getState().items[0].openedAt).toBe('2026-08-01T09:00:00.000Z');
+  });
+
+  it('dates the opening to the day it is given, not to now', () => {
+    const salsa = makeItem({ name: 'Salsa', expiresAt: null });
+    seed([salsa]);
+
+    const opened = new Date('2026-08-05T12:00:00');
+    useGroceryStore.getState().markOpenedMany([salsa.id], opened);
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.openedAt).toBe(opened.toISOString());
+    // Seven days from the opening, which is three days *before* now — the whole
+    // reason the caller gets to say when.
+    expect(expiryDaysFromNow(updated.expiresAt!, opened)).toBe(7);
+  });
+
+  // Nobody tapped these rows, so the shake belongs to whatever did — see the
+  // action's doc comment.
+  it('registers no undo of its own', () => {
+    const salsa = makeItem({ name: 'Salsa' });
+    seed([salsa]);
+    useGroceryStore.setState({ lastAction: null });
+
+    useGroceryStore.getState().markOpenedMany([salsa.id]);
+
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+  });
+
+  it('writes nothing for an empty list, or for ids it does not hold', () => {
+    seed([makeItem({ name: 'Salsa' })]);
+
+    expect(useGroceryStore.getState().markOpenedMany([])).toBe(0);
+    expect(useGroceryStore.getState().markOpenedMany(['gone'])).toBe(0);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
 describe('setRunningLow', () => {
   // The whole reason anyone says it: noticing the jar is nearly empty is the
   // moment you want it on the list, and making them find the item again in the

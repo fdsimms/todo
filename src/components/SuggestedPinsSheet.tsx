@@ -26,6 +26,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { PinIcon } from './PinIcon';
 import type { Task } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { activeChainStep } from '../utils/chain';
 
 interface Props {
   visible: boolean;
@@ -180,7 +181,10 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
     const checked = selectedIds.has(task.id);
     const reason = ctx ? pinReason(task, companyFor(task.id), ctx) : null;
     const minutes = sumEstimatedMinutes([task]);
-    const detail = [reason, minutes > 0 ? formatDuration(minutes) : null].filter(Boolean).join(' · ');
+    const time = minutes > 0 ? formatDuration(minutes) : null;
+    const detail = [reason, time].filter(Boolean).join(' · ');
+    const currentStep = activeChainStep(task);
+    const displayTitle = currentStep ? currentStep.title : task.title;
 
     return (
       <View key={task.id} style={styles.row}>
@@ -190,7 +194,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="checkbox"
           accessibilityState={{ checked }}
-          accessibilityLabel={`${task.title}${detail ? `, ${detail}` : ''}`}
+          accessibilityLabel={`${displayTitle}${detail ? `, ${detail}` : ''}`}
         >
           <Ionicons
             name={checked ? 'checkmark-circle' : 'ellipse-outline'}
@@ -199,10 +203,27 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
           />
           <View style={styles.rowContent}>
             <Text style={[styles.rowTitle, !checked && styles.rowTitleUnchecked]} numberOfLines={1}>
-              {task.title}
+              {displayTitle}
             </Text>
+            {/* Two Texts rather than the joined string: the reason can run as
+                long as a task title ("Goes with Draft the quarterly memo"), and
+                on one line it's the estimate that gets ellipsized away — the
+                one part of this line that's a fact rather than a gloss. The
+                reason shrinks; the minutes don't. Same split the focus setup
+                sheet's rows use. */}
             {detail !== '' && (
-              <Text style={styles.rowSub} numberOfLines={1}>{detail}</Text>
+              <View style={styles.rowSubLine}>
+                {reason !== null && (
+                  <Text style={[styles.rowSub, styles.rowReason]} numberOfLines={1}>
+                    {reason}
+                  </Text>
+                )}
+                {time !== null && (
+                  <Text style={styles.rowSub} numberOfLines={1}>
+                    {reason !== null ? ` · ${time}` : time}
+                  </Text>
+                )}
+              </View>
             )}
           </View>
         </TouchableOpacity>
@@ -213,7 +234,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
           disabled={!canSwap}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="button"
-          accessibilityLabel={`Swap out ${task.title}`}
+          accessibilityLabel={`Swap out ${displayTitle}`}
           accessibilityHint="Replaces this suggestion with the next best task"
         >
           <Ionicons
@@ -349,7 +370,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowContent: { flex: 1, gap: 1 },
   rowTitle: { color: colors.text, fontSize: font.md, lineHeight: lineHeight.md },
   rowTitleUnchecked: { color: colors.textSecondary },
+  rowSubLine: { flexDirection: 'row', alignItems: 'center' },
   rowSub: { color: colors.textTertiary, fontSize: font.xs },
+  rowReason: { flexShrink: 1 },
   swapBtn: {
     paddingHorizontal: spacing.md,
     paddingVertical: 12,

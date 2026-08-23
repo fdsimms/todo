@@ -45,6 +45,26 @@ export interface FocusPlanOptions {
   longRestMinutes: number;
 }
 
+/**
+ * What the plan will charge one task: its own estimate, or the default work
+ * stretch when it hasn't got one.
+ *
+ * Exported rather than left inline in the builder because the setup sheet
+ * prints this number beside each row, and a row disagreeing with the plan
+ * under it would be worse than a row with no number at all — the summary
+ * already counts the default, so the task has to be labelled with the same
+ * minutes the plan gave it. `assumed` is the half the sheet marks with `~`:
+ * the task said nothing, the settings did.
+ */
+export function plannedTaskMinutes(
+  task: FocusPlanTask,
+  opts: FocusPlanOptions,
+): { minutes: number; assumed: boolean } {
+  const estimate = estimatedMinutesFor(task);
+  if (estimate != null && estimate > 0) return { minutes: estimate, assumed: false };
+  return { minutes: opts.defaultWorkMinutes, assumed: true };
+}
+
 /** A rest rule that's off is stored as null or 0; both mean "don't count this". */
 function ruleOff(value: number | null): boolean {
   return value == null || value <= 0;
@@ -102,9 +122,7 @@ export function buildFocusPlan(tasks: readonly FocusPlanTask[], opts: FocusPlanO
   let restsSoFar = 0;
 
   for (const task of tasks) {
-    const estimate = estimatedMinutesFor(task);
-    const total = estimate != null && estimate > 0 ? estimate : opts.defaultWorkMinutes;
-    const parts = splitMinutes(total, opts.workCapMinutes);
+    const parts = splitMinutes(plannedTaskMinutes(task, opts).minutes, opts.workCapMinutes);
 
     parts.forEach((minutes, i) => {
       steps.push(workStep(task.id, minutes, i + 1, parts.length));
