@@ -128,7 +128,7 @@ export interface CookedOffer {
  *
  * It's an offer rather than a sheet for exactly the reason the entry action is
  * an action: a modal opening uninvited after every cooking is a second one
- * chasing the ingredients question. `CookedOfferBanner` is the tier the app
+ * chasing the ingredients question. `OfferBanner` is the tier the app
  * already settled on for this.
  *
  * Carried by value like `CookedOffer` beside it, plus the `entryId` that

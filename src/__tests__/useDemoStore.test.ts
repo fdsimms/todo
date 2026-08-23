@@ -64,6 +64,7 @@ import {
 import { buildKitchenSections, describeKitchen, FREEZER_SECTION, kitchenInventory, useUpEntries } from '../utils/kitchenInventory';
 import { useUpRecipes } from '../utils/useUpRecipes';
 import { probablyHaveReason } from '../utils/grocerySuggest';
+import { describeDisposalHistory, wantsShelfLifePrompt } from '../utils/itemDisposal';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
 import { wantedPantryChecks } from '../utils/pantryCheckTasks';
@@ -1760,6 +1761,29 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(low.every(i => i.onList)).toBe(true);
     // Still had, which is the whole distinction from "Out of it".
     expect(probablyHaveReason(low[0], new Date())).toBe('running low');
+  });
+
+  it('seeds a row with a record of going bad, and no banner up to say so', () => {
+    const { items } = useGroceryStore.getState();
+    const spoiled = items.filter(i => i.spoiledCount > 0);
+    expect(spoiled.length).toBeGreaterThan(0);
+
+    // The reader is the point — a count nobody sees is the state #1363 found
+    // the fridge's own outcomes in.
+    const history = describeDisposalHistory(spoiled[0], new Date());
+    expect(history).toContain('Went bad');
+    expect(history).toContain('of');
+
+    // Answered often enough to be the case the shelf-life offer exists for,
+    // which is what makes the seeded row worth having.
+    expect(wantsShelfLifePrompt(spoiled[0])).toBe(true);
+
+    // But not left on screen: a banner is a reaction to a tap, and a demo that
+    // boots with one is asserting a tap nobody made.
+    expect(useGroceryStore.getState().disposalOffer).toBeNull();
+
+    // Evidence, never arithmetic. Nothing in the record moved the day.
+    expect(spoiled[0].shelfLifeDays).toBeNull();
   });
 
   it('seeds a kitchen where something dying has a recipe that would use it', () => {

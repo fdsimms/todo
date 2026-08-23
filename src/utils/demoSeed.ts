@@ -1180,6 +1180,8 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setFrozen,
     setOpened,
     setRunningLow,
+    recordDisposal,
+    dismissDisposalOffer,
     setExpiresAt,
     setShelfLifeDays,
     setUseUpTask,
@@ -1590,6 +1592,22 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // it has a real one, dated from the opening rather than from a purchase.
   addToPantry('Salsa');
   setOpened(itemNamed('Salsa').id, true);
+
+  // A row that has gone bad before, which is the only thing the disposal record
+  // is for: opening Cilantro's Use by field says "Went bad 2 of 3 times" right
+  // where the shelf life is edited, so the number the app guessed and the
+  // evidence against it are on the same screen. Cilantro because it's the
+  // herb everyone has thrown out, and because it's already the row here with a
+  // use-by day and nothing planned to eat it.
+  //
+  // Through the store action like everything else, so a seeded record can't
+  // drift from the type — which means the second "went bad" raises the
+  // shelf-life offer for real, and the demo has to put it back down. A banner
+  // is a reaction to a tap, and nobody tapped anything.
+  recordDisposal(itemNamed('Cilantro').id, 'usedUp');
+  recordDisposal(itemNamed('Cilantro').id, 'spoiled');
+  recordDisposal(itemNamed('Cilantro').id, 'spoiled');
+  dismissDisposalOffer();
 
   // Running low, which is the one pantry state that touches the shopping list:
   // the row is on this week's list because of this line, not because anyone

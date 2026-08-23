@@ -195,6 +195,9 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     shelfLifeDays: null,
     useUpTask: null,
     pantryCheckDeclinedAt: null,
+    usedUpCount: 0,
+    spoiledCount: 0,
+    lastSpoiledAt: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -246,6 +249,7 @@ function seed(
     tripShopId: extra.tripShopId ?? null,
     tripStartedAt: extra.tripStartedAt ?? null,
     cartHoldIds: [],
+    disposalOffer: null,
     initialized: true,
   });
 }
@@ -3454,6 +3458,116 @@ describe('markOutOfMany', () => {
   it('shrugs at ids it does not hold', () => {
     seed([]);
     expect(useGroceryStore.getState().markOutOfMany(['gone'])).toBe(0);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
+  it('asks how one row went, and asks nothing about a batch', () => {
+    const soy = makeItem({ name: 'Soy sauce' });
+    const cumin = makeItem({ name: 'Cumin' });
+    seed([soy, cumin]);
+
+    useGroceryStore.getState().markOutOfMany([soy.id]);
+    expect(useGroceryStore.getState().disposalOffer).toEqual({ itemId: soy.id, stage: 'ask' });
+
+    // A batch is the "recall five kitchens" case: one ✕ is a question, several
+    // at once is a form. Counted on rows that actually changed, not on ids
+    // passed — soy is already out by now, so it takes a third row to make two.
+    const salt = makeItem({ name: 'Salt' });
+    seed([soy, cumin, salt]);
+    useGroceryStore.getState().markOutOfMany([cumin.id, salt.id]);
+    expect(useGroceryStore.getState().disposalOffer).toBeNull();
+  });
+
+  it('records the outcome the caller already knows, and asks nothing', () => {
+    const soy = makeItem({ name: 'Soy sauce' });
+    seed([soy]);
+
+    // What CookedUseUpSheet passes: the cooking is the answer.
+    useGroceryStore.getState().markOutOfMany([soy.id], 'usedUp');
+
+    const after = useGroceryStore.getState().items[0];
+    expect(after.usedUpCount).toBe(1);
+    expect(after.spoiledCount).toBe(0);
+    expect(useGroceryStore.getState().disposalOffer).toBeNull();
+  });
+
+  it('takes the question back with the undo', () => {
+    // Undoing the ✕ is the answer "it didn't leave", so a question about how it
+    // went would be asking about a thing that is still there.
+    const soy = makeItem({ name: 'Soy sauce' });
+    seed([soy]);
+
+    useGroceryStore.getState().markOutOfMany([soy.id]);
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().disposalOffer).toBeNull();
+    expect(useGroceryStore.getState().items[0].usedUpCount).toBe(0);
+  });
+});
+
+describe('recordDisposal', () => {
+  it('counts each side and stamps only the spoiled one', () => {
+    const soy = makeItem({ name: 'Soy sauce' });
+    seed([soy]);
+
+    useGroceryStore.getState().recordDisposal(soy.id, 'usedUp');
+    let after = useGroceryStore.getState().items[0];
+    expect(after.usedUpCount).toBe(1);
+    // "Used it up" is the ordinary outcome and its age says nothing anyone
+    // would read — see GroceryItem.lastSpoiledAt.
+    expect(after.lastSpoiledAt).toBeNull();
+
+    useGroceryStore.getState().recordDisposal(soy.id, 'spoiled');
+    after = useGroceryStore.getState().items[0];
+    expect(after.usedUpCount).toBe(1);
+    expect(after.spoiledCount).toBe(1);
+    expect(after.lastSpoiledAt).not.toBeNull();
+  });
+
+  it('leaves the pantry assertion alone', () => {
+    // The row is already marked out by the time this is called. An answer is
+    // the extra, so an unanswered question leaves the pantry as correct as the
+    // ✕ made it.
+    const soy = makeItem({ name: 'Soy sauce', onHandUntil: OUT_OF_IT_UNTIL, purchaseCount: 6 });
+    seed([soy]);
+
+    useGroceryStore.getState().recordDisposal(soy.id, 'spoiled');
+
+    const after = useGroceryStore.getState().items[0];
+    expect(after.onHandUntil).toBe(OUT_OF_IT_UNTIL);
+    expect(after.purchaseCount).toBe(6);
+  });
+
+  it('closes the question on an answer that is not a repeat waste', () => {
+    const soy = makeItem({ name: 'Soy sauce' });
+    seed([soy]);
+    useGroceryStore.getState().markOutOfMany([soy.id]);
+
+    useGroceryStore.getState().recordDisposal(soy.id, 'usedUp');
+    expect(useGroceryStore.getState().disposalOffer).toBeNull();
+  });
+
+  it('turns the second waste into the shelf-life offer', () => {
+    const soy = makeItem({ name: 'Soy sauce', spoiledCount: 1 });
+    seed([soy]);
+    useGroceryStore.getState().markOutOfMany([soy.id]);
+
+    useGroceryStore.getState().recordDisposal(soy.id, 'spoiled');
+
+    expect(useGroceryStore.getState().disposalOffer).toEqual({ itemId: soy.id, stage: 'shelfLife' });
+    // And it stays evidence, never arithmetic: nothing here touches the day.
+    const after = useGroceryStore.getState().items[0];
+    expect(after.shelfLifeDays).toBeNull();
+    expect(after.expiresAt).toBeNull();
+  });
+
+  it('shrugs at an id it does not hold, and clears the question with it', () => {
+    seed([]);
+    useGroceryStore.setState({ disposalOffer: { itemId: 'gone', stage: 'ask' } });
+
+    useGroceryStore.getState().recordDisposal('gone', 'spoiled');
+
+    expect(useGroceryStore.getState().disposalOffer).toBeNull();
     expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
   });
 });

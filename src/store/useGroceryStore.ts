@@ -48,6 +48,7 @@ import { appendPriceObservation, mergePriceHistories } from '../utils/priceHisto
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import { describeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
+import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
 import { expiresAtForOpening, expiresAtForPurchase } from '../utils/groceryShelfLife';
 import { useUpTaskDraft, useUpTaskFields, useUpTaskNeedsUpdate, wantsUseUpTask } from '../utils/groceryExpiry';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
@@ -240,6 +241,24 @@ interface GroceryStore {
    */
   pendingUseUpItemId: string | null;
   setPendingUseUpItem: (id: string | null) => void;
+  /**
+   * The row a "how did this go" question is currently outstanding for, and
+   * which of the two questions it is.
+   *
+   * `'ask'` is the question itself, raised by a single-row `markOutOfMany` with
+   * no outcome. `'shelfLife'` is what a "went bad" answer can turn into once
+   * it's happened more than once (`wantsShelfLifePrompt`) — an offer to shorten
+   * what the app thinks this keeps for, which is the one action the record
+   * actually supports.
+   *
+   * **Session-only, same as `pendingUseUpItemId` above**: it's about a tap just
+   * made, so there's nothing for it to mean on the next launch, and a question
+   * about a bag of spinach thrown out last Tuesday isn't one anyone can answer.
+   * That's also what takes the place of a dismissal stamp — see
+   * `OfferBanner`, whose callers make the same call.
+   */
+  disposalOffer: { itemId: string; stage: 'ask' | 'shelfLife' } | null;
+  dismissDisposalOffer: () => void;
   initialized: boolean;
 
   /**
@@ -425,8 +444,27 @@ interface GroceryStore {
    *
    * Rows already marked out are skipped rather than rewritten, so the count it
    * returns is what actually changed and an all-no-op call registers no undo.
+   *
+   * **`outcome` is for the caller that already knows how the thing left.** A
+   * cook reports what it used up, so `CookedUseUpSheet` passes `'usedUp'` and
+   * nothing is asked. Left off, a single-row call raises `disposalOffer`
+   * instead, because a ✕ says only that the thing is gone. A multi-row call
+   * with no outcome asks nothing at all: one question per row about a batch is
+   * the same "recall five kitchens" the cook offer declines for
+   * `bulkSetCooked`.
    */
-  markOutOfMany: (ids: readonly string[]) => number;
+  markOutOfMany: (ids: readonly string[], outcome?: DisposalOutcome) => number;
+  /**
+   * "Used it up" / "Went bad" for one row — the two ways out of the pantry,
+   * recorded. See `GroceryItem.usedUpCount` for why these are counts and not a
+   * shelf-life estimate.
+   *
+   * Deliberately separate from the assertion itself: the row is already marked
+   * out by the time this is called, so an unanswered question leaves the pantry
+   * exactly as correct as it was. The answer is the extra, and it's optional at
+   * every point it's offered.
+   */
+  recordDisposal: (itemId: string, outcome: DisposalOutcome) => void;
   /**
    * "I have this" for something the app hasn't worked out on its own — the add
    * field on KitchenScreen. It writes exactly the assertion GroceryItemSheet's
@@ -1027,6 +1065,11 @@ function newItemRow(fields: {
     // Nobody has been asked about a row that didn't exist a moment ago, and a
     // brand-new row can't have a lapsed purchase reading to be asked about.
     pantryCheckDeclinedAt: null,
+    // Nothing has left the pantry yet, because nothing has been in it. See
+    // GroceryItem.usedUpCount.
+    usedUpCount: 0,
+    spoiledCount: 0,
+    lastSpoiledAt: null,
     // Same reasoning as expiresAt: a name typed onto the list is a plan to buy
     // something, and nothing has been paid for it yet. finishShopping and the
     // item sheet are the two things that ever set a price.
@@ -1172,6 +1215,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   cartHoldIds: [],
   groceryGroupBy: 'aisle',
   pendingUseUpItemId: null,
+  disposalOffer: null,
   initialized: false,
   lastAction: null,
 
@@ -1244,6 +1288,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       cartHoldIds: [],
       groceryGroupBy: dbGetGroceryGroupBy(),
       pendingUseUpItemId: null,
+      disposalOffer: null,
       initialized: true,
     });
   },
@@ -1255,6 +1300,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   setPendingUseUpItem(id) {
     set({ pendingUseUpItemId: id });
+  },
+
+  dismissDisposalOffer() {
+    set({ disposalOffer: null });
   },
 
   /**
@@ -2044,7 +2093,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
-  markOutOfMany(ids) {
+  markOutOfMany(ids, outcome) {
     if (ids.length === 0) return 0;
     const wanted = new Set(ids);
     // Snapshotted before the write, and restored verbatim rather than to null:
@@ -2055,10 +2104,27 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     );
     if (before.length === 0) return 0;
 
-    const updates = before.map((i): GroceryItem => ({ ...i, onHandUntil: OUT_OF_IT_UNTIL }));
+    // A caller that already knows how the thing left records it in the same
+    // write. The stamp is only ever on the spoiled side — see
+    // GroceryItem.lastSpoiledAt.
+    const at = new Date().toISOString();
+    const updates = before.map((i): GroceryItem => ({
+      ...i,
+      onHandUntil: OUT_OF_IT_UNTIL,
+      usedUpCount: i.usedUpCount + (outcome === 'usedUp' ? 1 : 0),
+      spoiledCount: i.spoiledCount + (outcome === 'spoiled' ? 1 : 0),
+      lastSpoiledAt: outcome === 'spoiled' ? at : i.lastSpoiledAt,
+    }));
     for (const u of updates) dbUpdateGroceryItem(u);
     const byId = new Map(updates.map(u => [u.id, u]));
     set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+
+    // One row, and nobody has said how it went: that's the question worth
+    // asking, and the only shape it can be asked in. A batch gets no offer —
+    // see the action's doc comment.
+    if (!outcome && updates.length === 1) {
+      set({ disposalOffer: { itemId: updates[0].id, stage: 'ask' } });
+    }
 
     get().setLastAction({
       label: `Marked ${updates.length} ${updates.length === 1 ? 'thing' : 'things'} out`,
@@ -2066,10 +2132,38 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       undo: () => {
         for (const b of before) dbUpdateGroceryItem(b);
         const originalById = new Map(before.map(b => [b.id, b]));
-        set(s => ({ items: s.items.map(i => originalById.get(i.id) ?? i) }));
+        // The offer goes with it. It's a question about a row leaving the
+        // pantry, and undoing that is the answer "it didn't" — leaving it up
+        // would ask how something went that is, as of now, still there.
+        set(s => ({ items: s.items.map(i => originalById.get(i.id) ?? i), disposalOffer: null }));
       },
     });
     return updates.length;
+  },
+
+  recordDisposal(itemId, outcome) {
+    const item = get().items.find(i => i.id === itemId);
+    if (!item) {
+      set({ disposalOffer: null });
+      return;
+    }
+    const updated: GroceryItem = {
+      ...item,
+      usedUpCount: item.usedUpCount + (outcome === 'usedUp' ? 1 : 0),
+      spoiledCount: item.spoiledCount + (outcome === 'spoiled' ? 1 : 0),
+      lastSpoiledAt: outcome === 'spoiled' ? new Date().toISOString() : item.lastSpoiledAt,
+    };
+    dbUpdateGroceryItem(updated);
+    // The prompt is judged on the row as it stands *after* the answer, which is
+    // what makes it a reaction rather than a banner that could go stale. An
+    // answer that isn't the second waste just closes the question.
+    set(s => ({
+      items: s.items.map(i => (i.id === itemId ? updated : i)),
+      disposalOffer:
+        outcome === 'spoiled' && wantsShelfLifePrompt(updated)
+          ? { itemId, stage: 'shelfLife' }
+          : null,
+    }));
   },
 
   addToPantry(raw, opts) {

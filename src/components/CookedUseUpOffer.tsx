@@ -9,7 +9,7 @@ import {
   plannedIngredientsForRecipe,
 } from '../utils/mealPlanGroceries';
 import { standingSwapMap } from '../utils/standingSwaps';
-import { CookedOfferBanner } from './CookedOfferBanner';
+import { OfferBanner } from './OfferBanner';
 import { CookedUseUpSheet } from './CookedUseUpSheet';
 
 /**
@@ -77,7 +77,7 @@ export function CookedUseUpOffer() {
 
   return (
     <>
-      <CookedOfferBanner
+      <OfferBanner
         lead={lead}
         rest={rest}
         actionLabel="Review"

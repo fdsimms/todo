@@ -32,7 +32,7 @@ import { RecipePickerSheet, type MealPick } from '../components/RecipePickerShee
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
-import { CookedOfferBanner } from '../components/CookedOfferBanner';
+import { OfferBanner } from '../components/OfferBanner';
 import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
 import { PrepTasksReviewSheet } from '../components/PrepTasksReviewSheet';
 import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
@@ -501,7 +501,7 @@ export function MealPlanScreen() {
   //
   // This is the *banner's* subject, not the sheet's — marking something cooked
   // used to open RecipeToListSheet outright, which is what made a tick about
-  // eating read as a question about shopping (see CookedOfferBanner).
+  // eating read as a question about shopping (see OfferBanner).
   // Session-only, and deliberately not persisted: it's an offer about a tap
   // you just made, so there is nothing for it to mean on the next launch.
   //
@@ -932,7 +932,7 @@ export function MealPlanScreen() {
     // What the offer must still never be is "every line of the recipe" —
     // restockRows is what it can defend, since on a dish cooked for the first
     // time every line looks unbought, which is how this arrived asking to buy
-    // the salt and pepper. See its note, and CookedOfferBanner's.
+    // the salt and pepper. See its note, and OfferBanner's.
     if (!recipe || !restockOfferEnabled) return;
     setRestockOffer({ recipe, choices: entry.recipeChoices, scale: entry.recipeScale });
   };
@@ -1533,7 +1533,7 @@ export function MealPlanScreen() {
           counting whatever was just marked out, since restockCount reads the
           live catalog. */}
       {restockOffer && restockCount > 0 && !cookedOffer && !selectionMode && (
-        <CookedOfferBanner
+        <OfferBanner
           lead={`${restockCount} ingredient${restockCount === 1 ? '' : 's'}`}
           rest={`from ${restockOffer.recipe.name} aren't on your list`}
           actionLabel="Review"

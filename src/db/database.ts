@@ -930,6 +930,13 @@ export function initDatabase(): void {
     // treats NULLs as distinct, so the WHERE clause is about size and intent
     // rather than correctness.
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_grocery_item_products_gtin ON grocery_item_products(gtin) WHERE gtin IS NOT NULL',
+    // Nobody has answered a question that didn't exist, so every existing row
+    // starts at zero and reads as "never said" rather than as "never happens" —
+    // see describeDisposalHistory, which renders nothing until something has
+    // been answered. See GroceryItem.usedUpCount.
+    'ALTER TABLE grocery_items ADD COLUMN used_up_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE grocery_items ADD COLUMN spoiled_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE grocery_items ADD COLUMN last_spoiled_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2305,6 +2312,11 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
       ? null
       : Boolean(row.use_up_task),
     pantryCheckDeclinedAt: (row.pantry_check_declined_at as string) ?? null,
+    // `?? 0` covers a row read before the migration landed, which is the same
+    // reading as the column default: nobody has answered for it yet.
+    usedUpCount: (row.used_up_count as number) ?? 0,
+    spoiledCount: (row.spoiled_count as number) ?? 0,
+    lastSpoiledAt: (row.last_spoiled_at as string) ?? null,
     priceHistory: parsePriceHistory(row.price_history as string | null),
   };
 }
@@ -2322,9 +2334,9 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       (id, name, name_key, aisle, quantity, quantity_from_recipe, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
-       pantry_check_declined_at,
+       pantry_check_declined_at, used_up_count, spoiled_count, last_spoiled_at,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
@@ -2336,6 +2348,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.pantryCheckDeclinedAt ?? null,
+      item.usedUpCount, item.spoiledCount, item.lastSpoiledAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0,
     ]
@@ -2349,7 +2362,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
        expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
-       pantry_check_declined_at=?,
+       pantry_check_declined_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?
      WHERE id=?`,
@@ -2364,6 +2377,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
       item.pantryCheckDeclinedAt ?? null,
+      item.usedUpCount, item.spoiledCount, item.lastSpoiledAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0,
       item.id,

@@ -278,6 +278,7 @@ exports.
 | what something costs, and which store is cheaper | `src/utils/groceryPrice.ts` |
 | what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
 | the app asking whether you still have something | `src/utils/pantryCheckTasks.ts` — see `docs/arch/groceries.md` |
+| whether a thing got used up or went bad | `src/utils/itemDisposal.ts` — see `docs/arch/groceries.md` |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
 | remembering which item a barcode is | `ItemProduct.gtin` + `gtinAliasText` in `src/utils/storeAliases.ts` — see `docs/arch/groceries.md` |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
@@ -320,8 +321,8 @@ exports.
 **Read narrowly.** 35 files are over 1,000 lines, 21 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (5.1k), `components/TaskEditor.tsx` (4.2k), `db/database.ts` (3.8k),
-`screens/TodayScreen.tsx` (3.7k), `store/useGroceryStore.ts` (3.7k),
+`store/useTaskStore.ts` (5.1k), `components/TaskEditor.tsx` (4.2k),
+`store/useGroceryStore.ts` (3.8k), `db/database.ts` (3.8k), `screens/TodayScreen.tsx` (3.7k),
 `components/TaskItem.tsx` (3.3k), `types/index.ts` (3.0k),
 `components/QuickAddModal.tsx` (2.6k), `store/useSettingsStore.ts` (2.1k),
 `screens/MealPlanScreen.tsx` (2.1k).
@@ -329,7 +330,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **176 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **177 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
