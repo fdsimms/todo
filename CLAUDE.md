@@ -321,7 +321,7 @@ exports.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (5.1k), `components/TaskEditor.tsx` (4.2k), `db/database.ts` (3.8k),
-`store/useGroceryStore.ts` (3.7k), `screens/TodayScreen.tsx` (3.7k),
+`screens/TodayScreen.tsx` (3.7k), `store/useGroceryStore.ts` (3.7k),
 `components/TaskItem.tsx` (3.3k), `types/index.ts` (3.0k),
 `components/QuickAddModal.tsx` (2.6k), `store/useSettingsStore.ts` (2.1k),
 `screens/MealPlanScreen.tsx` (2.1k).

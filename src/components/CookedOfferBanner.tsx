@@ -8,7 +8,11 @@ import { useReduceMotion } from '../utils/useReduceMotion';
 import { haptics } from '../utils/haptics';
 
 interface Props {
-  /** The bold half of the sentence — always a count, e.g. "3 ingredients". */
+  /**
+   * The bold half of the sentence, e.g. "3 ingredients". Usually a count,
+   * which is what the two consumption offers lead with; the leftovers one
+   * leads with the question instead, because there is nothing to count yet.
+   */
   lead: string;
   /** The rest of it, read straight on from `lead`. */
   rest: string;
@@ -23,9 +27,10 @@ interface Props {
 
 /**
  * The passive offer shown on the meal plan (and on Today) after a meal is
- * marked cooked. Two of them exist and they are the same shape on purpose:
- * "you might be out of these" (CookedUseUpOffer) and "these aren't on your
- * list" (MealPlanScreen's restock offer).
+ * marked cooked. Three of them exist and they are the same shape on purpose:
+ * "you might be out of these" (CookedUseUpOffer), "these aren't on your
+ * list" (MealPlanScreen's restock offer) and "anything left over?"
+ * (LogLeftoversOffer).
  *
  * This replaced opening `RecipeToListSheet` outright on the mark-cooked tap.
  * The sheet is a full-screen modal with a Cancel and an Add, and firing one at
@@ -44,10 +49,11 @@ interface Props {
  * isn't wanted, and it doesn't have to persist to be honest since both the
  * shop and the pantry stay reachable by hand.
  *
- * One banner at a time, and the two are ranked rather than stacked: the
- * consumption question is the one only this moment can answer, so the restock
- * offer waits behind it (see MealPlanScreen). Two of these side by side is the
- * noise the passive treatment exists to avoid.
+ * One banner at a time, and they are ranked rather than stacked: the
+ * consumption question is the one only this moment can answer, so both the
+ * restock offer (see MealPlanScreen) and the leftovers one (which ranks itself)
+ * wait behind it. Two of these side by side is the noise the passive treatment
+ * exists to avoid.
  */
 export function CookedOfferBanner({
   lead,

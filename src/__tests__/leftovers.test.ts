@@ -18,6 +18,7 @@ import {
   isPlannedPastKeepUntil,
   keepDaysBetween,
   keepUntilKeyFor,
+  leftoverContainersFor,
   leftoverKeepDaysFor,
   leftoverPurgeCutoff,
   liveFreshnessOf,
@@ -590,6 +591,40 @@ describe('leftoverPartsFor', () => {
     expect(leftoverPartsFor('Steak', steak, byId).map(p => p.title)).toEqual(['Steak', 'Mash']);
     expect(leftoverPartsFor('Steak', steak, byId, { chosen: [roastLink.id] }).map(p => p.title))
       .toEqual(['Steak', 'Roast potatoes']);
+  });
+});
+
+
+describe('leftoverContainersFor', () => {
+  const steak = { title: 'Steak', recipeId: 'r1' };
+  const mash = { title: 'Mash', recipeId: 'r2' };
+
+  it('is one unfrozen container per part for the fridge', () => {
+    expect(leftoverContainersFor([steak, mash], 'fridge')).toEqual([
+      { title: 'Steak', recipeId: 'r1', frozen: false },
+      { title: 'Mash', recipeId: 'r2', frozen: false },
+    ]);
+  });
+
+  it('is one frozen container per part for the freezer', () => {
+    expect(leftoverContainersFor([steak, mash], 'freezer')).toEqual([
+      { title: 'Steak', recipeId: 'r1', frozen: true },
+      { title: 'Mash', recipeId: 'r2', frozen: true },
+    ]);
+  });
+
+  it('doubles each part for both, keeping the pair adjacent and the fridge first', () => {
+    expect(leftoverContainersFor([steak, mash], 'both')).toEqual([
+      { title: 'Steak', recipeId: 'r1', frozen: false },
+      { title: 'Steak', recipeId: 'r1', frozen: true },
+      { title: 'Mash', recipeId: 'r2', frozen: false },
+      { title: 'Mash', recipeId: 'r2', frozen: true },
+    ]);
+  });
+
+  it('is empty for nothing ticked, whatever the destination', () => {
+    expect(leftoverContainersFor([], 'both')).toEqual([]);
+    expect(leftoverContainersFor([], 'fridge')).toEqual([]);
   });
 });
 
