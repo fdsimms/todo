@@ -124,7 +124,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.accent + '1A',
       borderRadius: radius.md,
       marginHorizontal: spacing.md,
-      marginTop: spacing.xs,
+      marginTop: spacing.md,
       marginBottom: spacing.sm,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm + 2,
