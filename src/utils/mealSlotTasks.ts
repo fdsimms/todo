@@ -1,7 +1,7 @@
 import type { MealPlanEntry, MealSlot, Task, TaskDraft, TimeOfDay } from '../types';
 import { MEAL_SLOT_LABELS } from '../types';
 import { dayKeyToDate } from './dateUtils';
-import { generatedBy } from './generatedTasks';
+import { generatedBy, generatedSourceOf } from './generatedTasks';
 import { isChainFinish } from './chain';
 import { mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { resolveOffsetDate } from './templateUtils';
@@ -160,6 +160,25 @@ export function parseMealSlotSource(sourceId: string | null): { dayKey: string; 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) return null;
   if (!(slot in MEAL_SLOT_SEGMENTS)) return null;
   return { dayKey, slot };
+}
+
+/**
+ * Which meal a task is for, or null when it isn't one of this generator's.
+ *
+ * The same shape as `mealPlanNudgeDayKey`/`projectReviewProjectId`: the source
+ * id already holds the answer, so a row can say which meal it belongs to
+ * without a store read. A legacy `mealCook` row parses to null — its source id
+ * is an entry id rather than a (day, slot) — which is the right answer for a
+ * kind nothing creates any more.
+ *
+ * What reads it is the meal chip on a task row. An unanswered slot names its
+ * meal in every step it has ("Choose lunch", "Prepare lunch", "Eat lunch"), but
+ * the moment something is planned the title becomes the food — "Cook Peanut
+ * Butter Tofu with Sriracha" — and a day's three of these sit together under
+ * one category with nothing saying which is which.
+ */
+export function mealSlotOf(task: Pick<Task, 'generatedKind' | 'generatedSourceId'>): MealSlot | null {
+  return parseMealSlotSource(generatedSourceOf(task, 'mealSlot'))?.slot ?? null;
 }
 
 /**

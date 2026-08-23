@@ -6,6 +6,7 @@ import {
   mealSlotChain,
   mealSlotDrift,
   mealSlotLinkUrl,
+  mealSlotOf,
   mealSlotSourceId,
   mealSlotStepTimeSegments,
   mealSlotTaskDraft,
@@ -68,6 +69,17 @@ describe('source ids', () => {
     // The day key contains '-' and the split is on '#', so this is unambiguous
     // rather than merely usually right.
     expect(parseMealSlotSource('#lunch')).toBeNull();
+  });
+
+  it('names the meal a task is for, and only for its own kind', () => {
+    const dinner = { generatedKind: 'mealSlot', generatedSourceId: '2026-08-22#dinner' } as Task;
+    expect(mealSlotOf(dinner)).toBe('dinner');
+    // A row of another kind that happens to hold a parseable source id is not
+    // this generator's — generatedSourceOf checks the kind first.
+    expect(mealSlotOf({ generatedKind: 'mealPlanNudge', generatedSourceId: '2026-08-22#dinner' } as Task)).toBeNull();
+    // A legacy cook task points at a meal entry, so there is no slot to name.
+    expect(mealSlotOf({ generatedKind: 'mealCook', generatedSourceId: 'm-12' } as Task)).toBeNull();
+    expect(mealSlotOf({ generatedKind: null, generatedSourceId: null } as unknown as Task)).toBeNull();
   });
 });
 
