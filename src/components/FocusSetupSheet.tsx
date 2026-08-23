@@ -20,6 +20,7 @@ import { buildFocusPlan, focusPlanTotals } from '../utils/focusPlan';
 import { focusPlanOptionsFrom } from '../utils/focusSettings';
 import {
   buildFocusContext,
+  focusQueueFromPinned,
   focusReason,
   nextFocusSuggestion,
   suggestFocusTasks,
@@ -44,6 +45,15 @@ interface Props {
   tasks: readonly Task[];
   /** Every task, so blockers that aren't in the pool still resolve. */
   allTasks: readonly Task[];
+  /**
+   * When set, the sheet starts from these tasks in this order instead of
+   * running the suggester — the "start a focus session from what's pinned"
+   * shortcut. Eligibility and the time window still apply (see
+   * `focusQueueFromPinned`); only the picking is different. Swapping a row
+   * still offers the ordinary scored pool, since a pinned task that no
+   * longer fits still deserves a replacement.
+   */
+  pinnedSeed?: readonly Task[];
   onClose: () => void;
   /** The queue, in run order. Empty selections can't get here. */
   onStart: (tasks: Task[]) => void;
@@ -75,8 +85,14 @@ interface Props {
  * best answer to it is rarely a prefix of the answer to the old one. That does
  * discard rows the user had already ticked or swapped, which is the trade: the
  * alternative is a list that half-remembers a window it no longer fits.
+ *
+ * `pinnedSeed` reuses all of the above for a second entry point — "start a
+ * focus session from what's pinned" — with only the initial pick swapped out.
+ * `focusQueueFromPinned` takes the pinned order as-is instead of scoring for
+ * one, since pinning already is the ranking; everything past that point (the
+ * window, the plan preview, ticking, swapping) is the same sheet.
  */
-export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: Props) {
+export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose, onStart }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -119,12 +135,35 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
   /**
    * Take a fresh shortlist for the given window.
    *
-   * `tasks` is snapshotted here rather than read live, so a task completed on
-   * the list behind the sheet doesn't reshuffle a proposal mid-read.
+   * `tasks` (and `pinnedSeed`) are snapshotted here rather than read live, so
+   * a task completed on the list behind the sheet doesn't reshuffle a
+   * proposal mid-read.
    */
   const repick = (window: number | null) => {
-    const snapshot = tasks.map(t => t);
     const nextCtx = buildFocusContext(allTasks, { windowMinutes: window, planOptions });
+
+    if (pinnedSeed && pinnedSeed.length > 0) {
+      // Union with the ordinary pool: a pinned task can be hidden from
+      // `tasks` (pinnedTasks() ignores visibility on purpose) and still needs
+      // to resolve here, and a swap still needs somewhere to draw a
+      // replacement from.
+      const seen = new Set<string>();
+      const snapshot: Task[] = [];
+      for (const t of [...pinnedSeed, ...tasks]) {
+        if (seen.has(t.id)) continue;
+        seen.add(t.id);
+        snapshot.push(t);
+      }
+      const picked = focusQueueFromPinned(pinnedSeed, nextCtx);
+      setPool(snapshot);
+      setCtx(nextCtx);
+      setSlotIds(picked);
+      setSelectedIds(new Set(picked));
+      setRejectedIds([]);
+      return;
+    }
+
+    const snapshot = tasks.map(t => t);
     const picked = suggestFocusTasks(snapshot, nextCtx);
     setPool(snapshot);
     setCtx(nextCtx);
@@ -318,12 +357,12 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
 
         <View style={styles.card}>
           <View style={styles.header}>
-            <Text style={styles.sheetTitle}>Focus session</Text>
+            <Text style={styles.sheetTitle}>{pinnedSeed ? 'Focus session · Pinned' : 'Focus session'}</Text>
             <View style={styles.countRow}>
               <Ionicons name="hourglass-outline" size={13} color={colors.textTertiary} />
               <Text style={styles.countText}>
                 <Text style={styles.countValue}>{selected.length}</Text>
-                {` of ${MAX_SUGGESTED_FOCUS}`}
+                {pinnedSeed ? ` of ${slots.length} pinned` : ` of ${MAX_SUGGESTED_FOCUS}`}
               </Text>
             </View>
           </View>
@@ -390,14 +429,19 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
 
           {slots.length === 0 ? (
             <Text style={styles.emptyHint}>
-              {windowMinutes === null
-                ? 'Nothing to suggest. Everything on today is done, or waiting on another task.'
-                : `Nothing on today fits in ${formatClockDuration(windowMinutes)}. Allow more time, or shorten a task’s estimate.`}
+              {pinnedSeed
+                ? windowMinutes === null
+                  ? 'Nothing to work with. Your pinned tasks are done, or waiting on another task.'
+                  : `None of your pinned tasks fit in ${formatClockDuration(windowMinutes)}. Allow more time, or unpin one.`
+                : windowMinutes === null
+                  ? 'Nothing to suggest. Everything on today is done, or waiting on another task.'
+                  : `Nothing on today fits in ${formatClockDuration(windowMinutes)}. Allow more time, or shorten a task’s estimate.`}
             </Text>
           ) : (
             <Text style={styles.hint}>
-              These run one at a time, in this order. Tap to include or skip, or swap a row for the
-              next best task.
+              {pinnedSeed
+                ? 'These run one at a time, in pinned order. Tap to include or skip, or swap a row for the next best task.'
+                : 'These run one at a time, in this order. Tap to include or skip, or swap a row for the next best task.'}
             </Text>
           )}
 

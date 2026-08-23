@@ -318,6 +318,41 @@ export function suggestFocusTasks(
 }
 
 /**
+ * Build a focus queue from an already-ranked set of tasks, in the order
+ * given, instead of scoring the pool for one.
+ *
+ * This is what "start a focus session from what's pinned" needs: pinning is
+ * already a hand-ranked shortlist (`Task.pinnedOrder`), so re-scoring it here
+ * would second-guess an order the user set on purpose. Only the fit and
+ * eligibility rules carry over from the scored path — a pinned task that's
+ * now blocked, completed, or a subtask drops out, and so does one that
+ * doesn't fit what's left of the time window, exactly as it would there.
+ *
+ * "Best that fits" becomes "next that fits" in this order: a task further
+ * down the list that fits doesn't jump ahead of one above it that doesn't,
+ * since the ranking is the input, not something to improve on. The loop
+ * still doesn't stop at the first task that fails to fit — a smaller one
+ * further down can still round out the window.
+ */
+export function focusQueueFromPinned(
+  pinnedTasks: readonly Task[],
+  ctx: FocusContext,
+): string[] {
+  const listed: Task[] = [];
+  const picked: string[] = [];
+
+  for (const task of pinnedTasks) {
+    if (task.completed || task.archived || task.parentId !== null) continue;
+    if (isBlocked(task, ctx.resolve)) continue;
+    if (!fitsWindow(listed, task, ctx)) continue;
+    picked.push(task.id);
+    listed.push(task);
+  }
+
+  return picked;
+}
+
+/**
  * A short "why this one" for a suggested row, phrased for someone who isn't
  * reading the weights above.
  *

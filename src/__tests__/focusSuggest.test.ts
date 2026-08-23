@@ -10,6 +10,7 @@
 import {
   buildFocusContext,
   fitsWindow,
+  focusQueueFromPinned,
   focusReason,
   nextFocusSuggestion,
   scoreFocusTask,
@@ -375,6 +376,45 @@ describe('nextFocusSuggestion', () => {
     const stranger = makeTask({ id: 'stranger', category: 'Home', sortOrder: 2 });
     const pool = [kept, stranger, mate];
     expect(nextFocusSuggestion(pool, [kept], ['kept', 'rejected'], ctxFor(pool))).toBe('mate');
+  });
+});
+
+describe('focusQueueFromPinned', () => {
+  it('keeps the given order rather than scoring for one', () => {
+    // Priority would rank these the other way around; the pinned order wins.
+    const low = makeTask({ id: 'low', priority: 1, sortOrder: 2 });
+    const urgent = makeTask({ id: 'urgent', priority: 4, sortOrder: 1 });
+    const pinned = [low, urgent];
+    expect(focusQueueFromPinned(pinned, ctxFor(pinned))).toEqual(['low', 'urgent']);
+  });
+
+  it('drops a completed, archived, or subtask entry', () => {
+    const done = makeTask({ id: 'done', completed: true });
+    const archived = makeTask({ id: 'archived', archived: true });
+    const subtask = makeTask({ id: 'subtask', parentId: 'parent' });
+    const open = makeTask({ id: 'open' });
+    const pinned = [done, archived, subtask, open];
+    expect(focusQueueFromPinned(pinned, ctxFor(pinned))).toEqual(['open']);
+  });
+
+  it('drops a pinned task that is blocked', () => {
+    const blocker = makeTask({ id: 'blocker' });
+    const blocked = makeTask({ id: 'blocked', blockedById: 'blocker' });
+    const pinned = [blocked, blocker];
+    expect(focusQueueFromPinned(pinned, ctxFor(pinned))).toEqual(['blocker']);
+  });
+
+  it('skips a pinned task that would not fit, without ending the queue', () => {
+    const big = makeTask({ id: 'big', estimatedMinutes: 90, sortOrder: 1 });
+    const small = makeTask({ id: 'small', estimatedMinutes: 10, sortOrder: 2 });
+    const pinned = [big, small];
+    expect(focusQueueFromPinned(pinned, ctxFor(pinned, { windowMinutes: 30 }))).toEqual(['small']);
+  });
+
+  it('returns nothing for an empty or fully-ineligible list', () => {
+    expect(focusQueueFromPinned([], ctxFor([]))).toEqual([]);
+    const done = makeTask({ id: 'done', completed: true });
+    expect(focusQueueFromPinned([done], ctxFor([done]))).toEqual([]);
   });
 });
 
