@@ -12,6 +12,7 @@ import {
   categorySpan,
   applyCategoryCollapse,
   sectionTaskIds,
+  sectionTasksByLabel,
   findTaskJumpTarget,
   LATER_TODAY_LABEL,
   type CategoryListItem,
@@ -1031,5 +1032,88 @@ describe('sectionTaskIds', () => {
     ]);
     expect(ids.size).toBe(1);
     expect(ids.get('work')).toEqual(['w1']);
+  });
+});
+
+describe('sectionTasksByLabel', () => {
+  // What a header's own pin toggle acts on: the rows sitting under it, which is
+  // today's work rather than everything filed under the category.
+  it('collects the tasks under each header', () => {
+    const sections = sectionTasksByLabel([
+      { type: 'header', label: 'work' },
+      { type: 'task', task: makeTask({ id: 'w1' }) },
+      { type: 'task', task: makeTask({ id: 'w2' }) },
+      { type: 'header', label: 'home' },
+      { type: 'task', task: makeTask({ id: 'h1' }) },
+    ]);
+    expect(sections.get('work')?.map(t => t.id)).toEqual(['w1', 'w2']);
+    expect(sections.get('home')?.map(t => t.id)).toEqual(['h1']);
+  });
+
+  // A stack's tray is the row on screen, and it sits under its own
+  // group.category — so its children belong to that section whatever their own
+  // category says. sectionTaskIds abandons such a section; this one must not,
+  // or long-pressing a header made entirely of a stack would do nothing.
+  it("counts a stack's children towards the section its tray sits in", () => {
+    const sections = sectionTasksByLabel([
+      { type: 'header', label: 'work' },
+      { type: 'task', task: makeTask({ id: 'w1', category: 'work' }) },
+      {
+        type: 'group',
+        group: makeGroup({ id: 'g1', category: 'work' }),
+        children: [makeTask({ id: 'c1', category: 'home' }), makeTask({ id: 'c2', category: 'work' })],
+      },
+      { type: 'header', label: 'home' },
+      { type: 'task', task: makeTask({ id: 'h1', category: 'home' }) },
+    ]);
+    expect(sections.get('work')?.map(t => t.id)).toEqual(['w1', 'c1', 'c2']);
+    expect(sections.get('home')?.map(t => t.id)).toEqual(['h1']);
+  });
+
+  // The loose run at the top has no header to act on it.
+  it('ignores rows above the first header', () => {
+    const sections = sectionTasksByLabel([
+      { type: 'task', task: makeTask({ id: 'loose' }) },
+      { type: 'header', label: 'work' },
+      { type: 'task', task: makeTask({ id: 'w1' }) },
+    ]);
+    expect(sections.size).toBe(1);
+    expect(sections.get('work')?.map(t => t.id)).toEqual(['w1']);
+  });
+
+  // A calendar event or an uncooked meal isn't a task, so it can't be pinned —
+  // and a category holding nothing else has an empty section, which is how the
+  // header says it has nothing to pin.
+  it('skips context rows and leaves their section empty', () => {
+    const sections = sectionTasksByLabel([
+      { type: 'header', label: 'work' },
+      {
+        type: 'context',
+        row: {
+          id: 'event-1',
+          sourceId: '1',
+          kind: 'event',
+          title: 'Standup',
+          caption: '9:00 AM',
+          category: 'work',
+          now: false,
+        },
+      },
+    ]);
+    expect(sections.get('work')).toEqual([]);
+  });
+
+  // A collapsed header has had its rows folded away by the time `data` is
+  // built, so the screen resolves this against `listItems` instead — but the
+  // walk itself must still report an emptied section honestly rather than
+  // carrying the previous label's rows into it.
+  it('reports an emptied section as empty', () => {
+    const sections = sectionTasksByLabel([
+      { type: 'header', label: 'work' },
+      { type: 'header', label: 'home' },
+      { type: 'task', task: makeTask({ id: 'h1' }) },
+    ]);
+    expect(sections.get('work')).toEqual([]);
+    expect(sections.get('home')?.map(t => t.id)).toEqual(['h1']);
   });
 });
