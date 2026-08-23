@@ -428,12 +428,14 @@ describe('focusReason', () => {
     expect(focusReason(makeTask({ dueDate: storedDate(2026, 2, 12) }), [], ctx)).toBe('Waiting 3 days');
   });
 
-  it('names the estimate, which is the term specific to focusing', () => {
-    expect(focusReason(makeTask({ estimatedMinutes: 45 }), [], ctxFor([]))).toBe('Estimated 45m');
+  it('leaves the estimate to the duration the row prints beside it', () => {
+    expect(focusReason(makeTask({ estimatedMinutes: 45 }), [], ctxFor([]))).toBeNull();
+    expect(focusReason(makeTask({ estimatedMinutes: 3 }), [], ctxFor([]))).toBeNull();
   });
 
-  it('keeps quiet about an estimate too short to justify a block', () => {
-    expect(focusReason(makeTask({ estimatedMinutes: 3 }), [], ctxFor([]))).toBeNull();
+  it('still names a louder term on a task that also has an estimate', () => {
+    const task = makeTask({ estimatedMinutes: 45, priority: 4 });
+    expect(focusReason(task, [], ctxFor([]))).toBe('Urgent priority');
   });
 
   it('names the task a suggestion goes with', () => {
