@@ -10,40 +10,40 @@ describe('dedupeSuggestedSubstitutes', () => {
   });
 
   it('drops a blank name', () => {
-    const raw: RawSuggestedSubstitute[] = [{ name: '   ' }, { name: 'Margarine' }];
-    expect(dedupeSuggestedSubstitutes(raw).map(s => s.name)).toEqual(['Margarine']);
+    const raw: RawSuggestedSubstitute[] = [{ name: '   ' }, { name: 'margarine' }];
+    expect(dedupeSuggestedSubstitutes(raw).map(s => s.name)).toEqual(['margarine']);
   });
 
   it('names a substitute with no ratio', () => {
-    expect(dedupeSuggestedSubstitutes([{ name: 'Margarine' }])).toEqual([
-      { name: 'Margarine', ratioFrom: null, ratioTo: null },
+    expect(dedupeSuggestedSubstitutes([{ name: 'margarine' }])).toEqual([
+      { name: 'margarine', ratioFrom: null, ratioTo: null },
     ]);
   });
 
   it('keeps a ratio whose halves both parse', () => {
     const raw: RawSuggestedSubstitute[] = [
-      { name: 'Garlic powder', ratio_from: '1 clove', ratio_to: '1/4 tsp' },
+      { name: 'garlic powder', ratio_from: '1 clove', ratio_to: '1/4 tsp' },
     ];
     expect(dedupeSuggestedSubstitutes(raw)).toEqual([
-      { name: 'Garlic powder', ratioFrom: '1 clove', ratioTo: '1/4 tsp' },
+      { name: 'garlic powder', ratioFrom: '1 clove', ratioTo: '1/4 tsp' },
     ]);
   });
 
   it('keeps the name and drops the ratio when one half is unparseable', () => {
     const raw: RawSuggestedSubstitute[] = [
-      { name: 'Garlic powder', ratio_from: 'a pinch', ratio_to: '1/4 tsp' },
+      { name: 'garlic powder', ratio_from: 'a pinch', ratio_to: '1/4 tsp' },
     ];
     expect(dedupeSuggestedSubstitutes(raw)).toEqual([
-      { name: 'Garlic powder', ratioFrom: null, ratioTo: null },
+      { name: 'garlic powder', ratioFrom: null, ratioTo: null },
     ]);
   });
 
   it('drops the ratio when only one side is given', () => {
     const raw: RawSuggestedSubstitute[] = [
-      { name: 'Garlic powder', ratio_from: '1 clove' },
+      { name: 'garlic powder', ratio_from: '1 clove' },
     ];
     expect(dedupeSuggestedSubstitutes(raw)[0]).toEqual({
-      name: 'Garlic powder',
+      name: 'garlic powder',
       ratioFrom: null,
       ratioTo: null,
     });
@@ -56,24 +56,24 @@ describe('dedupeSuggestedSubstitutes', () => {
     'milk, lemon juice',
     'flour & butter',
     'pasta with sauce',
-  ])('drops a suggestion naming more than one ingredient: %s', name => {
+  ])('drops a suggestion naming more than one ingredient: %s', (name) => {
     expect(dedupeSuggestedSubstitutes([{ name }])).toEqual([]);
   });
 
   it('does not mistake a plain name for a joined one', () => {
-    // "Candy" contains "and" but not " and " — must survive.
-    expect(dedupeSuggestedSubstitutes([{ name: 'Candy' }]).map(s => s.name)).toEqual(['Candy']);
+    // "candy" contains "and" but not " and " — must survive.
+    expect(dedupeSuggestedSubstitutes([{ name: 'candy' }]).map(s => s.name)).toEqual(['candy']);
   });
 
   it('dedupes case-insensitively against another suggestion in the same response', () => {
-    const raw: RawSuggestedSubstitute[] = [{ name: 'Margarine' }, { name: 'margarine' }];
+    const raw: RawSuggestedSubstitute[] = [{ name: 'margarine' }, { name: 'margarine' }];
     expect(dedupeSuggestedSubstitutes(raw)).toHaveLength(1);
   });
 
   it('drops a suggestion matching an excluded name', () => {
-    const raw: RawSuggestedSubstitute[] = [{ name: 'Margarine' }, { name: 'Ghee' }];
-    expect(dedupeSuggestedSubstitutes(raw, ['Butter', 'margarine']).map(s => s.name)).toEqual([
-      'Ghee',
+    const raw: RawSuggestedSubstitute[] = [{ name: 'margarine' }, { name: 'ghee' }];
+    expect(dedupeSuggestedSubstitutes(raw, ['butter', 'margarine']).map(s => s.name)).toEqual([
+      'ghee',
     ]);
   });
 

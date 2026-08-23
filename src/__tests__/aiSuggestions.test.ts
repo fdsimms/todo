@@ -1295,36 +1295,36 @@ describe('suggestSubstitutes', () => {
     mockFetchOnce(
       toolUseResponse('suggest_substitutes', {
         substitutes: [
-          { name: 'Margarine' },
-          { name: 'Garlic powder', ratio_from: '1 clove', ratio_to: '1/4 tsp' },
+          { name: 'margarine' },
+          { name: 'garlic powder', ratio_from: '1 clove', ratio_to: '1/4 tsp' },
         ],
       })
     );
-    await expect(suggestSubstitutes('Butter', [])).resolves.toEqual([
-      { name: 'Margarine', ratioFrom: null, ratioTo: null },
-      { name: 'Garlic powder', ratioFrom: '1 clove', ratioTo: '1/4 tsp' },
+    await expect(suggestSubstitutes('butter', [])).resolves.toEqual([
+      { name: 'margarine', ratioFrom: null, ratioTo: null },
+      { name: 'garlic powder', ratioFrom: '1 clove', ratioTo: '1/4 tsp' },
     ]);
   });
 
   it('drops a suggestion naming two ingredients', async () => {
     mockFetchOnce(
       toolUseResponse('suggest_substitutes', {
-        substitutes: [{ name: 'Milk + lemon juice' }, { name: 'Sour cream' }],
+        substitutes: [{ name: 'milk + lemon juice' }, { name: 'sour cream' }],
       })
     );
-    await expect(suggestSubstitutes('Buttermilk', [])).resolves.toEqual([
-      { name: 'Sour cream', ratioFrom: null, ratioTo: null },
+    await expect(suggestSubstitutes('buttermilk', [])).resolves.toEqual([
+      { name: 'sour cream', ratioFrom: null, ratioTo: null },
     ]);
   });
 
   it('excludes the item itself and whatever it already links to', async () => {
     mockFetchOnce(
       toolUseResponse('suggest_substitutes', {
-        substitutes: [{ name: 'Butter' }, { name: 'Margarine' }, { name: 'Ghee' }],
+        substitutes: [{ name: 'butter' }, { name: 'margarine' }, { name: 'ghee' }],
       })
     );
-    await expect(suggestSubstitutes('Butter', ['Margarine'])).resolves.toEqual([
-      { name: 'Ghee', ratioFrom: null, ratioTo: null },
+    await expect(suggestSubstitutes('butter', ['margarine'])).resolves.toEqual([
+      { name: 'ghee', ratioFrom: null, ratioTo: null },
     ]);
   });
 

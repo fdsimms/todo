@@ -1107,6 +1107,7 @@ export async function suggestSubstitutes(
         `What could a home cook use instead of "${name}" when it's not available?`,
         'Only genuinely common substitutes an ordinary cook would recognise — not an ingredient list for making it from scratch, and not a stretch.',
         'Each suggestion must be a single grocery item on its own, never a combination of two.',
+        'Return each item in lowercase, as though it were appearing in the middle of a sentence — so generic items like "vinegar" stay lowercase, but proper nouns like "Parmigiano-Reggiano" stay capitalized.',
         excluded.length > 0 ? `Already recorded — don't repeat: ${excluded.join(', ')}.` : '',
       ].filter(Boolean).join('\n\n'),
     }],
