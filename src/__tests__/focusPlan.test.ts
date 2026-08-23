@@ -14,6 +14,7 @@ import {
   isFocusStepDone,
   normalizePlanTail,
   pauseFocusSession,
+  plannedTaskMinutes,
   planTotalMinutes,
   pruneFocusPlan,
   resumeFocusSession,
@@ -205,6 +206,35 @@ describe('focusPlanTotals', () => {
       taskCount: 2,
       restCount: 2,
     });
+  });
+});
+
+describe('plannedTaskMinutes', () => {
+  it('takes the task at its word when it has one', () => {
+    expect(plannedTaskMinutes(task('a', 45), OPTIONS)).toEqual({ minutes: 45, assumed: false });
+  });
+
+  it('falls back to the default stretch, and says that it did', () => {
+    expect(plannedTaskMinutes(task('a', null), OPTIONS)).toEqual({ minutes: 25, assumed: true });
+    expect(plannedTaskMinutes(task('a', 0), OPTIONS)).toEqual({ minutes: 25, assumed: true });
+  });
+
+  it('reads a chain step ahead of the task, same as the workload surfaces', () => {
+    const chained: FocusPlanTask = {
+      ...task('a', 90),
+      chainEnabled: true,
+      chainIndex: 1,
+      chainItems: [
+        { id: 'c1', title: 'first', estimatedMinutes: 10 },
+        { id: 'c2', title: 'second', estimatedMinutes: 20 },
+      ],
+    };
+    expect(plannedTaskMinutes(chained, OPTIONS)).toEqual({ minutes: 20, assumed: false });
+  });
+
+  it('agrees with what the builder charges', () => {
+    const t = task('a', null);
+    expect(planTotalMinutes([t], OPTIONS)).toBe(plannedTaskMinutes(t, OPTIONS).minutes);
   });
 });
 

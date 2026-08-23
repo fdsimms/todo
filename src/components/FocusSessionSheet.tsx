@@ -434,6 +434,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
 
   actions: { gap: spacing.md },
   primaryBtn: {
+    alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

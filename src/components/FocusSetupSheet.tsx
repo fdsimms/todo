@@ -18,7 +18,7 @@ import { formatClockDuration, formatDuration } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { isQuotaTask } from '../utils/visibilityUtils';
 import { formatQuotaProgress } from '../utils/quotaUnit';
-import { buildFocusPlan, focusPlanTotals } from '../utils/focusPlan';
+import { buildFocusPlan, focusPlanTotals, plannedTaskMinutes } from '../utils/focusPlan';
 import { focusPlanOptionsFrom } from '../utils/focusSettings';
 import {
   buildFocusContext,
@@ -306,12 +306,19 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
     const checked = selectedIds.has(task.id);
     const reason = ctx ? focusReason(task, companyFor(task.id), ctx) : null;
     // A daily target is logged a unit at a time rather than ticked off once, so
-    // its count goes in front of the reason: it's the difference between a
-    // stretch that finishes the task and one that gets you two glasses closer.
+    // its count leads the line: it's the difference between a stretch that
+    // finishes the task and one that gets you two glasses closer.
     const count = isQuotaTask(task) && !task.completed
       ? formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit)
       : null;
-    const sub = [count, reason].filter((part): part is string => part !== null).join(' · ');
+    // Through the plan's own read, never `task.estimatedMinutes`: the summary
+    // below charges an unestimated task the default stretch, so a row that
+    // showed nothing for it left the "1.5h of work" under three blank rows
+    // unaccounted for. `~` marks the ones the settings answered rather than
+    // the task, the same way a day's assumed total is written.
+    const planned = plannedTaskMinutes(task, planOptions);
+    const time = `${planned.assumed ? '~' : ''}${formatDuration(planned.minutes)}`;
+    const spokenTime = planned.assumed ? `about ${formatDuration(planned.minutes)}` : time;
 
     return (
       <View key={task.id} style={styles.row}>
@@ -321,7 +328,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="checkbox"
           accessibilityState={{ checked }}
-          accessibilityLabel={`${task.title}${sub ? `, ${sub}` : ''}`}
+          accessibilityLabel={`${task.title}${count ? `, ${count} logged` : ''}${reason ? `, ${reason}` : ''}, ${spokenTime}`}
         >
           <Ionicons
             name={checked ? 'checkmark-circle' : 'ellipse-outline'}
@@ -332,7 +339,25 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
             <Text style={[styles.rowTitle, !checked && styles.rowTitleUnchecked]} numberOfLines={1}>
               {task.title}
             </Text>
-            {sub !== '' && <Text style={styles.rowSub} numberOfLines={1}>{sub}</Text>}
+            {/* Separate Texts rather than one joined string: the reason can be
+                as long as a task title ("Goes with Draft the quarterly memo")
+                and on one line it's the duration that gets ellipsized away,
+                which is the one part of this line that is a fact rather than a
+                gloss. The reason shrinks; the minutes don't, and neither does a
+                target's count, which is a fact of the same kind. */}
+            <View style={styles.rowSubLine}>
+              {count !== null && (
+                <Text style={styles.rowSub} numberOfLines={1}>{count}</Text>
+              )}
+              {reason !== null && (
+                <Text style={[styles.rowSub, styles.rowReason]} numberOfLines={1}>
+                  {count !== null ? ` · ${reason}` : reason}
+                </Text>
+              )}
+              <Text style={styles.rowSub} numberOfLines={1}>
+                {count !== null || reason !== null ? ` · ${time}` : time}
+              </Text>
+            </View>
           </View>
         </TouchableOpacity>
 
@@ -532,7 +557,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.md,
   },
   sheetTitle: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
   countRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
@@ -597,7 +622,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowContent: { flex: 1, gap: 1 },
   rowTitle: { color: colors.text, fontSize: font.md, lineHeight: lineHeight.md },
   rowTitleUnchecked: { color: colors.textSecondary },
+  rowSubLine: { flexDirection: 'row', alignItems: 'center' },
   rowSub: { color: colors.textTertiary, fontSize: font.xs },
+  rowReason: { flexShrink: 1 },
   swapBtn: {
     paddingHorizontal: spacing.md,
     paddingVertical: 12,

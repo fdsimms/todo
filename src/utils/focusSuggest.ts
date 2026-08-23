@@ -1,6 +1,6 @@
 import { PRIORITY_LABELS, type Task, type TimeOfDay } from '../types';
 import { getDeadlineCountdown, getLogicalToday } from './dateUtils';
-import { estimatedMinutesFor, formatDuration } from './effort';
+import { estimatedMinutesFor } from './effort';
 import { currentTimeSegment, overdueDays } from './pinSuggest';
 import { planTotalMinutes, type FocusPlanOptions } from './focusPlan';
 import { isBlocked, resolverFor, type TaskResolver } from './blocking';
@@ -390,10 +390,12 @@ export function focusReason(task: Task, listed: readonly Task[], ctx: FocusConte
     candidates.push({ score: WEIGHTS.segmentMatch, label: `Set for this ${ctx.currentSegment}` });
   }
 
-  const minutes = estimatedMinutesFor(task);
-  if (minutes != null && minutes > SHORT_TASK_MINUTES) {
-    candidates.push({ score: WEIGHTS.hasEstimate, label: `Estimated ${formatDuration(minutes)}` });
-  }
+  // No "Estimated 45m" term, though the estimate is very much part of the
+  // score (see `estimateScore`): the row prints the minutes the plan is
+  // charging the task in its own slot beside this reason, so naming them here
+  // too spent the line on "Estimated 45m · 45m". Same division `pinReason` and
+  // `SuggestedPinsSheet` already draw — the reason says why, the duration says
+  // how long.
 
   let bestCompanion: { score: number; other: Task } | null = null;
   for (const other of listed) {

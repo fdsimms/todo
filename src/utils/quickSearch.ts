@@ -1,5 +1,6 @@
 import type { Task } from '../types';
 import { fuzzySearch, type SearchResult } from './fuzzySearch';
+import { collapseOccurrences, type CollapsedOccurrence } from './searchCollapse';
 
 /**
  * How many matches the quick-search card shows before it defers to the
@@ -10,8 +11,8 @@ export const QUICK_SEARCH_LIMIT = 5;
 
 export interface QuickSearchOutcome {
   /** The best matches, capped at `limit`. */
-  results: SearchResult[];
-  /** Everything `fuzzySearch` matched, including what didn't fit. */
+  results: CollapsedOccurrence<SearchResult>[];
+  /** Everything the query matched once collapsed, including what didn't fit. */
   total: number;
   /** How many matches the card isn't showing, i.e. what the cap cut. */
   overflow: number;
@@ -27,6 +28,10 @@ export interface QuickSearchOutcome {
  * slightly lower. Within each half the score order `fuzzySearch` returned is
  * preserved.
  *
+ * Occurrences of one repeating thing arrive as one row (see
+ * `collapseOccurrences`) carrying the count of what it stands for, so a daily
+ * task can't take every slot in the card with copies of itself.
+ *
  * `heldIds` are the tasks ticked from the card *while it was open* (see
  * fuzzySearch, which is where the hold is actually applied). It matters more
  * here than on the Search screen: past the cap, a row that re-ranks to the back
@@ -41,7 +46,14 @@ export function quickSearch(
   limit: number = QUICK_SEARCH_LIMIT,
   heldIds: ReadonlySet<string> = new Set()
 ): QuickSearchOutcome {
-  const matches = fuzzySearch(tasks, query, projectNamesById, heldIds);
+  // Collapsed before the cap, never after: five rows of one task's occurrences
+  // is exactly what the cap would otherwise spend itself on, and a card that
+  // shows five results would be showing one.
+  const matches = collapseOccurrences(
+    fuzzySearch(tasks, query, projectNamesById, heldIds),
+    tasks,
+    heldIds
+  );
 
   const active = (r: SearchResult) => !r.task.completed || heldIds.has(r.task.id);
   const ordered = [

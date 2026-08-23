@@ -148,6 +148,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['delete', 'alert', 'confirmation', 'undo', 'forget', 'clear'] },
   { id: 'hideHelpText', groupId: 'appearance', label: 'Help text', section: 'Feedback',
     keywords: ['hint', 'description', 'explanation', 'subtitle', 'terse', 'declutter'] },
+  { id: 'tipsEnabled', groupId: 'appearance', label: 'Tips', section: 'Feedback',
+    keywords: ['tutorial', 'onboarding', 'learn', 'discover', 'banner', 'suggestion', 'help'] },
 
   // Day & time
   { id: 'dayReset', groupId: 'dayTime', label: 'Morning', section: 'When the day turns over',

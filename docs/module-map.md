@@ -61,7 +61,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/extraTask.ts` — MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N, ExtraTaskRule, extraTaskRule, advanceExtraTaskTally, completionsUntilExtraTask, extraTaskSummary, describeExtraTaskRule, emptyExtraTaskDraft, parseExtraTaskDraft, +2 more
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +17 more
 - `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, isFieldMissing, isBackfillDismissed, backfillCandidates, backfillFieldCounts, dismissBackfillField, estimatePatchFor
-- `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, focusStepRemaining, +12 more
+- `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, plannedTaskMinutes, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, +13 more
 - `src/utils/focusSettings.ts` — FOCUS_WORK_CAP_MIN, FOCUS_WORK_CAP_MAX, FOCUS_REST_MIN, FOCUS_REST_MAX, FOCUS_REST_AFTER_TASKS_MAX, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_LONG_REST_EVERY_MIN, FOCUS_LONG_REST_EVERY_MAX, FOCUS_WINDOW_MIN, +14 more
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow
@@ -148,6 +148,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, sourceLabelFor, variantFor, scannedItemFor, pluScannedItem, unknownScannedItem, alreadyScanned, ScanResolver, +1 more
 - `src/utils/scrollClamp.ts` — maxRestingOffset, strandedScrollOffset, NO_INSET, NO_INSET_ALT, pulseNoInset
+- `src/utils/searchCollapse.ts` — SearchOccurrence, CollapsedOccurrence, occurrenceFamilyKey, collapseOccurrences, formatOccurrenceCount
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadSecureKey, saveSecureKey
 - `src/utils/segmentColumns.ts` — segmentRows
@@ -182,6 +183,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/timeBlock.ts` — TimeBlockFields, TimeBlockContext, canTimeBlock, proposeTimeBlockStart, timeBlockFieldsFor, timeBlockUpdateFor
 - `src/utils/timer.ts` — TimerState, isTimedTask, isTimerRunning, timerElapsed, timerRemaining, timerProgress, isTimerReady
 - `src/utils/timerSegments.ts` — TimerSegment, SegmentPhase, SegmentSource, segmentMinutesOf, timerSegments, apportionedMinutes, activeSegmentIndex, activeSegment, segmentPhase, segmentRemaining
+- `src/utils/tips.ts` — TipArea, TipScreen, TipSignals, Tip, TipAreaInfo, TIP_AREAS, TIPS, tipsForArea, unseenTipsForScreen, LastTipShown, +3 more
 - `src/utils/titleRules.ts` — MIN_KEYWORD_LENGTH, KEYWORD_MAX_LENGTH, TITLE_RULE_MATCHES, TitleRuleMatchResult, TitleRuleFill, emptyTitleRule, titleRuleSaysNothing, titleRuleIsUseless, normalizeKeywords, matchKeyword, +7 more
 - `src/utils/titleSuggestions.ts` — TitleSuggestion, suggestTitles
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
@@ -233,6 +235,7 @@ render, so listing them adds lines without adding answers.
 - `src/hooks/useRowSelection.ts` — useRowSelection
 - `src/hooks/useSheetHiddenOffset.ts` — useSheetHiddenOffset
 - `src/hooks/useTaskSelection.ts` — useTaskSelection
+- `src/hooks/useTipSignals.ts` — useTipSignals
 
 ## `src/db`
 
