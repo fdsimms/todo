@@ -110,10 +110,13 @@ private struct FocusClockView: View {
 @available(iOS 17.0, *)
 private struct FocusLockScreenView: View {
     let context: ActivityViewContext<FocusActivityAttributes>
-    @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        let palette = WidgetPalette.forScheme(colorScheme)
+        // Pinned to the dark palette rather than read off \.colorScheme:
+        // the activityBackgroundTint below makes this card dark in every
+        // appearance, so light-scheme content would be black on #1C1C1E. See
+        // WidgetPalette.forScheme's own note.
+        let palette = WidgetPalette.dark
         let overrun = context.isStale && !context.attributes.paused
         let tint = overrun ? palette.orange : palette.accent
 
@@ -165,8 +168,8 @@ struct FocusLiveActivity: Widget {
                 .activitySystemActionForegroundColor(WidgetPalette.dark.text)
                 .widgetURL(URL(string: "dundundun://focus"))
         } dynamicIsland: { context in
-            // The island is always drawn on black regardless of system
-            // appearance, same reasoning as the other two activities.
+            // Dark on both presentations, same as the other two
+            // activities.
             let palette = WidgetPalette.dark
             let overrun = context.isStale && !context.attributes.paused
             let tint = overrun ? palette.orange : palette.accent

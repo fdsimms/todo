@@ -78,10 +78,13 @@ private struct TripClockView: View {
 @available(iOS 17.0, *)
 private struct TripLockScreenView: View {
     let context: ActivityViewContext<TripActivityAttributes>
-    @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        let palette = WidgetPalette.forScheme(colorScheme)
+        // Pinned to the dark palette rather than read off \.colorScheme:
+        // the activityBackgroundTint below makes this card dark in every
+        // appearance, so light-scheme content would be black on #1C1C1E. See
+        // WidgetPalette.forScheme's own note.
+        let palette = WidgetPalette.dark
         HStack(spacing: 12) {
             Image(systemName: "storefront")
                 .font(.system(size: 17))
@@ -120,8 +123,9 @@ struct TripLiveActivity: Widget {
                 .activitySystemActionForegroundColor(WidgetPalette.dark.text)
                 .widgetURL(URL(string: "dundundun://groceries"))
         } dynamicIsland: { context in
-            // The island is always drawn on black regardless of system
-            // appearance, same reasoning as TimerLiveActivity.
+            // Dark on both presentations, same reasoning as
+            // TimerLiveActivity: the island is always drawn on black, and the
+            // Lock Screen card above is tinted dark by this file itself.
             let palette = WidgetPalette.dark
 
             return DynamicIsland {

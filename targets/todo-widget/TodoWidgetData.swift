@@ -146,6 +146,17 @@ struct WidgetPalette {
         separator: Color(hex: "C6C6C8")
     )
 
+    // For a widget that sits on the wallpaper and takes the system's
+    // appearance with everything else on the Home Screen — which is
+    // TodoTodayWidget, and only it.
+    //
+    // **A Live Activity must not use this.** All three of them set
+    // `.activityBackgroundTint(WidgetPalette.dark.bgSecondary)`, so their card
+    // is dark whatever the system appearance is; reading `\.colorScheme` for
+    // the content on top of it resolves `text` to black in a light scheme and
+    // puts black on #1C1C1E. They pin to `.dark` on both presentations
+    // instead, which is not a choice about how they should look — it is the
+    // content agreeing with the background those same files already force.
     static func forScheme(_ scheme: ColorScheme) -> WidgetPalette {
         scheme == .dark ? .dark : .light
     }

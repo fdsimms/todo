@@ -96,10 +96,13 @@ private struct TimerClockView: View {
 @available(iOS 17.0, *)
 private struct TimerLockScreenView: View {
     let context: ActivityViewContext<TimerActivityAttributes>
-    @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        let palette = WidgetPalette.forScheme(colorScheme)
+        // Pinned to the dark palette rather than read off \.colorScheme:
+        // the activityBackgroundTint below makes this card dark in every
+        // appearance, so light-scheme content would be black on #1C1C1E. See
+        // WidgetPalette.forScheme's own note.
+        let palette = WidgetPalette.dark
         HStack(spacing: 12) {
             Image(systemName: context.attributes.symbolName)
                 .font(.system(size: 17))
@@ -145,8 +148,9 @@ struct TimerLiveActivity: Widget {
                 .activitySystemActionForegroundColor(WidgetPalette.dark.text)
         } dynamicIsland: { context in
             // The island is always drawn on black regardless of system
-            // appearance, so this pins to the dark palette rather than
-            // reading \.colorScheme the way the Lock Screen view does.
+            // appearance, and the Lock Screen presentation above pins to the
+            // same palette for its own reason — so nothing in this file reads
+            // \.colorScheme.
             let palette = WidgetPalette.dark
 
             return DynamicIsland {
