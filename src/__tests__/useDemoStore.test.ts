@@ -1413,6 +1413,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(dinner.chainEnabled).toBe(true);
     expect(dinner.chainItems.map(c => c.title))
       .toEqual(['Cook Weeknight chicken stir-fry', 'Eat Weeknight chicken stir-fry']);
+    // Cook X's estimate is the recipe's own prep + cook time (stirFry: 15 + 20).
+    expect(dinner.chainItems.map(c => c.estimatedMinutes)).toEqual([35, null]);
     // Answered, so its link opens the day rather than the picker.
     expect(dinner.linkUrl).toBe('dundundun://mealplan?date=' + todayKey);
 

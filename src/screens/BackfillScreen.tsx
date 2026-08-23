@@ -7,6 +7,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
 import { SegmentedControl } from '../components/SegmentedControl';
@@ -138,13 +139,10 @@ export function BackfillScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader
-        title={field.label}
-        subtitle={sessionTotal > 0 ? `${doneCount} of ${sessionTotal} done` : undefined}
-        actions={[
-          { icon: 'list-outline', onPress: backToFields, accessibilityLabel: 'Choose a different field' },
-        ]}
-      />
+      <DetailHeader title={field.label} onBack={backToFields} backAccessibilityLabel="Back to fields" />
+      {sessionTotal > 0 && (
+        <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+      )}
 
       {current ? (
         <ScrollView
@@ -278,6 +276,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   fieldHint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: lineHeight.xs },
   fieldCount: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
   fieldCountDone: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+
+  progress: {
+    color: colors.textTertiary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+    textAlign: 'center',
+    paddingTop: spacing.sm,
+  },
 
   reviewContent: { paddingHorizontal: spacing.md, paddingTop: spacing.md, gap: spacing.lg },
   taskCard: {

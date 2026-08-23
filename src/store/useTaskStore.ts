@@ -70,6 +70,7 @@ import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
+import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
@@ -559,6 +560,7 @@ function writeMealSlotTasks(fromKey: string, toKey: string, slots: readonly Meal
   // above every section.
   ensureGeneratedTaskCategory('mealSlot');
   const category = useSettingsStore.getState().mealCookTaskCategory;
+  const recipes = useRecipeStore.getState().recipes;
 
   for (let dayKey = fromKey; dayKey <= toKey; dayKey = shiftDayKey(dayKey, 1)) {
     for (const slot of slots) {
@@ -582,8 +584,9 @@ function writeMealSlotTasks(fromKey: string, toKey: string, slots: readonly Meal
       // Already cooked before the pass ran — there is nothing left to do and
       // nothing to ask.
       if (entry?.cookedAt) continue;
+      const recipe = entry?.recipeId ? recipes.find(r => r.id === entry.recipeId) : undefined;
       useTaskStore.getState().addTask(
-        mealSlotTaskDraft(dayKey, slot, entry, category),
+        mealSlotTaskDraft(dayKey, slot, entry, category, recipe ? totalMinutes(recipe) : null),
         derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
         { skipCategoryDefault: true, skipTitleRules: true },
       );

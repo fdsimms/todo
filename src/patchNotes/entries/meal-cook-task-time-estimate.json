@@ -1,0 +1,4 @@
+{
+  "message": "Planning a meal from a recipe now gives its \"Cook X\" task the recipe's own prep + cook time as an estimate, instead of leaving it blank",
+  "date": "2026-08-23"
+}

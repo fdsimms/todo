@@ -30,6 +30,7 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { generateId } from '../utils/id';
 import { normalizeScale } from '../utils/recipeScale';
 import { mealCookCounts, type CookingWindow, type MealCookCounts } from '../utils/cookingStats';
+import { totalMinutes } from '../utils/recipeUtils';
 import {
   cleanMealTitle,
   entriesForSlot,
@@ -1223,6 +1224,13 @@ function liveCookTaskFor(entryId: string): Task | undefined {
   return liveGeneratedTask(useTaskStore.getState().tasks, 'mealCook', entryId);
 }
 
+/** The recipe's prep + cook time, for the Cook step of a slot's chain — read live, like `useUpOfferFor`. */
+function recipeMinutesFor(recipeId: string | null): number | null {
+  if (!recipeId) return null;
+  const recipe = recipeIndex(useRecipeStore.getState().recipes).get(recipeId);
+  return recipe ? totalMinutes(recipe) : null;
+}
+
 /** The live meal task for a day and a slot, if there is one. */
 function liveMealSlotTask(dayKey: string, slot: MealSlot): Task | undefined {
   return liveGeneratedTask(useTaskStore.getState().tasks, 'mealSlot', mealSlotSourceId(dayKey, slot));
@@ -1265,7 +1273,9 @@ function createMealSlotTask(get: () => MealPlanStore, entry: MealPlanEntry): voi
   ensureGeneratedTaskCategory('mealSlot');
   addTask(
     // Re-read after ensureGeneratedTaskCategory, which may have just filled it.
-    mealSlotTaskDraft(entry.date, entry.slot, entry, useSettingsStore.getState().mealCookTaskCategory),
+    mealSlotTaskDraft(
+      entry.date, entry.slot, entry, useSettingsStore.getState().mealCookTaskCategory, recipeMinutesFor(entry.recipeId)
+    ),
     derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
     { skipCategoryDefault: true, skipTitleRules: true },
   );
@@ -1306,7 +1316,7 @@ function reconcileMealSlot(get: () => MealPlanStore, entry: Pick<MealPlanEntry, 
     return;
   }
 
-  const updates = mealSlotDrift(live, dayKey, slot, current);
+  const updates = mealSlotDrift(live, dayKey, slot, current, recipeMinutesFor(current?.recipeId ?? null));
   // skipPostponeCount for reconcileGeneratedTask's reason: this row's date is
   // the slot's date, and dragging Tuesday's dinner to Friday is not the user
   // ducking anything.

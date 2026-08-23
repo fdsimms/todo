@@ -3,7 +3,8 @@ import { isMissed, isRealCompletion } from '../utils/missed';
 import { isTaskNew } from '../utils/visibilityUtils';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { emptyExtraTaskDraft } from '../utils/extraTask';
-import type { MealPlanEntry, MealSlot } from '../types';
+import type { MealPlanEntry, MealSlot, Recipe } from '../types';
+import { useRecipeStore } from '../store/useRecipeStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -3613,6 +3614,21 @@ describe('checkMealSlotTasks', () => {
     };
   }
 
+  function recipe(id: string, over: Partial<Recipe> = {}): Recipe {
+    return {
+      id, name: 'Chili', nameKey: 'chili', notes: '', sourceUrl: null, sourceName: null,
+      author: null, source: null, servings: null, servingsMax: null, recipeYield: null,
+      leftoverKeepDays: null, imagePath: null, mealType: null, tags: [], ingredients: [],
+      emptySections: [], components: [], prepTasks: [], steps: [], favorite: false, sortOrder: 1,
+      createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
+      estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
+      cookTimeCount: 0, totalCookMinutes: 0, sourceType: null, sourcePage: null, prepMinutes: null,
+      prepTimerStartedAt: null, prepTimerElapsedSeconds: 0, lastPrepMinutes: null, prepTimeCount: 0,
+      totalPrepMinutes: 0,
+      ...over,
+    };
+  }
+
   const slotRows = () =>
     useTaskStore.getState().tasks.filter(t => t.generatedKind === 'mealSlot');
   const sourceIds = () => slotRows().map(t => t.generatedSourceId);
@@ -3623,6 +3639,7 @@ describe('checkMealSlotTasks', () => {
     writtenThrough = null;
     setWrittenThrough.mockClear();
     (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
+    useRecipeStore.setState({ recipes: [] });
   });
 
   afterEach(() => { jest.useRealTimers(); });
@@ -3675,6 +3692,20 @@ describe('checkMealSlotTasks', () => {
     expect(friday.title).toBe('Chili');
     // And the nights around it are still the choosing question.
     expect(slotRows().find(t => t.generatedSourceId === '2026-08-24#dinner')!.title).toBe('Dinner');
+  });
+
+  it('carries the recipe\'s prep + cook time onto the Cook step', () => {
+    useRecipeStore.setState({ recipes: [recipe('r1', { estimatedMinutes: 20, prepMinutes: 15 })] });
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      mealEntry('2026-08-25', 'dinner', { recipeId: 'r1', title: 'Chili' }),
+    ]);
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['dinner'] }));
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealSlotTasks();
+
+    const friday = slotRows().find(t => t.generatedSourceId === '2026-08-25#dinner')!;
+    expect(friday.chainItems.map(c => c.estimatedMinutes)).toEqual([35, null]);
   });
 
   it('writes nothing for a meal that has said no', () => {
