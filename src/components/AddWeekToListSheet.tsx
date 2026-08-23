@@ -25,9 +25,11 @@ import {
   type PlanCategory,
 } from '../utils/mealPlanGroceries';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
+import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
 import { convertQuantity } from '../utils/unitConvert';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
+import { SubstituteSheet } from './SubstituteSheet';
 import { haptics } from '../utils/haptics';
 
 const CHECKBOX_SIZE = 22;
@@ -68,6 +70,13 @@ const defaultExpandedSections = (): Set<PlanCategory> => new Set<PlanCategory>([
  * quantity of a row that's already there, and "In your cart" is shown for
  * information but can't be toggled at all — it's already been dealt with
  * this trip.
+ *
+ * The row actions are RecipeToListSheet's, and they mean the same thing here:
+ * "Already have it" stamps the on-hand window through `addToPantry` (minting
+ * the catalog row when a week's recipes name something the app has never
+ * seen), and the substitutes marker opens SubstituteSheet on the lines you've
+ * recorded a stand-in for. A week's shop is where both matter most — it's the
+ * longest list either sheet ever shows.
  */
 export function AddWeekToListSheet({ visible, entries, recipesById, range, onClose }: Props) {
   const colors = useColors();
@@ -78,6 +87,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
   const items = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
+  const addToPantry = useGroceryStore(s => s.addToPantry);
   const stampAddedToList = useMealPlanStore(s => s.stampAddedToList);
 
   // The week's shop, with the user's standing swaps applied — see
@@ -96,6 +106,25 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
     for (const row of classified) out[row.category].push(row);
     return out;
   }, [classified]);
+
+  const itemsByKey = useMemo(() => new Map(items.map(i => [i.nameKey, i])), [items]);
+
+  // Which lines you've written a stand-in for, keyed the way the rows are.
+  // Same read RecipeToListSheet makes, and the same reason: `reason` below
+  // says "you have margarine" only for a substitute the pantry currently
+  // vouches for, and this is the wider "there's something written down here".
+  const substitutesByKey = useMemo(() => {
+    const out = new Map<string, Substitute[]>();
+    for (const row of classified) {
+      const item = itemsByKey.get(row.nameKey);
+      if (!item) continue;
+      const subs = substitutesFor(item.id, itemSubs, items);
+      if (subs.length > 0) out.set(row.nameKey, subs);
+    }
+    return out;
+  }, [classified, itemsByKey, itemSubs, items]);
+
+  const [subsItemId, setSubsItemId] = useState<string | null>(null);
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(defaultExpandedSections);
@@ -134,6 +163,27 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
       else next.add(row.nameKey);
       return next;
     });
+  };
+
+  // RecipeToListSheet's, verbatim in behaviour: `addToPantry` rather than a
+  // bare `setOnHandUntil`, so a line the catalog has never seen mints its row
+  // instead of being the one line you can't say this about, and no undo is
+  // registered because shake-to-undo can't be reached while this sheet is up.
+  const markAlreadyHave = (row: ClassifiedIngredient) => {
+    const item = addToPantry(row.name, { registerUndo: false });
+    if (!item) { haptics.error(); return; }
+    haptics.success();
+    setTicked(prev => {
+      const next = new Set(prev);
+      next.delete(row.nameKey);
+      return next;
+    });
+    // Out of the baseline too: the assertion is already written, so Cancel
+    // must not offer to discard it. One key rather than a wholesale reset, so
+    // a tick the user changed by hand still counts as work worth asking about.
+    const baseline = new Set<string>(JSON.parse(tickedBaselineRef.current) as string[]);
+    baseline.delete(row.nameKey);
+    tickedBaselineRef.current = JSON.stringify([...baseline].sort());
   };
 
   // Same shape RecipeToListSheet's own handleCancel uses.
@@ -244,46 +294,81 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
                         // Under the name, because it qualifies the name — the
                         // row is the app's substitution, not the recipe's word.
                         const swapNote = row.swappedFrom ? describeStandingSwap(row.swappedFrom) : null;
+                        // Every Need to buy line, catalog row or not — see
+                        // markAlreadyHave.
+                        const canMarkHave = category === 'needToBuy';
+                        const subs = substitutesByKey.get(row.nameKey);
                         return (
                           <React.Fragment key={row.nameKey}>
                             {i > 0 && <View style={styles.sep} />}
-                            <TouchableOpacity
-                              style={styles.row}
-                              activeOpacity={interactive ? interaction.activeOpacity : 1}
-                              onPress={interactive ? () => toggle(row) : undefined}
-                              disabled={!interactive}
-                              accessibilityRole="checkbox"
-                              accessibilityState={{ checked: on, disabled: !interactive }}
-                              accessibilityLabel={
-                                [row.name, swapNote, shownQuantity, subtitle, !interactive ? 'already in your cart' : null]
-                                  .filter(Boolean)
-                                  .join(', ')
-                              }
-                            >
-                              <View style={[
-                                styles.checkbox,
-                                on && styles.checkboxOn,
-                                !interactive && styles.checkboxDisabled,
-                              ]}>
-                                {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-                              </View>
-                              <View style={styles.body}>
-                                <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={1}>
-                                  {row.name}
-                                </Text>
-                                {!!swapNote && (
-                                  <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
-                                )}
-                                {!!subtitle && (
-                                  <Text style={styles.sources} numberOfLines={1}>{subtitle}</Text>
-                                )}
-                              </View>
-                              {!!shownQuantity && (
-                                <View style={styles.qtyPill}>
-                                  <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
+                            <View style={styles.row}>
+                              <TouchableOpacity
+                                style={styles.rowMain}
+                                activeOpacity={interactive ? interaction.activeOpacity : 1}
+                                onPress={interactive ? () => toggle(row) : undefined}
+                                disabled={!interactive}
+                                accessibilityRole="checkbox"
+                                accessibilityState={{ checked: on, disabled: !interactive }}
+                                accessibilityLabel={
+                                  [row.name, swapNote, shownQuantity, subtitle, !interactive ? 'already in your cart' : null]
+                                    .filter(Boolean)
+                                    .join(', ')
+                                }
+                              >
+                                <View style={[
+                                  styles.checkbox,
+                                  on && styles.checkboxOn,
+                                  !interactive && styles.checkboxDisabled,
+                                ]}>
+                                  {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
                                 </View>
+                                <View style={styles.body}>
+                                  <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={1}>
+                                    {row.name}
+                                  </Text>
+                                  {!!swapNote && (
+                                    <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
+                                  )}
+                                  {!!subtitle && (
+                                    <Text style={styles.sources} numberOfLines={1}>{subtitle}</Text>
+                                  )}
+                                </View>
+                                {!!shownQuantity && (
+                                  <View style={styles.qtyPill}>
+                                    <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
+                                  </View>
+                                )}
+                              </TouchableOpacity>
+                              {!!subs && (
+                                <TouchableOpacity
+                                  style={styles.subsButton}
+                                  activeOpacity={interaction.activeOpacity}
+                                  onPress={() => {
+                                    haptics.tap();
+                                    const item = itemsByKey.get(row.nameKey);
+                                    if (item) setSubsItemId(item.id);
+                                  }}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Substitutes for ${row.name}: ${describeSubstitutes(subs)}`}
+                                >
+                                  <Ionicons name="swap-horizontal" size={iconSize.sm} color={colors.accent} />
+                                  {subs.length > 1 && (
+                                    <Text style={styles.subsCount}>{subs.length}</Text>
+                                  )}
+                                </TouchableOpacity>
                               )}
-                            </TouchableOpacity>
+                              {canMarkHave && (
+                                <TouchableOpacity
+                                  style={styles.haveButton}
+                                  activeOpacity={interaction.activeOpacity}
+                                  onPress={() => markAlreadyHave(row)}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Already have ${row.name}, skip it and remember it for next time`}
+                                >
+                                  <Text style={styles.haveButtonText}>Already have it</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
                           </React.Fragment>
                         );
                       })}
@@ -300,6 +385,16 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
           </ScrollView>
         )}
       </View>
+
+      {/* Inside this Modal rather than beside it, the same nesting
+          GroceryItemSheet uses for its own: a Modal presents from the view
+          controller its React parent belongs to, so a sibling would ask the
+          screen's controller to present a second sheet while this one is up. */}
+      <SubstituteSheet
+        visible={subsItemId !== null}
+        itemId={subsItemId}
+        onClose={() => setSubsItemId(null)}
+      />
     </Modal>
   );
 }
@@ -349,9 +444,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  rowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.md,
     paddingVertical: 12,
-    paddingHorizontal: spacing.md,
   },
   checkbox: {
     width: CHECKBOX_SIZE,
@@ -379,4 +480,32 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     maxWidth: 110,
   },
   qtyText: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+  // Icon-sized rather than a second text pill: it sits beside "Already have
+  // it", and two labelled pills leave a long ingredient name nothing to be
+  // read in. The count only appears past one, where "2" is the whole point.
+  subsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  subsCount: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    color: colors.accent,
+  },
+  haveButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  haveButtonText: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
+    color: colors.textSecondary,
+  },
 });
