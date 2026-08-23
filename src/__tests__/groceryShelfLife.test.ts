@@ -214,4 +214,19 @@ describe('the open shelf life', () => {
     const salsa = item({ name: 'Salsa', shelfLifeDays: 90 });
     expect(expiresAtForOpening(salsa, NOW)).toBe('2026-08-20');
   });
+
+  // Milk bought a week ago with one day left on its sealed clock doesn't earn
+  // a fresh 7 days just because it got opened today — the sealed day is still
+  // sooner and still true, so opening must not hand back time it hasn't lost.
+  it('keeps the sooner day when the sealed one is still ahead', () => {
+    const milk = item({ name: 'Milk', expiresAt: '2026-08-14' });
+    expect(expiresAtForOpening(milk, NOW)).toBe('2026-08-14');
+  });
+
+  // The reverse still holds: when opening is the sooner day (a jar opened
+  // right after a generous purchase guess), the opened count wins.
+  it('takes the opened day when it is the sooner of the two', () => {
+    const salsa = item({ name: 'Salsa', expiresAt: '2026-09-01' });
+    expect(expiresAtForOpening(salsa, NOW)).toBe('2026-08-20');
+  });
 });

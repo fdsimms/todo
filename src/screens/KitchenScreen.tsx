@@ -109,7 +109,7 @@ import { resetToGroceries } from '../navigation/navigationRef';
  * header — the same one-bit assertion the item sheet's "Got it" pill writes,
  * one name or a whole session at a time. They exist because that correction
  * was unreachable for anything with no row yet: you can only open an item's
- * sheet from the list or from Buy again, so "I have flour" was unsayable until
+ * sheet from the list or from the catalog, so "I have flour" was unsayable until
  * flour had been bought through the app at least once. All of them add to the
  * pantry and never to the fridge; a container is something you cooked, which
  * is what `LeftoverSheet`'s log flow is for. Both scan sheets are shared with
@@ -224,10 +224,13 @@ export function KitchenScreen() {
         : buildKitchenRows(sections, {
             // Something to take back out of the freezer: with no fridge
             // section rendered, any container that's still live is in it.
-            fridge: entries.some(e => e.kind === 'leftover'),
-            freezer: entries.length > 0,
+            // Both suppressed while a search is narrowing the list — an empty
+            // target for a place the query just filtered out isn't a place to
+            // drag anything, it's a leftover from the unfiltered kitchen.
+            fridge: !query && entries.some(e => e.kind === 'leftover'),
+            freezer: !query && entries.length > 0,
           }),
-    [sections, entries, dropNonce]
+    [sections, entries, dropNonce, query]
   );
 
   // What to cook with what's dying. Off `useUpEntries` rather than the whole

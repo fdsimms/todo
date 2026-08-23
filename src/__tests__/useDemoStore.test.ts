@@ -804,7 +804,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const onList = items.filter(i => i.onList);
 
     expect(onList.length).toBeGreaterThan(5);
-    // Bought before but not on the list right now — what Buy again reads.
+    // Bought before but not on the list right now — what the catalog reads.
     expect(items.filter(i => !i.onList && i.inCatalog).length).toBeGreaterThan(0);
     // Mid-trip: something already in the trolley, so the finish sheet has work.
     expect(onList.some(i => i.checked)).toBe(true);

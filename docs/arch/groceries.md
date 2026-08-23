@@ -292,9 +292,9 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   has foreign keys off, so `ON DELETE CASCADE` would silently do nothing — same reason
   `dbBulkDeleteTasks` walks `parent_id` itself. Readers are resolve-or-shrug anyway
   (`shopsForItem` drops a link whose shop is gone), like every other cross-row pointer here.
-- **Manage stores in the setup sheet, browse them in Buy again.** The Stores tab of
+- **Manage stores in the setup sheet, browse them in the catalog.** The Stores tab of
   `GroceryAislesSheet` is add/rename/reorder/delete only; the "what does Costco carry" read is the
-  filter chip row in `BuyAgainSheet`, because that's the catalog browser and it's open exactly
+  filter chip row in `GroceryCatalogSheet`, because that's the catalog browser and it's open exactly
   when you're deciding what to buy where. **There is still no store chip on the shopping list
   rows** — the row is already dense, and a chip on every row is a column you can't act on. What
   a row can now carry is one quiet caption, and only while a trip is running: see below.
@@ -471,7 +471,7 @@ gesture onto it — that's the inventory again.
 - **The one write is `addToPantry`**, off the field at the top, and it writes the same assertion
   the item sheet's "Got it" pill writes (`defaultOnHandUntil`) on the same catalog row. It exists
   because that correction was *unreachable* for anything with no row yet — an item sheet opens
-  from the list or from Buy again, so "I have flour" was unsayable until flour had been bought
+  from the list or from the catalog, so "I have flour" was unsayable until flour had been bought
   through the app once. One bit, the one the pills already own; the things it deliberately doesn't
   record are how much and until when.
 - **It never touches `onList`.** Saying you have something is not a plan to buy it. It promotes
@@ -515,7 +515,7 @@ gesture onto it — that's the inventory again.
 - **`GroceryItemSheet` and `LeftoverSheet` render as plain sibling `Modal`s under the screen**,
   the same way `GroceryScreen` renders its own item sheet — there's no outer `Modal` to nest inside
   of any more now that the kitchen is a screen rather than a sheet, so the nesting `KitchenSheet`
-  needed (and `BuyAgainSheet` still needs, being itself a `Modal`) doesn't apply here. Correcting a
+  needed (and `GroceryCatalogSheet` still needs, being itself a `Modal`) doesn't apply here. Correcting a
   row still drops you back into the list you were reading, because the screen underneath was never
   unmounted to begin with.
 
@@ -624,10 +624,14 @@ opened on Tuesday keeps a week from Tuesday.
   opening a bag of spinach restarts nothing — it was already exposed to the same air the fridge is
   full of. Produce, meat and bakery are absent on purpose, and `setOpened` leaves their day alone.
   Same whitelist restraint the first table runs on.
-- **It replaces the day; it does not take the earlier of the two.** "Only ever bring a deadline
-  forward" is the safer-sounding rule and is wrong here: a jar bought five weeks ago carries a day
-  that has long since passed, so the `min` is that passed day and opening would be inert in exactly
-  the case the feature exists for. Opening is *new information* about a jar the old guess wrote off.
+- **It takes the earlier of the two days — unless the old one has already passed, in which case it
+  replaces it.** "Only ever bring a deadline forward" is the safer-sounding rule, and it's *nearly*
+  right: milk with one day left on its sealed clock doesn't earn a fresh week just because it got
+  opened today, so the sealed day wins while it's still ahead of the open lexicon's count. But a
+  jar bought five weeks ago carries a day that has long since passed, and the `min` of that and
+  "today plus 7" is still the passed day — opening would be inert in exactly the case the feature
+  exists for. Past that point it's stale information rather than a real deadline, so opening is
+  free to replace it: *new information* about a jar the old guess had written off.
 - **The opening is recorded even when it changes nothing**, and the row says "opened 12 Aug" either
   way. Only the date is conditional on the lexicon knowing the name.
 - **`shelfLifeDays` is not consulted.** That field means "this one keeps N days once bought", which
@@ -834,11 +838,32 @@ plumbing through the recipes JSON blob.
   lives in one helper because the shelf (#1567) and the recipe row (#1573) want the same
   sentence.
 - **Authoring is the ask, not the field.** Links are hand-authored, and nobody
-  hand-authors data for a caption they've never seen, so `SubstituteSheet` (opened from
-  the field's "Add substitute") is the funnel and `GroceryItemSheet`'s field is where you
-  *review* what you already answered. Deliberately **not** `RecipeIngredientSheet`, which
-  owns `choiceGroup` — putting substitutes there is how the two merge into one confused
-  control.
+  hand-authors data for a caption they've never seen, so `SubstituteSheet` is the funnel
+  and `GroceryItemSheet`'s field is where you *review* what you already answered.
+  Deliberately **not** `RecipeIngredientSheet`, which owns `choiceGroup` — putting
+  substitutes there is how the two merge into one confused control.
+- **Suggestions are asked for, never fetched on open.** They were, on the
+  grounds that opening the sheet was itself the ask — true while the only door
+  was the field's "Add substitute". The swap glyph landing here ended it: half
+  the opens are now someone reaching for an answer they recorded months ago, and
+  each was spending a request on a proposal nobody asked for. "Suggest
+  alternatives" is the ask now, in both doors. The key and the feature switch
+  still gate the button's existence, so "no key, no traffic" reads the same.
+- **The grocery row's swap glyph opens that sheet directly**, and its "already recorded"
+  section is why. It used to open `GroceryItemSheet` with `initialField: 'substitutes'` —
+  a ~900-line editor scrolled to one collapsed field, in answer to a one-line question
+  asked from a list you're standing in a shop holding. The sheet already knew the item's
+  existing links (it filters them out of the picker), so showing them is the whole
+  difference between the funnel and an answer.
+- **"Use instead" is the one action on those rows, and it's opt-in per host.** It applies
+  `swapForSubstitute` to the list row — which until then was reachable only by tapping the
+  "Not at Safeway · or margarine" caption, so it needed an active trip at a shop marked as
+  not stocking the item, and was simply unavailable to someone who just found the shelf
+  empty. It renders only where the host passed `onSwap` (`GroceryScreen`), because the
+  same sheet opens from the item sheet and both recipe sheets over items that aren't on a
+  list at all. Tapping the row *body* reviews the link instead: two readings of "tap a
+  substitute", so two targets, and the item sheet's field — where only one reading is
+  possible — keeps its whole-row tap.
 - **The expanded field is rows, not a `PillGroup`**, unlike Aisle/Stores/Pantry beside
   it. A pill can only express membership, and a substitute also carries a note and a
   direction — with pills you'd tap each lit one to find out whether it says anything at

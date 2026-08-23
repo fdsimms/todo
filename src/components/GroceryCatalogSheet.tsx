@@ -24,7 +24,7 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { buyAgainItems, catalogPruneCandidates, rankGrocerySuggestions } from '../utils/grocerySuggest';
+import { rankedCatalogItems, catalogPruneCandidates, rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { itemIdsForShop, itemCountsByShop, primaryShopFor } from '../utils/groceryShops';
 import { formatPrice, describePriceContext, lastPriceFor } from '../utils/groceryPrice';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -44,14 +44,16 @@ interface Props {
 }
 
 /**
- * Everything you've bought before that isn't on the list right now, best-first.
- *
- * This is what the catalog is *for*: a weekly shop is mostly the same forty
- * things, and picking them off a ranked list beats typing them. Selection is a
- * local Set rather than useTaskSelection — that hook is Task-typed, and
- * generifying it for one caller costs more than the twenty lines here.
+ * The grocery catalog: every known item that isn't on the list right now, not
+ * only what's been bought — search and the store filter also reach items
+ * added by hand and never purchased (a substitute typed once, say). The
+ * default, unfiltered view ranks by purchase history, best-first, which is
+ * what the sheet is *for*: a weekly shop is mostly the same forty things, and
+ * picking them off a ranked list beats typing them. Selection is a local Set
+ * rather than useTaskSelection — that hook is Task-typed, and generifying it
+ * for one caller costs more than the twenty lines here.
  */
-export function BuyAgainSheet({ visible, onClose }: Props) {
+export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -139,7 +141,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
         .filter(s => !s.onList)
         .map(s => s.item);
     }
-    return buyAgainItems(scoped, now);
+    return rankedCatalogItems(scoped, now);
   }, [query, scoped, now]);
 
   // Deliberately over `items` and not `scoped`: the prune offer is about the
@@ -267,7 +269,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
       <View style={styles.root}>
         <View style={styles.header}>
           <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
-          <Text style={styles.headerTitle}>Buy again</Text>
+          <Text style={styles.headerTitle}>Grocery catalog</Text>
           <SheetHeaderButton
             label={selected.size > 0 ? `Add ${selected.size}` : 'Add'}
             onPress={handleAdd}
@@ -282,7 +284,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
             style={styles.search}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search everything you've bought"
+            placeholder="Search your grocery catalog"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
             autoCapitalize="none"
@@ -349,7 +351,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
           ListEmptyComponent={
             <EmptyState
               icon="basket-outline"
-              title={query.trim() ? 'Nothing matches' : 'Nothing to buy again yet'}
+              title={query.trim() ? 'Nothing matches' : 'Nothing in your catalog yet'}
               subtitle={
                 shopFilter
                   ? 'Everything you buy at this store is already on the list.'

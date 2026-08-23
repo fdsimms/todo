@@ -265,7 +265,7 @@ describe('product strictness', () => {
     expect(exclusiveShopFor(strict(), links, SHOPS)).toEqual(costco);
   });
 
-  it('leaves the store out of the Buy again filter and its count', () => {
+  it('leaves the store out of the catalog filter and its count', () => {
     const milk = strict();
     const links = [noneHere(safeway.id)];
     expect(itemIdsForShop(safeway.id, links, [milk])).toEqual(new Set());

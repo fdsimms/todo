@@ -47,8 +47,8 @@ type Tab = 'aisles' | 'stores' | 'groupBy';
  * The tabs share a sheet because they're the same kind of setting and the
  * grocery header has no room for another 34pt action (this one used to be
  * two tabs for exactly that reason; a third only extends the argument). The
- * split of labour with Buy again is deliberate — **this sheet manages
- * stores, Buy again browses them.** Putting the "what does Costco carry"
+ * split of labour with the catalog is deliberate — **this sheet manages
+ * stores, the catalog browses them.** Putting the "what does Costco carry"
  * list here too would bury the everyday read two taps inside a settings
  * sheet, when the place you want it is the screen where you're picking what
  * to buy.
@@ -430,7 +430,7 @@ function StoresTab({
     <>
       <Text style={styles.intro}>
         The places you shop. Naming one when you finish a trip is what records which store has
-        which items — you can then filter Buy again by store.
+        which items — you can then filter the catalog by store.
       </Text>
 
       <ReorderableList

@@ -1,6 +1,6 @@
 import {
   rankGrocerySuggestions,
-  buyAgainItems,
+  rankedCatalogItems,
   buildGrocerySections,
   buildGroceryRecipeSections,
   catalogPruneCandidates,
@@ -165,15 +165,15 @@ describe('rankGrocerySuggestions', () => {
   });
 });
 
-// ─── buyAgainItems ───────────────────────────────────────────────────────────
+// ─── rankedCatalogItems ────────────────────────────────────────────────────
 
-describe('buyAgainItems', () => {
+describe('rankedCatalogItems', () => {
   it('never offers something already on the list', () => {
     const items = [
       makeItem({ name: 'Milk', onList: true, purchaseCount: 30 }),
       makeItem({ name: 'Bread', purchaseCount: 1 }),
     ];
-    expect(buyAgainItems(items, NOW).map(i => i.name)).toEqual(['Bread']);
+    expect(rankedCatalogItems(items, NOW).map(i => i.name)).toEqual(['Bread']);
   });
 
   it('ranks staples ahead of one-offs', () => {
@@ -181,7 +181,7 @@ describe('buyAgainItems', () => {
       makeItem({ name: 'Anchovy paste', purchaseCount: 1, lastPurchasedAt: daysAgo(120) }),
       makeItem({ name: 'Milk', purchaseCount: 30, lastPurchasedAt: daysAgo(4) }),
     ];
-    expect(buyAgainItems(items, NOW)[0].name).toBe('Milk');
+    expect(rankedCatalogItems(items, NOW)[0].name).toBe('Milk');
   });
 });
 

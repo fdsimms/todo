@@ -341,7 +341,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
             {selected.length > 1
               ? `You'll get one task per store — ${selectedNames}.`
               : startNow
-                ? 'Sets the store you’re at. Nothing goes on Today.'
+                ? 'Sets the store you’re at.'
                 : 'You’ll get a task on Today that opens straight back here.'}
           </Text>
 

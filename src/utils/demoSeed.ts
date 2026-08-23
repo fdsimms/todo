@@ -1301,7 +1301,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   const amazon = newShop('Amazon');
   setShopExcludedFromSuggestions(amazon.id, true);
 
-  // Three finished trips, so Buy again and the autocomplete ranking have a
+  // Three finished trips, so the catalog and the autocomplete ranking have a
   // real spread of purchase counts to sort by rather than a flat list of ones.
   // Finishing a trip promotes what was on it into the catalog, records the
   // purchase against the store, and takes it off the list.

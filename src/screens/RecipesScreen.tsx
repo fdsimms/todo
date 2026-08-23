@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { Recipe } from '../types';
+import type { Recipe, RecipeMealType } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRowSelection } from '../hooks/useRowSelection';
@@ -28,6 +28,15 @@ import type { RecipeInputMode } from '../components/RecipeSourcePicker';
 import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
 import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
 import { Fab, FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
+import {
+  FabDropZone,
+  FabDropZoneProvider,
+  useFabIntentChannel,
+  useFabIntentSelector,
+  type FabDropZonesHandle,
+  type FabIntentChannel,
+} from '../components/FabDropZones';
+import { type DragScroller, type DropZone, type FabDropIntent } from '../utils/fabDrop';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
 import { SwipeableRow } from '../components/SwipeableRow';
@@ -83,6 +92,10 @@ import { groceryNameKey } from '../utils/groceryParse';
  * favorites-first), so a drop that doesn't cross a header boundary is a
  * no-op: the list re-settles to its favorites-first order instead of keeping
  * wherever the row was released.
+ *
+ * The add button can be dragged into a section too, same FabDropZoneProvider
+ * wiring ProjectsScreen uses over its own category-sectioned list — see the
+ * comment above the button's drag handlers, below.
  */
 
 /** "tagged x, y" / "favorited" / "tagged x, y and favorited" — for the empty state. */
@@ -91,6 +104,38 @@ function describeActiveFilters(tagFiltering: boolean, activeTags: string[], favo
   if (tagFiltering) parts.push(`tagged ${formatTagList(activeTags)}`);
   if (favoritesOnly) parts.push('favorited');
   return parts.join(' and ');
+}
+
+/** What the drag label should read for a given drop target — see the button's drag handlers below. */
+function recipeDropLabel(intent: FabDropIntent | null): string | null {
+  if (intent === null) return null;
+  if (intent.kind === 'cancel') return 'Cancel';
+  if (intent.kind === 'insert') return intent.category ? `New recipe in ${intent.category}` : 'New recipe';
+  return 'New recipe';
+}
+
+// The add button, naming what a release right now would do — mirrors
+// AddProjectFabWithDropLabel (ProjectsScreen.tsx). Two variants because the
+// button itself is either a Fab or a FabMenu, depending on whether an
+// Anthropic key unlocks the import options.
+function AddRecipeFabWithDropLabel({
+  channel,
+  ...props
+}: {
+  channel: FabIntentChannel;
+} & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
+  const label = useFabIntentSelector(channel, recipeDropLabel);
+  return <Fab {...props} dragLabel={label} />;
+}
+
+function AddRecipeFabMenuWithDropLabel({
+  channel,
+  ...props
+}: {
+  channel: FabIntentChannel;
+} & Omit<React.ComponentProps<typeof FabMenu>, 'dragLabel'>) {
+  const label = useFabIntentSelector(channel, recipeDropLabel);
+  return <FabMenu {...props} dragLabel={label} />;
 }
 
 export function RecipesScreen() {
@@ -168,48 +213,6 @@ export function RecipesScreen() {
     else setAddVisible(true);
   }, []);
 
-  // ——— Dragging the add button off its corner ————————————————————————————
-  //
-  // Same button-drag gesture as the other list-screen FABs (Projects,
-  // Templates, Today, Grocery), but with nothing underneath for it to target:
-  // the recipe box is deliberately flat and unordered (see the box comment
-  // above), so there's no row or category for a drop to name the way those
-  // screens' FabDropZoneProvider does. A drag here only ever answers one
-  // question — did it come back to the corner? — which is exactly the `home`
-  // state Fab's own PanResponder already tracks, so no drop-zone plumbing is
-  // needed to answer it. Landing anywhere else commits to the plain "New
-  // recipe" action, the same one closest to the button in the menu, skipping
-  // the import items the way a task drag skips straight to a plain task rather
-  // than reopening the chain/stack/template menu.
-  const [fabDragActive, setFabDragActive] = useState(false);
-  const [dragCanceling, setDragCanceling] = useState(false);
-
-  const fabDrag: FabDragHandlers = {
-    onStart: () => {
-      setFabDragActive(true);
-      setDragCanceling(false);
-    },
-    onMove: (_pageY, home) => {
-      const canceling = home === 'returned';
-      setDragCanceling(prev => (prev === canceling ? prev : canceling));
-    },
-    onEnd: (_pageY, home) => {
-      setFabDragActive(false);
-      setDragCanceling(false);
-      if (home === 'returned') {
-        haptics.tap();
-        return;
-      }
-      setAddVisible(true);
-    },
-    onCancel: () => {
-      setFabDragActive(false);
-      setDragCanceling(false);
-    },
-  };
-
-  const fabDragLabel = fabDragActive ? (dragCanceling ? 'Cancel' : 'New recipe') : null;
-
   // The whole box's vocabulary, and the counts beside each chip. Derived from
   // the recipes rather than stored (see Recipe.tags), so the row holds exactly
   // the tags that are on something right now.
@@ -229,7 +232,7 @@ export function RecipesScreen() {
   const activeFilterCount = (recipeSort !== 'default' ? 1 : 0) + (recipeFavoritesOnly ? 1 : 0);
 
   const visible = useMemo(() => {
-    // Filter, then rank — the same order BuyAgainSheet's store filter uses.
+    // Filter, then rank — the same order GroceryCatalogSheet's store filter uses.
     // Ranking a filtered set is the same function over fewer rows; filtering a
     // ranked one would be a second pass over work already done.
     const byTag = filterRecipesByTags(recipes, activeTags);
@@ -270,6 +273,79 @@ export function RecipesScreen() {
     grouped?.forEach(section => map.set(section.mealType ?? '', section.data.length));
     return map;
   }, [grouped]);
+
+  // Every row of `draggableData` as a target for the add button being dragged
+  // in, plus the mealType a drop on it means — the nearest header's, same
+  // nearest-header-above rule resolveRecipeMealTypeDrop applies to a settled
+  // row drag. Built alongside the DropZone (rather than deriving the mealType
+  // back out of a plain `category` string on the intent, the way Projects'
+  // category already doubles as the field it writes) because a section's
+  // display title and its mealType are two different values here.
+  const dropTargetsByKey = useMemo(() => {
+    const map = new Map<string, { zone: DropZone; mealType: RecipeMealType | null }>();
+    let currentMealType: RecipeMealType | null = null;
+    let currentTitle: string | null = null;
+    draggableData.forEach(item => {
+      const key = recipeListItemKey(item);
+      if (item.type === 'header') {
+        currentMealType = item.mealType;
+        currentTitle = item.title;
+        map.set(key, { zone: { kind: 'header', key, category: item.title }, mealType: item.mealType });
+      } else {
+        map.set(key, { zone: { kind: 'task', key, category: currentTitle }, mealType: currentMealType });
+      }
+    });
+    return map;
+  }, [draggableData]);
+
+  // ——— Dragging the add button into a section ————————————————————————————
+  //
+  // Same FabDropZoneProvider/FabDropZone wiring ProjectsScreen uses over its
+  // own category-sectioned list: no stacks or pinning here either, so a drop
+  // means a meal-type section and nothing more. Only available while grouped
+  // (see the box comment above) — search and the flat, ungrouped view have no
+  // sections to land on, so the provider only wraps the grouped ReorderableList
+  // below and a drop anywhere else resolves to `plain`, same as tapping the
+  // button. Landing on a section commits to the plain "New recipe" action (the
+  // one closest to the button in the menu, skipping the import items — a task
+  // drag skips straight to a plain task the same way) and seeds the new
+  // recipe's mealType with it. Recipes have no manual order within a section,
+  // so unlike Projects there's no splicing to do: the mealType write alone is
+  // enough for the row to settle into place once the store round-trips back
+  // through groupRecipesByMealType.
+  const dropZonesRef = useRef<FabDropZonesHandle>(null);
+  const [fabDragging, setFabDragging] = useState(false);
+  const scrollControl = useRef<DragScroller | null>(null);
+  const fabIntentChannel = useFabIntentChannel();
+  // The mealType a drop landed on, read once the recipe comes back from the
+  // name sheet. Left at null for a plain drop or the Untagged section — a
+  // freshly created recipe already has mealType: null, so there's nothing to
+  // write in either case.
+  const pendingMealTypeRef = useRef<RecipeMealType | null>(null);
+
+  const fabDrag: FabDragHandlers = {
+    onStart: () => {
+      setFabDragging(true);
+      dropZonesRef.current?.begin();
+    },
+    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
+    onEnd: (pageY, home) => {
+      setFabDragging(false);
+      const intent = dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' as const };
+      if (intent.kind === 'cancel') {
+        haptics.tap();
+        return;
+      }
+      pendingMealTypeRef.current = intent.kind === 'insert'
+        ? (dropTargetsByKey.get(intent.anchorKey)?.mealType ?? null)
+        : null;
+      setAddVisible(true);
+    },
+    onCancel: () => {
+      setFabDragging(false);
+      dropZonesRef.current?.cancel();
+    },
+  };
 
   // Computed once for the visible list rather than per row render — same
   // classifyPlanned pass RecipeToListSheet/AddWeekToListSheet already run,
@@ -327,8 +403,11 @@ export function RecipesScreen() {
 
   const createRecipe = (name: string) => {
     setAddVisible(false);
+    const mealType = pendingMealTypeRef.current;
+    pendingMealTypeRef.current = null;
     const recipe = addRecipe(name);
     if (recipe) {
+      if (mealType !== null) setMealType(recipe.id, mealType);
       haptics.success();
       navigation.navigate('RecipeDetail', { recipeId: recipe.id });
       return;
@@ -557,37 +636,49 @@ export function RecipesScreen() {
               bottomOffset={tabBarHeight}
             />
           ) : grouped ? (
-            <ReorderableList
-              data={draggableData}
-              keyExtractor={recipeListItemKey}
-              renderItem={({ item, drag, isActive }) => {
-                if (item.type === 'header') {
-                  return (
+            <FabDropZoneProvider
+              ref={dropZonesRef}
+              onIntentChange={fabIntentChannel.publish}
+              scroller={scrollControl}
+            >
+              <ReorderableList
+                data={draggableData}
+                keyExtractor={recipeListItemKey}
+                // The user can't scroll during an add-button drag (the
+                // button's responder has the touch); the drag scrolls it
+                // instead, through scrollControl above.
+                scrollEnabled={!fabDragging}
+                scrollControlRef={scrollControl}
+                renderItem={({ item, drag, isActive }) => {
+                  // Every row doubles as a target for the add button being
+                  // dragged in — see dropTargetsByKey above.
+                  const zone = isActive ? null : dropTargetsByKey.get(recipeListItemKey(item))?.zone ?? null;
+                  const row = item.type === 'header' ? (
                     <View style={styles.sectionHeader}>
                       <Text style={styles.sectionHeaderText}>{item.title}</Text>
                       <Text style={styles.sectionHeaderCount}>{sectionCounts.get(item.mealType ?? '') ?? 0}</Text>
                     </View>
-                  );
+                  ) : renderRecipe({ item: item.recipe, drag: selectionMode ? undefined : drag, isActive });
+                  return <FabDropZone zone={zone}>{row}</FabDropZone>;
+                }}
+                onHoverChange={haptics.dragTick}
+                // Row 0 is always a header (groupRecipesByMealType never emits
+                // an empty section) — see the note on resolveRecipeMealTypeDrop.
+                // Keeping it off-limits means every recipe row always has a
+                // header above it to read a mealType from.
+                dragRange={(data, _activeIndex) => [1, data.length - 1]}
+                placeholderStyle={styles.dropSlot}
+                onReorder={reordered => {
+                  const { mealTypeUpdates, settled } = resolveRecipeMealTypeDrop(reordered);
+                  setDraggableData(settled);
+                  mealTypeUpdates.forEach(u => setMealType(u.id, u.mealType));
+                }}
+                contentContainerStyle={styles.list}
+                ListFooterComponent={
+                  <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
                 }
-                return renderRecipe({ item: item.recipe, drag: selectionMode ? undefined : drag, isActive });
-              }}
-              onHoverChange={haptics.dragTick}
-              // Row 0 is always a header (groupRecipesByMealType never emits
-              // an empty section) — see the note on resolveRecipeMealTypeDrop.
-              // Keeping it off-limits means every recipe row always has a
-              // header above it to read a mealType from.
-              dragRange={(data, _activeIndex) => [1, data.length - 1]}
-              placeholderStyle={styles.dropSlot}
-              onReorder={reordered => {
-                const { mealTypeUpdates, settled } = resolveRecipeMealTypeDrop(reordered);
-                setDraggableData(settled);
-                mealTypeUpdates.forEach(u => setMealType(u.id, u.mealType));
-              }}
-              contentContainerStyle={styles.list}
-              ListFooterComponent={
-                <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
-              }
-            />
+              />
+            </FabDropZoneProvider>
           ) : (
             <FlatList
               data={visible}
@@ -606,23 +697,23 @@ export function RecipesScreen() {
       {/* The bulk bar sits where the button does, and adding a recipe isn't
           something you're doing mid-selection anyway. */}
       {!selectionMode && (anthropicApiKey ? (
-        <FabMenu
+        <AddRecipeFabMenuWithDropLabel
+          channel={fabIntentChannel}
           items={addMenuItems}
           onSelect={handleAddMenuSelect}
           accessibilityLabel="Add recipe"
           bottom={insets.bottom + tabBarHeight + spacing.md}
           drag={fabDrag}
-          dragHint="Drag off the button to add a recipe, or back to it to cancel"
-          dragLabel={fabDragLabel}
+          dragHint="Drag onto a section to add a recipe there, or back to the button to cancel"
         />
       ) : (
-        <Fab
+        <AddRecipeFabWithDropLabel
+          channel={fabIntentChannel}
           onPress={() => { haptics.tap(); setAddVisible(true); }}
           accessibilityLabel="Add recipe"
           bottom={insets.bottom + tabBarHeight + spacing.md}
           drag={fabDrag}
-          dragHint="Drag off the button to add a recipe, or back to it to cancel"
-          dragLabel={fabDragLabel}
+          dragHint="Drag onto a section to add a recipe there, or back to the button to cancel"
         />
       ))}
 
@@ -651,7 +742,7 @@ export function RecipesScreen() {
         visible={addVisible}
         placeholder="Recipe name"
         onSubmit={createRecipe}
-        onClose={() => setAddVisible(false)}
+        onClose={() => { setAddVisible(false); pendingMealTypeRef.current = null; }}
       />
 
       <RecipeCreateSheet

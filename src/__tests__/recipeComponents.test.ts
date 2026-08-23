@@ -672,7 +672,7 @@ describe('either/or ingredients', () => {
   it('keeps each alternative a clean catalog name — never the "or" string', () => {
     const r = salsa();
     // The point of the whole feature: what reaches the grocery list is a real
-    // item key, so it can match a purchase and rank in Buy again.
+    // item key, so it can match a purchase and rank in the catalog.
     expect(activeIngredients(r).map(i => i.nameKey)).toEqual(['tomatoes', 'serrano']);
     expect(r.ingredients.some(i => i.name.toLowerCase().includes(' or '))).toBe(false);
   });

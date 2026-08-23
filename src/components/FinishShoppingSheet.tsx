@@ -458,7 +458,7 @@ export function FinishShoppingSheet({
               <Ionicons name="storefront-outline" size={iconSize.md} color={colors.textTertiary} />
               <Text style={styles.emptyText}>
                 No stores yet. Add one and this trip gets filed against it — after a trip or two,
-                Buy again can show you what each store carries.
+                the catalog can show you what each store carries.
               </Text>
             </View>
           )}

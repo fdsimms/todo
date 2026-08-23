@@ -3,7 +3,7 @@
 // reading it start to finish:
 //
 //   ==== <name> ====        the section banners through the logic half
-//   subCaption, makeStyles  helpers and styles, at the bottom
+//   makeStyles              styles, at the bottom
 //
 // The open-ended pill grids here go through PillGroup, which caps itself past
 // eight; see docs/arch/groceries.md for what aisles, shops and substitutes mean.
@@ -49,7 +49,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { editorSearchTerms, matchesEditorQuery, filterEditorRows, type EditorSearchable } from '../utils/editorSearch';
 import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
-import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
+import { describeSubstituteLink, describeSubstitutes, substitutesFor } from '../utils/itemSubs';
 import { SubstituteSheet } from './SubstituteSheet';
 import { ProductSheet } from './ProductSheet';
 import {
@@ -892,7 +892,7 @@ export function GroceryItemSheet({
               // The rating first, then the note, then the count: one line of
               // qualifications under the name, in the order they'd change a
               // decision. Two lines of tertiary grey under every row reads as
-              // a paragraph — the same call subCaption makes below.
+              // a paragraph — the same call describeSubstituteLink makes.
               const meta = [
                 product.rating ? RATING_LABELS[product.rating] : null,
                 product.note || null,
@@ -1207,8 +1207,8 @@ export function GroceryItemSheet({
                   {/* The note and the direction share one sub-line: they're
                       both qualifications of the name above, and two lines of
                       tertiary grey under every row reads as a paragraph. */}
-                  {!!subCaption(sub) && (
-                    <Text style={styles.subMeta} numberOfLines={1}>{subCaption(sub)}</Text>
+                  {!!describeSubstituteLink(sub) && (
+                    <Text style={styles.subMeta} numberOfLines={1}>{describeSubstituteLink(sub)}</Text>
                   )}
                 </View>
                 <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
@@ -1651,7 +1651,7 @@ export function GroceryItemSheet({
       </View>
 
       {/* Rendered inside this Modal rather than beside it, for the reason
-          BuyAgainSheet nests this sheet: a Modal presents from the view
+          GroceryCatalogSheet nests this sheet: a Modal presents from the view
           controller its React parent belongs to, so a sibling would be asking
           the screen's controller to present a second sheet while this one is
           already up. */}
@@ -1689,22 +1689,6 @@ export function GroceryItemSheet({
  * saying because the link is directional, without it there's no way to tell a
  * pair the user ticked from one they didn't, short of opening the other item.
  */
-function subCaption(sub: Substitute): string | null {
-  const ratio = sub.link.ratioFrom && sub.link.ratioTo
-    ? `${sub.link.ratioFrom} → ${sub.link.ratioTo}`
-    : null;
-  // First, and stated as what it does rather than as a setting's name: it's
-  // the one thing in this row that changes what a recipe shops for, so a
-  // reader skimming the field has to meet it before the caveats.
-  const parts = [
-    sub.link.standing ? 'always used instead' : null,
-    ratio,
-    sub.link.note,
-    sub.isMutual ? 'both ways' : null,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(' · ') : null;
-}
-
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },

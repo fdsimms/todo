@@ -1,0 +1,4 @@
+{
+  "message": "Marking an item as opened no longer pushes its use-by date later when the sealed date was still sooner",
+  "date": "2026-08-23"
+}

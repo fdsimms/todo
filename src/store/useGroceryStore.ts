@@ -82,7 +82,7 @@ import {
  * One array of rows: `onList` decides what's on the list right now, and a row
  * that comes off the list stays in memory as catalog. Adding a name that's
  * already known flips `onList` instead of inserting — that single behaviour
- * (addByName below) is what gives autocomplete, Buy again and dedupe.
+ * (addByName below) is what gives autocomplete, the catalog and dedupe.
  *
  * `inCatalog` is the second axis, and it's what stops the catalog filling with
  * things that were never really yours: a name typed for the first time is

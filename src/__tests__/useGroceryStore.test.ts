@@ -352,7 +352,7 @@ describe('addByName', () => {
   });
 
   // The whole point of keeping the product out of the name: re-adding the item
-  // — by hand, from Buy again, or from a recipe that calls for the plain
+  // — by hand, from the catalog, or from a recipe that calls for the plain
   // ingredient — must not lose which one the user actually wants.
   it('keeps an established preference across a re-add', () => {
     const item = useGroceryStore.getState().addByName('cottage cheese');
@@ -1011,7 +1011,7 @@ describe('list membership', () => {
     expect(useGroceryStore.getState().items.every(i => i.onList)).toBe(true);
   });
 
-  // Issue #1085: Buy again's bulk re-add registers an undo scoped to exactly
+  // Issue #1085: the catalog's bulk re-add registers an undo scoped to exactly
   // what it added, same as a recipe or a single add.
   it('addExistingMany registers an undo that puts exactly what it added back off the list', () => {
     const milk = makeItem({ name: 'Milk', onList: false });

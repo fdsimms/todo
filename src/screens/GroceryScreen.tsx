@@ -39,7 +39,8 @@ import {
   type FabDropIntent,
 } from '../utils/fabDrop';
 import { GroceryRow } from '../components/GroceryRow';
-import { BuyAgainSheet } from '../components/BuyAgainSheet';
+import { GroceryCatalogSheet } from '../components/GroceryCatalogSheet';
+import { SubstituteSheet } from '../components/SubstituteSheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
@@ -172,7 +173,7 @@ export function GroceryScreen() {
   // ==== local state (the sheets this screen opens, selection, editing) ====
   const [cartOpen, setCartOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
-  const [buyAgainOpen, setBuyAgainOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const [aislesOpen, setAislesOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -203,12 +204,8 @@ export function GroceryScreen() {
   >(null);
   const [tripOpen, setTripOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // Which field the item sheet should open pre-expanded to — the swap glyph's
-  // whole point is skipping the ellipsis-then-scroll-to-Substitutes path an
-  // ordinary open leaves at null.
-  const [editingInitialField, setEditingInitialField] = useState<
-    'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | null
-  >(null);
+  // The item whose substitutes are being looked at, from the row's swap glyph.
+  const [substitutesForId, setSubstitutesForId] = useState<string | null>(null);
   const [aiMode, setAiMode] = useState<GroceryAIMode | null>(null);
   const [recipeSourceOpen, setRecipeSourceOpen] = useState(false);
   const [recipeToAdd, setRecipeToAdd] = useState<Recipe | null>(null);
@@ -614,14 +611,15 @@ export function GroceryScreen() {
 
   const handleEdit = useCallback((id: string) => {
     haptics.tap();
-    setEditingInitialField(null);
     setEditingId(id);
   }, []);
 
+  // Straight to the substitutes sheet, not to the item sheet scrolled at its
+  // Substitutes field: the glyph asks one question, and the editor around that
+  // field is not the answer to it.
   const handleOpenSubstitutes = useCallback((id: string) => {
     haptics.tap();
-    setEditingInitialField('substitutes');
-    setEditingId(id);
+    setSubstitutesForId(id);
   }, []);
 
   // "Not at Safeway · or margarine", tapped — see storeMarkers above and
@@ -672,7 +670,7 @@ export function GroceryScreen() {
   // action shows and the difference between the two chips is a sentence inside
   // it. Deleting from the catalog is a catalog job and has two homes on the
   // catalog surfaces: "Forget" on a single item's sheet, and "Forget" over a
-  // selection in Buy again. This screen is the shopping list, where the answer
+  // selection in the catalog. This screen is the shopping list, where the answer
   // to "I don't want this here" is Remove.
 
   // The confirm is a sheet rather than an Alert because it now carries a store
@@ -944,9 +942,9 @@ export function GroceryScreen() {
     const list: ScreenHeaderAction[] = [];
     list.push({
       icon: 'basket-outline',
-      onPress: () => setBuyAgainOpen(true),
+      onPress: () => setCatalogOpen(true),
       disabled: selectionMode,
-      accessibilityLabel: 'Buy again',
+      accessibilityLabel: 'Browse your grocery catalog',
     });
     list.push({
       icon: 'options-outline',
@@ -984,7 +982,7 @@ export function GroceryScreen() {
     if (recipes.length > 0 || anthropicApiKey) {
       list.push({ key: 'recipe', label: 'From a recipe', icon: 'restaurant-outline' });
     }
-    list.push({ key: 'buyAgain', label: 'Buy again', icon: 'basket-outline' });
+    list.push({ key: 'catalog', label: 'Browse catalog', icon: 'basket-outline' });
     // In the add menu rather than the header, and unconditional. The header is
     // already five actions wide, and this is an add: it's the one entry point
     // that has to work with an empty list, since unpacking a shop you never
@@ -1002,7 +1000,7 @@ export function GroceryScreen() {
       else if (recipes.length === 1 && !anthropicApiKey) setRecipeToAdd(recipes[0]);
       else setRecipeSourceOpen(true);
     }
-    else if (key === 'buyAgain') setBuyAgainOpen(true);
+    else if (key === 'catalog') setCatalogOpen(true);
     else if (key === 'scan') setScanOpen(true);
     else setAddOpen(true);
   }, [recipes, anthropicApiKey]);
@@ -1257,11 +1255,11 @@ export function GroceryScreen() {
             title="Nothing on the list"
             subtitle={
               catalogCount > 0
-                ? 'Everything you’ve bought before is a tap away, or start typing and it’ll come up.'
+                ? 'Everything in your catalog is a tap away, or start typing and it’ll come up.'
                 : 'Tap + to add what you need. Paste a whole list and each line becomes an item.'
             }
-            actionLabel={catalogCount > 0 ? 'Buy again' : 'Add an item'}
-            onAction={catalogCount > 0 ? () => setBuyAgainOpen(true) : () => setAddOpen(true)}
+            actionLabel={catalogCount > 0 ? 'Browse catalog' : 'Add an item'}
+            onAction={catalogCount > 0 ? () => setCatalogOpen(true) : () => setAddOpen(true)}
             bottomOffset={tabBarHeight}
           />
         }
@@ -1316,7 +1314,7 @@ export function GroceryScreen() {
         seedAisle={addSeedAisle}
         onAdded={handleItemsAdded}
       />
-      <BuyAgainSheet visible={buyAgainOpen} onClose={() => setBuyAgainOpen(false)} />
+      <GroceryCatalogSheet visible={catalogOpen} onClose={() => setCatalogOpen(false)} />
       <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
       <FinishShoppingSheet
         visible={finishOpen}
@@ -1359,17 +1357,20 @@ export function GroceryScreen() {
         onStart={handleStartTrip}
         intent="start"
       />
+      <SubstituteSheet
+        visible={substitutesForId !== null}
+        itemId={substitutesForId}
+        onSwap={subId => {
+          if (substitutesForId) handleSwapForSubstitute(substitutesForId, subId);
+        }}
+        onClose={() => setSubstitutesForId(null)}
+      />
       <GroceryItemSheet
         visible={editingId !== null}
         itemId={editingId}
-        initialField={editingInitialField ?? undefined}
-        onClose={() => {
-          setEditingId(null);
-          setEditingInitialField(null);
-        }}
+        onClose={() => setEditingId(null)}
         onOpenRecipe={recipeId => {
           setEditingId(null);
-          setEditingInitialField(null);
           openRecipe(recipeId);
         }}
         recipeExists={recipeId => recipeIds.has(recipeId)}

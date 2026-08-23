@@ -1,4 +1,5 @@
 import {
+  describeSubstituteLink,
   describeSubstitutes,
   describeSubstitutesOnHand,
   resolveShoppingSubstitutes,
@@ -130,6 +131,46 @@ describe('substituteForItems', () => {
   it('drops a link whose original is gone', () => {
     const links = [sub('deleted-row', margarine.id)];
     expect(substituteForItems(margarine.id, links, ITEMS)).toEqual([]);
+  });
+});
+
+describe('describeSubstituteLink', () => {
+  const one = (link: ItemSubLink) => substitutesFor(butter.id, [link], ITEMS)[0];
+
+  it('is silent when the name says everything', () => {
+    expect(describeSubstituteLink(one(sub(butter.id, margarine.id)))).toBeNull();
+  });
+
+  it('leads with what the caller knows about having it', () => {
+    expect(
+      describeSubstituteLink(one(sub(butter.id, margarine.id, { note: 'Fine for frying' })), 'always have it')
+    ).toBe('always have it · Fine for frying');
+  });
+
+  it('puts the standing swap ahead of the caveats, as what it does', () => {
+    expect(
+      describeSubstituteLink(
+        one(sub(butter.id, margarine.id, { standing: true, note: 'Fine for frying' }))
+      )
+    ).toBe('always used instead · Fine for frying');
+  });
+
+  it('names a ratio only when both halves are set', () => {
+    expect(
+      describeSubstituteLink(one(sub(butter.id, margarine.id, { ratioFrom: '1 cup', ratioTo: '1 cup' })))
+    ).toBe('1 cup → 1 cup');
+    expect(
+      describeSubstituteLink(one(sub(butter.id, margarine.id, { ratioFrom: '1 cup' })))
+    ).toBeNull();
+  });
+
+  it('reports the reverse row rather than a stored flag', () => {
+    const both = substitutesFor(
+      butter.id,
+      [sub(butter.id, margarine.id), sub(margarine.id, butter.id)],
+      ITEMS
+    )[0];
+    expect(describeSubstituteLink(both)).toBe('both ways');
   });
 });
 

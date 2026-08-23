@@ -1150,7 +1150,7 @@ export interface TaskTemplate {
 // says "I intend to buy this", `checked` says "it's in the trolley", and
 // finishing a trip clears both rather than deleting anything. That's what
 // makes the second "Milk" a toggle instead of a duplicate, and what gives
-// autocomplete and Buy again something to rank.
+// autocomplete and the catalog something to rank.
 //
 // Deliberately not a Task: a task is an occurrence you complete once, so
 // modelling groceries as tasks floods Inbox/Unscheduled (neither predicate has
@@ -1284,7 +1284,7 @@ export interface GroceryItem {
   // first time is `false` — provisional — and taking it off the list deletes it
   // instead of parking it, whether that's a removal, a finished trip that
   // bought it, or a clear that abandoned it. Invariant: !onList implies
-  // inCatalog, which is what lets Buy again and the pruner keep reading the
+  // inCatalog, which is what lets the catalog view and the pruner keep reading the
   // whole off-list set.
   inCatalog: boolean;
   sortOrder: number;
@@ -2235,7 +2235,7 @@ export const RECIPE_SECTION_MAX_LENGTH = 40;
 // A GroceryItem is a forever-row carrying purchase counters that earned a place
 // in the catalog; "1 tsp smoked paprika" has not, and minting a catalog row for
 // every ingredient at *authoring* time is exactly what the provisional
-// `inCatalog` axis exists to prevent. It would also poison the Buy again and
+// `inCatalog` axis exists to prevent. It would also poison the catalog and
 // autocomplete rankings, which are scored on purchase history such a row would
 // never have.
 //

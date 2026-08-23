@@ -299,7 +299,6 @@ export function ProjectsScreen() {
         accessibilityLabel={`${project.title}, ${progress.done} of ${progress.total} done`}
         accessibilityHint="Double tap to view tasks in this project. Long press to reorder."
       >
-        <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
         <View style={styles.projectInfo}>
           <View style={styles.projectTitleRow}>
             <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
