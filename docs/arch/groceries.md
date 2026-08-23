@@ -787,11 +787,32 @@ plumbing through the recipes JSON blob.
   lives in one helper because the shelf (#1567) and the recipe row (#1573) want the same
   sentence.
 - **Authoring is the ask, not the field.** Links are hand-authored, and nobody
-  hand-authors data for a caption they've never seen, so `SubstituteSheet` (opened from
-  the field's "Add substitute") is the funnel and `GroceryItemSheet`'s field is where you
-  *review* what you already answered. Deliberately **not** `RecipeIngredientSheet`, which
-  owns `choiceGroup` — putting substitutes there is how the two merge into one confused
-  control.
+  hand-authors data for a caption they've never seen, so `SubstituteSheet` is the funnel
+  and `GroceryItemSheet`'s field is where you *review* what you already answered.
+  Deliberately **not** `RecipeIngredientSheet`, which owns `choiceGroup` — putting
+  substitutes there is how the two merge into one confused control.
+- **Suggestions are asked for, never fetched on open.** They were, on the
+  grounds that opening the sheet was itself the ask — true while the only door
+  was the field's "Add substitute". The swap glyph landing here ended it: half
+  the opens are now someone reaching for an answer they recorded months ago, and
+  each was spending a request on a proposal nobody asked for. "Suggest
+  alternatives" is the ask now, in both doors. The key and the feature switch
+  still gate the button's existence, so "no key, no traffic" reads the same.
+- **The grocery row's swap glyph opens that sheet directly**, and its "already recorded"
+  section is why. It used to open `GroceryItemSheet` with `initialField: 'substitutes'` —
+  a ~900-line editor scrolled to one collapsed field, in answer to a one-line question
+  asked from a list you're standing in a shop holding. The sheet already knew the item's
+  existing links (it filters them out of the picker), so showing them is the whole
+  difference between the funnel and an answer.
+- **"Use instead" is the one action on those rows, and it's opt-in per host.** It applies
+  `swapForSubstitute` to the list row — which until then was reachable only by tapping the
+  "Not at Safeway · or margarine" caption, so it needed an active trip at a shop marked as
+  not stocking the item, and was simply unavailable to someone who just found the shelf
+  empty. It renders only where the host passed `onSwap` (`GroceryScreen`), because the
+  same sheet opens from the item sheet and both recipe sheets over items that aren't on a
+  list at all. Tapping the row *body* reviews the link instead: two readings of "tap a
+  substitute", so two targets, and the item sheet's field — where only one reading is
+  possible — keeps its whole-row tap.
 - **The expanded field is rows, not a `PillGroup`**, unlike Aisle/Stores/Pantry beside
   it. A pill can only express membership, and a substitute also carries a note and a
   direction — with pills you'd tap each lit one to find out whether it says anything at

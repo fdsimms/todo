@@ -1,0 +1,4 @@
+{
+  "message": "Substitute suggestions are now behind a \"Suggest alternatives\" button instead of loading as soon as the sheet opens, so looking up a substitute you already recorded doesn't cost an AI request.",
+  "date": "2026-08-23"
+}

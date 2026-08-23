@@ -1,0 +1,4 @@
+{
+  "message": "The swap button on a grocery row now opens the substitutes sheet itself instead of the whole item editor. Anything you've already recorded is listed at the top, with a Use instead button that puts it on the list in place of the original.",
+  "date": "2026-08-23"
+}
