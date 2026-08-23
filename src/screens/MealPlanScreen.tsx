@@ -25,6 +25,7 @@ import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { InlineAction } from '../components/InlineAction';
 import { SegmentedControl } from '../components/SegmentedControl';
+import { PeriodNav } from '../components/PeriodNav';
 import { WeekPlanOverview } from '../components/WeekPlanOverview';
 import { MealSlotRow } from '../components/MealSlotRow';
 import { MealEntrySheet } from '../components/MealEntrySheet';
@@ -1426,9 +1427,10 @@ export function MealPlanScreen() {
   }, [weekShareText]);
 
   const headerActions = useMemo<ScreenHeaderAction[]>(() => {
+    // No week chevrons here: paging the week is PeriodNav's job, in its own
+    // row under the header (see the render). What's left is the three things
+    // you do *to* the week on screen rather than to pick which week that is.
     const actions: ScreenHeaderAction[] = [
-      { icon: 'chevron-back', onPress: () => page(-1), accessibilityLabel: 'Previous week' },
-      { icon: 'chevron-forward', onPress: () => page(1), accessibilityLabel: 'Next week' },
       {
         icon: copiedWeek ? 'checkmark' : 'copy-outline',
         onPress: () => copyWeekText(weekShareText),
@@ -1537,9 +1539,11 @@ export function MealPlanScreen() {
   // ==== render. Everything below is JSX ====
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* No overline: the week range is PeriodNav's label below, and naming it
+          twice on the same screen is what a caption above the title becomes
+          once the arrows that move it are no longer beside the title. */}
       <ScreenHeader
         title="Meal plan"
-        overline={describeWeekRange(days)}
         subtitle={subtitle}
         actions={headerActions}
       />
@@ -1554,8 +1558,22 @@ export function MealPlanScreen() {
       )}
 
       {/*
-        A track, not a second row of pills. The hub's own pills sit directly
-        above it and *navigate*; these switch a lens on the week already on
+        Widest scope first: the hub pills above pick a section, this picks the
+        week, the track below picks a lens on it. Under the trip banner rather
+        than over it, so the two week controls stay adjacent when a trip is
+        running.
+      */}
+      <PeriodNav
+        label={describeWeekRange(days)}
+        onPrev={() => page(-1)}
+        onNext={() => page(1)}
+        prevAccessibilityLabel="Previous week"
+        nextAccessibilityLabel="Next week"
+      />
+
+      {/*
+        A track, not a second row of pills. The hub's own pills sit a couple of
+        rows above and *navigate*; these switch a lens on the week already on
         screen, and two rows of the same accent-filled pill would read as one
         confused eight-item row. A `SegmentedControl` is what the app reaches
         for to pick one of a small closed set, and `surface="page"` is what
