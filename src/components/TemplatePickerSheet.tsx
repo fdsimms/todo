@@ -19,6 +19,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
 import { groupTemplatesByCategory } from '../utils/templateGrouping';
 import type { TaskTemplate } from '../types';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -51,12 +52,14 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
     [templates, categoryOrder]
   );
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(600);
+      translateY.setValue(hiddenY);
       backdropOpacity.setValue(0);
       Animated.parallel([
         Animated.spring(translateY, {
@@ -76,7 +79,7 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
   const dismiss = (after?: () => void) => {
     Animated.parallel([
       Animated.spring(translateY, {
-        toValue: 700,
+        toValue: hiddenY,
         ...animation.spring.sheetDismiss,
         useNativeDriver: true,
       }),
@@ -86,7 +89,7 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
       after?.();
     });

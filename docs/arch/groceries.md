@@ -289,20 +289,38 @@ which rows you don't usually get here.
   watched you buy tahini anywhere is ignorance, not evidence. Marking those would caption most of
   the list on anyone's first trip, which is how the feature would come to read as noise. Same
   discipline as `shoppingTrip.ts`.
-- **The banner is a sibling of the list, not its `ListHeaderComponent`** — unlike
-  `StartTripPrompt`. A mode indicator that scrolls away is one you can't find to turn off, and
-  it's the answer to "why does this row say that" at the moment you're looking at the row. The two
-  never render together: the card is for deciding where to go, the banner says you've gone.
+- **The banner is a sibling of the list, not its `ListHeaderComponent`.** A mode indicator that
+  scrolls away is one you can't find to turn off, and it's the answer to "why does this row say
+  that" at the moment you're looking at the row. The two never render together: the card is for
+  deciding where to go, the banner says you've gone. `StartTripPrompt` is the list's header while
+  it is only an invitation, and is mounted up beside the banner instead once it carries a Finish
+  button — the end of a shop is not something to scroll back to the top for either.
 - **The banner is where a trip ends, and Finish outranks Stop on it.** It used to spend its only
   button — accent-filled, the one the eye goes to — on Clear, while finishing was reachable only
   from `bag-check-outline`, fifth in a row of header icons. That ranked the escape hatch above the
   action every trip actually ends in. Finish is the filled button now, full width under the store
   name and sized for a walking thumb; Stop (the old Clear, renamed because "clear" beside "finish"
   reads as *clear the list*, which is a different and real action) is the quiet pill beside it. The
-  header icon stays: it carries the cart badge, and it's where anyone already using this reaches.
-  The Finish button appears with the first ticked row and not before, which is what the header
-  action's `disabled` has always said — an empty cart has nothing to finish, and Stop is the honest
-  way out of one.
+  Finish button appears with the first ticked row and not before — an empty cart has nothing to
+  finish, and Stop is the honest way out of one.
+- **The header icon is gone, and a cart with no trip behind it is finished from `StartTripPrompt`.**
+  The badged `bag-check-outline` was the sixth icon in the Groceries header and the only way to
+  finish a shop nobody had started a trip for. A small target behind a non-obvious glyph is the
+  wrong home for the action every shop ends in, so the card above the list carries it instead: the
+  banner during a trip, `StartTripPrompt` outside one, both drawing the same filled
+  `Finish · N in cart` on the same first-ticked-row rule. **This still infers nothing** — a tick is
+  not a trip, no store is assumed, and no row gets marked up; the card only stops pretending the
+  cart is empty, and keeps offering "Start shopping" above the Finish button for anyone who does
+  want the store known. With no suggestable stores on file it is the Finish button alone, which is
+  the case that stops the card being gated on having stores at all.
+- **`StartTripPrompt` never names a store, and its tap always opens the sheet.** It used to read
+  "Start shopping at Safeway" and start that trip in one tap whenever exactly one store was on
+  file. On a card sitting there before anything has been said, that sentence reads as the app
+  asserting where you are rather than offering somewhere to go, and it is the wrong store the
+  moment a household has a second one. Naming a store is a claim, so it waits for the sheet, where
+  one is preselected (best coverage, else wherever the last trip ended), named, and changeable
+  before Start. Same rule as the row captions above: the card says only what it knows. It costs
+  the one-store household a tap, which is the trade.
 - **The three kitchen screens without a finish sheet route to the one that has it.** Recipes, Meal
   plan and Pantry pass `resetToGroceries(true)`, which lands on Groceries with a stamped
   `openFinish` param the screen turns into an open sheet — the same handoff `resetToMealPlan`'s

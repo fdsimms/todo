@@ -5,7 +5,7 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import type { Recipe, RecipeMealType } from '../types';
+import type { Leftover, Recipe, RecipeMealType } from '../types';
 import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
@@ -13,6 +13,7 @@ import { dayKeyOf } from '../utils/dateUtils';
 import { describeCookHistory, describePantryCoverage, describeRecipe, type PantryCoverage } from '../utils/recipeUtils';
 import { flattenRecipeIngredients, recipeMap, type FlatIngredient } from '../utils/recipeComponents';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
+import { describeLeftover, isPlannedPastKeepUntil, liveFreshnessOf } from '../utils/leftovers';
 import { convertQuantity } from '../utils/unitConvert';
 import {
   mergeMealSuggestions, mealIdeaRecipeDraft, mealTitleKey,
@@ -22,11 +23,23 @@ import { suggestMealIdeas, suggestMealIngredients, describeAIError } from '../se
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { freshnessColor } from './LeftoversCard';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
+
+/**
+ * A row Save can commit, in the order the days are handed out. The two the
+ * sheet ranks (`MealSuggestion`) plus the fridge, which sits outside that union
+ * on purpose: `mergeMealSuggestions` exists to keep an AI idea from displacing
+ * an owned recipe, and a container isn't in that argument at all — it's a meal
+ * that already exists, and it leads every list it appears in.
+ */
+type PickableSuggestion =
+  | MealSuggestion
+  | { kind: 'leftover'; key: string; leftover: Leftover };
 
 interface Props {
   visible: boolean;
@@ -41,6 +54,17 @@ interface Props {
    * over, so a recipe qualifying for both isn't shown twice.
    */
   cookAgainRecipes?: Recipe[];
+  /**
+   * The containers in the fridge this sheet may put on a night — already
+   * narrowed and ordered by `suggestableLeftovers`, so this sheet no more
+   * re-sorts them than it re-sorts `recipes`.
+   *
+   * They render above everything else and are assigned the earliest open
+   * nights, which is the whole point: a dinner that already exists and is
+   * counting down beats one that has to be cooked. See the fridge note on the
+   * component below.
+   */
+  leftovers?: readonly Leftover[];
   /**
    * The visible half of #1103's pantry signal — a recipe missing from this
    * map (rather than present with `total: 0`) just renders with no badge, so
@@ -78,6 +102,13 @@ interface Props {
   /** Empty dinners to fill; clamped into the MIN/MAX idea band by clampIdeaCount. */
   slotsToFill?: number;
   onPlan: (recipe: Recipe, dateKey: string) => void;
+  /**
+   * Puts a container on a night — the same `planMeal({ leftoverId, title })`
+   * write the fridge card's own plan action and its drag-onto-a-day make, so
+   * the entry this creates is indistinguishable from one made either of those
+   * ways. Omit it and the fridge section isn't rendered at all.
+   */
+  onPlanLeftover?: (leftover: Leftover, dateKey: string) => void;
   onClose: () => void;
 }
 
@@ -109,6 +140,15 @@ interface Props {
  * specific category hides the "NEW IDEAS" section rather than showing
  * ideas that don't belong to it.
  *
+ * **The fridge is read before the recipe box.** Live leftovers lead the sheet,
+ * in their own group, and a picked one takes the earliest open night. The sheet
+ * spent a long time answering "what could I cook this week" alone, which meant
+ * a fridge holding two containers and a week holding four empty nights got four
+ * proposals to cook and no mention of the two dinners already sitting there.
+ * Which containers, and in what order, is `suggestableLeftovers`' call, not
+ * this sheet's — including that a container the week already points at isn't
+ * offered again here.
+ *
  * Since #1063 it has a second, optional half: **AI-invented** meal ideas, for
  * when the offline ranking has little or nothing to offer. The two never mix
  * and never compete —
@@ -136,9 +176,9 @@ interface Props {
  * saves, and the row is retried the next time Save is pressed.
  */
 export function SuggestMealsSheet({
-  visible, recipes, cookAgainRecipes = [], pantryByRecipeId, openDays,
+  visible, recipes, cookAgainRecipes = [], leftovers = [], pantryByRecipeId, openDays,
   aiIdeasEnabled = false, plannedTitles, recentTitles, expiringItemHints = [], slotsToFill,
-  onPlan, onClose,
+  onPlan, onPlanLeftover, onClose,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -161,6 +201,8 @@ export function SuggestMealsSheet({
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
   const recipesById = useMemo(() => recipeMap(allRecipes), [allRecipes]);
+
+  // ==== picks, and the days they'd land on ====
 
   const [filter, setFilter] = useState<RecipeMealType | 'all'>('all');
   /** A recipe being previewed — read-only, doesn't touch `selected`. */
@@ -215,6 +257,15 @@ export function SuggestMealsSheet({
   // nothing to match them against, so they drop out rather than showing up
   // in every category.
   const filteredIdeas = filter === 'all' ? ideas : [];
+  // A container has no mealType either, and for a more basic reason than an
+  // idea does: it's a portion of something already cooked, not a dish in the
+  // box with a kind on it. Same treatment — a category filter hides the fridge
+  // rather than guessing which category last night's chilli belongs to.
+  const fridge = useMemo(
+    () => (onPlanLeftover ? leftovers : []),
+    [onPlanLeftover, leftovers],
+  );
+  const filteredLeftovers = filter === 'all' ? fridge : [];
 
   const suggestions = useMemo(
     () => mergeMealSuggestions(filteredRecipes, filteredIdeas),
@@ -224,12 +275,13 @@ export function SuggestMealsSheet({
   // (Cook again, then the pantry ranking, then ideas), so a pick made under
   // one category keeps its place — and its day assignment — if the filter
   // changes before Save is pressed.
-  const allSuggestions = useMemo(
+  const allSuggestions = useMemo<PickableSuggestion[]>(
     () => [
+      ...fridge.map(leftover => ({ kind: 'leftover' as const, key: `leftover:${leftover.id}`, leftover })),
       ...cookAgainRecipes.map(recipe => ({ kind: 'recipe' as const, key: `recipe:${recipe.id}`, recipe })),
       ...mergeMealSuggestions(recipes, ideas),
     ],
-    [cookAgainRecipes, recipes, ideas],
+    [fridge, cookAgainRecipes, recipes, ideas],
   );
 
   const noOpenNights = openDays.length === 0;
@@ -266,6 +318,8 @@ export function SuggestMealsSheet({
       return next;
     });
   };
+
+  // ==== the AI half: generating, dismissing, drafting a real recipe ====
 
   const generate = useCallback(async () => {
     setGenerating(true);
@@ -331,12 +385,14 @@ export function SuggestMealsSheet({
   }, [aisleOrder, addRecipe, allRecipes, addStructuredIngredients]);
 
   /**
-   * Commits every current pick: recipes plan straight away, ideas draft and
-   * save first. Walked in list order against `openDays` so the assignment
+   * Commits every current pick: containers and recipes plan straight away,
+   * ideas draft and save first. Walked in list order against `openDays` so the assignment
    * matches the preview `dayByKey` was already showing. A failed idea keeps
    * its pick (so Save can be pressed again to retry) and doesn't consume a
    * day; the sheet only closes once nothing is left failing.
    */
+  // ==== committing ====
+
   const handleSave = async () => {
     if (selected.size === 0) { onClose(); return; }
     setSaving(true);
@@ -347,7 +403,13 @@ export function SuggestMealsSheet({
     for (const item of toSave) {
       const day = openDays[dayIndex];
       if (!day) break;
-      if (item.kind === 'recipe') {
+      if (item.kind === 'leftover') {
+        // Guarded rather than asserted: the rows only exist when the callback
+        // does (see `fridge`), so this is the type narrowing, not a fallback.
+        onPlanLeftover?.(item.leftover, dayKeyOf(day));
+        newlyLanded.set(item.key, day);
+        dayIndex += 1;
+      } else if (item.kind === 'recipe') {
         onPlan(item.recipe, dayKeyOf(day));
         newlyLanded.set(item.key, day);
         dayIndex += 1;
@@ -386,6 +448,8 @@ export function SuggestMealsSheet({
   // flattenRecipeIngredients' callers use elsewhere (RecipeToListSheet,
   // AddWeekToListSheet). Resolved to the defaults: a preview isn't a shop, so
   // there's nothing to pick an alternative for.
+  // ==== the ingredient preview ====
+
   const previewGroups = useMemo(() => {
     if (!previewRecipe) return [];
     const flat = flattenRecipeIngredients(previewRecipe, recipesById, undefined, standingSwaps);
@@ -399,6 +463,74 @@ export function SuggestMealsSheet({
   }, [previewRecipe, recipesById, standingSwaps]);
 
   const openPreview = (recipe: Recipe) => { haptics.tap(); setPreviewRecipe(recipe); };
+
+  // ==== rows ====
+
+  /**
+   * A container in the fridge, drawn the way the fridge card draws one: a
+   * freshness dot and a tinted caption, so the same chilli reads the same on
+   * both surfaces. No preview button — a leftover has no ingredient list to
+   * open, and no pantry or cook-history signals for the same reason.
+   *
+   * The one thing this row says that the card doesn't is when a pick would
+   * land *after* the day the container should have been eaten by
+   * (`isPlannedPastKeepUntil`, the same call `LeftoverDragCard` makes over a
+   * day it's hovering). It informs and never refuses, exactly as it does
+   * there: a portion may be going in the freezer, or the keep-for was a guess.
+   */
+  const renderLeftoverRow = (leftover: Leftover) => {
+    const key = `leftover:${leftover.id}`;
+    const landedDay = landedOn.get(key);
+    const isSelected = selected.has(key);
+    const previewDay = dayByKey.get(key);
+    const day = landedDay ?? (isSelected ? previewDay : undefined);
+    const late = !!day && isPlannedPastKeepUntil(leftover, dayKeyOf(day));
+    // liveFreshnessOf, not freshnessOf: a frozen container's day is suspended,
+    // so tinting from it would glow red about food in no danger at all — the
+    // same call, and the same reason, as the fridge card's own rows.
+    const freshness = liveFreshnessOf(leftover);
+    const tint = late
+      ? colors.red
+      : freshness ? freshnessColor(freshness, colors) : colors.textTertiary;
+    // The dot always carries the freshness; the caption only carries it while
+    // it *is* the freshness caption. Once a pick turns it into "will land on
+    // Tuesday" the sentence has stopped being about the clock, and an orange
+    // one there reads as a warning about a day that's perfectly fine. Late is
+    // the exception, because then the day is exactly what's wrong with it.
+    const captionTint = late ? colors.red : day ? colors.textTertiary : tint;
+    const caption = landedDay
+      ? `Planned for ${format(landedDay, 'EEEE')}${late ? ' · past its use-by' : ''}`
+      : isSelected && previewDay
+        ? `Selected, will land on ${format(previewDay, 'EEEE')}${late ? ' · past its use-by' : ''}`
+        : describeLeftover(leftover);
+    const disabled = saving || !!landedDay || (!isSelected && capacityFull);
+    return (
+      <TouchableOpacity
+        style={[styles.row, !!landedDay && styles.rowDone, isSelected && !landedDay && styles.rowSelected]}
+        activeOpacity={interaction.activeOpacity}
+        onPress={() => toggleSelect(key)}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityState={{ disabled, selected: isSelected }}
+        accessibilityLabel={landedDay
+          ? `${leftover.title}, planned for ${format(landedDay, 'EEEE')}`
+          : `${isSelected ? 'Deselect' : 'Select'} ${leftover.title}, from the fridge. ${describeLeftover(leftover)}`}
+      >
+        {/* The dot carries the freshness on its own, so the caption is never
+            the only thing saying it — same pairing the fridge card makes. */}
+        <View style={[styles.dot, { backgroundColor: tint }]} />
+        <View style={styles.body}>
+          <Text style={styles.name} numberOfLines={1}>{leftover.title}</Text>
+          <Text style={[styles.meta, { color: captionTint }]} numberOfLines={1}>{caption}</Text>
+        </View>
+        <Ionicons
+          name={landedDay || isSelected ? 'checkmark-circle' : 'add-circle-outline'}
+          size={iconSize.md}
+          color={landedDay ? colors.green : isSelected ? colors.accent : disabled ? colors.textTertiary : colors.accent}
+        />
+      </TouchableOpacity>
+    );
+  };
 
   const renderRecipeRow = (recipe: Recipe) => {
     const key = `recipe:${recipe.id}`;
@@ -606,8 +738,13 @@ export function SuggestMealsSheet({
     );
   };
 
+  // ==== render ====
+
   const nothingAtAll = filter === 'all' && recipes.length === 0 && cookAgainRecipes.length === 0
-    && ideas.length === 0 && !aiIdeasEnabled;
+    && fridge.length === 0 && ideas.length === 0 && !aiIdeasEnabled;
+  // The fridge isn't counted here: a category filter hides it (see
+  // filteredLeftovers), so a fridge full of containers is no reason to tell
+  // someone their Breakfast filter matched something.
   const nothingForFilter = filter !== 'all'
     && filteredRecipes.length === 0 && filteredCookAgain.length === 0 && filteredIdeas.length === 0;
 
@@ -677,6 +814,20 @@ export function SuggestMealsSheet({
             keyboardShouldPersistTaps="handled"
             {...keyboardScroll.props}
           >
+            {/* The fridge leads, above the recipes and above the intro line
+                that explains them: a container is a dinner that already exists
+                and is the only one with a clock on it, so it's read before
+                anything that would have to be cooked. Same order the screen
+                behind this sheet puts LeftoversCard in, and for the same
+                reason. */}
+            {filteredLeftovers.length > 0 && (
+              <View style={styles.fridgeSection}>
+                <Text style={[styles.sectionHeader, styles.fridgeHeader]}>IN THE FRIDGE</Text>
+                {filteredLeftovers.map(leftover => (
+                  <React.Fragment key={`leftover:${leftover.id}`}>{renderLeftoverRow(leftover)}</React.Fragment>
+                ))}
+              </View>
+            )}
             {/* Recipes made often and made recently — kept separate from the
                 pantry ranking below rather than merged into it, since the two
                 rank by opposite signals (see cookAgainRecipes' own doc). */}
@@ -885,6 +1036,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   ideaSection: { marginTop: spacing.lg, paddingHorizontal: spacing.md, gap: spacing.sm },
   cookAgainSection: { paddingTop: spacing.md, gap: 2 },
   cookAgainHeader: { paddingHorizontal: spacing.md, marginBottom: spacing.xs },
+  fridgeSection: { paddingTop: spacing.md, paddingBottom: spacing.sm, gap: 2 },
+  fridgeHeader: { paddingHorizontal: spacing.md, marginBottom: spacing.xs },
+  // The same 8pt dot the fridge card uses, so one container reads the same on
+  // both surfaces.
+  dot: { width: 8, height: 8, borderRadius: 4 },
   sectionHeader: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,

@@ -15,7 +15,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
-import { PressableScale } from '../components/PressableScale';
+import { PeriodNav } from '../components/PeriodNav';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -239,23 +239,13 @@ export function CalendarScreen() {
         ]}
       />
 
-      <View style={styles.monthNav}>
-        <PressableScale
-          style={styles.navBtn}
-          onPress={() => stepMonth(-1)}
-          accessibilityLabel="Previous month"
-        >
-          <Ionicons name="chevron-back" size={20} color={colors.accent} />
-        </PressableScale>
-        <Text style={styles.monthLabel}>{format(displayMonth, 'MMMM yyyy')}</Text>
-        <PressableScale
-          style={styles.navBtn}
-          onPress={() => stepMonth(1)}
-          accessibilityLabel="Next month"
-        >
-          <Ionicons name="chevron-forward" size={20} color={colors.accent} />
-        </PressableScale>
-      </View>
+      <PeriodNav
+        label={format(displayMonth, 'MMMM yyyy')}
+        onPrev={() => stepMonth(-1)}
+        onNext={() => stepMonth(1)}
+        prevAccessibilityLabel="Previous month"
+        nextAccessibilityLabel="Next month"
+      />
 
       <View style={styles.calendar}>
         <View style={styles.dayHeaders}>
@@ -479,25 +469,6 @@ function makeStyles(colors: Colors) {
     container: {
       flex: 1,
       backgroundColor: colors.bg,
-    },
-    monthNav: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingBottom: spacing.xs,
-    },
-    navBtn: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    monthLabel: {
-      color: colors.text,
-      fontSize: font.md,
-      fontWeight: fontWeight.semibold,
     },
     calendar: {
       paddingHorizontal: spacing.md,

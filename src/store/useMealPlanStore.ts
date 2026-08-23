@@ -36,9 +36,11 @@ import {
   isKeyInRange,
   mealPlanPurgeCutoffKey,
   nextSortOrder,
+  recipeIndex,
   resolveBulkMoveTargets,
   shiftDayKey,
   sortMealEntries,
+  titleForEntry,
   weekCopyDrafts,
 } from '../utils/mealPlan';
 import { countPlannedSlots } from '../utils/mealPlanNudge';
@@ -111,6 +113,39 @@ export interface CookedOffer {
   scale: number;
 }
 
+/**
+ * The meal a just-ticked "Cook X" task left behind, and everything the log
+ * sheet needs to open on it — the subject of `LogLeftoversOffer`'s banner.
+ *
+ * **Set only from `setCookedPaired`, which is the task side of the tick.** The
+ * meal plan already puts "Log leftovers" on the entry's own sheet, and that
+ * placement is deliberate (see `MealPlanScreen.logLeftoversFor`: not every meal
+ * leaves any, so nothing about marking one cooked should assume it did). The
+ * task list had no such action at all — ticking "Cook Chili" off Today finished
+ * the cooking and said nothing about the two tubs on the counter, and the only
+ * way to record them was to go and find the meal on the plan. So this is that
+ * one action, reached from the side that was missing it.
+ *
+ * It's an offer rather than a sheet for exactly the reason the entry action is
+ * an action: a modal opening uninvited after every cooking is a second one
+ * chasing the ingredients question. `CookedOfferBanner` is the tier the app
+ * already settled on for this.
+ *
+ * Carried by value like `CookedOffer` beside it, plus the `entryId` that
+ * becomes `Leftover.sourceEntryId` — resolve-or-shrug, so the row being edited
+ * or deleted out from under it costs the pointer and nothing else.
+ *
+ * Session-only, same as `cookedOffer`: it's about a tap you just made.
+ */
+export interface LeftoverOffer {
+  entryId: string;
+  /** The meal's name as it was cooked, which is what the container gets called. */
+  title: string;
+  recipeId: string | null;
+  /** Which side of each either/or was made, so a losing component isn't offered. */
+  choices: string[];
+}
+
 interface MealPlanStore {
   /** Exactly the loaded window, in reading order. Never a superset. */
   entries: MealPlanEntry[];
@@ -152,6 +187,18 @@ interface MealPlanStore {
    * also what un-suppresses the restock banner behind it.
    */
   clearCookedOffer: () => void;
+
+  /**
+   * The meal a just-ticked cook task left behind — see `LeftoverOffer`.
+   *
+   * Ranked *behind* `cookedOffer` by the banner itself rather than by either
+   * screen, because two of these side by side is the noise the passive
+   * treatment exists to avoid, and the consumption question is the one that
+   * retires itself the moment it's answered.
+   */
+  leftoverOffer: LeftoverOffer | null;
+  /** Dismissed by hand, or once the log sheet it opened has been through. */
+  clearLeftoverOffer: () => void;
 
   /**
    * Reloads whatever window is currently loaded. Rides useTaskStore.initialize's
@@ -483,9 +530,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   initialized: false,
   lastAction: null,
   cookedOffer: null,
+  leftoverOffer: null,
 
   clearCookedOffer() {
     set({ cookedOffer: null });
+  },
+
+  clearLeftoverOffer() {
+    set({ leftoverOffer: null });
   },
 
   setLastAction(action) {
@@ -787,6 +839,11 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     dbUpdateMealPlanEntry(next);
     set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
     set({ cookedOffer: cooked ? useUpOfferFor(next) : null });
+    // Cleared in both directions, and set nowhere here: the leftovers offer
+    // belongs to the task side of the tick (see setCookedPaired). Clearing it
+    // on a plan-side tick is what stops a stale offer for last night's dinner
+    // outliving the meal it was about.
+    set({ leftoverOffer: null });
     // Ticking the meal ticks its task, and un-ticking un-ticks it. The
     // ping-pong this would otherwise cause is broken by the guard above plus
     // the one in completeTask: whichever side moves first has already written
@@ -825,6 +882,12 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       ? useRecipeStore.getState().recipes.find(r => r.id === entry.recipeId)
       : undefined;
     const before = recipe ? useRecipeStore.getState().markCooked(recipe.id) : null;
+
+    // After setCooked, which clears whatever was there — this is the one
+    // caller that puts something back. Read off the entry as it was resolved
+    // above rather than re-reading: the only field the write touched is
+    // cookedAt, and nothing here reads it.
+    if (cooked) set({ leftoverOffer: leftoverOfferFor(entry) });
 
     return () => {
       get().setCooked(id, !cooked);
@@ -1083,6 +1146,34 @@ function resolveEntry(get: () => MealPlanStore, id: string): MealPlanEntry | nul
  * `useRecipeStore` just below. A free-text meal has no recipe and so no
  * ingredients, which is not an error — just a meal with nothing to ask about.
  */
+/**
+ * What a just-cooked meal could leave in the fridge, or null because there is
+ * nothing to offer.
+ *
+ * Two meals are refused. One already *is* leftovers (`leftoverId`): eating a
+ * tub of chilli is what closes that container out, not what fills a new one,
+ * which is why the entry sheet swaps its "Log leftovers" row for "Finished the
+ * leftovers" on exactly this test. And one with no name at all has nothing to
+ * call the container — the store refuses a blank title anyway, so offering it
+ * would be a banner leading to a button that can't be pressed.
+ *
+ * The parts and the keep-for window are deliberately *not* resolved here. They
+ * come from the recipe, which the banner reads live for the same reason
+ * `useUpOfferFor`'s rows are recomputed rather than snapshotted: a recipe
+ * edited between the tick and the tap should be read as it now stands.
+ */
+function leftoverOfferFor(entry: MealPlanEntry): LeftoverOffer | null {
+  if (entry.leftoverId) return null;
+  const title = titleForEntry(entry, recipeIndex(useRecipeStore.getState().recipes));
+  if (!title.trim()) return null;
+  return {
+    entryId: entry.id,
+    title,
+    recipeId: entry.recipeId,
+    choices: entry.recipeChoices,
+  };
+}
+
 function useUpOfferFor(entry: MealPlanEntry): CookedOffer | null {
   if (!entry.recipeId) return null;
   const recipes = useRecipeStore.getState().recipes;

@@ -26,6 +26,7 @@ import {
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -81,7 +82,9 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const kind = task.deliverableKind ?? 'text';
   const meta = deliverableMeta(kind);
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   // Bottom-anchored, same edge the keyboard docks to — without this the
   // autofocused field raises a keyboard straight over the sheet. Same fix
@@ -114,7 +117,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
 
   useEffect(() => {
     if (!visible) return;
-    translateY.setValue(600);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     // Seeded from whatever's already there, which matters more than it looks:
     // un-completing a task keeps its answer, so re-ticking it shouldn't ask the
@@ -134,10 +137,10 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const dismiss = (after: () => void) => {
     Keyboard.dismiss();
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       after();
     });
   };

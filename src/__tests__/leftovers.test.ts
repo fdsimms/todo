@@ -18,6 +18,7 @@ import {
   isPlannedPastKeepUntil,
   keepDaysBetween,
   keepUntilKeyFor,
+  leftoverContainersFor,
   leftoverKeepDaysFor,
   leftoverPurgeCutoff,
   liveFreshnessOf,
@@ -28,6 +29,7 @@ import {
   needsAttention,
   outcomeCounts,
   sortLeftovers,
+  suggestableLeftovers,
   WHOLE_PART_KEY,
 } from '../utils/leftovers';
 import { recipeMap } from '../utils/recipeComponents';
@@ -348,6 +350,39 @@ describe('attentionLeftovers', () => {
   });
 });
 
+describe('suggestableLeftovers', () => {
+  it('offers every live container, not only the urgent ones', () => {
+    const fine = aged(0, 6, { id: 'fine' });
+    const soon = aged(2, 3, { id: 'soon' });
+    // attentionLeftovers would drop `fine`; filling a night is a different
+    // question from nudging about waste.
+    expect(suggestableLeftovers([fine, soon]).map(l => l.id)).toEqual(['soon', 'fine']);
+  });
+
+  it('leaves out what has already been closed out', () => {
+    const live = aged(1, 4, { id: 'live' });
+    const eaten = aged(1, 4, { id: 'eaten', finishedAt: NOW.toISOString(), outcome: 'eaten' });
+    expect(suggestableLeftovers([live, eaten]).map(l => l.id)).toEqual(['live']);
+  });
+
+  it('leaves out a container the week already points at', () => {
+    const planned = aged(0, 2, { id: 'planned' });
+    const spare = aged(0, 5, { id: 'spare' });
+    expect(suggestableLeftovers([planned, spare], ['planned']).map(l => l.id)).toEqual(['spare']);
+  });
+
+  it('files the frozen ones last, since nothing is counting down on them', () => {
+    const frozen = aged(20, 2, { id: 'frozen', frozenAt: new Date(2026, 6, 26).toISOString() });
+    const fresh = aged(0, 4, { id: 'fresh' });
+    expect(suggestableLeftovers([frozen, fresh]).map(l => l.id)).toEqual(['fresh', 'frozen']);
+  });
+
+  it('caps the shelf, keeping the most urgent end of it', () => {
+    const list = [aged(0, 1), aged(0, 2), aged(0, 3), aged(0, 4)];
+    expect(suggestableLeftovers(list, [], 2).map(l => l.id)).toEqual([list[0].id, list[1].id]);
+  });
+});
+
 describe('describeAge / describeKeepUntil / describeLeftover', () => {
   it('names the day it went in', () => {
     expect(describeAge(aged(0, 3), NOW)).toBe('In the fridge today');
@@ -590,6 +625,40 @@ describe('leftoverPartsFor', () => {
     expect(leftoverPartsFor('Steak', steak, byId).map(p => p.title)).toEqual(['Steak', 'Mash']);
     expect(leftoverPartsFor('Steak', steak, byId, { chosen: [roastLink.id] }).map(p => p.title))
       .toEqual(['Steak', 'Roast potatoes']);
+  });
+});
+
+
+describe('leftoverContainersFor', () => {
+  const steak = { title: 'Steak', recipeId: 'r1' };
+  const mash = { title: 'Mash', recipeId: 'r2' };
+
+  it('is one unfrozen container per part for the fridge', () => {
+    expect(leftoverContainersFor([steak, mash], 'fridge')).toEqual([
+      { title: 'Steak', recipeId: 'r1', frozen: false },
+      { title: 'Mash', recipeId: 'r2', frozen: false },
+    ]);
+  });
+
+  it('is one frozen container per part for the freezer', () => {
+    expect(leftoverContainersFor([steak, mash], 'freezer')).toEqual([
+      { title: 'Steak', recipeId: 'r1', frozen: true },
+      { title: 'Mash', recipeId: 'r2', frozen: true },
+    ]);
+  });
+
+  it('doubles each part for both, keeping the pair adjacent and the fridge first', () => {
+    expect(leftoverContainersFor([steak, mash], 'both')).toEqual([
+      { title: 'Steak', recipeId: 'r1', frozen: false },
+      { title: 'Steak', recipeId: 'r1', frozen: true },
+      { title: 'Mash', recipeId: 'r2', frozen: false },
+      { title: 'Mash', recipeId: 'r2', frozen: true },
+    ]);
+  });
+
+  it('is empty for nothing ticked, whatever the destination', () => {
+    expect(leftoverContainersFor([], 'both')).toEqual([]);
+    expect(leftoverContainersFor([], 'fridge')).toEqual([]);
   });
 });
 
