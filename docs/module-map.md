@@ -229,6 +229,7 @@ render, so listing them adds lines without adding answers.
 - `src/hooks/useRecipeImportSource.ts` — ResolvedRecipeSource, alertPhotoAccessDenied, useRecipeImportSource
 - `src/hooks/useRecipeTimer.ts` — RecipeTimerBinding, useRecipeTimer
 - `src/hooks/useRowSelection.ts` — useRowSelection
+- `src/hooks/useSheetHiddenOffset.ts` — useSheetHiddenOffset
 - `src/hooks/useTaskSelection.ts` — useTaskSelection
 
 ## `src/db`

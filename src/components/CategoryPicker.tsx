@@ -35,6 +35,7 @@ import {
   resolveCategorySubmit,
   type CategoryOption,
 } from '../utils/categoryPicker';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface ListProps {
   /**
@@ -263,7 +264,9 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { height: windowHeight } = useWindowDimensions();
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   /**
    * The sheet is bottom-anchored, so a short list sits behind the keyboard the
@@ -294,7 +297,7 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(600);
+      translateY.setValue(hiddenY);
       backdropOpacity.setValue(0);
       // Seeded from whatever is on screen rather than assumed to be nothing:
       // both hosts open this over a keyboard of their own (quick add's title
@@ -315,10 +318,10 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
       after?.();
     });

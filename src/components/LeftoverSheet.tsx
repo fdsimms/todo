@@ -42,6 +42,7 @@ import {
   type LeftoverPart,
   type LeftoverPick,
 } from '../utils/leftovers';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 /** Kept clear above the sheet so its first row never slides under the status bar. */
 const TOP_INSET = 72;
@@ -174,7 +175,9 @@ export function LeftoverSheet({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { height: windowHeight } = useWindowDimensions();
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   // The sheet is bottom-anchored, the same edge the keyboard docks to — with
   // nothing accounting for it, an autofocused TextInput (fresh, unseeded
@@ -234,7 +237,7 @@ export function LeftoverSheet({
 
   useEffect(() => {
     if (!visible) return;
-    translateY.setValue(600);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -255,10 +258,10 @@ export function LeftoverSheet({
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
       after?.();
     });

@@ -19,6 +19,7 @@ import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { rankRecipes, describeRecipe, cleanRecipeName } from '../utils/recipeUtils';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 export interface MealReplacement {
   recipeId: string | null;
@@ -71,13 +72,15 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
   const showFreeText =
     !!typed && !matches.some(r => r.name.toLowerCase() === typed.toLowerCase());
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!visible) return;
     setQuery('');
-    translateY.setValue(600);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -87,10 +90,10 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
 
   const dismiss = (after?: () => void) => {
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
       after?.();
     });

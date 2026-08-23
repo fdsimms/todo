@@ -36,6 +36,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { Task } from '../types';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -110,7 +111,9 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
   /** Swapped-away ids, never offered again while the sheet is open. */
   const [rejectedIds, setRejectedIds] = useState<string[]>([]);
 
-  const translateY = useRef(new Animated.Value(700)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   /**
@@ -133,7 +136,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
   useEffect(() => {
     if (!visible) return;
     repick(windowMinutes);
-    translateY.setValue(700);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -150,10 +153,10 @@ export function FocusSetupSheet({ visible, tasks, allTasks, onClose, onStart }: 
 
   const dismiss = () => {
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 800, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(700);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
     });
   };
