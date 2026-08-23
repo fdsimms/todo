@@ -673,7 +673,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
 
     if (!receipt) {
       return (
-        <>
+        <View style={styles.sourceWrap}>
           <RecipeSourcePicker
             intro={
               pantry
@@ -697,7 +697,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
           />
           {!!input.photoError && <Text style={styles.error}>{input.photoError}</Text>}
           {!!error && <Text style={styles.error}>{error}</Text>}
-        </>
+        </View>
       );
     }
 
@@ -933,13 +933,19 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.md,
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
     headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     headerSpacer: { minWidth: 64 },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
+    // `RecipeSourcePicker` renders its intro/photo-card/CTA as bare siblings and
+    // relies on its container for the gap between them — same as the wrapper
+    // `RecipeExtractSheet`/`RecipeCreateSheet` give it. Scoped to this branch
+    // rather than added to `body` itself, since the post-scan branches already
+    // space their own blocks with explicit `marginBottom`.
+    sourceWrap: { gap: spacing.md },
     intro: {
       color: colors.textSecondary,
       fontSize: font.sm,
@@ -1021,7 +1027,7 @@ function makeStyles(colors: Colors) {
     checkOn: { backgroundColor: colors.accent, borderColor: colors.accent },
     loading: { alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.sm },
     loadingText: { color: colors.textSecondary, fontSize: font.sm },
-    error: { color: colors.red, fontSize: font.sm, marginTop: spacing.md },
+    error: { color: colors.red, fontSize: font.sm },
     empty: { alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.sm },
     emptyTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     emptyText: {
