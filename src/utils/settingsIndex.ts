@@ -95,6 +95,15 @@ export interface SettingsEntry {
    * The master switch itself is deliberately *not* flagged: it's the way back.
    */
   kitchen?: boolean;
+  /**
+   * Configures something simplified mode takes away, so it goes with it — the
+   * same one-row-at-a-time treatment `kitchen` gives the grocery area.
+   *
+   * The master switch itself is deliberately *not* flagged, for the reason
+   * `kitchenEnabled` isn't: a setting that hid itself when switched on would
+   * have no way back.
+   */
+  simple?: boolean;
 }
 
 /**
@@ -128,8 +137,9 @@ const AI_FEATURE_ENTRIES: SettingsEntry[] = AI_FEATURES.map(feature => ({
   keywords: AI_FEATURE_KEYWORDS[feature.id],
   // Carried across rather than restated: the row itself disappears with the
   // area (`aiFeaturesFor`), so an entry that outlived it would be a result
-  // pointing at nothing.
+  // pointing at nothing. Same for the two that go with simplified mode.
   ...(feature.kitchen ? { kitchen: true } : {}),
+  ...(feature.simple ? { simple: true } : {}),
 }));
 
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
@@ -221,11 +231,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 
   // Tasks & projects
   { id: 'vacationMode', groupId: 'tasksProjects', label: 'Vacation mode', section: 'Vacation',
-    keywords: ['holiday', 'pause', 'away', 'streaks'] },
+    keywords: ['holiday', 'pause', 'away', 'streaks'], simple: true },
   { id: 'vacationEnd', groupId: 'tasksProjects', label: 'End date', section: 'Vacation',
-    keywords: ['vacation end', 'return'] },
+    keywords: ['vacation end', 'return'], simple: true },
   { id: 'autoRemoveExpired', groupId: 'tasksProjects', label: 'Auto-remove expired tasks', section: 'Time-limited tasks',
-    keywords: ['window', 'delete'] },
+    keywords: ['window', 'delete'], simple: true },
   { id: 'timerLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while timing', section: 'Timers',
     keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown'] },
   { id: 'postponeCheck', groupId: 'tasksProjects', label: 'Suggest an action after repeated reschedules', section: 'Rescheduling',
@@ -236,19 +246,19 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // thing, and it appears nowhere in the UI copy (which says what each setting
   // does in literal terms instead), so without it the whole section is
   // unfindable by the only word someone is likely to type.
-  { id: 'focusWorkCapMinutes', groupId: 'tasksProjects', label: 'Work stretch length', section: 'Focus sessions',
+  { id: 'focusWorkCapMinutes', groupId: 'tasksProjects', label: 'Work stretch length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'timer', 'deep work', 'block', 'session', 'cap'] },
-  { id: 'focusDefaultWorkMinutes', groupId: 'tasksProjects', label: 'Length without an estimate', section: 'Focus sessions',
+  { id: 'focusDefaultWorkMinutes', groupId: 'tasksProjects', label: 'Length without an estimate', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'unestimated', 'default', 'fallback'] },
-  { id: 'focusRestAfterMinutes', groupId: 'tasksProjects', label: 'Break after this much work', section: 'Focus sessions',
+  { id: 'focusRestAfterMinutes', groupId: 'tasksProjects', label: 'Break after this much work', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'interval', 'how often'] },
-  { id: 'focusRestAfterTasks', groupId: 'tasksProjects', label: 'Break after this many tasks', section: 'Focus sessions',
+  { id: 'focusRestAfterTasks', groupId: 'tasksProjects', label: 'Break after this many tasks', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'how many'] },
-  { id: 'focusRestMinutes', groupId: 'tasksProjects', label: 'Break length', section: 'Focus sessions',
+  { id: 'focusRestMinutes', groupId: 'tasksProjects', label: 'Break length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'short break'] },
-  { id: 'focusLongRestEvery', groupId: 'tasksProjects', label: 'Long break every', section: 'Focus sessions',
+  { id: 'focusLongRestEvery', groupId: 'tasksProjects', label: 'Long break every', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'how often'] },
-  { id: 'focusLongRestMinutes', groupId: 'tasksProjects', label: 'Long break length', section: 'Focus sessions',
+  { id: 'focusLongRestMinutes', groupId: 'tasksProjects', label: 'Long break length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest'] },
   // Keyworded for what someone types when a task landed somewhere they didn't
   // put it — "why did this go to Work" is a search for the rule, not for the
@@ -270,24 +280,33 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'kitchenEnabled', groupId: 'tasksProjects', label: 'Groceries & meals', section: 'Feature areas',
     keywords: ['grocery', 'recipes', 'meal plan', 'shopping', 'food', 'cooking',
       'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer', 'tab bar'] },
+  // The other master switch, and unflagged for the same reason. Keyworded for
+  // the features it removes as well as for what it is: someone who wants
+  // chains or the focus timer gone will search for those, not for "simplified".
+  { id: 'simpleMode', groupId: 'tasksProjects', label: 'Simplified mode', section: 'Feature areas',
+    keywords: ['simple', 'simplify', 'basic', 'minimal', 'declutter', 'overwhelming', 'advanced',
+      'hide', 'remove', 'disable', 'turn off', 'chains', 'timed', 'daily target', 'quota',
+      'focus', 'pomodoro', 'stacks', 'templates', 'stats', 'drift', 'backfill', 'waiting',
+      'deadline', 'blocked', 'barcode', 'receipt', 'pantry', 'substitutes', 'cook mode'] },
   { id: 'mealsOnToday', groupId: 'tasksProjects', label: 'Show the day\'s meals', section: 'Meals on Today',
     keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'takeaway'], kitchen: true },
   { id: 'kitchenOnToday', groupId: 'tasksProjects', label: 'Show what needs using up', section: 'Meals on Today',
     keywords: ['fridge', 'kitchen', 'expiry', 'use by', 'spoil', 'waste', 'leftovers', 'pantry', 'today'],
-    kitchen: true },
+    kitchen: true, simple: true },
   { id: 'restockOfferEnabled', groupId: 'tasksProjects', label: 'Restock after cooking', section: 'Meals on Today',
     keywords: ['banner', 'ingredients', 'shopping list', 'offer'], kitchen: true },
   { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up scanned barcodes', section: 'Barcode lookups',
     keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy'],
-    kitchen: true },
+    kitchen: true, simple: true },
   { id: 'fdcApiKey', groupId: 'privacyAi', label: 'FoodData Central key', section: 'Barcode lookups',
-    keywords: ['usda', 'api', 'barcode', 'scan', 'branded', 'nutrition'], kitchen: true },
+    keywords: ['usda', 'api', 'barcode', 'scan', 'branded', 'nutrition'], kitchen: true, simple: true },
   { id: 'goUpcApiKey', groupId: 'privacyAi', label: 'Go-UPC key', section: 'Barcode lookups',
-    keywords: ['api', 'barcode', 'scan', 'paid', 'fallback'], kitchen: true },
+    keywords: ['api', 'barcode', 'scan', 'paid', 'fallback'], kitchen: true, simple: true },
   { id: 'clearGtinLookups', groupId: 'privacyAi', label: 'Forget saved barcodes', section: 'Barcode lookups',
-    keywords: ['cache', 'clear', 'reset', 'wrong name', 'upc', 'gtin', 'scan again'], kitchen: true },
+    keywords: ['cache', 'clear', 'reset', 'wrong name', 'upc', 'gtin', 'scan again'], kitchen: true, simple: true },
   { id: 'tripLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while shopping', section: 'Shopping trip',
-    keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'], kitchen: true },
+    keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'],
+    kitchen: true, simple: true },
   // The generators, all in one section now (#1524) — they used to be three
   // sections here plus one over in Notifications. Each keeps its own entry
   // rather than collapsing to one "Tasks the app adds" row: a search index
@@ -348,7 +367,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'standingSwaps', groupId: 'tasksProjects', label: 'Standing swaps', section: 'Substitutes',
     keywords: ['substitute', 'instead of', 'always use', 'replace', 'oat milk', 'dairy',
       'allergy', 'recipe', 'grocery', 'automatic'],
-    kitchen: true },
+    kitchen: true, simple: true },
 
   // Privacy & AI
   { id: 'appLock', groupId: 'privacyAi', label: 'Require Face ID to open', section: 'App lock',
@@ -392,13 +411,20 @@ export function visibleSettingsGroups(platformOS: string): SettingsGroup[] {
  * The entries reachable right now — an iOS-only group takes its rows with it,
  * and the kitchen rows go with `kitchenEnabled`.
  *
- * `kitchenEnabled` defaults to true so a caller that doesn't care (a test, a
- * platform check) gets the whole index, the way it did before the setting
- * existed.
+ * `kitchenEnabled` defaults to true and `simpleMode` to false so a caller that
+ * doesn't care (a test, a platform check) gets the whole index, the way it did
+ * before either setting existed.
  */
-export function visibleSettingsEntries(platformOS: string, kitchenEnabled = true): SettingsEntry[] {
+export function visibleSettingsEntries(
+  platformOS: string,
+  kitchenEnabled = true,
+  simpleMode = false,
+): SettingsEntry[] {
   const shown = new Set(visibleSettingsGroups(platformOS).map(g => g.id));
-  return SETTINGS_ENTRIES.filter(e => shown.has(e.groupId) && (kitchenEnabled || !e.kitchen));
+  return SETTINGS_ENTRIES.filter(e =>
+    shown.has(e.groupId)
+    && (kitchenEnabled || !e.kitchen)
+    && (!simpleMode || !e.simple));
 }
 
 export function settingsGroup(id: SettingsGroupId): SettingsGroup | undefined {

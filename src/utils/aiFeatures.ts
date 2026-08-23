@@ -32,6 +32,12 @@ export interface AiFeatureMeta {
   hint: string;
   /** Only reachable inside the groceries/recipes/meal plan area. */
   kitchen?: boolean;
+  /**
+   * Powers something simplified mode takes away, so its row goes with it —
+   * see `src/utils/simpleMode.ts`. The surface that calls it is already gone,
+   * so a switch left behind would configure nothing.
+   */
+  simple?: boolean;
 }
 
 export const AI_FEATURES: AiFeatureMeta[] = [
@@ -74,26 +80,29 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     label: 'Substitute suggestions',
     hint: 'Proposes what to use instead of a grocery item when you ask',
     kitchen: true,
+    simple: true,
   },
   {
     id: 'receiptImport',
     label: 'Receipt scanning',
     hint: 'Reads a photo of a store receipt to check items off your list and record what they cost',
     kitchen: true,
+    simple: true,
   },
 ];
 
 /**
  * The features worth showing a switch for, given whether the
- * groceries/recipes/meal plan area is on.
+ * groceries/recipes/meal plan area is on and whether simplified mode is.
  *
  * Only the *rows* go — `aiFeatureConfig` is left untouched, so the model and
  * on/off state someone chose for recipe import survive the area being put away
- * and come back with it. Nothing needs to gate the calls themselves: all three
- * of these are reached from inside the three screens.
+ * and come back with it. Nothing needs to gate the calls themselves: all of
+ * these are reached from inside a screen or sheet that has already gone.
  */
-export function aiFeaturesFor(kitchenEnabled: boolean): AiFeatureMeta[] {
-  return kitchenEnabled ? AI_FEATURES : AI_FEATURES.filter(f => !f.kitchen);
+export function aiFeaturesFor(kitchenEnabled: boolean, simpleMode = false): AiFeatureMeta[] {
+  return AI_FEATURES.filter(f =>
+    (kitchenEnabled || !f.kitchen) && (!simpleMode || !f.simple));
 }
 
 export interface AiFeatureConfig {

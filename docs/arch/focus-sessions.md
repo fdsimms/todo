@@ -83,6 +83,17 @@ The shipped defaults are a classic pomodoro (25 / 5 / 15 every fourth) with the
 task-count trigger **off** — on at 1 it turns a queue of three short tasks into
 three breaks in twenty minutes.
 
+The setup sheet's own Breaks toggle (`FocusSetupSheet`) lets a session run
+without breaks even when Settings has them configured, for the one-off "not
+this time" case — going to Settings to turn both triggers off and back on
+again would be a strange way to skip breaks for a single session. It's a
+session-only override, one direction only: it can silence Settings' triggers
+for the run about to start, never add breaks Settings doesn't already have,
+and it's left off the sheet entirely once Settings already has none
+configured, since there'd be nothing left for it to do. The plan preview and
+`onStart` both build from the same effective options, so the summary the user
+agreed to and the plan the session actually runs never disagree.
+
 ## The time window
 
 The setup sheet's "Time available" is a hard constraint on what gets

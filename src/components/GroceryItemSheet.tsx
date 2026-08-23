@@ -51,6 +51,7 @@ import { editorSearchTerms, matchesEditorQuery, filterEditorRows, type EditorSea
 import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
 import { describeSubstituteLink, describeSubstitutes, substitutesFor } from '../utils/itemSubs';
 import { SubstituteSheet } from './SubstituteSheet';
+import { featureHidden, groceryRowShown } from '../utils/simpleMode';
 import { ProductSheet } from './ProductSheet';
 import {
   RATING_LABELS,
@@ -179,6 +180,7 @@ export function GroceryItemSheet({
   const clearItemShopPrice = useGroceryStore(s => s.clearItemShopPrice);
   const useUpTasksEnabled = useSettingsStore(s => s.groceryUseUpTasks);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   const removeFromList = useGroceryStore(s => s.removeFromList);
   const deleteItem = useGroceryStore(s => s.deleteItem);
   const shops = useGroceryStore(useShallow(s => s.shops));
@@ -1279,7 +1281,20 @@ export function GroceryItemSheet({
       ),
     },
   ];
-  const visibleCollapsibleRows = filterEditorRows(collapsibleRows, searchTerms);
+  // Simplified mode's share of this sheet (`simpleMode.ts`). Each row says
+  // whether the item already uses it, so an item that tracks three brands or
+  // sits in the freezer keeps the field that says so — the mode stops you
+  // reaching for a capability, it never hides one you're already using.
+  const simpleRowSet: Record<string, boolean> = {
+    products: products.length > 0,
+    pantry: item.isStaple || onHandFuture || frozen || opened || runningLow,
+    useBy: !!item.expiresAt || frozen,
+    substitutes: substitutes.length > 0,
+  };
+  const shownRows = simpleMode
+    ? collapsibleRows.filter(r => groceryRowShown(r.key, true, !!simpleRowSet[r.key]))
+    : collapsibleRows;
+  const visibleCollapsibleRows = filterEditorRows(shownRows, searchTerms);
 
   const totalMatches = searching
     ? [nameVisible, brandVisible, variantVisible, quantityVisible, priceVisible, noteVisible,
@@ -1388,7 +1403,7 @@ export function GroceryItemSheet({
               correction, not a shopping decision — at the shelf you resolve the
               choice by ticking one (see resolveChoice), and that needs no
               second control. */}
-          {!!alternativeNames && (
+          {!!alternativeNames && !featureHidden('itemChoices', simpleMode) && (
             <View style={styles.choiceBlock}>
               <Text style={styles.hint}>
                 Either/or with {alternativeNames}. Tick one at the store and the

@@ -52,6 +52,7 @@ import { useRecipeTimer } from '../hooks/useRecipeTimer';
 import { RecipeTimerRow } from '../components/RecipeTimerRow';
 import { CookModeSheet } from '../components/CookModeSheet';
 import { cookSteps } from '../utils/cookMode';
+import { featureHidden, featureShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -119,6 +120,7 @@ export function RecipeDetailScreen() {
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const addAisle = useGroceryStore(s => s.addAisle);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
@@ -1109,7 +1111,8 @@ export function RecipeDetailScreen() {
             the empty hint below — a purely composed recipe (no lines of its
             own, all components) still has quantities to scale once its parts
             are flattened out at shopping time. */}
-        {(recipe.ingredients.length > 0 || components.length > 0) && (
+        {(recipe.ingredients.length > 0 || components.length > 0)
+          && !featureHidden('recipeScaling', simpleMode) && (
           <RecipeScaleChips
             value={scale}
             onChange={setScale}
@@ -1283,6 +1286,11 @@ export function RecipeDetailScreen() {
           />
         </View>
 
+        {/* The whole section goes in simplified mode, unless this recipe already
+            uses components — a composed recipe that couldn't show its parts
+            would be missing half its ingredients with nothing to say why. */}
+        {featureShown('recipeComposition', simpleMode, components.length > 0) && (
+        <>
         <Text style={styles.sectionLabel}>Components</Text>
 
         {components.length === 0 ? (
@@ -1305,6 +1313,8 @@ export function RecipeDetailScreen() {
             onPress={() => { haptics.tap(); setComponentPickerVisible(true); }}
           />
         </View>
+        </>
+        )}
 
         <Text style={styles.sectionLabel}>Prep tasks</Text>
 
@@ -1361,7 +1371,7 @@ export function RecipeDetailScreen() {
               and in the same place: it's the one that happens *now*, so it
               leads. Its label is a word where the others are two, which is what
               keeps three buttons on a 390pt line. */}
-          {cookableCount > 0 && (
+          {cookableCount > 0 && !featureHidden('cookMode', simpleMode) && (
             <TouchableOpacity
               style={styles.secondary}
               activeOpacity={interaction.activeOpacity}

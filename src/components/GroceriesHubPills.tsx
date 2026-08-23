@@ -6,6 +6,8 @@ import { spacing, font, fontWeight, radius, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { featureHidden } from '../utils/simpleMode';
 import { attentionLeftovers, freshnessOf } from '../utils/leftovers';
 // The colour ladder lives with the card that established it — same import
 // RecipePickerSheet makes, and for the reason given there.
@@ -60,6 +62,17 @@ export function GroceriesHubPills({ active }: Props) {
   // an array would be a new reference on every store change and re-render all
   // three pills for nothing.
   const leftoverCount = useLeftoverStore(s => attentionLeftovers(s.leftovers).length);
+  // Pantry goes with simplified mode: it is the screen for the per-item pantry,
+  // freezer and use-by state that mode also takes off the item sheet, so with
+  // nothing left to fill it there is nothing left for it to show. The pill
+  // stays while you're standing on it, so the mode can't be flipped out from
+  // under an open screen.
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  const tabs = useMemo(
+    () => HUB_TABS.filter(t =>
+      t.name === active || t.name !== 'Kitchen' || !featureHidden('pantryTracking', simpleMode)),
+    [simpleMode, active]
+  );
   // Red for something already past its day, orange while there's still an
   // evening to use it — the ladder LeftoversCard sets out and gives its
   // reasoning for. This badge used to be red whatever it was counting, so a
@@ -77,7 +90,7 @@ export function GroceriesHubPills({ active }: Props) {
       style={styles.scroll}
       contentContainerStyle={styles.pills}
     >
-      {HUB_TABS.map(tab => {
+      {tabs.map(tab => {
         const isActive = tab.name === active;
         const badge = tab.name === 'Groceries' ? groceryCount
           : tab.name === 'MealPlan' ? leftoverCount

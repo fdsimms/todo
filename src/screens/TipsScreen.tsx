@@ -11,7 +11,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { TIPS, TIP_AREAS, filterTips, type Tip } from '../utils/tips';
+import { TIPS, TIP_AREAS, filterTips, tipsFor, type Tip } from '../utils/tips';
 
 /**
  * Everything the app can do, in one list.
@@ -41,13 +41,20 @@ export function TipsScreen() {
 
   const seenTips = useSettingsStore(useShallow(s => s.seenTips));
   const markAllTipsSeen = useSettingsStore(s => s.markAllTipsSeen);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   const resetTips = useSettingsStore(s => s.resetTips);
 
   const [query, setQuery] = useState('');
 
   const seenSet = useMemo(() => new Set(seenTips), [seenTips]);
-  const matches = useMemo(() => filterTips(query), [query]);
-  const unreadCount = useMemo(() => TIPS.filter(tip => !seenSet.has(tip.id)).length, [seenSet]);
+  // Every count on this page is over the same set the list draws, so "12 of 40
+  // not read yet" can't name tips the page doesn't show.
+  const visible = useMemo(() => tipsFor(simpleMode), [simpleMode]);
+  const matches = useMemo(() => filterTips(query, visible), [query, visible]);
+  const unreadCount = useMemo(
+    () => visible.filter(tip => !seenSet.has(tip.id)).length,
+    [visible, seenSet]
+  );
 
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
@@ -70,10 +77,12 @@ export function TipsScreen() {
     return out;
   }, [matches, seenSet]);
 
+  // Marks what's on screen, not what exists. A tip hidden by simplified mode
+  // hasn't been read, so it stays unread and comes back with its feature.
   const handleMarkAllRead = useCallback(() => {
     haptics.tap();
-    markAllTipsSeen(TIPS.map(tip => tip.id));
-  }, [markAllTipsSeen]);
+    markAllTipsSeen(visible.map(tip => tip.id));
+  }, [markAllTipsSeen, visible]);
 
   const handleReset = useCallback(() => {
     haptics.tap();

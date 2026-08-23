@@ -41,6 +41,7 @@ export interface SettingsSummaryInput {
    * the one thing this summary must not say.
    */
   calendarIds: string[];
+  simpleMode: boolean;
   vacationMode: boolean;
   autoRemoveExpiredTasks: ExpiredTaskGraceDays;
   autoArchiveProjectsOnComplete: boolean;
@@ -103,6 +104,9 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
     ) || 'Off. Say “Hey Siri, remind me to…”',
 
     tasksProjects: line(
+      // Leads, because it changes what the rest of the group even contains —
+      // several of the things named below aren't rows any more once it's on.
+      s.simpleMode && 'Simplified mode on',
       s.vacationMode && 'Vacation on',
       s.autoRemoveExpiredTasks !== null && (
         s.autoRemoveExpiredTasks === 0

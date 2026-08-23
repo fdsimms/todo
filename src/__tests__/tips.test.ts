@@ -4,11 +4,13 @@ import {
   TIP_AREAS,
   chooseTip,
   filterTips,
+  tipsFor,
   tipsForArea,
   unseenTipsForScreen,
   type Tip,
   type TipSignals,
 } from '../utils/tips';
+import { SIMPLE_FEATURES, featureHidden } from '../utils/simpleMode';
 
 const NO_SIGNALS: TipSignals = {
   taskCount: 0,
@@ -166,6 +168,64 @@ describe('the tip content itself', () => {
       if (!t.when) continue;
       expect(`${t.id}: ${t.when(NO_SIGNALS)}`).toBe(`${t.id}: false`);
     }
+  });
+});
+
+describe('tipsFor', () => {
+  it('shows everything while simplified mode is off', () => {
+    expect(tipsFor(false)).toHaveLength(TIPS.length);
+  });
+
+  it('drops every tip about a capability simplified mode removes', () => {
+    const shown = tipsFor(true);
+    for (const tip of shown) {
+      expect(tip.feature && featureHidden(tip.feature, true)).toBeFalsy();
+    }
+    // Not a no-op: the whole point is that a good number of them go.
+    expect(shown.length).toBeLessThan(TIPS.length);
+  });
+
+  it('keeps the tips about the app that is left', () => {
+    const ids = tipsFor(true).map(t => t.id);
+    for (const id of ['swipe-actions', 'quick-add-parsing', 'categories', 'projects',
+      'tags', 'recurrence', 'grocery-aisles', 'backup', 'app-lock']) {
+      expect(ids).toContain(id);
+    }
+  });
+
+  it('drops the ones documenting a control that is no longer there', () => {
+    const ids = tipsFor(true).map(t => t.id);
+    for (const id of ['chains', 'daily-target', 'blocking', 'stacks', 'templates',
+      'focus-session', 'barcode-scan', 'cook-mode', 'either-or', 'drift']) {
+      expect(ids).not.toContain(id);
+    }
+  });
+
+  // A tip's feature has to be one the registry actually knows, or it would
+  // silently never be hidden — `featureHidden` shrugs at an unknown id.
+  it('names only features the registry knows', () => {
+    const known = new Set(SIMPLE_FEATURES.map(f => f.id));
+    for (const tip of TIPS) {
+      if (tip.feature) expect(known.has(tip.feature)).toBe(true);
+    }
+  });
+
+  /**
+   * The kitchen area empties completely, and that's right: every one of its six
+   * tips is about the Pantry screen, which simplified mode also removes, so
+   * there is nothing left for the section to say. `TipsScreen` drops a section
+   * with no tips in it, header included (see its `rows` builder), so this
+   * renders as one fewer heading rather than as an empty one.
+   *
+   * Every *other* area has to survive, though. An area reduced to nothing by a
+   * tip being retagged would be a heading quietly disappearing off the page
+   * with nobody having decided it should.
+   */
+  it('empties the kitchen area, and only that one', () => {
+    const emptied = TIP_AREAS
+      .filter(area => tipsForArea(area.id, tipsFor(true)).length === 0)
+      .map(area => area.id);
+    expect(emptied).toEqual(['kitchen']);
   });
 });
 

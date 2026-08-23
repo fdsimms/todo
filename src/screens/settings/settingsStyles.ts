@@ -40,6 +40,19 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   rowValue: disclosureValue(colors),
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
 
+  // The unfolded "what simplified mode hides" list. Reads as prose per area
+  // rather than as 34 rows: it is something to skim before flipping a switch,
+  // not a set of controls.
+  simpleList: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.md },
+  simpleArea: { marginTop: spacing.sm },
+  simpleAreaLabel: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
+  },
+  simpleAreaFeatures: {
+    color: colors.textTertiary, fontSize: font.sm, lineHeight: 19, marginTop: 2,
+  },
+
   // A `SegmentedControl` in the padding a settings card expects — see
   // SettingsSegments, the only thing that uses these.
   segmentRow: { padding: spacing.sm },
