@@ -746,6 +746,19 @@ export function TodayScreen() {
     setPullVisible(true);
   }, [route.params?.openProjectPull, route.params?.pullProjectId, handledOpenPull]);
 
+  // The same handoff again, for every tap on the focus session's Live Activity
+  // (dundundun://focus[?do=…] — see utils/focusLiveActivity.ts). Whatever the
+  // link asked for has already been applied to the store by the time this
+  // runs; this is only the sheet arriving on top so the result is visible.
+  // A session that has since ended leaves the sheet's own `focusSession !==
+  // null` guard to keep it shut.
+  const [handledOpenFocus, setHandledOpenFocus] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (route.params?.openFocusSession === undefined || route.params.openFocusSession === handledOpenFocus) return;
+    setHandledOpenFocus(route.params.openFocusSession);
+    setFocusSessionVisible(true);
+  }, [route.params?.openFocusSession, handledOpenFocus]);
+
   // Claims completions queued by the Today widget's checkbox and by Live
   // Activity's Done button (see useWidgetCompletionStore / widgetSync.ts).
   // Handing a pending id off to a TaskItem via autoComplete triggers the real

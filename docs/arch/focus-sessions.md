@@ -177,6 +177,54 @@ there. With no window set (the sheet's default), that means every eligible
 pinned task starts ticked — the literal request this shortcut exists to
 answer.
 
+## On the Lock Screen
+
+`src/utils/focusLiveActivity.ts` puts the step you're on into a Live Activity,
+the third of three (`liveActivity.ts` for a running timer, `tripLiveActivity.ts`
+for a shopping trip) and shaped like the trip one: there's only ever one
+session, so the native side reconciles against zero-or-one activities rather
+than a keyed set. It renders in `targets/todo-widget/FocusLiveActivity.swift`,
+behind the `focusLiveActivity` setting, iOS 17+.
+
+This used to be listed below as deliberately absent, on the grounds that it was
+native work in the widget target rather than anything this feature could reach
+from JS. That stopped being true once the timer and trip activities shipped the
+whole path — an attributes struct compiled into both the app and the extension,
+a reconcile function on the bridge, and a `dundundun://` link back. What's left
+here is the same three files those two need.
+
+- **The payload is a pure function of the stored session, never of the clock.**
+  A step ends at `stepStartedAt + (its minutes - what's already banked)`, which
+  is fixed the moment the step's clock starts, so SwiftUI ticks the countdown
+  itself and nothing is ever pushed. That matters more here than it does for a
+  timer run: the activity is drawn with the task's title, so it re-syncs on
+  every task write, and a payload that read `Date.now()` would differ every
+  time — tearing the activity down and starting a new one on each keystroke in
+  the list behind it.
+- **`staleDate` is how "running out is not moving on" survives the trip to the
+  Lock Screen.** The bridge hands ActivityKit the step's own end as the stale
+  date, so `context.isStale` flips exactly when the step runs out, with nothing
+  pushed to it. Before: a countdown, and a button that pauses. After: the same
+  figure counting *up* as an over-run, in orange, and a button that moves to
+  the next step. The step still doesn't advance on its own. Without this the
+  activity could only sit at 0:00, which is the one thing the feature is not.
+- **A paused session stays on the Lock Screen** showing a frozen figure
+  (`pausedRemaining`, formatted JS-side, since there's nothing to tick) and a
+  Resume button. The timer activity ends instead when its timer pauses, and
+  that's the right answer there: a paused timer isn't running. A session is a
+  longer-lived thing than a stretch of it, and one that vanished on a pause
+  would read as one that had ended.
+- **`key` is the whole payload, JSON-encoded.** The native side keeps the
+  activity while the key matches and restarts it when it doesn't, so the key
+  has to cover every field that's drawn — a hand-listed subset is the kind that
+  stops covering the field added next to it. It is never parsed, only compared.
+- **Every button is a link, not an AppIntent** (`dundundun://focus?do=next|pause|resume`,
+  handled in `deepLinks.ts`), because a Live Activity button's intent runs in
+  the background only and can't bring the app forward — the constraint
+  `TimerLiveActivity.swift`'s header argues at length. The action is applied
+  *and* the session sheet opens: the store can answer "pause" or "next" on its
+  own, and the sheet arriving on top is how you see that it did.
+
 ## One mechanism for a task leaving the plan
 
 A task can stop being workable three ways: completed from inside the session,
@@ -217,9 +265,6 @@ objects and no store standing behind it.
   phones sharing one session's cursor is not a state this feature has, and
   syncing the row would invent it. Both exclusions are argued in
   `BACKUP_EXCLUDED_TABLES` and `SYNC_EXCLUDED_TABLES`.
-- **No Live Activity.** The task timer has one (`src/utils/liveActivity.ts`)
-  and a focus step is the same shape of run, but it's native work in the widget
-  target rather than anything this feature can reach from JS.
 - **No reordering on the setup sheet.** The suggester's order is "best first,
   and each one partly chosen for going with the ones above it", which is a
   defensible run order. Dragging inside that sheet is the `SortableList`

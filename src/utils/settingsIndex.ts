@@ -260,6 +260,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['pomodoro', 'focus', 'rest', 'how often'] },
   { id: 'focusLongRestMinutes', groupId: 'tasksProjects', label: 'Long break length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest'] },
+  { id: 'focusLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while focusing', section: 'Focus sessions',
+    keywords: ['pomodoro', 'session', 'lock screen', 'dynamic island', 'widget'] },
   // Keyworded for what someone types when a task landed somewhere they didn't
   // put it — "why did this go to Work" is a search for the rule, not for the
   // word "rule". The other New tasks rows are unindexed; this one earns an

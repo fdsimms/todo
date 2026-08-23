@@ -21,6 +21,7 @@ import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { useWidgetSync } from './src/utils/widgetSync';
 import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useTripLiveActivitySync } from './src/utils/tripLiveActivity';
+import { useFocusLiveActivitySync } from './src/utils/focusLiveActivity';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
 import { useSyncStore } from './src/store/useSyncStore';
@@ -255,6 +256,9 @@ function AppRoot() {
 
   // Keeps an active shopping trip's Lock Screen Live Activity in sync.
   useTripLiveActivitySync();
+
+  // Keeps the focus session's Lock Screen Live Activity in sync.
+  useFocusLiveActivitySync();
 
   // Keeps the pending daily agenda's count matching the tasks it describes.
   useDailyAgendaSync();

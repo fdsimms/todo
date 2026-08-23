@@ -118,6 +118,10 @@ struct WidgetPalette {
     let textSecondary: Color
     let textTertiary: Color
     let accent: Color
+    // The over-run tint, matching colors.orange in src/theme/index.ts — what
+    // FocusLiveActivity draws a focus step that has run past its target in,
+    // the same signal FocusBar and the session sheet give it in the app.
+    let orange: Color
     let separator: Color
 
     static let dark = WidgetPalette(
@@ -127,6 +131,7 @@ struct WidgetPalette {
         textSecondary: Color(hex: "8E8E93"),
         textTertiary: Color(hex: "636366"),
         accent: Color(hex: "0A84FF"),
+        orange: Color(hex: "FF9F0A"),
         separator: Color(hex: "38383A")
     )
 
@@ -137,9 +142,21 @@ struct WidgetPalette {
         textSecondary: Color(hex: "6C6C70"),
         textTertiary: Color(hex: "8A8A8E"),
         accent: Color(hex: "007AFF"),
+        orange: Color(hex: "FF9500"),
         separator: Color(hex: "C6C6C8")
     )
 
+    // For a widget that sits on the wallpaper and takes the system's
+    // appearance with everything else on the Home Screen — which is
+    // TodoTodayWidget, and only it.
+    //
+    // **A Live Activity must not use this.** All three of them set
+    // `.activityBackgroundTint(WidgetPalette.dark.bgSecondary)`, so their card
+    // is dark whatever the system appearance is; reading `\.colorScheme` for
+    // the content on top of it resolves `text` to black in a light scheme and
+    // puts black on #1C1C1E. They pin to `.dark` on both presentations
+    // instead, which is not a choice about how they should look — it is the
+    // content agreeing with the background those same files already force.
     static func forScheme(_ scheme: ColorScheme) -> WidgetPalette {
         scheme == .dark ? .dark : .light
     }
