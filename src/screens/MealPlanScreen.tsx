@@ -103,6 +103,7 @@ import {
 } from '../utils/mealPlan';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { buildWeekPlanShareText } from '../utils/shareText';
+import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import {
   classifyPlanned,
   collectPlannedIngredients,
@@ -1285,6 +1286,11 @@ export function MealPlanScreen() {
     () => buildWeekPlanShareText(days, entries, recipesById),
     [days, entries, recipesById]
   );
+  // Copied as it is shared, day headings and all: unlike a list of
+  // ingredients or groceries, nothing is waiting to parse this — it goes in a
+  // note or a message, where the headings are what make it readable.
+  const { copied: copiedWeek, copy: copyWeekText } = useCopyToClipboard();
+
   const handleShareWeek = useCallback(() => {
     if (!weekShareText) return;
     haptics.tap();
@@ -1295,6 +1301,12 @@ export function MealPlanScreen() {
     const actions: ScreenHeaderAction[] = [
       { icon: 'chevron-back', onPress: () => page(-1), accessibilityLabel: 'Previous week' },
       { icon: 'chevron-forward', onPress: () => page(1), accessibilityLabel: 'Next week' },
+      {
+        icon: copiedWeek ? 'checkmark' : 'copy-outline',
+        onPress: () => copyWeekText(weekShareText),
+        disabled: !weekShareText,
+        accessibilityLabel: 'Copy this week’s meals as plain text',
+      },
       {
         icon: 'share-outline',
         onPress: handleShareWeek,
@@ -1319,7 +1331,7 @@ export function MealPlanScreen() {
       });
     }
     return actions;
-  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText]);
+  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, copiedWeek, copyWeekText]);
 
   /**
    * The week a "copy" would take from, and only while this one is empty.
