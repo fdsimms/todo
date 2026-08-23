@@ -131,4 +131,43 @@ describe('settings index', () => {
       }
     });
   });
+
+  describe('simplified-mode gating', () => {
+    it('drops every flagged row when the mode is on', () => {
+      const on = visibleSettingsEntries('ios', true, true);
+      expect(on.some(e => e.simple)).toBe(false);
+      // Same reasoning as the kitchen check above: the rows it removes are
+      // spread over more than one group, so a gate wired into only one of them
+      // would still pass a spot check.
+      const dropped = SETTINGS_ENTRIES.filter(e => e.simple);
+      expect(dropped.length).toBeGreaterThan(0);
+      expect(new Set(dropped.map(e => e.groupId)).size).toBeGreaterThan(1);
+      expect(on).toHaveLength(SETTINGS_ENTRIES.length - dropped.length);
+    });
+
+    it('keeps them all while the mode is off, and by default', () => {
+      expect(visibleSettingsEntries('ios', true, false)).toHaveLength(SETTINGS_ENTRIES.length);
+      expect(visibleSettingsEntries('ios', true)).toHaveLength(SETTINGS_ENTRIES.length);
+    });
+
+    it('keeps the master switch itself, which is the way back', () => {
+      const on = visibleSettingsEntries('ios', true, true);
+      expect(on.find(e => e.id === 'simpleMode')).toBeDefined();
+    });
+
+    it('composes with the kitchen gate rather than overriding it', () => {
+      const both = visibleSettingsEntries('ios', false, true);
+      expect(both.some(e => e.kitchen)).toBe(false);
+      expect(both.some(e => e.simple)).toBe(false);
+      expect(both.find(e => e.id === 'kitchenEnabled')).toBeDefined();
+      expect(both.find(e => e.id === 'simpleMode')).toBeDefined();
+    });
+
+    it('leaves no group emptied by either switch', () => {
+      const on = visibleSettingsEntries('ios', false, true);
+      for (const group of visibleSettingsGroups('ios')) {
+        expect(on.filter(e => e.groupId === group.id).length).toBeGreaterThan(0);
+      }
+    });
+  });
 });

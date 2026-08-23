@@ -42,6 +42,9 @@ import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { hasRunningRecipeTimer } from '../utils/recipeTimer';
+import { screenShown } from '../utils/simpleMode';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useTemplateStore } from '../store/useTemplateStore';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
@@ -208,9 +211,22 @@ const MainTabs = React.memo(function MainTabs({
 // re-render MainTabs) on every tab switch for the rest of the session, which
 // is exactly what MainTabs's own React.memo exists to prevent.
 function initialScreenFromSettings(): string {
-  const { lastVisitedScreen, kitchenEnabled } = useSettingsStore.getState();
+  const { lastVisitedScreen, kitchenEnabled, simpleMode } = useSettingsStore.getState();
   if (!lastVisitedScreen || !RESTORABLE_SCREENS.has(lastVisitedScreen)) return 'Today';
   if (KITCHEN_SCREENS.has(lastVisitedScreen) && !kitchenEnabled) return 'Today';
+  // Same question the drawer asks, with the same counts — reopening onto a
+  // screen the menu no longer lists would be the kitchen guard's problem all
+  // over again. Safe to read the stores here: `useTaskStore.initialize()`
+  // fans out to both of these, and AppGate runs it (and blocks on it) before
+  // AppRoot and this navigator mount at all.
+  if (!screenShown(lastVisitedScreen, simpleMode, {
+    stacks: useTaskGroupStore.getState().groups.length,
+    templates: useTemplateStore.getState().templates.length,
+  })) return 'Today';
+  // And Pantry, whose only route in is the hub pill row simplified mode
+  // removes (see GroceriesHubPills). It isn't a `screenShown` case because it
+  // isn't a menu row — the drawer never listed it.
+  if (simpleMode && lastVisitedScreen === 'Kitchen') return 'Today';
   return lastVisitedScreen;
 }
 

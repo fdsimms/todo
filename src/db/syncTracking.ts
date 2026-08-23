@@ -169,6 +169,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'postponeCheckEnabled',
   'postponeCheckThreshold',
   'simpleTaskForm',
+  'simpleMode',
   'sortOption',
   'hideCategories',
   'collapsedCategories',

@@ -26,6 +26,9 @@ import { StandingSwapsSheet } from '../../components/StandingSwapsSheet';
 import { TitleRulesSheet } from '../../components/TitleRulesSheet';
 import { standingSwaps } from '../../utils/standingSwaps';
 import { makeSettingsStyles } from './settingsStyles';
+import {
+  SIMPLE_AREAS, SIMPLE_AREA_LABELS, SIMPLE_FEATURES, simpleFeaturesIn,
+} from '../../utils/simpleMode';
 import { haptics } from '../../utils/haptics';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { EFFORT_LABELS, type Effort, type TimeOfDay } from '../../types';
@@ -114,6 +117,8 @@ export function TasksProjectsSettings() {
   const setTripLiveActivity = useSettingsStore(s => s.setTripLiveActivity);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const setKitchenEnabled = useSettingsStore(s => s.setKitchenEnabled);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  const setSimpleMode = useSettingsStore(s => s.setSimpleMode);
   const mealsOnToday = useSettingsStore(s => s.mealsOnToday);
   const kitchenOnToday = useSettingsStore(s => s.kitchenOnToday);
   const setKitchenOnToday = useSettingsStore(s => s.setKitchenOnToday);
@@ -152,6 +157,7 @@ export function TasksProjectsSettings() {
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
   const [standingSwapsVisible, setStandingSwapsVisible] = useState(false);
   const [titleRulesVisible, setTitleRulesVisible] = useState(false);
+  const [hiddenListOpen, setHiddenListOpen] = useState(false);
 
   // What the row's value counts: rules that are actually filing things. A rule
   // switched off is kept and listed, but reporting it here would have the row
@@ -190,6 +196,9 @@ export function TasksProjectsSettings() {
 
   return (
     <>
+      {/* Nothing to configure in simplified mode: it removes the per-task
+          "vacation pause" row, so vacation mode would have nothing to hide. */}
+      {!simpleMode && (
       <SettingsSection
         label="Vacation"
         footer={`${vacationMode && vacationStart ? `On since ${format(new Date(vacationStart), 'MMM d')}. ` : ''}While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. You can also hide whole categories on vacation from the Categories screen. Turn it off when you return and streaks will be forgiven automatically, or set an end date to have it happen for you.`}
@@ -236,7 +245,11 @@ export function TasksProjectsSettings() {
           </>
         )}
       </SettingsSection>
+      )}
 
+      {/* Expiry needs a time window, and simplified mode takes the window row
+          off the editor. */}
+      {!simpleMode && (
       <SettingsSection
         label="Time-limited tasks"
         footer={'A task with a time window (like "farmers market, 8am–1pm") moves to Expired once its window closes, whether or not it repeats.'}
@@ -261,6 +274,7 @@ export function TasksProjectsSettings() {
           accessibilityLabelFor={o => `Auto-remove expired tasks: ${o.label}`}
         />
       </SettingsSection>
+      )}
 
       {Platform.OS === 'ios' && (
         <SettingsSection
@@ -317,6 +331,7 @@ export function TasksProjectsSettings() {
         )}
       </SettingsSection>
 
+      {!simpleMode && (
       <SettingsSection
         label="Focus sessions"
         footer={`${noBreaks
@@ -484,6 +499,7 @@ export function TasksProjectsSettings() {
           </>
         )}
       </SettingsSection>
+      )}
 
       <SettingsSection
         label="Today"
@@ -501,7 +517,7 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Feature areas"
-        footer="Turning this off hides the groceries, recipes and meal plan screens, the meal tasks and reminders that come with them, and their settings. Nothing is deleted. Your lists, recipes and planned meals are kept, and turning it back on returns everything as you left it."
+        footer="Neither switch deletes anything. Your tasks, lists, recipes and planned meals are kept exactly as they are, and turning either back on returns every feature as you left it. A task or item that already uses a hidden feature keeps showing it, so nothing you have set can go missing."
       >
         <SettingsRow
           icon="cart-outline"
@@ -511,6 +527,40 @@ export function TasksProjectsSettings() {
           toggle={kitchenEnabled}
           onPress={() => setKitchenEnabled(!kitchenEnabled)}
         />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="contract-outline"
+          iconColor={simpleMode ? colors.accent : undefined}
+          label="Simplified mode"
+          hint={simpleMode
+            ? `${SIMPLE_FEATURES.length} advanced features are hidden`
+            : 'Every feature is available'}
+          toggle={simpleMode}
+          onPress={() => setSimpleMode(!simpleMode)}
+        />
+        <View style={styles.sep} />
+        {/* The list is the setting's only honest description: "hides advanced
+            features" is not something anyone can act on without knowing which.
+            A disclosure rather than a permanent block, because it is 34 lines
+            and this section is two rows. */}
+        <SettingsRow
+          icon="list-outline"
+          label="What simplified mode hides"
+          expanded={hiddenListOpen}
+          onPress={() => { haptics.tap(); setHiddenListOpen(!hiddenListOpen); }}
+        />
+        {hiddenListOpen && (
+          <View style={styles.simpleList}>
+            {SIMPLE_AREAS.map(area => (
+              <View key={area} style={styles.simpleArea}>
+                <Text style={styles.simpleAreaLabel}>{SIMPLE_AREA_LABELS[area]}</Text>
+                <Text style={styles.simpleAreaFeatures}>
+                  {simpleFeaturesIn(area).map(f => f.label).join(', ')}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
       </SettingsSection>
 
       {/* Everything below belongs to the groceries/meals area: what it puts on
@@ -541,6 +591,7 @@ export function TasksProjectsSettings() {
             it is not a task the app adds: nothing is written, and the row
             leaves when the food does. What it shares with the meals is where
             it lands — the same category, at the top of the same section. */}
+        {!simpleMode && (
         <SettingsRow
           icon="nutrition-outline"
           iconColor={kitchenOnToday ? colors.accent : undefined}
@@ -550,6 +601,7 @@ export function TasksProjectsSettings() {
           onPress={() => setKitchenOnToday(!kitchenOnToday)}
           accessibilityLabel="Show what needs using up"
         />
+        )}
         <SettingsRow
           icon="basket-outline"
           iconColor={restockOfferEnabled ? colors.accent : undefined}
@@ -561,7 +613,7 @@ export function TasksProjectsSettings() {
         />
       </SettingsSection>
 
-      {Platform.OS === 'ios' && (
+      {Platform.OS === 'ios' && !simpleMode && (
         <SettingsSection
           label="Shopping trip"
           footer="Requires iOS 17. Ends when you clear or finish the trip, or automatically after about 6 hours."
@@ -690,6 +742,7 @@ export function TasksProjectsSettings() {
           pair is, on the item's Substitutes field — this is the "what is the
           app currently rewriting for me" read, which is the thing a link-level
           bit on its own can't answer. */}
+      {!simpleMode && (
       <SettingsSection
         label="Substitutes"
         footer="A substitute normally just says what you could use instead. One marked &quot;always use this instead&quot; is applied for you: recipes calling for the original show and shop for the substitute, marked with what the recipe said. Nothing is written to the recipe, and a single line can opt out under &quot;Keep as written&quot;."
@@ -706,6 +759,7 @@ export function TasksProjectsSettings() {
           onPress={() => { haptics.tap(); setStandingSwapsVisible(true); }}
         />
       </SettingsSection>
+      )}
       </>
       )}
 

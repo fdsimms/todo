@@ -1261,6 +1261,56 @@ describe('restockOfferEnabled', () => {
   });
 });
 
+describe('simpleMode', () => {
+  // Off by default, unlike kitchenEnabled: it takes features away, so an
+  // install that upgrades into it has to see the app it already had.
+  it('defaults to off when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().simpleMode).toBe(false);
+  });
+
+  it('only turns on for an explicit "true"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'simpleMode' ? 'true' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().simpleMode).toBe(true);
+  });
+
+  it('round-trips through setSimpleMode', () => {
+    useSettingsStore.getState().setSimpleMode(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('simpleMode', 'true');
+    expect(useSettingsStore.getState().simpleMode).toBe(true);
+  });
+
+  // The whole promise of the setting, and the same one kitchenEnabled makes
+  // below: it hides, it doesn't reconfigure. Anything it wrote on the way
+  // through would come back changed when it was turned off again.
+  it('leaves every setting for a feature it hides exactly as it was', () => {
+    useSettingsStore.getState().setVacationMode(true);
+    useSettingsStore.getState().setFocusRestMinutes(9);
+    useSettingsStore.getState().setTripLiveActivity(false);
+    (dbSetSetting as jest.Mock).mockClear();
+
+    useSettingsStore.getState().setSimpleMode(true);
+
+    expect(useSettingsStore.getState().vacationMode).toBe(true);
+    expect(useSettingsStore.getState().focusRestMinutes).toBe(9);
+    expect(useSettingsStore.getState().tripLiveActivity).toBe(false);
+    // One write, and it's the switch itself.
+    expect(dbSetSetting).toHaveBeenCalledTimes(1);
+    expect(dbSetSetting).toHaveBeenCalledWith('simpleMode', 'true');
+  });
+
+  it('composes with simpleTaskForm rather than replacing it', () => {
+    useSettingsStore.getState().setSimpleTaskForm(true);
+    useSettingsStore.getState().setSimpleMode(true);
+    expect(useSettingsStore.getState().simpleTaskForm).toBe(true);
+    useSettingsStore.getState().setSimpleMode(false);
+    expect(useSettingsStore.getState().simpleTaskForm).toBe(true);
+  });
+});
+
 describe('kitchenEnabled', () => {
   // Same `!== 'false'` reading as timerLiveActivity above: every install that
   // predates this setting keeps the groceries area it already had.

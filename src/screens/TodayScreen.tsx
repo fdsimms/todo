@@ -75,6 +75,7 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { isLiveLeftover } from '../utils/leftovers';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { featureHidden, visibleLenses } from '../utils/simpleMode';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useMealPlanNudgeProgress } from '../hooks/useMealPlanNudgeProgress';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -149,7 +150,6 @@ import { FocusBar } from '../components/FocusBar';
 import { FocusSetupSheet } from '../components/FocusSetupSheet';
 import { FocusSessionSheet } from '../components/FocusSessionSheet';
 import { useFocusStore } from '../store/useFocusStore';
-import { focusPlanOptionsFrom } from '../utils/focusSettings';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { type FabDragHandlers } from '../components/Fab';
@@ -1043,6 +1043,21 @@ export function TodayScreen() {
   const setFilterHasReminder = useSettingsStore(s => s.setFilterHasReminder);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  // Only counted while simplified mode is on, so the pass over every task costs
+  // nothing for everyone else. A scalar, so it can't churn renders.
+  const unscheduledCount = useTaskStore(
+    s => (simpleMode ? s.tasks.filter(isUnscheduledTask).length : 0)
+  );
+  // Later and Inbox stay whatever the mode is: each is the only route to a set
+  // of real tasks, and a lens that hides tasks isn't a simplification. Only
+  // Unscheduled goes, and only while it's empty and isn't the view you're on.
+  const viewModes = useMemo(
+    () => (featureHidden('unscheduledLens', simpleMode)
+      ? visibleLenses(VIEW_MODES, { unscheduled: unscheduledCount }, viewMode)
+      : VIEW_MODES),
+    [simpleMode, unscheduledCount, viewMode]
+  );
   const projects = useProjectStore(useShallow(s => s.projects));
 
   const activeFilterCount =
@@ -1479,7 +1494,11 @@ export function TodayScreen() {
    * the setting is left alone so turning the area back on restores it.
    */
   const storedKitchenOnToday = useSettingsStore(s => s.kitchenOnToday);
-  const kitchenOnToday = kitchenEnabled && storedKitchenOnToday;
+  // Simplified mode takes the pantry with it (`pantryTracking`), and a row
+  // warning that something is about to go off is only useful when there is a
+  // screen to go and deal with it on.
+  const kitchenOnToday = kitchenEnabled && storedKitchenOnToday
+    && !featureHidden('pantryTracking', simpleMode);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const kitchenEntries = useMemo(
@@ -2792,8 +2811,12 @@ export function TodayScreen() {
     return minutes > 0 ? formatDuration(minutes) : undefined;
   }, [allTasks]);
 
+  // Dropped by simplified mode: "40m done · 2h 15m planned" is a reading of the
+  // day rather than a part of it, and it needs the effort ratings that mode
+  // also takes away.
   const workloadSubtitle =
-    viewMode === 'today' && (plannedLabel || completedTodayLabel)
+    viewMode === 'today' && !featureHidden('workloadSubtitle', simpleMode)
+    && (plannedLabel || completedTodayLabel)
       ? [
           completedTodayLabel ? `${completedTodayLabel} done` : undefined,
           plannedLabel ? `${plannedLabel} planned` : undefined,
@@ -2816,7 +2839,8 @@ export function TodayScreen() {
       badge: viewFilterCount,
       accessibilityLabel: 'Sort and filter',
     },
-    ...(viewMode === 'today' && pinnedTasks.length < MAX_SUGGESTED_PINS && visibleTasks.length > 0
+    ...(viewMode === 'today' && !featureHidden('suggestedPins', simpleMode)
+      && pinnedTasks.length < MAX_SUGGESTED_PINS && visibleTasks.length > 0
       ? [{
           icon: 'color-wand' as const,
           onPress: () => setSuggestedPinsVisible(true),
@@ -2825,7 +2849,10 @@ export function TodayScreen() {
           accessibilityLabel: 'Suggest pin tasks',
         }]
       : []),
-    ...(viewMode === 'today'
+    // A focus session outlives the switch being flipped, so the way back into a
+    // running one stays whatever the mode says — same call the recipe-timer dot
+    // on the More tab makes about `kitchenEnabled`. Only starting a new one goes.
+    ...(viewMode === 'today' && (!featureHidden('focusSessions', simpleMode) || focusSession)
       ? [{
           icon: 'hourglass-outline' as const,
           onPress: () => {
@@ -2868,7 +2895,7 @@ export function TodayScreen() {
           style={styles.viewModePillsScroll}
           contentContainerStyle={styles.viewModePills}
         >
-          {VIEW_MODES.map(mode => {
+          {viewModes.map(mode => {
             const active = viewMode === mode;
             const badge = mode === 'inbox' ? inboxTasks.length : 0;
             return (
@@ -3510,12 +3537,12 @@ export function TodayScreen() {
           onClose={() => setOptionsMenuVisible(false)}
           hideCategories={hideCategories}
           onHideCategoriesChange={setHideCategories}
-          onLightenDay={visibleTasks.length > 0 ? () => {
+          onLightenDay={visibleTasks.length > 0 && !featureHidden('deload', simpleMode) ? () => {
             setOptionsMenuVisible(false);
             setDeloadVisible(true);
           } : undefined}
           plannedLabel={plannedLabel}
-          onLookAhead={() => {
+          onLookAhead={featureHidden('lookAhead', simpleMode) ? undefined : () => {
             setOptionsMenuVisible(false);
             setLookAheadVisible(true);
           }}
@@ -3567,8 +3594,8 @@ export function TodayScreen() {
           allTasks={allTasks}
           pinnedSeed={focusFromPinned ? pinnedTasks : undefined}
           onClose={() => setFocusSetupVisible(false)}
-          onStart={queue => {
-            startFocusSession(queue, focusPlanOptionsFrom(useSettingsStore.getState()));
+          onStart={(queue, options) => {
+            startFocusSession(queue, options);
             setFocusSetupVisible(false);
             setFocusSessionVisible(true);
           }}

@@ -321,6 +321,21 @@ interface SettingsStore {
    */
   simpleTaskForm: boolean;
   /**
+   * Simplified mode — takes the app down to an ordinary todo/kitchen app by
+   * hiding roughly thirty capabilities at once (chains, quotas, focus
+   * sessions, barcode scanning, product variants, …). Rendering only, and a
+   * feature already in use is never taken away; `src/utils/simpleMode.ts`
+   * holds the list and both rules.
+   *
+   * Off by default, same call `simpleTaskForm` and `hideHelpText` make: an
+   * install that upgrades into it sees the app it already had.
+   *
+   * Distinct from `simpleTaskForm`, which only *demotes* rows within the two
+   * task forms and hides nothing. They compose — this one removes a row
+   * outright, that one decides whether a surviving row starts on show.
+   */
+  simpleMode: boolean;
+  /**
    * Hides the explanatory line under Settings rows/sections and the one-liner
    * inside an expanded editor field (CollapsibleField/EditorRow's `hint`) —
    * everywhere a control already says its own name and the text underneath is
@@ -788,6 +803,7 @@ interface SettingsStore {
   setDefaultReminderLeadMinutes: (minutes: number | null) => void;
   setHideCategories: (on: boolean) => void;
   setSimpleTaskForm: (on: boolean) => void;
+  setSimpleMode: (on: boolean) => void;
   setHideHelpText: (on: boolean) => void;
   setTipsEnabled: (on: boolean) => void;
   /**
@@ -878,6 +894,7 @@ const DEFAULT_SETTINGS = {
   focusLongRestMinutes: FOCUS_DEFAULTS.longRestMinutes,
   hideCategories: false,
   simpleTaskForm: false,
+  simpleMode: false,
   hideHelpText: false,
   // Only the on/off switch is a default. seenTips and lastTipShown are
   // progress, and are cleared by resetTips rather than by a settings reset —
@@ -1197,6 +1214,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   defaultReminderLeadMinutes: null,
   hideCategories: false,
   simpleTaskForm: false,
+  simpleMode: false,
   hideHelpText: false,
   tipsEnabled: true,
   seenTips: [],
@@ -1326,6 +1344,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const hideCategories = dbGetSetting('hideCategories') === 'true';
     const collapsedCategories = parseCategoryNames(dbGetSetting('collapsedCategories'));
     const simpleTaskForm = dbGetSetting('simpleTaskForm') === 'true';
+    const simpleMode = dbGetSetting('simpleMode') === 'true';
     const hideHelpText = dbGetSetting('hideHelpText') === 'true';
     // `!== 'false'`, not `=== 'true'` — defaults on, same reasoning as
     // hapticsEnabled/shakeToUndoEnabled above.
@@ -1527,7 +1546,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1865,6 +1884,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setSimpleTaskForm(on: boolean) {
     dbSetSetting('simpleTaskForm', on ? 'true' : 'false');
     set({ simpleTaskForm: on });
+  },
+
+  setSimpleMode(on: boolean) {
+    dbSetSetting('simpleMode', on ? 'true' : 'false');
+    set({ simpleMode: on });
   },
 
   setHideHelpText(on: boolean) {

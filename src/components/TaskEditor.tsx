@@ -52,6 +52,7 @@ import {
   MAX_TARGET_COUNT, MIN_TARGET_COUNT, TASK_KIND_META,
   type TaskKind,
 } from '../utils/taskKinds';
+import { featureShown, taskKindsForMode } from '../utils/simpleMode';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
   MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N,
@@ -103,6 +104,21 @@ const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
   icon: meta.icon,
   accessibilityLabel: `${meta.label}. ${meta.hint}`,
 }));
+
+/**
+ * The same track, narrowed to what simplified mode offers.
+ *
+ * The row itself is gone for a Standard task (see `SIMPLE_EDITOR_ROW_FEATURES`),
+ * so this only ever runs for a task that already has a shape — and it keeps
+ * that shape alongside Standard so the picker agrees with the task in front of
+ * it and there is still a way back out.
+ */
+function kindSegmentsFor(simpleMode: boolean, current: TaskKind) {
+  const kinds = taskKindsForMode(simpleMode, current);
+  return kinds.length === TASK_KIND_SEGMENTS.length
+    ? TASK_KIND_SEGMENTS
+    : TASK_KIND_SEGMENTS.filter(seg => kinds.includes(seg.value));
+}
 
 /** The unit beside a typed number — one set, used by Duration and by custom Effort. */
 const DURATION_UNIT_SEGMENTS = [
@@ -408,6 +424,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
   const deadlineCalendarId = useSettingsStore(s => s.deadlineCalendarId);
@@ -1874,7 +1891,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   value={kind}
                   onChange={applyKind}
                   columns={2}
-                  options={TASK_KIND_SEGMENTS}
+                  options={kindSegmentsFor(simpleMode, kind)}
                 />
                 <Text style={styles.kindHint}>
                   {TASK_KIND_META.find(m => m.key === kind)!.hint}
@@ -3297,8 +3314,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       </View>
       )}
 
+      {/* The heading has to answer for its own rows: simplified mode takes the
+          Effort row away, and a card headed "Priority & effort" with only a
+          Priority row in it names a field that isn't there. `EditorGroup` can
+          drop a row but it can't rename the group around it, so the one group
+          whose label lists its contents says so here. */}
       <EditorGroup
-        label="Priority & effort"
+        label={featureShown('effortRating', simpleMode, !!effort) ? 'Priority & effort' : 'Priority'}
         divider="full"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
