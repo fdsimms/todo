@@ -24,6 +24,20 @@ describe('aiFeaturesFor', () => {
     expect(aiFeaturesFor(true)).toHaveLength(AI_FEATURES.length);
   });
 
+  it('drops the features whose surface simplified mode removes', () => {
+    const on = aiFeaturesFor(true, true).map(f => f.id);
+    expect(on).not.toContain('substitutes');
+    expect(on).not.toContain('receiptImport');
+    // Nothing else goes: recipe import and meal ideas still have a screen.
+    expect(on).toContain('recipeExtraction');
+    expect(on).toContain('mealIdeas');
+  });
+
+  it('composes the two gates rather than letting one override the other', () => {
+    expect(aiFeaturesFor(false, true).map(f => f.id))
+      .toEqual(['taskBreakdown', 'templateSuggestions']);
+  });
+
   it('leaves the stored config alone, so the rows come back as they were', () => {
     // The point of hiding rather than clearing: someone who put Recipe import
     // on Opus and then put the whole area away should find it on Opus when

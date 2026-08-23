@@ -56,6 +56,7 @@ import { GroceryItemSheet, type CollapsibleFieldKey } from '../components/Grocer
 import { ItemDisposalOffer } from '../components/ItemDisposalOffer';
 import { LeftoverSheet } from '../components/LeftoverSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
+import { featureHidden } from '../utils/simpleMode';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
 import { freshnessColor } from '../components/LeftoversCard';
@@ -154,6 +155,7 @@ export function KitchenScreen() {
   const shops = useGroceryStore(useShallow(s => s.shops));
   const tripShopId = useGroceryStore(s => s.tripShopId);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
   const endTrip = useGroceryStore(s => s.endTrip);
   const activeTripShop = useMemo(
@@ -652,7 +654,10 @@ export function KitchenScreen() {
           // Gated on a key for the reason the shopping list's own receipt
           // button is: the reading is the whole feature, and without one this
           // opens a sheet that can only apologise.
-          ...(anthropicApiKey
+          // Both also go with simplified mode, which drops this screen from the
+          // hub pills — a deep link (a use-up task's own link) can still land
+          // here, so the actions have to answer for the mode themselves.
+          ...(anthropicApiKey && !featureHidden('receiptImport', simpleMode)
             ? [
                 {
                   icon: 'receipt-outline' as const,
@@ -661,11 +666,13 @@ export function KitchenScreen() {
                 },
               ]
             : []),
-          {
-            icon: 'barcode-outline',
-            onPress: () => setScanOpen(true),
-            accessibilityLabel: 'Scan a barcode into the pantry',
-          },
+          ...(featureHidden('barcodeScanning', simpleMode)
+            ? []
+            : [{
+                icon: 'barcode-outline' as const,
+                onPress: () => setScanOpen(true),
+                accessibilityLabel: 'Scan a barcode into the pantry',
+              }]),
         ]}
       />
       <GroceriesHubPills active="Kitchen" />

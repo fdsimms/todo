@@ -49,6 +49,7 @@ import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeSc
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { StartTripPrompt } from '../components/StartTripPrompt';
+import { featureHidden } from '../utils/simpleMode';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import {
   describeGroupedUnavailable,
@@ -247,6 +248,7 @@ export function GroceryScreen() {
   // Every AI affordance is gated on this, so a user without a key never sees
   // an entry point — the offline lexicon carries the feature on its own.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
   // Two mutually exclusive lenses over the same rows — see the ListRow doc
@@ -983,14 +985,17 @@ export function GroceryScreen() {
       list.push({ key: 'recipe', label: 'From a recipe', icon: 'restaurant-outline' });
     }
     list.push({ key: 'catalog', label: 'Browse catalog', icon: 'basket-outline' });
-    // In the add menu rather than the header, and unconditional. The header is
-    // already five actions wide, and this is an add: it's the one entry point
-    // that has to work with an empty list, since unpacking a shop you never
-    // wrote down is exactly the case it's for.
-    list.push({ key: 'scan', label: 'Scan barcodes', icon: 'barcode-outline' });
+    // In the add menu rather than the header. The header is already five
+    // actions wide, and this is an add: it's the one entry point that has to
+    // work with an empty list, since unpacking a shop you never wrote down is
+    // exactly the case it's for. Gone in simplified mode, which takes the
+    // scanner with it.
+    if (!featureHidden('barcodeScanning', simpleMode)) {
+      list.push({ key: 'scan', label: 'Scan barcodes', icon: 'barcode-outline' });
+    }
     list.push({ key: 'item', label: 'Add an item', icon: 'add-circle-outline' });
     return list;
-  }, [recipes.length, anthropicApiKey]);
+  }, [recipes.length, anthropicApiKey, simpleMode]);
 
   const handleAddMenuSelect = useCallback((key: string) => {
     if (key === 'recipe') {
@@ -1106,7 +1111,7 @@ export function GroceryScreen() {
   // running, the same two conditions every header action and the trip banner
   // already answer to.
   const startCard =
-    selectionMode || activeTripShop ? null : (
+    selectionMode || activeTripShop || featureHidden('shoppingTrips', simpleMode) ? null : (
       <StartTripPrompt
         suggestable={suggestableShops}
         onOpenSheet={() => setTripOpen(true)}
@@ -1141,6 +1146,10 @@ export function GroceryScreen() {
           you're looking at such a row, and a way out of a mode shouldn't have
           to be scrolled back to. Hidden while selecting, like the card below
           and every header action. */}
+      {/* A trip can outlive the switch being flipped, so a running one keeps its
+          banner (and the way to finish it) however simple the mode is — the
+          same call the focus-session header action makes. Only starting one
+          goes, with `startCard` above. */}
       {!selectionMode && !!activeTripShop && (
         <ActiveTripBanner
           shopName={activeTripShop.name}
@@ -1225,7 +1234,7 @@ export function GroceryScreen() {
                 reach for it when you're done, not mid-shop. Gated on a key
                 because the read is the whole feature — without one the button
                 would open a sheet that can only apologise. */}
-            {!!anthropicApiKey && listCount > 0 && (
+            {!!anthropicApiKey && listCount > 0 && !featureHidden('receiptImport', simpleMode) && (
               <View style={styles.clearWrap}>
                 <InlineAction
                   label="Scan a receipt"
@@ -1327,7 +1336,9 @@ export function GroceryScreen() {
         seedStamp={receiptSeed?.stamp}
         // Gated on a key for the reason the list's own button is: without one
         // the action opens a sheet that can only apologise.
-        onScanReceipt={anthropicApiKey ? () => setReceiptOpen(true) : undefined}
+        onScanReceipt={anthropicApiKey && !featureHidden('receiptImport', simpleMode)
+          ? () => setReceiptOpen(true)
+          : undefined}
         onClose={() => {
           setFinishOpen(false);
           setReceiptSeed(null);

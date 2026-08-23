@@ -30,6 +30,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const setAnthropicApiKey = useSettingsStore(s => s.setAnthropicApiKey);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   const productLookupEnabled = useSettingsStore(s => s.productLookupEnabled);
   const setProductLookupEnabled = useSettingsStore(s => s.setProductLookupEnabled);
   const fdcApiKey = useSettingsStore(s => s.fdcApiKey);
@@ -217,7 +218,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
         label="AI features"
         footer="Turn any of these off if you'd rather they never call out to Anthropic, or pick a different model per feature: a faster, cheaper model for quick suggestions, or a stronger one where it's worth the extra cost."
       >
-        {aiFeaturesFor(kitchenEnabled).map((feature, i) => {
+        {aiFeaturesFor(kitchenEnabled, simpleMode).map((feature, i) => {
           const config = aiFeatureConfig[feature.id];
           return (
             <React.Fragment key={feature.id}>
@@ -248,8 +249,9 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
       {/* Its own section rather than a row among the AI features, because it is
           not one: no Anthropic key, no model to pick, and a different service
           on the other end. Gated on the groceries area for the same reason the
-          kitchen AI features are — it is only reachable from the scanner. */}
-      {kitchenEnabled && (
+          kitchen AI features are — it is only reachable from the scanner, and
+          on simplified mode for the same reason again (the scanner is gone). */}
+      {kitchenEnabled && !simpleMode && (
         <SettingsSection
           label="Barcode lookups"
           footer="Open Food Facts is a free product database run by volunteers, and needs no key. Scanning sends one barcode at a time and nothing else, with no account and no identifier attached. Answers are saved on this device, so a barcode is only looked up once. Turning this off still uses the barcodes already saved here. The two keys below are optional and add more places to look."

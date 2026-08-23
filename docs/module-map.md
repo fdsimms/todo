@@ -157,6 +157,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/shakeDetect.ts` — ShakeSample, SHAKE_UPDATE_INTERVAL_MS, SHAKE_THRESHOLD_G, SHAKE_JOLTS_REQUIRED, SHAKE_WINDOW_MS, SHAKE_COOLDOWN_MS, SHAKE_ARM_DELAY_MS, ShakeState, createShakeState, armShakeState, +3 more
 - `src/utils/shareText.ts` — buildRecipeShareText, buildIngredientsText, buildGroceryListShareText, buildGroceryListText, buildWeekPlanShareText
 - `src/utils/shoppingTrip.ts` — MAX_TRIP_STOPS, ShopCoverage, TripPlan, TripSummary, planTrip, summarizeTrip, describeShopCoverage, joinNames
+- `src/utils/simpleMode.ts` — SimpleArea, SimpleFeatureId, SimpleFeature, SIMPLE_AREA_LABELS, SIMPLE_AREAS, SIMPLE_FEATURES, simpleFeaturesIn, featureHidden, featureShown, SIMPLE_HIDDEN_SCREENS, +8 more
 - `src/utils/simpleTaskForm.ts` — SIMPLE_QUICK_ADD_CHIPS, SIMPLE_EDITOR_PRIMARY_ROWS, isSimpleChip, simplePrimaryRow
 - `src/utils/snoozeEngine.ts` — SnoozeSuggestion, computeSnoozeSuggestion
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap

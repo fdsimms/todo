@@ -57,6 +57,7 @@ import {
   type TypeValues,
 } from '../utils/taskKinds';
 import { isSimpleChip } from '../utils/simpleTaskForm';
+import { featureShown } from '../utils/simpleMode';
 import { resolvePillOverflow } from '../utils/pillOverflow';
 import { MAX_TARGET_UNIT_LENGTH } from '../utils/quotaUnit';
 import { WhenPicker } from './WhenPicker';
@@ -199,6 +200,7 @@ export function QuickAddModal({
   const titleRules = useSettingsStore(useShallow(s => s.titleRules));
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleTaskForm = useSettingsStore(s => s.simpleTaskForm);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   // Which list this actually lands in: the caller's explicit choice (a
   // screen's current sub-view, a project's "unscheduled" drop) if it named
   // one, else Settings' destination default.
@@ -1085,6 +1087,10 @@ export function QuickAddModal({
       // hide a value that has already been applied, which is the one thing a
       // display preference must never do.
       .filter(c => isSimpleChip(c.key, simpleTaskForm) || c.value !== null)
+      // Simplified mode takes Effort off the editor, so the chip that sets it
+      // goes too. Same exemption for a chip already carrying a value.
+      .filter(c => c.key !== 'effort'
+        || featureShown('effortRating', simpleMode, c.value !== null))
       .map(c => ({
         ...c,
         label: QUICK_ADD_CHIP_LABELS[c.key],
