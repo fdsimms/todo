@@ -33,6 +33,7 @@ import { describeLeftover, liveFreshnessOf, liveLeftovers, mealTitleForLeftover 
 // env can reach it without loading a renderer.
 import { freshnessColor } from './LeftoversCard';
 import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH, type Leftover, type MealSlot } from '../types';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 export interface MealPick {
   /**
@@ -163,7 +164,9 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const showFreeText =
     !!typed && !matches.some(r => r.name.toLowerCase() === typed.toLowerCase());
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const keyboardOffset = useRef(new Animated.Value(0)).current;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -191,7 +194,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     if (!visible) return;
     setQuery('');
     setSlot(forceSlot ?? lastPickedSlot ?? defaultSlot);
-    translateY.setValue(600);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
     setKeyboardHeight(0);
@@ -204,10 +207,10 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
       after?.();
     });

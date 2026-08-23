@@ -28,6 +28,7 @@ import { canBeBlockedBy, canBeBlockerOf, resolverFor, sortByBlockerAffinity, typ
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { categoryLabel } from '../utils/categoryLabel';
 import type { Task } from '../types';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 /**
  * Which end of the relationship is being filled in: the task being edited is
@@ -165,7 +166,9 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
     return parts.length ? parts.join(' · ') : null;
   };
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   /**
    * The sheet is bottom-anchored, so with a short list the whole thing — rows
@@ -198,7 +201,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
   useEffect(() => {
     if (visible) {
       setQuery('');
-      translateY.setValue(600);
+      translateY.setValue(hiddenY);
       backdropOpacity.setValue(0);
       keyboardOffset.setValue(0);
       setKeyboardHeight(0);
@@ -221,7 +224,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
     Keyboard.dismiss();
     Animated.parallel([
       Animated.spring(translateY, {
-        toValue: 700,
+        toValue: hiddenY,
         ...animation.spring.sheetDismiss,
         useNativeDriver: true,
       }),
@@ -231,7 +234,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
         useNativeDriver: true,
       }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
       after?.();
     });

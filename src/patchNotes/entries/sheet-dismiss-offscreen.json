@@ -1,0 +1,4 @@
+{
+  "message": "Fixed bottom sheets leaving a strip of themselves showing as they closed. Tapping \"Open recipe\" on a planned meal no longer parks the meal sheet at the bottom of the screen, flashing, until the recipe opens.",
+  "date": "2026-08-23"
+}

@@ -120,6 +120,7 @@ import { DeloadSheet } from '../components/DeloadSheet';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
+import { LogLeftoversOffer } from '../components/LogLeftoversOffer';
 import { useProjectStore } from '../store/useProjectStore';
 import { DayContextRow } from '../components/DayContextRow';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
@@ -2842,6 +2843,12 @@ export function TodayScreen() {
             signal that something was *used up* shouldn't depend on which screen
             the tap landed on. Renders nothing unless a cook just raised one. */}
         {viewMode === 'today' && <CookedUseUpOffer />}
+
+        {/* The other half of the same tick, and the half the task list didn't
+            have: "Cook X" going green is the moment anyone knows whether there
+            are leftovers. Ranks itself behind the offer above, so the two never
+            stack. Renders nothing unless a cook task raised one. */}
+        {viewMode === 'today' && <LogLeftoversOffer />}
 
         {/*
           Nothing about the day's calendar or its menu renders above the list

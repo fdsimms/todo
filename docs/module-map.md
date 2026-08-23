@@ -59,7 +59,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/emojiInput.ts` — firstEmoji, isSingleEmoji
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/extraTask.ts` — MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N, ExtraTaskRule, extraTaskRule, advanceExtraTaskTally, completionsUntilExtraTask, extraTaskSummary, describeExtraTaskRule, emptyExtraTaskDraft, parseExtraTaskDraft, +2 more
-- `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, resolveFabDrop, targetKey, +15 more
+- `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +17 more
 - `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, focusStepRemaining, +12 more
 - `src/utils/focusSettings.ts` — FOCUS_WORK_CAP_MIN, FOCUS_WORK_CAP_MAX, FOCUS_REST_MIN, FOCUS_REST_MAX, FOCUS_REST_AFTER_TASKS_MAX, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_LONG_REST_EVERY_MIN, FOCUS_LONG_REST_EVERY_MAX, FOCUS_WINDOW_MIN, +14 more
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusReason
@@ -85,7 +85,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/kitchenReorder.ts` — KitchenRow, kitchenRowKey, KitchenDestination, KitchenMove, buildKitchenRows, resolveKitchenDrop, kitchenDragRange
 - `src/utils/layoutAnimation.ts` — animateLayout
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskNeedsUpdate
-- `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, keepUntilKeyFor, keepDaysBetween, isLiveLeftover, +22 more
+- `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, LeftoverDestination, LeftoverPick, leftoverContainersFor, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, +25 more
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
 - `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, +8 more
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent
@@ -202,7 +202,7 @@ render, so listing them adds lines without adding answers.
 - `src/store/useFocusStore.ts` — useFocusStore
 - `src/store/useGroceryStore.ts` — PlannedRow, PlanAddResult, useGroceryStore
 - `src/store/useLeftoverStore.ts` — LeftoverDraft, useLeftoverStore
-- `src/store/useMealPlanStore.ts` — MealPlanDraft, CookedOffer, useMealPlanStore
+- `src/store/useMealPlanStore.ts` — MealPlanDraft, CookedOffer, LeftoverOffer, useMealPlanStore
 - `src/store/useProjectCategoryStore.ts` — useProjectCategoryStore
 - `src/store/useProjectStore.ts` — projectProgress, projectDecisions, isProjectPastWindow, useProjectStore
 - `src/store/useRecipeStore.ts` — CookStats, useRecipeStore
@@ -229,6 +229,7 @@ render, so listing them adds lines without adding answers.
 - `src/hooks/useRecipeImportSource.ts` — ResolvedRecipeSource, alertPhotoAccessDenied, useRecipeImportSource
 - `src/hooks/useRecipeTimer.ts` — RecipeTimerBinding, useRecipeTimer
 - `src/hooks/useRowSelection.ts` — useRowSelection
+- `src/hooks/useSheetHiddenOffset.ts` — useSheetHiddenOffset
 - `src/hooks/useTaskSelection.ts` — useTaskSelection
 
 ## `src/db`

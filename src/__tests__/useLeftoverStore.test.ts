@@ -7,7 +7,7 @@ import {
   dbPurgeOldLeftovers,
 } from '../db/database';
 import type { Leftover, Task } from '../types';
-import { daysInFridge, keepDaysBetween } from '../utils/leftovers';
+import { daysInFridge, isLiveLeftover, keepDaysBetween, needsAttention } from '../utils/leftovers';
 
 jest.mock('../db/database', () => ({
   dbGetAllLeftovers: jest.fn().mockReturnValue([]),
@@ -164,6 +164,42 @@ describe('logLeftover', () => {
   it('refuses a blank title', () => {
     expect(useLeftoverStore.getState().logLeftover({ title: '   ' })).toBeNull();
     expect(dbInsertLeftover).not.toHaveBeenCalled();
+  });
+
+  it('goes in the fridge unless the draft says otherwise', () => {
+    expect(useLeftoverStore.getState().logLeftover({ title: 'Chilli' })!.frozenAt).toBeNull();
+    expect(useLeftoverStore.getState().logLeftover({ title: 'Chilli', frozen: false })!.frozenAt)
+      .toBeNull();
+  });
+
+  it('stamps a frozen container from its put-away instant, not from now', () => {
+    const storedAt = new Date(2026, 7, 10, 18, 0).toISOString();
+    const logged = useLeftoverStore.getState().logLeftover({
+      title: 'Chilli',
+      storedAt,
+      keepDays: 4,
+      frozen: true,
+    })!;
+
+    expect(logged.frozenAt).toBe(storedAt);
+    // The window it was given is still on the row, ready for the thaw to hand
+    // it back — freezing suspends the countdown, it doesn't clear it.
+    expect(logged.keepUntil).toBe('2026-08-14');
+    expect(isLiveLeftover(logged)).toBe(true);
+    expect(needsAttention(logged)).toBe(false);
+  });
+
+  // The log sheet's "Both": two containers out of one cooking, one per place,
+  // each with its own clock. The store sees them as two ordinary drafts.
+  it('takes a fridge and a freezer container of the same dish', () => {
+    const storedAt = new Date(2026, 7, 10, 18, 0).toISOString();
+    const fridge = useLeftoverStore.getState().logLeftover({ title: 'Ragù', storedAt })!;
+    const freezer = useLeftoverStore.getState().logLeftover({ title: 'Ragù', storedAt, frozen: true })!;
+
+    expect(fridge.id).not.toBe(freezer.id);
+    expect(fridge.frozenAt).toBeNull();
+    expect(freezer.frozenAt).toBe(storedAt);
+    expect(useLeftoverStore.getState().leftovers).toHaveLength(2);
   });
 
   // #1322: the sheet logs one draft per part the user ticked, so a composed

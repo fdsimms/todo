@@ -12,6 +12,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { CalendarPicker } from './CalendarPicker';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -47,7 +48,9 @@ export function LogbookEntryMenu({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showCalendar, setShowCalendar] = useState(false);
 
-  const translateY = useRef(new Animated.Value(400)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -58,7 +61,7 @@ export function LogbookEntryMenu({
         closeTimeoutRef.current = null;
       }
       setShowCalendar(false);
-      translateY.setValue(400);
+      translateY.setValue(hiddenY);
       backdropOpacity.setValue(0);
       Animated.parallel([
         Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -75,10 +78,10 @@ export function LogbookEntryMenu({
 
   const closeThen = (cb: () => void) => {
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 500, ...animation.spring.bouncy, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.bouncy, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(400);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       cb();
     });
   };
@@ -97,7 +100,7 @@ export function LogbookEntryMenu({
 
   const openCalendar = () => {
     haptics.tap();
-    Animated.spring(translateY, { toValue: 500, ...animation.spring.bouncy, useNativeDriver: true }).start(() => {
+    Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.bouncy, useNativeDriver: true }).start(() => {
       setShowCalendar(true);
     });
   };

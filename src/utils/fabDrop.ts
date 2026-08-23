@@ -2,10 +2,9 @@
  * Pure geometry for dropping the add button into a list — which row it landed
  * on, and what creating something there should mean. Today uses every kind
  * below; Projects, whose list is the same category-sectioned shape minus stacks
- * and pinning, uses `header` and `task`. Meal plan uses `day` alone — one
- * whole-band target per day, the same "anywhere in the band" rule `group`
- * already has, since there's no ordering within a day to split at a midpoint,
- * just "plan a meal here".
+ * and pinning, uses `header` and `task`. Meal plan uses `day` alone — one band
+ * per day, and the only kind that reads a horizontal position: down the list
+ * picks the day, across the band picks the meal (see slotAtX).
  *
  * Kept out of the component (like reorder.ts and paintSelect.ts) so the
  * hit-testing can be tested without a running gesture. Coordinates are
@@ -21,6 +20,8 @@
  * below, which only ever compares a point against bands — so the functions
  * here are "one consistent space", and the provider picks which.
  */
+
+import { MEAL_SLOTS, type MealSlot } from '../types';
 
 /**
  * A row of the Today list, as a thing the add button can be dropped on.
@@ -66,13 +67,22 @@ export type DropZone =
    */
   | { kind: 'rest'; key: string };
 
-/** A zone's measured vertical band on screen. */
+/** A zone's measured band on screen. */
 export interface ZoneRect {
   zone: DropZone;
   /** Window-space Y of the row's top edge. */
   top: number;
   /** Window-space Y of the row's bottom edge (exclusive). */
   bottom: number;
+  /**
+   * Window-space X of the row's leading and trailing edges.
+   *
+   * Only the `day` kind reads them — every other zone answers from `y` alone,
+   * because a list row's whole width means one thing. A day band is the one
+   * target with something left to say after "which day": see slotAtX.
+   */
+  left: number;
+  right: number;
 }
 
 /**
@@ -86,8 +96,8 @@ export type FabDropIntent =
   | { kind: 'insert'; anchorKey: string; before: boolean; category: string | null; schedule?: ScheduleInfo }
   | { kind: 'joinGroup'; groupId: string; groupTitle: string; category: string | null }
   | { kind: 'pin' }
-  /** Released over a meal-plan day band — plan a meal on `dayKey`. */
-  | { kind: 'day'; dayKey: string; dayLabel: string }
+  /** Released over a meal-plan day band — plan a meal on `dayKey`, in `slot`. */
+  | { kind: 'day'; dayKey: string; dayLabel: string; slot: MealSlot }
   /**
    * Released back on the corner the button came from — create nothing at all.
    * Distinct from `plain`: that one still opens the sheet, this one is the way
@@ -158,6 +168,37 @@ export function zoneAtY(
 }
 
 /**
+ * What a day drop means with nothing to say which meal — the slot every such
+ * drop meant before the band could carry a second answer.
+ */
+export const DEFAULT_DROP_SLOT: MealSlot = 'dinner';
+
+/**
+ * The slot a drop means when it lands on a day band, from where across the band
+ * it lands: the band is divided into one equal column per meal, in MEAL_SLOTS
+ * order, so breakfast is at the leading edge and a snack at the trailing one.
+ *
+ * **Across rather than down, because a day band is short and wide.** An empty
+ * day is its header and the padding under it, a little over 40pt, so four
+ * stacked lanes would be 10pt each — under half a fingertip. The same band is a
+ * full screen wide, which gives each column about 97pt. It also costs no
+ * layout: the day sections keep the height they have whether or not a drag is
+ * in flight, so the bands measured when the drag armed are still the bands the
+ * release is judged against.
+ *
+ * `x` is null for a drag that reports no horizontal position (the add button's,
+ * which has no meal to pick) and for a band measured with no width yet. Both
+ * mean DEFAULT_DROP_SLOT.
+ */
+export function slotAtX(left: number, right: number, x: number | null): MealSlot {
+  const width = right - left;
+  if (x === null || !Number.isFinite(x) || !(width > 0)) return DEFAULT_DROP_SLOT;
+  const column = Math.floor(((x - left) / width) * MEAL_SLOTS.length);
+  const clamped = Math.max(0, Math.min(MEAL_SLOTS.length - 1, column));
+  return MEAL_SLOTS[clamped] ?? DEFAULT_DROP_SLOT;
+}
+
+/**
  * What dropping at `y` on `hit` means.
  *
  * The task/group split is the same distinction reorder.ts draws between
@@ -167,11 +208,15 @@ export function zoneAtY(
  * row too, meaning "first thing under this heading" — dropping onto the top
  * half of a header to mean "above it" would be a two-pixel distinction between
  * two different categories.
+ *
+ * `x` is the one place a horizontal position is read, and only a day band uses
+ * it (see slotAtX). Everything else resolves from `y` exactly as it did.
  */
 export function resolveFabDrop(
   hit: ZoneRect | null,
   y: number,
   overHome: boolean = false,
+  x: number | null = null,
 ): FabDropIntent {
   // Checked before the rows: the button's resting corner sits over the tail of
   // the list, so the bottom row is a real hit at the same moment the button is
@@ -187,7 +232,12 @@ export function resolveFabDrop(
     case 'rest':
       return { kind: 'plain' };
     case 'day':
-      return { kind: 'day', dayKey: zone.dayKey, dayLabel: zone.dayLabel };
+      return {
+        kind: 'day',
+        dayKey: zone.dayKey,
+        dayLabel: zone.dayLabel,
+        slot: slotAtX(hit.left, hit.right, x),
+      };
     case 'group':
       return {
         kind: 'joinGroup',
@@ -229,7 +279,9 @@ export function targetKey(rects: ZoneRect[], intent: FabDropIntent): string {
     case 'pin':
       return 'pin';
     case 'day':
-      return `day:${intent.dayKey}`;
+      // The slot is part of the place, so crossing from one column to the next
+      // ticks and re-labels the card exactly as crossing into another day does.
+      return `day:${intent.dayKey}:${intent.slot}`;
     case 'joinGroup':
       return `group:${intent.groupId}`;
     case 'insert': {

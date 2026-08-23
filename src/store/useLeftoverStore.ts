@@ -31,6 +31,12 @@ export interface LeftoverDraft {
   recipeId?: string | null;
   /** The planned meal it was logged from. */
   sourceEntryId?: string | null;
+  /**
+   * Log this one straight into the freezer rather than into the fridge — see
+   * `LeftoverDestination`, which is what the log sheet asks and where the
+   * "both" answer is turned into two of these.
+   */
+  frozen?: boolean;
 }
 
 /**
@@ -219,11 +225,18 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
       keepUntil: keepUntilKeyFor(storedAt, draft.keepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT),
       finishedAt: null,
       outcome: null,
-      // Logged into the fridge, never straight into the freezer: what goes in
-      // the freezer is a container that already exists, and logLeftover is the
-      // moment the container is created. LeftoverSheet's Freeze is one tap
-      // away, and it stamps the instant the user actually taps it.
-      frozenAt: null,
+      // Stamped with `storedAt` rather than with now: a container logged
+      // straight into the freezer went in when it was put away, which is the
+      // same instant the "Put away" chips are answering for. They come apart
+      // for a portion logged two days late, and taking the later of the two
+      // would have it read as having spent those days in the fridge.
+      //
+      // This used to be flatly null — the freezer was somewhere you moved a
+      // container that already existed, so `setFrozen` was the only way in.
+      // That held right up against batch cooking, where half the pot never
+      // sees the fridge at all: logging it and then freezing it was two steps
+      // to record one, and the fridge clock it ran in between was a lie.
+      frozenAt: draft.frozen ? storedAt : null,
       createdAt: new Date().toISOString(),
       useUpTask: null,
     };

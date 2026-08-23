@@ -25,6 +25,7 @@ import {
 import { useTaskStore } from '../store/useTaskStore';
 import { PinIcon } from './PinIcon';
 import type { Task } from '../types';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -63,7 +64,9 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
   /** Swapped-away ids, never offered again while the sheet is open. */
   const [rejectedIds, setRejectedIds] = useState<string[]>([]);
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -76,7 +79,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
     setSlotIds(picked);
     setSelectedIds(new Set(picked));
     setRejectedIds([]);
-    translateY.setValue(600);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -87,10 +90,10 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
 
   const dismiss = () => {
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
     });
   };

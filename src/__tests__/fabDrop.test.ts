@@ -11,6 +11,7 @@ import {
   miniDropIndex,
   miniDropIndicatorY,
   resolveFabDrop,
+  slotAtX,
   targetKey,
   zoneAtY,
   zoneKey,
@@ -22,7 +23,10 @@ import {
 // A realistic slice of Today: an uncategorised task at the top, then a "Work"
 // header, a task, a tall stack row (its own header plus children), then a
 // "Home" header and a task. Cards are 4px apart, headers are short.
-const zone = (z: DropZone, top: number, bottom: number): ZoneRect => ({ zone: z, top, bottom });
+// Bands are a phone width by default (0..390): only a `day` zone reads the
+// horizontal pair, and every other test here asks about the vertical one.
+const zone = (z: DropZone, top: number, bottom: number, left = 0, right = 390): ZoneRect =>
+  ({ zone: z, top, bottom, left, right });
 const key = (hit: ZoneRect | null) => (hit ? zoneKey(hit.zone) : null);
 
 const RECTS: ZoneRect[] = [
@@ -154,9 +158,31 @@ describe('resolveFabDrop', () => {
 
   it('names a meal-plan day from anywhere in its band, with no midpoint split', () => {
     const dayZone = zone({ kind: 'day', key: 'd-thu', dayKey: '2026-08-13', dayLabel: 'Thursday' }, 300, 420);
-    const expected = { kind: 'day', dayKey: '2026-08-13', dayLabel: 'Thursday' };
-    expect(resolveFabDrop(dayZone, 305)).toEqual(expected);
-    expect(resolveFabDrop(dayZone, 415)).toEqual(expected);
+    const expected = { kind: 'day', dayKey: '2026-08-13', dayLabel: 'Thursday', slot: 'dinner' };
+    // Same day top to bottom — the split a day band has is the horizontal one.
+    expect(resolveFabDrop(dayZone, 305, false, 200)).toEqual(expected);
+    expect(resolveFabDrop(dayZone, 415, false, 200)).toEqual(expected);
+  });
+
+  it('picks the meal from where across the day band the drop lands', () => {
+    const dayZone = zone({ kind: 'day', key: 'd-thu', dayKey: '2026-08-13', dayLabel: 'Thursday' }, 300, 420);
+    const slotAt = (x: number) => {
+      const intent = resolveFabDrop(dayZone, 360, false, x);
+      return intent.kind === 'day' ? intent.slot : null;
+    };
+    expect(slotAt(10)).toBe('breakfast');
+    expect(slotAt(120)).toBe('lunch');
+    expect(slotAt(200)).toBe('dinner');
+    expect(slotAt(380)).toBe('snack');
+  });
+
+  it('means dinner when the drag reports no horizontal position at all', () => {
+    // The add button's drag: it has no meal to pick, and a day drop from it
+    // has to keep meaning what it meant before there were columns.
+    const dayZone = zone({ kind: 'day', key: 'd-thu', dayKey: '2026-08-13', dayLabel: 'Thursday' }, 300, 420);
+    expect(resolveFabDrop(dayZone, 360)).toEqual({
+      kind: 'day', dayKey: '2026-08-13', dayLabel: 'Thursday', slot: 'dinner',
+    });
   });
 
   // Later's day/time sections ride on the ordinary header/task zones (see
@@ -223,16 +249,54 @@ describe('targetKey', () => {
   });
 
   it('separates two different days but not one day sampled twice', () => {
-    const thu = { kind: 'day', dayKey: '2026-08-13', dayLabel: 'Thursday' } as const;
-    const fri = { kind: 'day', dayKey: '2026-08-14', dayLabel: 'Friday' } as const;
+    const thu = { kind: 'day', dayKey: '2026-08-13', dayLabel: 'Thursday', slot: 'dinner' } as const;
+    const fri = { kind: 'day', dayKey: '2026-08-14', dayLabel: 'Friday', slot: 'dinner' } as const;
     expect(targetKey(RECTS, thu)).toBe(targetKey(RECTS, { ...thu }));
     expect(targetKey(RECTS, thu)).not.toBe(targetKey(RECTS, fri));
+  });
+
+  it('separates two meals of one day, so crossing a column ticks', () => {
+    const thu = { kind: 'day', dayKey: '2026-08-13', dayLabel: 'Thursday', slot: 'dinner' } as const;
+    expect(targetKey(RECTS, thu)).not.toBe(targetKey(RECTS, { ...thu, slot: 'lunch' }));
   });
 
   it('falls back to the anchor when it is not in the snapshot', () => {
     const gone = { kind: 'insert', anchorKey: 't-gone', before: true, category: null } as const;
     expect(targetKey(RECTS, gone)).not.toBe(at(RECTS[0]!, 110));
     expect(targetKey([], gone)).toBe(targetKey(RECTS, gone));
+  });
+});
+
+describe('slotAtX', () => {
+  // A day band runs the width of the screen, so each of the four meals gets
+  // about 97pt of it.
+  const at = (x: number | null) => slotAtX(0, 390, x);
+
+  it('divides the band into one equal column per meal, in reading order', () => {
+    expect(at(0)).toBe('breakfast');
+    expect(at(97)).toBe('breakfast');
+    expect(at(98)).toBe('lunch');
+    expect(at(195)).toBe('dinner');
+    expect(at(292)).toBe('dinner');
+    expect(at(293)).toBe('snack');
+    expect(at(389)).toBe('snack');
+  });
+
+  it('clamps a point that has left the band on either side', () => {
+    expect(at(-40)).toBe('breakfast');
+    expect(at(420)).toBe('snack');
+  });
+
+  it('offsets from the band rather than from the screen', () => {
+    // A day section is inset from the page, so its left edge is not zero.
+    expect(slotAtX(16, 374, 20)).toBe('breakfast');
+    expect(slotAtX(16, 374, 370)).toBe('snack');
+  });
+
+  it('means dinner with no position, or with a band of no width', () => {
+    expect(at(null)).toBe('dinner');
+    expect(at(NaN)).toBe('dinner');
+    expect(slotAtX(0, 0, 0)).toBe('dinner');
   });
 });
 

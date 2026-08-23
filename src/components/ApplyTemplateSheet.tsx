@@ -47,6 +47,7 @@ import {
 import { WhenPicker } from './WhenPicker';
 import { EditorRow } from './EditorRow';
 import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateQuestion } from '../types';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -135,7 +136,9 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
   const questions = useMemo(() => questionsForTree(tree, templatesById), [tree, templatesById]);
   const answers = resolveAnswers(questions, typedAnswers, anchors);
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -157,7 +160,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
       setRunName('');
       setPlaceholderValues({});
       setTypedAnswers({});
-      translateY.setValue(600);
+      translateY.setValue(hiddenY);
       backdropOpacity.setValue(0);
       Animated.parallel([
         Animated.spring(translateY, {
@@ -189,7 +192,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
   const dismiss = (onDismissed?: () => void) => {
     Animated.parallel([
       Animated.spring(translateY, {
-        toValue: 700,
+        toValue: hiddenY,
         ...animation.spring.sheetDismiss,
         useNativeDriver: true,
       }),
@@ -199,7 +202,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
         useNativeDriver: true,
       }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
       onDismissed?.();
     });
@@ -209,7 +212,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
   // causes touch conflicts (same choreography as DeferModal).
   const openCalendar = (target: 'start' | 'end') => {
     Animated.spring(translateY, {
-      toValue: 700,
+      toValue: hiddenY,
       ...animation.spring.sheetDismiss,
       useNativeDriver: true,
     }).start(() => {
