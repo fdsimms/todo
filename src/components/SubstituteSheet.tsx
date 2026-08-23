@@ -18,6 +18,7 @@ import { border, font, fontWeight, iconSize, interaction, radius, spacing, type 
 import { groceryNameKey } from '../utils/groceryParse';
 import { describeSubstituteLink, substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { parseQuantity } from '../utils/quantity';
+import { describeUnitFamily } from '../utils/unitConvert';
 import { scaleQuantity } from '../utils/recipeScale';
 import { probablyHaveReason } from '../utils/grocerySuggest';
 import type { SuggestedSubstitute } from '../utils/substituteSuggestions';
@@ -244,7 +245,29 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   // "only applies to a recipe line measured in X" hint states the constraint
   // it's *actually* enforcing rather than a canned sentence. Null while the
   // left field hasn't produced a usable amount+unit yet.
-  const fromUnit = parseQuantity(ratioFrom).rest || null;
+  const fromQuantity = parseQuantity(ratioFrom);
+  const fromUnit = fromQuantity.rest || null;
+
+  // ...and the *family* where there is one, because the constraint is wider
+  // than the word typed: a ratio per tsp reaches a line in tbsp or cups too
+  // (see itemSubs.substituteQuantity). Only for a bare `amount unit`, since a
+  // ratio carrying prose ("1 tsp, packed") is matched whole and converts from
+  // nothing — which is exactly when the narrower sentence is the true one.
+  const fromFamily = fromUnit && !fromQuantity.trailing.trim()
+    ? describeUnitFamily(fromUnit)
+    : null;
+
+  // Assembled here rather than inline: four sentences across two independent
+  // conditions is a ternary nobody can read in JSX.
+  const ratioHint = !fromUnit
+    ? 'Optional. For a substitute that needs a different amount, not just a different name.'
+    // With the swap applied for you, a line the ratio can't be read against
+    // isn't renamed either — see standingSwaps.ts for why a swapped name over
+    // an unconverted amount is the one outcome worse than leaving the line
+    // alone.
+    : `Only applies to a recipe line measured ${fromFamily ? `by ${fromFamily}` : `in ${fromUnit}`}. ${
+        standing ? 'A line measured any other way isn’t swapped.' : 'Anything else is left as written.'
+      }`;
 
   // Doubling the typed `ratioFrom` demonstrates the arithmetic without
   // asserting a specific recipe line exists — a fixed second example ("a
@@ -373,12 +396,17 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
             </View>
 
             <Text style={styles.label}>HOW MUCH</Text>
+            <View style={styles.ratioLabelRow}>
+              <Text style={styles.ratioFieldLabel} numberOfLines={1}>{item.name}</Text>
+              <View style={styles.ratioArrowSpacer} />
+              <Text style={styles.ratioFieldLabel} numberOfLines={1}>{picked.name}</Text>
+            </View>
             <View style={styles.ratioRow}>
               <TextInput
                 style={[styles.input, styles.ratioInput]}
                 value={ratioFrom}
                 onChangeText={setRatioFrom}
-                placeholder="e.g. 1 clove"
+                placeholder="e.g. 1/4 tsp"
                 placeholderTextColor={colors.textTertiary}
                 maxLength={GROCERY_NAME_MAX_LENGTH}
                 accessibilityLabel={`Amount of ${item.name} this ratio is written for`}
@@ -388,23 +416,13 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
                 style={[styles.input, styles.ratioInput]}
                 value={ratioTo}
                 onChangeText={setRatioTo}
-                placeholder="e.g. 1/4 tsp"
+                placeholder="e.g. 1 clove"
                 placeholderTextColor={colors.textTertiary}
                 maxLength={GROCERY_NAME_MAX_LENGTH}
                 accessibilityLabel={`Equivalent amount of ${picked.name}`}
               />
             </View>
-            <Text style={styles.hint}>
-              {fromUnit
-                // With the swap applied for you, a line the ratio can't be
-                // read against isn't renamed either — see standingSwaps.ts for
-                // why a swapped name over an unconverted amount is the one
-                // outcome worse than leaving the line alone.
-                ? standing
-                  ? `Only applies to a recipe line measured in ${fromUnit}. A line measured any other way isn’t swapped.`
-                  : `Only applies to a recipe line measured in ${fromUnit}. Anything else is left as written.`
-                : `Optional. For a substitute that needs a different amount, not just a different name.`}
-            </Text>
+            <Text style={styles.hint}>{ratioHint}</Text>
 
             <Text style={styles.label}>NOTE</Text>
             <TextInput
@@ -799,6 +817,12 @@ function makeStyles(colors: Colors) {
       color: colors.text,
     },
     hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm },
+    // Mirrors ratioRow's layout exactly (same flex/gap/spacer width) so each
+    // label sits directly above the box it names, rather than a floating
+    // caption — the arrow icon has no label of its own, hence the spacer.
+    ratioLabelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
+    ratioFieldLabel: { flex: 1, color: colors.textTertiary, fontSize: font.xs },
+    ratioArrowSpacer: { width: iconSize.sm },
     ratioRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     // bgTertiary rather than the note field's bgSecondary — a step down, to
     // read as a pair of small numeric fields rather than a paragraph field.

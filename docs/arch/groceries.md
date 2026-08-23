@@ -841,9 +841,23 @@ plumbing through the recipes JSON blob.
   refusals for free. The one seam is `scaleQuantity`'s own factor-of-1 shortcut, which
   reports a no-op — right for its callers, wrong here, since a line naming exactly one
   `ratioFrom` is a real conversion (`ratioTo` verbatim), not "nothing to do"; `substituteQuantity`
-  special-cases it. **Units must match through `unitKey`, or the line refuses untouched** —
+  special-cases it. **The line's unit must be the ratio's unit, or the line refuses untouched** —
   a ratio written per clove must not silently apply to a whole bulb, and that refusal is the
-  one this feature would be untrustworthy without. **On `bothWays`, the reverse row's ratio
+  one this feature would be untrustworthy without. **Being the same unit is not the same test as
+  being the same word**, though, which is what it originally checked (`unitKey` on the whole tail,
+  so only an inflection collapsed): a ratio written per tsp sat out every line a recipe wrote in
+  tbsp, and the hint saying so read as "these units aren't comparable" when the truth was "you
+  didn't type the same word". A tablespoon *is* three teaspoons, so `unitFactor` (`unitConvert.ts`)
+  now converts a line written in a sibling unit into the ratio's own before the multiply.
+  **Same dimension and same system only**, which is the whole of the argument: those are the pairs
+  whose true ratio is a whole number, so nothing is rounded and the result stays safe to write back
+  (`swapForSubstitute` saves it onto the grocery row). Crossing to metric is the case that must
+  round — 1 tsp is 4.929 ml — and a rounded amount is display-only and marked `≈` everywhere else
+  in this app, with nowhere to put an `≈` on a saved number, so it still refuses. The clove/bulb
+  refusal is untouched by any of this for free: a count word is on nobody's conversion table.
+  The second chance is gated on both sides being a bare `amount unit`, which is what carries the
+  whole-tail rule through it: "3 cloves, minced" and "14 oz can" both trail prose, so a tin's size
+  is never read as a weight to convert. **On `bothWays`, the reverse row's ratio
   is the forward one swapped**, not copied: the reverse row describes the *other* item's own
   unit on its own left, or a both-ways garlic↔garlic-powder link would claim a clove
   converts to a further clove.

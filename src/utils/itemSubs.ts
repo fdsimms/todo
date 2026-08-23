@@ -1,6 +1,7 @@
 import type { GroceryItem, ItemSubLink } from '../types';
 import { parseQuantity, rationalToNumber, unitKey } from './quantity';
 import { scaleQuantity } from './recipeScale';
+import { unitFactor } from './unitConvert';
 import { probablyHaveReason } from './grocerySuggest';
 
 /**
@@ -177,6 +178,17 @@ export interface SubstitutedQuantity {
  *   feature untrustworthy. Both sides must actually carry a unit: two bare
  *   counts matching on "" would apply a per-clove ratio to a line that never
  *   named a unit at all.
+ *
+ * **Matching is not the same question as being written in the same word**,
+ * which is what that second refusal used to test and the reason a ratio
+ * written per tsp sat out every line a recipe wrote in tbsp. A tablespoon is
+ * three teaspoons — not approximately, exactly — so a line measured in one
+ * sibling of the ratio's own unit is measured in the ratio's unit, and
+ * refusing it was refusing arithmetic the app is certain of. `unitFactor`
+ * draws that line: same dimension, same system, so the whole conversion stays
+ * exact and the clove-versus-bulb refusal is untouched, since a count word is
+ * on nobody's table and converts to nothing (see unitConvert for why crossing
+ * to ml is a different question and still refused).
  */
 export function substituteQuantity(
   lineQuantity: string,
@@ -192,12 +204,26 @@ export function substituteQuantity(
   if (line.amount === null || from.amount === null) return unchanged;
   const fromValue = rationalToNumber(from.amount);
   if (fromValue === 0) return unchanged;
+  if (!line.rest || !from.rest) return unchanged;
+
   // Compared on the *whole* tail rather than the unit word alone: a ratio has
   // to agree with the entire measurement it was written against, so
   // "3 cloves, minced" doesn't quietly take a per-clove ratio.
-  if (!line.rest || !from.rest || unitKey(line.rest) !== unitKey(from.rest)) return unchanged;
+  //
+  // Failing that, the same measurement said in a sibling unit — "1 tbsp"
+  // against a ratio written per "1/4 tsp", which is three of them. Only when
+  // both sides are a bare `amount unit` with nothing after them: `trailing` is
+  // where the prose goes, so requiring it empty is how the whole-tail rule
+  // above survives the second chance. It's also what keeps a container out —
+  // "14 oz can" trails " can", so the size of a tin is never read as a weight
+  // to convert.
+  const bareUnits = !line.trailing.trim() && !from.trailing.trim();
+  const perRatioUnit = unitKey(line.rest) === unitKey(from.rest)
+    ? 1
+    : bareUnits ? unitFactor(line.rest, from.rest) : null;
+  if (perRatioUnit === null) return unchanged;
 
-  const factor = rationalToNumber(line.amount) / fromValue;
+  const factor = (rationalToNumber(line.amount) * perRatioUnit) / fromValue;
 
   // scaleQuantity treats an exact 1× as a no-op and reports it unscaled —
   // right for its own callers (nothing to do), wrong here: an exact 1× means
