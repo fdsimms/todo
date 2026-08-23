@@ -25,7 +25,12 @@ import { ensureGeneratedTaskCategory } from './useCategoryStore';
 import { deleteGeneratedTaskQuietly, dropGeneratedTask } from './generatedTaskSync';
 import { syncMealEvent } from '../utils/mealCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
-import { classifyPlanned, consumedRows, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
+import {
+  classifyPlanned,
+  consumedRows,
+  plannedIngredientsForRecipe,
+  type ClassifiedIngredient,
+} from '../utils/mealPlanGroceries';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { generateId } from '../utils/id';
 import { normalizeScale } from '../utils/recipeScale';
@@ -46,8 +51,9 @@ import {
 } from '../utils/mealPlan';
 import { countPlannedSlots } from '../utils/mealPlanNudge';
 import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft } from '../utils/mealSlotTasks';
-import { dayKeyToDate } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { setHours } from 'date-fns/setHours';
 
 /**
  * Mirrors useTaskStore/useGroceryStore's UndoableAction — see
@@ -839,7 +845,15 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const next: MealPlanEntry = { ...entry, cookedAt: cooked ? new Date().toISOString() : null };
     dbUpdateMealPlanEntry(next);
     set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
-    set({ cookedOffer: cooked ? useUpOfferFor(next) : null });
+    // One walk of the recipe answers both halves of a cooking: what to ask
+    // about (the offer) and what it opened (stamped here and now, since nothing
+    // has to be asked for that — see markConsumedOpened). The offer is set
+    // first because the opening doesn't change the set: `probablyHaveReason`
+    // reads assertions, the freezer and purchase history, and `openedAt` is
+    // none of the three, so the banner recomputing live still finds these rows.
+    const consumption = cooked ? cookedConsumption(next) : null;
+    set({ cookedOffer: consumption?.offer ?? null });
+    if (consumption) markConsumedOpened(next, consumption.rows);
     // Cleared in both directions, and set nowhere here: the leftovers offer
     // belongs to the task side of the tick (see setCookedPaired). Clearing it
     // on a plan-side tick is what stops a stale offer for last night's dinner
@@ -1130,24 +1144,6 @@ function resolveEntry(get: () => MealPlanStore, id: string): MealPlanEntry | nul
 }
 
 /**
- * The offer a just-cooked meal raises, or null when there's nothing to ask.
- *
- * **Gated on there being at least one line to name**, exactly as the restock
- * banner is gated on `restockRows` — an offer that exists but shows nothing
- * would be indistinguishable from one that hasn't been dismissed, and the
- * screen suppresses the restock banner while this is set. `consumedRows` is
- * what it can defend: the lines the app is already claiming you have.
- *
- * The count isn't stored. It's recomputed live by the banner off the same
- * three utils, so answering the questions empties the set and retires the
- * offer — the same "hidden rather than hedged" call the restock banner makes,
- * and what makes the two hand over to each other with no plumbing between them.
- *
- * Reads two other stores at write time, like `setCookedPaired` reaching into
- * `useRecipeStore` just below. A free-text meal has no recipe and so no
- * ingredients, which is not an error — just a meal with nothing to ask about.
- */
-/**
  * What a just-cooked meal could leave in the fridge, or null because there is
  * nothing to offer.
  *
@@ -1160,7 +1156,7 @@ function resolveEntry(get: () => MealPlanStore, id: string): MealPlanEntry | nul
  *
  * The parts and the keep-for window are deliberately *not* resolved here. They
  * come from the recipe, which the banner reads live for the same reason
- * `useUpOfferFor`'s rows are recomputed rather than snapshotted: a recipe
+ * `cookedConsumption`'s rows are recomputed rather than snapshotted: a recipe
  * edited between the tick and the tap should be read as it now stands.
  */
 function leftoverOfferFor(entry: MealPlanEntry): LeftoverOffer | null {
@@ -1175,7 +1171,32 @@ function leftoverOfferFor(entry: MealPlanEntry): LeftoverOffer | null {
   };
 }
 
-function useUpOfferFor(entry: MealPlanEntry): CookedOffer | null {
+/**
+ * What a just-cooked meal was made of, and the offer to raise about it — or
+ * null when there's nothing to ask and nothing to open.
+ *
+ * One walk of the recipe answers both, because both are the same set of lines:
+ * `consumedRows` is what the offer can defend (the lines the app is already
+ * claiming you have) and it's the same restraint that decides what a cooking
+ * may mark opened. See `markConsumedOpened` for where the two part ways.
+ *
+ * **Gated on there being at least one line to name**, exactly as the restock
+ * banner is gated on `restockRows` — an offer that exists but shows nothing
+ * would be indistinguishable from one that hasn't been dismissed, and the
+ * screen suppresses the restock banner while this is set.
+ *
+ * The count isn't stored. It's recomputed live by the banner off the same
+ * three utils, so answering the questions empties the set and retires the
+ * offer — the same "hidden rather than hedged" call the restock banner makes,
+ * and what makes the two hand over to each other with no plumbing between them.
+ *
+ * Reads two other stores at write time, like `setCookedPaired` reaching into
+ * `useRecipeStore` just below. A free-text meal has no recipe and so no
+ * ingredients, which is not an error — just a meal with nothing to ask about.
+ */
+function cookedConsumption(
+  entry: MealPlanEntry
+): { offer: CookedOffer; rows: ClassifiedIngredient[] } | null {
   if (!entry.recipeId) return null;
   const recipes = useRecipeStore.getState().recipes;
   const recipe = recipes.find(r => r.id === entry.recipeId);
@@ -1198,11 +1219,68 @@ function useUpOfferFor(entry: MealPlanEntry): CookedOffer | null {
   if (rows.length === 0) return null;
 
   return {
-    recipeId: recipe.id,
-    recipeName: recipe.name,
-    choices: [...entry.recipeChoices],
-    scale,
+    offer: {
+      recipeId: recipe.id,
+      recipeName: recipe.name,
+      choices: [...entry.recipeChoices],
+      scale,
+    },
+    rows,
   };
+}
+
+/**
+ * When a cooking opened what it opened: now, or the meal's own day once that
+ * day has passed.
+ *
+ * A Tuesday dinner is routinely ticked off on Thursday — from the plan, or from
+ * a "Cook X" task that sat on Today for two days — and `openedAt` re-dates a
+ * use-by day, so stamping the tap would hand the jar two days of shelf life it
+ * hasn't got. Every other pantry assertion stamps now because every other one
+ * is a statement about the present ("I'm out of it", "I have it"); this one is
+ * a statement about when something happened. Noon rather than midnight for
+ * `getLogicalToday`'s reason — a day, not a boundary — and `dayKeyOf` reads the
+ * *logical* today, so a meal ticked off at 1am with a 2am reset is still that
+ * day's cooking rather than yesterday's.
+ */
+function openedAtForCook(entry: MealPlanEntry): Date {
+  const now = new Date();
+  return entry.date < dayKeyOf(getLogicalToday()) ? setHours(dayKeyToDate(entry.date), 12) : now;
+}
+
+/**
+ * Records that a cooking opened the things it was made of.
+ *
+ * **This is the one claim a cooking is allowed to make on its own**, and the
+ * line it stops at is the one `CookedUseUpSheet` guards: how much of anything
+ * is left is a question about real-world amounts that only the person can
+ * answer, so consumption is still asked and never inferred. That a packet got
+ * *opened*, though, follows from the cooking itself — you cannot cook with a
+ * sealed jar — and it was the state the app had no way to hear about unless
+ * someone went and toggled it on the item's own sheet, one row at a time.
+ *
+ * It writes over the same set the sheet asks about (`consumedRows`), so the
+ * restraint there carries: only lines the app already claims you have, never a
+ * staple, never something it has no catalog row for. A row that turns out to
+ * have been finished rather than merely opened is marked out by the sheet and
+ * leaves the pantry, which outranks anything said here.
+ *
+ * **Not retracted by un-cooking, deliberately.** The store cannot tell an undo
+ * from an "I haven't cooked this after all", and the same cooking's other
+ * write — what `markOutOfMany` marked out from the sheet — isn't retracted
+ * either. Resealing is one tap on the item's own sheet.
+ */
+function markConsumedOpened(entry: MealPlanEntry, rows: readonly ClassifiedIngredient[]): void {
+  const { items, markOpenedMany } = useGroceryStore.getState();
+  // Resolved back to catalog ids here rather than carried on the row, the same
+  // way CookedUseUpSheet does it: a ClassifiedIngredient is keyed by name, and
+  // the pantry assertion lives on the row. A key with no live row is dropped
+  // rather than minting one.
+  const byKey = new Map(items.map(i => [i.nameKey, i.id]));
+  const ids = rows
+    .map(r => byKey.get(r.nameKey))
+    .filter((id): id is string => !!id);
+  markOpenedMany(ids, openedAtForCook(entry));
 }
 
 // ─── Meal tasks (#1402, folded into slots) ──────────────────────────────────

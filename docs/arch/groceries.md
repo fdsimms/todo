@@ -640,6 +640,27 @@ opened on Tuesday keeps a week from Tuesday.
   evidence about the jar and not a state of the countdown. A frozen row drops the clause: naming
   two places for one jar reads as a contradiction.
 
+**A cooking opens what it was made of, and that is the one pantry claim the app makes unasked.**
+`useMealPlanStore.setCooked` stamps `openedAt` on every line the cook offer would ask about
+(`consumedRows` → `markOpenedMany`), which until then depended on somebody going to each item's own
+sheet and toggling it. The line it stops at is the one `CookedUseUpSheet` guards: *how much* is
+left is a question about real-world amounts only the person can answer, so consumption is still
+asked. That a packet got opened isn't a guess at all — you can't cook with a sealed jar.
+
+- **It writes over the offer's own set, so the offer's restraint carries**: only lines the app
+  already claims you have, never a staple, never a name with no catalog row. A row that turns out
+  to have been *finished* is marked out by the sheet, which outranks anything said here.
+- **It is dated to the meal's own day once that day has passed** (`openedAtForCook`), unlike every
+  other pantry assertion, which stamps now. The others are statements about the present ("I'm out
+  of it"); this one is about when something happened, and a Tuesday dinner ticked off on Thursday
+  would otherwise hand the jar two days of shelf life it hasn't got.
+- **Single meals only.** `bulkSetCooked` is excluded for the same reason it raises no offer:
+  marking last week's five dinners cooked on a Sunday is bookkeeping, and the openings would all be
+  dated to the Sunday.
+- **Un-cooking doesn't reseal anything**, and neither store can tell an undo from "I haven't cooked
+  this after all". The same cooking's other write — what the sheet marked out — isn't retracted
+  either. One tap on the item's sheet is the way back.
+
 **`runningLowAt` is the state the "Got it" / "Out of it" pair was missing** — the interesting point
 on that scale is in the middle, and it's the one the app had no way to hear about.
 

@@ -13,6 +13,7 @@ import type { GroceryItem, MealPlanEntry, MealSlot, Recipe, Task } from '../type
 import { useGroceryStore } from '../store/useGroceryStore';
 import { groceryNameKey } from '../utils/groceryParse';
 import { mealSlotSourceId, mealSlotTaskDraft } from '../utils/mealSlotTasks';
+import { dayKeyOf } from '../utils/dateUtils';
 
 jest.mock('../db/database', () => ({
   dbGetMealPlanEntries: jest.fn().mockReturnValue([]),
@@ -23,6 +24,10 @@ jest.mock('../db/database', () => ({
   dbPurgeOldMealPlanEntries: jest.fn().mockReturnValue(0),
   dbGetMealPlanAddedToList: jest.fn().mockReturnValue({}),
   dbSetMealPlanAddedToList: jest.fn(),
+  // The real grocery store is driven below, and a cooking now writes to it —
+  // marking what it used as opened. Nothing here asserts the row hit SQLite,
+  // only what the store holds afterwards.
+  dbUpdateGroceryItem: jest.fn(),
 }));
 
 // mealCookTasks defaults on, matching the real store — so every test here runs
@@ -1393,6 +1398,97 @@ describe('cookedOffer', () => {
     useMealPlanStore.getState().clearCookedOffer();
 
     expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+  });
+});
+
+// The one claim a cooking makes without being asked: you cannot cook with a
+// sealed jar. What it *used up* is still the offer's question above.
+describe('a cooking marks what it used as opened', () => {
+  const chili = () => recipeWith('Chili', ['soy sauce', 'cumin', 'gochujang']);
+  const openedOf = (name: string) =>
+    useGroceryStore.getState().items.find(i => i.name === name)?.openedAt ?? null;
+
+  /** A meal of `recipe` on `date`, ticked cooked, with the catalog holding `stocked`. */
+  function cookOn(date: string, recipe: Recipe, stocked: GroceryItem[]) {
+    mockRecipeState.recipes = [recipe];
+    useGroceryStore.setState({ items: stocked });
+    const dinner = entry(date, 'dinner', { recipeId: recipe.id, title: recipe.name });
+    loadWeek([dinner]);
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+    return dinner;
+  }
+
+  it('opens the lines the app already claims you have', () => {
+    cookOn('2026-08-05', chili(), [onHand('soy sauce'), onHand('cumin')]);
+
+    expect(openedOf('soy sauce')).not.toBeNull();
+    expect(openedOf('cumin')).not.toBeNull();
+  });
+
+  // Same restraint consumedRows imposes on the question: a standing "I always
+  // have salt" isn't a packet, and a row the app doesn't think you have wasn't
+  // what got cooked with.
+  it('leaves a staple and a row it does not claim you have alone', () => {
+    cookOn('2026-08-05', recipeWith('Chili', ['salt', 'cumin']), [
+      { ...onHand('salt'), isStaple: true },
+      { ...onHand('cumin'), onHandUntil: '2026-01-01T00:00:00.000Z' },
+    ]);
+
+    expect(openedOf('salt')).toBeNull();
+    expect(openedOf('cumin')).toBeNull();
+  });
+
+  // A Tuesday dinner is routinely ticked off on Thursday, and openedAt re-dates
+  // a use-by day — stamping the tap would hand the jar the days in between.
+  it('dates the opening to the meal’s own day once that day has passed', () => {
+    cookOn('2026-08-05', chili(), [onHand('soy sauce')]);
+
+    expect(openedOf('soy sauce')).toBe(new Date('2026-08-05T12:00:00').toISOString());
+  });
+
+  it('dates today’s cooking to now', () => {
+    const today = dayKeyOf(new Date());
+    const before = Date.now();
+    cookOn(today, chili(), [onHand('soy sauce')]);
+
+    const opened = Date.parse(openedOf('soy sauce')!);
+    expect(opened).toBeGreaterThanOrEqual(before);
+    expect(opened).toBeLessThanOrEqual(Date.now());
+  });
+
+  // Bookkeeping, for the same reason the offer refuses it: the opening dates
+  // would be the Sunday somebody caught up on, not the nights they cooked.
+  it('is never written by a bulk mark', () => {
+    mockRecipeState.recipes = [chili()];
+    useGroceryStore.setState({ items: [onHand('soy sauce')] });
+    const a = entry('2026-08-05', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
+    const b = entry('2026-08-06', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
+    loadWeek([a, b]);
+
+    useMealPlanStore.getState().bulkSetCooked([a.id, b.id], true);
+
+    expect(openedOf('soy sauce')).toBeNull();
+  });
+
+  // The store can't tell an undo from "I haven't cooked this after all", and
+  // the same cooking's other write isn't retracted either. Resealing is a tap
+  // on the item's own sheet.
+  it('is not retracted by un-cooking', () => {
+    const dinner = cookOn('2026-08-05', chili(), [onHand('soy sauce')]);
+
+    useMealPlanStore.getState().setCooked(dinner.id, false);
+
+    expect(openedOf('soy sauce')).not.toBeNull();
+  });
+
+  it('opens nothing for a free-text meal, which has no ingredients', () => {
+    useGroceryStore.setState({ items: [onHand('soy sauce')] });
+    const dinner = entry('2026-08-05', 'dinner', { title: 'Takeout' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+
+    expect(openedOf('soy sauce')).toBeNull();
   });
 });
 
