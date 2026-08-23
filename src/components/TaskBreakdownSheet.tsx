@@ -28,7 +28,7 @@ interface Props {
 /**
  * "I can't even think about splitting this up — just do it for me."
  *
- * Reached from the postpone prompt's "Break it up…" pill, for a task that has
+ * Reached from the postpone prompt's "Break it up" pill, for a task that has
  * been pushed enough times that its size is the likely reason. Drafts the steps
  * with AI, lets the user drop any they don't want, and adds the rest as
  * subtasks.

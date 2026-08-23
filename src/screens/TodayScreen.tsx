@@ -2777,6 +2777,21 @@ export function TodayScreen() {
       : []),
     ...(viewMode === 'today'
       ? [{
+          icon: 'hourglass-outline' as const,
+          onPress: () => {
+            if (focusSession) {
+              setFocusSessionVisible(true);
+              return;
+            }
+            setFocusFromPinned(false);
+            setFocusSetupVisible(true);
+          },
+          active: focusSession !== null,
+          accessibilityLabel: focusSession ? 'Focus session running' : 'Start a focus session',
+        }]
+      : []),
+    ...(viewMode === 'today'
+      ? [{
           icon: 'ellipsis-horizontal' as const,
           onPress: () => setOptionsMenuVisible(true),
           active: hideCategories,
@@ -3441,11 +3456,6 @@ export function TodayScreen() {
             setDeloadVisible(true);
           } : undefined}
           plannedLabel={plannedLabel}
-          onFocusSession={focusSession ? undefined : () => {
-            setOptionsMenuVisible(false);
-            setFocusFromPinned(false);
-            setFocusSetupVisible(true);
-          }}
           onLookAhead={() => {
             setOptionsMenuVisible(false);
             setLookAheadVisible(true);
