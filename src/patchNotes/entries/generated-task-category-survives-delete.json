@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: deleting a category that cook tasks or use-up tasks were set to file under left the setting pointing at the deleted name, so the next generated task brought the category back as a section you couldn't manage. Deleting it now clears the setting too.",
+  "date": "2026-08-23"
+}
