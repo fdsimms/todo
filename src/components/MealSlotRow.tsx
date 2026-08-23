@@ -64,19 +64,6 @@ interface Props {
    * surfaces, and the row has to match whichever it's on.
    */
   surface?: string;
-  /**
-   * Compact density — the meal plan's own "Compact" toggle, which draws a day
-   * and its meals the way the retired "Whole week" lens drew a night: a fixed
-   * label column at the leading edge and the dish on the same line as it,
-   * rather than a dish over its caption.
-   *
-   * Nothing is dropped, only re-laid-out: the row keeps its icon, its cooked
-   * toggle, its chevron and its swipe, so the two densities are the same row
-   * and not a rich one and a summary one. What it costs is width — the title
-   * takes a single line and truncates where the comfortable row would have
-   * taken two.
-   */
-  compact?: boolean;
 }
 
 /**
@@ -100,7 +87,7 @@ interface Props {
  */
 export function MealSlotRow({
   entry, title, hasRecipe, choices, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
-  surface, compact,
+  surface,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -130,15 +117,10 @@ export function MealSlotRow({
   // shows it without having to open each night's sheet.
   const scaleLabel = isUnscaled(entry.recipeScale) ? null : formatScale(entry.recipeScale);
 
-  // The caption's own two qualifiers, in the order they qualify the dish: how
-  // much of it is being made, then which side of an either/or it's having.
-  const qualifier = [scaleLabel, choices].filter(Boolean).join(' · ');
-
   const rowBody = (
     <TouchableOpacity
       style={[
         styles.row,
-        compact && styles.rowCompact,
         { backgroundColor: surface ?? colors.bgSecondary },
         // Wins outright, as it always has: the tint is translucent, so it
         // composites over the container to exactly the colour it did before
@@ -160,10 +142,10 @@ export function MealSlotRow({
         // Takes the icon tile's place rather than sitting beside it, same
         // swap RecipesScreen's row makes — every row shifts by the same
         // amount, so the title column stays put.
-        <View style={[styles.select, compact && styles.selectCompact]}>
+        <View style={styles.select}>
           <Ionicons
             name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-            size={compact ? 20 : 24}
+            size={24}
             color={selected ? colors.accent : colors.textTertiary}
           />
         </View>
@@ -171,47 +153,26 @@ export function MealSlotRow({
         <View
           style={[
             styles.icon,
-            compact && styles.iconCompact,
             { backgroundColor: hasRecipe ? colors.accentSubtle : colors.bgTertiary },
           ]}
         >
           <Ionicons
             name={fromFridge ? 'snow-outline' : hasRecipe ? 'restaurant-outline' : 'create-outline'}
-            size={compact ? 13 : 16}
+            size={16}
             color={hasRecipe ? colors.accent : colors.textSecondary}
           />
         </View>
       )}
-      {compact ? (
-        <>
-          {/* The slot as a label column, which is the shape the whole-week lens
-              used for its day and the reason a compact day scans: every dish on
-              the screen starts at the same x. Fixed width rather than
-              content-sized, so "Breakfast" and "Lunch" don't stagger the column
-              they're labelling. */}
-          <Text style={styles.slotColumn} numberOfLines={1}>{slotLabel(entry.slot)}</Text>
-          <View style={styles.infoCompact}>
-            {/* The qualifier shrinks before the dish does (see the styles):
-                which dish it is outranks how much of it there is, and the
-                qualifier is the shorter string of the two anyway. */}
-            <Text style={styles.titleCompact} numberOfLines={1}>{title}</Text>
-            {!!qualifier && (
-              <Text style={styles.qualifier} numberOfLines={1}>· {qualifier}</Text>
-            )}
-          </View>
-        </>
-      ) : (
-        <View style={styles.info}>
-          <Text style={styles.title} numberOfLines={2}>{title}</Text>
-          {/* Appended to the caption rather than given a pill of its own: the row
-              is already dense, and how big a batch it is ranks with the slot it
-              sits in, not with the dish's name. */}
-          <Text style={styles.slot}>
-            {[slotLabel(entry.slot), scaleLabel].filter(Boolean).join(' · ')}
-            {!!choices && <Text style={styles.choices}> · {choices}</Text>}
-          </Text>
-        </View>
-      )}
+      <View style={styles.info}>
+        <Text style={styles.title} numberOfLines={2}>{title}</Text>
+        {/* Appended to the caption rather than given a pill of its own: the row
+            is already dense, and how big a batch it is ranks with the slot it
+            sits in, not with the dish's name. */}
+        <Text style={styles.slot}>
+          {[slotLabel(entry.slot), scaleLabel].filter(Boolean).join(' · ')}
+          {!!choices && <Text style={styles.choices}> · {choices}</Text>}
+        </Text>
+      </View>
       {/*
         The cooked control, moved out of the icon tile's corner and into the
         trailing cluster where the row's other controls live (#1362). It was a
@@ -271,13 +232,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
   },
-  // One line instead of two, so the padding is what's left to save: 36pt of
-  // row against the comfortable 52, which is what puts a whole week's dinners
-  // on one screen.
-  rowCompact: {
-    paddingVertical: 6,
-    minHeight: 36,
-  },
   rowSelected: {
     backgroundColor: colors.accent + '1A',
   },
@@ -288,14 +242,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Kept rather than dropped at this density: it's the only thing on the row
-  // that says a meal came out of the fridge, and at 24 it no longer sets the
-  // row's height — the text does.
-  iconCompact: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-  },
   // Same footprint as the icon tile it replaces, so entering selection mode
   // doesn't shift the row's text.
   select: {
@@ -304,36 +250,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectCompact: { width: 24, height: 24 },
   info: { flex: 1, gap: 2 },
-  // Same column the whole-week lens gave a night's day name, down to the
-  // weight and the colour — a label, not a caption, so it sits beside what it
-  // labels rather than under it.
-  slotColumn: {
-    width: 64,
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: fontWeight.semibold,
-  },
-  infoCompact: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 6,
-  },
-  titleCompact: {
-    flexShrink: 1,
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
-  },
-  // Shrinks four times as readily as the title beside it, which is how a long
-  // dish name keeps its characters and "· 2×" gives up its own.
-  qualifier: {
-    flexShrink: 4,
-    color: colors.textTertiary,
-    fontSize: font.xs,
-  },
   title: {
     color: colors.text,
     fontSize: font.md,

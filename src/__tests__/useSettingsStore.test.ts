@@ -1323,31 +1323,6 @@ describe('persisted recipe sort & filter', () => {
   });
 });
 
-describe('mealPlanCompact', () => {
-  it('defaults to the comfortable density, so an upgrade opens as it did', () => {
-    useSettingsStore.getState().initialize();
-    expect(useSettingsStore.getState().mealPlanCompact).toBe(false);
-  });
-
-  it('round-trips the compact density', () => {
-    useSettingsStore.getState().setMealPlanCompact(true);
-    expect(dbSetSetting).toHaveBeenCalledWith('mealPlanCompact', 'true');
-    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
-      key === 'mealPlanCompact' ? 'true' : null,
-    );
-    useSettingsStore.getState().initialize();
-    expect(useSettingsStore.getState().mealPlanCompact).toBe(true);
-  });
-
-  it('reads anything else as comfortable', () => {
-    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
-      key === 'mealPlanCompact' ? 'yes' : null,
-    );
-    useSettingsStore.getState().initialize();
-    expect(useSettingsStore.getState().mealPlanCompact).toBe(false);
-  });
-});
-
 describe('excludedRecipeTags (#1693)', () => {
   it('defaults to no exclusions', () => {
     useSettingsStore.getState().initialize();
