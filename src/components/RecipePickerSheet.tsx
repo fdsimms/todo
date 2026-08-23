@@ -32,17 +32,17 @@ import { describeLeftover, liveFreshnessOf, liveLeftovers, mealTitleForLeftover 
 // utils/leftovers, which is deliberately store- and theme-free so jest's node
 // env can reach it without loading a renderer.
 import { freshnessColor } from './LeftoversCard';
-import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH, type Leftover, type MealSlot } from '../types';
+import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH, type Leftover, type MealPlanEntry, type MealSlot } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 export interface MealPick {
   /**
-   * The day key this pick is for, handed back rather than re-read by the
-   * caller — the sheet now dismisses *before* the pick lands (see `pick`), and
-   * by then the caller's own "which day is being planned" state has been
-   * cleared by `onClose`. Carrying it makes the handler independent of state
-   * the dismissal just took away, the same reasoning LeftoverSheet's `commit`
-   * gives for its own ordering.
+   * The day key this pick is for, handed back rather than left for `onPlan`
+   * to re-read off whatever screen state opened the sheet — the same
+   * self-contained-callback shape `MealPlanEntry`'s own fields get everywhere
+   * else. Matters most on `onPlanned`'s batch: by the time that fires, the
+   * caller's own "which day is being planned" state has already been cleared
+   * by `onClose`.
    */
   date: string;
   slot: MealSlot;
@@ -71,7 +71,19 @@ interface Props {
    * everywhere the user is picking a slot as much as a meal (the + on a day).
    */
   forceSlot?: MealSlot | null;
-  onPick: (pick: MealPick) => void;
+  /** Writes the pick immediately. Returns null if the store refused it (a title that cleans to nothing). */
+  onPlan: (pick: MealPick) => MealPlanEntry | null;
+  /**
+   * Fires once, after the sheet has fully dismissed, carrying every entry
+   * picked this session (omitted if none were). Deferred the same way
+   * `PlanMealSheet.onPlanned` defers its own single entry — planning can
+   * raise the "Add prep tasks?" alert, and a native alert presented from
+   * underneath a `Modal` that's still on screen is the "already presenting"
+   * case that cost this sheet its offer the first time (see `pick`).
+   * Generalized to a batch because, unlike that sheet, this one supports
+   * picking more than once before closing — see `planned` below.
+   */
+  onPlanned?: (entries: MealPlanEntry[]) => void;
   onClose: () => void;
 }
 
@@ -121,8 +133,18 @@ const PRESET_PLANS = ['Leftovers', 'Takeout', 'Eating out'];
  * is asked later, when the meal is actually marked cooked (see
  * MealPlanScreen's markCooked), not here before it's been eaten. See
  * Leftover.finishedAt.
+ *
+ * **A pick doesn't close the sheet any more (#1384).** "Chicken and a salad"
+ * is a real dinner — `MealPlanEntry.sortOrder` has no `UNIQUE(date, slot)` on
+ * purpose — so the sheet stays open after each pick, the hint above the chips
+ * becomes a running confirmation, and the card at the bottom relabels itself
+ * from "Cancel" to "Done" once there's something to be done with. Closing is
+ * still the only moment `onPlanned` fires, batched over everything picked
+ * this session, for the same reason a single pick used to close before
+ * calling back at all: planning can raise the "Add prep tasks?" alert, and
+ * that can't be presented while this Modal is still up.
  */
-export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forceSlot = null, onPick, onClose }: Props) {
+export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forceSlot = null, onPlan, onPlanned, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -133,6 +155,8 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
   const [query, setQuery] = useState('');
   const [slot, setSlot] = useState<MealSlot>(defaultSlot);
+  /** Every entry picked so far this session, in the order they landed. */
+  const [planned, setPlanned] = useState<MealPlanEntry[]>([]);
 
   const typed = cleanRecipeName(query);
 
@@ -194,6 +218,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     if (!visible) return;
     setQuery('');
     setSlot(forceSlot ?? lastPickedSlot ?? defaultSlot);
+    setPlanned([]);
     translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
@@ -204,7 +229,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     ]).start();
   }, [visible, defaultSlot, forceSlot]);
 
-  const dismiss = (after?: () => void) => {
+  const dismiss = () => {
     Keyboard.dismiss();
     Animated.parallel([
       Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
@@ -212,7 +237,9 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     ]).start(() => {
       // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
-      after?.();
+      // Deferred to here rather than fired as each pick lands — see onPlanned
+      // on the props, and `pick`/`pickLeftover` below.
+      if (planned.length > 0) onPlanned?.(planned);
     });
   };
 
@@ -233,22 +260,23 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   // `slot` is read at tap time rather than captured, so the chips can be changed
   // after a search has been typed without the pick going to the old one.
   //
-  // A pick closes the sheet — tapping a recipe/preset/free-text row with no
-  // other feedback than a haptic otherwise reads as if nothing happened.
+  // A pick no longer closes the sheet — it writes in place and joins `planned`,
+  // so a second dish for the same dinner is another tap rather than a reopen
+  // (#1384). The query clears so the list is back to browsing for whatever's
+  // next. `onPlan` can still refuse (a title that cleans to nothing), in which
+  // case there's nothing to show and nothing to add to the batch.
   //
-  // **The dismissal runs first and the pick rides on it**, rather than the
-  // other way round, because planning a meal can raise an Alert (the "Add prep
-  // tasks?" offer) and a native alert presented from underneath a Modal that is
-  // still on screen, mid-dismissal, is the classic "already presenting" case on
-  // iOS. This is the same `dismiss(after)` shape MealEntrySheet uses for every
-  // one of its actions, including the one that raises an alert of its own
-  // ("was that the last of it?"), so the ordering that already works elsewhere
-  // is the one used here too. Callers get the day back on the MealPick because
-  // `onClose` has fired by then.
+  // The prep-task offer this used to fire inline is why picks close the sheet
+  // at all elsewhere in the app — presenting it from underneath a live `Modal`
+  // is the "already presenting" case. It's deferred to `dismiss` now instead,
+  // batched over everything picked this session — see `onPlanned` on the props.
   const pick = (recipeId: string | null, title: string) => {
     haptics.success();
     lastPickedSlot = slot;
-    dismiss(() => onPick({ date: dayKey, slot, recipeId, leftoverId: null, title }));
+    const entry = onPlan({ date: dayKey, slot, recipeId, leftoverId: null, title });
+    if (!entry) return;
+    setPlanned(prev => [...prev, entry]);
+    setQuery('');
   };
 
   /**
@@ -269,23 +297,26 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const pickLeftover = (leftover: Leftover) => {
     haptics.success();
     lastPickedSlot = slot;
-    // Dismiss-then-pick, same as `pick` above and for the same reason.
-    dismiss(() => onPick({
+    // Writes in place and joins `planned`, same as `pick` above.
+    const entry = onPlan({
       date: dayKey,
       slot,
       recipeId: null,
       leftoverId: leftover.id,
       title: mealTitleForLeftover(leftover),
-    }));
+    });
+    if (!entry) return;
+    setPlanned(prev => [...prev, entry]);
+    setQuery('');
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
+    <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
 
       <Animated.View
         style={[
@@ -299,16 +330,19 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
         </View>
 
         <View style={styles.card}>
-          {/* No "Done" beside the title any more. A pick closes the sheet by
-              itself, so that button and the Cancel card below it were two
-              labels for one identical dismissal — and "Done" was the misleading
-              half, since it reads as "commit what I typed" next to a text field
-              that it does nothing with (#1378). */}
+          {/* Still no "Done" beside the title — the bottom card below the list
+              carries that job now, and only once there's something to be done
+              about (see the card's own label). A text field with nothing next
+              to it reading "commit what I typed" was the misleading half
+              (#1378); a picked dish is a different, unambiguous thing to
+              confirm. */}
           <View style={styles.sheetHeaderRow}>
             <Text style={styles.sheetTitle}>Plan {dayLabel}</Text>
           </View>
           <Text style={styles.sheetHint}>
-            Pick a recipe, or type whatever it is — “leftovers” is a plan too.
+            {planned.length > 0
+              ? `${planned[planned.length - 1].title} added. Pick another, or tap Done.`
+              : 'Pick a recipe, or type whatever it is. “Leftovers” is a plan too.'}
           </Text>
 
           <View style={styles.chips}>
@@ -456,8 +490,11 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
           </ScrollView>
         </View>
 
-        <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity}>
-          <Text style={styles.cancelLabel}>Cancel</Text>
+        {/* "Cancel" until something's actually been planned, "Done" once it
+            has — closing no longer un-plans a pick, so calling that Cancel
+            past the first one would be a promise the tap doesn't keep. */}
+        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
+          <Text style={styles.cancelLabel}>{planned.length > 0 ? 'Done' : 'Cancel'}</Text>
         </TouchableOpacity>
       </Animated.View>
     </Modal>
