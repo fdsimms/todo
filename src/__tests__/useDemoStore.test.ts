@@ -1596,6 +1596,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(cheddar.expiresAt).toBeNull();
   });
 
+  it('seeds one cooking split between the fridge and the freezer', () => {
+    const { leftovers } = useLeftoverStore.getState();
+
+    // The log sheet's "Both": two containers of one dish, put away together,
+    // one counting down and one not. Invisible until something uses it — a
+    // fridge with no such pair reads as an app that can't split a batch.
+    const frozenOnLog = leftovers.filter(l => l.frozenAt === l.storedAt);
+    expect(frozenOnLog.length).toBeGreaterThan(0);
+    const twin = leftovers.find(l =>
+      frozenOnLog.some(f => f.title === l.title && f.storedAt === l.storedAt && !l.frozenAt)
+    );
+    expect(twin).toBeDefined();
+  });
+
   it('seeds a kitchen that answers the merged question — pantry and fridge on one ladder', () => {
     const { items } = useGroceryStore.getState();
     const { leftovers } = useLeftoverStore.getState();

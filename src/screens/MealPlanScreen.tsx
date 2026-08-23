@@ -2005,6 +2005,7 @@ export function MealPlanScreen() {
           title: pick.title,
           storedAt,
           keepDays,
+          frozen: pick.frozen,
           recipeId: pick.recipeId,
           sourceEntryId: loggingLeftover?.sourceEntryId ?? null,
         }))}
