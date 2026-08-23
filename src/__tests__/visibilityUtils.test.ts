@@ -168,6 +168,7 @@ const baseTask: Task = {
   calendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
+  backfillDismissedFields: [],
 };
 
 // June 10, 2025 at 10:00 AM

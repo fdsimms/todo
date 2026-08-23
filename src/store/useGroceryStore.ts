@@ -605,6 +605,30 @@ interface GroceryStore {
    */
   setOpened: (id: string, opened: boolean) => void;
   /**
+   * "Opened" for several rows at once, dated — what a cook *used*, where
+   * `markOutOfMany` beside it is what a cook *finished*.
+   *
+   * Exactly the stamp `setOpened(id, true)` writes, including the re-dating off
+   * `OPEN_SHELF_LIFE_LEXICON`, batched for the one caller that reports a whole
+   * ingredient list at once (`useMealPlanStore.setCooked` — see the note there
+   * for why cooking is allowed to assert this when it is not allowed to assert
+   * consumption). Rows already carrying an `openedAt` are skipped rather than
+   * re-stamped, so the count it returns is what actually changed and a jar
+   * opened last week keeps the day it was opened on.
+   *
+   * `at` is when the opening happened, defaulting to now. The cook path passes
+   * the meal's own day when that day has passed: a Tuesday dinner ticked off on
+   * Thursday opened its jar on Tuesday, and stamping now would hand it two
+   * extra days of shelf life.
+   *
+   * **It registers no undo of its own**, unlike `markOutOfMany`. Nobody tapped
+   * these rows — they are inferred from a tick on a meal, and that tick already
+   * owns the shake (MealPlanScreen's `setCooked` registers it right after the
+   * write, so an entry here would only be clobbered anyway). Resealing one is a
+   * tap on the item's own sheet.
+   */
+  markOpenedMany: (ids: readonly string[], at?: Date) => number;
+  /**
    * "I'm nearly out of this" — and, because that is the whole reason anyone
    * says it, puts the row on this week's list.
    *
@@ -2520,6 +2544,34 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // and re-dates: an opened jar that was written off weeks ago gets a real
     // task back, which is the case the lexicon pairing exists for.
     reconcileUseUpTask(updated);
+  },
+
+  markOpenedMany(ids, at) {
+    if (ids.length === 0) return 0;
+    const wanted = new Set(ids);
+    // Already-open rows are dropped here rather than rewritten — see the
+    // action's doc comment. `openedAt` is when it was first opened, and a
+    // second cook out of the same jar doesn't restart its clock.
+    const before = get().items.filter(i => wanted.has(i.id) && !i.openedAt);
+    if (before.length === 0) return 0;
+
+    const when = at ?? new Date();
+    const stamp = when.toISOString();
+    const updates = before.map((i): GroceryItem => ({
+      ...i,
+      openedAt: stamp,
+      // `?? i.expiresAt` for setOpened's reason: a name the open lexicon has
+      // never heard of is still recorded as opened, it just keeps the day its
+      // purchase gave it.
+      expiresAt: expiresAtForOpening(i, when) ?? i.expiresAt,
+    }));
+    for (const u of updates) dbUpdateGroceryItem(u);
+    const byId = new Map(updates.map(u => [u.id, u]));
+    set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+    // Same both-directions reconcile a single opening does: the new day can be
+    // sooner or later than the old one, so this spawns and re-dates.
+    updates.forEach(reconcileUseUpTask);
+    return updates.length;
   },
 
   setRunningLow(id, low) {

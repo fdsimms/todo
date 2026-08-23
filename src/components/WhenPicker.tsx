@@ -51,6 +51,7 @@ const BLANK_SNOOZE_TASK: Task = {
   deadlineOnCalendar: false, calendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
+  backfillDismissedFields: [],
   streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, showStreak: false, streakRequiresWindow: false,
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false,

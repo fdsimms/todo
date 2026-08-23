@@ -1,0 +1,4 @@
+{
+  "message": "Bulk-removing a planned meal now properly turns its \"Cook X\" task back into the plain \"Choose\" one for that meal, instead of leaving it stuck on the dish you just removed",
+  "date": "2026-08-23"
+}

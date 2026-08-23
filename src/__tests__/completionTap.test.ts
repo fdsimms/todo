@@ -116,6 +116,7 @@ const baseTask = {
   calendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
+  backfillDismissedFields: [],
 } as Task;
 
 describe('completionTapFor', () => {

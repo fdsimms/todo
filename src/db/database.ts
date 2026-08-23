@@ -960,6 +960,13 @@ export function initDatabase(): void {
     // as "no anchor captured", which getNextDueDate treats exactly as it
     // behaved before this column existed. See Task.recurrenceAnchorDay.
     'ALTER TABLE tasks ADD COLUMN recurrence_anchor_day INTEGER',
+    // Which fields the Backfill screen (src/screens/BackfillScreen.tsx) has
+    // been told not to ask about again, for this task specifically — "this
+    // one genuinely doesn't need a time estimate" rather than "not right now"
+    // (the latter is skippedIds, session-only, never persisted). '[]' on
+    // every existing row reads as "hasn't been asked", which is correct: the
+    // screen didn't exist before this.
+    "ALTER TABLE tasks ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1714,6 +1721,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     driftingSince: (row.drifting_since as string | null) ?? null,
     calendarEventId: (row.calendar_event_id as string | null) ?? null,
     timeBlockEventId: (row.time_block_event_id as string | null) ?? null,
+    backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
 }
 
@@ -1739,8 +1747,8 @@ export function dbInsertTask(task: Task): void {
       generated_source_id, postpone_count, postpone_muted, drifting_since,
       extra_task_every_n, extra_task_title, extra_task_draft, extra_task_tally, previous_extra_task_tally,
       deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id, time_block_event_id,
-      streak_requires_window
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      streak_requires_window, backfill_dismissed_fields
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1791,6 +1799,7 @@ export function dbInsertTask(task: Task): void {
       task.calendarEventId ?? null,
       task.timeBlockEventId ?? null,
       task.streakRequiresWindow ? 1 : 0,
+      JSON.stringify(task.backfillDismissedFields),
     ]
   );
 }
@@ -1812,7 +1821,7 @@ export function dbUpdateTask(task: Task): void {
       generated_source_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
       extra_task_every_n=?, extra_task_title=?, extra_task_draft=?, extra_task_tally=?, previous_extra_task_tally=?,
       deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?, time_block_event_id=?,
-      streak_requires_window=?
+      streak_requires_window=?, backfill_dismissed_fields=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -1864,6 +1873,7 @@ export function dbUpdateTask(task: Task): void {
       task.calendarEventId ?? null,
       task.timeBlockEventId ?? null,
       task.streakRequiresWindow ? 1 : 0,
+      JSON.stringify(task.backfillDismissedFields),
       task.id,
     ]
   );
