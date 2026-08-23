@@ -104,6 +104,7 @@ const BASE: Task = {
   calendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
+  backfillDismissedFields: [],
 };
 
 function makeTask(overrides: Partial<Task>): Task {

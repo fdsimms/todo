@@ -23,7 +23,7 @@ import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import {
-  BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, estimatePatchFor,
+  BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, estimatePatchFor, dismissBackfillField,
   type BackfillFieldId,
 } from '../utils/fieldBackfill';
 import { EFFORT_LABELS, type Effort, type Task } from '../types';
@@ -122,6 +122,17 @@ export function BackfillScreen() {
     setSkippedIds(prev => new Set(prev).add(current.id));
   };
 
+  // Unlike skip, this is a written, permanent decision about the task —
+  // "this one genuinely doesn't need a time estimate" — so it goes through
+  // updateTask rather than the session-only skippedIds, and the task never
+  // comes back into this field's queue, in this session or any other.
+  const dismiss = () => {
+    if (!current || !activeField) return;
+    haptics.tap();
+    animateLayout();
+    updateTask(current.id, dismissBackfillField(current, activeField));
+  };
+
   // iOS's number-pad keyboard has no return key (see NumberPadAccessory), so
   // this is reached by an explicit "Set" tap rather than onSubmitEditing.
   // Invalid/empty text is silently ignored rather than applied as null —
@@ -216,9 +227,19 @@ export function BackfillScreen() {
             onCustomSubmit={applyCustomEstimate}
           />
 
-          <PressableScale style={styles.skipButton} onPress={skip} accessibilityRole="button" accessibilityLabel="Skip this task for now">
-            <Text style={styles.skipText}>Skip for now</Text>
-          </PressableScale>
+          <View style={styles.actionRow}>
+            <PressableScale style={styles.skipButton} onPress={skip} accessibilityRole="button" accessibilityLabel="Skip this task for now">
+              <Text style={styles.skipText}>Skip for now</Text>
+            </PressableScale>
+            <PressableScale
+              style={styles.skipButton}
+              onPress={dismiss}
+              accessibilityRole="button"
+              accessibilityLabel={`Leave ${field.label.toLowerCase()} unset for this task and don't ask again`}
+            >
+              <Text style={styles.skipText}>Leave {field.label.toLowerCase()} unset</Text>
+            </PressableScale>
+          </View>
         </ScrollView>
       ) : (
         <EmptyState
@@ -481,6 +502,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
 
   categoryCard: { borderRadius: radius.md, padding: spacing.sm },
 
-  skipButton: { alignSelf: 'center', paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+  actionRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
+  skipButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
   skipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.regular },
 });

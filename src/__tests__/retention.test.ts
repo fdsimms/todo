@@ -67,6 +67,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   calendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
+  backfillDismissedFields: [],
   streakCount: 0,
   streakDate: null,
   previousStreakCount: 0,
