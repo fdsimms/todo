@@ -175,6 +175,30 @@ export function SortableList<T extends { id: string }>({
   // The offset each row is currently animating toward, so a hover change only
   // restarts the animations whose targets actually moved.
   const rowTargetsRef = useRef<Map<string, number>>(new Map());
+  // One `drag` callback per row id, cached for the life of that id — the same
+  // treatment (and the same reason) as ReorderableList's dragHandlerFor.
+  //
+  // It was built inline in the render map, on the grounds that this list's
+  // callers rendered inline JSX with no memo boundary for a stable identity to
+  // save. That stopped being true: a stack's children on Today are `TaskItem`s,
+  // and `TaskItem` is memoized, so a fresh `drag` per render put every row
+  // inside a stack back to re-rendering whenever the screen did — including on
+  // the store write the stack's own collapse toggle makes, one commit before
+  // its 250ms height animation starts over those very rows.
+  //
+  // Nothing in the callback needs rebuilding: startDrag resolves the row's
+  // index from dataRef at call time, and is reached through a ref so a cached
+  // handler can outlive the render that built it.
+  const dragHandlersRef = useRef<Map<string, () => void>>(new Map());
+  const startDragRef = useRef<(key: string) => void>(() => {});
+  const dragHandlerFor = (key: string): (() => void) => {
+    let handler = dragHandlersRef.current.get(key);
+    if (!handler) {
+      handler = () => startDragRef.current(key);
+      dragHandlersRef.current.set(key, handler);
+    }
+    return handler;
+  };
 
   // What the rows currently render. Assigned during render (not in an effect)
   // so the gesture handlers always operate on the array the user is seeing.
@@ -189,6 +213,12 @@ export function SortableList<T extends { id: string }>({
   // The parent has caught up; its data is the source of truth again.
   useEffect(() => {
     if (activeIndexRef.current === null) setCommittedData(null);
+    // Drop the cached drag callbacks of rows that have left, so a long-lived
+    // list doesn't accumulate one per id it has ever held.
+    const live = new Set(data.map(d => d.id));
+    for (const key of Array.from(dragHandlersRef.current.keys())) {
+      if (!live.has(key)) dragHandlersRef.current.delete(key);
+    }
   }, [data]);
 
   // Drop a live drag if the items themselves changed underneath it — the card
@@ -407,6 +437,10 @@ export function SortableList<T extends { id: string }>({
     onDragStateChangeRef.current?.(true);
     onHoverChangeRef.current?.(index);
   };
+  // Assigned during render, like dataRef above: the cached handlers call
+  // through this, so they always reach the current closure rather than the one
+  // that happened to be live when the row first rendered.
+  startDragRef.current = startDrag;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -486,7 +520,7 @@ export function SortableList<T extends { id: string }>({
               {renderItem(
                 item,
                 displayIndexById?.get(item.id) ?? index,
-                () => startDrag(item.id),
+                dragHandlerFor(item.id),
                 false,
               )}
             </View>

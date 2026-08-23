@@ -105,6 +105,7 @@ const BASE: Task = {
   calendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
+  backfillDismissedFields: [],
 };
 
 let seq = 0;

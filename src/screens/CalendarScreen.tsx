@@ -52,6 +52,10 @@ const DOT_SIZE = 6;
 const WEIGHT_SLOT_HEIGHT = 3;
 const WEIGHT_SLOT_GAP = 2;
 
+// One shared empty array for a task with no subtasks — a fresh `[]` per row per
+// render is exactly the identity churn the grouping below exists to avoid.
+const NO_SUBTASKS: Task[] = [];
+
 /**
  * A month at a time.
  *
@@ -177,10 +181,43 @@ export function CalendarScreen() {
     setSelectedKey(dayKeyOf(now));
   };
 
-  const openEditor = (task: Task) => {
+  // Every subtask on this screen, grouped once. Each row used to filter the
+  // whole task list for its own children inline, which is O(tasks) per row and
+  // — worse — handed the memoized row a fresh array on every render.
+  const subtasksByParent = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    for (const t of allTasks) {
+      if (!t.parentId) continue;
+      const list = map.get(t.parentId);
+      if (list) list.push(t);
+      else map.set(t.parentId, [t]);
+    }
+    return map;
+  }, [allTasks]);
+  const subtasksOf = (id: string): Task[] => subtasksByParent.get(id) ?? NO_SUBTASKS;
+
+  // The row handlers take the row's own id rather than closing over it, so one
+  // callback serves every row — TaskItem is memoized and a fresh arrow per row
+  // per render defeats its shallow compare silently, putting every mounted row
+  // back to re-rendering on each store write. Empty deps: the expand toggle
+  // reaches state only through the functional form of setState, and the editor
+  // resolves its task from the store at call time rather than capturing it, so
+  // neither can read a stale value from its frozen closure.
+  const handleRowPress = useCallback((id: string) => {
+    setExpandedTaskId(prev => {
+      // A tap landing while a *different* row is spotlighted just dismisses
+      // that one, rather than expanding the row that was tapped.
+      if (prev !== null && prev !== id) return null;
+      return prev === id ? null : id;
+    });
+  }, []);
+
+  const handleRowEdit = useCallback((id: string) => {
+    const task = useTaskStore.getState().tasks.find(t => t.id === id);
+    if (!task) return;
     setEditingTask(task);
     setEditorVisible(true);
-  };
+  }, []);
 
   const renderRows = (label: string, tasks: Task[]) => {
     if (tasks.length === 0) return null;
@@ -188,20 +225,14 @@ export function CalendarScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>{label}</Text>
         {tasks.map(task => {
-          const subs = allTasks.filter(t => t.parentId === task.id);
+          const subs = subtasksOf(task.id);
           return (
             <TaskItem
               key={task.id}
               task={task}
-              onPress={() => {
-                if (expandedTaskId !== null && expandedTaskId !== task.id) {
-                  setExpandedTaskId(null);
-                  return;
-                }
-                setExpandedTaskId(prev => (prev === task.id ? null : task.id));
-              }}
+              onPress={handleRowPress}
               expanded={expandedTaskId === task.id}
-              onEdit={() => openEditor(task)}
+              onEdit={handleRowEdit}
               subtaskCount={subs.length}
               subtaskDoneCount={subs.filter(t => t.completed).length}
               subtasks={subs}

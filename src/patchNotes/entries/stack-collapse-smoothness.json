@@ -1,0 +1,4 @@
+{
+  "message": "Expanding and collapsing a stack runs smoothly again: task rows no longer all redraw at once while the stack is animating",
+  "date": "2026-08-23"
+}
