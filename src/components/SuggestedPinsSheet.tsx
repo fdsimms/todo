@@ -26,6 +26,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { PinIcon } from './PinIcon';
 import type { Task } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { activeChainStep } from '../utils/chain';
 
 interface Props {
   visible: boolean;
@@ -182,6 +183,8 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
     const minutes = sumEstimatedMinutes([task]);
     const time = minutes > 0 ? formatDuration(minutes) : null;
     const detail = [reason, time].filter(Boolean).join(' · ');
+    const currentStep = activeChainStep(task);
+    const displayTitle = currentStep ? currentStep.title : task.title;
 
     return (
       <View key={task.id} style={styles.row}>
@@ -191,7 +194,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="checkbox"
           accessibilityState={{ checked }}
-          accessibilityLabel={`${task.title}${detail ? `, ${detail}` : ''}`}
+          accessibilityLabel={`${displayTitle}${detail ? `, ${detail}` : ''}`}
         >
           <Ionicons
             name={checked ? 'checkmark-circle' : 'ellipse-outline'}
@@ -200,7 +203,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
           />
           <View style={styles.rowContent}>
             <Text style={[styles.rowTitle, !checked && styles.rowTitleUnchecked]} numberOfLines={1}>
-              {task.title}
+              {displayTitle}
             </Text>
             {/* Two Texts rather than the joined string: the reason can run as
                 long as a task title ("Goes with Draft the quarterly memo"), and
@@ -231,7 +234,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
           disabled={!canSwap}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="button"
-          accessibilityLabel={`Swap out ${task.title}`}
+          accessibilityLabel={`Swap out ${displayTitle}`}
           accessibilityHint="Replaces this suggestion with the next best task"
         >
           <Ionicons
