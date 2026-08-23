@@ -1,0 +1,4 @@
+{
+  "message": "A leftover container can now be split into a fridge portion and a freezer portion without deleting and re-logging it, so the days it's already been in the fridge aren't lost",
+  "date": "2026-08-23"
+}

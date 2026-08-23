@@ -363,6 +363,7 @@ export function MealPlanScreen() {
   const setLeftoverKeepDays = useLeftoverStore(s => s.setKeepDays);
   const finishLeftover = useLeftoverStore(s => s.finishLeftover);
   const setLeftoverFrozen = useLeftoverStore(s => s.setFrozen);
+  const splitLeftover = useLeftoverStore(s => s.splitLeftover);
   const reopenLeftover = useLeftoverStore(s => s.reopenLeftover);
   const deleteLeftover = useLeftoverStore(s => s.deleteLeftover);
   const addTask = useTaskStore(s => s.addTask);
@@ -2104,6 +2105,7 @@ export function MealPlanScreen() {
         onSetKeepDays={days => editingLeftover && setLeftoverKeepDays(editingLeftover.id, days)}
         onFinish={outcome => editingLeftover && finishLeftover(editingLeftover.id, outcome)}
         onSetFrozen={frozen => editingLeftover && setLeftoverFrozen(editingLeftover.id, frozen)}
+        onSplit={() => editingLeftover && splitLeftover(editingLeftover.id)}
         onReopen={() => editingLeftover && reopenLeftover(editingLeftover.id)}
         onDelete={() => editingLeftover && deleteLeftover(editingLeftover.id)}
         onClose={() => { setEditingLeftoverId(null); setLoggingLeftover(null); }}

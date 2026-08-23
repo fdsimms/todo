@@ -546,6 +546,13 @@ interface GroceryStore {
    * read the barcode can't record the link itself. Linked once at the end,
    * after every box exists to be pointed at.
    *
+   * Its `aisle` is the source's own category, applied only to a row this
+   * batch mints (never to one it merely found) and only when the user has no
+   * remembered correction for the name — the same restraint `addByName`'s own
+   * `aisle` override takes, and the same guard `addStructuredIngredients`
+   * checks before calling `setAisle` itself. A found row already has a filed
+   * aisle of its own; a barcode's read of the source is not grounds to move it.
+   *
    * `prices` is a receipt's own numbers, keyed by the same raw string for the
    * same reason again — a row this batch mints has no id to key by. Written
    * through `setItemPrice`, which is the deliberate part: this is not a trip.
@@ -563,7 +570,7 @@ interface GroceryStore {
     frozenNames?: ReadonlySet<string>,
     products?: ReadonlyMap<
       string,
-      { brand: string | null; variant: string | null; gtin?: string | null }
+      { brand: string | null; variant: string | null; gtin?: string | null; aisle?: string | null }
     >,
     prices?: { byName: ReadonlyMap<string, number>; shopId: string | null }
   ) => number;
@@ -2395,6 +2402,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       const product = products?.get(raw);
       if (product && (product.brand || product.variant)) {
         get().addProduct(item.id, { brand: product.brand, variant: product.variant });
+      }
+      // Only for a row this loop just minted (`!before`) — a found row already
+      // has a filed aisle, and the barcode's read of the source is not grounds
+      // to move it. `rememberedAisleFor` outranks it for the same reason it
+      // outranks `addToPantry`'s own lexicon guess: a user's own correction
+      // beats what a scan just read off the box.
+      if (!before && product?.aisle && !get().rememberedAisleFor(raw)) {
+        get().setAisle(item.id, product.aisle);
       }
       // Same reasoning as the box above, and the same key: this is the only
       // point at which a name minted by this batch has an id to put a price on.

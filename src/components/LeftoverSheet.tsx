@@ -137,6 +137,13 @@ interface Props {
    * above the two rows that actually close one out.
    */
   onSetFrozen: (frozen: boolean) => void;
+  /**
+   * Copies this container onto the opposite side of the fridge/freezer line,
+   * keeping the original exactly where it is. For a pot logged whole that
+   * turns out to be more than one meal's worth — the "Both" log-time answer,
+   * arrived at after the fact instead of at the sink.
+   */
+  onSplit: () => void;
   onReopen: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -168,7 +175,7 @@ interface Props {
  */
 export function LeftoverSheet({
   visible, leftover, seed, onLog, onRename, onSetStoredAt, onSetKeepDays,
-  onFinish, onSetFrozen, onReopen, onDelete, onClose,
+  onFinish, onSetFrozen, onSplit, onReopen, onDelete, onClose,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -539,6 +546,24 @@ export function LeftoverSheet({
 
           {editing && live && (
             <>
+              <View style={styles.sep} />
+              {/* Above freezing because it's the row that makes freezing (or
+                  fridging) *half* possible — this container stays whole
+                  otherwise. Dismisses, unlike the freeze row below: the copy it
+                  writes doesn't change anything this sheet is showing, so
+                  there's nothing left here worth a caption to confirm. */}
+              <SheetActionRow
+                icon="copy-outline"
+                color={colors.accent}
+                label={frozen ? 'Split into the fridge' : 'Split into the freezer'}
+                onPress={() => { haptics.success(); dismiss(() => onSplit()); }}
+                accessibilityLabel={
+                  frozen
+                    ? 'Split this leftover, keeping the original in the freezer and putting a copy in the fridge'
+                    : 'Split this leftover, keeping the original in the fridge and putting a copy in the freezer'
+                }
+              />
+
               <View style={styles.sep} />
               {/* Above the two closing rows because it isn't one: freezing
                   keeps the container, it doesn't end it. The sheet stays open

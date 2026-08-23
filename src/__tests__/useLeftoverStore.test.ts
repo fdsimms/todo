@@ -377,6 +377,71 @@ describe('setFrozen', () => {
   });
 });
 
+describe('splitLeftover', () => {
+  it('writes a second row on the opposite side, leaving the original untouched', () => {
+    const original = makeLeftover({
+      id: 'lo-a',
+      title: 'Chilli',
+      recipeId: 'r1',
+      sourceEntryId: 'e1',
+      storedAt: '2026-08-10T09:00:00.000Z',
+      keepUntil: '2026-08-13',
+    });
+    seed([original]);
+
+    const copy = useLeftoverStore.getState().splitLeftover('lo-a')!;
+
+    expect(copy.id).not.toBe(original.id);
+    expect(copy.title).toBe('Chilli');
+    expect(copy.recipeId).toBe('r1');
+    expect(copy.sourceEntryId).toBe('e1');
+    expect(copy.frozenAt).toBe(copy.storedAt);
+    const leftovers = useLeftoverStore.getState().leftovers;
+    expect(leftovers).toHaveLength(2);
+    expect(leftovers.find(l => l.id === 'lo-a')).toEqual(original);
+  });
+
+  // The whole point: a pot logged whole on Sunday and split on Tuesday keeps
+  // the two fridge days it already spent, rather than restarting from now.
+  it('stamps the copy from the original\'s own storedAt, not now', () => {
+    seed([makeLeftover({ id: 'lo-a', storedAt: '2026-08-10T09:00:00.000Z', keepUntil: '2026-08-13' })]);
+
+    const copy = useLeftoverStore.getState().splitLeftover('lo-a')!;
+
+    expect(copy.storedAt).toBe('2026-08-10T09:00:00.000Z');
+    expect(copy.frozenAt).toBe('2026-08-10T09:00:00.000Z');
+    // The same window the original was given, not the days remaining.
+    expect(keepDaysBetween(copy.storedAt, copy.keepUntil)).toBe(3);
+  });
+
+  it('freezes the copy of a fridge container, and fridges the copy of a frozen one', () => {
+    seed([makeLeftover({ id: 'lo-fridge', frozenAt: null })]);
+    const frozenCopy = useLeftoverStore.getState().splitLeftover('lo-fridge')!;
+    expect(frozenCopy.frozenAt).not.toBeNull();
+
+    seed([makeLeftover({ id: 'lo-freezer', frozenAt: '2026-08-11T09:00:00.000Z' })]);
+    const fridgeCopy = useLeftoverStore.getState().splitLeftover('lo-freezer')!;
+    expect(fridgeCopy.frozenAt).toBeNull();
+  });
+
+  it('refuses a closed-out container', () => {
+    seed([makeLeftover({ id: 'lo-a', finishedAt: '2026-08-12T09:00:00.000Z', outcome: 'eaten' })]);
+
+    const result = useLeftoverStore.getState().splitLeftover('lo-a');
+
+    expect(result).toBeNull();
+    expect(useLeftoverStore.getState().leftovers).toHaveLength(1);
+    expect(dbInsertLeftover).not.toHaveBeenCalled();
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    seed([]);
+    const result = useLeftoverStore.getState().splitLeftover('gone');
+    expect(result).toBeNull();
+    expect(dbInsertLeftover).not.toHaveBeenCalled();
+  });
+});
+
 describe('finishLeftover', () => {
   it('stamps the instant and records which ending it got', () => {
     seed([makeLeftover({ id: 'lo-a' })]);

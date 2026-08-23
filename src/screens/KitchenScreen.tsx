@@ -176,6 +176,7 @@ export function KitchenScreen() {
   const setLeftoverKeepDays = useLeftoverStore(s => s.setKeepDays);
   const finishLeftover = useLeftoverStore(s => s.finishLeftover);
   const setLeftoverFrozen = useLeftoverStore(s => s.setFrozen);
+  const splitLeftover = useLeftoverStore(s => s.splitLeftover);
   const reopenLeftover = useLeftoverStore(s => s.reopenLeftover);
   const deleteLeftover = useLeftoverStore(s => s.deleteLeftover);
 
@@ -426,7 +427,9 @@ export function KitchenScreen() {
   // them back up (see its own doc comment on why that's safe). The barcode's
   // box — brand and variant — is reduced the same way: `products` (matched
   // rows) and `draft.brand` (minted rows) both key by itemId or draft, so
-  // they're re-keyed onto the same name strings before the call.
+  // they're re-keyed onto the same name strings before the call. The source's
+  // category rides the same map as an `aisle`, minted rows only — same
+  // restraint GroceryScreen.handleScanApply's own `addByName` call takes.
   //
   // The barcode itself rides along on the same map, for the same reason the
   // freezer flag does: a row this batch mints has no id until addManyToPantry
@@ -458,15 +461,16 @@ export function KitchenScreen() {
     const gtinByItemId = new Map(gtinLinks.map(link => [link.itemId, link.gtin]));
     const productNames = new Map<
       string,
-      { brand: string | null; variant: string | null; gtin?: string | null }
+      { brand: string | null; variant: string | null; gtin?: string | null; aisle?: string | null }
     >();
     const noteScanned = (
       name: string,
       box: { brand: string | null; variant: string | null } | undefined,
-      gtin: string | null
+      gtin: string | null,
+      aisle?: string | null
     ) => {
-      if (!box && !gtin) return;
-      productNames.set(name, { brand: box?.brand ?? null, variant: box?.variant ?? null, gtin });
+      if (!box && !gtin && !aisle) return;
+      productNames.set(name, { brand: box?.brand ?? null, variant: box?.variant ?? null, gtin, aisle });
     };
     for (const id of itemIds) {
       const item = items.find(i => i.id === id);
@@ -483,7 +487,11 @@ export function KitchenScreen() {
       // A minted row's brand only, same as GroceryScreen's own scan handler —
       // there's no existing item name yet for `variantFor` to subtract from.
       const box = matched ?? (draft.brand ? { brand: draft.brand, variant: null } : undefined);
-      noteScanned(draft.name, box, gtin);
+      // Same restraint as the box: the source's category only applies to a row
+      // this batch mints, matching GroceryScreen.handleScanApply's own
+      // addByName(..., { aisle: draft.aisle }) call, which never touches an
+      // already-matched item's filing either.
+      noteScanned(draft.name, box, gtin, draft.existingItemId ? undefined : draft.aisle);
     }
     setScanOpen(false);
     if (names.length === 0) return;
@@ -806,6 +814,7 @@ export function KitchenScreen() {
         onSetKeepDays={days => openLeftover && setLeftoverKeepDays(openLeftover.id, days)}
         onFinish={outcome => openLeftover && finishLeftover(openLeftover.id, outcome)}
         onSetFrozen={frozen => openLeftover && setLeftoverFrozen(openLeftover.id, frozen)}
+        onSplit={() => openLeftover && splitLeftover(openLeftover.id)}
         onReopen={() => openLeftover && reopenLeftover(openLeftover.id)}
         onDelete={() => openLeftover && deleteLeftover(openLeftover.id)}
         onClose={() => setOpenLeftoverId(null)}

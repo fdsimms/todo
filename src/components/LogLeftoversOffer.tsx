@@ -95,6 +95,7 @@ export function LogLeftoversOffer() {
         onSetKeepDays={() => {}}
         onFinish={() => {}}
         onSetFrozen={() => {}}
+        onSplit={() => {}}
         onReopen={() => {}}
         onDelete={() => {}}
         onClose={() => {

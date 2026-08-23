@@ -50,6 +50,7 @@ export function UseUpResolveSheet() {
   const setLeftoverKeepDays = useLeftoverStore(s => s.setKeepDays);
   const finishLeftover = useLeftoverStore(s => s.finishLeftover);
   const setLeftoverFrozen = useLeftoverStore(s => s.setFrozen);
+  const splitLeftover = useLeftoverStore(s => s.splitLeftover);
   const reopenLeftover = useLeftoverStore(s => s.reopenLeftover);
   const deleteLeftover = useLeftoverStore(s => s.deleteLeftover);
 
@@ -80,6 +81,7 @@ export function UseUpResolveSheet() {
         onSetKeepDays={days => pendingLeftover && setLeftoverKeepDays(pendingLeftover.id, days)}
         onFinish={outcome => pendingLeftover && finishLeftover(pendingLeftover.id, outcome)}
         onSetFrozen={frozen => pendingLeftover && setLeftoverFrozen(pendingLeftover.id, frozen)}
+        onSplit={() => pendingLeftover && splitLeftover(pendingLeftover.id)}
         onReopen={() => pendingLeftover && reopenLeftover(pendingLeftover.id)}
         onDelete={() => pendingLeftover && deleteLeftover(pendingLeftover.id)}
         onClose={() => setPendingUseUpLeftover(null)}
