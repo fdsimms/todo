@@ -4996,18 +4996,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       groups: s.groups.map(g => g.category === name ? { ...g, category: null } : g),
     }));
 
-    // Two settings that *place* something rather than describe it have to let
-    // go, which is the opposite call to the template one above and for a
-    // concrete reason: a template item naming a dead category is a stale
-    // reference nobody acts on, while these two would be re-*created* from.
-    // Events file under their category by name, so a setting still naming this
-    // one would draw a header for a section the user just deleted — and a
-    // collapse remembered for it would fold whatever category later takes the
-    // name. Both are restored by the undo below.
+    // Settings that *place* something rather than describe it have to let go,
+    // which is the opposite call to the template one above and for a concrete
+    // reason: a template item naming a dead category is a stale reference
+    // nobody acts on, while these would be re-*created* from. Events, cook
+    // tasks and use-up tasks all file under their category by name, so a
+    // setting still naming this one would draw a header for a section the
+    // user just deleted — and a collapse remembered for it would fold
+    // whatever category later takes the name. All are restored by the undo
+    // below.
     const settings = useSettingsStore.getState();
     const hadEventCategory = settings.calendarEventCategory === name;
+    const hadMealCookCategory = settings.mealCookTaskCategory === name;
+    const hadGroceryUseUpCategory = settings.groceryUseUpTaskCategory === name;
+    const hadLeftoverUseUpCategory = settings.leftoverUseUpTaskCategory === name;
     const hadCollapsed = settings.collapsedCategories.includes(name);
     if (hadEventCategory) settings.setCalendarEventCategory(null);
+    if (hadMealCookCategory) settings.setMealCookTaskCategory(null);
+    if (hadGroceryUseUpCategory) settings.setGroceryUseUpTaskCategory(null);
+    if (hadLeftoverUseUpCategory) settings.setLeftoverUseUpTaskCategory(null);
     if (hadCollapsed) {
       settings.setCollapsedCategories(settings.collapsedCategories.filter(c => c !== name));
     }
@@ -5020,6 +5027,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         useCategoryStore.getState().restoreCategory(category);
         const s2 = useSettingsStore.getState();
         if (hadEventCategory) s2.setCalendarEventCategory(name);
+        if (hadMealCookCategory) s2.setMealCookTaskCategory(name);
+        if (hadGroceryUseUpCategory) s2.setGroceryUseUpTaskCategory(name);
+        if (hadLeftoverUseUpCategory) s2.setLeftoverUseUpTaskCategory(name);
         if (hadCollapsed && !s2.collapsedCategories.includes(name)) {
           s2.setCollapsedCategories([...s2.collapsedCategories, name]);
         }

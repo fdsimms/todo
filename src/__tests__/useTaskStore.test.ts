@@ -7026,6 +7026,57 @@ describe('deleteCategory', () => {
     expect(orphaned.category).toBeNull();
     expect(isTaskNew(orphaned)).toBe(false);
   });
+
+  // The generated-task category settings (mealCookTaskCategory,
+  // groceryUseUpTaskCategory, leftoverUseUpTaskCategory) file new tasks into
+  // a category by name, same as calendarEventCategory — losing the category
+  // without clearing them left a use-up/cook task landing in a resurrected
+  // phantom section for a category the user had just deleted.
+  it('clears every generated-task category setting naming the deleted category, and restores them on undo', () => {
+    const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+    const category = { id: 'cat-1', name: 'Kitchen', scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, sortOrder: 1, emoji: null };
+    useCategoryStore.getState.mockReturnValue({
+      categories: [category],
+      initialized: true,
+      initialize: jest.fn(),
+      addCategory: jest.fn(),
+      deleteCategory: jest.fn(),
+      restoreCategory: jest.fn(),
+      renameCategory: jest.fn().mockReturnValue(true),
+      setCategorySchedule: jest.fn(),
+      removeCategorySchedule: jest.fn(),
+      getCategoryByName: jest.fn().mockReturnValue(category),
+    });
+
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+    const setMealCookTaskCategory = jest.fn();
+    const setGroceryUseUpTaskCategory = jest.fn();
+    const setLeftoverUseUpTaskCategory = jest.fn();
+    const setCalendarEventCategory = jest.fn();
+    useSettingsStore.getState.mockReturnValue({
+      dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      mealCookTaskCategory: 'Kitchen', groceryUseUpTaskCategory: 'Kitchen', leftoverUseUpTaskCategory: 'Kitchen',
+      calendarEventCategory: 'Kitchen', collapsedCategories: [], titleRules: [],
+      setMealCookTaskCategory, setGroceryUseUpTaskCategory,
+      setLeftoverUseUpTaskCategory, setCalendarEventCategory,
+      setCollapsedCategories: jest.fn(),
+    });
+
+    useTaskStore.getState().deleteCategory('Kitchen');
+
+    expect(setMealCookTaskCategory).toHaveBeenCalledWith(null);
+    expect(setGroceryUseUpTaskCategory).toHaveBeenCalledWith(null);
+    expect(setLeftoverUseUpTaskCategory).toHaveBeenCalledWith(null);
+    expect(setCalendarEventCategory).toHaveBeenCalledWith(null);
+
+    useTaskStore.getState().lastAction?.undo();
+
+    expect(setMealCookTaskCategory).toHaveBeenCalledWith('Kitchen');
+    expect(setGroceryUseUpTaskCategory).toHaveBeenCalledWith('Kitchen');
+    expect(setLeftoverUseUpTaskCategory).toHaveBeenCalledWith('Kitchen');
+    expect(setCalendarEventCategory).toHaveBeenCalledWith('Kitchen');
+  });
 });
 
 // ─── deleteTag ──────────────────────────────────────────────────────────────

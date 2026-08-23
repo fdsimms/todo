@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: a leftover that aged past its use-up threshold while the app was fully closed could sit with no \"Use up X\" task until you'd backgrounded and reopened the app at least once. That check now also runs at launch.",
+  "date": "2026-08-23"
+}

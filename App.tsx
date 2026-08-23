@@ -125,6 +125,7 @@ function AppRoot() {
   const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
   const purgeOldMealPlanEntries = useMealPlanStore(s => s.purgeOldEntries);
   const purgeOldLeftovers = useLeftoverStore(s => s.purgeOldLeftovers);
+  const reconcileAllLeftoverTasks = useLeftoverStore(s => s.reconcileAllLeftoverTasks);
 
   useEffect(() => {
     // Every step is isolated (see src/utils/startup.ts): these are independent
@@ -183,6 +184,14 @@ function AppRoot() {
       // trigger — time passing rather than a source mutation — and it reads the
       // grocery catalog initTasks' fan-out has already loaded.
       ['check pantry checks', checkPantryCheckTasks],
+      // A leftover can age from "fresh" into "soon" purely by time passing too
+      // — same trigger as the two passes above, and it reads the leftovers
+      // initTasks' fan-out has already loaded. This used to run only on
+      // foreground (TodayScreen's AppState listener), which never fires for a
+      // true cold launch — so a leftover that crossed the threshold while the
+      // app was closed sat with no use-up task until the app was backgrounded
+      // and reopened at least once.
+      ['reconcile leftover use-up tasks', reconcileAllLeftoverTasks],
       // Apply any template whose schedule came due while the app was closed
       // (#1781). After initSettings, since "due" is measured in logical days
       // and gated on vacationMode; after dripStalledProjects for the same
@@ -212,7 +221,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, reconcileAllLeftoverTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any
