@@ -207,6 +207,25 @@ someone regenerated. `main` is checked on push now (see `.github/workflows/test.
 staleness surfaces on the merge that caused it. If the doc check fails on a PR that plainly
 touched no exports, pull `main` and regenerate before hunting through your own diff.
 
+**Never resolve a merge conflict in either one by hand, and don't trust a clean merge of them
+either.** Both are one line per fact — one per module in the map, one per statistic in the
+`repo-stats` block — so git merges them line by line and a merge of two individually correct
+generations is not itself a correct generation. A `+N more` counter is a per-line summary, so a
+merge takes one side's number instead of recounting (`db/database.ts` sat at `+122` against an
+actual `+125` for weeks); a newly added module's line is placed next to whichever context each
+side had, so it can land out of the generator's own sort order, which is what put
+`src/utils/focusWindow.ts` above `src/utils/focusSuggest.ts` in a file the generator sorts the
+other way. Neither shows up as a conflict, and `git status` stays clean, because the file is
+committed and unchanged. The fix is always the same: rerun the generator, never edit the file.
+
+`npm install` wires up two things that make that mostly automatic (`scripts/setup-git-hooks.js`,
+run from `postinstall`, which sets `core.hooksPath` to `.githooks/`). The merge driver in
+`.gitattributes` keeps the generated content out of the line merge entirely, and `.githooks/`
+regenerates after a merge and blocks a push whose generated docs are stale. They are a safety
+net, not a guarantee: they are per-clone git config, so a clone that never ran `npm install`
+doesn't have them, and GitHub's own merge button runs neither. CI's `--check` steps stay the
+real gate.
+
 There is no ESLint or Prettier config. Match the style of the file you're in; don't reformat
 untouched lines.
 

@@ -1,0 +1,8 @@
+# The two docs generated from the tree and committed. Merging them line by line
+# produces a file the generator would never emit, cleanly and with no signal —
+# see scripts/merge-generated-doc.js for what that looks like and why. The
+# driver is registered per clone by scripts/setup-git-hooks.js (npm postinstall);
+# without it git falls back to a normal merge, so this is a safety net rather
+# than a guarantee, and CI's --check steps stay the real gate.
+docs/module-map.md merge=generated-doc
+CLAUDE.md merge=generated-doc

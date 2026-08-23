@@ -1,0 +1,20 @@
+#!/bin/sh
+# The backstop. Everything else here reduces the chance of pushing a stale
+# generated doc; this is what makes it not happen. Both generators are
+# idempotent and take milliseconds, so this costs nothing on a push that is
+# already correct.
+if ! node scripts/build-module-map.js --check >/dev/null 2>&1 ||
+   ! node scripts/check-doc-stats.js --check >/dev/null 2>&1; then
+  echo
+  echo "pre-push: a generated doc is out of date, and CI will fail on it."
+  echo "  Regenerate and amend or commit, then push again:"
+  echo
+  echo "    node scripts/build-module-map.js && node scripts/check-doc-stats.js"
+  echo
+  echo "  If you know it is stale because main is stale, regenerate anyway —"
+  echo "  that is the commit that unblocks the branches cut after yours."
+  echo
+  echo "  To push past this once: git push --no-verify"
+  echo
+  exit 1
+fi
