@@ -1,0 +1,4 @@
+{
+  "message": "Removed the drag handle icon from project and category rows. Both already reorder with a long press anywhere on the row, so the icon wasn't needed.",
+  "date": "2026-08-23"
+}

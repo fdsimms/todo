@@ -108,7 +108,6 @@ export function CategoriesScreen() {
                 accessibilityLabel={`${cat}. ${spokenMeta}`}
                 accessibilityHint="Double tap to view tasks in this category. Long press to reorder."
               >
-                <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                 <View style={[styles.catIcon, { backgroundColor: colors.accentSubtle }]}>
                   {catObj?.emoji ? (
                     <Text style={styles.catIconEmoji}>{catObj.emoji}</Text>
