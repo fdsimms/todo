@@ -31,7 +31,7 @@ import { MealSlotRow } from '../components/MealSlotRow';
 import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
-import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
+import { AddMealsToListSheet } from '../components/AddMealsToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { CookedOfferBanner } from '../components/CookedOfferBanner';
 import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
@@ -115,6 +115,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import {
   classifyPlanned,
   collectPlannedIngredients,
+  hasShoppableMeals,
   plannedIngredientsForRecipe,
   restockRows,
 } from '../utils/mealPlanGroceries';
@@ -431,7 +432,32 @@ export function MealPlanScreen() {
   // just made — the row itself is re-read from the store on every render.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = entries.find(e => e.id === selectedId) ?? null;
-  const [addingToList, setAddingToList] = useState(false);
+  /**
+   * What an "add these to the list" tap asked for — the whole week, or one
+   * day. Three scopes exist (a meal, a day, a week) and the other two share
+   * one sheet, so what varies is held as data at the tap: the range the sheet
+   * shops, the header naming it, and whether the add stamps the week as
+   * shopped (only a whole-week add does — see AddMealsToListSheet).
+   *
+   * Kept alongside its own visibility flag rather than nulled on close, the
+   * same pair `restockOffer`/`restockSheetVisible` below use: the sheet is a
+   * real Modal that slides out, and clearing the scope on close would blank
+   * its title and rows mid-animation.
+   */
+  const [addToListScope, setAddToListScope] =
+    useState<{ range: { startKey: string; endKey: string }; title: string; stampWeekKey: string | null } | null>(null);
+  const [addToListVisible, setAddToListVisible] = useState(false);
+  /**
+   * The one meal being shopped for, snapshotted at the tap — the third scope,
+   * and the one that goes to RecipeToListSheet instead: at a single meal the
+   * useful controls are the recipe's scale and either/or chips, which that
+   * sheet has and AddMealsToListSheet doesn't. Starts on this meal's own
+   * answers, and like the restock offer nothing the sheet does is written
+   * back to the entry.
+   */
+  const [mealShop, setMealShop] =
+    useState<{ recipe: Recipe; choices: string[]; scale: number } | null>(null);
+  const [mealShopVisible, setMealShopVisible] = useState(false);
   // What the suggestion shelf was opened with — the ranked recipes and the
   // nights they may land on, captured at open rather than re-read while it's
   // up. Held as a snapshot for the same reason `cookedRecipeForList` and
@@ -853,6 +879,33 @@ export function MealPlanScreen() {
   const reviewingRecipe = reviewingEntry?.recipeId ? recipesById.get(reviewingEntry.recipeId) ?? null : null;
 
   // ==== acting on the plan: prep tasks, the list, moves and replacements ====
+  /**
+   * Opens the review sheet on a range of the week. `useCallback` because the
+   * day renderer holds it — see renderDay's deps.
+   */
+  const openAddToList = useCallback(
+    (scope: { range: { startKey: string; endKey: string }; title: string; stampWeekKey: string | null }) => {
+      haptics.tap();
+      setAddToListScope(scope);
+      setAddToListVisible(true);
+    },
+    []
+  );
+
+  /**
+   * The day scope, named once — both surfaces that offer it (a day header in
+   * the list, a night row in the week lens) shop the same range under the same
+   * title, so neither gets to word it differently.
+   */
+  const openDayAddToList = useCallback(
+    (dayKey: string) => openAddToList({
+      range: { startKey: dayKey, endKey: dayKey },
+      title: `Add ${format(dayKeyToDate(dayKey), 'EEEE')} to list`,
+      stampWeekKey: null,
+    }),
+    [openAddToList]
+  );
+
   const addChosenPrepTasks = (chosen: FlatPrepTask[]) => {
     if (!reviewingEntry) return;
     const mealDate = dayKeyToDate(reviewingEntry.date);
@@ -1083,6 +1136,9 @@ export function MealPlanScreen() {
     const zone: DropZone = { kind: 'day', key, dayKey: key, dayLabel: weekdayName };
     const isPrevious = key < todayKey;
     const isFirstPrevious = isPrevious && previousDaysInfo.firstKey === key;
+    // Whether this day has anything a shop could find — the same gate the
+    // week's own pill is behind, read over one day instead of seven.
+    const shoppable = hasShoppableMeals(dayEntries, recipesById, { startKey: key, endKey: key });
     // Folded into the "Previous days" header rendered by the first previous
     // day below — every other previous day renders nothing of its own while
     // that section is collapsed.
@@ -1175,17 +1231,53 @@ export function MealPlanScreen() {
                       color={colors.textTertiary}
                     />
                   </TouchableOpacity>
+                  {/*
+                    Shops this day and nothing else, sitting beside the day's
+                    own + rather than under its meals: the header is the row
+                    that exists whether or not the day has anything in it, so
+                    a second button there costs no vertical space on a week
+                    that already fights for it (#1374).
+
+                    Only rendered when the day has something to shop, the same
+                    restraint "Add week to list" takes — an always-present cart
+                    that opens on "Nothing to add" is a button that lies. Grey
+                    and a size down from the +, because planning a meal is
+                    still the thing you came to a day header to do.
+                  */}
                   {!selectionMode && (
-                    <TouchableOpacity
-                      style={styles.dayAdd}
-                      onPress={() => { haptics.tap(); setPlanningDay(key); }}
-                      activeOpacity={interaction.activeOpacity}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Plan a meal on ${dayLabel}`}
-                    >
-                      <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
-                    </TouchableOpacity>
+                    /*
+                      Both trailing buttons in one group, spaced `md` rather
+                      than the row's own `sm`. Two 20-24pt glyphs need their
+                      hitSlop to reach a thumb-sized target, and at an 8pt gap
+                      those targets overlap — where the + wins, being the later
+                      sibling, and the cart's trailing half quietly opens the
+                      meal picker instead. 16pt is exactly the two 8pt slops
+                      meeting, with nothing shared.
+                    */
+                    <View style={styles.dayActions}>
+                      {shoppable && (
+                        <TouchableOpacity
+                          style={styles.dayAdd}
+                          onPress={() => openDayAddToList(key)}
+                          activeOpacity={interaction.activeOpacity}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Add ${dayLabel}'s ingredients to the grocery list`}
+                        >
+                          <Ionicons name="cart-outline" size={iconSize.md} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        style={styles.dayAdd}
+                        onPress={() => { haptics.tap(); setPlanningDay(key); }}
+                        activeOpacity={interaction.activeOpacity}
+                        hitSlop={{ top: 10, bottom: 10, left: 8, right: 10 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Plan a meal on ${dayLabel}`}
+                      >
+                        <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
+                      </TouchableOpacity>
+                    </View>
                   )}
                 </View>
 
@@ -1243,12 +1335,18 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
-  // collection just to light up a header icon.
-  const hasPlannableEntries = entries.some(e => e.recipeId && recipesById.has(e.recipeId));
+  // collection just to light up a header icon. Shares one rule with the day
+  // headers' cart button and with the sheet both open — including that a meal
+  // already marked cooked counts for nothing, which this used to miss: a week
+  // whose meals were all ticked off still offered the pill, and the sheet it
+  // opened said "Nothing to add".
+  const hasPlannableEntries = range
+    ? hasShoppableMeals(entries, recipesById, range)
+    : false;
 
   // Counted over the whole component tree, so a dish whose only prep steps
   // live on one of its parts still offers the action.
@@ -1628,8 +1726,13 @@ export function MealPlanScreen() {
           recipesById={recipesById}
           hint={describeBareWeek(entries.length, recipes.length)}
           onPlanDay={setPlanningDay}
+          onAddDayToList={openDayAddToList}
           shopping={weekShopping}
-          onAddWeekToList={() => setAddingToList(true)}
+          onAddWeekToList={() => range && openAddToList({
+            range,
+            title: 'Add week to list',
+            stampWeekKey: range.startKey,
+          })}
           // The same ranking the day list's own shelf is built from, capped at
           // what a glance can carry — the full set is one tap away in the sheet
           // below.
@@ -1756,7 +1859,11 @@ export function MealPlanScreen() {
                       <InlineAction
                         label="Add week to list"
                         icon="cart-outline"
-                        onPress={() => { haptics.tap(); setAddingToList(true); }}
+                        onPress={() => range && openAddToList({
+                          range,
+                          title: 'Add week to list',
+                          stampWeekKey: range.startKey,
+                        })}
                         accessibilityLabel="Add this week's ingredients to the grocery list"
                       />
                     )}
@@ -1971,6 +2078,18 @@ export function MealPlanScreen() {
             ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })
             : undefined
         }
+        onAddToList={
+          selectedRecipe
+            ? () => {
+                setMealShop({
+                  recipe: selectedRecipe,
+                  choices: selected?.recipeChoices ?? [],
+                  scale: selected?.recipeScale ?? 1,
+                });
+                setMealShopVisible(true);
+              }
+            : undefined
+        }
         onAddPrepTasks={
           selectedPrepTaskCount > 0
             ? () => selected && setReviewingPrepTasksFor(selected.id)
@@ -1997,13 +2116,15 @@ export function MealPlanScreen() {
         onClose={() => setSelectedId(null)}
       />
 
-      {range && (
-        <AddWeekToListSheet
-          visible={addingToList}
+      {addToListScope && (
+        <AddMealsToListSheet
+          visible={addToListVisible}
           entries={entries}
           recipesById={recipesById}
-          range={range}
-          onClose={() => setAddingToList(false)}
+          range={addToListScope.range}
+          title={addToListScope.title}
+          stampWeekKey={addToListScope.stampWeekKey}
+          onClose={() => setAddToListVisible(false)}
         />
       )}
 
@@ -2022,6 +2143,21 @@ export function MealPlanScreen() {
         onPlan={planSuggestion}
         onPlanLeftover={planLeftoverSuggestion}
         onClose={() => setSuggesting(null)}
+      />
+
+      {/*
+        One meal's shop, asked for from its own sheet. `initialSelection` is
+        the default "all": the user named the action, so every line they still
+        need starts ticked — where the restock offer below has to stay inside
+        what its banner counted.
+      */}
+      <RecipeToListSheet
+        visible={mealShopVisible}
+        recipe={mealShop?.recipe ?? null}
+        recipesById={recipesById}
+        initialChoices={mealShop?.choices}
+        initialScale={mealShop?.scale}
+        onClose={() => setMealShopVisible(false)}
       />
 
       {/* Ticks stay scoped to what the banner claimed — see initialSelection. */}
@@ -2124,12 +2260,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   // Name, date and chevron in one group at the leading edge; the trailing
-  // edge carries the add button and nothing else.
+  // edge carries the day's buttons (see dayActions) and nothing else.
   dayHeader: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: spacing.xs,
+  },
+  dayActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   dayAdd: {
     alignItems: 'center',

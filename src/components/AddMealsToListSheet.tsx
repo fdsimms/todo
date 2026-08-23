@@ -37,7 +37,24 @@ interface Props {
   /** The loaded week's entries — already range-scoped by useMealPlanStore. */
   entries: readonly MealPlanEntry[];
   recipesById: ReadonlyMap<string, Recipe>;
+  /**
+   * Which slice of `entries` this add covers. The whole week for the week
+   * pill, one day for a day header's cart button — `collectPlannedIngredients`
+   * re-filters by it, so a narrower range is all a narrower scope needs.
+   */
   range: { startKey: string; endKey: string };
+  /** The sheet's own header, naming what's being added ("Add Sunday to list"). */
+  title: string;
+  /**
+   * The week to stamp as shopped once the add commits, for the week header's
+   * "Added to list on X" line — or null when this add doesn't earn it.
+   *
+   * Only a whole-week add passes one. `addedToListAt` is keyed by week start
+   * and says the week has been through the shop; a single day's ingredients
+   * going on the list is not that claim, and stamping it would tell someone
+   * the other six days were handled too.
+   */
+  stampWeekKey: string | null;
   onClose: () => void;
 }
 
@@ -56,9 +73,19 @@ const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; c
 
 /**
  * Review-then-commit, same shape as GroceryAISheet and the recipe detail
- * screen's "Add ingredients to list" — a week's worth of recipes is exactly
+ * screen's "Add ingredients to list" — a run of planned recipes is exactly
  * the kind of bulk add that must never silently land on a list the user may
  * have curated.
+ *
+ * Scope is the caller's, not this sheet's: it shops whatever `range` covers,
+ * so the week pill passes the week and a day header's cart button passes that
+ * one day. Everything below — the classification, the ticking rules, the
+ * merge of two meals calling for the same thing — is the same either way,
+ * which is the reason a day add is this component with a narrower range
+ * rather than a second sheet that would drift from it. One meal is the
+ * exception and goes to RecipeToListSheet instead: at that scope the useful
+ * controls are the recipe's own scale and either/or chips, which this sheet
+ * has nowhere to put and a day's worth of meals has no single answer for.
  *
  * Ticking follows the table this feature was speced against: "Need to buy"
  * starts ticked (that's the point of the button), "Already on your list"
@@ -67,7 +94,9 @@ const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; c
  * information but can't be toggled at all — it's already been dealt with
  * this trip.
  */
-export function AddWeekToListSheet({ visible, entries, recipesById, range, onClose }: Props) {
+export function AddMealsToListSheet({
+  visible, entries, recipesById, range, title, stampWeekKey, onClose,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -164,7 +193,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
     if (rows.length === 0) { onClose(); return; }
 
     const result = addFromPlan(rows);
-    stampAddedToList(range.startKey);
+    if (stampWeekKey) stampAddedToList(stampWeekKey);
     haptics.success();
 
     // Each count on its own terms, never added together — the same
@@ -187,7 +216,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
       <View style={styles.root}>
         <View style={styles.header}>
           <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
-          <Text style={styles.headerTitle}>Add week to list</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
           <SheetHeaderButton
             label={addCount > 0 ? `Add ${addCount}` : 'Add'}
             onPress={handleAdd}
@@ -291,7 +320,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
                   )}
                   {category === 'alreadyOnList' && (
                     <Text style={styles.sectionHint}>
-                      Already on the list — tick one to top up its quantity for this week.
+                      Already on the list. Tick one to top up its quantity.
                     </Text>
                   )}
                 </View>
@@ -315,7 +344,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: border.hairline,
     borderBottomColor: colors.separator,
   },
-  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  // flex + centred so a longer scope name ("Add Wednesday to list") truncates
+  // rather than shoving the Cancel/Add buttons out of the row.
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    color: colors.text,
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
+  },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   list: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
   section: { gap: spacing.xs },

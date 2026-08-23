@@ -10,6 +10,7 @@ import { describeLeftover, isPlannedPastKeepUntil, liveFreshnessOf } from '../ut
 import { freshnessColor } from './LeftoversCard';
 import { InlineAction } from './InlineAction';
 import { titleForEntry } from '../utils/mealPlan';
+import { hasShoppableMeals } from '../utils/mealPlanGroceries';
 import { dayKeyOf } from '../utils/dateUtils';
 import { describePantryCoverage, type PantryCoverage } from '../utils/recipeUtils';
 import {
@@ -25,6 +26,13 @@ interface Props {
   /** `describeBareWeek`'s line, in place of a stack of empty sections. */
   hint: string | null;
   onPlanDay: (dayKey: string) => void;
+  /**
+   * Shops one night — the same day-scoped add the day list's own headers
+   * carry, so the shortcut is wherever a day is. Only offered on a night that
+   * has something to shop (hasShoppableMeals), which is usually two or three
+   * of the seven.
+   */
+  onAddDayToList: (dayKey: string) => void;
   /** Null when the week has nothing shoppable behind it — the section doesn't render. */
   shopping: WeekShoppingCopy | null;
   onAddWeekToList: () => void;
@@ -79,6 +87,7 @@ export function WeekPlanOverview({
   recipesById,
   hint,
   onPlanDay,
+  onAddDayToList,
   shopping,
   onAddWeekToList,
   suggestions,
@@ -115,6 +124,9 @@ export function WeekPlanOverview({
         {nights.map((night, idx) => {
           const titles = night.entries.map(e => titleForEntry(e, recipesById)).filter(Boolean);
           const dayLabel = format(night.date, 'EEEE d MMMM');
+          const shoppable = hasShoppableMeals(
+            night.entries, recipesById, { startKey: night.dayKey, endKey: night.dayKey }
+          );
           const spoken = [
             dayLabel,
             titles.length > 0 ? titles.join(', ') : null,
@@ -161,7 +173,29 @@ export function WeekPlanOverview({
                     <Text style={[styles.nightMeals, styles.nightPast]}>Nothing planned</Text>
                   )}
                 </View>
-                <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
+                {/*
+                  Nested inside the row rather than beside it, unlike the day
+                  list's pair: there the header is a collapse toggle with the +
+                  next to it, here the whole row *is* the plan target and the +
+                  is its glyph, so the cart is a control living inside a
+                  control. RN gives the inner responder the touch; the 16pt gap
+                  and the clipped hitSlop are what keep the cart's target off
+                  the + beside it, which would plan a meal instead.
+                */}
+                <View style={styles.nightActions}>
+                  {shoppable && (
+                    <TouchableOpacity
+                      onPress={() => { haptics.tap(); onAddDayToList(night.dayKey); }}
+                      activeOpacity={interaction.activeOpacity}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Add ${dayLabel}'s ingredients to the grocery list`}
+                    >
+                      <Ionicons name="cart-outline" size={iconSize.md} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  )}
+                  <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
+                </View>
               </TouchableOpacity>
             </React.Fragment>
           );
@@ -360,6 +394,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   nightPast: { color: colors.textTertiary },
   nightBody: { flex: 1, alignItems: 'flex-start', gap: 5 },
   nightMeals: { color: colors.text, fontSize: font.md, lineHeight: 20 },
+  // See the note in the row: `md` rather than the row's own `sm`, so the
+  // cart's hitSlop and the + it sits beside don't share any pixels.
+  nightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
   openChip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
