@@ -39,6 +39,7 @@ import {
   pantryCoverageForRecipe,
   describePantryCoverage,
   formatServingsRange,
+  parseServingsRange,
   looksLikeBareUrl,
   recipeHasMethod,
   recipeHasPrepTasks,
@@ -1817,5 +1818,37 @@ describe('recipeHasAttribution', () => {
   it('shrugs off a missing recipe', () => {
     expect(recipeHasAttribution(null)).toBe(false);
     expect(recipeHasAttribution(undefined)).toBe(false);
+  });
+});
+
+describe('parseServingsRange', () => {
+  it('reads a plain count', () => {
+    expect(parseServingsRange('4')).toEqual({ servings: 4, servingsMax: null });
+  });
+
+  it('reads a range however it is written', () => {
+    for (const text of ['4-6', '4 - 6', '4 to 6', '4–6', 'Serves 4 to 6']) {
+      expect(parseServingsRange(text)).toEqual({ servings: 4, servingsMax: 6 });
+    }
+  });
+
+  // Same rule setServings applies: a top that doesn't beat its bottom is not
+  // a range, so it's dropped rather than stored as one.
+  it('drops a max that does not beat its min', () => {
+    expect(parseServingsRange('6-4')).toEqual({ servings: 6, servingsMax: null });
+    expect(parseServingsRange('4-4')).toEqual({ servings: 4, servingsMax: null });
+  });
+
+  it('round-trips its own formatting', () => {
+    for (const [servings, max] of [[4, null], [4, 6], [10, null]] as const) {
+      const text = formatServingsRange(servings, max)!;
+      expect(parseServingsRange(text)).toEqual({ servings, servingsMax: max });
+    }
+  });
+
+  it('is null when there is no usable number', () => {
+    expect(parseServingsRange('')).toBeNull();
+    expect(parseServingsRange('a few')).toBeNull();
+    expect(parseServingsRange('0')).toBeNull();
   });
 });

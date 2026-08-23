@@ -261,7 +261,6 @@ exports.
 | the app asking whether you still have something | `src/utils/pantryCheckTasks.ts` — see `docs/arch/groceries.md` |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
 | remembering which item a barcode is | `ItemProduct.gtin` + `gtinAliasText` in `src/utils/storeAliases.ts` — see `docs/arch/groceries.md` |
-| reading a receipt onto the list, or into the pantry | `src/utils/receiptMatch.ts` + `src/components/ReceiptImportSheet.tsx` (`context`) |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
 | a store whose receipt prints prices but no names | `Shop.receiptStyle` + `src/utils/pricePairing.ts` + `ReceiptPricePairing.tsx` |
 | what's in the kitchen and what's about to be wasted | `src/utils/kitchenInventory.ts` (+ the ladder in `src/utils/freshness.ts`) — see `docs/arch/groceries.md` |
@@ -311,7 +310,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **169 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **170 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

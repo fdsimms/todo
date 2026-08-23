@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   View,
@@ -19,32 +19,36 @@ import {
   font,
   fontWeight,
   border,
-  iconSize,
   interaction,
-  checkboxRadius,
   type Colors,
 } from '../theme';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
-  extractRecipe, type ExtractedRecipe, type RecipeGroceryItem,
+  extractRecipe, type ExtractedRecipe, type RecipeGroceryItem, type ExtractedPrepTask,
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
-import { normalizeIngredient, cleanRecipeName, formatServingsRange } from '../utils/recipeUtils';
+import {
+  normalizeIngredient, cleanRecipeName, formatServingsRange, parseServingsRange,
+} from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { aisleForName } from '../utils/groceryAisles';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker, type RecipeInputMode } from './RecipeSourcePicker';
-import { ExtractedIngredientRow, type ExtractedIngredientRowHandle } from './ExtractedIngredientRow';
+import { ExtractedIngredientRow } from './ExtractedIngredientRow';
+import { ImportApplyRow } from './ImportApplyRow';
+import {
+  methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines,
+} from '../utils/recipeImportPreview';
+import { InlineEditableText } from './InlineEditableText';
+import { usePendingEdits } from '../hooks/usePendingEdits';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
 import { ImportedComponentRow } from './ImportedComponentRow';
 import { coveredIngredients, importableReferences } from '../utils/recipeImportComponents';
 import { haptics } from '../utils/haptics';
-
-const CHECKBOX_SIZE = 22;
 
 interface Props {
   visible: boolean;
@@ -81,14 +85,19 @@ interface Props {
  * fallback for whichever a site doesn't publish as structured data. The page's
  * own steps are preferred when both exist; only attribution stays link-only,
  * since nothing else names where a recipe came from.
+ *
+ * **The method and the prep tasks are reviewable rows, not a footnote** (#1618).
+ * They used to be written to the new recipe unconditionally, announced only by
+ * a sentence in the intro saying how many of each had been found — so the one
+ * part of an import you couldn't check before committing to it was the part
+ * with the most words in it, and prep tasks additionally schedule themselves
+ * days ahead of the meal. Both now sit in the list as `ImportApplyRow`s that
+ * unfold what they'd add, ticked by default because a new recipe has nothing
+ * of the user's own for them to land on top of.
  */
 export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onCreated }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  // One ref per visible row, so handleCreate can flush whichever one is
-  // mid-edit — see ExtractedIngredientRowHandle.resolvePendingEdit.
-  const rowRefs = useRef(new Map<number, ExtractedIngredientRowHandle | null>());
-
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
@@ -117,6 +126,22 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   const [name, setName] = useState('');
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const [applyDetails, setApplyDetails] = useState(true);
+  // Both default *on*, unlike `RecipeExtractSheet`'s: the recipe is being
+  // created here, so there is nothing of the user's own for these to land on
+  // top of and nothing a tick could overwrite. The checkbox exists so a method
+  // the model read badly can be declined, not to protect existing content.
+  const [applyMethod, setApplyMethod] = useState(true);
+  const [applyPrepTasks, setApplyPrepTasks] = useState(true);
+  // Working copies of everything the review list can correct, on the same
+  // terms `ingredients` above has been on since #1608: `extracted` is what the
+  // model said and is never written back to, these are what gets created.
+  const [steps, setSteps] = useState<string[]>([]);
+  const [acceptedSteps, setAcceptedSteps] = useState<Set<number>>(new Set());
+  const [prepTasks, setPrepTasks] = useState<ExtractedPrepTask[]>([]);
+  const [acceptedPrepTasks, setAcceptedPrepTasks] = useState<Set<number>>(new Set());
+  const [servingsText, setServingsText] = useState('');
+  const [minutesText, setMinutesText] = useState('');
+  const edits = usePendingEdits();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   // Whichever add-menu item opened it — "From a link" and "From a photo" both
   // land here, and each opens on its own tab rather than making that tap feel
@@ -147,6 +172,14 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     setName('');
     setAccepted(new Set());
     setApplyDetails(true);
+    setApplyMethod(true);
+    setApplyPrepTasks(true);
+    setSteps([]);
+    setAcceptedSteps(new Set());
+    setPrepTasks([]);
+    setAcceptedPrepTasks(new Set());
+    setServingsText('');
+    setMinutesText('');
     resetInput();
     resetComponents();
   }, [resetInput, resetComponents]);
@@ -170,6 +203,15 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       setName(result.name || resolved.page?.title || '');
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
       setApplyDetails(result.servings !== null || result.prepMinutes !== null);
+      const methodStepsFound = (resolved.page?.steps.length ?? 0) > 0
+        ? resolved.page!.steps
+        : result.steps;
+      setSteps(methodStepsFound);
+      setAcceptedSteps(new Set(methodStepsFound.map((_, i) => i)));
+      setPrepTasks(result.prepTasks);
+      setAcceptedPrepTasks(new Set(result.prepTasks.map((_, i) => i)));
+      setServingsText(formatServingsRange(result.servings, result.servingsMax) ?? '');
+      setMinutesText(result.prepMinutes !== null ? String(result.prepMinutes) : '');
     } catch (e) {
       setError(describeImportError(e));
       setCanRetry(isRetryableImportError(e));
@@ -212,6 +254,27 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     return recipes.find(r => r.nameKey === key) ?? null;
   }, [cleaned, recipes]);
 
+  const toggleIn = (
+    setter: React.Dispatch<React.SetStateAction<Set<number>>>,
+  ) => (index: number) => setter(prev => {
+    const next = new Set(prev);
+    if (next.has(index)) next.delete(index);
+    else next.add(index);
+    return next;
+  });
+  const toggleStep = toggleIn(setAcceptedSteps);
+  const togglePrepTask = toggleIn(setAcceptedPrepTasks);
+
+  const editStep = (index: number, text: string) => {
+    haptics.success();
+    setSteps(prev => prev.map((step, i) => (i === index ? text : step)));
+  };
+
+  const editPrepTask = (index: number, patch: Partial<ExtractedPrepTask>) => {
+    haptics.success();
+    setPrepTasks(prev => prev.map((task, i) => (i === index ? { ...task, ...patch } : task)));
+  };
+
   const handleCreate = () => {
     if (!extracted || !cleaned || duplicate) return;
     const recipe = addRecipe(cleaned);
@@ -222,18 +285,24 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       if (existing) { onClose(); onCreated(existing.id); }
       return;
     }
-    // Tapping Create can beat a row's own blur — merge in whatever's still
-    // mid-edit instead of trusting `ingredients` state a pending edit
-    // hasn't reached yet (same race TaskEditor's resolveX functions guard
-    // against). Read directly rather than going through onEditName/
-    // onEditQuantity, which write via setState and wouldn't land in time
-    // for this same synchronous read.
+    // Tapping Create can beat a field's own blur, so every value below is read
+    // through the pending-edit registry rather than straight off state a draft
+    // hasn't landed in yet (same race TaskEditor's resolveX functions guard
+    // against — see usePendingEdits for why the resolvers return values
+    // instead of committing).
+    const pending = edits.resolveAll();
+    const pendingText = (key: string, fallback: string) => pending.get(key) ?? fallback;
     const resolvedIngredients = ingredients.map((row, i) => {
-      const pending = rowRefs.current.get(i)?.resolvePendingEdit();
-      if (!pending) return row;
-      const next = { ...row, [pending.field]: pending.value };
-      if (pending.field === 'name') {
-        next.aisle = rememberedAisleFor(pending.value) ?? aisleForName(pending.value) ?? 'Other';
+      const itemName = pending.get(`ingredient:${i}:name`);
+      const quantity = pending.get(`ingredient:${i}:quantity`);
+      if (itemName === undefined && quantity === undefined) return row;
+      const next = {
+        ...row,
+        ...(itemName !== undefined && { name: itemName }),
+        ...(quantity !== undefined && { quantity }),
+      };
+      if (itemName !== undefined) {
+        next.aisle = rememberedAisleFor(itemName) ?? aisleForName(itemName) ?? 'Other';
       }
       return next;
     });
@@ -245,9 +314,10 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     // After the recipe exists, so the links have something to hang off.
     components.commitTo(recipe.id);
     if (applyDetails) {
-      if (extracted.servings !== null) {
-        setServings(recipe.id, extracted.servings, extracted.servingsMax);
-      }
+      // Whatever's in the box now, not what the model first said — the row is
+      // editable, so `extracted` is only ever the starting value here.
+      const servings = parseServingsRange(pendingText('details:servings', servingsText));
+      if (servings) setServings(recipe.id, servings.servings, servings.servingsMax);
       // Was read off the recipe and shown on the row, then dropped on the way
       // out — the row promised a time the new recipe never got.
       //
@@ -256,7 +326,8 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       // time, while the model's prepMinutes/estimatedMinutes pair splits prep
       // from cook. A total in the cook half leaves `totalMinutes()` correct;
       // in the prep half it would claim the whole recipe is mise en place.
-      if (extracted.prepMinutes !== null) setEstimatedMinutes(recipe.id, extracted.prepMinutes);
+      const minutes = parseInt(pendingText('details:minutes', minutesText), 10);
+      if (minutes > 0) setEstimatedMinutes(recipe.id, minutes);
     }
     // Everything a page told us about itself. Only ever set from structured
     // markup, so a paste and a photo leave all of it null as they always did.
@@ -268,14 +339,24 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       if (page.author) setAuthor(recipe.id, page.author);
     }
     // The page's own steps when it has them (verbatim structured data),
-    // otherwise whatever the model read off the source itself.
-    methodSteps.forEach(step => addStep(recipe.id, step));
-    extracted.prepTasks.forEach(task => {
-      const added = addPrepTask(recipe.id, task.title);
-      if (added && task.offsetDays !== added.offsetDays) {
-        updatePrepTask(recipe.id, added.id, { offsetDays: task.offsetDays });
-      }
-    });
+    // otherwise whatever the model read off the source itself. Both of these
+    // used to be written unconditionally, announced only by a sentence in the
+    // intro — now they're rows you can read and untick like everything else.
+    if (applyMethod) {
+      steps.forEach((step, i) => {
+        if (!acceptedSteps.has(i)) return;
+        addStep(recipe.id, pendingText(`step:${i}:text`, step));
+      });
+    }
+    if (applyPrepTasks) {
+      prepTasks.forEach((task, i) => {
+        if (!acceptedPrepTasks.has(i)) return;
+        const added = addPrepTask(recipe.id, pendingText(`prep:${i}:text`, task.title));
+        if (added && task.offsetDays !== added.offsetDays) {
+          updatePrepTask(recipe.id, added.id, { offsetDays: task.offsetDays });
+        }
+      });
+    }
     haptics.success();
     // Close first, then navigate: a navigate fired from under a live pageSheet
     // renders the destination behind the sheet.
@@ -287,19 +368,20 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
 
   // One checkbox applying two facts has to name both when it has both, and it
   // reads out exactly what the row shows rather than a second phrasing of it.
+  // Reads the boxes, not `extracted`, so it stays true once they're edited.
   const detailsLabel = !extracted ? ''
-    : extracted.servings !== null
-      ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}${
-          extracted.prepMinutes !== null ? `, about ${extracted.prepMinutes} min` : ''}`
-      : `About ${extracted.prepMinutes} min`;
+    : servingsText
+      ? `Serves ${servingsText}${minutesText ? `, about ${minutesText} min` : ''}`
+      : `About ${minutesText} min`;
 
-  // The method isn't in the review list — there's nothing to tick or correct —
-  // but arriving with steps nobody mentioned is a surprise, so the count is
-  // said out loud. The page's own steps (verbatim structured data) win over
-  // the model's read of the same source when both exist.
-  const methodSteps = (input.page?.steps.length ?? 0) > 0 ? input.page!.steps : (extracted?.steps ?? []);
-  const stepCount = methodSteps.length;
-  const prepTaskCount = extracted?.prepTasks.length ?? 0;
+  // What the run found decides whether the details row exists; what's in its
+  // boxes decides what it applies. Emptying both must not unmount the row
+  // mid-edit — there'd be no way to type a value back in.
+  const foundDetails = !!extracted && (extracted.servings !== null || extracted.prepMinutes !== null);
+
+  // Nothing to append after: this recipe doesn't exist yet.
+  const methodMeta = methodRowMeta(acceptedSteps.size, steps.length, false);
+  const prepTasksMeta = prepTasksRowMeta(acceptedPrepTasks.size, prepTasks.length, false);
 
 
   // A deterministic failure — a mistyped address, a site that refuses us, a page
@@ -454,34 +536,81 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
         </View>
 
         <Text style={styles.intro}>
-          Untick anything you don't want added, or tap a name or amount to change it.
-          {stepCount > 0 && ` The method comes across too — ${stepCount} step${stepCount === 1 ? '' : 's'}.`}
-          {prepTaskCount > 0 && ` So do any prep tasks it needs ahead of time — ${prepTaskCount} found.`}
+          Uncheck anything you don't want added. Tap any line to change it before it's saved.
         </Text>
 
-        {(extracted.servings !== null || extracted.prepMinutes !== null) && (
-          <TouchableOpacity
-            style={styles.row}
-            activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); setApplyDetails(v => !v); }}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: applyDetails }}
+        {foundDetails && (
+          <ImportApplyRow
+            checked={applyDetails}
+            onToggle={() => setApplyDetails(v => !v)}
+            title="Serves"
             accessibilityLabel={detailsLabel}
           >
-            <View style={[styles.checkbox, applyDetails && styles.checkboxOn]}>
-              {applyDetails && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+            <View style={styles.detailFields}>
+              <InlineEditableText
+                edits={edits}
+                editKey="details:servings"
+                value={servingsText}
+                onCommit={setServingsText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. 4"
+                accessibilityLabel="servings"
+                maxLength={12}
+                numberOfLines={1}
+              />
+              <Text style={styles.detailSep}>·</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="details:minutes"
+                value={minutesText}
+                onCommit={setMinutesText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. 45"
+                accessibilityLabel="total minutes"
+                maxLength={4}
+                numberOfLines={1}
+              />
+              <Text style={styles.detailSep}>min</Text>
             </View>
-            <View style={styles.body}>
-              <Text style={styles.name}>
-                {extracted.servings !== null
-                  ? `Serves ${formatServingsRange(extracted.servings, extracted.servingsMax)}`
-                  : `About ${extracted.prepMinutes} min`}
-              </Text>
-              {extracted.servings !== null && extracted.prepMinutes !== null && (
-                <Text style={styles.meta}>About {extracted.prepMinutes} min</Text>
-              )}
-            </View>
-          </TouchableOpacity>
+          </ImportApplyRow>
+        )}
+
+        {steps.length > 0 && (
+          <ImportApplyRow
+            checked={applyMethod}
+            onToggle={() => setApplyMethod(v => !v)}
+            title="Method"
+            meta={methodMeta}
+            accessibilityLabel={`Method, ${methodMeta}`}
+            preview={methodPreviewLines(steps)}
+            acceptedLines={acceptedSteps}
+            onToggleLine={toggleStep}
+            onEditLine={editStep}
+            ordered
+            previewNoun="step"
+            edits={edits}
+            editKeyPrefix="step"
+          />
+        )}
+
+        {prepTasks.length > 0 && (
+          <ImportApplyRow
+            checked={applyPrepTasks}
+            onToggle={() => setApplyPrepTasks(v => !v)}
+            title="Prep tasks"
+            meta={prepTasksMeta}
+            accessibilityLabel={`Prep tasks, ${prepTasksMeta}`}
+            preview={prepTaskPreviewLines(prepTasks)}
+            acceptedLines={acceptedPrepTasks}
+            onToggleLine={togglePrepTask}
+            onEditLine={(i, title) => editPrepTask(i, { title })}
+            onEditLead={(i, offsetDays) => editPrepTask(i, { offsetDays })}
+            previewNoun="task"
+            edits={edits}
+            editKeyPrefix="prep"
+          />
         )}
 
         {renderReferences()}
@@ -496,8 +625,9 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
           return (
             <ExtractedIngredientRow
               key={`${row.name}-${i}`}
-              ref={el => { if (el) rowRefs.current.set(i, el); else rowRefs.current.delete(i); }}
               row={row}
+              edits={edits}
+              index={i}
               checked={accepted.has(i) && !coveredBy}
               onToggle={() => toggle(i)}
               onEditName={name => editIngredient(i, { name })}
@@ -556,6 +686,9 @@ function makeStyles(colors: Colors) {
       paddingBottom: spacing.sm,
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
+    detailFields: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    detailValue: { fontSize: font.sm, color: colors.textSecondary },
+    detailSep: { fontSize: font.sm, color: colors.textTertiary },
     groupLabel: {
       color: colors.textSecondary,
       fontSize: font.xs,
@@ -605,29 +738,5 @@ function makeStyles(colors: Colors) {
     },
     dupeText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
     dupeAction: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.semibold },
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      backgroundColor: colors.bgSecondary,
-      marginHorizontal: spacing.md,
-      marginVertical: 2,
-      borderRadius: radius.md,
-      paddingVertical: 12,
-      paddingHorizontal: spacing.md,
-    },
-    checkbox: {
-      width: CHECKBOX_SIZE,
-      height: CHECKBOX_SIZE,
-      borderRadius: checkboxRadius(CHECKBOX_SIZE),
-      borderWidth: border.md,
-      borderColor: colors.separator,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    checkboxOn: { backgroundColor: colors.purple, borderColor: colors.purple },
-    body: { flex: 1 },
-    name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-    meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
   });
 }
