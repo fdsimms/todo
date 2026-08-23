@@ -76,6 +76,7 @@ import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
+import { categoryLabel } from '../utils/categoryLabel';
 import {
   postponeOutcome,
   nextPostponeCount,
@@ -1262,6 +1263,14 @@ interface TaskStore {
   deferGroup: (groupId: string, until: Date) => void;
   pinGroup: (groupId: string) => void;
   deleteGroup: (groupId: string, opts: { cascade: boolean }) => void;
+  // Bulk selection on the Stacks screen. Same one-entry-per-batch undo rule as
+  // bulkDeleteProjects: deleteGroup already knows how to unfile or cascade a
+  // stack's roster, so each id goes through it and only the undo is batched.
+  bulkDeleteGroups: (groupIds: string[], opts: { cascade: boolean }) => void;
+  // Cascades to the roster the same way TaskGroupEditor's saveAndClose does
+  // for a single stack — the stack's category is its members' category, so a
+  // bulk move re-files them too.
+  bulkSetGroupCategory: (groupIds: string[], category: string | null) => void;
 
   addExistingToProject: (taskId: string, projectId: string) => void;
   removeFromProject: (taskId: string) => void;
@@ -4350,6 +4359,48 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         children.forEach(child => {
           if (!doomed.has(child.id)) get().addExistingToGroup(child.id, groupId);
         });
+      },
+    });
+  },
+
+  // Same one-entry-per-batch rule as bulkDeleteProjects; the ids are filtered
+  // to rows that exist first, so a stale id can't leave the previous action's
+  // undo in the batch below.
+  bulkDeleteGroups(groupIds, opts) {
+    const groupStore = useTaskGroupStore.getState();
+    const ids = groupIds.filter(id => groupStore.getGroupById(id) !== null);
+    if (ids.length === 0) return;
+    const undos: Array<() => void> = [];
+    ids.forEach(id => {
+      get().deleteGroup(id, opts);
+      const action = get().lastAction;
+      if (action) undos.push(action.undo);
+    });
+    get().setLastAction({
+      label: `${ids.length} stack${ids.length === 1 ? '' : 's'}${opts.cascade ? ' and their tasks' : ''} deleted`,
+      destructive: true,
+      undo: () => undos.forEach(fn => fn()),
+    });
+  },
+
+  bulkSetGroupCategory(groupIds, category) {
+    const groupStore = useTaskGroupStore.getState();
+    const groups = groupIds
+      .map(id => groupStore.getGroupById(id))
+      .filter((g): g is TaskGroup => g !== null && g.category !== category);
+    if (groups.length === 0) return;
+    const groupUndos = groups.map(g => ({ id: g.id, category: g.category }));
+    const taskUndos: Array<{ id: string; category: string | null }> = [];
+    groups.forEach(g => {
+      groupStore.updateGroup(g.id, { category });
+      taskUndos.push(...get().applyGroupCategory(g.id, category));
+    });
+    const categoryList = useCategoryStore.getState().categories;
+    get().setLastAction({
+      label: `${groups.length} stack${groups.length === 1 ? '' : 's'} moved to ${category ? categoryLabel(category, categoryList) : 'no category'}`,
+      undo: () => {
+        groupUndos.forEach(g => groupStore.updateGroup(g.id, { category: g.category }));
+        taskUndos.forEach(t => get().updateTask(t.id, { category: t.category }));
       },
     });
   },
