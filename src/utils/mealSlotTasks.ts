@@ -217,13 +217,24 @@ function isAnswered(entry: MealPlanEntry | null): entry is MealPlanEntry {
  * *off* for it (see `mealSlotTaskFields`): a single-item chain already reads
  * as a plain task everywhere in the UI (`activeChainStep` refuses to count
  * one), so leaving it on would store a chain nothing ever displays.
+ *
+ * `recipeMinutes` — the recipe's own `totalMinutes()` (prep + cook) — lands on
+ * the Cook step alone. There is no separate Prepare step once a recipe is
+ * chosen (that only exists in the unanswered [Choose, Prepare, Eat] chain, and
+ * a generic "Prepare lunch" has no recipe to read a time from), so Cook X is
+ * the one step standing in for the whole act of making the dish and gets the
+ * whole number.
  */
-export function mealSlotChain(slot: MealSlot, entry: MealPlanEntry | null): ChainItem[] {
+export function mealSlotChain(
+  slot: MealSlot,
+  entry: MealPlanEntry | null,
+  recipeMinutes: number | null = null
+): ChainItem[] {
   const lower = MEAL_SLOT_LABELS[slot].toLowerCase();
-  const step = (key: string, title: string): ChainItem => ({
+  const step = (key: string, title: string, estimatedMinutes: number | null = null): ChainItem => ({
     id: `${slot}-${key}`,
     title,
-    estimatedMinutes: null,
+    estimatedMinutes,
   });
   if (!isAnswered(entry)) {
     return [
@@ -237,7 +248,7 @@ export function mealSlotChain(slot: MealSlot, entry: MealPlanEntry | null): Chai
   // kept here to decide whether there is a step for making it. A leftover
   // points at the fridge, which is the opposite of a thing to cook.
   if (entry.recipeId && !entry.leftoverId) {
-    return [step('cook', `Cook ${entry.title}`), step('eat', `Eat ${entry.title}`)];
+    return [step('cook', `Cook ${entry.title}`, recipeMinutes), step('eat', `Eat ${entry.title}`)];
   }
   return [step('eat', `Eat ${entry.title}`)];
 }
@@ -275,7 +286,8 @@ export function mealSlotTaskTitle(slot: MealSlot, entry: MealPlanEntry | null): 
 export function mealSlotTaskFields(
   dayKey: string,
   slot: MealSlot,
-  entry: MealPlanEntry | null
+  entry: MealPlanEntry | null,
+  recipeMinutes: number | null = null
 ): {
   title: string;
   dueDate: string;
@@ -284,7 +296,7 @@ export function mealSlotTaskFields(
   chainEnabled: boolean;
   chainItems: ChainItem[];
 } {
-  const chain = mealSlotChain(slot, entry);
+  const chain = mealSlotChain(slot, entry, recipeMinutes);
   return {
     title: mealSlotTaskTitle(slot, entry),
     // Never null: dayKeyToDate always yields a real Date, and the offset is 0.
@@ -301,9 +313,15 @@ export function mealSlotTaskFields(
   };
 }
 
-/** Two chains are equal when their steps are, in order — ids included. */
+/** Two chains are equal when their steps are, in order — ids and estimates included. */
 function sameChain(a: readonly ChainItem[], b: readonly ChainItem[]): boolean {
-  return a.length === b.length && a.every((item, i) => item.id === b[i].id && item.title === b[i].title);
+  return (
+    a.length === b.length &&
+    a.every(
+      (item, i) =>
+        item.id === b[i].id && item.title === b[i].title && item.estimatedMinutes === b[i].estimatedMinutes
+    )
+  );
 }
 
 /**
@@ -330,9 +348,10 @@ export function mealSlotDrift(
   task: Pick<Task, 'title' | 'dueDate' | 'timeSegments' | 'linkUrl' | 'chainEnabled' | 'chainItems' | 'chainIndex'>,
   dayKey: string,
   slot: MealSlot,
-  entry: MealPlanEntry | null
+  entry: MealPlanEntry | null,
+  recipeMinutes: number | null = null
 ): Partial<Task> | null {
-  const next = mealSlotTaskFields(dayKey, slot, entry);
+  const next = mealSlotTaskFields(dayKey, slot, entry, recipeMinutes);
   const started = (task.chainIndex ?? 0) > 0;
   const updates: Partial<Task> = {};
   if (task.title !== next.title) updates.title = next.title;
@@ -369,10 +388,11 @@ export function mealSlotTaskDraft(
   dayKey: string,
   slot: MealSlot,
   entry: MealPlanEntry | null,
-  category: string | null = null
+  category: string | null = null,
+  recipeMinutes: number | null = null
 ): Partial<TaskDraft> {
   return {
-    ...mealSlotTaskFields(dayKey, slot, entry),
+    ...mealSlotTaskFields(dayKey, slot, entry, recipeMinutes),
     ...generatedBy('mealSlot', mealSlotSourceId(dayKey, slot)),
     chainIndex: 0,
     category,

@@ -45,8 +45,14 @@ function entry(overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
 }
 
 /** A live meal task, as the daily pass would have written it. */
-function taskFor(dayKey: string, slot: MealSlot, e: MealPlanEntry | null, over: Partial<Task> = {}) {
-  const fields = mealSlotTaskFields(dayKey, slot, e);
+function taskFor(
+  dayKey: string,
+  slot: MealSlot,
+  e: MealPlanEntry | null,
+  over: Partial<Task> = {},
+  recipeMinutes: number | null = null
+) {
+  const fields = mealSlotTaskFields(dayKey, slot, e, recipeMinutes);
   return { ...fields, chainIndex: 0, recurrenceType: 'none', ...over } as Task;
 }
 
@@ -96,6 +102,28 @@ describe('the chain, given what the slot holds', () => {
     expect(mealSlotChain('dinner', planned).map(c => c.title))
       .toEqual(['Cook Chili', 'Eat Chili']);
     expect(mealSlotTaskTitle('dinner', planned)).toBe('Chili');
+  });
+
+  it('carries the recipe\'s time onto the Cook step alone', () => {
+    // recipeMinutes is the caller's already-summed prep+cook total (see
+    // recipeMinutesFor); there's no separate Prepare step once a recipe is
+    // chosen, so Cook X is the one step that gets it.
+    const planned = entry({ recipeId: 'r1', title: 'Chili' });
+    const chain = mealSlotChain('dinner', planned, 35);
+    expect(chain.map(c => c.estimatedMinutes)).toEqual([35, null]);
+  });
+
+  it('leaves every step unestimated with no recipe time to give', () => {
+    expect(mealSlotChain('lunch', null).map(c => c.estimatedMinutes)).toEqual([null, null, null]);
+    const planned = entry({ recipeId: 'r1', title: 'Chili' });
+    expect(mealSlotChain('dinner', planned).map(c => c.estimatedMinutes)).toEqual([null, null]);
+  });
+
+  it('ignores a recipe time when the slot has nothing to cook', () => {
+    // A leftover/takeaway chain is Eat X alone — recipeMinutes has no Cook
+    // step to land on.
+    const leftover = entry({ recipeId: 'r1', leftoverId: 'lo-1', title: "Tuesday's chilli" });
+    expect(mealSlotChain('dinner', leftover, 35).map(c => c.estimatedMinutes)).toEqual([null]);
   });
 
   it('drops the cooking too for a leftover or a takeaway', () => {
@@ -235,6 +263,27 @@ describe('drift', () => {
     const leftover = entry({ recipeId: 'r1', leftoverId: 'lo-1', title: "Tuesday's chilli" });
     const updates = mealSlotDrift(task, '2026-08-22', 'dinner', leftover)!;
     expect(updates.timeSegments).toEqual(['evening']);
+  });
+
+  it('picks up a changed recipe time on an unstarted row', () => {
+    const planned = entry({ recipeId: 'r1', title: 'Chili' });
+    const task = taskFor('2026-08-22', 'dinner', planned, {}, 20);
+    const updates = mealSlotDrift(task, '2026-08-22', 'dinner', planned, 35)!;
+    expect(updates.chainItems!.map(c => c.estimatedMinutes)).toEqual([35, null]);
+  });
+
+  it('writes nothing when the recipe time is unchanged', () => {
+    const planned = entry({ recipeId: 'r1', title: 'Chili' });
+    const task = taskFor('2026-08-22', 'dinner', planned, {}, 20);
+    expect(mealSlotDrift(task, '2026-08-22', 'dinner', planned, 20)).toBeNull();
+  });
+
+  it('holds the recipe time too once the chain has been started', () => {
+    // Nothing else about the row has drifted, so withholding chainItems along
+    // with it means there is nothing left to write at all.
+    const planned = entry({ recipeId: 'r1', title: 'Chili' });
+    const task = taskFor('2026-08-22', 'dinner', planned, { chainIndex: 1 }, 20);
+    expect(mealSlotDrift(task, '2026-08-22', 'dinner', planned, 35)).toBeNull();
   });
 
   it('never touches the date', () => {
