@@ -11,8 +11,8 @@ export interface ListBulkAction {
   key: string;
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
-  /** Destructive actions are red; everything else is accent. */
-  tone?: 'accent' | 'destructive';
+  /** Destructive actions are red, 'purple' matches the built-in category Move button, everything else is accent. */
+  tone?: 'accent' | 'destructive' | 'purple';
   onPress: () => void;
 }
 
@@ -155,7 +155,9 @@ export function ListBulkBar({
               </PressableScale>
             )}
             {actions.map(action => {
-              const tint = action.tone === 'destructive' ? colors.red : colors.accent;
+              const tint = action.tone === 'destructive' ? colors.red
+                : action.tone === 'purple' ? colors.purple
+                : colors.accent;
               return (
                 <PressableScale
                   key={action.key}

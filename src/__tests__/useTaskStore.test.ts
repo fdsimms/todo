@@ -6853,6 +6853,106 @@ describe('bulkDeleteProjects', () => {
   });
 });
 
+// ─── bulkDeleteGroups ───────────────────────────────────────────────────────
+
+describe('bulkDeleteGroups', () => {
+  it('deletes every selected stack, unfiling their tasks (cascade: false)', () => {
+    useTaskGroupStore.setState({
+      groups: [makeGroup({ id: 'g1' }), makeGroup({ id: 'g2' }), makeGroup({ id: 'g3' })],
+    });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1' }), makeTask({ id: 'b', groupId: 'g2' })],
+    });
+    useTaskStore.getState().bulkDeleteGroups(['g1', 'g2'], { cascade: false });
+    expect(useTaskGroupStore.getState().groups.map(g => g.id)).toEqual(['g3']);
+    expect(useTaskStore.getState().tasks.every(t => t.groupId === null)).toBe(true);
+  });
+
+  it('deletes member tasks too (cascade: true)', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' }), makeGroup({ id: 'g2' })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1' }),
+        makeTask({ id: 'b', groupId: 'g2' }),
+        makeTask({ id: 'keep', groupId: null }),
+      ],
+    });
+    useTaskStore.getState().bulkDeleteGroups(['g1', 'g2'], { cascade: true });
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['keep']);
+  });
+
+  // The point of the action: one undo entry for the batch, not one per stack
+  // with only the last one reachable.
+  it('queues a single undo that brings every stack back', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' }), makeGroup({ id: 'g2' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', groupId: 'g1' })], lastAction: null });
+    useTaskStore.getState().bulkDeleteGroups(['g1', 'g2'], { cascade: false });
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 stacks deleted');
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskGroupStore.getState().groups.map(g => g.id).sort()).toEqual(['g1', 'g2']);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.groupId).toBe('g1');
+  });
+
+  it('ignores unknown ids rather than banking the previous action as an undo', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({ tasks: [], lastAction: null });
+    useTaskStore.getState().bulkDeleteGroups(['missing'], { cascade: false });
+    expect(useTaskGroupStore.getState().groups).toHaveLength(1);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+// ─── bulkSetGroupCategory ───────────────────────────────────────────────────
+
+describe('bulkSetGroupCategory', () => {
+  it('sets the category on every selected stack and re-files its roster', () => {
+    useTaskGroupStore.setState({
+      groups: [makeGroup({ id: 'g1', category: 'Work' }), makeGroup({ id: 'g2', category: null })],
+    });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', category: 'Work' }),
+        makeTask({ id: 'b', groupId: 'g2', category: null }),
+      ],
+    });
+    useTaskStore.getState().bulkSetGroupCategory(['g1', 'g2'], 'Home');
+    expect(useTaskGroupStore.getState().groups.map(g => g.category)).toEqual(['Home', 'Home']);
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.category).toBe('Home');
+    expect(byId('b')?.category).toBe('Home');
+  });
+
+  it('leaves stacks whose category already matches untouched, and skips the batch entirely when none change', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', category: 'Home' })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().bulkSetGroupCategory(['g1'], 'Home');
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('queues a single undo that restores every stack and task category', () => {
+    useTaskGroupStore.setState({
+      groups: [makeGroup({ id: 'g1', category: 'Work' }), makeGroup({ id: 'g2', category: null })],
+    });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1', category: 'Work' })],
+      lastAction: null,
+    });
+    useTaskStore.getState().bulkSetGroupCategory(['g1', 'g2'], 'Home');
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 stacks moved to Home');
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskGroupStore.getState().groups.map(g => g.category)).toEqual(['Work', null]);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.category).toBe('Work');
+  });
+
+  it('ignores unknown ids rather than banking the previous action as an undo', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', category: null })] });
+    useTaskStore.setState({ tasks: [], lastAction: null });
+    useTaskStore.getState().bulkSetGroupCategory(['missing'], 'Home');
+    expect(useTaskGroupStore.getState().groups[0].category).toBeNull();
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
 // ─── bulkSetProjectArchived ─────────────────────────────────────────────────
 
 describe('bulkSetProjectArchived', () => {
