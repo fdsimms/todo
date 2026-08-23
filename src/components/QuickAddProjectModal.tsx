@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
-import { CalendarPicker } from './CalendarPicker';
+import { WhenPicker } from './WhenPicker';
 import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
@@ -410,20 +410,33 @@ export function QuickAddProjectModal({
         </Animated.View>
       </View>
 
-      <CalendarPicker
+      {/*
+        The same two fields ProjectEditor asks for, so the same picker: these
+        were CalendarPicker, which is only for the two things WhenPicker can't
+        do (a completion timestamp, a set of dates). Neither applies to a
+        project's own start or target, and having the quick sheet and the full
+        editor ask for one field two different ways is the drift the rule
+        exists to stop. Time of day and Suggest are off because neither date is
+        a task's own schedule.
+      */}
+      <WhenPicker
         visible={startPickerVisible}
         value={targetStartDate}
-        mode="date"
-        title="Start Date"
+        title="Start date"
+        showTimeOfDay={false}
+        showSuggest={false}
         onConfirm={date => { setTargetStartDate(date); setStartPickerVisible(false); }}
+        onClear={() => { setTargetStartDate(null); setStartPickerVisible(false); }}
         onCancel={() => setStartPickerVisible(false)}
       />
-      <CalendarPicker
+      <WhenPicker
         visible={endPickerVisible}
         value={targetEndDate}
-        mode="date"
-        title="Target Date"
+        title="Target date"
+        showTimeOfDay={false}
+        showSuggest={false}
         onConfirm={date => { setTargetEndDate(date); setEndPickerVisible(false); }}
+        onClear={() => { setTargetEndDate(null); setEndPickerVisible(false); }}
         onCancel={() => setEndPickerVisible(false)}
       />
     </Modal>

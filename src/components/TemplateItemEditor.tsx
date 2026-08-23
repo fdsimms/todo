@@ -466,7 +466,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             label="Only when"
             summary={conditionSummary ?? undefined}
             emptySummary="Every run"
-            hint="Ticked by default only for the answers you pick here. Everything stays on the list either way — you can still tick it on or off when you apply the template."
+            hint="Checked by default only for the answers you pick here. Everything stays on the list either way, so you can still check or uncheck it when you apply the template."
             expanded={fieldOpen('conditions', conditionSummary !== null)}
             onToggle={() => toggleField('conditions', conditionSummary !== null)}
           >
@@ -623,10 +623,20 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   themeVariant={isDark ? 'dark' : 'light'}
                 />
                 <View style={styles.intervalRow}>
-                  <TouchableOpacity style={styles.intervalBtn} onPress={() => setWindowPickerMode('none')}>
+                  <TouchableOpacity
+                    style={styles.intervalBtn}
+                    onPress={() => setWindowPickerMode('none')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel time window"
+                  >
                     <Ionicons name="close" size={16} color={colors.textSecondary} />
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.intervalBtn} onPress={confirmWindowPicker}>
+                  <TouchableOpacity
+                    style={styles.intervalBtn}
+                    onPress={confirmWindowPicker}
+                    accessibilityRole="button"
+                    accessibilityLabel="Confirm time window"
+                  >
                     <Ionicons name="checkmark" size={16} color={colors.accent} />
                   </TouchableOpacity>
                 </View>
@@ -651,7 +661,12 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           </View>
           {dueOffsetDays !== null && (
             reminderOffsetMinutes !== null ? (
-              <TouchableOpacity onPress={() => setReminderOffsetMinutes(null)} hitSlop={8}>
+              <TouchableOpacity
+                onPress={() => setReminderOffsetMinutes(null)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Clear reminder"
+              >
                 <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
             ) : (
@@ -672,6 +687,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <TouchableOpacity
               style={styles.intervalBtn}
               onPress={() => setReminderOffsetMinutes(m => Math.max(5, (m ?? 60) - 15))}
+              accessibilityRole="button"
+              accessibilityLabel="Remind closer to the due time"
             >
               <Ionicons name="remove" size={16} color={colors.text} />
             </TouchableOpacity>
@@ -679,6 +696,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <TouchableOpacity
               style={styles.intervalBtn}
               onPress={() => setReminderOffsetMinutes(m => (m ?? 60) + 15)}
+              accessibilityRole="button"
+              accessibilityLabel="Remind further ahead of the due time"
             >
               <Ionicons name="add" size={16} color={colors.text} />
             </TouchableOpacity>
@@ -692,7 +711,12 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             {recurrenceType === 'none' && <Text style={styles.optionHint}>Recreates on this schedule when applied and completed</Text>}
           </View>
           {recurrenceType !== 'none' ? (
-            <TouchableOpacity onPress={() => setRecurrenceType('none')} hitSlop={8}>
+            <TouchableOpacity
+              onPress={() => setRecurrenceType('none')}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Clear repeat schedule"
+            >
               <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
             </TouchableOpacity>
           ) : (
@@ -982,6 +1006,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   delayLongPress={150}
                   hitSlop={8}
                   style={styles.dragHandle}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Reorder subtask ${sub.title}`}
                 >
                   <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -989,6 +1015,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   onPress={() => setSubtasks(prev => prev.filter(s => s.id !== sub.id))}
                   hitSlop={8}
                   style={styles.chainItemDelete}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete subtask ${sub.title}`}
                 >
                   <Ionicons name="close" size={14} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -1171,6 +1199,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 <TouchableOpacity
                   style={styles.intervalBtn}
                   onPress={() => setEstimatedMinutes(m => Math.max(5, (m ?? 30) - 5))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Shorter estimate"
                 >
                   <Ionicons name="remove" size={16} color={colors.text} />
                 </TouchableOpacity>
@@ -1178,10 +1208,17 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 <TouchableOpacity
                   style={styles.intervalBtn}
                   onPress={() => setEstimatedMinutes(m => (m ?? 30) + 5)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Longer estimate"
                 >
                   <Ionicons name="add" size={16} color={colors.text} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setEstimatedMinutes(null)} hitSlop={8}>
+                <TouchableOpacity
+                  onPress={() => setEstimatedMinutes(null)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear custom estimate"
+                >
                   <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
               </>
@@ -1293,7 +1330,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,
     paddingHorizontal: spacing.md, paddingBottom: spacing.lg, minHeight: 50,
-    lineHeight: 22,
+    // No lineHeight on a TextInput. RN maps it onto the iOS paragraph style's
+    // minimum/maximum line height with no compensating baseline offset, so the
+    // glyphs are drawn a full line height below the top of the line box rather
+    // than one ascent below it: the notes sat low in the field while the caret
+    // stayed centred, and the placeholder inherited the same attributes so an
+    // empty field looked wrong too. The minHeight above is what keeps the box
+    // the size the lineHeight used to imply.
   },
   sectionCard: {
     marginHorizontal: spacing.md, marginBottom: spacing.lg,

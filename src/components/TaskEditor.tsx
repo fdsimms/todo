@@ -1673,11 +1673,20 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             }}
             onCancel={() => setShowDatesPicker(false)}
           />
-          <CalendarPicker
+          {/*
+            A single plain date, so WhenPicker rather than the CalendarPicker
+            this used to be — that one is only for a completion timestamp or a
+            set of dates (the Dates picker just above is the second of those).
+            No onClear: "no end date" is the Never option in the row's own
+            three-way mode, and a clear here would leave the mode saying "on a
+            date" with no date to end on.
+          */}
+          <WhenPicker
             visible={showEndDatePicker}
             value={recurrenceEndDate}
-            mode="date"
-            title="End Date"
+            title="End date"
+            showTimeOfDay={false}
+            showSuggest={false}
             onConfirm={(date) => { setRecurrenceEndDate(date); setShowEndDatePicker(false); }}
             onCancel={() => setShowEndDatePicker(false)}
           />
@@ -1758,7 +1767,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           value={title}
           onChangeText={setTitle}
           placeholder="Task title"
-          placeholderTextColor={colors.textSecondary}
+          placeholderTextColor={colors.textTertiary}
           maxLength={TITLE_MAX_LENGTH}
           // iOS's own inline predictive-text completion draws its candidate
           // directly into the field, on top of (and misaligned with) the
@@ -1805,7 +1814,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         value={notes}
         onChangeText={setNotes}
         placeholder="Notes"
-        placeholderTextColor={colors.textSecondary}
+        placeholderTextColor={colors.textTertiary}
         multiline
       />
       )}
@@ -1948,7 +1957,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
                   keyboardType="number-pad"
                   placeholder="0"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 />
                 <View style={styles.unitToggle}>
@@ -2008,7 +2017,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         value={targetUnit}
                         onChangeText={setTargetUnit}
                         placeholder="units"
-                        placeholderTextColor={colors.textSecondary}
+                        placeholderTextColor={colors.textTertiary}
                         maxLength={MAX_TARGET_UNIT_LENGTH}
                         autoCapitalize="none"
                         returnKeyType="done"
@@ -2187,7 +2196,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           value={newChainItemTitle}
                           onChangeText={setNewChainItemTitle}
                           placeholder="Item title"
-                          placeholderTextColor={colors.textSecondary}
+                          placeholderTextColor={colors.textTertiary}
                           maxLength={TITLE_MAX_LENGTH}
                           returnKeyType="done"
                           onSubmitEditing={() => {
@@ -2949,7 +2958,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       value={extraTaskTitle}
                       onChangeText={setExtraTaskTitle}
                       placeholder="Task to add"
-                      placeholderTextColor={colors.textSecondary}
+                      placeholderTextColor={colors.textTertiary}
                       maxLength={TITLE_MAX_LENGTH}
                       returnKeyType="done"
                       accessibilityLabel="Title of the task to add"
@@ -3134,7 +3143,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onSubmitEditing={addTagFromInput}
                   onBlur={addTagFromInput}
                   placeholder="tag name"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholderTextColor={colors.textTertiary}
                   returnKeyType="done"
                   autoCapitalize="none"
                 />
@@ -3269,7 +3278,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 value={newSubtaskTitle}
                 onChangeText={setNewSubtaskTitle}
                 placeholder="Add subtask"
-                placeholderTextColor={colors.textSecondary}
+                placeholderTextColor={colors.textTertiary}
                 maxLength={TITLE_MAX_LENGTH}
                 returnKeyType="next"
                 // Adding subtasks is a burst, not one edit: submitting keeps
@@ -3369,7 +3378,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
                   keyboardType="number-pad"
                   placeholder="0"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   autoFocus
                 />
@@ -3477,7 +3486,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     onSubmitEditing={commitCustomLink}
                     onBlur={commitCustomLink}
                     placeholder="https://... or app://"
-                    placeholderTextColor={colors.textSecondary}
+                    placeholderTextColor={colors.textTertiary}
                     keyboardType="url"
                     autoCapitalize="none"
                     autoCorrect={false}
@@ -3517,8 +3526,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onChangeText={t => setPhoneText(formatPhoneInput(t))}
                   onSubmitEditing={commitPhone}
                   onBlur={commitPhone}
-                  placeholder="(555) 123-4567"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholder="e.g. (555) 123-4567"
+                  placeholderTextColor={colors.textTertiary}
                   // No return key on the iOS phone pad, so blur is still the
                   // path that saves — the checkmark below is what makes that
                   // visible instead of implicit.
@@ -3567,8 +3576,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onChangeText={setEmailText}
                   onSubmitEditing={commitEmail}
                   onBlur={commitEmail}
-                  placeholder="name@example.com"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholder="e.g. name@example.com"
+                  placeholderTextColor={colors.textTertiary}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -3905,7 +3914,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,
     paddingHorizontal: spacing.md, paddingBottom: spacing.lg, minHeight: 50,
-    lineHeight: 22,
+    // No lineHeight on a TextInput. RN maps it onto the iOS paragraph style's
+    // minimum/maximum line height with no compensating baseline offset, so the
+    // glyphs are drawn a full line height below the top of the line box rather
+    // than one ascent below it: the notes sat low in the field while the caret
+    // stayed centred, and the placeholder inherited the same attributes so an
+    // empty field looked wrong too. The minHeight above is what keeps the box
+    // the size the lineHeight used to imply.
   },
   cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   sectionLabel: {

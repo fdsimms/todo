@@ -1136,7 +1136,7 @@ export function GroceryItemSheet({
                   ? 'The day this should be used up by, counted from when you opened it.'
                   : item.expiresAt
                   ? "The day this should be used up by. Finishing a shopping trip fills it in for things that go off, and the use-up task is dated from it."
-                  : "How long this keeps once bought. It doesn't count down yet — finishing a shopping trip starts the clock from there, and adds the use-up task.",
+                  : "How long this keeps once bought. It doesn't count down yet: finishing a shopping trip starts the clock from there, and adds the use-up task.",
               describeDisposalHistory(item),
             ].filter(Boolean).join(' ')}
             expanded={openField === 'useBy'}

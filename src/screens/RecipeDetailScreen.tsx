@@ -732,7 +732,7 @@ export function RecipeDetailScreen() {
             {row.name}
           </Text>
           <Text style={[styles.emptySectionHint, isTarget && styles.emptySectionHintTarget]}>
-            {isTarget ? 'Drop here' : 'Nothing here yet — drag a row here'}
+            {isTarget ? 'Drop here' : 'Nothing here yet. Drag a row here'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity

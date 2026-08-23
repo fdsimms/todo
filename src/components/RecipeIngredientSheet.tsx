@@ -315,7 +315,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           accessibilityLabel="Quantity"
         />
         <Text style={styles.hint}>
-          What this recipe needs, not what you'd normally buy — that's set separately, on
+          What this recipe needs, not what you'd normally buy. That's set separately, on
           the item itself.
         </Text>
 
@@ -507,7 +507,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
               }}
               accessibilityRole="button"
               accessibilityLabel={`Group name, ${groupLabel}`}
-              accessibilityHint="Double tap to rename — renames it for every ingredient in the group"
+              accessibilityHint="Double tap to rename it for every ingredient in the group"
             >
               <Text style={styles.groupNameLabel}>Group name</Text>
               <View style={styles.groupNameValueRow}>

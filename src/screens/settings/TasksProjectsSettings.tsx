@@ -12,7 +12,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { allRecipeTags } from '../../utils/recipeTags';
 import { useColors } from '../../theme/ThemeContext';
 import { spacing } from '../../theme';
-import { CalendarPicker } from '../../components/CalendarPicker';
+import { WhenPicker } from '../../components/WhenPicker';
 import { getTaskDayStart } from '../../utils/dateUtils';
 import { EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, type ExpiredTaskGraceDays } from '../../utils/expiredTaskGrace';
 import { CountStepper } from '../../components/CountStepper';
@@ -501,7 +501,7 @@ export function TasksProjectsSettings() {
       <>
       <SettingsSection
         label="Meals on Today"
-        footer="A meal with no task behind it shows as a row in the list, filed under the same category as meal tasks — and so does anything in the pantry about to go off, above them. Neither can be checked off; tapping opens the meal plan or the pantry. Meal tasks themselves are under Tasks the app adds, below."
+        footer="A meal with no task behind it shows as a row in the list, filed under the same category as meal tasks, and so does anything in the pantry about to go off, above them. Neither can be checked off; tapping opens the meal plan or the pantry. Meal tasks themselves are under Tasks the app adds, below."
       >
         {/* A toggle rather than a track of two: one bounded choice with two
             answers is what a switch is for, and the two shapes this used to
@@ -562,7 +562,7 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Recipe suggestions"
-        footer="Only your own recipe tags decide this — nothing is guessed from ingredients. Tag a dish (however you like: “vegetarian”, “eggy”, whatever the reason is) on its own recipe screen, then pick the tags to leave out here. A dish stays fully editable and plannable by hand; this only keeps it out of what the app proposes."
+        footer="Only your own recipe tags decide this. Nothing is guessed from ingredients. Tag a dish (however you like: “vegetarian”, “eggy”, whatever the reason is) on its own recipe screen, then pick the tags to leave out here. A dish stays fully editable and plannable by hand; this only keeps it out of what the app proposes."
       >
         <SettingsRow
           icon="nutrition-outline"
@@ -843,13 +843,23 @@ export function TasksProjectsSettings() {
         </View>
       </SettingsSection>
 
-      <CalendarPicker
+      {/*
+        A plain day, so WhenPicker — the CalendarPicker this used to be is only
+        for a completion timestamp or a set of dates. Time of day and Suggest
+        are off: this is a range bound, not a task's own schedule.
+      */}
+      <WhenPicker
         visible={showVacationEndPicker}
         value={vacationEnd ? new Date(vacationEnd) : null}
-        mode="date"
-        title="Vacation End Date"
+        title="Vacation end date"
+        showTimeOfDay={false}
+        showSuggest={false}
         onConfirm={date => {
-          setVacationEnd(getTaskDayStart(date).toISOString());
+          setVacationEnd(date ? getTaskDayStart(date).toISOString() : null);
+          setShowVacationEndPicker(false);
+        }}
+        onClear={() => {
+          setVacationEnd(null);
           setShowVacationEndPicker(false);
         }}
         onCancel={() => setShowVacationEndPicker(false)}

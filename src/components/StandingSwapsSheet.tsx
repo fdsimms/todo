@@ -58,7 +58,7 @@ export function StandingSwapsSheet({ visible, onClose }: Props) {
             <EmptyState
               icon="swap-horizontal-outline"
               title="No standing swaps"
-              subtitle="Add a substitute to an item and tick “Always use this instead” to have every recipe calling for it shop for what you actually use."
+              subtitle="Add a substitute to an item and check “Always use this instead” to have every recipe calling for it shop for what you actually use."
             />
           </View>
         ) : (

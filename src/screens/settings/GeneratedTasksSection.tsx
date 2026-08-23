@@ -386,7 +386,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
             label="Limit use-up tasks"
             hint={
               s.useUpTaskCap === null
-                ? 'No limit — every qualifying item and leftover gets a task'
+                ? 'No limit: every qualifying item and leftover gets a task'
                 : `At most ${s.useUpTaskCap} use-up ${s.useUpTaskCap === 1 ? 'task' : 'tasks'} at a time, closest date first`
             }
             tight

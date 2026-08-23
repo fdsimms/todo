@@ -686,7 +686,7 @@ export function SuggestMealsSheet({
         {ideas.length === 0 && !generateError && (
           <Text style={styles.sectionHint}>
             {recipes.length === 0
-              ? 'Nothing in your recipe box fits this week — Claude can invent a few meals instead. Picking one saves it as a real recipe when you Save.'
+              ? 'Nothing in your recipe box fits this week, so Claude can invent a few meals instead. Picking one saves it as a real recipe when you Save.'
               : 'Want something you haven’t made before? Claude can invent a few. Picking one saves it as a real recipe when you Save.'}
           </Text>
         )}
