@@ -323,7 +323,14 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
                                   {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
                                 </View>
                                 <View style={styles.body}>
-                                  <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={1}>
+                                  {/* Two lines, where every other line on the
+                                      row gets one: the name is the thing
+                                      being decided about, and "smooth natural
+                                      pea…" is not a decision anyone can make.
+                                      The captions under it are qualifiers, so
+                                      clipping one costs less than clipping
+                                      this. */}
+                                  <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={2}>
                                     {row.name}
                                   </Text>
                                   {!!swapNote && (
