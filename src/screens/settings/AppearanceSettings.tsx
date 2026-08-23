@@ -42,6 +42,8 @@ export function AppearanceSettings() {
   const confirmBeforeDeleting = useSettingsStore(s => s.confirmBeforeDeleting);
   const setConfirmBeforeDeleting = useSettingsStore(s => s.setConfirmBeforeDeleting);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
+  const tipsEnabled = useSettingsStore(s => s.tipsEnabled);
+  const setTipsEnabled = useSettingsStore(s => s.setTipsEnabled);
   const setHideHelpText = useSettingsStore(s => s.setHideHelpText);
 
   const fontPreviewsLoaded = useFontPreviewsLoaded();
@@ -198,6 +200,17 @@ export function AppearanceSettings() {
             : 'Settings and editor fields show a line explaining what they do'}
           toggle={hideHelpText}
           onPress={() => setHideHelpText(!hideHelpText)}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="bulb-outline"
+          iconColor={tipsEnabled ? colors.accent : undefined}
+          label="Tips"
+          hint={tipsEnabled
+            ? 'Shows one tip a day on the screen it applies to, until you have seen them all'
+            : 'Never shows a tip on its own. The Tips screen still lists all of them'}
+          toggle={tipsEnabled}
+          onPress={() => setTipsEnabled(!tipsEnabled)}
         />
       </SettingsSection>
     </>
