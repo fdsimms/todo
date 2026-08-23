@@ -422,9 +422,9 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: LikelyInPantryCo
 /**
  * How many of a recipe's ingredients grocerySuggest's pantry guess would call
  * "probably have" — the same `classifyPlanned` signal RecipeToListSheet and
- * AddWeekToListSheet already use to pre-collapse their "Probably have"
- * section, reused here rather than re-deriving it, and reduced to two counts
- * for the recipe list row. Null (never both-zero) when there's nothing worth
+ * AddMealsToListSheet already use to fill their "Probably have" section,
+ * reused here rather than re-deriving it, and reduced to two counts for the
+ * recipe list row. Null (never both-zero) when there's nothing worth
  * showing: no ingredients, or nothing in the catalog reads as still on hand
  * and nothing is covered via a substitute either.
  *

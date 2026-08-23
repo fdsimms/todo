@@ -17,7 +17,6 @@ import {
 } from '../theme';
 import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { defaultOnHandUntil } from '../utils/grocerySuggest';
 import {
   classifyPlanned,
   plannedIngredientsForRecipe,
@@ -26,12 +25,14 @@ import {
   type PlanCategory,
 } from '../utils/mealPlanGroceries';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
+import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
 import { alternativeCaptions, applyChoice, choiceGroupKey, recipeChoiceGroups } from '../utils/recipeComponents';
 import { normalizeScale } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
+import { SubstituteSheet } from './SubstituteSheet';
 import { haptics } from '../utils/haptics';
 
 const CHECKBOX_SIZE = 22;
@@ -85,20 +86,39 @@ const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; c
   { category: 'probablyHave', label: 'Probably have', interactive: true, collapsible: true },
 ];
 
+// Both collapsible sections start open: they hold rows the user can still tick
+// on to the list, and a closed section shows only a count, so the lines it
+// holds were easy to miss on a sheet whose whole job is reviewing what gets
+// added. They stay collapsible, so a long staple list is still one tap away
+// from out of the way.
+const defaultExpandedSections = (): Set<PlanCategory> => new Set<PlanCategory>(['staple', 'probablyHave']);
+
 /**
  * Review-then-commit for one recipe, the single-recipe sibling of
- * AddWeekToListSheet — same classifyPlanned pantry-awareness (needToBuy /
+ * AddMealsToListSheet — same classifyPlanned pantry-awareness (needToBuy /
  * alreadyOnList / inCart / probablyHave) instead of RecipeDetailScreen's
  * old blind addFromPlan over every ingredient.
  *
- * The one thing this sheet has that AddWeekToListSheet doesn't: "Already have
- * it" on a needToBuy row that matches a real catalog item. Unticking a row
- * only skips it for this add — the pantry guess forgets nothing was said.
- * Asserting onHandUntil (the same write GroceryItemSheet's "Got it" makes) is
- * what actually keeps that ingredient from being offered again next time,
- * which is the whole point of an "already have it" option on an import.
- * There's nothing to assert for a genuinely new ingredient — no catalog row
- * has it yet — so the action only appears once a row resolves to one.
+ * Two row actions, shared with AddMealsToListSheet and documented here because
+ * this is where they were written:
+ *
+ * - **"In pantry"** on every needToBuy row. It says the app's own word for
+ *   where the line ends up rather than the longer "Already have it" it
+ *   shipped as: the button is on every row now, and the label was costing a
+ *   long ingredient name the width it needed to be read at all. Unticking a row only skips
+ *   it for this add — the pantry guess forgets nothing was said. Stamping the
+ *   on-hand window (the same write GroceryItemSheet's "Got it" makes) is what
+ *   actually keeps that ingredient from being offered again next time, which
+ *   is the whole point of an "already have it" option on an import. It goes
+ *   through `addToPantry`, so an ingredient with no catalog row yet mints one
+ *   rather than being the one line you can't say it about — a recipe naming
+ *   something the app has never seen is exactly where the app's guess is
+ *   worst, so that was the wrong line to leave out.
+ * - **The substitutes marker** on a row whose item has stand-ins recorded,
+ *   which opens SubstituteSheet on it. `reason` says "you have margarine" only
+ *   for a substitute the pantry vouches for; the marker is the wider "there's
+ *   something written down here", and it puts the authoring funnel on the
+ *   screen where someone is deciding whether to buy the original.
  */
 export function RecipeToListSheet({
   visible,
@@ -117,7 +137,7 @@ export function RecipeToListSheet({
   const items = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
-  const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
+  const addToPantry = useGroceryStore(s => s.addToPantry);
 
   const itemsByKey = useMemo(() => new Map(items.map(i => [i.nameKey, i])), [items]);
 
@@ -180,10 +200,31 @@ export function RecipeToListSheet({
     return out;
   }, [classified]);
 
+  // Which lines you've written a stand-in for, keyed the way the rows are.
+  // `reason` below already says "you have margarine" — but only for a
+  // substitute the pantry currently vouches for, which is the narrow case.
+  // This is the wider one: the link exists, so the line is worth a second look
+  // before you shop even when the app has no opinion on whether you've got the
+  // alternative. Substitutes are hand-authored (see utils/itemSubs.ts), so a
+  // row carrying this marker is one the user themselves said something about.
+  const substitutesByKey = useMemo(() => {
+    const out = new Map<string, Substitute[]>();
+    for (const row of classified) {
+      const item = itemsByKey.get(row.nameKey);
+      if (!item) continue;
+      const subs = substitutesFor(item.id, itemSubs, items);
+      if (subs.length > 0) out.set(row.nameKey, subs);
+    }
+    return out;
+  }, [classified, itemsByKey, itemSubs, items]);
+
+  // Which row's substitutes are being read, and where a new one gets written —
+  // opening this from a line you're about to buy is exactly the moment
+  // SubstituteSheet's own note says fills the table.
+  const [subsItemId, setSubsItemId] = useState<string | null>(null);
+
   const [ticked, setTicked] = useState<Set<string>>(new Set());
-  const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(
-    new Set(['probablyHave']),
-  );
+  const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(defaultExpandedSections);
   // What `ticked` gets reset to on open and on every choice/scale-driven
   // recompute below — so the dirty check in handleCancel can tell a real tap
   // apart from the set simply being recomputed out from under it.
@@ -212,7 +253,7 @@ export function RecipeToListSheet({
     const defaultTicked = new Set(rows.map(r => r.nameKey));
     setTicked(defaultTicked);
     tickedBaselineRef.current = JSON.stringify([...defaultTicked].sort());
-    setExpandedSections(new Set());
+    setExpandedSections(defaultExpandedSections());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, choiceKey, initialSelection]);
 
@@ -236,16 +277,34 @@ export function RecipeToListSheet({
     });
   };
 
+  // `addToPantry`, not a bare `setOnHandUntil`: it mints the catalog row when
+  // the ingredient hasn't got one yet, stamping the same window "Got it"
+  // writes, which is what lets this be offered on every line rather than only
+  // the ones the catalog already knew about. It's also what the Pantry
+  // screen's own "add something you already have" field calls, so a recipe
+  // line and a typed name make the same statement.
+  //
+  // Undo deliberately not registered: shake-to-undo can't be reached while
+  // this sheet is up, so an entry armed here would sit under the *next* shake
+  // instead. The row it makes is visible in Probably have, and the Pantry
+  // screen's ✕ takes it back.
   const markAlreadyHave = (row: ClassifiedIngredient) => {
-    const item = itemsByKey.get(row.nameKey);
-    if (!item) return;
-    haptics.tap();
-    setOnHandUntil(item.id, defaultOnHandUntil(item, new Date()));
+    const item = addToPantry(row.name, { registerUndo: false });
+    if (!item) { haptics.error(); return; }
+    haptics.success();
     setTicked(prev => {
       const next = new Set(prev);
       next.delete(row.nameKey);
       return next;
     });
+    // Out of the baseline too, so Cancel doesn't offer to discard it. The
+    // assertion is already written and closing the sheet can't take it back,
+    // and this row is leaving Need to buy on the next recompute regardless —
+    // one line's own key rather than a wholesale reset, so a tick the user
+    // *did* change by hand still counts as work worth asking about.
+    const baseline = new Set<string>(JSON.parse(tickedBaselineRef.current) as string[]);
+    baseline.delete(row.nameKey);
+    tickedBaselineRef.current = JSON.stringify([...baseline].sort());
   };
 
   // Same shape as GroceryItemSheet/TaskEditor's own dirty check. A scale or a
@@ -444,7 +503,13 @@ export function RecipeToListSheet({
                         // recipe's word. Same job `≈` does for a converted
                         // amount.
                         const swapNote = row.swappedFrom ? describeStandingSwap(row.swappedFrom) : null;
-                        const canMarkHave = category === 'needToBuy' && row.known;
+                        // Every Need to buy line, not only the ones the
+                        // catalog already knows: markAlreadyHave mints the row
+                        // it needs, and "I've got that already" is a thing to
+                        // be able to say about an ingredient the app is seeing
+                        // for the first time most of all.
+                        const canMarkHave = category === 'needToBuy';
+                        const subs = substitutesByKey.get(row.nameKey);
                         // Shown in the reader's units; what gets written to the
                         // list is still row.quantity, as the recipe wrote it.
                         const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
@@ -474,7 +539,14 @@ export function RecipeToListSheet({
                                   {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
                                 </View>
                                 <View style={styles.body}>
-                                  <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={1}>
+                                  {/* Two lines, where every other line on the
+                                      row gets one: the name is the thing
+                                      being decided about, and "smooth natural
+                                      pea…" is not a decision anyone can make.
+                                      The captions under it are qualifiers, so
+                                      clipping one costs less than clipping
+                                      this. */}
+                                  <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={2}>
                                     {row.name}
                                   </Text>
                                   {!!swapNote && (
@@ -491,19 +563,46 @@ export function RecipeToListSheet({
                                 </View>
                                 {!!shownQuantity && (
                                   <View style={styles.qtyPill}>
-                                    <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
+                                    {/* Two lines, same call as the name
+                                        above: "1 large pie…" names no amount
+                                        anyone can shop to. The pill is capped
+                                        by width, not by lines, so the second
+                                        one costs the row no width. */}
+                                    <Text style={styles.qtyText} numberOfLines={2}>{shownQuantity}</Text>
                                   </View>
                                 )}
                               </TouchableOpacity>
+                              {!!subs && (
+                                <TouchableOpacity
+                                  style={styles.subsButton}
+                                  activeOpacity={interaction.activeOpacity}
+                                  onPress={() => {
+                                    haptics.tap();
+                                    const item = itemsByKey.get(row.nameKey);
+                                    if (item) setSubsItemId(item.id);
+                                  }}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Substitutes for ${row.name}: ${describeSubstitutes(subs)}`}
+                                >
+                                  <Ionicons
+                                    name="swap-horizontal"
+                                    size={iconSize.sm}
+                                    color={colors.accent}
+                                  />
+                                  {subs.length > 1 && (
+                                    <Text style={styles.subsCount}>{subs.length}</Text>
+                                  )}
+                                </TouchableOpacity>
+                              )}
                               {canMarkHave && (
                                 <TouchableOpacity
                                   style={styles.haveButton}
                                   activeOpacity={interaction.activeOpacity}
                                   onPress={() => markAlreadyHave(row)}
                                   accessibilityRole="button"
-                                  accessibilityLabel={`Already have ${row.name}, skip it and remember it for next time`}
+                                  accessibilityLabel={`${row.name} is in the pantry, skip it and remember it for next time`}
                                 >
-                                  <Text style={styles.haveButtonText}>Already have it</Text>
+                                  <Text style={styles.haveButtonText}>In pantry</Text>
                                 </TouchableOpacity>
                               )}
                             </View>
@@ -523,6 +622,16 @@ export function RecipeToListSheet({
           </ScrollView>
         )}
       </View>
+
+      {/* Inside this Modal rather than beside it, the same nesting
+          GroceryItemSheet uses for its own: a Modal presents from the view
+          controller its React parent belongs to, so a sibling would ask the
+          screen's controller to present a second sheet while this one is up. */}
+      <SubstituteSheet
+        visible={subsItemId !== null}
+        itemId={subsItemId}
+        onClose={() => setSubsItemId(null)}
+      />
     </Modal>
   );
 }
@@ -645,7 +754,33 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 3,
     maxWidth: 90,
   },
-  qtyText: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+  // Centred for the two-line case: the pill takes the width of its longest
+  // line, so this only moves the shorter one ("1 large" / "piece") and is a
+  // no-op on the single-line pills, which size to their own text.
+  qtyText: {
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  // Icon-sized rather than a second text pill: it sits beside "Already have
+  // it" on the same row, and two labelled pills leave a long ingredient name
+  // nothing to be read in. The count only appears past one, where "2" is the
+  // whole point; a lone substitute is named by the sheet it opens.
+  subsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  subsCount: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    color: colors.accent,
+  },
   haveButton: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
