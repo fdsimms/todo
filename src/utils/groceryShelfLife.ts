@@ -169,14 +169,19 @@ export function expiresAtForPurchase(item: GroceryItem, now: Date): string | nul
  * The use-by day an item should carry from the moment it's opened, or null when
  * opening this one says nothing.
  *
- * **It replaces the day rather than taking the earlier of the two**, which is
- * the whole point and is worth being explicit about, because "only ever bring a
- * deadline forward" is the safer-sounding rule and is wrong here. A jar bought
- * five weeks ago carries a purchase-based day that has long since passed; the
- * `min` of that and "today plus 7" is the day that already passed, so opening
- * would be inert in exactly the case the feature exists for. Opening is *new
- * information* about a jar the old guess had written off, and the count starts
- * from it.
+ * **It takes the earlier of the old day and the new one — unless the old day
+ * has already passed, in which case it replaces it.** Those are two different
+ * cases and both matter. An unopened milk with one day left on its sealed
+ * clock doesn't earn a fresh week just because it got opened today; the open
+ * lexicon's number is a ceiling on how long an *opened* jar keeps, not a
+ * promise that opening resets the clock, so the sealed day wins when it's
+ * still sooner. But a jar bought five weeks ago carries a purchase-based day
+ * that has long since gone by, and the `min` of a day that's already passed
+ * and "today plus 7" is still the day that already passed — opening would be
+ * inert in exactly the case the feature exists for. Once the old day is
+ * behind us it's stale information, not a real deadline, so opening is free
+ * to replace it with new information about a jar the old guess had written
+ * off.
  *
  * A `shelfLifeDays` the user has corrected by hand is not consulted: that field
  * means "this one keeps N days once bought", which is a claim about the shelf,
@@ -184,7 +189,13 @@ export function expiresAtForPurchase(item: GroceryItem, now: Date): string | nul
  */
 export function expiresAtForOpening(item: GroceryItem, now: Date): string | null {
   const days = openShelfLifeDaysFor(item.name);
-  return days === null ? null : expiryKeyFor(now, days);
+  if (days === null) return null;
+  const opened = expiryKeyFor(now, days);
+  const today = dayKeyOf(now);
+  if (item.expiresAt !== null && item.expiresAt >= today) {
+    return item.expiresAt < opened ? item.expiresAt : opened;
+  }
+  return opened;
 }
 
 /**

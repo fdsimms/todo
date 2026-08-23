@@ -577,10 +577,14 @@ opened on Tuesday keeps a week from Tuesday.
   opening a bag of spinach restarts nothing — it was already exposed to the same air the fridge is
   full of. Produce, meat and bakery are absent on purpose, and `setOpened` leaves their day alone.
   Same whitelist restraint the first table runs on.
-- **It replaces the day; it does not take the earlier of the two.** "Only ever bring a deadline
-  forward" is the safer-sounding rule and is wrong here: a jar bought five weeks ago carries a day
-  that has long since passed, so the `min` is that passed day and opening would be inert in exactly
-  the case the feature exists for. Opening is *new information* about a jar the old guess wrote off.
+- **It takes the earlier of the two days — unless the old one has already passed, in which case it
+  replaces it.** "Only ever bring a deadline forward" is the safer-sounding rule, and it's *nearly*
+  right: milk with one day left on its sealed clock doesn't earn a fresh week just because it got
+  opened today, so the sealed day wins while it's still ahead of the open lexicon's count. But a
+  jar bought five weeks ago carries a day that has long since passed, and the `min` of that and
+  "today plus 7" is still the passed day — opening would be inert in exactly the case the feature
+  exists for. Past that point it's stale information rather than a real deadline, so opening is
+  free to replace it: *new information* about a jar the old guess had written off.
 - **The opening is recorded even when it changes nothing**, and the row says "opened 12 Aug" either
   way. Only the date is conditional on the lexicon knowing the name.
 - **`shelfLifeDays` is not consulted.** That field means "this one keeps N days once bought", which
