@@ -24,7 +24,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { screenShown } from '../utils/simpleMode';
-import { TIPS } from '../utils/tips';
+import { tipsFor } from '../utils/tips';
 
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.72);
 
@@ -113,7 +113,12 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const simpleMode = useSettingsStore(s => s.simpleMode);
   // A scalar for the same reason groceryCount is one. TIPS is a module-level
   // constant, so the only thing that can move this is a dismissal.
-  const unreadTipCount = useSettingsStore(s => TIPS.length - s.seenTips.length);
+  // Counted over `tipsFor`, not `TIPS`: the badge has to agree with the list
+  // behind it, and simplified mode can take thirty tips out of that list. That
+  // costs the O(1) subtraction this used to be, but the walk is 70 records on
+  // settings-store writes only, and it still returns a scalar.
+  const unreadTipCount = useSettingsStore(s =>
+    tipsFor(s.simpleMode).filter(tip => !s.seenTips.includes(tip.id)).length);
   // Counted, not listed, for the same reason: a scalar selector is
   // referentially stable, so the drawer doesn't re-render every time a stack
   // or template is edited.

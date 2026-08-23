@@ -91,6 +91,22 @@ new one goes. Same call `AppNavigator` already makes about the recipe-timer dot 
 - **`aiFeatureConfig`, and every setting for a hidden feature.** Hidden, never rewritten, so the
   whole thing comes back as it was.
 
+## Tips
+
+`src/utils/tips.ts` is the app's documentation of its own capabilities, so it has to move with
+this. A tip exists because someone can't see a control; a tip about a control that isn't there is
+the one thing that file can't afford to be. Each affected tip carries a `feature`, and `tipsFor`
+drops it, exactly the way `SettingsEntry.simple` drops a settings row.
+
+Thirty of the seventy tips go. The kitchen area empties completely and that is correct: all six of
+its tips are about the Pantry screen, which also goes, and `TipsScreen` drops a section with no
+tips in it rather than leaving an empty heading. Every read of the whole set goes through `tipsFor`
+(the screen's list and unread count, the drawer's badge, `TipHost`'s candidates), so a count can
+never name tips the list behind it doesn't show.
+
+"Mark all read" marks what is on screen rather than what exists, so a hidden tip stays unread and
+comes back with its feature. That is rule 1 again: hidden, never rewritten.
+
 ## Adding a feature to it
 
 1. Add an id to `SimpleFeatureId` and an entry to `SIMPLE_FEATURES`, with the label written the way
@@ -99,6 +115,8 @@ new one goes. Same call `AppNavigator` already makes about the recipe-timer dot 
    `screen` on the feature itself.
 3. If it has a Settings row, flag that entry `simple: true` in `settingsIndex.ts` and gate the JSX
    that renders it. Search must not turn up a row that isn't rendered.
+4. If a tip documents it, set that tip's `feature`. The app must not teach a control it isn't
+   showing.
 
 `simpleMode.test.ts` fails if step 2 is skipped: a feature listed under "what simplified mode hides"
 and gated nowhere is a promise the app doesn't keep.

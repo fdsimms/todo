@@ -1,3 +1,5 @@
+import { featureHidden, type SimpleFeatureId } from './simpleMode';
+
 /**
  * What the app can do, as data.
  *
@@ -129,6 +131,13 @@ export interface Tip {
    * this is only ever for synonyms.
    */
   keywords?: string[];
+  /**
+   * The capability this tip is about, where simplified mode takes that
+   * capability away — see `tipsFor`. A tip exists because someone can't see a
+   * control, so a tip about a control that isn't there is the one thing this
+   * file can't afford to be.
+   */
+  feature?: SimpleFeatureId;
 }
 
 export interface TipAreaInfo {
@@ -201,6 +210,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'paint-select',
+    feature: 'paintSelect',
     area: 'today',
     screen: 'today',
     icon: 'ellipsis-vertical-outline',
@@ -241,6 +251,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'focus-session',
+    feature: 'focusSessions',
     area: 'today',
     screen: 'today',
     icon: 'hourglass-outline',
@@ -251,6 +262,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'suggested-pins',
+    feature: 'suggestedPins',
     area: 'today',
     screen: 'today',
     icon: 'color-wand-outline',
@@ -261,6 +273,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'deload',
+    feature: 'deload',
     area: 'today',
     screen: 'today',
     icon: 'trending-down-outline',
@@ -300,6 +313,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'stacks',
+    feature: 'stacks',
     area: 'organize',
     icon: 'layers-outline',
     title: 'Stacks group tasks that go together',
@@ -319,6 +333,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'templates',
+    feature: 'templates',
     area: 'organize',
     icon: 'copy-outline',
     title: 'Templates create a set of tasks at once',
@@ -329,6 +344,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'chains',
+    feature: 'chains',
     area: 'organize',
     icon: 'link-outline',
     title: 'Steps that arrive one at a time',
@@ -338,6 +354,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'series-dates',
+    feature: 'taskSeries',
     area: 'organize',
     icon: 'calendar-number-outline',
     title: 'One task on several dates',
@@ -356,6 +373,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'blocking',
+    feature: 'blocking',
     area: 'organize',
     icon: 'hand-left-outline',
     title: 'Mark what a task is waiting on',
@@ -366,6 +384,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'daily-target',
+    feature: 'dailyTargets',
     area: 'organize',
     icon: 'speedometer-outline',
     title: 'A task you do a set number of times a day',
@@ -375,6 +394,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'deadline-vs-date',
+    feature: 'deadlines',
     area: 'organize',
     icon: 'flag-outline',
     title: 'A deadline is not the same as a date',
@@ -412,6 +432,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'look-ahead',
+    feature: 'lookAhead',
     area: 'organize',
     icon: 'binoculars-outline',
     title: 'See what is coming before it lands',
@@ -452,6 +473,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'active-trip',
+    feature: 'shoppingTrips',
     area: 'groceries',
     screen: 'groceries',
     icon: 'walk-outline',
@@ -462,6 +484,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'either-or',
+    feature: 'itemChoices',
     area: 'groceries',
     screen: 'groceries',
     icon: 'shuffle-outline',
@@ -472,6 +495,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'substitutes',
+    feature: 'substitutes',
     area: 'groceries',
     screen: 'groceries',
     icon: 'swap-vertical-outline',
@@ -482,6 +506,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'standing-swaps',
+    feature: 'substitutes',
     area: 'groceries',
     icon: 'sync-outline',
     title: 'Always use oat milk where a recipe says milk',
@@ -491,6 +516,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'barcode-scan',
+    feature: 'barcodeScanning',
     area: 'groceries',
     screen: 'groceries',
     icon: 'barcode-outline',
@@ -501,6 +527,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'receipt-import',
+    feature: 'receiptImport',
     area: 'groceries',
     icon: 'receipt-outline',
     title: 'Read a receipt into the app',
@@ -531,6 +558,7 @@ export const TIPS: Tip[] = [
   // ==== The kitchen ====
   {
     id: 'kitchen-what-it-is',
+    feature: 'pantryTracking',
     area: 'kitchen',
     screen: 'kitchen',
     icon: 'file-tray-stacked-outline',
@@ -540,6 +568,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'freshness',
+    feature: 'pantryTracking',
     area: 'kitchen',
     screen: 'kitchen',
     icon: 'time-outline',
@@ -550,6 +579,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'freezer',
+    feature: 'pantryTracking',
     area: 'kitchen',
     screen: 'kitchen',
     icon: 'snow-outline',
@@ -560,6 +590,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'opened-and-low',
+    feature: 'pantryTracking',
     area: 'kitchen',
     screen: 'kitchen',
     icon: 'water-outline',
@@ -570,6 +601,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'use-up-recipes',
+    feature: 'pantryTracking',
     area: 'kitchen',
     screen: 'kitchen',
     icon: 'bulb-outline',
@@ -580,6 +612,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'disposal',
+    feature: 'pantryTracking',
     area: 'kitchen',
     icon: 'help-circle-outline',
     title: 'Say whether it got eaten or thrown out',
@@ -610,6 +643,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'recipe-scale',
+    feature: 'recipeScaling',
     area: 'recipes',
     screen: 'recipes',
     icon: 'resize-outline',
@@ -620,6 +654,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'cook-mode',
+    feature: 'cookMode',
     area: 'recipes',
     screen: 'recipes',
     icon: 'flame-outline',
@@ -630,6 +665,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'recipe-components',
+    feature: 'recipeComposition',
     area: 'recipes',
     icon: 'git-merge-outline',
     title: 'One recipe used inside another',
@@ -737,6 +773,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'vacation-mode',
+    feature: 'vacationPause',
     area: 'app',
     icon: 'airplane-outline',
     title: 'Pause the whole list while you are away',
@@ -815,6 +852,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'stats',
+    feature: 'statsScreen',
     area: 'app',
     icon: 'bar-chart-outline',
     title: 'What you have actually been doing',
@@ -825,6 +863,7 @@ export const TIPS: Tip[] = [
   },
   {
     id: 'drift',
+    feature: 'driftScreen',
     area: 'app',
     icon: 'trending-down-outline',
     title: 'The tasks you keep moving',
@@ -838,6 +877,29 @@ export const TIPS: Tip[] = [
 /**
  * Tips filed under an area, in array order.
  */
+/**
+ * The tips worth showing at all right now.
+ *
+ * Simplified mode hides about thirty capabilities, and this file is the app's
+ * documentation of its own capabilities — so without this, someone who asked
+ * for a plainer app would get banners teaching a control that isn't there and
+ * a Tips screen listing thirty features they can't reach. Same one-record-at-a-
+ * time treatment `SettingsEntry.kitchen`/`simple` give the settings index, and
+ * for the same reason: a documentation surface that outlives what it documents
+ * is worse than none.
+ *
+ * The kitchen area needs no equivalent because `TipSignals.kitchenEnabled` is
+ * already in scope for a `when`, which is where those tips gate themselves.
+ *
+ * Every read of the whole set goes through this — `TipsScreen`'s list and its
+ * unread count, the drawer's badge, and `TipHost`'s candidates — so the count
+ * on the row always matches the list behind it.
+ */
+export function tipsFor(simpleMode: boolean, tips: Tip[] = TIPS): Tip[] {
+  if (!simpleMode) return tips;
+  return tips.filter(tip => !tip.feature || !featureHidden(tip.feature, simpleMode));
+}
+
 export function tipsForArea(area: TipArea, tips: Tip[] = TIPS): Tip[] {
   return tips.filter(tip => tip.area === area);
 }
