@@ -2,9 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useCategoryStore } from '../store/useCategoryStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { getCurrentDayStart } from '../utils/dateUtils';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskEditor } from '../components/TaskEditor';
@@ -13,12 +16,22 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { PostponeCheckActions, type PostponeCheckAction } from '../components/PostponeCheckBanner';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, border, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import type { DriftEntry } from '../utils/postpone';
 import type { Task } from '../types';
+
+/** The category chip's text — emoji-prefixed where the category has one, as everywhere else. */
+function labelForCategory(
+  category: string | null,
+  getCategoryByName: (name: string) => { emoji?: string | null } | undefined | null,
+): string | null {
+  if (!category) return null;
+  const emoji = getCategoryByName(category)?.emoji;
+  return emoji ? `${emoji} ${category}` : category;
+}
 
 /**
  * Noon on the logical today, matching what WhenPicker's Today chip writes — a
@@ -72,6 +85,12 @@ export function DriftScreen() {
   const archiveTask = useTaskStore(s => s.archiveTask);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const threshold = useSettingsStore(s => s.postponeCheckThreshold);
+  const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
+  const projects = useProjectStore(useShallow(s => s.projects));
+  const projectTitlesById = useMemo(
+    () => new Map(projects.map(p => [p.id, p.title])),
+    [projects],
+  );
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -84,7 +103,7 @@ export function DriftScreen() {
     setEditorVisible(true);
   };
 
-  // Same fallback TaskItem makes: with a key, "Break it up…" is the AI sheet;
+  // Same fallback TaskItem makes: with a key, "Break it up" is the AI sheet;
   // without one it's the editor, where the subtask field lives.
   const breakUp = (task: Task) => {
     haptics.tap();
@@ -106,7 +125,7 @@ export function DriftScreen() {
       },
     },
     secondary: [
-      { key: 'break', label: 'Break it up…', onPress: () => breakUp(task) },
+      { key: 'break', label: 'Break it up', onPress: () => breakUp(task) },
       {
         key: 'drop',
         label: 'Drop it',
@@ -141,15 +160,18 @@ export function DriftScreen() {
 
   const renderRow = ({ item }: { item: DriftEntry }) => {
     const { primary, secondary } = actionsFor(item.task);
+    const categoryLabel = labelForCategory(item.task.category, getCategoryByName);
+    const projectTitle = item.task.projectId ? projectTitlesById.get(item.task.projectId) ?? null : null;
+    const title = displayTitleFor(item.task);
     return (
       <View style={styles.row}>
         <TouchableOpacity
           activeOpacity={interaction.activeOpacity}
           onPress={() => openEditor(item.task)}
           accessibilityRole="button"
-          accessibilityLabel={`Open ${displayTitleFor(item.task)}`}
+          accessibilityLabel={[`Open ${title}`, categoryLabel, projectTitle].filter(Boolean).join(', ')}
         >
-          <Text style={styles.taskTitle} numberOfLines={2}>{displayTitleFor(item.task)}</Text>
+          <Text style={styles.taskTitle} numberOfLines={2}>{title}</Text>
           <Text style={styles.taskMeta}>
             {/* The count first because it's the fact the user has lost track
                 of; the date is context for it, and absent on a run that
@@ -157,6 +179,22 @@ export function DriftScreen() {
             Moved {item.count} times
             {item.since ? ` · first put off ${format(new Date(item.since), 'MMM d')}` : ''}
           </Text>
+          {(categoryLabel || projectTitle) && (
+            <View style={styles.metaRow}>
+              {categoryLabel && (
+                <View style={styles.metaChip}>
+                  <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textSecondary} />
+                  <Text style={styles.metaText} numberOfLines={1}>{categoryLabel}</Text>
+                </View>
+              )}
+              {projectTitle && (
+                <View style={styles.metaChip}>
+                  <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+                  <Text style={styles.metaText} numberOfLines={1}>{projectTitle}</Text>
+                </View>
+              )}
+            </View>
+          )}
         </TouchableOpacity>
         <PostponeCheckActions primary={primary} secondary={secondary} />
       </View>
@@ -225,4 +263,7 @@ const makeStyles = (colors: Colors) =>
     },
     taskTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
     taskMeta: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+    metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, marginTop: 4 },
+    metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
+    metaText: { color: colors.textSecondary, fontSize: font.xs },
   });
