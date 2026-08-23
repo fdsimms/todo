@@ -146,6 +146,26 @@ question and the best answer to it is rarely a prefix of the answer to the old
 one. The window itself is *not* reset when the sheet reopens: how long you tend
 to have is a fact about your day, not about this sheet.
 
+## Starting from what's pinned
+
+The pinned block's own header carries a shortcut into the same setup sheet,
+seeded from `pinnedTasks()` instead of the scorer (`FocusSetupSheet`'s
+`pinnedSeed` prop, `focusQueueFromPinned` in `focusSuggest.ts`). It reuses the
+sheet rather than skipping it, on purpose: this is still "a commitment to a
+shape of the next hour" (see above), and the window, the plan preview,
+ticking and swapping all still have to happen somewhere — a second, bypass
+path would either duplicate all of that or drop it.
+
+What's different is only the initial pick. Pinning is already a hand-ranked
+shortlist (`pinnedOrder`), so `focusQueueFromPinned` takes that order as-is
+instead of re-scoring it — "next that fits" rather than "best that fits".
+Eligibility and the time window are the same rules the scored path uses: a
+pinned task that's completed, archived, a subtask, blocked, or that no longer
+fits what's left of the window drops out of the queue exactly as it would
+there. With no window set (the sheet's default), that means every eligible
+pinned task starts ticked — the literal request this shortcut exists to
+answer.
+
 ## One mechanism for a task leaving the plan
 
 A task can stop being workable three ways: completed from inside the session,

@@ -555,6 +555,10 @@ export function TodayScreen() {
   const [filterVisible, setFilterVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [focusSetupVisible, setFocusSetupVisible] = useState(false);
+  // Which entry point opened the setup sheet — whether it should seed from
+  // the pinned block instead of running the suggester. See FocusSetupSheet's
+  // `pinnedSeed` prop.
+  const [focusFromPinned, setFocusFromPinned] = useState(false);
   const [focusSessionVisible, setFocusSessionVisible] = useState(false);
   const focusSession = useFocusStore(s => s.session);
   const startFocusSession = useFocusStore(s => s.startSession);
@@ -2427,6 +2431,25 @@ export function TodayScreen() {
               color={othersHidden ? colors.orange : colors.textTertiary}
             />
           </TouchableOpacity>
+          {/* Gone during a bulk edit (same reasoning as Clear, right below)
+              and while a session is already running — there's nothing to
+              start. Opens the ordinary setup sheet seeded from this block
+              instead of the suggester, so the window, plan preview and swap
+              still apply; see FocusSetupSheet's pinnedSeed prop. */}
+          {!selectionMode && !focusSession && (
+            <TouchableOpacity
+              onPress={() => {
+                haptics.tap();
+                setFocusFromPinned(true);
+                setFocusSetupVisible(true);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Start a focus session with pinned tasks"
+            >
+              <Ionicons name="hourglass-outline" size={iconSize.sm} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
           {/* Gone during a bulk edit. It unpins every task in one tap, with no
               confirm and no undo, and it sits a thumb's width from the rows
               being tapped in a mode whose whole gesture is tapping rows — so
@@ -2739,7 +2762,14 @@ export function TodayScreen() {
     ...(viewMode === 'today'
       ? [{
           icon: 'hourglass-outline' as const,
-          onPress: () => (focusSession ? setFocusSessionVisible(true) : setFocusSetupVisible(true)),
+          onPress: () => {
+            if (focusSession) {
+              setFocusSessionVisible(true);
+              return;
+            }
+            setFocusFromPinned(false);
+            setFocusSetupVisible(true);
+          },
           active: focusSession !== null,
           accessibilityLabel: focusSession ? 'Focus session running' : 'Start a focus session',
         }]
@@ -3444,6 +3474,7 @@ export function TodayScreen() {
           visible={focusSetupVisible}
           tasks={visibleTasks}
           allTasks={allTasks}
+          pinnedSeed={focusFromPinned ? pinnedTasks : undefined}
           onClose={() => setFocusSetupVisible(false)}
           onStart={queue => {
             startFocusSession(queue, focusPlanOptionsFrom(useSettingsStore.getState()));
