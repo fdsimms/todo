@@ -1322,7 +1322,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // "Added to list on X" on the week header.
     expect(Object.keys(useMealPlanStore.getState().addedToListAt).length).toBeGreaterThan(0);
 
-    // The deciding lens (#1669) has to have a night to be about, and the run
+    // The suggestion shelf has to have a night to land on, and the run
     // deliberately ends on one: a day still ahead, holding a meal, with its
     // dinner still open. A fortnight where every dinner is spoken for shows
     // that surface only in the one state it isn't for.
