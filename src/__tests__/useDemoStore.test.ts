@@ -1779,6 +1779,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const dated = opened.find(i => openShelfLifeDaysFor(i.name) !== null);
     expect(dated).toBeDefined();
     expect(dated!.expiresAt).not.toBeNull();
+
+    // And one opened by a cooking rather than by hand, which is what dates it
+    // to that night rather than to the moment the demo was seeded.
+    const today = dayKeyOf(new Date());
+    expect(opened.some(i => dayKeyOf(new Date(i.openedAt!)) < today)).toBe(true);
   });
 
   it('seeds something running low, which is what puts it on the list', () => {
