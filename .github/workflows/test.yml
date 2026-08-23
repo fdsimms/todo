@@ -13,7 +13,13 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Only superseded PR pushes are worth cancelling. A run on main is the check
+  # that says whether main itself is green, and merges land seconds apart, so
+  # cancelling those meant a merge that broke main had its run killed by the
+  # next merge and never showed red. Several main runs are `cancelled` rather
+  # than failed for exactly that reason, which is how main sat stale on both
+  # generated-doc checks while every branch cut from it inherited the failure.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:

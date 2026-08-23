@@ -1,0 +1,22 @@
+#!/bin/sh
+# The merge driver (scripts/merge-generated-doc.js) deliberately leaves the
+# generated docs holding whatever our side had, because during a content merge
+# the source tree they are generated *from* has not been written yet. This is
+# the other half: once the merge is done and src/ reflects both sides, rerun
+# the generators so the docs match the tree they now describe.
+#
+# It leaves the result in the working tree rather than amending the merge
+# commit — a hook that rewrites a commit you did not ask it to rewrite is worse
+# than a dirty `git status`, and dirty is exactly the signal that was missing.
+node scripts/build-module-map.js >/dev/null 2>&1
+node scripts/check-doc-stats.js >/dev/null 2>&1
+
+if ! git diff --quiet -- docs/module-map.md CLAUDE.md 2>/dev/null; then
+  echo
+  echo "post-merge: the merge changed what the generated docs should say."
+  echo "  docs/module-map.md and/or the CLAUDE.md repo-stats block have been"
+  echo "  regenerated in your working tree. Commit them with the merge:"
+  echo
+  echo "    git add docs/module-map.md CLAUDE.md && git commit --amend --no-edit"
+  echo
+fi
