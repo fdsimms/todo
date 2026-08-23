@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
@@ -61,6 +62,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation();
 
   const { session, now } = useFocusSession();
   const tasks = useTaskStore(s => s.tasks);
@@ -146,6 +148,17 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     haptics.tap();
     if (step.kind === 'rest' || step.taskId === null) advance();
     else skipTask(step.taskId);
+  };
+
+  const handleOpenSettings = () => {
+    haptics.tap();
+    // Closes the sheet rather than ending the session — same as the chevron,
+    // the session keeps running behind FocusBar. Lands on the group these
+    // settings actually live in ("Focus sessions" inside Tasks & projects),
+    // not the Settings index.
+    onClose();
+    (navigation as never as { navigate: (n: string, p: object) => void })
+      .navigate('SettingsGroup', { groupId: 'tasksProjects' });
   };
 
   // ==== render. Everything below is JSX ====
@@ -351,7 +364,18 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
             </Text>
           </View>
 
-          <SheetHeaderButton label="End" role="cancel" onPress={handleEnd} accessibilityLabel="End session" />
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={handleOpenSettings}
+              style={styles.settingsBtn}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel="Focus session settings"
+            >
+              <Ionicons name="settings-outline" size={iconSize.md} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <SheetHeaderButton label="End" role="cancel" onPress={handleEnd} accessibilityLabel="End session" />
+          </View>
         </View>
 
         <ScrollView
@@ -375,6 +399,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   closeBtn: { width: 60, alignItems: 'flex-start', paddingVertical: spacing.xs },
   headerCenter: { flex: 1, alignItems: 'center' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  settingsBtn: { padding: spacing.xs },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   headerSub: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
   scroll: { paddingHorizontal: spacing.md },
