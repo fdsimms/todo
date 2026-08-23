@@ -221,10 +221,13 @@ export function KitchenScreen() {
         : buildKitchenRows(sections, {
             // Something to take back out of the freezer: with no fridge
             // section rendered, any container that's still live is in it.
-            fridge: entries.some(e => e.kind === 'leftover'),
-            freezer: entries.length > 0,
+            // Both suppressed while a search is narrowing the list — an empty
+            // target for a place the query just filtered out isn't a place to
+            // drag anything, it's a leftover from the unfiltered kitchen.
+            fridge: !query && entries.some(e => e.kind === 'leftover'),
+            freezer: !query && entries.length > 0,
           }),
-    [sections, entries, dropNonce]
+    [sections, entries, dropNonce, query]
   );
 
   // What to cook with what's dying. Off `useUpEntries` rather than the whole
