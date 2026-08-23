@@ -11,9 +11,10 @@ import {
   pantryGuessLapsedDays,
   OUT_OF_IT_UNTIL,
   pantryEntries,
+  productHaveReason,
 } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
-import { FROZEN_REASON, RUNNING_LOW_REASON, type GroceryItem } from '../types';
+import { FROZEN_REASON, RUNNING_LOW_REASON, type GroceryItem, type ItemProduct } from '../types';
 
 const NOW = new Date('2026-08-07T12:00:00.000Z');
 
@@ -22,6 +23,26 @@ function daysAgo(n: number): string {
 }
 
 let seq = 0;
+function makeProduct(overrides: Partial<ItemProduct> & { itemId: string }): ItemProduct {
+  return {
+    id: `p-${++seq}`,
+    brand: null,
+    variant: null,
+    productKey: `k-${seq}`,
+    rating: null,
+    note: '',
+    purchaseCount: 0,
+    lastPurchasedAt: null,
+    gtin: null,
+    onHandUntil: null,
+    expiresAt: null,
+    frozenAt: null,
+    openedAt: null,
+    createdAt: daysAgo(120),
+    ...overrides,
+  };
+}
+
 function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   const name = overrides.name;
   return {
@@ -590,6 +611,120 @@ describe('pantryEntries', () => {
   it('keeps an item that is also on the list — the assertion outlives the add', () => {
     const item = makeItem({ name: 'Rice', onList: true, onHandUntil: daysAgo(-5) });
     expect(pantryEntries([item], NOW).map(e => e.item.name)).toEqual(['Rice']);
+  });
+});
+
+// ─── the pantry, one box at a time ──────────────────────────────────────────
+
+describe('productHaveReason', () => {
+  it('answers for a box the user has marked on hand', () => {
+    const box = makeProduct({ itemId: 'i1', onHandUntil: daysAgo(-5) });
+    expect(productHaveReason(box, NOW)).toBe('marked as on hand');
+  });
+
+  it('answers for a frozen box, which outlives every window here', () => {
+    const box = makeProduct({ itemId: 'i1', frozenAt: daysAgo(200) });
+    expect(productHaveReason(box, NOW)).toBe(FROZEN_REASON);
+  });
+
+  it('lets an explicit "Out of it" outrank the freezer, so the ✕ still works', () => {
+    const box = makeProduct({ itemId: 'i1', frozenAt: daysAgo(200), onHandUntil: OUT_OF_IT_UNTIL });
+    expect(productHaveReason(box, NOW)).toBeNull();
+  });
+
+  it('never guesses from the box\'s own purchase history', () => {
+    // The counter only bumps for whichever box was preferred at the till, so a
+    // guess built on it would vouch for one brand and stay silent about the
+    // other — and would put every box anyone ever named in the pantry.
+    const box = makeProduct({
+      itemId: 'i1', purchaseCount: 9, lastPurchasedAt: daysAgo(1), createdAt: daysAgo(90),
+    });
+    expect(productHaveReason(box, NOW)).toBeNull();
+  });
+
+  it('says nothing about a box nobody has said anything about', () => {
+    expect(productHaveReason(makeProduct({ itemId: 'i1' }), NOW)).toBeNull();
+  });
+});
+
+describe('pantryEntries with boxes', () => {
+  it('holds two boxes of one item in two different states at once', () => {
+    // The whole point: two brands that are interchangeable at the stove are
+    // still two separate packets in the kitchen.
+    const item = makeItem({ name: 'Vegan ground beef', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(4) });
+    const beyond = makeProduct({ itemId: item.id, brand: 'Beyond', frozenAt: daysAgo(20) });
+    const impossible = makeProduct({ itemId: item.id, brand: 'Impossible', onHandUntil: daysAgo(-5) });
+
+    const entries = pantryEntries([item], NOW, [beyond, impossible]);
+    expect(entries.map(e => [e.product?.brand ?? null, e.reason])).toEqual([
+      [null, 'bought 3× · last on 3 Aug'],
+      ['Beyond', FROZEN_REASON],
+      ['Impossible', 'marked as on hand'],
+    ]);
+  });
+
+  it('adds a box row without removing the item\'s own', () => {
+    // Replacing was the first design and hides data: the item row is what
+    // covers every *other* packet, which nothing box-level has spoken for.
+    const item = makeItem({ name: 'Bread', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(2) });
+    const frozen = makeProduct({ itemId: item.id, brand: "Arnold's", frozenAt: daysAgo(9) });
+
+    const entries = pantryEntries([item], NOW, [frozen]);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].product).toBeNull();
+    expect(entries[1].product!.brand).toBe("Arnold's");
+  });
+
+  it('drops the item row when a box is the only thing answering for it', () => {
+    // A loaf frozen months ago, on an item whose own purchase window ran out
+    // long since: the item row would be the box's claim wearing the item's
+    // name, and the box row says it better.
+    const item = makeItem({ name: 'Bread', purchaseCount: 3, createdAt: daysAgo(300), lastPurchasedAt: daysAgo(200) });
+    const frozen = makeProduct({ itemId: item.id, brand: "Arnold's", frozenAt: daysAgo(150) });
+
+    const entries = pantryEntries([item], NOW, [frozen]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].product!.brand).toBe("Arnold's");
+  });
+
+  it('lets an item-level "Out of it" empty the pantry of it, boxes and all', () => {
+    // The blunter and later statement — "I'm out of bread" is about all of
+    // them — and what keeps the ✕ on an item row from reading as dead.
+    const item = makeItem({ name: 'Bread', onHandUntil: OUT_OF_IT_UNTIL });
+    const frozen = makeProduct({ itemId: item.id, brand: "Arnold's", frozenAt: daysAgo(9) });
+    expect(pantryEntries([item], NOW, [frozen])).toEqual([]);
+  });
+
+  it('ignores a box belonging to another item', () => {
+    const bread = makeItem({ name: 'Bread', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(2) });
+    const other = makeProduct({ itemId: 'somewhere-else', brand: 'Beyond', frozenAt: daysAgo(9) });
+    expect(pantryEntries([bread], NOW, [other])).toHaveLength(1);
+  });
+
+  it('behaves exactly as before when no boxes are passed', () => {
+    const item = makeItem({ name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10) });
+    expect(pantryEntries([item], NOW)).toEqual(pantryEntries([item], NOW, []));
+  });
+});
+
+describe('probablyHaveReason with boxes', () => {
+  it('keeps vouching for an item whose only live claim is a frozen box', () => {
+    const item = makeItem({ name: 'Bread', purchaseCount: 3, createdAt: daysAgo(300), lastPurchasedAt: daysAgo(200) });
+    const frozen = makeProduct({ itemId: item.id, frozenAt: daysAgo(150) });
+    expect(probablyHaveReason(item, NOW)).toBeNull();
+    expect(probablyHaveReason(item, NOW, [frozen])).toBe(FROZEN_REASON);
+  });
+
+  it('cannot resurrect an item-level "Out of it"', () => {
+    const item = makeItem({ name: 'Bread', onHandUntil: OUT_OF_IT_UNTIL });
+    const frozen = makeProduct({ itemId: item.id, frozenAt: daysAgo(9) });
+    expect(probablyHaveReason(item, NOW, [frozen])).toBeNull();
+  });
+
+  it('prefers the item\'s own claim to a box\'s', () => {
+    const item = makeItem({ name: 'Bread', onHandUntil: daysAgo(-5) });
+    const frozen = makeProduct({ itemId: item.id, frozenAt: daysAgo(9) });
+    expect(probablyHaveReason(item, NOW, [frozen])).toBe('marked as on hand');
   });
 });
 

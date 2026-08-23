@@ -844,6 +844,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const avoided = itemProducts.find(p => p.rating === 'avoid');
     expect(avoided).toBeDefined();
     expect(items.find(i => i.id === avoided!.itemId)!.preferredProductId).not.toBe(avoided!.id);
+    // ...and two boxes of one item in two different places, which is what the
+    // per-box pantry columns exist for. A frozen one and an on-hand one on the
+    // same item: with one slot per item the app could only have called both of
+    // them frozen.
+    const frozenBox = itemProducts.find(p => p.frozenAt);
+    expect(frozenBox).toBeDefined();
+    const sibling = itemProducts.find(
+      p => p.itemId === frozenBox!.itemId && p.id !== frozenBox!.id && p.onHandUntil
+    );
+    expect(sibling).toBeDefined();
+    // The item itself stays out of it — a claim about one loaf is not a claim
+    // about the row every recipe and every list reads.
+    expect(items.find(i => i.id === frozenBox!.itemId)!.frozenAt).toBeNull();
     // ...and the rule that makes a product reach store coverage, plus the claim
     // it reads. A strict item nobody has ruled a store out for would filter
     // nothing, so the switch would look inert.

@@ -138,6 +138,53 @@ it off the first.
   label alias beside it: a phrase alias on a minted row would map a name to itself and teach
   nothing, where a barcode link on one teaches everything.
 
+### A box carries its own pantry state, because you can have two at once
+
+`ItemProduct` holds four of the item's pantry columns over again — `onHandUntil`, `expiresAt`,
+`frozenAt`, `openedAt` — and that is the answer to the question the one-slot-per-item pantry
+couldn't: two brands of vegan ground beef are the same thing to a recipe and are still two
+separate packets in the kitchen, one of which may be frozen, open or gone while the other isn't.
+Before this, saying anything about one packet said it about both.
+
+This is deliberately *not* the maintained inventory the kitchen section below rules out three
+times over, and the restraint that keeps it from becoming one is a single rule:
+
+- **A box only enters the pantry when the user says so.** `productHaveReason` reads those four
+  assertions and nothing else. There is no per-box equivalent of `probablyHaveReason`'s purchase
+  guess, for two reasons pointing the same way: `ItemProduct.purchaseCount` only bumps for
+  whichever box was *preferred* at the till (`dbFinishGroceryShopping`), so a guess built on it
+  would vouch for the brand you'd set as your preference and stay silent about the one you
+  actually alternate with — the exact case this exists to describe; and it would put a row in the
+  pantry for every box anyone had ever named, three loaves of bread included. The item's own
+  purchase reading stays the answer to "do I have any of this"; a box says which packet.
+- **A box's row joins the item's, never replaces it.** Replacing was written first and hides data:
+  freezing one packet dropped the item row, and with it the *other* packet, which nothing but the
+  item's own purchase reading covers. An item silently leaving the pantry because you spoke about
+  one of its boxes is a worse failure than naming it twice. So an item nobody has said anything
+  box-specific about is exactly one row, as always, and each packet spoken about adds one. The one
+  subtraction: when a box is the *only* thing answering for the item, the item row would be that
+  box's claim wearing the item's name, so it's dropped and the box row says it better.
+- **An item-level "Out of it" outranks every box.** It's the blunter, later statement — "I'm out
+  of vegan ground beef" is about all of them — and keeping it in front is what stops the ✕ on an
+  item row reading as a dead control, the same argument that puts it above the freezer.
+- **`runningLowAt` has no per-box counterpart**, and that asymmetry is the point. It's the one
+  pantry assertion that writes `onList`, and being nearly out of one brand while a full packet of
+  the other sits beside it is not a reason to buy more.
+- **A use-by day falls back to the item's; the other three don't.** A shelf life is a fact about
+  the food rather than the brand (`shelfLifeDays` is on the item), so an unopened packet is
+  answerable to the day its purchase set until something is said about that packet in particular.
+  A thawed box re-stamps through the item's `expiresAtForPurchase`, and an opened one re-dates
+  through the item's `expiresAtForOpening`, for the same reason.
+- **An aisle stays on the item.** A box files by its own freezer claim and its *item's* aisle, so
+  dragging one packet to Frozen leaves its sibling in Bakery while dragging it to Dairy moves both.
+  Two brands of one thing are not in two different aisles.
+- **A purchase clears the bought box's claims**, alongside the item's and for the same reason: the
+  packet you froze is not the packet you carried home. Preferred-only, exactly like the counter —
+  a trip that bought an item with no preference says nothing about which box it was.
+- **`KitchenKind` grew a third value rather than a flag on `grocery`**, because everything
+  downstream switches on it: the ✕ writes a different column, a drop resolves to a different
+  action, and the row opens the item sheet on its Products field rather than its Pantry one.
+
 **A product is not a substitute, and the line is: same box → product, different thing →
 substitute.** A hamburger bun standing in for bread is a different thing you buy, with its own
 aisle, its own pantry state and its own recipes calling for it, so it stays an `ItemSubLink`

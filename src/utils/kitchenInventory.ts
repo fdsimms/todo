@@ -1,9 +1,10 @@
-import type { GroceryItem, Leftover, LeftoverFreshness } from '../types';
+import type { GroceryItem, ItemProduct, Leftover, LeftoverFreshness } from '../types';
 import { FROZEN_REASON } from '../types';
 import { OTHER_AISLE } from './groceryAisles';
 import { groceryNameKey } from './groceryParse';
 import { matchWeight, pantryEntries, sectionsInAisleOrder } from './grocerySuggest';
-import { daysUntilDay, describeFrozenSince, describeOpenedOn, describeUseBy, freshnessFor, isUseUpSoon } from './freshness';
+import { describeProduct } from './groceryProduct';
+import { daysUntilDay, describeFrozenSince, describeOpenedOn, describeUseBy, freshnessFor, isUseUpSoon, liveUseBy } from './freshness';
 import { liveExpiresAt } from './groceryShelfLife';
 import { describeAge, isLiveLeftover, liveKeepUntil } from './leftovers';
 
@@ -46,7 +47,14 @@ import { describeAge, isLiveLeftover, liveKeepUntil } from './leftovers';
  * kitchen is out of it.
  */
 
-export type KitchenKind = 'grocery' | 'leftover';
+/**
+ * `product` is a *box* of a catalog row rather than the row itself — the
+ * Beyond packet as opposed to "vegan ground beef". It's a third kind rather
+ * than a flag on `grocery` because everything downstream switches on this: the
+ * ✕ writes a different column, the drop resolves to a different action, and
+ * the sheet it opens is a different sheet. See `ItemProduct.onHandUntil`.
+ */
+export type KitchenKind = 'grocery' | 'leftover' | 'product';
 
 /**
  * The stable id one row of the kitchen goes by — what `KitchenEntry.id` is
@@ -83,7 +91,7 @@ export function parseKitchenEntryId(
   const kind = entryId.slice(0, cut);
   const sourceId = entryId.slice(cut + 1);
   if (!sourceId) return null;
-  if (kind !== 'grocery' && kind !== 'leftover') return null;
+  if (kind !== 'grocery' && kind !== 'leftover' && kind !== 'product') return null;
   return { kind, sourceId };
 }
 
@@ -144,14 +152,33 @@ export interface KitchenEntry {
    */
   id: string;
   /**
-   * The row this was built from — a `GroceryItem.id` or a `Leftover.id`. Its
-   * own field rather than `id` with the prefix peeled off at the call site,
-   * for `ContextRow.sourceId`'s reason: a screen re-deriving a store key by
-   * string surgery is how the two quietly stop matching.
+   * The row this was built from — a `GroceryItem.id`, a `Leftover.id`, or an
+   * `ItemProduct.id` for a box. Its own field rather than `id` with the prefix
+   * peeled off at the call site, for `ContextRow.sourceId`'s reason: a screen
+   * re-deriving a store key by string surgery is how the two quietly stop
+   * matching.
    */
   sourceId: string;
   kind: KitchenKind;
   title: string;
+  /**
+   * Which box this row is about — "Beyond", "Arnold's whole wheat" — or null
+   * for every row that's about a whole item or a container, which is most of
+   * them.
+   *
+   * Its own field rather than folded into `title` because the two rows an item
+   * splits into are still rows about that food: the pantry reads as a list of
+   * things you have, with the packet named underneath, not as a list of brands.
+   * It leads the caption for the same reason `describeOpenedOn`'s clause sits
+   * there — it's the detail that tells two otherwise identical rows apart.
+   */
+  productName: string | null;
+  /**
+   * The catalog row a box hangs off, for a `product` entry — what the ✕ and the
+   * drop need to reach the item's aisle and shelf life. Null for the other two
+   * kinds, where `sourceId` already is the item.
+   */
+  itemId: string | null;
   /**
    * Which heading it files under — `FREEZER_SECTION` for anything frozen, else
    * `FRIDGE_SECTION` for a container and the item's aisle for a catalog row.
@@ -249,7 +276,13 @@ export function compareKitchenEntries(a: KitchenEntry, b: KitchenEntry): number 
 export function kitchenInventory(
   items: readonly GroceryItem[],
   leftovers: readonly Leftover[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  /**
+   * Every box in the catalog. Empty — the default — is exactly the behaviour
+   * this had before boxes could carry pantry state, one row per item, which is
+   * also what every item with nothing said about its packets still gets.
+   */
+  products: readonly ItemProduct[] = []
 ): KitchenEntry[] {
   const entries: KitchenEntry[] = [];
 
@@ -273,6 +306,8 @@ export function kitchenInventory(
       sourceId: leftover.id,
       kind: 'leftover',
       title: leftover.title,
+      productName: null,
+      itemId: null,
       section: leftover.frozenAt ? FREEZER_SECTION : FRIDGE_SECTION,
       useBy,
       freshness: useBy ? freshnessFor(useBy, now) : null,
@@ -285,36 +320,58 @@ export function kitchenInventory(
     });
   }
 
-  for (const { item, reason } of pantryEntries(items, now)) {
+  for (const { item, reason, product } of pantryEntries(items, now, products)) {
+    // A box answers all four of these for itself, falling back to its item only
+    // for the use-by day — which it does because a shelf life is a fact about
+    // the food rather than about the brand (see `GroceryItem.shelfLifeDays`),
+    // so an unopened packet is answerable to the day the purchase set until
+    // something is said about that packet in particular.
+    const frozenAt = product ? product.frozenAt : item.frozenAt;
+    const openedAt = product ? product.openedAt : item.openedAt;
     // Same suspension as above, off the catalog's own pair of fields. The
     // stored `expiresAt` is deliberately still there and deliberately not read:
     // it's the day this purchase *would* be answerable to, waiting for a thaw
     // to make it a countdown again.
-    const useBy = liveExpiresAt(item);
+    const useBy = product
+      ? liveUseBy(product.expiresAt ?? item.expiresAt, frozenAt)
+      : liveExpiresAt(item);
     // `reason` is already FROZEN_REASON for a frozen row — probablyHaveReason
-    // returns it — so this only has to supply the clock half.
-    const useByCaption = item.frozenAt
-      ? describeFrozenSince(item.frozenAt, now)
+    // and productHaveReason both return it — so this only supplies the clock.
+    const useByCaption = frozenAt
+      ? describeFrozenSince(frozenAt, now)
       : useBy ? describeUseBy(useBy, now) : '';
+    // The box's name is deliberately *not* folded into `reason`. On an item
+    // that has split into two rows it is the only thing telling them apart, so
+    // the row draws it in its own weight ahead of the caption rather than as
+    // more caption — a mock of it at 390pt in both themes is the whole argument.
+    // `caption` below still joins the two, because that's the accessible line.
+    const productName = product ? describeProduct(product) : null;
     // Opening joins the reason half rather than the clock half — it's evidence
     // about the jar, not a state of the countdown — so it reads
     // "bought 4× · last on 19 Aug · opened 12 Aug · Use by tomorrow". Dropped
     // for a frozen row, which has already replaced the reason with the freezer.
-    const reasonWithOpened = item.openedAt && !item.frozenAt
-      ? `${reason} · ${describeOpenedOn(item.openedAt, now)}`
+    const fullReason = openedAt && !frozenAt
+      ? `${reason} · ${describeOpenedOn(openedAt, now)}`
       : reason;
+    const captionParts = [productName, fullReason, useByCaption || null]
+      .filter((part): part is string => !!part);
     entries.push({
-      id: kitchenEntryId('grocery', item.id),
-      sourceId: item.id,
-      kind: 'grocery',
+      id: product ? kitchenEntryId('product', product.id) : kitchenEntryId('grocery', item.id),
+      sourceId: product ? product.id : item.id,
+      kind: product ? 'product' : 'grocery',
       title: item.name,
-      section: item.frozenAt ? FREEZER_SECTION : item.aisle || OTHER_AISLE,
+      productName,
+      itemId: product ? item.id : null,
+      // A box files by its own freezer claim and by its *item's* aisle: an
+      // aisle is where the food lives in a shop, and two brands of one thing
+      // are not in two different aisles.
+      section: frozenAt ? FREEZER_SECTION : item.aisle || OTHER_AISLE,
       useBy,
       freshness: useBy ? freshnessFor(useBy, now) : null,
       daysLeft: useBy ? daysUntilDay(useBy, now) : null,
-      reason: reasonWithOpened,
+      reason: fullReason,
       useByCaption,
-      caption: useByCaption ? `${reasonWithOpened} · ${useByCaption}` : reasonWithOpened,
+      caption: captionParts.join(' · '),
       onList: item.onList,
       matchKey: item.nameKey,
     });

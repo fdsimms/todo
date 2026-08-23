@@ -25,6 +25,8 @@ function entry(
     sourceId: `gi-${seq}`,
     kind: 'grocery',
     title,
+    productName: null,
+    itemId: null,
     section: 'Produce',
     useBy: '2026-08-14',
     freshness,

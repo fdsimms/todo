@@ -306,6 +306,13 @@ export function initDatabase(): void {
       purchase_count INTEGER NOT NULL DEFAULT 0,
       last_purchased_at TEXT,
       gtin TEXT,
+      -- The four per-box pantry columns. One item can hold two packets at
+      -- once, so these are what make "the Beyond one is frozen, the Impossible
+      -- one isn't" sayable. See ItemProduct.onHandUntil.
+      on_hand_until TEXT,
+      expires_at TEXT,
+      frozen_at TEXT,
+      opened_at TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -937,6 +944,15 @@ export function initDatabase(): void {
     'ALTER TABLE grocery_items ADD COLUMN used_up_count INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE grocery_items ADD COLUMN spoiled_count INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE grocery_items ADD COLUMN last_spoiled_at TEXT',
+    // The pantry, per box rather than per item. NULL on every existing row is
+    // exactly right and needs no backfill: a box nobody has said anything about
+    // defers to its item, which is what every box did before these existed, so
+    // an install upgrading into them reads precisely as it did yesterday. See
+    // ItemProduct.onHandUntil for why there are four of these and not five.
+    'ALTER TABLE grocery_item_products ADD COLUMN on_hand_until TEXT',
+    'ALTER TABLE grocery_item_products ADD COLUMN expires_at TEXT',
+    'ALTER TABLE grocery_item_products ADD COLUMN frozen_at TEXT',
+    'ALTER TABLE grocery_item_products ADD COLUMN opened_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2435,7 +2451,14 @@ export function dbFinishGroceryShopping(
   purchasedAt: string,
   shopId: string | null = null,
   expiresAtById: Readonly<Record<string, string>> = {},
-  priceById: Readonly<Record<string, number>> = {}
+  priceById: Readonly<Record<string, number>> = {},
+  // The rows this trip is putting straight in the freezer — the scan sheet's
+  // own toggle, made about the bag being carried home right now. It overrides
+  // the blanket `frozen_at = NULL` below, which is about the *previous* bag.
+  // Without it the store's matching in-memory patch was the only record of the
+  // freeze, so it survived until the next load and no further (see
+  // finishShopping, whose comment has always said this wins).
+  frozenIds: ReadonlySet<string> = new Set()
 ): string[] {
   // quantity comes back with the id because a price is only meaningful
   // alongside what it bought (see GroceryItem.lastPriceQuantity), and the
@@ -2491,9 +2514,21 @@ export function dbFinishGroceryShopping(
     // bought that one; being *strict* is an extra claim about stores, and a
     // purchase count has nothing to do with stores.
     if (row.preferred_product_id) {
+      // The box's own pantry claims are cleared in the same breath, for the
+      // reason the item's are above: the packet you froze, opened or declared
+      // yourself out of is not the packet you have just carried home. Its
+      // expires_at is cleared rather than re-stamped — a box has no shelf life
+      // of its own to stamp from (shelfLifeDays is an item fact), so it falls
+      // back to the item's fresh day until something is said about this packet
+      // specifically.
       db.runSync(
         `UPDATE grocery_item_products
-            SET purchase_count = purchase_count + 1, last_purchased_at = ?
+            SET purchase_count = purchase_count + 1,
+                last_purchased_at = ?,
+                on_hand_until = NULL,
+                expires_at = NULL,
+                frozen_at = NULL,
+                opened_at = NULL
           WHERE id = ?`,
         [purchasedAt, row.preferred_product_id]
       );
@@ -2504,6 +2539,11 @@ export function dbFinishGroceryShopping(
     // in this trip too and has no day worth naming.
     const expires = expiresAtById[row.id];
     if (expires) db.runSync('UPDATE grocery_items SET expires_at = ? WHERE id = ?', [expires, row.id]);
+    // Re-stamped after the blanket clear above, not exempted from it: the claim
+    // being written is about this trip's bag, so it wants this trip's instant.
+    if (frozenIds.has(row.id)) {
+      db.runSync('UPDATE grocery_items SET frozen_at = ? WHERE id = ?', [purchasedAt, row.id]);
+    }
     // Only the rows the user actually priced. An absent price leaves the last
     // one standing, stamp and all, rather than clearing it — silence on this
     // trip is not a claim that the old price is wrong.
@@ -2849,6 +2889,10 @@ function rowToItemProduct(row: Record<string, unknown>): ItemProduct {
     purchaseCount: (row.purchase_count as number) ?? 0,
     lastPurchasedAt: (row.last_purchased_at as string) ?? null,
     gtin: (row.gtin as string) ?? null,
+    onHandUntil: (row.on_hand_until as string) ?? null,
+    expiresAt: (row.expires_at as string) ?? null,
+    frozenAt: (row.frozen_at as string) ?? null,
+    openedAt: (row.opened_at as string) ?? null,
     createdAt: row.created_at as string,
   };
 }
@@ -2881,8 +2925,9 @@ export function dbGetAllItemProducts(): ItemProduct[] {
 export function dbSetItemProduct(product: ItemProduct): void {
   db.runSync(
     `INSERT INTO grocery_item_products
-       (id, item_id, brand, variant, product_key, rating, note, purchase_count, last_purchased_at, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?)
+       (id, item_id, brand, variant, product_key, rating, note, purchase_count, last_purchased_at,
+        on_hand_until, expires_at, frozen_at, opened_at, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(id)
      DO UPDATE SET brand = excluded.brand,
                    variant = excluded.variant,
@@ -2890,7 +2935,11 @@ export function dbSetItemProduct(product: ItemProduct): void {
                    rating = excluded.rating,
                    note = excluded.note,
                    purchase_count = excluded.purchase_count,
-                   last_purchased_at = excluded.last_purchased_at`,
+                   last_purchased_at = excluded.last_purchased_at,
+                   on_hand_until = excluded.on_hand_until,
+                   expires_at = excluded.expires_at,
+                   frozen_at = excluded.frozen_at,
+                   opened_at = excluded.opened_at`,
     [
       product.id,
       product.itemId,
@@ -2901,6 +2950,10 @@ export function dbSetItemProduct(product: ItemProduct): void {
       product.note,
       product.purchaseCount,
       product.lastPurchasedAt ?? null,
+      product.onHandUntil ?? null,
+      product.expiresAt ?? null,
+      product.frozenAt ?? null,
+      product.openedAt ?? null,
       product.createdAt,
     ]
   );

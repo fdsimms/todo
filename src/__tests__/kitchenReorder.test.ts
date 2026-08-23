@@ -30,6 +30,8 @@ function entry(kind: KitchenKind, title: string, section: string): KitchenEntry 
     sourceId,
     kind,
     title,
+    productName: null,
+    itemId: null,
     section,
     useBy: null,
     freshness: null,
@@ -113,7 +115,7 @@ describe('resolveKitchenDrop', () => {
     const milk = entry('grocery', 'Milk', 'Dairy');
     const moves = resolveKitchenDrop([header(FREEZER_SECTION), row(milk), header('Dairy')]);
     expect(moves).toEqual([
-      { kind: 'grocery', sourceId: milk.sourceId, title: 'Milk', to: { place: 'freezer' } },
+      { kind: 'grocery', sourceId: milk.sourceId, itemId: null, title: 'Milk', to: { place: 'freezer' } },
     ]);
   });
 
@@ -121,7 +123,7 @@ describe('resolveKitchenDrop', () => {
     const chilli = entry('leftover', 'Chilli', FRIDGE_SECTION);
     const moves = resolveKitchenDrop([header(FRIDGE_SECTION), header(FREEZER_SECTION), row(chilli)]);
     expect(moves).toEqual([
-      { kind: 'leftover', sourceId: chilli.sourceId, title: 'Chilli', to: { place: 'freezer' } },
+      { kind: 'leftover', sourceId: chilli.sourceId, itemId: null, title: 'Chilli', to: { place: 'freezer' } },
     ]);
   });
 
@@ -129,7 +131,7 @@ describe('resolveKitchenDrop', () => {
     const chilli = entry('leftover', 'Chilli', FREEZER_SECTION);
     const moves = resolveKitchenDrop([header(FRIDGE_SECTION), row(chilli), header(FREEZER_SECTION)]);
     expect(moves).toEqual([
-      { kind: 'leftover', sourceId: chilli.sourceId, title: 'Chilli', to: { place: 'fridge' } },
+      { kind: 'leftover', sourceId: chilli.sourceId, itemId: null, title: 'Chilli', to: { place: 'fridge' } },
     ]);
   });
 
@@ -137,7 +139,7 @@ describe('resolveKitchenDrop', () => {
     const milk = entry('grocery', 'Milk', 'Dairy');
     const moves = resolveKitchenDrop([header('Dairy'), header('Produce'), row(milk)]);
     expect(moves).toEqual([
-      { kind: 'grocery', sourceId: milk.sourceId, title: 'Milk', to: { place: 'aisle', aisle: 'Produce' } },
+      { kind: 'grocery', sourceId: milk.sourceId, itemId: null, title: 'Milk', to: { place: 'aisle', aisle: 'Produce' } },
     ]);
   });
 
@@ -145,7 +147,7 @@ describe('resolveKitchenDrop', () => {
     const peas = entry('grocery', 'Peas', FREEZER_SECTION);
     const moves = resolveKitchenDrop([header(FREEZER_SECTION), header('Frozen'), row(peas)]);
     expect(moves).toEqual([
-      { kind: 'grocery', sourceId: peas.sourceId, title: 'Peas', to: { place: 'aisle', aisle: 'Frozen' } },
+      { kind: 'grocery', sourceId: peas.sourceId, itemId: null, title: 'Peas', to: { place: 'aisle', aisle: 'Frozen' } },
     ]);
   });
 
@@ -174,7 +176,7 @@ describe('resolveKitchenDrop', () => {
       header('Dairy'),
     ]);
     expect(moves).toEqual([
-      { kind: 'grocery', sourceId: milk.sourceId, title: 'Milk', to: { place: 'freezer' } },
+      { kind: 'grocery', sourceId: milk.sourceId, itemId: null, title: 'Milk', to: { place: 'freezer' } },
     ]);
   });
 
@@ -227,5 +229,42 @@ describe('kitchenDragRange', () => {
   it('pins a container with nowhere to go', () => {
     const aisleOnly: KitchenRow[] = [header('Dairy'), row(chilli)];
     expect(kitchenDragRange(aisleOnly, 1)).toEqual([1, 1]);
+  });
+});
+
+describe('a box dropped somewhere', () => {
+  it('freezes just that box, not its item', () => {
+    const arnolds = entry('product', 'Bread', 'Bakery');
+    const moves = resolveKitchenDrop([header('Bakery'), header(FREEZER_SECTION), row(arnolds)]);
+    expect(moves).toEqual([
+      { kind: 'product', sourceId: arnolds.sourceId, itemId: null, title: 'Bread', to: { place: 'freezer' } },
+    ]);
+  });
+
+  it('carries the item id so an aisle drop can file the item', () => {
+    // An aisle is where the food sits in a shop, and two brands of one thing
+    // don't sit in two — so the write goes to the item, not the box.
+    const box = { ...entry('product', 'Bread', FREEZER_SECTION), itemId: 'item-9' };
+    const moves = resolveKitchenDrop([header(FREEZER_SECTION), header('Dairy'), row(box)]);
+    expect(moves).toEqual([
+      {
+        kind: 'product', sourceId: box.sourceId, itemId: 'item-9', title: 'Bread',
+        to: { place: 'aisle', aisle: 'Dairy' },
+      },
+    ]);
+  });
+
+  it('refuses a box dropped into the fridge, same as a catalog row', () => {
+    const box = entry('product', 'Bread', 'Bakery');
+    expect(resolveKitchenDrop([header(FRIDGE_SECTION), row(box)])).toEqual([]);
+  });
+
+  it('reaches every aisle and the freezer, same range as a catalog row', () => {
+    const box = entry('product', 'Bread', 'Bakery');
+    const peas = entry('grocery', 'Peas', FREEZER_SECTION);
+    const rows = [
+      header(FREEZER_SECTION), row(peas), header('Bakery'), row(box), header('Dairy'),
+    ];
+    expect(kitchenDragRange(rows, 3)).toEqual([1, rows.length - 1]);
   });
 });

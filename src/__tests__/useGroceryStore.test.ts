@@ -40,7 +40,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { groceryNameKey } from '../utils/groceryParse';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
 import { OUT_OF_IT_UNTIL, probablyHaveReason } from '../utils/grocerySuggest';
-import { expiryDaysFromNow } from '../utils/groceryShelfLife';
+import { expiryDaysFromNow, expiryKeyFor, openShelfLifeDaysFor } from '../utils/groceryShelfLife';
 import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, Shop, StoreAlias, Task } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -160,6 +160,10 @@ function makeProduct(itemId: string, brand: string | null, variant: string | nul
     purchaseCount: 0,
     lastPurchasedAt: null,
     gtin: null,
+    onHandUntil: null,
+    expiresAt: null,
+    frozenAt: null,
+    openedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
   };
 }
@@ -842,7 +846,7 @@ describe('finishShopping', () => {
     const receiptDate = '2026-08-15T12:00:00.000Z';
     useGroceryStore.getState().finishShopping(null, {}, receiptDate);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(receiptDate, null, expect.any(Object), {});
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(receiptDate, null, expect.any(Object), {}, expect.any(Set));
     expect(useGroceryStore.getState().items.find(i => i.id === milk.id)!.lastPurchasedAt)
       .toBe(receiptDate);
   });
@@ -1794,7 +1798,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping(costco.id);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), costco.id, expect.any(Object), expect.any(Object));
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), costco.id, expect.any(Object), expect.any(Object), expect.any(Set));
     const links = useGroceryStore.getState().itemShops;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ itemId: milk.id, shopId: costco.id, purchaseCount: 1 });
@@ -2023,7 +2027,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping();
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object));
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set));
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
     // ...and the item-level count still moved, which is what makes the two
     // numbers diverge and why nothing may sum links to get a total.
@@ -2038,7 +2042,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping('shop-deleted-mid-sheet');
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object));
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set));
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
   });
 
@@ -5296,5 +5300,150 @@ describe('addManyToPantry links the barcodes it was handed', () => {
     const minted = useGroceryStore.getState().items.find(i => i.name === 'Bananas')!;
     expect(useGroceryStore.getState().gtinItemFor(GTIN)).toBe(minted.id);
     expect(useGroceryStore.getState().itemProducts).toEqual([]);
+  });
+});
+
+// ─── the pantry, one box at a time ──────────────────────────────────────────
+
+describe('per-box pantry state', () => {
+  /** An item with a box already on it, which is what these all start from. */
+  function withBox(name = 'Bread', brand = "Arnold's") {
+    const item = makeItem({ name });
+    seed([item]);
+    const box = useGroceryStore.getState().addProduct(item.id, { brand, variant: null })!;
+    return { item, box };
+  }
+
+  it('marks one box on hand without touching its item', () => {
+    const { item, box } = withBox();
+    useGroceryStore.getState().setProductOnHandUntil(box.id, '2026-09-01T00:00:00.000Z');
+
+    const stored = useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!;
+    expect(stored.onHandUntil).toBe('2026-09-01T00:00:00.000Z');
+    expect(useGroceryStore.getState().items.find(i => i.id === item.id)!.onHandUntil).toBeNull();
+    expect(dbSetItemProduct).toHaveBeenCalledWith(expect.objectContaining({ id: box.id }));
+  });
+
+  it('marks one box out and says nothing about its siblings', () => {
+    const { item, box } = withBox();
+    const other = useGroceryStore.getState().addProduct(item.id, { brand: 'Store brand', variant: null })!;
+
+    expect(useGroceryStore.getState().markProductsOutOf([box.id])).toBe(1);
+
+    const products = useGroceryStore.getState().itemProducts;
+    expect(products.find(p => p.id === box.id)!.onHandUntil).toBe(OUT_OF_IT_UNTIL);
+    expect(products.find(p => p.id === other.id)!.onHandUntil).toBeNull();
+    expect(useGroceryStore.getState().items.find(i => i.id === item.id)!.onHandUntil).toBeNull();
+  });
+
+  it('reports nothing changed when the box is already out', () => {
+    const { box } = withBox();
+    useGroceryStore.getState().markProductsOutOf([box.id]);
+    expect(useGroceryStore.getState().markProductsOutOf([box.id])).toBe(0);
+  });
+
+  it('undoes a box being marked out', () => {
+    const { box } = withBox();
+    useGroceryStore.getState().setProductOnHandUntil(box.id, '2026-09-01T00:00:00.000Z');
+    useGroceryStore.getState().markProductsOutOf([box.id]);
+
+    useGroceryStore.getState().lastAction!.undo();
+    expect(useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!.onHandUntil)
+      .toBe('2026-09-01T00:00:00.000Z');
+  });
+
+  it('freezes one box and leaves its sibling out of the freezer', () => {
+    const { item, box } = withBox();
+    const other = useGroceryStore.getState().addProduct(item.id, { brand: 'Store brand', variant: null })!;
+
+    useGroceryStore.getState().setProductFrozen(box.id, true);
+
+    const products = useGroceryStore.getState().itemProducts;
+    expect(products.find(p => p.id === box.id)!.frozenAt).toEqual(expect.any(String));
+    expect(products.find(p => p.id === other.id)!.frozenAt).toBeNull();
+    expect(useGroceryStore.getState().items.find(i => i.id === item.id)!.frozenAt).toBeNull();
+  });
+
+  it('restarts a thawed box from a fresh shelf life, read off its item', () => {
+    // A shelf life is a fact about the food rather than the brand, so the box
+    // thaws to the same day a purchase of the item would have stamped.
+    const item = makeItem({ name: 'Chicken breast', shelfLifeDays: 3 });
+    seed([item]);
+    const box = useGroceryStore.getState().addProduct(item.id, { brand: 'Bell & Evans', variant: null })!;
+
+    useGroceryStore.getState().setProductFrozen(box.id, true);
+    useGroceryStore.getState().setProductFrozen(box.id, false);
+
+    const stored = useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!;
+    expect(stored.frozenAt).toBeNull();
+    expect(stored.expiresAt).toBe(expiryKeyFor(new Date(), 3));
+  });
+
+  it('is a no-op when the box is already in the state asked for', () => {
+    const { box } = withBox();
+    useGroceryStore.getState().setProductFrozen(box.id, true);
+    const stamp = useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!.frozenAt;
+    useGroceryStore.getState().setProductFrozen(box.id, true);
+    expect(useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!.frozenAt).toBe(stamp);
+  });
+
+  it('re-dates an opened box off the open lexicon, leaving its item alone', () => {
+    const item = makeItem({ name: 'Salsa' });
+    seed([item]);
+    const box = useGroceryStore.getState().addProduct(item.id, { brand: 'Herdez', variant: null })!;
+
+    useGroceryStore.getState().setProductOpened(box.id, true);
+
+    const stored = useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!;
+    expect(stored.openedAt).toEqual(expect.any(String));
+    expect(stored.expiresAt).toBe(expiryKeyFor(new Date(), openShelfLifeDaysFor('Salsa')!));
+    expect(useGroceryStore.getState().items.find(i => i.id === item.id)!.openedAt).toBeNull();
+  });
+
+  it('records the opening of a box the open lexicon has never heard of', () => {
+    const item = makeItem({ name: 'Zorblax paste' });
+    seed([item]);
+    const box = useGroceryStore.getState().addProduct(item.id, { brand: 'Acme', variant: null })!;
+
+    useGroceryStore.getState().setProductOpened(box.id, true);
+
+    const stored = useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!;
+    expect(stored.openedAt).toEqual(expect.any(String));
+    expect(stored.expiresAt).toBeNull();
+  });
+
+  it('clears the bought box\'s claims on a finished trip', () => {
+    // The packet you froze is not the packet you just carried home — the same
+    // correction the item row already gets.
+    const item = makeItem({ name: 'Bread', onList: true, checked: true });
+    seed([item]);
+    const box = useGroceryStore.getState().addProduct(item.id, { brand: "Arnold's", variant: null })!;
+    useGroceryStore.getState().setProductFrozen(box.id, true);
+    useGroceryStore.getState().setProductOpened(box.id, true);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([item.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    const stored = useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!;
+    expect(stored.frozenAt).toBeNull();
+    expect(stored.openedAt).toBeNull();
+    expect(stored.onHandUntil).toBeNull();
+    expect(stored.purchaseCount).toBe(1);
+  });
+
+  it('puts the bought box back whole on undo', () => {
+    const item = makeItem({ name: 'Bread', onList: true, checked: true });
+    seed([item]);
+    const box = useGroceryStore.getState().addProduct(item.id, { brand: "Arnold's", variant: null })!;
+    useGroceryStore.getState().setProductFrozen(box.id, true);
+    const frozenAt = useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!.frozenAt;
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([item.id]);
+
+    useGroceryStore.getState().finishShopping();
+    useGroceryStore.getState().lastAction!.undo();
+
+    const stored = useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!;
+    expect(stored.frozenAt).toBe(frozenAt);
+    expect(stored.purchaseCount).toBe(0);
   });
 });
