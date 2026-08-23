@@ -321,7 +321,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
   },
   closeBtn: { width: 60, alignItems: 'flex-start', paddingVertical: spacing.xs },
   headerCenter: { flex: 1, alignItems: 'center' },
