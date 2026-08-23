@@ -2107,7 +2107,15 @@ export function TodayScreen() {
         // dripStalledProjects, which the user never saw run — is otherwise a
         // title with no explanation of where it came from.
         showProject
-        onPress={() => handleRowPress(rowKey)}
+        // Handed to the row rather than bound here in an arrow: a fresh arrow
+        // per row per render defeats TaskItem's memo, and on this screen that
+        // means every mounted row re-renders on every store write — including
+        // the one a stack's own collapse toggle makes, in the frame its 250ms
+        // height animation starts. Neither list virtualizes, so "every mounted
+        // row" is every row Today has (see ReorderableList's dragHandlerFor,
+        // which is the same fix on the other unstable prop).
+        onPress={handleRowPress}
+        rowKey={opts?.rowKey}
         expanded={expandedTaskId === rowKey}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== rowKey && !selectionMode}
         onEdit={handleRowEdit}
@@ -2115,17 +2123,16 @@ export function TodayScreen() {
         subtaskDoneCount={subs.doneCount}
         subtasks={subs.items}
         onSubtaskDragStateChange={setDraggingSubtask}
-        // The one prop here that isn't stable, and knowingly so: ReorderableList
-        // builds a fresh `drag` per row on every render (it closes over the row
-        // key to call startDrag), so a reorderable row re-renders with its list
-        // the way it always has. Stabilising it means caching callbacks inside
-        // ReorderableList, whose header is explicit that the PanResponder
-        // lifecycle is not a safe thing to reach into — not worth it for this.
+        // Stable per row, from either list: both cache one `drag` callback per
+        // row key for the life of that key (ReorderableList's dragHandlerFor,
+        // and SortableList's, which is what a stack's children come through).
+        // Neither caches anything about the PanResponder itself, so the
+        // lifecycle their headers warn about is untouched.
         //
-        // It costs less than it looks: this is `undefined` throughout selection
-        // mode, which is where the expensive case actually lives — a paint drag
-        // mutates the selection on every frame, and with the memo only the rows
-        // whose `selected` flipped re-render.
+        // It is `undefined` throughout selection mode anyway, which is where
+        // the expensive case lives — a paint drag mutates the selection on
+        // every frame, and with the memo only the rows whose `selected`
+        // flipped re-render.
         drag={
           selectionMode || !opts?.drag || upcomingTaskIds.has(task.id) ? undefined : opts.drag
         }

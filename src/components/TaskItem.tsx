@@ -108,6 +108,21 @@ interface Props {
   // actually hold (see the handlers in TodayScreen). Callers that don't need
   // the id can keep ignoring it — a zero-argument arrow still satisfies these.
   onPress: (id: string) => void;
+  /**
+   * What this row calls itself when it reports a *press* back, for the one
+   * case where a task has more than one row on screen: Today's pinned block
+   * shows a copy of each pinned task while the original stays in its category
+   * section, and the two expand independently (see `expanded`, and TodayScreen's
+   * `renderTaskRow`). Defaults to the task's own id, which is what every
+   * single-row caller wants.
+   *
+   * It exists so the caller doesn't have to wrap `onPress` in an arrow to bind
+   * the key — a fresh arrow per row per render defeats the memo below, which is
+   * the whole reason these handlers take an id at all. Only the press is keyed
+   * this way: edit, select and swipe-select act on the *task*, so they keep
+   * handing back `task.id` and both rows mean the same thing by it.
+   */
+  rowKey?: string;
   onEdit?: (id: string) => void;
   expanded?: boolean;
   subtaskCount?: number;
@@ -196,6 +211,7 @@ interface Props {
 export const TaskItem = React.memo(function TaskItem({
   task,
   onPress,
+  rowKey,
   onEdit,
   expanded = false,
   subtaskCount = 0,
@@ -225,6 +241,9 @@ export const TaskItem = React.memo(function TaskItem({
   stepNumber = null,
   locked = false,
 }: Props) {
+  // What a press reports back: this row, not necessarily this task (see the
+  // prop's note). Everything else about the row still speaks in task ids.
+  const rowId = rowKey ?? task.id;
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
   const groupTitle = useTaskGroupStore(s => task.groupId ? s.getGroupById(task.groupId)?.title ?? null : null);
@@ -837,7 +856,7 @@ export const TaskItem = React.memo(function TaskItem({
 
   const handleContentPress = () => {
     if (isNew) markTaskSeen(task.id);
-    if (selectionMode) { onSelect?.(task.id); } else { onPress(task.id); }
+    if (selectionMode) { onSelect?.(task.id); } else { onPress(rowId); }
   };
   // A recurring task showing early in Later (its day hasn't arrived yet)
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
@@ -2395,7 +2414,7 @@ export const TaskItem = React.memo(function TaskItem({
                         // The task disappears from the list immediately, but nothing
                         // else clears the parent's expanded-row state — collapse it
                         // ourselves so the spotlight overlay doesn't get stuck.
-                        if (expanded) onPress(task.id);
+                        if (expanded) onPress(rowId);
                       }}
                       hitSlop={8}
                       // The same control does two things depending on where the
@@ -2592,7 +2611,7 @@ export const TaskItem = React.memo(function TaskItem({
                 {spotlightDisabled && (
                   // While another task is spotlighted this row must not react
                   // to touches itself — any tap on it just dismisses the spotlight.
-                  <Pressable style={StyleSheet.absoluteFill} onPress={() => onPress(task.id)} />
+                  <Pressable style={StyleSheet.absoluteFill} onPress={() => onPress(rowId)} />
                 )}
               </View>
             </SwipeableRow>
