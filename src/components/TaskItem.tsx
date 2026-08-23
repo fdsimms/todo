@@ -2531,7 +2531,6 @@ export const TaskItem = React.memo(function TaskItem({
             shadows.card,
             { opacity: isActive ? 1 : rowOpacity },
             isActive && styles.itemWrapperActive,
-            expanded && styles.itemWrapperElevated,
             indented && styles.itemWrapperIndented,
           ]}
           // Screens collapse the spotlight on any touch in the list area;
@@ -2732,10 +2731,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   rowActive: {
     backgroundColor: colors.bgTertiary,
-  },
-  itemWrapperElevated: {
-    zIndex: 10,
-    elevation: 10,
   },
   cardClip: {
     borderRadius: radius.md,
