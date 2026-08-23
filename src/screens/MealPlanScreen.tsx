@@ -19,7 +19,7 @@ import { format } from 'date-fns/format';
 import { isToday } from 'date-fns/isToday';
 import { isSameWeek } from 'date-fns/isSameWeek';
 import { isBefore } from 'date-fns/isBefore';
-import type { Leftover, MealPlanEntry, MealSlot, Recipe } from '../types';
+import { MEAL_SLOTS, type Leftover, type MealPlanEntry, type MealSlot, type Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
@@ -66,7 +66,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, border, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -99,6 +99,7 @@ import {
   describeWeekRange,
   entriesForDay,
   recipeIndex,
+  slotLabel,
   titleForEntry,
 } from '../utils/mealPlan';
 import { liveGeneratedTask } from '../utils/generatedTasks';
@@ -126,9 +127,23 @@ import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
  * flush against this screen's own card rather than traced off
  * `TaskGroupTray`'s margins, since a day section carries no tray of its own to
  * match.
+ *
+ * **It also draws the day's four meals as columns across the band**, with the
+ * one a release would land in filled. That's the whole of the "which meal"
+ * affordance: across the band picks the meal exactly as down the list picks the
+ * day (see slotAtX in fabDrop.ts), so the day being aimed at is also the only
+ * place the columns need to exist. `slot` is null when the drag is aimed
+ * somewhere else, which is what fades the whole thing back out.
+ *
+ * The labels are bottom-aligned rather than centred so they sit in the
+ * section's own `paddingBottom` — the one strip of a day band that is empty on
+ * every day, planned or not. Centred, they landed on top of the day name on a
+ * bare day and on top of a meal title on a full one, and translucent text over
+ * text is unreadable in a way a tint over a card is not.
  */
-function DayDropHighlight({ active, children }: { active: boolean; children: React.ReactNode }) {
+function DayDropHighlight({ slot, children }: { slot: MealSlot | null; children: React.ReactNode }) {
   const colors = useColors();
+  const active = slot !== null;
   const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -146,9 +161,32 @@ function DayDropHighlight({ active, children }: { active: boolean; children: Rea
         pointerEvents="none"
         style={[
           dropHighlightStyles.highlight,
-          { borderColor: colors.accent, backgroundColor: colors.accentSubtle, opacity: progress },
+          { borderColor: colors.accent, opacity: progress },
         ]}
-      />
+      >
+        {MEAL_SLOTS.map((s, i) => (
+          <View
+            key={s}
+            style={[
+              dropHighlightStyles.lane,
+              i > 0 && { borderLeftWidth: border.hairline, borderLeftColor: colors.accent },
+              s === slot && { backgroundColor: colors.accentSubtle },
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                dropHighlightStyles.laneLabel,
+                s === slot
+                  ? { color: colors.accent, fontWeight: fontWeight.semibold }
+                  : { color: colors.textTertiary },
+              ]}
+            >
+              {slotLabel(s)}
+            </Text>
+          </View>
+        ))}
+      </Animated.View>
     </View>
   );
 }
@@ -161,6 +199,17 @@ const dropHighlightStyles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderRadius: radius.md,
     borderWidth: border.md,
+    flexDirection: 'row',
+    overflow: 'hidden',
+  },
+  lane: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  laneLabel: {
+    fontSize: font.xs,
+    lineHeight: lineHeight.xs,
   },
 });
 
@@ -169,6 +218,11 @@ const dropHighlightStyles = StyleSheet.create({
 // same reason TodayScreen's GroupDropTargetRow does — the target changes
 // several times a second while the finger moves, and re-rendering the whole
 // day list on every sample is what that channel exists to avoid.
+//
+// The selected value is the aimed *slot* rather than a boolean, so a finger
+// crossing from Lunch into Dinner within one day re-renders that day and only
+// that day — still a plain comparable string, which is what the channel's
+// selector contract asks for.
 function DayDropTargetRow({
   channel,
   dayKey,
@@ -178,8 +232,9 @@ function DayDropTargetRow({
   dayKey: string;
   children: React.ReactNode;
 }) {
-  const aimed = useFabIntentSelector(channel, intent => intent?.kind === 'day' && intent.dayKey === dayKey);
-  return <DayDropHighlight active={aimed}>{children}</DayDropHighlight>;
+  const slot = useFabIntentSelector(channel, intent =>
+    intent?.kind === 'day' && intent.dayKey === dayKey ? intent.slot : null);
+  return <DayDropHighlight slot={slot}>{children}</DayDropHighlight>;
 }
 
 /**
@@ -209,6 +264,13 @@ function DayDropTargetRow({
  * above light one up, and the autoscroll controller still runs so a card
  * lifted from above Monday can reach Sunday. Only the button-specific pieces
  * left with the button: `fabDragging`, the cancel well, `dragHint`.
+ *
+ * **It answers "which meal" too, across the band rather than down it.** The
+ * band is divided into one column per meal (`slotAtX` in fabDrop.ts), which is
+ * the one axis a day section had spare: it is a full screen wide and, before
+ * this, said the same thing at every point of that width. Down the list still
+ * picks the day, so nothing about reaching Sunday changed, and aiming at the
+ * middle of a day is still dinner.
  *
  * **No drag *between* days either.** Moving a planned meal is a row action
  * opening a compact 7-day chip row plus an "Another date…" escape (see
@@ -578,10 +640,14 @@ export function MealPlanScreen() {
   };
 
   /**
-   * What a release over the week means. Dinner, for the same reason the
-   * picker defaults to it — a week plan is mostly about dinners, and a drop is
-   * a one-gesture decision with nowhere to say otherwise. The row's calendar
-   * button still opens the sheet for anyone who wants lunch.
+   * What a release over the week means: the day from where down the list it
+   * landed, the meal from where across that day's band it landed (slotAtX).
+   *
+   * A drop used to always mean dinner, on the grounds that a week plan is
+   * mostly dinners and a one-gesture decision has nowhere to say otherwise. The
+   * band had somewhere to say it all along — it is a full screen wide and only
+   * ever asked one question of that width. The columns cost no layout and no
+   * extra step: aim at the middle of Thursday and it is still dinner.
    *
    * `planMeal` registers its own undo, so a mis-drop is a shake away.
    */
@@ -592,7 +658,7 @@ export function MealPlanScreen() {
     animateLayout();
     planMeal({
       date: intent.dayKey,
-      slot: 'dinner',
+      slot: intent.slot,
       leftoverId: leftover.id,
       title: mealTitleForLeftover(leftover),
     });
@@ -610,20 +676,26 @@ export function MealPlanScreen() {
       setFridgeDrag({ leftover, top: frame.top - dragLayerTopRef.current });
       dropZonesRef.current?.begin();
     },
-    onMove: (pageY, translation) => {
+    onMove: (page, translation) => {
       ghostX.setValue(translation.x);
       ghostY.setValue(translation.y);
-      // No `home` argument: with no corner to come back to, every sample is
-      // "out over the list", which is also the only state that autoscrolls —
-      // and autoscroll is what puts Sunday within reach of a card lifted from
-      // above Monday.
-      dropZonesRef.current?.moveTo(pageY);
+      // `home` is always 'outside': with no corner to come back to, every
+      // sample is out over the list, which is also the only state that
+      // autoscrolls — and autoscroll is what puts Sunday within reach of a card
+      // lifted from above Monday. Both axes go through: the x is what picks the
+      // meal once a day band has been found.
+      dropZonesRef.current?.moveTo(page.y, 'outside', page.x);
     },
-    onEnd: pageY => {
+    onEnd: page => {
       const leftover = draggedLeftoverRef.current;
       draggedLeftoverRef.current = null;
       setFridgeDragging(false);
-      const intent = dropZonesRef.current?.end(pageY) ?? { kind: 'plain' as const };
+      // The release carries its own x as well, rather than leaning on the last
+      // move: a hold that lifts a row and releases without travelling never
+      // moves at all, and a release resolved without one would silently mean
+      // whichever meal the default is.
+      const intent = dropZonesRef.current?.end(page.y, 'outside', page.x)
+        ?? { kind: 'plain' as const };
       settleFridgeDrag();
       if (leftover) planLeftoverOnDrop(leftover, intent);
     },

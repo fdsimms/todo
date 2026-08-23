@@ -181,10 +181,15 @@ export interface FabDropZonesHandle {
    * on the button's own corner the drop is a cancel (once the drag has been
    * somewhere else first) and the list holds still, since that corner and the
    * bottom autoscroll band overlap.
+   *
+   * `pageX` is optional because only one target has anything to do with it — a
+   * meal-plan day band, where across picks the meal (see slotAtX). A drag that
+   * leaves it out resolves from the vertical position alone, exactly as every
+   * drag did before.
    */
-  moveTo: (pageY: number, home?: FabHomeState) => void;
+  moveTo: (pageY: number, home?: FabHomeState, pageX?: number | null) => void;
   /** Resolve one last time, clear the indicator, and hand back what was dropped. */
-  end: (pageY: number, home?: FabHomeState) => FabDropIntent;
+  end: (pageY: number, home?: FabHomeState, pageX?: number | null) => FabDropIntent;
   /** Clear the indicator without resolving anything (cancelled drag). */
   cancel: () => void;
 }
@@ -233,6 +238,8 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
     // moves under a finger that is holding still, so the target changes without
     // any new pointer event to recompute it from.
     const lastPageYRef = useRef(0);
+    // Null for a drag that doesn't report one — see moveTo's `pageX`.
+    const lastPageXRef = useRef<number | null>(null);
     const lastHomeRef = useRef<FabHomeState>('outside');
     const autoscrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const autoscrollStepRef = useRef(0);
@@ -254,7 +261,7 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
       const view = viewsRef.current.get(key);
       const zone = zonesRef.current.get(key);
       if (!zone || typeof view?.measureInWindow !== 'function') return;
-      view.measureInWindow((_x, y, _w, h) => {
+      view.measureInWindow((x, y, w, h) => {
         // A measurement from a previous drag describes where the row was
         // then; folding it in now would leave one band pointing at the
         // wrong place.
@@ -262,7 +269,10 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
         if (!Number.isFinite(y) || !(h > 0)) return;
         const top = y + scrollOffset();
         const next = rectsRef.current.filter(r => zoneKey(r.zone) !== key);
-        next.push({ zone, top, bottom: top + h });
+        // No scroll offset on the horizontal pair: the lists this measures are
+        // all vertical, so x is the same number at every offset.
+        const left = Number.isFinite(x) ? x : 0;
+        next.push({ zone, top, bottom: top + h, left, right: left + (w > 0 ? w : 0) });
         next.sort((a, b) => a.top - b.top);
         rectsRef.current = next;
       });
@@ -360,7 +370,12 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
       const resolve = (): FabDropIntent => {
         // The pointer joins the bands' space, which carries the offset.
         const y = lastPageYRef.current + scrollOffset();
-        return resolveFabDrop(zoneAtY(rectsRef.current, y), y, lastHomeRef.current === 'returned');
+        return resolveFabDrop(
+          zoneAtY(rectsRef.current, y),
+          y,
+          lastHomeRef.current === 'returned',
+          lastPageXRef.current,
+        );
       };
 
       const stopAutoscroll = () => {
@@ -431,6 +446,7 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
           rectsRef.current = [];
           targetRef.current = null;
           lastHomeRef.current = 'inside';
+          lastPageXRef.current = null;
           draggingRef.current = true;
           containerRef.current?.measureInWindow?.((_x, y, _w, h) => {
             if (Number.isFinite(y)) containerYRef.current = y;
@@ -438,14 +454,16 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
           });
           viewsRef.current.forEach((_view, key) => measureZone(key, drag));
         },
-        moveTo: (pageY: number, home: FabHomeState = 'outside') => {
+        moveTo: (pageY: number, home: FabHomeState = 'outside', pageX: number | null = null) => {
           lastPageYRef.current = pageY;
+          lastPageXRef.current = pageX;
           lastHomeRef.current = home;
           publish(resolve(), false);
           maybeAutoscroll();
         },
-        end: (pageY: number, home: FabHomeState = 'outside') => {
+        end: (pageY: number, home: FabHomeState = 'outside', pageX: number | null = null) => {
           lastPageYRef.current = pageY;
+          lastPageXRef.current = pageX;
           lastHomeRef.current = home;
           const intent = resolve();
           clear();

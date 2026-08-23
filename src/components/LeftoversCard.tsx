@@ -8,6 +8,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useNowTick } from '../hooks/useNowTick';
 import { useFabIntentSelector, type FabIntentChannel } from './FabDropZones';
+import { slotLabel } from '../utils/mealPlan';
 import {
   describeFridge,
   describeLeftover,
@@ -48,9 +49,13 @@ export interface LeftoverDragHandlers {
    * to the finger.
    */
   onStart: (leftover: Leftover, frame: { top: number; height: number }) => void;
-  /** `translation` is measured from where the finger was when the drag claimed it. */
-  onMove: (pageY: number, translation: { x: number; y: number }) => void;
-  onEnd: (pageY: number) => void;
+  /**
+   * `page` is where the finger is now; `translation` is measured from where it
+   * was when the drag claimed it. Both axes are reported: down the week picks
+   * the day, across a day band picks the meal (see slotAtX in fabDrop.ts).
+   */
+  onMove: (page: { x: number; y: number }, translation: { x: number; y: number }) => void;
+  onEnd: (page: { x: number; y: number }) => void;
   /** Touch lost, app switched — nothing was dropped. */
   onCancel: () => void;
 }
@@ -100,10 +105,12 @@ interface Props {
  * of day chips, which is two taps and a sheet for a decision the user has
  * usually already made — the week is on screen, right underneath, and Thursday
  * is a thing they can point at. So a hold lifts the container and a release
- * over a day band plans it there. The button stays: a drag is the shortcut, not
- * the route, and it is unreachable with VoiceOver or a shaky hand, so the
- * tappable path has to keep working unchanged (same reason Today keeps a menu
- * item for everything its swipes do).
+ * over a day band plans it there, in the meal the band's own width picks (see
+ * slotAtX in fabDrop.ts, and DayDropHighlight for the columns it draws). The
+ * button stays: a drag is the shortcut, not the route, and it is unreachable
+ * with VoiceOver or a shaky hand, so the tappable path has to keep working
+ * unchanged (same reason Today keeps a menu item for everything its swipes
+ * do).
  *
  * **A drag copies rather than moves, and the row deliberately doesn't leave.**
  * A pot of soup feeds two dinners: planning it against Thursday doesn't take it
@@ -156,12 +163,12 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
   const dragRef = useRef(drag);
   dragRef.current = drag;
 
-  const endDrag = (pageY: number) => {
+  const endDrag = (pageX: number, pageY: number) => {
     if (draggingIdRef.current === null) return;
     draggingIdRef.current = null;
     startPageRef.current = null;
     setDraggingId(null);
-    dragRef.current?.onEnd(pageY);
+    dragRef.current?.onEnd({ x: pageX, y: pageY });
   };
 
   const cancelDrag = () => {
@@ -223,9 +230,9 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
           const start = startPageRef.current;
           if (draggingIdRef.current === null || !start) return;
           const { pageX, pageY } = e.nativeEvent;
-          dragRef.current?.onMove(pageY, { x: pageX - start.x, y: pageY - start.y });
+          dragRef.current?.onMove({ x: pageX, y: pageY }, { x: pageX - start.x, y: pageY - start.y });
         },
-        onPanResponderRelease: e => endDrag(e.nativeEvent.pageY),
+        onPanResponderRelease: e => endDrag(e.nativeEvent.pageX, e.nativeEvent.pageY),
         onPanResponderTerminate: () => cancelDrag(),
       }),
     // Every handler reads refs, so one responder for the life of the card.
@@ -291,7 +298,7 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
         // drag is actually in flight, and endDrag is idempotent, so the
         // responder's own release racing this one is harmless.
         onTouchStart={() => { touchDownRef.current = true; }}
-        onTouchEnd={e => { touchDownRef.current = false; endDrag(e.nativeEvent.pageY); }}
+        onTouchEnd={e => { touchDownRef.current = false; endDrag(e.nativeEvent.pageX, e.nativeEvent.pageY); }}
         onTouchCancel={() => { touchDownRef.current = false; cancelDrag(); }}
       >
         {shown.map((leftover, i) => {
@@ -321,7 +328,7 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={`${leftover.title}, ${describeLeftover(leftover)}`}
-                accessibilityHint={drag ? 'Hold and drag onto a day to plan it there' : undefined}
+                accessibilityHint={drag ? 'Hold and drag onto a day to plan it there. Left to right across the day picks breakfast, lunch, dinner or a snack.' : undefined}
               >
                 {/* The dot carries the whole freshness signal, so the caption is
                     never the only thing saying it — a colour nobody can see is
@@ -377,8 +384,16 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
  * a copy of: same dot, same title, same shape, off the same stylesheet. What
  * differs is the caption, which is the whole reason a floating card beats a
  * bare label — it stops describing the fridge and starts describing the drop,
- * naming the day a release right now would plan onto. That's the same job the
- * add button's `dragLabel` does, and it reads the same channel to do it.
+ * naming the day *and the meal* a release right now would plan onto. That's the
+ * same job the add button's `dragLabel` does, and it reads the same channel to
+ * do it.
+ *
+ * **The caption is what makes the meal columns usable, not the columns
+ * themselves.** This card is full width and sits under the finger, so on a day
+ * with nothing planned it covers most of the band it is being held over — the
+ * lit column shows around its edges on a taller day and not much on a short
+ * one. The line of text on the card is the thing that is always legible, which
+ * is why it names the slot rather than leaving it to the highlight underneath.
  *
  * **A day past the keep-until is named, not blocked** (see
  * isPlannedPastKeepUntil): the caption says so in the freshness colours the
@@ -400,9 +415,13 @@ export function LeftoverDragCard({
   // useFabIntentSelector.
   const caption = useFabIntentSelector(channel, intent => {
     if (intent?.kind !== 'day') return describeLeftover(leftover);
+    // The use-by warning replaces the meal rather than sitting after it: the
+    // row is one line at font.xs, and "Thursday · Dinner · past its use-by"
+    // truncates to the half that matters least. Which day it's late for is the
+    // point; which meal of that day is not.
     return isPlannedPastKeepUntil(leftover, intent.dayKey)
       ? `${intent.dayLabel} · past its use-by`
-      : `Plan on ${intent.dayLabel}`;
+      : `${intent.dayLabel} · ${slotLabel(intent.slot)}`;
   });
   const late = useFabIntentSelector(
     channel,
