@@ -85,6 +85,13 @@ const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; c
   { category: 'probablyHave', label: 'Probably have', interactive: true, collapsible: true },
 ];
 
+// Both collapsible sections start open: they hold rows the user can still tick
+// on to the list, and a closed section shows only a count, so the lines it
+// holds were easy to miss on a sheet whose whole job is reviewing what gets
+// added. They stay collapsible, so a long staple list is still one tap away
+// from out of the way.
+const defaultExpandedSections = (): Set<PlanCategory> => new Set<PlanCategory>(['staple', 'probablyHave']);
+
 /**
  * Review-then-commit for one recipe, the single-recipe sibling of
  * AddWeekToListSheet — same classifyPlanned pantry-awareness (needToBuy /
@@ -181,9 +188,7 @@ export function RecipeToListSheet({
   }, [classified]);
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
-  const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(
-    new Set(['probablyHave']),
-  );
+  const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(defaultExpandedSections);
   // What `ticked` gets reset to on open and on every choice/scale-driven
   // recompute below — so the dirty check in handleCancel can tell a real tap
   // apart from the set simply being recomputed out from under it.
@@ -212,7 +217,7 @@ export function RecipeToListSheet({
     const defaultTicked = new Set(rows.map(r => r.nameKey));
     setTicked(defaultTicked);
     tickedBaselineRef.current = JSON.stringify([...defaultTicked].sort());
-    setExpandedSections(new Set());
+    setExpandedSections(defaultExpandedSections());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, choiceKey, initialSelection]);
 

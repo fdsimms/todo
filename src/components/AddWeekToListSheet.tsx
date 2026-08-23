@@ -45,14 +45,16 @@ const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; c
   { category: 'needToBuy', label: 'Need to buy', interactive: true, collapsible: false },
   { category: 'alreadyOnList', label: 'Already on your list', interactive: true, collapsible: false },
   { category: 'inCart', label: 'In your cart', interactive: false, collapsible: false },
-  // Collapsed by default, same reasoning as probablyHave below: salt and
-  // water aren't a decision the user asked to make on every add.
   { category: 'staple', label: 'Always have', interactive: true, collapsible: true },
-  // Collapsed by default: this is grocerySuggest's pantry guess, not
-  // something the user asked for, so it starts out of the way with its
-  // count visible rather than pre-expanded among rows that need a decision.
   { category: 'probablyHave', label: 'Probably have', interactive: true, collapsible: true },
 ];
+
+// Both collapsible sections start open, same as RecipeToListSheet: they hold
+// rows the user can still tick on to the list, and a closed section shows only
+// a count, so the lines it holds were easy to miss on a sheet whose whole job
+// is reviewing what gets added. They stay collapsible, so a long staple list is
+// still one tap away from out of the way.
+const defaultExpandedSections = (): Set<PlanCategory> => new Set<PlanCategory>(['staple', 'probablyHave']);
 
 /**
  * Review-then-commit, same shape as GroceryAISheet and the recipe detail
@@ -96,9 +98,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
   }, [classified]);
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
-  const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(
-    new Set(['probablyHave']),
-  );
+  const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(defaultExpandedSections);
   // What `ticked` was reset to on open — compared against on dismiss so a
   // swipe-down or Cancel with real unticks/reticks pending asks first. See
   // handleCancel.
@@ -112,7 +112,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
     const defaultTicked = new Set(byCategory.needToBuy.map(r => r.nameKey));
     setTicked(defaultTicked);
     tickedBaselineRef.current = JSON.stringify([...defaultTicked].sort());
-    setExpandedSections(new Set());
+    setExpandedSections(defaultExpandedSections());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
