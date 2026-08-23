@@ -1587,19 +1587,6 @@ export function MealPlanScreen() {
         />
       )}
 
-      {/*
-        Widest scope first: the hub pills above pick a section, this picks the
-        week. Under the trip banner rather than over it, so the two week
-        controls stay adjacent when a trip is running.
-      */}
-      <PeriodNav
-        label={describeWeekRange(days)}
-        onPrev={() => page(-1)}
-        onNext={() => page(1)}
-        prevAccessibilityLabel="Previous week"
-        nextAccessibilityLabel="Next week"
-      />
-
       {/* Both post-cook offers are siblings of the list rather than part of its
           header, like ActiveTripBanner and unlike the cards inside
           ListHeaderComponent: the tap they answer can happen on any day of the
@@ -1685,6 +1672,23 @@ export function MealPlanScreen() {
                   onHistory={() => { haptics.tap(); setHistoryVisible(true); }}
                   drag={fridgeDragHandlers}
                 />
+                {/*
+                  Everything from here down is scoped to the selected week —
+                  the hint, the week actions and the days themselves all change
+                  when you page it. The fridge above doesn't, which is why it
+                  sits above this control rather than below it: paging the week
+                  should never look like it could also change what's in the
+                  fridge.
+                */}
+                <View style={styles.weekNav}>
+                  <PeriodNav
+                    label={describeWeekRange(days)}
+                    onPrev={() => page(-1)}
+                    onNext={() => page(1)}
+                    prevAccessibilityLabel="Previous week"
+                    nextAccessibilityLabel="Next week"
+                  />
+                </View>
                 {/*
                   The two things you do to a *week* rather than to a meal, in
                   one row above it. "Add week to list" used to live in the
@@ -2212,5 +2216,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // has no top margin of its own, so spacing.sm left the week jammed up
     // against a row of buttons that isn't part of it.
     marginBottom: spacing.md,
+  },
+  // PeriodNav's own vertical padding is xs on each side, sized for sitting
+  // under a header — not enough on its own to separate it from the week
+  // actions/hint directly below, which (like weekActions above) carry no top
+  // margin of their own.
+  weekNav: {
+    marginBottom: spacing.sm,
   },
 });
