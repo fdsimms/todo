@@ -38,7 +38,8 @@ import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart } from '../utils/dateUtils';
+import { isDateAnchored } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
@@ -2598,7 +2599,11 @@ export const TaskItem = React.memo(function TaskItem({
       {!selectionMode && showWhenPicker && (
         <WhenPicker
           visible
-          value={task.dueDate ? new Date(task.dueDate) : null}
+          // The effective date, not the stored one: a pushed recurring task
+          // keeps its dueDate as the grid's anchor (see onConfirm), so opening
+          // the picker on that would highlight the day it repeats on rather
+          // than the day it's currently sitting on.
+          value={(() => { const d = getEffectiveTaskDate(task); return d ? new Date(d) : null; })()}
           timeSegments={task.timeSegments}
           // The row's reschedule is the main way a task gets pushed, so this is
           // the picker the postpone check most needs to be on.
@@ -2610,10 +2615,33 @@ export const TaskItem = React.memo(function TaskItem({
           taskEstimatedMinutes={task.estimatedMinutes}
           onConfirm={(date, segs) => {
             const snapshot = { ...task };
-            updateTask(task.id, {
-              dueDate: date ? date.toISOString() : null,
-              timeSegments: segs,
-            });
+            // A recurring task's dueDate is the anchor its whole future grid is
+            // measured from, and a series member's was hand-picked out of a set
+            // — so pushing either one out defers instead of overwriting the
+            // stored date, exactly as deloadPlan and lookAhead already do
+            // (isDateAnchored). Without this, moving one Tuesday occurrence to
+            // Thursday quietly made it a Thursday task for ever.
+            //
+            // Only for a move *later*: deferUntil can't pull a task in front of
+            // its own date, so an earlier pick still writes dueDate and still
+            // rotates the grid. That's the one move the schema can't express as
+            // "this occurrence only", and it's the same answer the editor's
+            // Date row gives — an explicit schedule edit.
+            const anchoredPush =
+              date != null &&
+              isDateAnchored(task) &&
+              task.dueDate != null &&
+              getTaskDayStart(date) > getTaskDayStart(new Date(task.dueDate));
+            updateTask(
+              task.id,
+              anchoredPush && date
+                ? { deferUntil: date.toISOString(), timeSegments: segs }
+                // Clearing the defer is what makes the picked date the one that
+                // takes effect: a task already pushed out is hidden until the
+                // old deferUntil, and writing only dueDate would leave it
+                // sitting behind a date the user has just replaced.
+                : { dueDate: date ? date.toISOString() : null, deferUntil: null, timeSegments: segs },
+            );
             setLastAction({
               label: 'Task rescheduled',
               undo: () => updateTask(snapshot.id, snapshot),

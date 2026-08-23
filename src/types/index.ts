@@ -443,6 +443,18 @@ export interface Task {
   // exclusive with recurrenceMonthDay; null = not using this mode. Only the first entry of
   // recurrenceDays is used when this is set.
   recurrenceWeekOrdinal: number | null;
+  // The day-of-month the monthly/yearly grid is measured from when the rule
+  // has no explicit recurrenceMonthDay or recurrenceWeekOrdinal — i.e. the
+  // picker's "same day as the due date" anchor. Captured from dueDate whenever
+  // the user writes the schedule, and deliberately *not* rewritten by the
+  // successor completeTask spawns, which is the whole point: addMonths clamps
+  // (Jan 31 -> Feb 28), and a stored date that then becomes the next anchor
+  // loses the 31st for good — Feb 28, Mar 28, Apr 28, for ever. The anchor is
+  // what a short month is clamped *from* each time, so the 31st comes back in
+  // March, exactly as getNextSeriesDates already does for a dated series.
+  // Never shown: the picker still reads "same day as the due date", and this
+  // follows dueDate on every deliberate edit, so that stays true.
+  recurrenceAnchorDay: number | null;
   recurrenceEndDate: string | null;
   recurrenceCount: number | null; // occurrences remaining (including this one); null = unlimited
   recurrenceFromCompletion: boolean;

@@ -21,12 +21,17 @@ import {
   formatTaskDate,
   seriesMonthDaysFrom,
   getNextSeriesDates,
+  recurrenceAnchorDayFor,
 } from '../utils/dateUtils';
 import type { Task } from '../types';
 
+// weekStartsOn is mutable because getNextWeekdayOccurrence reads it: an
+// interval > 1 has to know which seven days "the next week" is.
+const settings = { dayResetTime: '00:00', weekStartsOn: 0 as 0 | 1 };
+
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({ dayResetTime: '00:00' }),
+    getState: () => settings,
   },
 }));
 
@@ -53,6 +58,7 @@ const baseTask: Task = {
   recurrenceDays: [],
   recurrenceMonthDay: null,
   recurrenceWeekOrdinal: null,
+  recurrenceAnchorDay: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   tags: [],
@@ -588,6 +594,7 @@ describe('getNextDueDate', () => {
       ...baseTask,
       recurrenceType: 'monthly',
       recurrenceWeekOrdinal: 2,
+      recurrenceAnchorDay: null,
       recurrenceDays: [2], // Tuesday
       dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
     };
@@ -601,6 +608,7 @@ describe('getNextDueDate', () => {
       ...baseTask,
       recurrenceType: 'monthly',
       recurrenceWeekOrdinal: 4,
+      recurrenceAnchorDay: null,
       recurrenceDays: [2], // Tuesday
       dueDate: new Date(2025, 5, 1, 0, 0, 0).toISOString(), // June 1
     };
@@ -614,6 +622,7 @@ describe('getNextDueDate', () => {
       ...baseTask,
       recurrenceType: 'monthly',
       recurrenceWeekOrdinal: -1,
+      recurrenceAnchorDay: null,
       recurrenceDays: [5], // Friday
       dueDate: new Date(2025, 5, 1, 0, 0, 0).toISOString(), // June 1
     };
@@ -627,6 +636,7 @@ describe('getNextDueDate', () => {
       ...baseTask,
       recurrenceType: 'monthly',
       recurrenceWeekOrdinal: 1,
+      recurrenceAnchorDay: null,
       recurrenceDays: [1], // Monday
       recurrenceMonthDay: 15,
       dueDate: new Date(2025, 5, 1, 0, 0, 0).toISOString(), // June 1
@@ -720,6 +730,7 @@ describe('getNextDueDate', () => {
       recurrenceType: 'monthly',
       recurrenceInterval: 2,
       recurrenceWeekOrdinal: 2,
+      recurrenceAnchorDay: null,
       recurrenceDays: [2], // Tuesday
       dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(), // 2nd Tuesday of June
     };
@@ -830,6 +841,208 @@ describe('getNextDueDate', () => {
     };
     const result = getNextDueDate(task, '04:00')!;
     expect(result.getDate()).toBe(10); // June 10 — not stuck on June 9
+  });
+
+  // ─── the day-of-month anchor ──────────────────────────────────────────────
+
+  it('keeps the 31st through a short month instead of clamping to it for good', () => {
+    // The bug this exists for: addMonths clamps Jan 31 to Feb 28, and the
+    // clamped date then becomes the next anchor — Feb 28, Mar 28, Apr 28, for
+    // ever, off one February. See Task.recurrenceAnchorDay.
+    let task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceInterval: 1,
+      dueDate: new Date(2026, 0, 31, 12, 0, 0).toISOString(),
+      recurrenceAnchorDay: 31,
+    };
+    const walked: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const next = getNextDueDate(task, '00:00')!;
+      walked.push(next.getDate());
+      task = { ...task, dueDate: next.toISOString() };
+    }
+    expect(walked).toEqual([28, 31, 30, 31]); // Feb, Mar, Apr, May
+  });
+
+  it('falls back to the due date\'s own day when no anchor was captured', () => {
+    // A row older than the column: it behaves exactly as it did, which is the
+    // clamping walk above. Worth pinning so the fallback can't quietly change.
+    let task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceInterval: 1,
+      dueDate: new Date(2026, 0, 31, 12, 0, 0).toISOString(),
+      recurrenceAnchorDay: null,
+    };
+    const walked: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const next = getNextDueDate(task, '00:00')!;
+      walked.push(next.getDate());
+      task = { ...task, dueDate: next.toISOString() };
+    }
+    expect(walked).toEqual([28, 28, 28]);
+  });
+
+  it('an explicit recurrenceMonthDay still wins over the anchor', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceInterval: 1,
+      dueDate: new Date(2026, 0, 31, 12, 0, 0).toISOString(),
+      recurrenceMonthDay: 5,
+      recurrenceAnchorDay: 31,
+    };
+    expect(getNextDueDate(task, '00:00')!.getDate()).toBe(5);
+  });
+
+  it('puts Feb 29 back on the next leap year rather than settling on the 28th', () => {
+    let task: Task = {
+      ...baseTask,
+      recurrenceType: 'yearly',
+      recurrenceInterval: 1,
+      dueDate: new Date(2024, 1, 29, 12, 0, 0).toISOString(),
+      recurrenceAnchorDay: 29,
+    };
+    const walked: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const next = getNextDueDate(task, '00:00')!;
+      walked.push(`${next.getFullYear()}-${next.getMonth() + 1}-${next.getDate()}`);
+      task = { ...task, dueDate: next.toISOString() };
+    }
+    expect(walked).toEqual(['2025-2-28', '2026-2-28', '2027-2-28', '2028-2-29']);
+  });
+
+  // ─── the week the interval counts in ──────────────────────────────────────
+
+  it('counts a multi-week interval from the user\'s own week start', () => {
+    // Fri + Sun, every two weeks, from Fri Aug 7 2026. On a Monday-start week
+    // that pair sits inside one week and should land Fri then Sun two days
+    // later. Anchored to Sunday instead, the Sunday falls in the *next* block
+    // and the pair reads 9 days apart.
+    const walk = (): string[] => {
+      let task: Task = {
+        ...baseTask,
+        recurrenceType: 'weekly',
+        recurrenceInterval: 2,
+        recurrenceDays: [0, 5],
+        dueDate: new Date(2026, 7, 7, 12, 0, 0).toISOString(), // Fri Aug 7 2026
+      };
+      const out: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        const next = getNextDueDate(task, '00:00')!;
+        out.push(next.toDateString());
+        task = { ...task, dueDate: next.toISOString() };
+      }
+      return out;
+    };
+
+    settings.weekStartsOn = 1;
+    expect(walk()).toEqual(['Sun Aug 09 2026', 'Fri Aug 21 2026', 'Sun Aug 23 2026']);
+
+    // Unchanged for a Sunday-start week, which is what every other test here
+    // is written against.
+    settings.weekStartsOn = 0;
+    expect(walk()).toEqual(['Sun Aug 16 2026', 'Fri Aug 21 2026', 'Sun Aug 30 2026']);
+  });
+
+  // ─── catch-up ─────────────────────────────────────────────────────────────
+
+  it('leaves a stale answer alone without catchUp', () => {
+    // The default is what projectOccurrences walks a month with, so it must
+    // keep stepping one interval at a time from wherever it's anchored.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'weekly',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 4, 6, 12, 0, 0).toISOString(), // five weeks before NOW
+    };
+    expect(getNextDueDate(task, '00:00')!.toDateString()).toBe('Tue May 13 2025');
+  });
+
+  it('catches an overdue occurrence up to today, staying on the rule\'s own grid', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'weekly',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 4, 6, 12, 0, 0).toISOString(), // Tue May 6, NOW is Tue Jun 10
+    };
+    // Not "tomorrow" and not May 13: the next Tuesday that isn't in the past,
+    // which is today's.
+    expect(getNextDueDate(task, '00:00', { catchUp: true })!.toDateString()).toBe('Tue Jun 10 2025');
+  });
+
+  it('catches up to the next occurrence ahead when today is not on the grid', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'weekly',
+      recurrenceInterval: 1,
+      recurrenceDays: [5], // Fridays; NOW is a Tuesday
+      dueDate: new Date(2025, 4, 2, 12, 0, 0).toISOString(),
+    };
+    expect(getNextDueDate(task, '00:00', { catchUp: true })!.toDateString()).toBe('Fri Jun 13 2025');
+  });
+
+  it('does not resurrect a series whose end date passed while it was overdue', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'weekly',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 4, 6, 12, 0, 0).toISOString(),
+      recurrenceEndDate: new Date(2025, 4, 20, 23, 59, 59).toISOString(),
+    };
+    expect(getNextDueDate(task, '00:00', { catchUp: true })).toBeNull();
+  });
+
+  it('is inert for a from-completion rule, which is never behind', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'daily',
+      recurrenceInterval: 3,
+      recurrenceFromCompletion: true,
+      dueDate: new Date(2025, 0, 1, 12, 0, 0).toISOString(),
+    };
+    const plain = getNextDueDate(task, '00:00')!;
+    const caught = getNextDueDate(task, '00:00', { catchUp: true })!;
+    expect(caught.toDateString()).toBe(plain.toDateString());
+    expect(caught.toDateString()).toBe('Fri Jun 13 2025');
+  });
+});
+
+// ─── recurrenceAnchorDayFor ─────────────────────────────────────────────────
+
+describe('recurrenceAnchorDayFor', () => {
+  const monthly = (overrides: Partial<Task> = {}): Task => ({
+    ...baseTask,
+    recurrenceType: 'monthly',
+    dueDate: new Date(2026, 0, 31, 12, 0, 0).toISOString(),
+    ...overrides,
+  });
+
+  it('reads the day off the due date for a monthly rule', () => {
+    expect(recurrenceAnchorDayFor(monthly())).toBe(31);
+  });
+
+  it('reads it for a yearly rule too', () => {
+    expect(recurrenceAnchorDayFor(monthly({ recurrenceType: 'yearly' }))).toBe(31);
+  });
+
+  it('is null for the rules that already say where the grid sits', () => {
+    expect(recurrenceAnchorDayFor(monthly({ recurrenceMonthDay: 5 }))).toBeNull();
+    expect(recurrenceAnchorDayFor(monthly({ recurrenceWeekOrdinal: 2, recurrenceDays: [2] }))).toBeNull();
+  });
+
+  it('is null when the rule measures from the completion rather than a date', () => {
+    expect(recurrenceAnchorDayFor(monthly({ recurrenceFromCompletion: true }))).toBeNull();
+  });
+
+  it('is null for the recurrence types the anchor means nothing to', () => {
+    expect(recurrenceAnchorDayFor(monthly({ recurrenceType: 'weekly' }))).toBeNull();
+    expect(recurrenceAnchorDayFor(monthly({ recurrenceType: 'none' }))).toBeNull();
+  });
+
+  it('is null with no due date to read', () => {
+    expect(recurrenceAnchorDayFor(monthly({ dueDate: null }))).toBeNull();
   });
 });
 

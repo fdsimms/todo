@@ -272,36 +272,128 @@ export function formatGroupHeader(iso: string, dayResetTime?: string): string {
   return d.getFullYear() === today.getFullYear() ? format(d, 'MMMM') : format(d, 'MMMM yyyy');
 }
 
-export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
+/**
+ * The day-of-month a monthly or yearly rule's grid should be anchored to, read
+ * off the task's own due date.
+ *
+ * Only for the rules that have no other anchor: an explicit `recurrenceMonthDay`
+ * ("on the 5th") or `recurrenceWeekOrdinal` ("the 2nd Tuesday") already says
+ * where the grid sits, and `recurrenceFromCompletion` measures from the day you
+ * finish rather than from a date at all. What's left is the picker's "same day
+ * as the due date" anchor, which is the one that used to be destroyed by its
+ * own clamp.
+ *
+ * Callers capture this whenever the user *writes* the schedule, and never when
+ * the app moves the row on its own — that split is the whole mechanism, so a
+ * successor spawned onto February keeps the 31st it was anchored to. Saving the
+ * editor on a clamped occurrence does re-derive it, which is correct: that's the
+ * date the user was shown and kept.
+ */
+export function recurrenceAnchorDayFor(
+  task: Pick<
+    Task,
+    'recurrenceType' | 'recurrenceMonthDay' | 'recurrenceWeekOrdinal' | 'recurrenceFromCompletion' | 'dueDate'
+  >,
+): number | null {
+  if (task.recurrenceType !== 'monthly' && task.recurrenceType !== 'yearly') return null;
+  if (task.recurrenceMonthDay !== null || task.recurrenceWeekOrdinal !== null) return null;
+  if (task.recurrenceFromCompletion) return null;
+  return task.dueDate ? new Date(task.dueDate).getDate() : null;
+}
+
+/**
+ * A ceiling on the catch-up walk in getNextDueDate. A daily task left alone
+ * for a year needs ~365 steps to reach today, which is nothing; this is the
+ * backstop for a rule that somehow advances by less than it should, so the
+ * completion returns a stale date rather than hanging on it.
+ */
+const MAX_CATCH_UP_STEPS = 500;
+
+/**
+ * The next date this task's rule produces after the occurrence it's holding.
+ *
+ * `catchUp` is for the callers that are *placing a real row* — completeTask's
+ * successor and skipNextRecurrence — and it walks the grid forward until the
+ * answer is today or later. Without it, finishing a weekly task five weeks
+ * late spawns a successor dated four weeks ago: the schedule steps one
+ * interval from the occurrence it was handed, and that occurrence is already
+ * in the past. The row arrives overdue, and you have to complete it five more
+ * times (five more tombstones) to work back to the present. `rolloverQuotas`
+ * already made this call for quota tasks in its own way, for the same reason
+ * ("its answer for *when* would still be in the past if the app sat closed for
+ * a week"); this is that rule, for every recurring task, on the grid rather
+ * than pinned to today, so a fixed schedule still lands on one of its own
+ * dates.
+ *
+ * It is deliberately off by default. `projectOccurrences` walks this function
+ * one occurrence at a time to draw a month, and a walk that skipped to today
+ * on its first step would drop every earlier cell in the month on the floor;
+ * `recurrenceHorizonDays` floors its own answer at tomorrow already.
+ *
+ * The count is not decremented per skipped occurrence — completeTask takes one
+ * off for the completion that happened, and "repeat 10 times" means ten times
+ * the user actually did it, not ten weeks on the calendar. `recurrenceEndDate`
+ * is the opposite and is checked on the caught-up answer: a series whose end
+ * has passed while the app was shut is over, not owed a final occurrence.
+ */
+export function getNextDueDate(
+  task: Task,
+  dayResetTime?: string,
+  options?: { catchUp?: boolean },
+): Date | null {
   // Fixed schedule: anchor to the previous due date so the recurrence grid doesn't drift.
   // After completion: anchor to today (the completion day) so it's always relative to when you finished.
   const base =
     !task.recurrenceFromCompletion && task.dueDate
       ? getTaskDayStart(new Date(task.dueDate), dayResetTime)
       : getDayStart(new Date(), dayResetTime);
-  let next: Date;
-  switch (task.recurrenceType) {
-    case 'daily':
-      next = addDays(base, task.recurrenceInterval);
-      break;
-    case 'weekly':
-      next = task.recurrenceDays.length > 0
-        ? getNextWeekdayOccurrence(task.recurrenceDays, base, task.recurrenceInterval)
-        : addWeeks(base, task.recurrenceInterval);
-      break;
-    case 'monthly':
-      next = task.recurrenceWeekOrdinal !== null && task.recurrenceDays.length > 0
-        ? getNextWeekdayOfMonthOccurrence(task.recurrenceDays[0], task.recurrenceWeekOrdinal, base, task.recurrenceInterval)
-        : task.recurrenceMonthDay
-          ? getNextMonthDayOccurrence(task.recurrenceMonthDay, base, task.recurrenceInterval)
-          : addMonths(base, task.recurrenceInterval);
-      break;
-    case 'yearly':
-      next = addYears(base, task.recurrenceInterval);
-      break;
-    default:
-      next = addDays(base, 1);
+
+  const step = (from: Date): Date => {
+    switch (task.recurrenceType) {
+      case 'daily':
+        return addDays(from, task.recurrenceInterval);
+      case 'weekly':
+        return task.recurrenceDays.length > 0
+          ? getNextWeekdayOccurrence(task.recurrenceDays, from, task.recurrenceInterval)
+          : addWeeks(from, task.recurrenceInterval);
+      case 'monthly':
+        return task.recurrenceWeekOrdinal !== null && task.recurrenceDays.length > 0
+          ? getNextWeekdayOfMonthOccurrence(task.recurrenceDays[0], task.recurrenceWeekOrdinal, from, task.recurrenceInterval)
+          // recurrenceMonthDay is the user's explicit "on the 5th"; the anchor
+          // behind it is the picker's "same day as the due date", which means
+          // the same thing to this function and differs only in where the day
+          // number came from. Falling back to `from`'s own date keeps a row
+          // that predates the anchor column behaving exactly as it did.
+          : getNextMonthDayOccurrence(
+              task.recurrenceMonthDay ?? task.recurrenceAnchorDay ?? from.getDate(),
+              from,
+              task.recurrenceInterval,
+            );
+      case 'yearly':
+        return getNextYearDayOccurrence(
+          task.recurrenceMonthDay ?? task.recurrenceAnchorDay,
+          from,
+          task.recurrenceInterval,
+        );
+      default:
+        return addDays(from, 1);
+    }
+  };
+
+  let next = step(base);
+  if (options?.catchUp) {
+    const todayStart = getDayStart(new Date(), dayResetTime);
+    for (let i = 0; i < MAX_CATCH_UP_STEPS; i++) {
+      if (getTaskDayStart(next, dayResetTime) >= todayStart) break;
+      const after = step(next);
+      // A rule that doesn't advance is a rule that loops — same backstop
+      // projectOccurrences keeps, and the same choice: a stale answer beats a
+      // hang.
+      if (after <= next) break;
+      next = after;
+    }
   }
+
   if (task.recurrenceEndDate && next > new Date(task.recurrenceEndDate)) {
     return null;
   }
@@ -311,13 +403,26 @@ export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
   return next;
 }
 
+/**
+ * The next selected weekday after `from`, `interval` weeks on once the week
+ * runs out.
+ *
+ * Positions are measured from the user's own week start rather than from
+ * Sunday. Only `interval > 1` can tell the difference — that's where "the next
+ * week block" has to be a specific seven days — but with a Monday start and a
+ * set spanning the weekend, a Sunday-anchored block splits the pair the user
+ * picked across two blocks and spaces them 9 and 5 days apart instead of 2 and
+ * 12. With weekStartsOn 0 every line below reduces to what it was.
+ */
 function getNextWeekdayOccurrence(days: number[], from: Date, interval: number): Date {
-  const dow = from.getDay();
-  const sorted = [...days].sort((a, b) => a - b);
+  const weekStartsOn = getWeekStart() ?? 0;
+  const position = (day: number) => (day - weekStartsOn + 7) % 7;
+  const here = position(from.getDay());
+  const sorted = [...days].sort((a, b) => position(a) - position(b));
   for (const day of sorted) {
-    if (day > dow) return addDays(from, day - dow);
+    if (position(day) > here) return addDays(from, position(day) - here);
   }
-  return addDays(from, 7 - dow + sorted[0] + (interval - 1) * 7);
+  return addDays(from, 7 - here + position(sorted[0]) + (interval - 1) * 7);
 }
 
 /**
@@ -352,6 +457,21 @@ function getNextMonthDayOccurrence(day: number, from: Date, interval: number): D
   const thisMonth = clampToMonth(from);
   if (interval === 1 && thisMonth > from) return thisMonth;
   return clampToMonth(addMonths(from, interval));
+}
+
+/**
+ * Next occurrence of a yearly rule, restoring the day-of-month the grid is
+ * anchored to. The month never drifts (addYears keeps it), so only the day
+ * needs putting back: "every year on Feb 29" would otherwise clamp to the 28th
+ * in the first non-leap year and stay there through every leap year after,
+ * which is the same one-way clamp getNextMonthDayOccurrence exists to avoid a
+ * month at a time. `null` means no anchor was ever captured (a row older than
+ * the column), which is exactly the old behaviour.
+ */
+function getNextYearDayOccurrence(day: number | null, from: Date, interval: number): Date {
+  const next = addYears(from, interval);
+  if (day === null) return next;
+  return day === -1 ? lastDayOfMonth(next) : setDate(next, Math.min(day, lastDayOfMonth(next).getDate()));
 }
 
 /**

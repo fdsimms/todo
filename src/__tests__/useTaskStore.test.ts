@@ -242,6 +242,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceDays: [],
   recurrenceMonthDay: null,
   recurrenceWeekOrdinal: null,
+  recurrenceAnchorDay: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,
@@ -410,6 +411,163 @@ describe('initialize', () => {
       tasks,
       { shopId: null, startedAt: null, shops: [] }
     );
+  });
+});
+
+// ─── the successor an overdue completion spawns ──────────────────────────────
+
+describe('completeTask: catching an overdue recurrence up', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0)); // Tue June 10 2025
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('lands the successor on today rather than five weeks in the past', () => {
+    // Before this, finishing a weekly task five weeks late spawned one dated
+    // four weeks ago: the row came back overdue and had to be completed five
+    // more times to work its way back to the present.
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'bins',
+        recurrenceType: 'weekly',
+        recurrenceInterval: 1,
+        dueDate: new Date(2025, 4, 6, 12, 0, 0).toISOString(), // Tue May 6
+      })],
+    });
+    useTaskStore.getState().completeTask('bins');
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(new Date(next.dueDate!).toDateString()).toBe('Tue Jun 10 2025');
+  });
+
+  it('stays on the rule\'s own grid rather than snapping to today', () => {
+    // A Friday task caught up is still on a Friday. Landing it on "today"
+    // outright — which is what rolloverQuotas does for a quota's partial day —
+    // would quietly move a fixed schedule to whatever day you happened to
+    // notice it.
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'bins',
+        recurrenceType: 'weekly',
+        recurrenceInterval: 1,
+        recurrenceDays: [5],
+        dueDate: new Date(2025, 4, 2, 12, 0, 0).toISOString(), // Fri May 2
+      })],
+    });
+    useTaskStore.getState().completeTask('bins');
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(new Date(next.dueDate!).toDateString()).toBe('Fri Jun 13 2025');
+  });
+
+  it('leaves an on-time completion exactly where it was', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'bins',
+        recurrenceType: 'daily',
+        recurrenceInterval: 1,
+        dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(), // today
+      })],
+    });
+    useTaskStore.getState().completeTask('bins');
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(new Date(next.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+  });
+});
+
+// ─── recurrenceAnchorDay ─────────────────────────────────────────────────────
+
+describe('the monthly/yearly day-of-month anchor', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 31, 10, 0, 0)); // Sat Jan 31 2026
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is captured when a monthly task is created with a due date', () => {
+    const task = useTaskStore.getState().addTask({
+      title: 'Pay the rent',
+      recurrenceType: 'monthly',
+      dueDate: new Date(2026, 0, 31, 12, 0, 0).toISOString(),
+    });
+    expect(task.recurrenceAnchorDay).toBe(31);
+  });
+
+  it('rides onto the successor rather than being re-read off its clamped date', () => {
+    // The whole point of the field: the successor lands on Feb 28 because
+    // February is short, and it has to keep the 31 or March goes to the 28th too.
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'rent',
+        recurrenceType: 'monthly',
+        dueDate: new Date(2026, 0, 31, 12, 0, 0).toISOString(),
+        recurrenceAnchorDay: 31,
+      })],
+    });
+    useTaskStore.getState().completeTask('rent');
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(new Date(next.dueDate!).getDate()).toBe(28);
+    expect(next.recurrenceAnchorDay).toBe(31);
+  });
+
+  it('survives a patch that has nothing to do with the schedule', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'rent',
+        recurrenceType: 'monthly',
+        dueDate: new Date(2026, 1, 28, 12, 0, 0).toISOString(),
+        recurrenceAnchorDay: 31,
+      })],
+    });
+    useTaskStore.getState().updateTask('rent', { pinned: true });
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDay).toBe(31);
+  });
+
+  it('is re-derived when the user writes the schedule itself', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'rent',
+        recurrenceType: 'monthly',
+        dueDate: new Date(2026, 0, 31, 12, 0, 0).toISOString(),
+        recurrenceAnchorDay: 31,
+      })],
+    });
+    useTaskStore.getState().updateTask('rent', { dueDate: new Date(2026, 2, 5, 12, 0, 0).toISOString() });
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDay).toBe(5);
+  });
+
+  it('is dropped when the rule stops being one the anchor means anything to', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'rent',
+        recurrenceType: 'monthly',
+        dueDate: new Date(2026, 0, 31, 12, 0, 0).toISOString(),
+        recurrenceAnchorDay: 31,
+      })],
+    });
+    useTaskStore.getState().updateTask('rent', { recurrenceType: 'weekly' });
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDay).toBeNull();
+  });
+
+  it('is filled in at startup for rows that predate the column', () => {
+    (dbGetAllTasks as jest.Mock).mockReturnValue([
+      makeTask({
+        id: 'rent',
+        recurrenceType: 'monthly',
+        dueDate: new Date(2026, 0, 31, 12, 0, 0).toISOString(),
+        recurrenceAnchorDay: null,
+      }),
+      makeTask({ id: 'plain', recurrenceAnchorDay: null }),
+    ]);
+    useTaskStore.getState().initialize();
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.find(t => t.id === 'rent')!.recurrenceAnchorDay).toBe(31);
+    expect(tasks.find(t => t.id === 'plain')!.recurrenceAnchorDay).toBeNull();
   });
 });
 
@@ -3800,6 +3958,19 @@ describe('backfillMealSlotTasks', () => {
 // ─── skipNextRecurrence ─────────────────────────────────────────────────────
 
 describe('skipNextRecurrence', () => {
+  // Every task in here is due June 10 2025, so the clock has to agree: skipping
+  // now catches an overdue occurrence up to today (see getNextDueDate's catchUp),
+  // and against a real clock these would all land on whatever today happens to be
+  // rather than on the next date of the rule.
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0)); // June 10, 2025 10:00 AM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('advances dueDate to the next occurrence', () => {
     const task = makeTask({
       id: 't1',
@@ -9208,6 +9379,10 @@ describe('completeTask: extra task every Nth completion', () => {
   const extras = () =>
     useTaskStore.getState().tasks.filter(t => t.title === 'Rosin the bow');
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('counts completions up without adding anything before the Nth', () => {
     useTaskStore.setState({ tasks: [practice()] });
 
@@ -9229,11 +9404,17 @@ describe('completeTask: extra task every Nth completion', () => {
   });
 
   it('carries the tally across occurrences, since each one is a fresh id', () => {
+    // A day per completion, and the clock has to move with them: the occurrence
+    // a completion spawns lands on the rule's next date, and completeTask
+    // refuses one that hasn't come round yet (isRecurrenceNotYetDue). Four
+    // completions is four days, not four calls in the same instant.
+    jest.useFakeTimers();
     useTaskStore.setState({ tasks: [practice()] });
 
     let live = practice();
     let id = 'practice';
     for (let i = 0; i < 4; i++) {
+      jest.setSystemTime(new Date(2025, 5, 10 + i, 10, 0, 0));
       live = completeOccurrence(id);
       id = live.id;
     }
