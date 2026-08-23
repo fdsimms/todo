@@ -144,6 +144,11 @@ import { EmptyState } from '../components/EmptyState';
 import { CompletionCollapse } from '../components/CompletionCollapse';
 import { NewTasksBanner } from '../components/NewTasksBanner';
 import { CategoryFocusBanner } from '../components/CategoryFocusBanner';
+import { FocusBar } from '../components/FocusBar';
+import { FocusSetupSheet } from '../components/FocusSetupSheet';
+import { FocusSessionSheet } from '../components/FocusSessionSheet';
+import { useFocusStore } from '../store/useFocusStore';
+import { focusPlanOptionsFrom } from '../utils/focusSettings';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { type FabDragHandlers } from '../components/Fab';
@@ -548,6 +553,10 @@ export function TodayScreen() {
   const [quickSearchVisible, setQuickSearchVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
+  const [focusSetupVisible, setFocusSetupVisible] = useState(false);
+  const [focusSessionVisible, setFocusSessionVisible] = useState(false);
+  const focusSession = useFocusStore(s => s.session);
+  const startFocusSession = useFocusStore(s => s.startSession);
   const [categoryOrderVisible, setCategoryOrderVisible] = useState(false);
   const [deloadVisible, setDeloadVisible] = useState(false);
   const [lookAheadVisible, setLookAheadVisible] = useState(false);
@@ -2807,6 +2816,12 @@ export function TodayScreen() {
           })}
         </ScrollView>
 
+        {/* Above the category-focus banner and outside the `viewMode` gate on
+            purpose: a session runs against the tasks, not against a lens over
+            them, so switching to Later must not make it look as though it
+            stopped. */}
+        {focusSession && <FocusBar onOpen={() => setFocusSessionVisible(true)} />}
+
         {viewMode === 'today' && focusedCategory && (
           <CategoryFocusBanner
             categoryLabel={categoryLabel(focusedCategory, categories)}
@@ -3396,6 +3411,10 @@ export function TodayScreen() {
             setDeloadVisible(true);
           } : undefined}
           plannedLabel={plannedLabel}
+          onFocusSession={focusSession ? undefined : () => {
+            setOptionsMenuVisible(false);
+            setFocusSetupVisible(true);
+          }}
           onLookAhead={() => {
             setOptionsMenuVisible(false);
             setLookAheadVisible(true);
@@ -3440,6 +3459,23 @@ export function TodayScreen() {
           pinnedTasks={pinnedTasks}
           onClose={() => setSuggestedPinsVisible(false)}
           onConfirm={handleSuggestedPins}
+        />
+
+        <FocusSetupSheet
+          visible={focusSetupVisible}
+          tasks={visibleTasks}
+          allTasks={allTasks}
+          onClose={() => setFocusSetupVisible(false)}
+          onStart={queue => {
+            startFocusSession(queue, focusPlanOptionsFrom(useSettingsStore.getState()));
+            setFocusSetupVisible(false);
+            setFocusSessionVisible(true);
+          }}
+        />
+
+        <FocusSessionSheet
+          visible={focusSessionVisible && focusSession !== null}
+          onClose={() => setFocusSessionVisible(false)}
         />
 
         <ProjectPullSheet

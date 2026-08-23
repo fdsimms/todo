@@ -14,6 +14,15 @@ interface Props {
   max: number;
   /** Let − at the floor clear the value instead of sticking there. */
   allowNull?: boolean;
+  /**
+   * How much one press moves the value. Default 1.
+   *
+   * For a number whose useful granularity isn't 1 — minutes, where stepping a
+   * time window from 15 to 90 is five presses at 15 and seventy-five at 1.
+   * `min` should be a multiple of it, since that's where − lands coming back
+   * up from null and where the value grid starts.
+   */
+  step?: number;
   /** Shown in place of a number when `value` is null. */
   emptyLabel?: string;
   /** Renders the number — e.g. `n => `${n}×``. */
@@ -44,6 +53,7 @@ export function CountStepper({
   min,
   max,
   allowNull = false,
+  step = 1,
   emptyLabel = 'Off',
   format = String,
   label,
@@ -128,14 +138,14 @@ export function CountStepper({
 
   return (
     <View style={[styles.wrap, style]}>
-      {key(-1, 'remove', 'Decrease')}
+      {key(-step, 'remove', 'Decrease')}
       <Text
         style={[styles.value, value === null && styles.valueEmpty]}
         accessibilityLabel={`${label}, ${spoken}`}
       >
         {display}
       </Text>
-      {key(1, 'add', 'Increase')}
+      {key(step, 'add', 'Increase')}
     </View>
   );
 }

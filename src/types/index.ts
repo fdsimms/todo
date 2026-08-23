@@ -200,6 +200,66 @@ export interface TaskGroup {
   collapsed: boolean;      // persisted expand/collapse state
 }
 
+/**
+ * One stretch of a focus session — either work on a task, or a break.
+ *
+ * A session is a *plan*: an ordered list of these, built once when the session
+ * starts (see `src/utils/focusPlan.ts`) from the tasks' own estimates and the
+ * user's rest rules. The plan is stored rather than re-derived, because it's a
+ * commitment the user agreed to on the setup sheet — re-deriving it would let
+ * an estimate edit reshuffle a session already in progress.
+ */
+export type FocusStepKind = 'work' | 'rest';
+
+export interface FocusStep {
+  kind: FocusStepKind;
+  /** Work steps: the task being worked on. Rest steps carry null. */
+  taskId: string | null;
+  /** How long the stretch runs for. Always positive. */
+  minutes: number;
+  /**
+   * Which slice of its task this is, 1-based, and how many slices that task
+   * was cut into. `1 of 1` for a task that fits inside one work step. A task
+   * estimated longer than `focusWorkCapMinutes` is split into equal parts so a
+   * two-hour estimate becomes several stretches with breaks between them,
+   * rather than one two-hour "pomodoro" that is no such thing.
+   */
+  part: number;
+  partCount: number;
+  /** Rest steps: the longer break every `focusLongRestEvery` breaks. */
+  long: boolean;
+}
+
+/**
+ * The one focus session in flight, if there is one.
+ *
+ * At most one row exists at a time (`focus_sessions` holds a single row —
+ * starting a session replaces whatever was there, ending one deletes it).
+ *
+ * **Only the current step carries a clock.** How far through a step we are is
+ * derived from `stepStartedAt`/`stepElapsedSeconds` against the wall clock and
+ * never stored, exactly as `src/utils/timer.ts` derives a task countdown and
+ * for the same reason: a stored "seconds remaining" would need clearing on
+ * pause and would go stale the moment the app is backgrounded. What is *not*
+ * derived is which step you're on — `stepIndex` moves only when the user
+ * advances, so a phone left in a pocket for an hour comes back on the step it
+ * was on, over-run, rather than having silently burned through three of them.
+ */
+export interface FocusSession {
+  id: string;
+  /** When the session began. Only ever displayed, never used for step math. */
+  startedAt: string;
+  steps: FocusStep[];
+  /** Which step is live. `steps.length` means the plan is finished. */
+  stepIndex: number;
+  /** ISO while the current step's run segment is in flight; null when paused. */
+  stepStartedAt: string | null;
+  /** Banked seconds within the *current* step only — reset on every advance. */
+  stepElapsedSeconds: number;
+  /** Tasks ticked off from inside the session, for its closing summary. */
+  completedTaskIds: string[];
+}
+
 // A themed, long-running collection of loosely-dated tasks the user tracks
 // and picks off over time (e.g. "Summer Bucket List") — independent of
 // TaskGroup (same-day cohorts), Category, and Tags, so a task can belong to

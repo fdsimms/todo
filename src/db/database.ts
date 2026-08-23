@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -181,6 +181,20 @@ export function initDatabase(): void {
       sort_order REAL NOT NULL DEFAULT 0,
       collapsed INTEGER NOT NULL DEFAULT 1,
       completed_at TEXT
+    );
+
+    -- At most one row ever: starting a focus session replaces whatever was
+    -- here, ending one deletes it. A table rather than a settings key because
+    -- the plan is structured data the app reads on every tick, not a
+    -- preference (see FocusSession in types).
+    CREATE TABLE IF NOT EXISTS focus_sessions (
+      id TEXT PRIMARY KEY NOT NULL,
+      started_at TEXT NOT NULL,
+      steps TEXT NOT NULL DEFAULT '[]',
+      step_index INTEGER NOT NULL DEFAULT 0,
+      step_started_at TEXT,
+      step_elapsed_seconds REAL NOT NULL DEFAULT 0,
+      completed_task_ids TEXT NOT NULL DEFAULT '[]'
     );
 
     CREATE TABLE IF NOT EXISTS projects (
@@ -1192,6 +1206,12 @@ export const BACKUP_EXCLUDED_TABLES = [
   // GTIN means is also not something a restore could get *wrong*, which is the
   // risk BACKUP_TABLES exists to manage.
   'gtin_lookups',
+  // The focus session in flight. It describes what the user is doing *right
+  // now* on this device — a countdown mid-step, against tasks whose ids the
+  // restore is about to replace wholesale. Restoring it would resume a session
+  // from another day (or another phone) over a task list that has since moved
+  // on; there is nothing here a user would miss having back.
+  'focus_sessions',
 ] as const;
 
 /** The live column names of a table, straight from the schema. */
@@ -2192,6 +2212,52 @@ export function dbUpdateTaskGroup(group: TaskGroup): void {
 
 export function dbDeleteTaskGroup(id: string): void {
   db.runSync('DELETE FROM task_groups WHERE id = ?', [id]);
+}
+
+// ─── Focus sessions ─────────────────────────────────────────────────────────
+
+function rowToFocusSession(row: Record<string, unknown>): FocusSession {
+  return {
+    id: row.id as string,
+    startedAt: row.started_at as string,
+    steps: JSON.parse((row.steps as string) ?? '[]') as FocusStep[],
+    stepIndex: row.step_index as number,
+    stepStartedAt: (row.step_started_at as string) ?? null,
+    stepElapsedSeconds: row.step_elapsed_seconds as number,
+    completedTaskIds: JSON.parse((row.completed_task_ids as string) ?? '[]') as string[],
+  };
+}
+
+/** The session in flight, or null. Never more than one row to choose between. */
+export function dbGetFocusSession(): FocusSession | null {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM focus_sessions LIMIT 1');
+  return rows.length === 0 ? null : rowToFocusSession(rows[0]);
+}
+
+/**
+ * Write the session, replacing whatever was there.
+ *
+ * Deletes first rather than upserting on the id: the table's invariant is one
+ * row, not one row per id, and a start that reused an id would otherwise be
+ * the only thing keeping a stale session out.
+ */
+export function dbSaveFocusSession(session: FocusSession): void {
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM focus_sessions');
+    db.runSync(
+      `INSERT INTO focus_sessions
+         (id, started_at, steps, step_index, step_started_at, step_elapsed_seconds, completed_task_ids)
+       VALUES (?,?,?,?,?,?,?)`,
+      [
+        session.id, session.startedAt, JSON.stringify(session.steps), session.stepIndex,
+        session.stepStartedAt, session.stepElapsedSeconds, JSON.stringify(session.completedTaskIds),
+      ]
+    );
+  });
+}
+
+export function dbClearFocusSession(): void {
+  db.runSync('DELETE FROM focus_sessions');
 }
 
 // ─── Groceries ──────────────────────────────────────────────────────────────

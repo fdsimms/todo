@@ -15,6 +15,8 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore, projectDecisions } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useFocusStore } from '../store/useFocusStore';
+import { isFocusRunning } from '../utils/focusPlan';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
@@ -150,6 +152,9 @@ jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn(),
   cancelTaskReminder: jest.fn(),
   rescheduleAllReminders: jest.fn(),
+  // Reached through useTaskStore.initialize, which fans out to useFocusStore.
+  scheduleFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
+  cancelFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
   // The demo seed starts a trip (demoSeed.ts), which goes through
   // useGroceryStore's real startTrip/endTrip.
   scheduleTripReminder: jest.fn(),
@@ -323,6 +328,37 @@ describe('demo mode', () => {
     const members = tasks.filter(t => t.groupId === supplements!.id && !t.completed);
     expect(members.length).toBeGreaterThan(0);
     expect(members.every(t => t.pinned)).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  // A focus session shows nothing at all until one is running: the bar on
+  // Today, the session screen, splitting a long task across stretches and the
+  // breaks between them are every one of them invisible on an idle app. What
+  // this asserts is the *shape* the plan builder made of the two seeded tasks,
+  // not just that a session exists, since a queue that produced one flat
+  // stretch would demo none of it.
+  it('seeds a focus session in flight, with a split task and a break in it', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { session } = useFocusStore.getState();
+
+    expect(session).not.toBeNull();
+    expect(isFocusRunning(session!)).toBe(true);
+    expect(session!.stepIndex).toBe(0);
+
+    // The long task was cut into more than one stretch...
+    const split = session!.steps.filter(s => s.kind === 'work' && s.partCount > 1);
+    expect(split.length).toBeGreaterThan(1);
+    // ...and the rest rules put a break somewhere in the run.
+    expect(session!.steps.some(s => s.kind === 'rest')).toBe(true);
+    // Never on the end, whatever the queue was.
+    expect(session!.steps[session!.steps.length - 1].kind).toBe('work');
+
+    // Every stretch points at a task that is actually in the seeded list.
+    const ids = new Set(useTaskStore.getState().tasks.map(t => t.id));
+    for (const step of session!.steps) {
+      if (step.kind === 'work') expect(ids.has(step.taskId!)).toBe(true);
+    }
 
     useDemoStore.getState().exitDemoMode();
   });

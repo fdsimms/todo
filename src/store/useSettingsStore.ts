@@ -24,6 +24,17 @@ import {
 } from '../utils/aiFeatures';
 import { DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY } from '../utils/mealPlanNudge';
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
+import {
+  FOCUS_DEFAULTS,
+  parseFocusDefaultWorkMinutes,
+  parseFocusLongRestEvery,
+  parseFocusLongRestMinutes,
+  parseFocusRestAfterMinutes,
+  parseFocusRestAfterTasks,
+  parseFocusRestMinutes,
+  parseFocusWorkCapMinutes,
+  serializeOptionalCount,
+} from '../utils/focusSettings';
 import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
 import { normalizeRecipeTags } from '../utils/recipeTags';
 import { parseTitleRules } from '../utils/titleRules';
@@ -266,6 +277,27 @@ interface SettingsStore {
   postponeCheckEnabled: boolean;
   /** How many pushes before it says something. */
   postponeCheckThreshold: number;
+  /**
+   * Focus sessions — the run of work stretches and breaks a queue of tasks is
+   * turned into (see src/utils/focusPlan.ts). Defaults are a classic pomodoro;
+   * `focusSettings.ts` says why each one is what it is.
+   */
+  // Longest a single work stretch runs. A task estimated longer is split into
+  // equal parts, so "2 hours" becomes several stretches with breaks between
+  // them rather than one two-hour block wearing a countdown.
+  focusWorkCapMinutes: number;
+  // The stretch a task with no estimate at all gets.
+  focusDefaultWorkMinutes: number;
+  // Break after this many tasks are finished. null = don't count tasks.
+  focusRestAfterTasks: number | null;
+  // Break after this much work has accumulated. null = don't count minutes.
+  // Both triggers run at once and whichever fires first inserts the break;
+  // with both off the plan holds no breaks, which is a legitimate ask.
+  focusRestAfterMinutes: number | null;
+  focusRestMinutes: number;
+  // Every Nth break is a long one. null = every break is a short one.
+  focusLongRestEvery: number | null;
+  focusLongRestMinutes: number;
   // How long completed tasks are kept before a startup purge deletes them.
   // null = forever, and forever is the default: nothing about an existing
   // install changes until the user picks a window in Settings. See
@@ -716,6 +748,13 @@ interface SettingsStore {
   setVacationEnd: (endDate: string | null) => void;
   setAutoRemoveExpiredTasks: (days: ExpiredTaskGraceDays) => void;
   setAutoArchiveProjectsOnComplete: (on: boolean) => void;
+  setFocusWorkCapMinutes: (minutes: number) => void;
+  setFocusDefaultWorkMinutes: (minutes: number) => void;
+  setFocusRestAfterTasks: (count: number | null) => void;
+  setFocusRestAfterMinutes: (minutes: number | null) => void;
+  setFocusRestMinutes: (minutes: number) => void;
+  setFocusLongRestEvery: (count: number | null) => void;
+  setFocusLongRestMinutes: (minutes: number) => void;
   setCompletedRetentionDays: (days: RetentionDays) => void;
   setDefaultReminderLeadMinutes: (minutes: number | null) => void;
   setHideCategories: (on: boolean) => void;
@@ -787,6 +826,13 @@ const DEFAULT_SETTINGS = {
   autoArchiveProjectsOnComplete: false,
   postponeCheckEnabled: true,
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
+  focusWorkCapMinutes: FOCUS_DEFAULTS.workCapMinutes,
+  focusDefaultWorkMinutes: FOCUS_DEFAULTS.defaultWorkMinutes,
+  focusRestAfterTasks: FOCUS_DEFAULTS.restAfterTasks,
+  focusRestAfterMinutes: FOCUS_DEFAULTS.restAfterMinutes,
+  focusRestMinutes: FOCUS_DEFAULTS.restMinutes,
+  focusLongRestEvery: FOCUS_DEFAULTS.longRestEvery,
+  focusLongRestMinutes: FOCUS_DEFAULTS.longRestMinutes,
   hideCategories: false,
   simpleTaskForm: false,
   hideHelpText: false,
@@ -1092,6 +1138,13 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   autoArchiveProjectsOnComplete: false,
   postponeCheckEnabled: true,
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
+  focusWorkCapMinutes: FOCUS_DEFAULTS.workCapMinutes,
+  focusDefaultWorkMinutes: FOCUS_DEFAULTS.defaultWorkMinutes,
+  focusRestAfterTasks: FOCUS_DEFAULTS.restAfterTasks,
+  focusRestAfterMinutes: FOCUS_DEFAULTS.restAfterMinutes,
+  focusRestMinutes: FOCUS_DEFAULTS.restMinutes,
+  focusLongRestEvery: FOCUS_DEFAULTS.longRestEvery,
+  focusLongRestMinutes: FOCUS_DEFAULTS.longRestMinutes,
   completedRetentionDays: null,
   defaultReminderLeadMinutes: null,
   hideCategories: false,
@@ -1209,6 +1262,13 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const vacationEnd = dbGetSetting('vacationEnd') || null;
     const autoRemoveExpiredTasks = parseExpiredTaskGrace(dbGetSetting('autoRemoveExpiredTasks'));
     const autoArchiveProjectsOnComplete = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
+    const focusWorkCapMinutes = parseFocusWorkCapMinutes(dbGetSetting('focusWorkCapMinutes'));
+    const focusDefaultWorkMinutes = parseFocusDefaultWorkMinutes(dbGetSetting('focusDefaultWorkMinutes'));
+    const focusRestAfterTasks = parseFocusRestAfterTasks(dbGetSetting('focusRestAfterTasks'));
+    const focusRestAfterMinutes = parseFocusRestAfterMinutes(dbGetSetting('focusRestAfterMinutes'));
+    const focusRestMinutes = parseFocusRestMinutes(dbGetSetting('focusRestMinutes'));
+    const focusLongRestEvery = parseFocusLongRestEvery(dbGetSetting('focusLongRestEvery'));
+    const focusLongRestMinutes = parseFocusLongRestMinutes(dbGetSetting('focusLongRestMinutes'));
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
@@ -1385,7 +1445,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, hideHelpText, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, hideHelpText, timerLiveActivity, tripLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1653,6 +1713,51 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const clamped = parsePostponeThreshold(String(count));
     dbSetSetting('postponeCheckThreshold', String(clamped));
     set({ postponeCheckThreshold: clamped });
+  },
+
+  // Every focus setting re-parses on the way in as well as on the way out, so
+  // a value that somehow got past the stepper can't put the plan builder in a
+  // state the UI has no way to show or undo.
+  setFocusWorkCapMinutes(minutes: number) {
+    const clamped = parseFocusWorkCapMinutes(String(minutes));
+    dbSetSetting('focusWorkCapMinutes', String(clamped));
+    set({ focusWorkCapMinutes: clamped });
+  },
+
+  setFocusDefaultWorkMinutes(minutes: number) {
+    const clamped = parseFocusDefaultWorkMinutes(String(minutes));
+    dbSetSetting('focusDefaultWorkMinutes', String(clamped));
+    set({ focusDefaultWorkMinutes: clamped });
+  },
+
+  setFocusRestAfterTasks(count: number | null) {
+    const clamped = parseFocusRestAfterTasks(serializeOptionalCount(count));
+    dbSetSetting('focusRestAfterTasks', serializeOptionalCount(clamped));
+    set({ focusRestAfterTasks: clamped });
+  },
+
+  setFocusRestAfterMinutes(minutes: number | null) {
+    const clamped = parseFocusRestAfterMinutes(serializeOptionalCount(minutes));
+    dbSetSetting('focusRestAfterMinutes', serializeOptionalCount(clamped));
+    set({ focusRestAfterMinutes: clamped });
+  },
+
+  setFocusRestMinutes(minutes: number) {
+    const clamped = parseFocusRestMinutes(String(minutes));
+    dbSetSetting('focusRestMinutes', String(clamped));
+    set({ focusRestMinutes: clamped });
+  },
+
+  setFocusLongRestEvery(count: number | null) {
+    const clamped = parseFocusLongRestEvery(serializeOptionalCount(count));
+    dbSetSetting('focusLongRestEvery', serializeOptionalCount(clamped));
+    set({ focusLongRestEvery: clamped });
+  },
+
+  setFocusLongRestMinutes(minutes: number) {
+    const clamped = parseFocusLongRestMinutes(String(minutes));
+    dbSetSetting('focusLongRestMinutes', String(clamped));
+    set({ focusLongRestMinutes: clamped });
   },
 
   // Stored as '' for forever, matching vacationEnd —

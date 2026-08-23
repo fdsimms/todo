@@ -37,6 +37,13 @@ import {
 import {
   DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD,
 } from '../../utils/postpone';
+import {
+  FOCUS_DEFAULTS,
+  FOCUS_LONG_REST_EVERY_MAX, FOCUS_LONG_REST_EVERY_MIN,
+  FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_TASKS_MAX,
+  FOCUS_REST_MAX, FOCUS_REST_MIN, FOCUS_WORK_CAP_MAX, FOCUS_WORK_CAP_MIN,
+  focusRestsDisabled,
+} from '../../utils/focusSettings';
 import { CURRENCY_SYMBOLS, CURRENCY_SYMBOL_MAX_LENGTH } from '../../types';
 
 const EXPIRED_TASK_GRACE_SEGMENTS: SegmentOption<ExpiredTaskGraceDays>[] =
@@ -79,6 +86,21 @@ export function TasksProjectsSettings() {
   const postponeCheckEnabled = useSettingsStore(s => s.postponeCheckEnabled);
   const setPostponeCheckEnabled = useSettingsStore(s => s.setPostponeCheckEnabled);
   const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
+  const focusWorkCapMinutes = useSettingsStore(s => s.focusWorkCapMinutes);
+  const setFocusWorkCapMinutes = useSettingsStore(s => s.setFocusWorkCapMinutes);
+  const focusDefaultWorkMinutes = useSettingsStore(s => s.focusDefaultWorkMinutes);
+  const setFocusDefaultWorkMinutes = useSettingsStore(s => s.setFocusDefaultWorkMinutes);
+  const focusRestAfterTasks = useSettingsStore(s => s.focusRestAfterTasks);
+  const setFocusRestAfterTasks = useSettingsStore(s => s.setFocusRestAfterTasks);
+  const focusRestAfterMinutes = useSettingsStore(s => s.focusRestAfterMinutes);
+  const setFocusRestAfterMinutes = useSettingsStore(s => s.setFocusRestAfterMinutes);
+  const focusRestMinutes = useSettingsStore(s => s.focusRestMinutes);
+  const setFocusRestMinutes = useSettingsStore(s => s.setFocusRestMinutes);
+  const focusLongRestEvery = useSettingsStore(s => s.focusLongRestEvery);
+  const setFocusLongRestEvery = useSettingsStore(s => s.setFocusLongRestEvery);
+  const focusLongRestMinutes = useSettingsStore(s => s.focusLongRestMinutes);
+  const setFocusLongRestMinutes = useSettingsStore(s => s.setFocusLongRestMinutes);
+  const noBreaks = focusRestsDisabled({ focusRestAfterTasks, focusRestAfterMinutes });
   const setPostponeCheckThreshold = useSettingsStore(s => s.setPostponeCheckThreshold);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
@@ -289,6 +311,157 @@ export function TasksProjectsSettings() {
                 describeValue={n => `${n} reschedules`}
               />
             </View>
+          </>
+        )}
+      </SettingsSection>
+
+      <SettingsSection
+        label="Focus sessions"
+        footer={noBreaks
+          ? 'Both break triggers are off, so a session runs straight through with no breaks in it.'
+          : 'Both triggers run at once and whichever comes first inserts the break. Start a session from Today’s … menu.'}
+      >
+        <SettingsRow
+          icon="hourglass-outline"
+          label="Work stretch length"
+          hint="The longest a single stretch runs. A task estimated for longer is split into equal parts."
+          tight
+        />
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={focusWorkCapMinutes}
+            onChange={next => setFocusWorkCapMinutes(next ?? FOCUS_DEFAULTS.workCapMinutes)}
+            min={FOCUS_WORK_CAP_MIN}
+            max={FOCUS_WORK_CAP_MAX}
+            format={n => `${n} min`}
+            label="Work stretch length"
+            describeValue={n => `${n} minutes`}
+          />
+        </View>
+
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="help-circle-outline"
+          label="Length without an estimate"
+          hint="How long a stretch runs for a task that has no time estimate."
+          tight
+        />
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={focusDefaultWorkMinutes}
+            onChange={next => setFocusDefaultWorkMinutes(next ?? FOCUS_DEFAULTS.defaultWorkMinutes)}
+            min={FOCUS_WORK_CAP_MIN}
+            max={FOCUS_WORK_CAP_MAX}
+            format={n => `${n} min`}
+            label="Length without an estimate"
+            describeValue={n => `${n} minutes`}
+          />
+        </View>
+
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="time-outline"
+          label="Break after this much work"
+          hint="Minutes of work before a break is added. Set to off to never break on elapsed time."
+          tight
+        />
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={focusRestAfterMinutes}
+            onChange={setFocusRestAfterMinutes}
+            min={FOCUS_REST_AFTER_MINUTES_MIN}
+            max={FOCUS_REST_AFTER_MINUTES_MAX}
+            allowNull
+            emptyLabel="Off"
+            format={n => `${n} min`}
+            label="Break after this much work"
+            describeValue={n => (n === null ? 'Off' : `${n} minutes`)}
+          />
+        </View>
+
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="list-outline"
+          label="Break after this many tasks"
+          hint="Tasks finished before a break is added. Set to off to never break on a task count."
+          tight
+        />
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={focusRestAfterTasks}
+            onChange={setFocusRestAfterTasks}
+            min={1}
+            max={FOCUS_REST_AFTER_TASKS_MAX}
+            allowNull
+            emptyLabel="Off"
+            format={n => `${n} task${n === 1 ? '' : 's'}`}
+            label="Break after this many tasks"
+            describeValue={n => (n === null ? 'Off' : `${n} tasks`)}
+          />
+        </View>
+
+        {!noBreaks && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              icon="cafe-outline"
+              label="Break length"
+              tight
+            />
+            <View style={styles.cadenceRow}>
+              <CountStepper
+                value={focusRestMinutes}
+                onChange={next => setFocusRestMinutes(next ?? FOCUS_DEFAULTS.restMinutes)}
+                min={FOCUS_REST_MIN}
+                max={FOCUS_REST_MAX}
+                format={n => `${n} min`}
+                label="Break length"
+                describeValue={n => `${n} minutes`}
+              />
+            </View>
+
+            <View style={styles.sep} />
+            <SettingsRow
+              icon="bed-outline"
+              label="Long break every"
+              hint="Makes every nth break a longer one. Set to off to keep every break the same length."
+              tight
+            />
+            <View style={styles.cadenceRow}>
+              <CountStepper
+                value={focusLongRestEvery}
+                onChange={setFocusLongRestEvery}
+                min={FOCUS_LONG_REST_EVERY_MIN}
+                max={FOCUS_LONG_REST_EVERY_MAX}
+                allowNull
+                emptyLabel="Off"
+                format={n => `${n} breaks`}
+                label="Long break every"
+                describeValue={n => (n === null ? 'Off' : `every ${n} breaks`)}
+              />
+            </View>
+
+            {focusLongRestEvery !== null && (
+              <>
+                <View style={styles.sep} />
+                <SettingsRow
+                  icon="moon-outline"
+                  label="Long break length"
+                  tight
+                />
+                <View style={styles.cadenceRow}>
+                  <CountStepper
+                    value={focusLongRestMinutes}
+                    onChange={next => setFocusLongRestMinutes(next ?? FOCUS_DEFAULTS.longRestMinutes)}
+                    min={FOCUS_REST_MIN}
+                    max={FOCUS_REST_MAX}
+                    format={n => `${n} min`}
+                    label="Long break length"
+                    describeValue={n => `${n} minutes`}
+                  />
+                </View>
+              </>
+            )}
           </>
         )}
       </SettingsSection>

@@ -1,4 +1,5 @@
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, formatStopwatch, applyMeasuredTime, sumEstimatedMinutes, estimatedMinutesFor } from '../utils/effort';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatClockDuration,
+  formatDuration, formatStopwatch, applyMeasuredTime, sumEstimatedMinutes, estimatedMinutesFor } from '../utils/effort';
 import type { ChainItem, Effort } from '../types';
 
 const step = (title: string, estimatedMinutes: number | null = null): ChainItem =>
@@ -45,6 +46,30 @@ describe('minutesToEffort', () => {
     for (const e of [1, 2, 3, 4, 5, 6] as Effort[]) {
       expect(minutesToEffort(EFFORT_MINUTES[e])).toBe(e);
     }
+  });
+});
+
+describe('formatClockDuration', () => {
+  it('shows minutes under an hour', () => {
+    expect(formatClockDuration(15)).toBe('15m');
+    expect(formatClockDuration(45)).toBe('45m');
+  });
+
+  it('drops the minutes on a whole hour', () => {
+    expect(formatClockDuration(60)).toBe('1h');
+    expect(formatClockDuration(120)).toBe('2h');
+  });
+
+  it('spells out the remainder rather than decimalising it', () => {
+    // The whole point of the split: formatDuration says 1.3h here.
+    expect(formatClockDuration(80)).toBe('1h 20m');
+    expect(formatClockDuration(75)).toBe('1h 15m');
+    expect(formatDuration(80)).toBe('1.3h');
+  });
+
+  it('reads zero and negatives as no time rather than going backwards', () => {
+    expect(formatClockDuration(0)).toBe('0m');
+    expect(formatClockDuration(-5)).toBe('0m');
   });
 });
 
