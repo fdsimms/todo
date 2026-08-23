@@ -60,7 +60,13 @@ function restore(merged, originalOurs) {
 
 const originalOurs = read(ours);
 
-const tmp = [ancestor, ours, theirs].map((f, i) => {
+// `git merge-file` takes <current> <base> <other>, in that order, and it is
+// not a symmetric operation: it applies base->other onto current. Passing
+// these in the wrong order silently reverses one side's edits rather than
+// failing, so the order here matters more than it looks. Getting it wrong
+// deleted a paragraph this branch had added to CLAUDE.md, because "ours added
+// it, base and theirs lack it" read as "theirs deleted it".
+const tmp = [ours, ancestor, theirs].map((f, i) => {
   const p = `${ours}.generated-doc.${i}`;
   fs.writeFileSync(p, blank(read(f)));
   return p;
