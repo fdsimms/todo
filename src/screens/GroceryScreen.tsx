@@ -352,11 +352,11 @@ export function GroceryScreen() {
    * Stamped-param handoff, the same one MealPlanScreen's `focusStamp` uses:
    * compared against the last value handled, so asking twice in a row still
    * fires twice. Gated on the cart having something in it, which is the same
-   * thing the header action's `disabled` and the banner's own button say — a
-   * request that arrives with an empty cart lands on the list and stops there,
-   * because there is nothing for the sheet to finish. The stamp is marked
-   * handled either way: a request that found nothing to do is answered, not
-   * left pending against the next tick.
+   * thing both cards above the list say by only growing a Finish button once
+   * there's a tick — a request that arrives with an empty cart lands on the
+   * list and stops there, because there is nothing for the sheet to finish.
+   * The stamp is marked handled either way: a request that found nothing to do
+   * is answered, not left pending against the next tick.
    */
   const openFinishStamp: number | undefined = route.params?.openFinish;
   const [handledFinishStamp, setHandledFinishStamp] = useState<number | undefined>(undefined);
@@ -992,17 +992,14 @@ export function GroceryScreen() {
       disabled: selectionMode || !shareText,
       accessibilityLabel: 'Share the list',
     });
-    list.push({
-      icon: 'bag-check-outline',
-      onPress: () => setFinishOpen(true),
-      disabled: selectionMode || checkedCount === 0,
-      badge: checkedCount || undefined,
-      badgeColor: colors.accent,
-      tint: 'accent',
-      accessibilityLabel: 'Finish shopping',
-    });
+    // Finishing the shop is deliberately not here. It was the sixth icon in
+    // this row, badged with the cart count, and it's the one action every shop
+    // ends in — a small target behind a non-obvious glyph is the wrong home
+    // for that. It lives on whichever card is above the list instead:
+    // `ActiveTripBanner` during a trip, `StartTripPrompt` when rows have been
+    // ticked without one. Both put it where the cart count already is.
     return list;
-  }, [checkedCount, selectionMode, handleCreateGroceryTask, handleShare, shareText, copied, copy, copyText]);
+  }, [selectionMode, handleCreateGroceryTask, handleShare, shareText, copied, copy, copyText]);
 
   // Bottom-up: "Add an item" ends up closest to the button. The recipe entry
   // no longer needs a key by itself — a saved recipe imports nothing over the
@@ -1131,6 +1128,24 @@ export function GroceryScreen() {
     [styles, colors, cartOpen, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, storeMarkers]
   );
 
+  // The "Start shopping" card, mounted either as the list's header or as a
+  // sibling above it depending on whether the trolley has anything in it —
+  // see both call sites below. Hidden while selecting and while a trip is
+  // running, the same two conditions every header action and the trip banner
+  // already answer to.
+  const startCard =
+    selectionMode || activeTripShop ? null : (
+      <StartTripPrompt
+        suggestable={suggestableShops}
+        onOpenSheet={() => {
+          setTripIntent('start');
+          setTripOpen(true);
+        }}
+        checkedCount={checkedCount}
+        onFinish={() => setFinishOpen(true)}
+      />
+    );
+
   // ==== render. Everything below is JSX ====
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -1168,6 +1183,13 @@ export function GroceryScreen() {
           onClear={handleClearTrip}
         />
       )}
+      {/* The starting card scrolls with the list (see ListHeaderComponent
+          below) right up until it grows a Finish button, and then it moves up
+          here beside the trip banner for the banner's own reason: the action a
+          shop ends in can't be something you have to scroll back to the top to
+          find. One card and one set of props either way — only where it's
+          mounted changes, on the tick that gives it something to do. */}
+      {checkedCount > 0 && startCard}
 
       <FabDropZoneProvider
         ref={dropZonesRef}
@@ -1211,18 +1233,10 @@ export function GroceryScreen() {
         // actually said you're about to shop, via `summarizeTrip` and
         // `describeShopCoverage` (shoppingTrip.ts) — it's just not announced
         // unprompted at the top of the list any more.
-        ListHeaderComponent={
-          selectionMode || activeTripShop ? null : (
-            <StartTripPrompt
-              suggestable={suggestableShops}
-              onStart={handleStartTrip}
-              onOpenSheet={() => {
-                setTripIntent('start');
-                setTripOpen(true);
-              }}
-            />
-          )
-        }
+        //
+        // Only while the trolley is empty: with anything ticked the same card
+        // is rendered as a sibling above instead (see there).
+        ListHeaderComponent={checkedCount > 0 ? null : startCard}
         // Nothing in the footer applies to an empty list, and the tab-bar
         // spacer would take its height off the box the empty state centres in
         // (the empty state clears the tab bar itself, via bottomOffset).
