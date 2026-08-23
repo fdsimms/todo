@@ -1137,7 +1137,6 @@ export function GroceryScreen() {
     selectionMode || activeTripShop ? null : (
       <StartTripPrompt
         suggestable={suggestableShops}
-        onStart={handleStartTrip}
         onOpenSheet={() => {
           setTripIntent('start');
           setTripOpen(true);

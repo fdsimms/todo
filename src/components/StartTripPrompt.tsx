@@ -10,9 +10,7 @@ import type { Shop } from '../types';
 interface Props {
   /** Non-excluded shops on file. Empty means there's nothing to start. */
   suggestable: readonly Shop[];
-  /** "I'm at this store, now" — the single-store case, no sheet in the way. */
-  onStart: (shop: Shop) => void;
-  /** Two or more stores: a real choice, so this opens ShoppingTripSheet instead. */
+  /** Opens `ShoppingTripSheet`, which is where the store is chosen. */
   onOpenSheet: () => void;
   /** How many rows are already ticked into the trolley, with no trip running. */
   checkedCount: number;
@@ -24,6 +22,17 @@ interface Props {
  * The Groceries list's one "start a trip" entry point — one line, no
  * ranking, no history required, for every household regardless of how much
  * purchase data is on file.
+ *
+ * **It never names a store, and the tap always opens the sheet.** It used to
+ * read "Start shopping at Safeway" whenever exactly one store was on file, and
+ * start that trip in one tap. Sitting on the list before anything has been
+ * said, that sentence reads as the app asserting where you are rather than
+ * offering somewhere to go — and it's the wrong store as often as a household
+ * has a second one. The store is a choice, so it belongs where the choice is
+ * made: `ShoppingTripSheet` opens with one preselected (best coverage, else
+ * wherever the last trip ended), names it, and lets you change it before
+ * Start. That costs the one-store household a tap and buys everyone a card
+ * that only ever claims what it knows.
  *
  * It used to race with a data-backed `TripSuggestionCard` that rendered
  * whenever it had a coverage suggestion to make ("Likely has 2/3 items on
@@ -55,17 +64,12 @@ interface Props {
  * gated on `suggestable` being non-empty — someone with no stores recorded can
  * still tick a list off, and they'd have no way to finish it at all.
  */
-export function StartTripPrompt({ suggestable, onStart, onOpenSheet, checkedCount, onFinish }: Props) {
+export function StartTripPrompt({ suggestable, onOpenSheet, checkedCount, onFinish }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const shopping = checkedCount > 0;
   if (suggestable.length === 0 && !shopping) return null;
-  // The only store there is: no choice to make, so no sheet in the way —
-  // this is what makes the single-store case one tap instead of three.
-  const single = suggestable.length === 1 ? suggestable[0] : null;
-
-  const handleStart = () => (single ? onStart(single) : onOpenSheet());
 
   const handleFinish = () => {
     haptics.tap();
@@ -76,14 +80,14 @@ export function StartTripPrompt({ suggestable, onStart, onOpenSheet, checkedCoun
     <TouchableOpacity
       style={styles.summary}
       activeOpacity={interaction.activeOpacity}
-      onPress={handleStart}
+      onPress={onOpenSheet}
       accessibilityRole="button"
-      accessibilityLabel={single ? `Start shopping at ${single.name}` : 'Start shopping'}
-      accessibilityHint={single ? undefined : 'Opens the shopping trip planner'}
+      accessibilityLabel="Start shopping"
+      accessibilityHint="Pick the store on the next screen"
     >
       <Ionicons name="storefront-outline" size={iconSize.sm} color={colors.accent} />
       <Text style={styles.title} numberOfLines={1}>
-        {single ? `Start shopping at ${single.name}` : 'Start shopping'}
+        Start shopping
       </Text>
       <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
     </TouchableOpacity>

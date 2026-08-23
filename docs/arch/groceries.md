@@ -310,9 +310,17 @@ which rows you don't usually get here.
   banner during a trip, `StartTripPrompt` outside one, both drawing the same filled
   `Finish · N in cart` on the same first-ticked-row rule. **This still infers nothing** — a tick is
   not a trip, no store is assumed, and no row gets marked up; the card only stops pretending the
-  cart is empty, and keeps offering "Start shopping at X" above the Finish button for anyone who
-  does want the store known. With no suggestable stores on file it is the Finish button alone,
-  which is the case that stops the card being gated on having stores at all.
+  cart is empty, and keeps offering "Start shopping" above the Finish button for anyone who does
+  want the store known. With no suggestable stores on file it is the Finish button alone, which is
+  the case that stops the card being gated on having stores at all.
+- **`StartTripPrompt` never names a store, and its tap always opens the sheet.** It used to read
+  "Start shopping at Safeway" and start that trip in one tap whenever exactly one store was on
+  file. On a card sitting there before anything has been said, that sentence reads as the app
+  asserting where you are rather than offering somewhere to go, and it is the wrong store the
+  moment a household has a second one. Naming a store is a claim, so it waits for the sheet, where
+  one is preselected (best coverage, else wherever the last trip ended), named, and changeable
+  before Start. Same rule as the row captions above: the card says only what it knows. It costs
+  the one-store household a tap, which is the trade.
 - **The three kitchen screens without a finish sheet route to the one that has it.** Recipes, Meal
   plan and Pantry pass `resetToGroceries(true)`, which lands on Groceries with a stamped
   `openFinish` param the screen turns into an open sheet — the same handoff `resetToMealPlan`'s
