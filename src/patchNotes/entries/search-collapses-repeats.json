@@ -1,0 +1,4 @@
+{
+  "message": "Search now shows one row per repeating task instead of one per date, with a count of the other dates it stands for. Results also show where the task lives (its project and category) and the date it falls on, and a chained task is named by its current step there like it is everywhere else.",
+  "date": "2026-08-23"
+}
