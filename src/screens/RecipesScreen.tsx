@@ -232,7 +232,7 @@ export function RecipesScreen() {
   const activeFilterCount = (recipeSort !== 'default' ? 1 : 0) + (recipeFavoritesOnly ? 1 : 0);
 
   const visible = useMemo(() => {
-    // Filter, then rank — the same order BuyAgainSheet's store filter uses.
+    // Filter, then rank — the same order GroceryCatalogSheet's store filter uses.
     // Ranking a filtered set is the same function over fewer rows; filtering a
     // ranked one would be a second pass over work already done.
     const byTag = filterRecipesByTags(recipes, activeTags);

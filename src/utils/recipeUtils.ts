@@ -1020,7 +1020,7 @@ function cookFamiliarity(recipe: Recipe, now: Date): number {
 
 /**
  * The "Cook again" shelf — recipes made often and made recently, same
- * frequency × recency halving as rankGrocerySuggestions/buyAgainItems so this
+ * frequency × recency halving as rankGrocerySuggestions/rankedCatalogItems so this
  * behaves the way the grocery autocomplete has already taught the user to
  * expect. Only recipes with at least one cooking: a never-made recipe has
  * nothing to rank on here (rankRecipes' search already covers "what do I have").

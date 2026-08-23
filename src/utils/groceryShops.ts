@@ -228,7 +228,7 @@ export function exclusiveShopFor(
 }
 
 /**
- * The item ids linked to a store — the set behind the Buy again filter. A
+ * The item ids linked to a store — the set behind the catalog's store filter. A
  * negative link isn't one: "what does Costco carry" must not answer with the
  * thing you noted Costco doesn't.
  */

@@ -63,7 +63,7 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   *rule* is genuinely the same and writing it twice is how the two would drift.
 - **Two ingredient rows, never one line reading "serrano or jalapeño".** That spelling mints a
   catalog item literally called "serrano or jalapeño": a row that can never match a real purchase,
-  never ranks in Buy again, and gets hand-corrected on the list every single time. Separate rows
+  never ranks in the catalog, and gets hand-corrected on the list every single time. Separate rows
   each carry a clean `nameKey`, and choosing between them at add time is what puts exactly one in
   the trolley. This is the entire point of the ingredient half — don't "simplify" it back to a
   parsed `or`.

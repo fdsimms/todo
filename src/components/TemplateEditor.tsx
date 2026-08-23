@@ -415,7 +415,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
 
       {/* Nested inside this sheet rather than beside it — a sibling Modal would
           ask this screen's view controller to present a second sheet while this
-          one is already up (same reason BuyAgainSheet nests its own). */}
+          one is already up (same reason GroceryCatalogSheet nests its own). */}
       <TemplateQuestionSheet
         visible={editingQuestion !== null}
         templateId={template.id}

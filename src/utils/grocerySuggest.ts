@@ -115,7 +115,7 @@ export function rankGrocerySuggestions(
  * The "you buy this every week" shelf. Only things not currently on the list —
  * offering to add what's already there is the one thing this sheet must not do.
  */
-export function buyAgainItems(items: readonly GroceryItem[], now: Date, limit = 40): GroceryItem[] {
+export function rankedCatalogItems(items: readonly GroceryItem[], now: Date, limit = 40): GroceryItem[] {
   return items
     .filter(i => !i.onList)
     .map(item => ({ item, score: familiarity(item, now) }))
@@ -256,7 +256,7 @@ export function buildGroceryRecipeSections(
  * Catalog rows that look like typos or one-offs: never bought, not favourited,
  * off the list, and untouched for a while.
  *
- * Surfaced as an *offer* inside Buy again, never swept automatically. The task
+ * Surfaced as an *offer* inside the catalog, never swept automatically. The task
  * side gets away with an automatic purge because shake-to-undo exists;
  * groceries have no undo at all, so an automatic delete here is unrecoverable.
  */
