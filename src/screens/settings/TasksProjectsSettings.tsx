@@ -157,7 +157,6 @@ export function TasksProjectsSettings() {
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
   const [standingSwapsVisible, setStandingSwapsVisible] = useState(false);
   const [titleRulesVisible, setTitleRulesVisible] = useState(false);
-  const [hiddenListOpen, setHiddenListOpen] = useState(false);
 
   // What the row's value counts: rules that are actually filing things. A rule
   // switched off is kept and listed, but reporting it here would have the row
@@ -540,27 +539,18 @@ export function TasksProjectsSettings() {
         />
         <View style={styles.sep} />
         {/* The list is the setting's only honest description: "hides advanced
-            features" is not something anyone can act on without knowing which.
-            A disclosure rather than a permanent block, because it is 34 lines
-            and this section is two rows. */}
-        <SettingsRow
-          icon="list-outline"
-          label="What simplified mode hides"
-          expanded={hiddenListOpen}
-          onPress={() => { haptics.tap(); setHiddenListOpen(!hiddenListOpen); }}
-        />
-        {hiddenListOpen && (
-          <View style={styles.simpleList}>
-            {SIMPLE_AREAS.map(area => (
-              <View key={area} style={styles.simpleArea}>
-                <Text style={styles.simpleAreaLabel}>{SIMPLE_AREA_LABELS[area]}</Text>
-                <Text style={styles.simpleAreaFeatures}>
-                  {simpleFeaturesIn(area).map(f => f.label).join(', ')}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
+            features" is not something anyone can act on without knowing which. */}
+        <SettingsRow icon="list-outline" label="What simplified mode hides" />
+        <View style={styles.simpleList}>
+          {SIMPLE_AREAS.map(area => (
+            <View key={area} style={styles.simpleArea}>
+              <Text style={styles.simpleAreaLabel}>{SIMPLE_AREA_LABELS[area]}</Text>
+              <Text style={styles.simpleAreaFeatures}>
+                {simpleFeaturesIn(area).map(f => f.label).join(', ')}
+              </Text>
+            </View>
+          ))}
+        </View>
       </SettingsSection>
 
       {/* Everything below belongs to the groceries/meals area: what it puts on
