@@ -15,6 +15,7 @@ import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '.
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -57,12 +58,14 @@ export function SortFilterSheet({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(600);
+      translateY.setValue(hiddenY);
       backdropOpacity.setValue(0);
       Animated.parallel([
         Animated.spring(translateY, {
@@ -82,7 +85,7 @@ export function SortFilterSheet({
   const dismiss = () => {
     Animated.parallel([
       Animated.spring(translateY, {
-        toValue: 700,
+        toValue: hiddenY,
         ...animation.spring.sheetDismiss,
         useNativeDriver: true,
       }),
@@ -92,7 +95,7 @@ export function SortFilterSheet({
         useNativeDriver: true,
       }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
     });
   };

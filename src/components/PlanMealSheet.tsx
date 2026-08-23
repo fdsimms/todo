@@ -23,6 +23,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel, upcomingDays } from '../utils/mealPlan';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 /** Kept clear above the sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
@@ -90,7 +91,9 @@ export function PlanMealSheet({ visible, title, onPlan, onPlanned, onClose }: Pr
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { height: windowHeight } = useWindowDimensions();
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   // Fixed for the life of one opening: a rolling window recomputed mid-render
@@ -111,7 +114,7 @@ export function PlanMealSheet({ visible, title, onPlan, onPlanned, onClose }: Pr
     // the meal plan's own picker defaults to. The chips are right there.
     setSlot('dinner');
     setPlanned(null);
-    translateY.setValue(600);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -121,10 +124,10 @@ export function PlanMealSheet({ visible, title, onPlan, onPlanned, onClose }: Pr
 
   const dismiss = (after?: () => void) => {
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
       after?.();
     });

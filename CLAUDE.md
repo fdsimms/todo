@@ -627,6 +627,12 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 - `interaction.activeOpacity` (0.7), `interaction.pressScale`, `interaction.delayLongPress` — press behavior
 - `animation.spring.snappy/smooth/bouncy` and `animation.duration.*` — every Animated call
 - `getShadows(isDark)` via `useTheme().shadows` (`card`, `fab`, `sheet`) — every shadow
+- `useSheetHiddenOffset()` (`src/hooks/`) — how far down a bottom sheet's card parks while
+  hidden. Every one of the ~25 sheets used to hardcode a 600/700-ish pair, which doesn't clear
+  a card whose height is data-driven, and re-armed the lower value in the dismiss animation's
+  completion callback — putting the card back on screen until the modal unmounted. Read the
+  hook's doc comment before touching a sheet's open/close animation; the no-re-arm half of the
+  rule lives at the call sites.
 
 **Never put `lineHeight` on a `TextInput` style.** RN maps it straight onto the iOS paragraph style's `minimumLineHeight`/`maximumLineHeight` with no compensating baseline offset (`RCTTextAttributes.mm`), so the glyphs are drawn a full line height below the top of the line box instead of one ascent below it — the text sits low in the field while the caret stays centered, and the placeholder inherits the same attributes so it looks wrong even when empty. `lineHeight` is fine (and wanted) on `Text`. When an input needs a specific box height to keep a row from resizing between display and edit mode, set `height`/`minHeight` instead.
 

@@ -23,6 +23,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { WhenPicker } from './WhenPicker';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import type { Task } from '../types';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -74,7 +75,9 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
   const [pickerTarget, setPickerTarget] = useState<DeloadProposal | null>(null);
   const [dayMode, setDayMode] = useState<DayMode>('suggested');
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -86,7 +89,7 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
     setOverrides({});
     setPickerTarget(null);
     setDayMode('suggested');
-    translateY.setValue(600);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -98,10 +101,10 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
 
   const dismiss = () => {
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
     });
   };
@@ -111,7 +114,7 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
   const openPicker = (proposal: DeloadProposal) => {
     haptics.tap();
     Animated.spring(translateY, {
-      toValue: 700,
+      toValue: hiddenY,
       ...animation.spring.sheetDismiss,
       useNativeDriver: true,
     }).start(() => setPickerTarget(proposal));
