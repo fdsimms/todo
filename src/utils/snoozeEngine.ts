@@ -4,7 +4,8 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { isThisWeek } from 'date-fns/isThisWeek';
 import { format } from 'date-fns/format';
 import type { Task } from '../types';
-import { getDayStart, getNextDueDate, getWeekStart } from './dateUtils';
+import { dayKeyOf, getDayStart, getNextDueDate, getWeekStart } from './dateUtils';
+import { projectOccurrences } from './calendarMonth';
 import { estimatedMinutesFor } from './effort';
 import { type BusyEvent, busyMinutesIn } from './calendarBusy';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -35,26 +36,6 @@ function labelForDate(d: Date, dayResetTime: string): string {
   if (diff === 1) return 'Tomorrow';
   if (isThisWeek(d, { weekStartsOn: getWeekStart() })) return format(d, 'EEEE');
   return format(d, 'EEE, MMM d');
-}
-
-/**
- * Builds a Set of ISO date strings (YYYY-MM-DD) for all days within
- * the candidate window that a given recurring task is expected to land on,
- * beyond its current dueDate (which is already counted in the pending list).
- */
-function projectRecurringOccurrences(t: Task, windowEnd: Date): Set<string> {
-  const hits = new Set<string>();
-  if (t.recurrenceType === 'none' || t.dueDate == null) return hits;
-
-  let cursor = { ...t };
-  // Walk forward through occurrences until we pass the window
-  for (let i = 0; i < 30; i++) {
-    const next = getNextDueDate(cursor);
-    if (!next || next > windowEnd) break;
-    hits.add(next.toISOString().slice(0, 10));
-    cursor = { ...cursor, dueDate: next.toISOString() };
-  }
-  return hits;
 }
 
 /** How many days out the search looks when nothing constrains it. */
@@ -119,10 +100,19 @@ export function computeSnoozeSuggestion(
 
   // Pre-compute projected recurring occurrences for all pending recurring tasks.
   // Maps ISO date string → { count, effort } from recurrence projections.
+  //
+  // Shares the month grid's walk rather than keeping its own. The private copy
+  // this replaced had none of `canProject`'s refusals, so a
+  // recurrenceFromCompletion task — whose next date getNextDueDate answers from
+  // *today*, never advancing as the cursor moves — folded the same day into the
+  // set thirty times over and projected a schedule the app doesn't promise. The
+  // stored row is excluded by the walk itself, which is what this wants: it's
+  // already counted in `pending`.
   const recurringByDay = new Map<string, { count: number; effort: number }>();
   for (const t of pending) {
     if (t.recurrenceType === 'none') continue;
-    for (const dateStr of projectRecurringOccurrences(t, windowEnd)) {
+    for (const date of projectOccurrences(t, today, windowEnd, dayResetTime)) {
+      const dateStr = dayKeyOf(date);
       const existing = recurringByDay.get(dateStr) ?? { count: 0, effort: 0 };
       recurringByDay.set(dateStr, {
         count: existing.count + 1,

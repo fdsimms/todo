@@ -322,9 +322,9 @@ exports.
 **Read narrowly.** 37 files are over 1,000 lines, 23 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (5.1k), `components/TaskEditor.tsx` (4.2k),
+`store/useTaskStore.ts` (5.2k), `components/TaskEditor.tsx` (4.2k),
 `store/useGroceryStore.ts` (4.0k), `db/database.ts` (3.8k), `screens/TodayScreen.tsx` (3.7k),
-`components/TaskItem.tsx` (3.3k), `types/index.ts` (3.1k),
+`components/TaskItem.tsx` (3.4k), `types/index.ts` (3.1k),
 `components/QuickAddModal.tsx` (2.6k), `screens/MealPlanScreen.tsx` (2.2k),
 `store/useSettingsStore.ts` (2.1k).
 
@@ -566,6 +566,15 @@ the block would inherit none.
 ### Recurrence
 
 Completing a recurring task creates a new task row with a new `id` and the next computed `dueDate`. The original task is marked completed (not deleted). `getNextDueDate()` in `src/utils/dateUtils.ts` handles all recurrence types; it anchors to the previous `dueDate` for fixed schedules, or to today for `recurrenceFromCompletion`.
+
+There is no rule entity separate from the occurrence holding it, and `dueDate` does double duty: it is both the date this occurrence sits on and the anchor the whole future grid is measured from. That is the deliberate design (materialised rows, same call the Series note makes below), and these four rules are what it costs. They were all shipped as bugs first, so don't undo one by re-deriving it from the code.
+
+- **A row's date must not be rewritten to move one occurrence.** Rescheduling a recurring task rebased its entire future: move Tuesday's occurrence to Thursday once and it was a Thursday task for ever. Anything that pushes a task out checks `isDateAnchored` (`src/utils/taskMoves.ts`) first and writes `deferUntil` instead, which is what `getEffectiveTaskDate` exists to render, and what the successor drops (`deferUntil: null`) so the push applies to the one occurrence. `deloadPlan` and `lookAhead` already did this; `TaskItem`'s own picker did not, which is the half that was wrong. Moving a task *earlier* still writes `dueDate` and still rotates the grid: `deferUntil` cannot pull a task in front of its own date, so that one move isn't representable as "this occurrence only" and is treated as the schedule edit it has to be.
+- **`getNextDueDate` steps the grid; `{ catchUp: true }` walks it to the present.** Off by default because `projectOccurrences` walks this one occurrence at a time to draw a month, and a first step that skipped to today would drop every earlier cell. On for the two callers *placing a real row* — `completeTask`'s successor and `skipNextRecurrence` — because without it, finishing a task five weeks late spawned a successor dated four weeks ago: overdue on arrival, and five more completions (five more tombstones) to work back to the present. It walks the rule's own grid rather than landing on today outright, so a Friday task caught up is still on a Friday. `rolloverQuotas` reached the same conclusion for quota tasks by its own route and keeps it, since a partial day's record has to land on the day it belongs to.
+- **`recurrenceAnchorDay` is what a short month is clamped *from*.** `addMonths` clamps Jan 31 to Feb 28, and with the stored date as the only anchor that clamp fed the next one: Feb 28, Mar 28, Apr 28, for ever, off a single February. Yearly did it to Feb 29. The column holds the day-of-month the grid is anchored to for the picker's "same day as the due date" option (an explicit `recurrenceMonthDay` or `recurrenceWeekOrdinal` already answers this, and `recurrenceFromCompletion` measures from a day rather than a date). It is captured whenever the user *writes* the schedule (`SCHEDULE_FIELDS` in `updateTask`) and deliberately never when the app moves the row itself, which is the entire mechanism: recompute it on an unrelated patch and the successor sitting on Feb 28 hands the drift straight back. Same fix `getNextSeriesDates` already applies to a dated series.
+- **A multi-week interval counts weeks from the user's own week start.** `weekStartsOn` is a real setting and the weekday walk used to ignore it, so "every 2 weeks on Fri and Sun" split a Monday-start user's pair across two blocks, 9 days apart instead of 2. With `weekStartsOn: 0` the arithmetic is unchanged.
+
+One walk draws every projection (`projectOccurrences` in `src/utils/calendarMonth.ts`, used by the month grid, `lookAhead` and `snoozeEngine`). Don't write a second: the private copy `snoozeEngine` used to keep had none of `canProject`'s refusals, so a `recurrenceFromCompletion` task — whose next date is answered from today however far the cursor moves — folded one day into the set thirty times and called it a schedule.
 
 ### Completed-task retention
 
