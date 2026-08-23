@@ -6,7 +6,8 @@ import {
   isLaterHeader,
   laterSections,
   laterDropZones,
-  visibleLaterSections,
+  laterDaySections,
+  laterVisibleOrder,
   laterTodaySections,
   categorySpan,
   applyCategoryCollapse,
@@ -784,46 +785,69 @@ describe('laterDropZones', () => {
   });
 });
 
-describe('visibleLaterSections', () => {
-  const daySection = (title: string, count: number) => ({
-    title,
-    dateISO: '2026-01-01T00:00:00.000Z',
-    segments: [{ label: null, segment: null, data: Array.from({ length: count }, (_, i) => makeTask({ id: `${title}-${i}` })) }],
+describe('laterDaySections task budget', () => {
+  // Pinned so the three days below stay inside formatGroupHeader's
+  // one-header-per-day range instead of collapsing into a month label.
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 12, 0, 0));
   });
+  afterEach(() => jest.useRealTimers());
+
+  const day = (offset: number, count: number, segments: string[] = []) =>
+    Array.from({ length: count }, (_, i) => ({
+      task: makeTask({ id: `d${offset}-${i}`, timeSegments: segments as any }),
+      visibleAt: new Date(2025, 5, 10 + offset, 12, 0, 0),
+    }));
 
   it('includes whole day sections up to the task budget', () => {
-    const sections = [daySection('a', 30), daySection('b', 30), daySection('c', 30)];
-    expect(visibleLaterSections(sections, 60).map(s => s.title)).toEqual(['a', 'b']);
+    const result = laterDaySections([...day(1, 30), ...day(2, 30), ...day(3, 30)], 60);
+    expect(result.sections).toHaveLength(2);
+    expect(result.hasMore).toBe(true);
   });
 
-  // A day straddling the budget boundary is included in full rather than
-  // cut off mid-day — a header must never render without all its tasks.
+  // A day straddling the budget boundary is included in full rather than cut
+  // off mid-day — a header must never render without all its tasks.
   it('includes an entire day that pushes the running count past the budget', () => {
-    const sections = [daySection('a', 40), daySection('b', 40)];
-    expect(visibleLaterSections(sections, 60).map(s => s.title)).toEqual(['a', 'b']);
+    const result = laterDaySections([...day(1, 40), ...day(2, 40)], 60);
+    expect(result.sections.map(s => s.segments[0].data.length)).toEqual([40, 40]);
+    expect(result.hasMore).toBe(false);
   });
 
-  it('includes everything when the budget exceeds the total', () => {
-    const sections = [daySection('a', 10), daySection('b', 10)];
-    expect(visibleLaterSections(sections, 60).map(s => s.title)).toEqual(['a', 'b']);
+  it('includes everything, and reports no more, when the budget exceeds the total', () => {
+    const result = laterDaySections([...day(1, 10), ...day(2, 10)], 60);
+    expect(result.sections).toHaveLength(2);
+    expect(result.hasMore).toBe(false);
   });
 
-  // The budget counts tasks across every sub-group in a day, not just the
-  // first — a day with morning+evening tasks totalling over budget must
-  // still be counted as one whole day, not split mid-day.
-  it('sums tasks across every segment in a day for the budget', () => {
-    const sections = [
-      {
-        title: 'a',
-        dateISO: '2026-01-01T00:00:00.000Z',
-        segments: [
-          { label: 'Morning', segment: 'morning', data: Array.from({ length: 20 }, (_, i) => makeTask({ id: `a-m-${i}` })) },
-          { label: 'Evening', segment: 'evening', data: Array.from({ length: 20 }, (_, i) => makeTask({ id: `a-e-${i}` })) },
-        ],
-      },
-      daySection('b', 30),
-    ];
-    expect(visibleLaterSections(sections, 30).map(s => s.title)).toEqual(['a']);
+  // The budget counts placements across every sub-group in a day, not just the
+  // first — a day with morning+evening tasks totalling over budget must still
+  // be counted as one whole day, not split mid-day.
+  it('counts every segment placement in a day towards the budget', () => {
+    const result = laterDaySections(
+      [...day(1, 20, ['morning']), ...day(1, 20, ['evening']), ...day(2, 30)],
+      30,
+    );
+    expect(result.sections).toHaveLength(1);
+    expect(result.sections[0].segments.map(s => s.label)).toEqual(['Morning', 'Evening']);
+    expect(result.hasMore).toBe(true);
+  });
+
+  // A multi-segment task is a row under each of its sub-headers, so it costs
+  // the budget once per placement rather than once per task.
+  it('charges a multi-segment task once per placement', () => {
+    const result = laterDaySections(
+      [...day(1, 2, ['morning', 'evening']), ...day(2, 5)],
+      4,
+    );
+    expect(result.sections).toHaveLength(1);
+    expect(result.hasMore).toBe(true);
+  });
+
+  it('groups everything with no budget given', () => {
+    const result = laterDaySections([...day(1, 30), ...day(2, 30), ...day(3, 30)]);
+    expect(result.sections).toHaveLength(3);
+    expect(result.hasMore).toBe(false);
   });
 });
 

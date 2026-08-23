@@ -43,12 +43,56 @@ export function isHeldBack(task: Task): boolean {
   return isTaskBlocked(task) || isSequenceBlocked(task);
 }
 
+/**
+ * A snapshot of everything getVisibleAt needs that is the same for every task
+ * in one pass: the clock, the day-reset setting, when the current logical day
+ * started, and the four time-of-day segment starts.
+ *
+ * Grouping the Later list re-derived all of it *per task* — several times per
+ * task, in fact, since a task carrying both a defer date and a due date runs
+ * the threshold helpers twice and each of those took its own settings read and
+ * its own getCurrentDayStart. That was the bulk of what the pass cost. A
+ * caller looping over many tasks takes one of these first and hands it down;
+ * every helper here still reads the stores itself when it isn't given one, so
+ * the single-task call sites are untouched.
+ *
+ * Fixing `now` for the pass is a correctness improvement as well as a cheaper
+ * one: getVisibleAt falls back to the current instant for a task with no
+ * future gate, so a pass that re-read the clock per task could order the same
+ * pair of tasks differently depending on when each comparison happened (see
+ * laterVisibleOrder, which is why that already computed visibleAt up front).
+ */
+export interface VisibleAtPass {
+  now: Date;
+  dayResetTime: string;
+  todayStart: Date;
+  segmentStarts: Record<TimeOfDay, string>;
+}
+
+export function beginVisibleAtPass(): VisibleAtPass {
+  const { dayResetTime, morningStart, afternoonStart, eveningStart, nightStart } =
+    useSettingsStore.getState();
+  const now = new Date();
+  return {
+    now,
+    dayResetTime,
+    todayStart: getDayStart(now, dayResetTime),
+    segmentStarts: {
+      morning: morningStart,
+      afternoon: afternoonStart,
+      evening: eveningStart,
+      night: nightStart,
+    },
+  };
+}
+
 // Anchored to the current *logical* day (getCurrentDayStart), not the literal
 // wall-clock date — otherwise, during the early-morning grace window before
 // dayResetTime, a segment threshold at or before the reset hour would appear
 // to be "later today" (pointing at a clock time hours in the future) instead
 // of already having passed for the logical day that's still in progress.
-function segmentStartHHMM(timeOfDay: TimeOfDay): string {
+function segmentStartHHMM(timeOfDay: TimeOfDay, pass?: VisibleAtPass): string {
+  if (pass) return pass.segmentStarts[timeOfDay];
   const { morningStart, afternoonStart, eveningStart, nightStart } = useSettingsStore.getState();
   return timeOfDay === 'morning' ? morningStart
     : timeOfDay === 'afternoon' ? afternoonStart
@@ -56,9 +100,11 @@ function segmentStartHHMM(timeOfDay: TimeOfDay): string {
     : nightStart;
 }
 
-function getTimeOfDayThreshold(timeOfDay: TimeOfDay): Date {
-  const t = getCurrentDayStart();
-  const [h, m] = segmentStartHHMM(timeOfDay).split(':').map(Number);
+// The pass's todayStart is copied rather than used: setHours below mutates it,
+// and it is shared with every other task in the pass.
+function getTimeOfDayThreshold(timeOfDay: TimeOfDay, pass?: VisibleAtPass): Date {
+  const t = pass ? new Date(pass.todayStart) : getCurrentDayStart();
+  const [h, m] = segmentStartHHMM(timeOfDay, pass).split(':').map(Number);
   t.setHours(h, m, 0, 0);
   return t;
 }
@@ -173,10 +219,10 @@ export function sameTimeSegments(a: TimeOfDay[], b: TimeOfDay[]): boolean {
   return a.length === b.length && a.every(s => b.includes(s));
 }
 
-function earliestSegmentThreshold(segments: TimeOfDay[]): Date | null {
+function earliestSegmentThreshold(segments: TimeOfDay[], pass?: VisibleAtPass): Date | null {
   if (segments.length === 0) return null;
   return segments
-    .map(s => getTimeOfDayThreshold(s))
+    .map(s => getTimeOfDayThreshold(s, pass))
     .reduce((min, t) => (t < min ? t : min));
 }
 
@@ -187,9 +233,9 @@ function earliestSegmentThreshold(segments: TimeOfDay[]): Date | null {
 // against *today's* clock instant instead of the logical day (still
 // "yesterday") that's actually in progress — hiding an already-active
 // windowed task the instant the calendar flips, well before dayResetTime.
-function getWindowThreshold(hhmm: string): Date {
+function getWindowThreshold(hhmm: string, pass?: VisibleAtPass): Date {
   const [h, m] = hhmm.split(':').map(Number);
-  const t = getCurrentDayStart();
+  const t = pass ? new Date(pass.todayStart) : getCurrentDayStart();
   t.setHours(h, m, 0, 0);
   return t;
 }
@@ -726,18 +772,16 @@ export function isUpcomingToday(task: Task): boolean {
   return now < threshold;
 }
 
-export function getVisibleAt(task: Task): Date {
-  const now = new Date();
-  const { dayResetTime } = useSettingsStore.getState();
+export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPass()): Date {
+  const { now, dayResetTime, todayStart } = pass;
   const candidates: Date[] = [];
-  const todayStart = getCurrentDayStart();
 
   // Both timeSegments and windowStart refine a day to a specific clock time;
   // a task normally uses one or the other, so timeSegments takes precedence
   // when both happen to be set.
   const applyTimeThreshold = (base: Date): Date => {
     const threshold = task.timeSegments.length > 0
-      ? earliestSegmentThreshold(task.timeSegments)
+      ? earliestSegmentThreshold(task.timeSegments, pass)
       : task.windowStart ? hhmmToDate(task.windowStart) : null;
     if (!threshold) return base;
     const result = new Date(base);
@@ -753,10 +797,10 @@ export function getVisibleAt(task: Task): Date {
   }
 
   if (task.timeSegments.length > 0 && candidates.length === 0) {
-    const threshold = earliestSegmentThreshold(task.timeSegments)!;
+    const threshold = earliestSegmentThreshold(task.timeSegments, pass)!;
     if (threshold > now) candidates.push(threshold);
   } else if (task.windowStart && candidates.length === 0) {
-    const threshold = getWindowThreshold(task.windowStart);
+    const threshold = getWindowThreshold(task.windowStart, pass);
     if (threshold > now) candidates.push(threshold);
   }
 
@@ -785,7 +829,10 @@ export function getVisibleAt(task: Task): Date {
     if (nextUnit > now) candidates.push(nextUnit);
   }
 
-  if (candidates.length === 0) return now;
+  // A copy, not the pass's own `now`: that instant is shared with every other
+  // task in the pass, and handing the same mutable Date out repeatedly is a
+  // trap for any caller that adjusts what it gets back.
+  if (candidates.length === 0) return new Date(now);
   return candidates.reduce((latest, d) => (d > latest ? d : latest));
 }
 
